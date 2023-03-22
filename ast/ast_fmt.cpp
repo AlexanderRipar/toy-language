@@ -243,18 +243,52 @@ static void tree_switch(const Switch& node, i32 indent, const char* name = nullp
 	print_end_node(indent);
 }
 
+static void tree_for_each(const ForEach& node, i32 indent, const char* name = nullptr) noexcept
+{
+	print_beg_node("ForEach", indent, name);
+	
+	print_beg_array("indents", indent + 1);
+
+	for (const strview& v : node.idents)
+		print_value(v, indent + 2);
+
+	print_end_array(indent + 1);
+
+	tree_expr(node.iterated, indent + 1, "iterated");
+
+	print_end_node(indent);
+}
+
+static void tree_for_signature(const ForSignature& node, i32 indent, const char* name = nullptr) noexcept
+{
+	print_beg_node("ForSignature", indent, name, true);
+
+	if (node.type == ForSignature::Type::ForEach)
+	{
+		tree_for_each(node.for_each, indent);
+	}
+	else if (node.type == ForSignature::Type::Normal)
+	{
+		print_beg_node("Normal", indent + 1, nullptr);
+
+		if (node.normal.opt_init.idents.size() != 0)
+			tree_variable_def(node.normal.opt_init, indent + 1, "opt_init");
+
+		if (node.normal.opt_condition.type != Expr::Type::EMPTY)
+			tree_expr(node.normal.opt_condition, indent + 1, "opt_condition");
+
+		if (node.normal.opt_step.op != Assignment::Op::EMPTY)
+			tree_assignment(node.normal.opt_step, indent + 1, "opt_step");
+
+		print_end_node(indent);
+	}
+}
+
 static void tree_for(const For& node, i32 indent, const char* name = nullptr) noexcept
 {
 	print_beg_node("For", indent, name);
 
-	if (node.opt_init.idents.size() != 0)
-		tree_variable_def(node.opt_init, indent + 1, "opt_init");
-
-	if (node.opt_condition.type != Expr::Type::EMPTY)
-		tree_expr(node.opt_condition, indent + 1, "opt_condition");
-
-	if (node.opt_step.op != Assignment::Op::EMPTY)
-		tree_assignment(node.opt_step, indent + 1, "opt_step");
+	tree_for_signature(node.signature, indent + 1, "signature");
 
 	tree_statement(node.body, indent + 1, "body");
 

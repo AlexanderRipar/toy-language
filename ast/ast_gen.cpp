@@ -77,7 +77,7 @@ static bool error_unexpected_end(pstate& s, const char* ctx) noexcept
 
 
 
-static const Token* peek(pstate& s, usz offset = 0) noexcept
+static const Token* peek(const pstate& s, usz offset = 0) noexcept
 {
 	if (s.curr + offset >= s.end)
 		return nullptr;
@@ -315,6 +315,43 @@ static bool bin_val(char c, usz& inout_v) noexcept
 	
 	return c == '0' || c == '1';
 }
+
+
+
+enum class PeekedType
+{
+	Other,
+	VariableDef,
+	Assignment,
+	ForEach,
+};
+
+static PeekedType peek_type(const pstate& s) noexcept
+{
+	usz idx = 0;
+
+	while (true)
+	{
+		Assignment::Op unused_assign_op;
+
+		if (const Token* t = peek(s, idx); t == nullptr || t->type != Token::Type::Ident)
+			return PeekedType::Other;
+
+		if (const Token* t = peek(s, idx + 1); t == nullptr)
+			return PeekedType::Other;
+		else if (t->type == Token::Type::Colon)
+			return PeekedType::VariableDef;
+		else if (token_type_to_assign_oper(t->type, unused_assign_op))
+			return PeekedType::Assignment;
+		else if (t->type == Token::Type::ArrowLeft)
+			return PeekedType::ForEach;
+		else if (t->type != Token::Type::Comma)
+			return PeekedType::Other;
+
+		idx += 2;
+	}
+}
+
 
 
 
@@ -914,16 +951,58 @@ static bool parse_when(pstate& s, When& out) noexcept
 	return true;
 }
 
-static bool parse_for(pstate& s, For& out) noexcept
+static bool parse_for_each(pstate& s, ForEach& out) noexcept
 {
-	static constexpr const char ctx[] = "For";
+	static constexpr const char ctx[] = "ForEach";
+
+	while (true)
+	{
+		if (const Token* t = expect(s, Token::Type::Ident, ctx); t == nullptr)
+		{
+			return false;
+		}
+		else
+		{
+			if (!out.idents.push_back({}))
+				return error_out_of_memory(s, ctx);
+
+			out.idents.last() = t->data_strview();
+		}
+
+		if (const Token* t = next(s, ctx); t == nullptr)
+			return false;
+		else if (t->type == Token::Type::ArrowLeft)
+			break;
+		else if (t->type != Token::Type::Comma)
+			return error_invalid_syntax(s, ctx, t, "Expected ArrowLeft or Comma");
+	}
+
+	return parse_expr(s, out.iterated);
+}
+
+static bool parse_for_signature(pstate& s, ForSignature& out) noexcept
+{
+	static constexpr const char ctx[] = "ForSignature";
 
 	if (expect(s, Token::Type::For, ctx) == nullptr)
 		return false;
 
-	if (const Token* t = peek(s, 1); t != nullptr && t->type == Token::Type::Colon)
+	
+	if (const PeekedType pt = peek_type(s); pt == PeekedType::ForEach)
 	{
-		if (!parse_variable_def(s, out.opt_init))
+		out.type = ForSignature::Type::ForEach;
+
+		if (!parse_for_each(s, out.for_each))
+			return false;
+
+		if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::Do)
+			next(s, ctx);
+
+		return true;
+	}
+	else if (pt == PeekedType::VariableDef)
+	{
+		if (!parse_variable_def(s, out.normal.opt_init))
 			return false;
 
 		if (expect(s, Token::Type::Semicolon, ctx) == nullptr)
@@ -932,7 +1011,7 @@ static bool parse_for(pstate& s, For& out) noexcept
 
 	if (const Token* t = peek(s); t != nullptr && t->type != Token::Type::Do && t->type != Token::Type::SquiggleBeg)
 	{
-		if (!parse_expr(s, out.opt_condition))
+		if (!parse_expr(s, out.normal.opt_condition))
 			return false;
 	}
 
@@ -940,7 +1019,7 @@ static bool parse_for(pstate& s, For& out) noexcept
 	{
 		next(s, ctx);
 
-		if (!parse_assignment(s, out.opt_step))
+		if (!parse_assignment(s, out.normal.opt_step))
 			return false;
 	}
 
@@ -950,6 +1029,16 @@ static bool parse_for(pstate& s, For& out) noexcept
 		next(s, ctx);
 	else if (t->type != Token::Type::SquiggleBeg)
 		return error_invalid_syntax(s, ctx, t, "Expected Do or SquiggleBeg");
+
+	return true;
+}
+
+static bool parse_for(pstate& s, For& out) noexcept
+{
+	static constexpr const char ctx[] = "For";
+
+	if (!parse_for_signature(s, out.signature))
+		return false;
 
 	if (!parse_statement(s, out.body))
 		return false;
@@ -1776,7 +1865,7 @@ static bool parse_proc_signature(pstate& s, ProcSignature& out) noexcept
 
 AFTER_PARAMS:
 
-	if (const Token* t = peek(s); t == nullptr || t->type != Token::Type::Arrow)
+	if (const Token* t = peek(s); t == nullptr || t->type != Token::Type::ArrowRight)
 		return true;
 
 	next(s, ctx);
@@ -2054,7 +2143,6 @@ static bool parse_union_def(pstate& s, UnionDef& out) noexcept
 static bool parse_struct_def(pstate& s, StructDef& out) noexcept
 {
 	static constexpr const char ctx[] = "StructDef";
-
 	if (expect(s, Token::Type::SquiggleBeg, ctx) == nullptr)
 		return false;
 

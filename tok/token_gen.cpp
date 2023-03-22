@@ -52,7 +52,8 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("TripleDot"),
 		strview::from_literal("Semicolon"),
 		strview::from_literal("Comma"),
-		strview::from_literal("Arrow"),
+		strview::from_literal("ArrowLeft"),
+		strview::from_literal("ArrowRight"),
 		strview::from_literal("SquiggleBeg"),
 		strview::from_literal("SquiggleEnd"),
 		strview::from_literal("BracketBeg"),
@@ -389,6 +390,12 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 
 				t.type = Token::Type::OpLe;
 			}
+			else if (nxt == '-')
+			{
+				++c;
+
+				t.type = Token::Type::ArrowLeft;
+			}
 			else
 			{
 				t.type = Token::Type::OpLt;
@@ -462,7 +469,7 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				++c;
 
-				t.type = Token::Type::Arrow;
+				t.type = Token::Type::ArrowRight;
 			}
 			else if (nxt == '=')
 			{

@@ -321,6 +321,25 @@ static void proc_param_cleanup_helper(ProcParam& obj) noexcept
 	}
 }
 
+static void for_signature_cleanup_helper(ForSignature& obj) noexcept
+{
+	switch (obj.type)
+	{
+	case ForSignature::Type::Normal:
+		obj.normal.opt_init.~VariableDef();
+		obj.normal.opt_condition.~Expr();
+		obj.normal.opt_step.~Assignment();
+		break;
+
+	case ForSignature::Type::ForEach:
+		obj.for_each.~ForEach();
+		break;
+
+	default:
+		assert(obj.type == ForSignature::Type::EMPTY);
+		break;
+	}
+}
 
 
 Literal::~Literal() noexcept
@@ -394,6 +413,10 @@ ProcParam::~ProcParam() noexcept
 	proc_param_cleanup_helper(*this);
 }
 
+ForSignature::~ForSignature() noexcept
+{
+	for_signature_cleanup_helper(*this);
+}
 
 
 Definition::Definition() noexcept
@@ -512,6 +535,15 @@ Call& Call::operator=(Call&& o) noexcept
 ProcParam& ProcParam::operator=(ProcParam&& o) noexcept
 {
 	proc_param_cleanup_helper(*this);
+
+	obj_move(this, &o);
+
+	return *this;
+}
+
+ForSignature& ForSignature::operator=(ForSignature&& o) noexcept
+{
+	for_signature_cleanup_helper(*this);
 
 	obj_move(this, &o);
 

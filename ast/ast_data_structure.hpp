@@ -416,13 +416,48 @@ struct Assignment
 	Assignment(const Assignment&) noexcept = delete;
 };
 
+struct ForEach
+{
+	vec<strview, 1> idents;
+
+	Expr iterated;
+};
+
+struct ForSignature
+{
+	enum class Type
+	{
+		EMPTY = 0,
+		Normal,
+		ForEach,
+	} type;
+
+	union
+	{
+		struct
+		{
+			VariableDef opt_init;
+
+			Expr opt_condition;
+
+			Assignment opt_step;
+		} normal;
+
+		ForEach for_each;
+	};
+
+	~ForSignature() noexcept;
+
+	ForSignature() noexcept = default;
+
+	ForSignature(const ForSignature&) noexcept = delete;
+
+	ForSignature& operator=(ForSignature&&) noexcept;
+};
+
 struct For
 {
-	VariableDef opt_init;
-
-	Expr opt_condition;
-
-	Assignment opt_step;
+	ForSignature signature;
 
 	Statement body;
 
