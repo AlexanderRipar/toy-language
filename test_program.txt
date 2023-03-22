@@ -2,3 +2,35 @@ main :: proc(args : slice[slice[char8]]) -> i32
 {
 	return 0
 }
+
+/*
+ArrayLike[?T] :: trait
+{
+	element_type :: proc(t : Type[?T]) -> &Type
+
+	size :: proc(t : Type[?T]) -> Numeric
+
+	size :: proc(t : ?T) -> Numeric
+}
+
+VectorLike[?T] :: trait
+{
+	element_type :: proc(t : Type[?T]) -> Type
+
+	size :: proc(t : ?T) -> Numeric
+}
+*/
+
+soa[?T : ArrayLike] :: proc(aos : &Type[?T]) -> Type
+{
+	rst : mut Type
+
+	elem := element_type(aos)
+
+	templ := aos.template_type
+
+	for m <- elem_t.members
+		append(r.members, m.name, templ_t[m, size(aos)])
+
+	return r
+}
