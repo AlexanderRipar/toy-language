@@ -1,10 +1,10 @@
 #ifndef AST_GEN_INCLUDE_GUARD
 #define AST_GEN_INCLUDE_GUARD
 
-#include "token_gen.hpp"
-#include "util/types.hpp"
-#include "util/vec.hpp"
-#include "util/strview.hpp"
+#include "../tok/token_gen.hpp"
+#include "../util/types.hpp"
+#include "../util/vec.hpp"
+#include "../util/strview.hpp"
 #include "ast_data_structure.hpp"
 
 struct Result

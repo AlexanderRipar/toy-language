@@ -3,7 +3,7 @@
 
 #include <utility>
 #include <new>
-#include "util/types.hpp"
+#include "../util/types.hpp"
 
 template<typename T, u16 Local_Capacity = sizeof(usz) * 2 / sizeof(T)>
 struct vec

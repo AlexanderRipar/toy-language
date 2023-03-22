@@ -2,9 +2,9 @@
 #define TOKEN_GEN_INCLUDE_GUARD
 
 #include <vector>
-#include "util/vec.hpp"
-#include "util/strview.hpp"
-#include "util/types.hpp"
+#include "../util/vec.hpp"
+#include "../util/strview.hpp"
+#include "../util/types.hpp"
 
 struct Token
 {

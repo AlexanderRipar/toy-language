@@ -5,16 +5,14 @@ project(compilator)
 
 
 add_executable(compilator main.cpp
-	token_gen.hpp token_gen.cpp
-	ast_gen.hpp ast_gen.cpp
-	ast_fmt.hpp ast_fmt.cpp
-	ast_data_structure.hpp ast_data_structure.cpp
+	tok/token_gen.hpp tok/token_gen.cpp
+	ast/ast_gen.hpp ast/ast_gen.cpp
+	ast/ast_fmt.hpp ast/ast_fmt.cpp
+	ast/ast_data_structure.hpp ast/ast_data_structure.cpp
 	util/types.hpp
 	util/strutil.hpp
 	util/strview.hpp
 	util/vec.hpp
-	util/refptr.hpp
-	util/ownptr.hpp
 	util/str.hpp
 )
 

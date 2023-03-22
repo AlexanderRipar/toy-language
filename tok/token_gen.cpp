@@ -1,7 +1,7 @@
 #include "token_gen.hpp"
 
-#include "util/vec.hpp"
-#include "util/strview.hpp"
+#include "../util/vec.hpp"
+#include "../util/strview.hpp"
 #include <cassert>
 
 strview Token::type_strview() const noexcept

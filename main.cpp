@@ -1,6 +1,6 @@
-#include "token_gen.hpp"
-#include "ast_gen.hpp"
-#include "ast_fmt.hpp"
+#include "tok/token_gen.hpp"
+#include "ast/ast_gen.hpp"
+#include "ast/ast_fmt.hpp"
 
 #include <cassert>
 #include <cstdio>

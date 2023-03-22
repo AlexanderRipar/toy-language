@@ -1,9 +1,9 @@
 #ifndef AST_DATA_STRUCTURE_INCLUDE_GUARD
 #define AST_DATA_STRUCTURE_INCLUDE_GUARD
-#include "util/types.hpp"
-#include "util/strview.hpp"
-#include "util/str.hpp"
-#include "util/vec.hpp"
+#include "../util/types.hpp"
+#include "../util/strview.hpp"
+#include "../util/str.hpp"
+#include "../util/vec.hpp"
 
 struct Definition;
 
