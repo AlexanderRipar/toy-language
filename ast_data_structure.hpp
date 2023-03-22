@@ -4,8 +4,6 @@
 #include "util/strview.hpp"
 #include "util/str.hpp"
 #include "util/vec.hpp"
-#include "util/ownptr.hpp"
-#include "util/refptr.hpp"
 
 struct Definition;
 

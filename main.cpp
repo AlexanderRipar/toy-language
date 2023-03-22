@@ -2,6 +2,7 @@
 #include "ast_gen.hpp"
 #include "ast_fmt.hpp"
 
+#include <cassert>
 #include <cstdio>
 #include <Windows.h>
 
