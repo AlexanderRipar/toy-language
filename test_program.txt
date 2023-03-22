@@ -1,0 +1,4 @@
+main :: proc(args : slice[slice[char8]]) -> i32
+{
+	return 0
+}
