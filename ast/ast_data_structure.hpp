@@ -318,11 +318,47 @@ struct UnaryOp
 	UnaryOp(const UnaryOp&) noexcept = delete;
 };
 
+struct TypeRef
+{
+	enum class Type
+	{
+		EMPTY = 0,
+		Ref,
+		NameRef,
+		Inline,
+		TypeExpr,
+	} type = Type::EMPTY;
+
+	enum class Mutability
+	{
+		Immutable = 0,
+		Mutable,
+		Const,
+	} mutability;
+
+	union
+	{
+		TypeRef* ref;
+
+		NameRef* name_ref;
+
+		Definition* inline_def;
+
+		Expr* type_expr;
+	};
+
+	~TypeRef() noexcept;
+
+	TypeRef() noexcept = default;
+
+	TypeRef(const TypeRef&) noexcept = delete;
+};
+
 struct VariableDef
 {
-	vec<strview> idents;
+	strview ident;
 
-	vec<TypeRef, 0> opt_type_refs;
+	TypeRef opt_type_ref;
 
 	TopLevelExpr opt_initializer;
 
@@ -407,7 +443,7 @@ struct Assignment
 		SetShiftR,
 	} op;
 
-	vec<AssignableExpr, 1> assignees;
+	AssignableExpr assignee;
 
 	TopLevelExpr assigned_value;
 
@@ -516,7 +552,7 @@ struct Go
 
 struct Return
 {
-	vec<TopLevelExpr, 1> return_values;
+	TopLevelExpr return_value;
 
 	Return() noexcept = default;
 
@@ -525,47 +561,11 @@ struct Return
 
 struct Yield
 {
-	vec<TopLevelExpr, 1> yield_values;
+	TopLevelExpr yield_value;
 
 	Yield() noexcept = default;
 
 	Yield(const Yield&) noexcept = delete;
-};
-
-struct TypeRef
-{
-	enum class Type
-	{
-		EMPTY = 0,
-		Ref,
-		NameRef,
-		Inline,
-		TypeExpr,
-	} type = Type::EMPTY;
-
-	enum class Mutability
-	{
-		Immutable = 0,
-		Mutable,
-		Const,
-	} mutability;
-
-	union
-	{
-		TypeRef* ref;
-
-		NameRef* name_ref;
-
-		Definition* inline_def;
-
-		Expr* type_expr;
-	};
-
-	~TypeRef() noexcept;
-
-	TypeRef() noexcept = default;
-
-	TypeRef(const TypeRef&) noexcept = delete;
 };
 
 struct ProcParam
@@ -598,7 +598,7 @@ struct ProcSignature
 {
 	vec<ProcParam, 0> params;
 
-	vec<TypeRef, 1> return_types;
+	TypeRef return_type;
 
 	ProcSignature() noexcept = default;
 

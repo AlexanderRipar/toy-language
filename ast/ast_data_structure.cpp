@@ -437,9 +437,9 @@ TypeValue& TypeValue::operator=(TypeValue&& o) noexcept
 
 VariableDef& VariableDef::operator=(VariableDef&& o) noexcept
 {
-	idents = std::move(o.idents);
+	ident = std::move(o.ident);
 	
-	opt_type_refs = std::move(o.opt_type_refs);
+	opt_type_ref = std::move(o.opt_type_ref);
 
 	opt_initializer = std::move(o.opt_initializer);
 

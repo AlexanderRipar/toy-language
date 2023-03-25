@@ -317,7 +317,7 @@ static bool bin_val(char c, usz& inout_v) noexcept
 }
 
 
-
+/*
 enum class PeekedType
 {
 	Other,
@@ -351,7 +351,7 @@ static PeekedType peek_type(const pstate& s) noexcept
 		idx += 2;
 	}
 }
-
+*/
 
 
 
@@ -363,7 +363,7 @@ static bool parse_name_ref(pstate& s, NameRef& out) noexcept;
 
 static bool parse_block(pstate& s, Block& out) noexcept;
 
-static bool parse_variable_def(pstate& s, VariableDef& out, bool allow_multiple = true) noexcept;
+static bool parse_variable_def(pstate& s, VariableDef& out) noexcept;
 
 static bool parse_expr(pstate& s, Expr& out) noexcept;
 
@@ -735,36 +735,19 @@ static bool parse_literal(pstate& s, Literal& out) noexcept
 	}
 }
 
-static bool parse_assignment(pstate& s, Assignment& out, AssignableExpr* first_assignee = nullptr) noexcept
+static bool parse_assignment(pstate& s, Assignment& out, AssignableExpr* assignee = nullptr) noexcept
 {
 	static constexpr const char ctx[] = "Assignment";
 
-	if (first_assignee != nullptr)
+	if (assignee != nullptr)
 	{
-		if (!out.assignees.push_back(std::move(*first_assignee)))
-			return error_out_of_memory(s, ctx);
-
-		if (const Token* t = peek(s); t == nullptr || t->type != Token::Type::Comma)
-			goto AFTER_ASSIGNEES;
-
-		next(s, ctx);
+		out.assignee = std::move(*assignee);
 	}
-
-	while (true)
+	else
 	{
-		if (!out.assignees.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse_assignable_expr(s, out.assignees.last()))
+		if (!parse_assignable_expr(s, out.assignee))
 			return false;
-
-		if (const Token* t = peek(s); t == nullptr || t->type != Token::Type::Comma)
-			break;
-
-		next(s, ctx);
 	}
-
-AFTER_ASSIGNEES:
 
 	const Token* t = next(s, ctx);
 
@@ -853,19 +836,8 @@ static bool parse_yield(pstate& s, Yield& out) noexcept
 	if (expect(s, Token::Type::Yield, ctx) == nullptr)
 		return false;
 
-	while (true)
-	{
-		if (!out.yield_values.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse_top_level_expr(s, out.yield_values.last()))
-			return false;
-
-		if (const Token* t = peek(s); t == nullptr || t->type != Token::Type::Comma)
-			break;
-
-		next(s, ctx);
-	}
+	if (!parse_top_level_expr(s, out.yield_value))
+		return false;
 
 	return true;
 }
@@ -877,19 +849,8 @@ static bool parse_return(pstate& s, Return& out) noexcept
 	if (expect(s, Token::Type::Return, ctx) == nullptr)
 		return false;
 
-	while (true)
-	{
-		if (!out.return_values.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse_top_level_expr(s, out.return_values.last()))
-			return false;
-
-		if (const Token* t = peek(s); t == nullptr || t->type != Token::Type::Comma)
-			break;
-
-		next(s, ctx);
-	}
+	if (!parse_top_level_expr(s, out.return_value))
+		return false;
 
 	return true;
 }
@@ -987,24 +948,26 @@ static bool parse_for_signature(pstate& s, ForSignature& out) noexcept
 	if (expect(s, Token::Type::For, ctx) == nullptr)
 		return false;
 
-	
-	if (const PeekedType pt = peek_type(s); pt == PeekedType::ForEach)
+	if (const Token* t = peek(s, 1); t != nullptr && t->type == Token::Type::Comma)
 	{
-		out.type = ForSignature::Type::ForEach;
+		if (const Token* t1 = peek(s, 3); t1 != nullptr && t1->type == Token::Type::ArrowRight)
+		{
+			out.type = ForSignature::Type::ForEach;
 
-		if (!parse_for_each(s, out.for_each))
-			return false;
+			if (!parse_for_each(s, out.for_each))
+				return false;
+				
+			if (const Token* t2 = peek(s); t2 != nullptr && t2->type == Token::Type::Do)
+				next(s, ctx);
 
-		if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::Do)
-			next(s, ctx);
-
-		return true;
+			return true;
+		}
 	}
-	else if (pt == PeekedType::VariableDef)
+	else if (t->type == Token::Type::Colon)
 	{
 		if (!parse_variable_def(s, out.normal.opt_init))
 			return false;
-
+			
 		if (expect(s, Token::Type::Semicolon, ctx) == nullptr)
 			return false;
 	}
@@ -1572,26 +1535,17 @@ static bool parse_statement(pstate& s, Statement& out) noexcept
 	return true;
 }
 
-static bool parse_variable_def(pstate& s, VariableDef& out, bool allow_multiple) noexcept
+static bool parse_variable_def(pstate& s, VariableDef& out) noexcept
 {
 	static constexpr const char ctx[] = "VariableDef";
 
-	while (true)
+	if (const Token* t = expect(s, Token::Type::Ident, ctx); t == nullptr)
 	{
-		if (const Token* t = expect(s, Token::Type::Ident, ctx); t == nullptr)
-			return false;
-		else if (!out.idents.push_back(t->data_strview()))
-			return error_out_of_memory(s, ctx);
-
-		if (!allow_multiple)
-			break;
-
-		if (const Token* t = peek(s); t == nullptr)
-			return error_unexpected_end(s, ctx);
-		else if (t->type != Token::Type::Comma)
-			break;
-		else
-			next(s, ctx);
+		return false;
+	}
+	else
+	{
+		out.ident = t->data_strview();
 	}
 
 	if (expect(s, Token::Type::Colon, ctx) == nullptr)
@@ -1599,24 +1553,8 @@ static bool parse_variable_def(pstate& s, VariableDef& out, bool allow_multiple)
 
 	if (const Token* t = peek(s); t != nullptr && t->type != Token::Type::Set)
 	{
-		while (true)
-		{
-			if (!out.opt_type_refs.push_back({}))
-				return error_out_of_memory(s, ctx);
-
-			if (!parse_type_ref(s, out.opt_type_refs.last()))
-				return false;
-
-			if (!allow_multiple)
-				break;
-
-			if (const Token* t1 = peek(s); t1 == nullptr)
-				return error_unexpected_end(s, ctx);
-			else if (t1->type != Token::Type::Comma)
-				break;
-			else
-				next(s, ctx);
-		}
+		if (!parse_type_ref(s, out.opt_type_ref))
+			return false;
 	}
 
 	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::Set)
@@ -1829,7 +1767,7 @@ static bool parse_proc_param(pstate& s, ProcParam& out) noexcept
 	{
 		out.type = ProcParam::Type::VariableDef;
 
-		return parse_variable_def(s, out.variable_def, false);
+		return parse_variable_def(s, out.variable_def);
 	}
 }
 
@@ -1870,48 +1808,8 @@ AFTER_PARAMS:
 
 	next(s, ctx);
 
-	bool is_parenthesized = false;
-
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::ParenBeg)
-	{
-		next(s, ctx);
-
-		if (const Token* t1 = peek(s); t1 != nullptr && t1->type == Token::Type::ParenEnd)
-			return true;
-
-		is_parenthesized = true;
-	}
-
-	while(true)
-	{
-		if (!out.return_types.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse_type_ref(s, out.return_types.last()))
-			return false;
-
-		if (const Token* t = peek(s); t == nullptr)
-		{
-			return error_unexpected_end(s, ctx);
-		}
-		else if (is_parenthesized && t->type == Token::Type::ParenEnd)
-		{
-			next(s, ctx);
-
-			break;
-		}
-		else if (t->type != Token::Type::Comma)
-		{
-			if (is_parenthesized)
-				return error_invalid_syntax(s, ctx, t, "Expected ParenEnd or Comma");
-			else
-				return true;
-		}
-		else
-		{
-			next(s, ctx);
-		}
-	}
+	if (!parse_type_ref(s, out.return_type))
+		return false;
 
 	return true;
 }

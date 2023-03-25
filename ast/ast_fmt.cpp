@@ -132,12 +132,7 @@ static void tree_yield(const Yield& node, i32 indent, const char* name = nullptr
 {
 	print_beg_node("Yield", indent, name);
 
-	print_beg_array("yield_values", indent + 1);
-
-	for (const TopLevelExpr& top_level_expr : node.yield_values)
-		tree_top_level_expr(top_level_expr, indent + 2);
-
-	print_end_array(indent + 1);
+	tree_top_level_expr(node.yield_value, indent + 1, "yield_value");
 
 	print_end_node(indent);
 }
@@ -146,12 +141,7 @@ static void tree_return(const Return& node, i32 indent, const char* name = nullp
 {
 	print_beg_node("Return", indent, name);
 
-	print_beg_array("return_values", indent + 1);
-
-	for (const TopLevelExpr& top_level_expr : node.return_values)
-		tree_top_level_expr(top_level_expr, indent + 2);
-
-	print_end_array(indent + 1);
+	tree_top_level_expr(node.return_value, indent + 1, "return_value");
 
 	print_end_node(indent);
 }
@@ -201,12 +191,7 @@ static void tree_assignment(const Assignment& node, i32 indent, const char* name
 
 	print_scalar("op", op_names[op_idx], indent + 1);
 
-	print_beg_array("assignees", indent + 1);
-
-	for (const AssignableExpr& assignable_expr : node.assignees)
-		tree_assignable_expr(assignable_expr, indent + 1);
-
-	print_end_array(indent + 1);
+	tree_assignable_expr(node.assignee, indent + 1, "assignee");
 
 	tree_top_level_expr(node.assigned_value, indent + 1, "assigned_value");
 
@@ -271,7 +256,7 @@ static void tree_for_signature(const ForSignature& node, i32 indent, const char*
 	{
 		print_beg_node("Normal", indent + 1, nullptr);
 
-		if (node.normal.opt_init.idents.size() != 0)
+		if (node.normal.opt_init.ident.begin() != nullptr)
 			tree_variable_def(node.normal.opt_init, indent + 1, "opt_init");
 
 		if (node.normal.opt_condition.type != Expr::Type::EMPTY)
@@ -302,7 +287,7 @@ static void tree_if(const If& node, i32 indent, const char* name = nullptr) noex
 {
 	print_beg_node("If", indent, name);
 
-	if (node.opt_init.idents.size() != 0)
+	if (node.opt_init.ident.begin() != nullptr)
 		tree_variable_def(node.opt_init, indent + 1, "opt_init");
 
 	tree_expr(node.condition, indent + 1, "condition");
@@ -413,20 +398,12 @@ static void tree_variable_def(const VariableDef& node, i32 indent, const char* n
 
 	print_beg_array("idents", indent + 1);
 
-	for (const strview& ident : node.idents)
-		print_value(ident, indent + 2);
+	print_scalar("ident", node.ident, indent + 2);
 	
 	print_end_array(indent + 1);
 
-	if (node.opt_type_refs.size() != 0)
-	{
-		print_beg_array("opt_type_refs", indent + 1);
-
-		for (const TypeRef& type_ref : node.opt_type_refs)
-			tree_type_ref(type_ref, indent + 2);
-
-		print_end_array(indent + 1);
-	}
+	if (node.opt_type_ref.type != TypeRef::Type::EMPTY)
+		tree_type_ref(node.opt_type_ref, indent + 1, "opt_type_ref");
 
 	if (node.opt_initializer.type != TopLevelExpr::Type::EMPTY)
 		tree_top_level_expr(node.opt_initializer, indent + 1, "opt_initializer");	
@@ -473,14 +450,9 @@ static void tree_proc_signature(const ProcSignature& node, i32 indent, const cha
 		print_end_array(indent + 1);
 	}
 
-	if (node.return_types.size() != 0)
+	if (node.return_type.type != TypeRef::Type::EMPTY)
 	{
-		print_beg_array("return_types", indent + 1);
-
-		for (const TypeRef& return_type : node.return_types)
-			tree_type_ref(return_type, indent + 2);
-
-		print_end_array(indent + 1);
+		tree_type_ref(node.return_type, indent + 1);
 	}
 
 	print_end_node(indent);
