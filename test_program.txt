@@ -1,27 +1,27 @@
-main :: proc(args : slice[slice[char8]]) -> i32
+main :: proc(args : Slice(Slice(char8))) -> i32
 {
 	return 0
 }
 
 /*
-ArrayLike[?T] :: trait
+ArrayLike :: trait(?T)
 {
-	element_type :: proc(t : Type[?T]) -> &Type
+	element_type :: proc(t : Type(?T)) -> &Type
 
-	size :: proc(t : Type[?T]) -> Numeric
+	size :: proc(t : Type(?T)) -> Numeric
 
 	size :: proc(t : ?T) -> Numeric
 }
 
-VectorLike[?T] :: trait
+VectorLike :: trait(?T)
 {
-	element_type :: proc(t : Type[?T]) -> Type
+	element_type :: proc(t : Type(?T)) -> Type
 
 	size :: proc(t : ?T) -> Numeric
 }
 */
 
-soa[?T : ArrayLike] :: proc(aos : &Type[?T]) -> Type
+soa :: proc(aos : &Type) -> Type
 {
 	rst : mut Type
 
@@ -30,9 +30,9 @@ soa[?T : ArrayLike] :: proc(aos : &Type[?T]) -> Type
 	templ := aos.template_type
 
 	for m <- elem_t.members
-		append(r.members, m.name, templ_t[m, size(aos)])
+		append(r.members, m.name, templ_t(m, size(aos)))
 
-	arr_impl : Impl[rst, ArrayLike]
+	arr_impl : Impl(rst, ArrayLike)
 
 	return r
 }
@@ -46,13 +46,13 @@ main :: proc()
 		b : f64
 	}
 
-	MyAoS :: array[MyData, 10]
+	MyAoS :: Array(MyData, 10)
 	
 	MySoA :: struct
 	{
-		as : array[i32, 10]
+		as : Array(i32, 10)
 
-		bs : array[f64, 10]
+		bs : Array(f64, 10)
 	}
 
 	aos : MyAoS
@@ -85,10 +85,7 @@ main :: proc()
 		return create(soa, index)
 	}
 
-	// with these implemented
-	// TODO: Fix this so it gets parsed
-	// get(soa, 2).a
-	// works now
+	x := get(soa, 2).a
 }
 
 // To make conversions such as SoA <-> AoS more streamlined, member syntax for functions could be introduced,

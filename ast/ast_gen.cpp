@@ -317,49 +317,12 @@ static bool bin_val(char c, usz& inout_v) noexcept
 }
 
 
-/*
-enum class PeekedType
-{
-	Other,
-	VariableDef,
-	Assignment,
-	ForEach,
-};
-
-static PeekedType peek_type(const pstate& s) noexcept
-{
-	usz idx = 0;
-
-	while (true)
-	{
-		Assignment::Op unused_assign_op;
-
-		if (const Token* t = peek(s, idx); t == nullptr || t->type != Token::Type::Ident)
-			return PeekedType::Other;
-
-		if (const Token* t = peek(s, idx + 1); t == nullptr)
-			return PeekedType::Other;
-		else if (t->type == Token::Type::Colon)
-			return PeekedType::VariableDef;
-		else if (token_type_to_assign_oper(t->type, unused_assign_op))
-			return PeekedType::Assignment;
-		else if (t->type == Token::Type::ArrowLeft)
-			return PeekedType::ForEach;
-		else if (t->type != Token::Type::Comma)
-			return PeekedType::Other;
-
-		idx += 2;
-	}
-}
-*/
-
-
 
 static bool parse_type_ref(pstate& s, TypeRef& out) noexcept;
 
 static bool parse_definition(pstate& s, Definition& out, bool is_anonymous) noexcept;
 
-static bool parse_name_ref(pstate& s, NameRef& out) noexcept;
+static bool parse_name(pstate& s, Name& out) noexcept;
 
 static bool parse_block(pstate& s, Block& out) noexcept;
 
@@ -370,8 +333,6 @@ static bool parse_expr(pstate& s, Expr& out) noexcept;
 static bool parse_top_level_expr(pstate& s, TopLevelExpr& out) noexcept;
 
 static bool parse_statement(pstate& s, Statement& out) noexcept;
-
-static bool parse_call(pstate& s, Call& out, NameRef* proc_name = nullptr) noexcept;
 
 
 
@@ -635,68 +596,6 @@ static bool parse_string_literal(pstate& s, StringLiteral& out) noexcept
 	return true;
 }
 
-static bool parse_assignable_expr(pstate& s, AssignableExpr& out) noexcept
-{
-	static constexpr const char ctx[] = "AssignableExpr";
-
-	NameRef name_ref{};
-
-	if (!parse_name_ref(s, name_ref))
-		return false;
-
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::ParenBeg)
-	{
-		out.type = AssignableExpr::Type::Call;
-
-		return parse_call(s, out.call, &name_ref);
-	}
-	else
-	{
-		out.type = AssignableExpr::Type::NameRef;
-		
-		out.name_ref = std::move(name_ref);
-
-		return true;
-	}
-}
-
-static bool parse_call(pstate& s, Call& out, NameRef* proc_name) noexcept
-{
-	static constexpr const char ctx[] = "Call";
-
-	if (proc_name != nullptr)
-		out.proc_name_ref = std::move(*proc_name);
-	else if (!parse_name_ref(s, out.proc_name_ref))
-			return false;
-
-	if (expect(s, Token::Type::ParenBeg, ctx) == nullptr)
-		return false;
-
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::ParenEnd)
-	{
-		next(s, ctx);
-
-		return true;
-	}
-
-	while (true)
-	{
-		if (!out.args.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse_expr(s, out.args.last()))
-			return false;
-
-		if (const Token* t = next(s, ctx); t == nullptr)
-			return false;
-		else if (t->type == Token::Type::ParenEnd)
-			return true;
-		else if (t->type != Token::Type::Comma)
-			return error_invalid_syntax(s, ctx, t, "Expected ParenEnd or Comma");
-
-	}
-}
-
 static bool parse_literal(pstate& s, Literal& out) noexcept
 {
 	static constexpr const char ctx[] = "Literal";
@@ -735,27 +634,29 @@ static bool parse_literal(pstate& s, Literal& out) noexcept
 	}
 }
 
-static bool parse_assignment(pstate& s, Assignment& out, AssignableExpr* assignee = nullptr) noexcept
+static bool parse_assignment(pstate& s, Assignment& out, Assignment::Op op = Assignment::Op::EMPTY, Name* assignee = nullptr) noexcept
 {
 	static constexpr const char ctx[] = "Assignment";
 
-	if (assignee != nullptr)
+	if (op != Assignment::Op::EMPTY)
 	{
+		out.op = op;
+
 		out.assignee = std::move(*assignee);
 	}
 	else
 	{
-		if (!parse_assignable_expr(s, out.assignee))
+		if (!parse_name(s, out.assignee))
 			return false;
+			
+		const Token* t = next(s, ctx);
+
+		if (t == nullptr)
+			return false;
+		else if (!token_type_to_assign_oper(t->type, out.op))
+			return error_invalid_syntax(s, ctx, t, "Expected assignment operator");
 	}
 
-	const Token* t = next(s, ctx);
-
-	if (t == nullptr)
-		return false;
-	else if (!token_type_to_assign_oper(t->type, out.op))
-		return error_invalid_syntax(s, ctx, t, "Expected assignment operator");
-	
 	return parse_top_level_expr(s, out.assigned_value);
 }
 
@@ -773,60 +674,6 @@ static bool parse_case(pstate& s, Case& out) noexcept
 		return false;
 
 	return true;
-}
-
-static bool parse_type_binding_constraint(pstate& s, TypeBindingConstraint& out) noexcept
-{
-	static constexpr const char ctx[] = "TypeBindingConstraint";
-
-	return parse_name_ref(s, out.bound_trait);
-}
-
-static bool parse_type_binding(pstate& s, TypeBinding& out) noexcept
-{
-	static constexpr const char ctx[] = "TypeBinding";
-
-	if (const Token* t = peek(s); t == nullptr)
-	{
-		return error_unexpected_end(s, ctx);
-	}
-	else if (t->type != Token::Type::ParenBeg)
-	{
-		if (!out.constraints.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		return parse_type_binding_constraint(s, out.constraints.last());
-	}
-
-	if (const  Token* t = peek(s); t != nullptr && t->type == Token::Type::ParenEnd)
-	{
-		next(s, ctx);
-
-		return true;
-	}
-
-	while (true)
-	{
-		if (!out.constraints.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse_type_binding_constraint(s, out.constraints.last()))
-			return false;
-
-		if (const Token* t = next(s, ctx); t == nullptr)
-			return false;
-		else if (t->type == Token::Type::ParenEnd)
-			return true;
-		else if (t->type != Token::Type::Comma)
-			return error_invalid_syntax(s, ctx, t, "Expected ParenEnd or Comma");
-	}
-}
-
-static bool parse_value_binding(pstate& s, ValueBinding& out) noexcept
-{
-	static constexpr const char ctx[] = "ValueBinding";
-
-	return parse_type_ref(s, out.type_ref);
 }
 
 static bool parse_yield(pstate& s, Yield& out) noexcept
@@ -888,30 +735,6 @@ static bool parse_switch(pstate& s, Switch& out) noexcept
 	}
 }
 
-static bool parse_when(pstate& s, When& out) noexcept
-{
-	static constexpr const char ctx[] = "When";
-
-	if (expect(s, Token::Type::When, ctx) == nullptr)
-		return false;
-
-	if (!parse_expr(s, out.condition))
-		return false;
-
-	if (!parse_statement(s, out.body))
-		return false;
-
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::Else)
-	{
-		next(s, ctx);
-
-		if (!parse_statement(s, out.opt_else_body))
-			return false;
-	}
-
-	return true;
-}
-
 static bool parse_for_each(pstate& s, ForEach& out) noexcept
 {
 	static constexpr const char ctx[] = "ForEach";
@@ -948,20 +771,17 @@ static bool parse_for_signature(pstate& s, ForSignature& out) noexcept
 	if (expect(s, Token::Type::For, ctx) == nullptr)
 		return false;
 
-	if (const Token* t = peek(s, 1); t != nullptr && t->type == Token::Type::Comma)
+	if (const Token* t = peek(s, 1); t != nullptr && (t->type == Token::Type::Comma || t->type == Token::Type::ArrowLeft))
 	{
-		if (const Token* t1 = peek(s, 3); t1 != nullptr && t1->type == Token::Type::ArrowRight)
-		{
-			out.type = ForSignature::Type::ForEach;
+		out.type = ForSignature::Type::ForEach;
 
-			if (!parse_for_each(s, out.for_each))
-				return false;
-				
-			if (const Token* t2 = peek(s); t2 != nullptr && t2->type == Token::Type::Do)
-				next(s, ctx);
+		if (!parse_for_each(s, out.for_each))
+			return false;
+			
+		if (const Token* t2 = peek(s); t2 != nullptr && t2->type == Token::Type::Do)
+			next(s, ctx);
 
-			return true;
-		}
+		return true;
 	}
 	else if (t->type == Token::Type::Colon)
 	{
@@ -1091,15 +911,6 @@ static bool parse_top_level_expr(pstate& s, TopLevelExpr& out) noexcept
 
 		return parse_switch(s, *out.switch_block);
 	}
-	else if (t->type == Token::Type::When)
-	{
-		out.type = TopLevelExpr::Type::When;
-
-		if (!alloc(&out.when_block))
-			return error_out_of_memory(s, ctx);
-
-		return parse_when(s, *out.when_block);
-	}
 	else
 	{
 		out.type = TopLevelExpr::Type::Expr;
@@ -1122,11 +933,11 @@ static bool parse_type_name(pstate& s, TypeName& out) noexcept
 
 	out.name = t->data_strview();
 	
-	if (const Token* t1 = peek(s); t != nullptr && t1->type == Token::Type::BracketBeg)
+	if (const Token* t1 = peek(s); t != nullptr && t1->type == Token::Type::ParenBeg)
 	{
 		next(s, ctx);
 
-		if (const Token* t2 = peek(s); t2 != nullptr && t2->type == Token::Type::BracketEnd)
+		if (const Token* t2 = peek(s); t2 != nullptr && t2->type == Token::Type::ParenEnd)
 			return true;
 
 		while (true)
@@ -1139,17 +950,17 @@ static bool parse_type_name(pstate& s, TypeName& out) noexcept
 
 			if (const Token* t2 = next(s, ctx); t2 == nullptr)
 				return false;
-			else if (t2->type == Token::Type::BracketEnd)
+			else if (t2->type == Token::Type::ParenEnd)
 				break;
 			else if (t2->type != Token::Type::Comma)
-				return error_invalid_syntax(s, ctx, t, "Expected BracketEnd or Dot");
+				return error_invalid_syntax(s, ctx, t, "Expected ParenEnd or Dot");
 		}
 	}
 	
 	return true;
 }
 
-static bool parse_name_ref(pstate& s, NameRef& out) noexcept
+static bool parse_name(pstate& s, Name& out) noexcept
 {
 	static constexpr const char ctx[] = "Ident";
 
@@ -1165,43 +976,6 @@ static bool parse_name_ref(pstate& s, NameRef& out) noexcept
 			return true;
 
 		next(s, ctx);
-	}
-}
-
-static bool parse_binding(pstate& s, Binding& out) noexcept
-{
-	static constexpr const char ctx[] = "Binding";
-
-	const Token* t = expect(s, Token::Type::Ident, ctx);
-
-	if (t == nullptr)
-		return false;
-
-		assert(t->data_strview().len() != 0);
-
-	if (t->data_strview()[0] == '?')
-	{
-		out.type = Binding::Type::TypeBinding;
-
-		out.ident = t->data_strview();
-
-		if (const Token* t1 = peek(s); t1 == nullptr || t1->type != Token::Type::Colon)
-			return true;
-
-		next(s, ctx);
-
-		return parse_type_binding(s, out.type_binding);
-	}
-	else
-	{
-		out.type = Binding::Type::ValueBinding;
-
-		out.ident = t->data_strview();
-
-		if (expect(s, Token::Type::Colon, ctx) == nullptr)
-			return false;
-
-		return parse_value_binding(s, out.value_binding);
 	}
 }
 
@@ -1261,30 +1035,13 @@ static bool parse_expr(pstate& s, Expr& out) noexcept
 
 			Expr& expr = subexprs.last();
 			
-			NameRef name_ref{};
+			expr.type = Expr::Type::Name;
 
-			if (!parse_name_ref(s, name_ref))
+			if (!alloc(&expr.name_ref))
+				return error_out_of_memory(s, ctx);
+
+			if (!parse_name(s, *expr.name_ref))
 				return false;
-
-			if (const Token* t1 = peek(s); t1 != nullptr && t1->type == Token::Type::ParenBeg)
-			{
-				expr.type = Expr::Type::Call;
-
-				if (!alloc(&expr.call))
-					return error_out_of_memory(s, ctx);
-
-				if (!parse_call(s, *expr.call, &name_ref))
-					return false;
-			}
-			else
-			{
-				expr.type = Expr::Type::NameRef;
-
-				if (!alloc(&expr.name_ref))
-					return error_out_of_memory(s, ctx);
-
-				*expr.name_ref = std::move(name_ref);
-			}
 			
 			expecting_operator = true;
 		}
@@ -1423,15 +1180,6 @@ static bool parse_statement(pstate& s, Statement& out) noexcept
 
 		return parse_for(s, *out.for_block);
 	}
-	else if (t->type == Token::Type::When)
-	{
-		out.type = Statement::Type::When;
-
-		if (!alloc(&out.when_block))
-			return error_out_of_memory(s, ctx);
-
-		return parse_when(s, *out.when_block);
-	}
 	else if (t->type == Token::Type::Switch)
 	{
 		out.type = Statement::Type::Switch;
@@ -1470,27 +1218,7 @@ static bool parse_statement(pstate& s, Statement& out) noexcept
 	}
 	else
 	{
-		bool is_variable_def = false;
-
-		usz variable_def_idx = 1;
-
-		while (true)
-		{
-			if (const Token* t1 = peek(s, variable_def_idx); t1 == nullptr || t1->type != Token::Type::Comma)
-			{
-				if (t1->type == Token::Type::Colon)
-					is_variable_def = true;
-
-				break;
-			}
-
-			if (const Token* t1 = peek(s, variable_def_idx + 1); t1 == nullptr || t1->type != Token::Type::Ident)
-				break;
-
-			variable_def_idx += 2;
-		}
-
-		if (is_variable_def)
+		if (const Token* t1 = peek(s, 1); t1 != nullptr && t1->type == Token::Type::Colon)
 		{
 			out.type = Statement::Type::VariableDef;
 
@@ -1499,36 +1227,38 @@ static bool parse_statement(pstate& s, Statement& out) noexcept
 
 			return parse_variable_def(s, *out.variable_def);
 		}
-
-		AssignableExpr assignable_expr;
-
-		if (!parse_assignable_expr(s, assignable_expr))
-			return false;
-
-		Assignment::Op assign_op;
-		
-		if (const Token* t2 = peek(s); t2 != nullptr && (t2->type == Token::Type::Comma || t2->type == Token::Type::Colon || token_type_to_assign_oper(t2->type, assign_op)))
-		{
-			out.type = Statement::Type::Assignment;
-
-			if (!alloc(&out.assignment))
-				return false;
-
-			if (!parse_assignment(s, *out.assignment, &assignable_expr))
-				return false;
-		}
-		else if (assignable_expr.type == AssignableExpr::Type::Call)
-		{
-			out.type = Statement::Type::Call;
-
-			if (!alloc(&out.call))
-				return error_out_of_memory(s, ctx);
-
-			*out.call = std::move(assignable_expr.call);
-		}
 		else
 		{
-			return error_invalid_syntax(s, ctx, t2, "Expected Statement of Type Call or Assignment");
+			Name name{};
+
+			if (!parse_name(s, name))
+				return false;
+
+			Assignment::Op assignment_op;
+
+			if (const Token* t2 = peek(s); t2 != nullptr && token_type_to_assign_oper(t2->type, assignment_op))
+			{
+				out.type = Statement::Type::Assignment;
+
+				if (!alloc(&out.assignment))
+					return false;
+
+				if (!parse_assignment(s, *out.assignment, assignment_op, &name))
+					return false;
+			}
+			else if (name.parts.last().bounds.size() != 0)
+			{
+				out.type = Statement::Type::Call;
+
+				if (!alloc(&out.call))
+					return error_out_of_memory(s, ctx);
+
+				*out.call = std::move(name);
+			}
+			else
+			{
+				return error_invalid_syntax(s, ctx, t, "Expected assignment or call");
+			}
 		}
 	}
 
@@ -1638,12 +1368,12 @@ static bool parse_type_ref(pstate& s, TypeRef& out) noexcept
 		}
 		else
 		{
-			out.type = TypeRef::Type::NameRef;
+			out.type = TypeRef::Type::Name;
 
 			if (!alloc(&out.name_ref))
 				return error_out_of_memory(s, ctx);
 
-			return parse_name_ref(s, *out.name_ref);
+			return parse_name(s, *out.name_ref);
 		}
 	}
 	else
@@ -2121,41 +1851,6 @@ static bool parse_definition(pstate& s, Definition& out, bool is_anonymous) noex
 
 		out.flags.has_ident = true;
 
-		if (const Token* t1 = peek(s); t1 == nullptr)
-		{
-			return error_unexpected_end(s, ctx);
-		}
-		else if (t1->type == Token::Type::BracketBeg)
-		{
-			next(s, ctx);
-
-			if (const Token* t2 = peek(s); t2 != nullptr && t2->type == Token::Type::BracketEnd)
-			{
-				next(s, ctx);
-
-				goto AFTER_TYPE_BINDINGS;
-			}
-
-			while(true)
-			{
-				if (!out.bindings.push_back({}))
-					return error_out_of_memory(s, ctx);
-
-				if (!parse_binding(s, out.bindings.last()))
-					return false;
-
-				if (const Token* t2 = next(s, ctx); t2 == nullptr)
-					return false;
-				else if (t2->type == Token::Type::BracketEnd)
-					break;
-				else if (t2->type != Token::Type::Semicolon)
-					return error_invalid_syntax(s, ctx, t2, "Expected BracketEnd or Semicolon");
-			}
-
-		}
-
-	AFTER_TYPE_BINDINGS:
-
 		if (expect(s, Token::Type::DoubleColon, ctx) == nullptr)
 			return false;
 	}
@@ -2276,3 +1971,4 @@ Result parse_program_unit(const vec<Token>& tokens, ProgramUnit& out_program_uni
 
 	return s.rst;
 }
+

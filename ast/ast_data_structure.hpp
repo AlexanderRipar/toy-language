@@ -7,7 +7,7 @@
 
 struct Definition;
 
-struct NameRef;
+struct Name;
 
 struct Block;
 
@@ -17,19 +17,13 @@ struct Statement;
 
 struct Case;
 
-struct Call;
-
 struct UnaryOp;
 
 struct BinaryOp;
 
-struct Call;
-
 struct If;
 
 struct For;
-
-struct When;
 
 struct Switch;
 
@@ -46,7 +40,17 @@ struct Expr;
 struct TypeRef;
 
 
-
+/*
+ * Types
+ *
+ * X :: std.Array(i32, 5)
+ * 
+ * y : std.Array(i32, 5) = undefined
+ * 
+ * z := std.Array(i32, 5).undefined
+ * 
+ * x : X = create(5)
+*/
 struct TypeName
 {
 	strview name;
@@ -60,15 +64,15 @@ struct TypeName
 	TypeName& operator=(TypeName&&) noexcept;
 };
 
-struct NameRef
+struct Name
 {
 	vec<TypeName, 1> parts;
 
-	NameRef() noexcept = default;
+	Name() noexcept = default;
 	
-	NameRef(const NameRef&) noexcept = delete;
+	Name(const Name&) noexcept = delete;
 
-	NameRef& operator=(NameRef&&) noexcept;
+	Name& operator=(Name&&) noexcept;
 };
 
 struct IntegerLiteral
@@ -132,8 +136,7 @@ struct Expr
 		BinaryOp,
 		UnaryOp,
 		Literal,
-		NameRef,
-		Call,
+		Name,
 	} type = Type::EMPTY;
 
 	union
@@ -144,9 +147,7 @@ struct Expr
 
 		Literal* literal;
 
-		NameRef* name_ref;
-
-		Call* call;
+		Name* name_ref;
 	};
 
 	~Expr() noexcept;
@@ -168,7 +169,6 @@ struct TopLevelExpr
 		For,
 		Block,
 		Switch,
-		When,
 	} type = Type::EMPTY;
 
 	union
@@ -182,8 +182,6 @@ struct TopLevelExpr
 		Block* block;
 
 		Switch* switch_block;
-
-		When* when_block;
 	};
 
 	~TopLevelExpr() noexcept;
@@ -203,7 +201,6 @@ struct Statement
 		Block,
 		If,
 		For,
-		When,
 		Switch,
 		Go,
 		Return,
@@ -221,8 +218,6 @@ struct Statement
 
 		For* for_block;
 
-		When* when_block;
-
 		Switch* switch_block;
 
 		Go* go_stmt;
@@ -235,7 +230,7 @@ struct Statement
 
 		Assignment* assignment;
 
-		Call* call;
+		Name* call;
 	};
 
 	~Statement() noexcept;
@@ -324,7 +319,7 @@ struct TypeRef
 	{
 		EMPTY = 0,
 		Ref,
-		NameRef,
+		Name,
 		Inline,
 		TypeExpr,
 	} type = Type::EMPTY;
@@ -340,7 +335,7 @@ struct TypeRef
 	{
 		TypeRef* ref;
 
-		NameRef* name_ref;
+		Name* name_ref;
 
 		Definition* inline_def;
 
@@ -384,47 +379,6 @@ struct If
 	If(const If&) noexcept = delete;
 };
 
-struct Call
-{
-	NameRef proc_name_ref;
-
-	vec<Expr, 0> args;
-
-	Call() noexcept = default;
-
-	Call(const Call&) noexcept = delete;
-
-	Call& operator=(Call&&) noexcept;
-};
-
-struct AssignableExpr
-{
-	enum class Type
-	{
-		EMPTY = 0,
-		NameRef,
-		Call,
-	} type = Type::EMPTY;
-
-	union
-	{
-		NameRef name_ref;
-
-		Call call;
-	};
-	
-	~AssignableExpr() noexcept;
-
-	AssignableExpr() noexcept
-	{
-		memset(this, 0, sizeof(*this));
-	}
-
-	AssignableExpr(const AssignableExpr&) noexcept = delete;
-
-	AssignableExpr& operator=(AssignableExpr&&) noexcept;
-};
-
 struct Assignment
 {
 	enum class Op
@@ -443,7 +397,7 @@ struct Assignment
 		SetShiftR,
 	} op;
 
-	AssignableExpr assignee;
+	Name assignee;
 
 	TopLevelExpr assigned_value;
 
@@ -502,19 +456,6 @@ struct For
 	For() noexcept = default;
 
 	For(const For&) noexcept = delete;
-};
-
-struct When
-{
-	Expr condition;
-
-	Statement body;
-
-	Statement opt_else_body;
-
-	When() noexcept = default;
-
-	When(const When&) noexcept = delete;
 };
 
 struct Case
@@ -654,17 +595,6 @@ struct TraitMember
 	TraitMember(const TraitMember&) noexcept = delete;
 };
 
-struct TypeBindingConstraint
-{
-	NameRef bound_trait;
-
-	TypeBindingConstraint() noexcept = default;
-
-	TypeBindingConstraint(const TypeBindingConstraint&) noexcept = delete;
-
-	TypeBindingConstraint& operator=(TypeBindingConstraint&&) noexcept;
-};
-
 struct ProcDef
 {
 	ProcSignature signature;
@@ -771,54 +701,6 @@ struct ModuleDef
 	ModuleDef(const ModuleDef&) noexcept = delete;
 };
 
-struct TypeBinding
-{
-	vec<TypeBindingConstraint> constraints;
-
-	TypeBinding() noexcept = default;
-
-	TypeBinding(const TypeBinding&) noexcept = delete;
-};
-
-struct ValueBinding
-{
-	TypeRef type_ref;
-
-	ValueBinding() noexcept = default;
-
-	ValueBinding(const ValueBinding&) noexcept = delete;
-};
-
-struct Binding
-{
-	enum class Type
-	{
-		EMPTY = 0,
-		TypeBinding,
-		ValueBinding,
-	} type = Type::EMPTY;
-
-	strview ident;
-
-	union 
-	{
-		TypeBinding type_binding;
-
-		ValueBinding value_binding;
-	};
-
-	~Binding() noexcept;
-
-	Binding() noexcept
-	{
-		memset(this, 0, sizeof(*this));
-	};
-
-	Binding(const Binding&) noexcept = delete;
-
-	Binding& operator=(Binding&&) noexcept;
-};
-
 struct Definition
 {
 	enum class Type
@@ -844,8 +726,6 @@ struct Definition
 	} flags{};
 
 	strview ident;
-
-	vec<Binding> bindings;
 
 	union
 	{

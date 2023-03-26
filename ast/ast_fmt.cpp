@@ -88,7 +88,7 @@ static void print_text(const char* text) noexcept
 
 
 
-static void tree_name_ref(const NameRef& node, i32 indent, const char* name = nullptr) noexcept;
+static void tree_name(const Name& node, i32 indent, const char* name = nullptr) noexcept;
 
 static void tree_definition(const Definition& node, i32 indent, const char* name = nullptr) noexcept;
 
@@ -102,31 +102,9 @@ static void tree_variable_def(const VariableDef& node, i32 indent, const char* n
 
 static void tree_statement(const Statement& node, i32 indent, const char* name = nullptr) noexcept;
 
-static void tree_call(const Call& node, i32 indent, const char* name = nullptr) noexcept;
-
 static void tree_top_level_expr(const TopLevelExpr& node, i32 indent, const char* name = nullptr) noexcept;
 
 
-
-static void tree_assignable_expr(const AssignableExpr& node, i32 indent, const char* name = nullptr) noexcept
-{
-	print_beg_node("AssignableExpr", indent, name, true);
-
-	switch (node.type)
-	{
-	case AssignableExpr::Type::NameRef:
-		tree_name_ref(node.name_ref, indent);
-		break;
-
-	case AssignableExpr::Type::Call:
-		tree_call(node.call, indent);
-		break;
-
-	default:
-		assert(false);
-		break;
-	}
-}
 
 static void tree_yield(const Yield& node, i32 indent, const char* name = nullptr) noexcept
 {
@@ -191,23 +169,9 @@ static void tree_assignment(const Assignment& node, i32 indent, const char* name
 
 	print_scalar("op", op_names[op_idx], indent + 1);
 
-	tree_assignable_expr(node.assignee, indent + 1, "assignee");
+	tree_name(node.assignee, indent + 1, "assignee");
 
 	tree_top_level_expr(node.assigned_value, indent + 1, "assigned_value");
-
-	print_end_node(indent);
-}
-
-static void tree_when(const When& node, i32 indent, const char* name = nullptr) noexcept
-{
-	print_beg_node("When", indent, name);
-
-	tree_expr(node.condition, indent + 1, "condition");
-
-	tree_statement(node.body, indent + 1, "body");
-
-	if (node.opt_else_body.type != Statement::Type::EMPTY)
-		tree_statement(node.opt_else_body, indent + 1, "opt_else_body");
 
 	print_end_node(indent);
 }
@@ -318,10 +282,6 @@ static void tree_statement(const Statement& node, i32 indent, const char* name) 
 		tree_for(*node.for_block, indent);
 		break;
 
-	case Statement::Type::When:
-		tree_when(*node.when_block, indent);
-		break;
-
 	case Statement::Type::Switch:
 		tree_switch(*node.switch_block, indent);
 		break;
@@ -347,7 +307,7 @@ static void tree_statement(const Statement& node, i32 indent, const char* name) 
 		break;
 
 	case Statement::Type::Call:
-		tree_call(*node.call, indent);
+		tree_name(*node.call, indent);
 		break;
 
 	default:
@@ -380,10 +340,6 @@ static void tree_top_level_expr(const TopLevelExpr& node, i32 indent, const char
 
 	case TopLevelExpr::Type::Switch:
 		tree_switch(*node.switch_block, indent);
-		break;
-
-	case TopLevelExpr::Type::When:
-		tree_when(*node.when_block, indent);
 		break;
 
 	default:
@@ -619,25 +575,6 @@ static void tree_literal(const Literal& node, i32 indent, const char* name = nul
 	}
 }
 
-static void tree_call(const Call& node, i32 indent, const char* name) noexcept
-{
-	print_beg_node("Call", indent, name);
-
-	tree_name_ref(node.proc_name_ref, indent + 1, "proc_name_ref");
-
-	if (node.args.size() != 0)
-	{
-		print_beg_array("args", indent + 1);
-
-		for (const Expr& expr : node.args)
-			tree_expr(expr, indent + 2);
-
-		print_end_array(indent + 1);
-	}
-
-	print_end_node(indent);
-}
-
 static void tree_type_value(const TypeValue& node, i32 indent, const char* name = nullptr) noexcept
 {
 	print_beg_node("TypeValue", indent, name);
@@ -688,13 +625,8 @@ static void tree_expr(const Expr& node, i32 indent, const char* name) noexcept
 		break;
 	}
 
-	case Expr::Type::NameRef: {
-		tree_name_ref(*node.name_ref, indent);
-		break;
-	}
-
-	case Expr::Type::Call: {
-		tree_call(*node.call, indent);
+	case Expr::Type::Name: {
+		tree_name(*node.name_ref, indent);
 		break;
 	}
 
@@ -725,8 +657,8 @@ static void tree_type_ref(const TypeRef& node, i32 indent, const char* name) noe
 		break;
 	}
 
-	case TypeRef::Type::NameRef: {
-		tree_name_ref(*node.name_ref, indent + 1);
+	case TypeRef::Type::Name: {
+		tree_name(*node.name_ref, indent + 1);
 		break;
 	}
 
@@ -768,9 +700,9 @@ static void tree_type_name(const TypeName& node, i32 indent, const char* name = 
 	print_end_node(indent);
 }
 
-static void tree_name_ref(const NameRef& node, i32 indent, const char* name) noexcept
+static void tree_name(const Name& node, i32 indent, const char* name) noexcept
 {
-	print_beg_node("NameRef", indent, name);
+	print_beg_node("Name", indent, name);
 
 	print_beg_array("parts", indent + 1);
 
@@ -778,41 +710,6 @@ static void tree_name_ref(const NameRef& node, i32 indent, const char* name) noe
 		tree_type_name(type_name, indent + 2);
 
 	print_end_array(indent + 1);
-
-	print_end_node(indent);
-}
-
-static void tree_type_binding_constraint(const TypeBindingConstraint& node, i32 indent, const char* name = nullptr) noexcept
-{
-	print_beg_node("TypeBindingConstraint", indent, name);
-
-	tree_name_ref(node.bound_trait, indent + 1, "bound_trait");
-
-	print_end_node(indent);
-}
-
-static void tree_value_binding(const ValueBinding& node, i32 indent, const char* name = nullptr) noexcept
-{
-	print_beg_node("ValueBinding", indent, name);
-
-	tree_type_ref(node.type_ref, indent + 1, "type_ref");
-
-	print_end_node(indent);
-}
-
-static void tree_type_binding(const TypeBinding& node, i32 indent, const char* name = nullptr) noexcept
-{
-	print_beg_node("TypeBinding", indent, name);
-
-	if (node.constraints.size() != 0)
-	{
-		print_beg_array("contraints", indent + 1);
-
-		for (const TypeBindingConstraint& type_binding_constraint : node.constraints)
-			tree_type_binding_constraint(type_binding_constraint, indent + 2);
-
-		print_end_array(indent + 1);
-	}
 
 	print_end_node(indent);
 }
@@ -1010,49 +907,12 @@ static void tree_module_def(const ModuleDef& node, i32 indent, const char* name 
 	print_end_node(indent);
 }
 
-static void tree_binding(const Binding& node, i32 indent, const char* name = nullptr) noexcept
-{
-	print_beg_node("Binding", indent, name);
-
-	print_scalar("ident", node.ident, indent + 1);
-
-	switch (node.type)
-	{
-	case Binding::Type::TypeBinding: {
-		tree_type_binding(node.type_binding, indent + 1);
-		break;
-	}
-
-	case Binding::Type::ValueBinding: {
-		tree_value_binding(node.value_binding, indent + 1);
-		break;
-	}
-
-	default: {
-		assert(false);
-		break;
-	}
-	}
-
-	print_end_node(indent);
-}
-
 static void tree_definition(const Definition& node, i32 indent, const char* name) noexcept
 {
 	print_beg_node("Definition", indent, name);
 
 	if (node.flags.has_ident)
 		print_scalar("ident", node.ident, indent + 1);
-
-	if (node.bindings.size() != 0)
-	{
-		print_beg_array("bindings", indent + 1);
-
-		for (const Binding& binding : node.bindings)
-			tree_binding(binding, indent + 2);
-
-		print_end_array(indent + 1);
-	}
 
 	if (node.flags.is_pub)
 		print_scalar("visibility", strview::from_literal("Public"), indent + 1);

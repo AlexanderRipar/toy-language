@@ -37,10 +37,6 @@ static void statement_cleanup_helper(Statement& stmt) noexcept
 		stmt.for_block->~For();
 		break;
 
-	case Statement::Type::When:
-		stmt.when_block->~When();
-		break;
-
 	case Statement::Type::Switch:
 		stmt.switch_block->~Switch();
 		break;
@@ -54,7 +50,7 @@ static void statement_cleanup_helper(Statement& stmt) noexcept
 		break;
 
 	case Statement::Type::Call:
-		stmt.call->~Call();
+		stmt.call->~Name();
 		break;
 
 	case Statement::Type::Go:
@@ -88,8 +84,8 @@ static void typeref_cleanup_helper(TypeRef& typeref) noexcept
 		typeref.ref->~TypeRef();
 		break;
 
-	case TypeRef::Type::NameRef:
-		typeref.name_ref->~NameRef();
+	case TypeRef::Type::Name:
+		typeref.name_ref->~Name();
 		break;
 
 	case TypeRef::Type::Inline:
@@ -150,12 +146,8 @@ static void expr_cleanup_helper(Expr& expr) noexcept
 		expr.literal->~Literal();
 		break;
 
-	case Expr::Type::NameRef:
-		expr.name_ref->~NameRef();
-		break;
-
-	case Expr::Type::Call:
-		expr.call->~Call();
+	case Expr::Type::Name:
+		expr.name_ref->~Name();
 		break;
 
 	default:
@@ -198,11 +190,6 @@ static void toplevelexpr_cleanup_helper(TopLevelExpr& tl_expr) noexcept
 		break;
 	}
 
-	case TopLevelExpr::Type::When: {
-		tl_expr.when_block->~When();
-		break;
-	}
-
 	default: {
 		assert(tl_expr.type == TopLevelExpr::Type::EMPTY);
 		break;
@@ -210,45 +197,6 @@ static void toplevelexpr_cleanup_helper(TopLevelExpr& tl_expr) noexcept
 	}
 
 	free(tl_expr.block);
-}
-
-static void assignableexpr_cleanup_helper(AssignableExpr& a_expr) noexcept
-{
-	switch (a_expr.type)
-	{
-	case AssignableExpr::Type::NameRef: {
-		a_expr.name_ref.~NameRef();
-		break;
-	}
-
-	case AssignableExpr::Type::Call: {
-		a_expr.call.~Call();
-		break;
-	}
-	
-	default: {
-		assert(a_expr.type == AssignableExpr::Type::EMPTY);
-		break;
-	}
-	}
-}
-
-static void binding_cleanup_helper(Binding& binding) noexcept
-{
-	switch(binding.type)
-	{
-	case Binding::Type::TypeBinding:
-		binding.type_binding.~TypeBinding();
-		break;
-
-	case Binding::Type::ValueBinding:
-		binding.value_binding.~ValueBinding();
-		break;
-
-	default:
-		assert(binding.type == Binding::Type::EMPTY);
-		break;
-	}
 }
 
 static void definition_cleanup_helper(Definition& definition) noexcept
@@ -393,16 +341,6 @@ TopLevelExpr::~TopLevelExpr() noexcept
 	toplevelexpr_cleanup_helper(*this);
 }
 
-AssignableExpr::~AssignableExpr() noexcept
-{
-	assignableexpr_cleanup_helper(*this);
-}
-
-Binding::~Binding() noexcept
-{
-	binding_cleanup_helper(*this);
-}
-
 Definition::~Definition() noexcept
 {
 	definition_cleanup_helper(*this);
@@ -455,16 +393,9 @@ TypeName& TypeName::operator=(TypeName&& o) noexcept
 	return *this;
 }
 
-NameRef& NameRef::operator=(NameRef&& o) noexcept
+Name& Name::operator=(Name&& o) noexcept
 {
 	parts = std::move(o.parts);
-
-	return *this;
-}
-
-TypeBindingConstraint& TypeBindingConstraint::operator=(TypeBindingConstraint&& o) noexcept
-{
-	bound_trait = std::move(o.bound_trait);
 
 	return *this;
 }
@@ -487,24 +418,6 @@ Definition& Definition::operator=(Definition&& o) noexcept
 	return *this;
 }
 
-Binding& Binding::operator=(Binding&& o) noexcept
-{
-	binding_cleanup_helper(*this);
-
-	obj_move(this, &o);
-
-	return *this;
-}
-
-AssignableExpr& AssignableExpr::operator=(AssignableExpr&& o) noexcept
-{
-	assignableexpr_cleanup_helper(*this);
-
-	obj_move(this, &o);
-
-	return *this;
-}
-
 TopLevelExpr& TopLevelExpr::operator=(TopLevelExpr&& o) noexcept
 {
 	toplevelexpr_cleanup_helper(*this);
@@ -519,15 +432,6 @@ Expr& Expr::operator=(Expr&& o) noexcept
 	expr_cleanup_helper(*this);
 
 	obj_move(this, &o);
-
-	return *this;
-}
-
-Call& Call::operator=(Call&& o) noexcept
-{
-	proc_name_ref = std::move(o.proc_name_ref);
-
-	args = std::move(o.args);
 
 	return *this;
 }
