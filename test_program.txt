@@ -32,5 +32,97 @@ soa[?T : ArrayLike] :: proc(aos : &Type[?T]) -> Type
 	for m <- elem_t.members
 		append(r.members, m.name, templ_t[m, size(aos)])
 
+	arr_impl : Impl[rst, ArrayLike]
+
 	return r
 }
+
+main :: proc()
+{
+	MyData :: struct
+	{
+		a : i32
+
+		b : f64
+	}
+
+	MyAoS :: array[MyData, 10]
+	
+	MySoA :: struct
+	{
+		as : array[i32, 10]
+
+		bs : array[f64, 10]
+	}
+
+	aos : MyAoS
+
+	soa : MySoA
+
+	// TODO: Fix this so it gets parsed
+	// get(aos, 2).a
+
+	get(soa.as, 2)
+
+	get(soa, 2)
+
+	Shim :: struct
+	{
+		data : &MySoA
+
+		index : isz
+	}
+
+	/*
+	a :: property(s : &Shim)
+	{
+		return get(s.data.as, s.index)
+	}
+	*/
+
+	get :: proc(soa : &MySoA, index : isz) -> Shim
+	{
+		return create(soa, index)
+	}
+
+	// with these implemented
+	// TODO: Fix this so it gets parsed
+	// get(soa, 2).a
+	// works now
+}
+
+// To make conversions such as SoA <-> AoS more streamlined, member syntax for functions could be introduced,
+// with single-argument functions being callable just like a member, i.e. without parentheses
+MyStruct :: struct
+{
+	x : i32
+
+	y : i32
+}
+
+sum :: proc(s : &MyStruct) -> i32
+{
+	return s.x + s.y
+}
+
+difference_between_sums :: proc(s1 : &MyStruct, s2 : &MyStruct) -> i32
+{
+	return s1.sum - s2.sum
+}
+
+
+
+/*
+ * -- Convert an ArrayLike AOS type ?Arr with elements of ?Elem into a struct of an ArrayLike type per member of ?T --
+ * 
+ * Create a new Type soa
+ *
+ * For each member ?Mem of ?Elem
+ *     Add ?Arr[?Mem] to soa, named ?Mem.name
+ * 
+ * -- To allow for unchanged syntax
+ *
+ * Create a Type shim
+ * 
+ * 
+*/
