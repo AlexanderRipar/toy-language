@@ -119,7 +119,5 @@ difference_between_sums :: proc(s1 : &MyStruct, s2 : &MyStruct) -> i32
  * 
  * -- To allow for unchanged syntax
  *
- * Create a Type shim
- * 
- * 
+ * Create a Type Shim
 */
