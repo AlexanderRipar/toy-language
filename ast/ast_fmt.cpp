@@ -88,6 +88,7 @@ static void print_text(const char* text) noexcept
 
 
 
+/*
 static void tree_name(const Name& node, i32 indent, const char* name = nullptr) noexcept;
 
 static void tree_definition(const Type& node, i32 indent, const char* name = nullptr) noexcept;
@@ -98,7 +99,7 @@ static void tree_expr(const Expr& node, i32 indent, const char* name = nullptr) 
 
 static void tree_block(const Block& node, i32 indent, const char* name = nullptr) noexcept;
 
-static void tree_variable_def(const Variable& node, i32 indent, const char* name = nullptr) noexcept;
+static void tree_variable_def(const Definition& node, i32 indent, const char* name = nullptr) noexcept;
 
 static void tree_statement(const Statement& node, i32 indent, const char* name = nullptr) noexcept;
 
@@ -298,7 +299,7 @@ static void tree_statement(const Statement& node, i32 indent, const char* name) 
 		tree_yield(*node.yield_stmt, indent);
 		break;
 
-	case Statement::Tag::Variable:
+	case Statement::Tag::Definition:
 		tree_variable_def(*node.variable_def, indent);
 		break;
 
@@ -362,9 +363,9 @@ static void tree_top_level_expr(const TopLevelExpr& node, i32 indent, const char
 		tree_catch(*node.opt_catch, indent + 1);
 }
 
-static void tree_variable_def(const Variable& node, i32 indent, const char* name) noexcept
+static void tree_variable_def(const Definition& node, i32 indent, const char* name) noexcept
 {
-	print_beg_node("Variable", indent, name);
+	print_beg_node("Definition", indent, name);
 
 	print_beg_array("idents", indent + 1);
 
@@ -387,7 +388,7 @@ static void tree_proc_param(const ProcParam& node, i32 indent, const char* name 
 
 	switch (node.tag)
 	{
-	case ProcParam::Tag::Variable:
+	case ProcParam::Tag::Definition:
 		tree_variable_def(node.variable_def, indent);
 		break;
 
@@ -998,17 +999,22 @@ static void tree_definition(const Type& node, i32 indent, const char* name) noex
 
 	print_end_node(indent);
 }
+*/
 
 void ast_print_tree(const ProgramUnit& program) noexcept
 {
 	program;
+	
+	fprintf(stderr, "ast_print_tree: Not implemented\n");
 
+	/*
 	fprintf(stderr, "<program-tree>\n");
 
 	for (const Type& definition : program.definitions)
 		tree_definition(definition, 1);
 
 	fprintf(stderr, "</program-tree>\n");
+	*/
 }
 
 void ast_print_text(const ProgramUnit& program) noexcept

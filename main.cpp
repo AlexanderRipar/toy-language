@@ -52,8 +52,6 @@ ERROR_LABEL:
 
 int main(int32_t argc, const char** argv) noexcept
 {
-	ProcDef pd{};
-
 	if (argc != 2)
 	{
 		fprintf(stderr, "Usage: %s text-filename\n", argv[0]);

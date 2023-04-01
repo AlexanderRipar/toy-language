@@ -16,305 +16,34 @@ static void obj_zero(T* dst) noexcept
 	memset(dst, 0, sizeof(T));
 }
 
-
-
-static void statement_cleanup_helper(Statement& stmt) noexcept
+template<typename T>
+static T& move_helper(T* dst, T* src) noexcept
 {
-	if (stmt.assignment == nullptr)
-		return;
+	cleanup_helper(*dst);
 
-	switch (stmt.tag)
-	{
-	case Statement::Tag::Block:
-		stmt.block->~Block();
-		break;
+	obj_move(dst, src);
 
-	case Statement::Tag::If:
-		stmt.if_block->~If();
-		break;
-
-	case Statement::Tag::For:
-		stmt.for_block->~For();
-		break;
-
-	case Statement::Tag::Switch:
-		stmt.switch_block->~Switch();
-		break;
-
-	case Statement::Tag::Variable:
-		stmt.variable_def->~Variable();
-		break;
-
-	case Statement::Tag::Assignment:
-		stmt.assignment->~Assignment();
-		break;
-
-	case Statement::Tag::Call:
-		stmt.call->~Name();
-		break;
-
-	case Statement::Tag::Go:
-		stmt.go_stmt->~Go();
-		break;
-
-	case Statement::Tag::Return:
-		stmt.return_stmt->~Return();
-		break;
-
-	case Statement::Tag::Yield:
-		stmt.yield_stmt->~Yield();
-		break;
-
-	default:
-		assert(stmt.tag == Statement::Tag::EMPTY);
-		break;
-	}
-
-	free(stmt.assignment);
+	return *dst;
 }
 
-static void typeref_cleanup_helper(TypeRef& typeref) noexcept
-{
-	if (typeref.ref == nullptr)
-		return;
-
-	switch (typeref.tag)
-	{
-	case TypeRef::Tag::Ref:
-		typeref.ref->~TypeRef();
-		break;
-
-	case TypeRef::Tag::Name:
-		typeref.name_ref->~Name();
-		break;
-
-	case TypeRef::Tag::Inline:
-		typeref.inline_def->~Type();
-		break;
-
-	case TypeRef::Tag::TypeExpr:
-		typeref.type_expr->~Expr();
-		break;
-
-	default:
-		assert(typeref.tag == TypeRef::Tag::EMPTY);
-		break;
-	}
-
-	free(typeref.ref);
-}
-
-static void traitmember_cleanup_helper(TraitMember& traitmember) noexcept
-{
-	if (traitmember.signature == nullptr)
-		return;
-
-	switch (traitmember.tag)
-	{
-	case TraitMember::Tag::Type:
-		traitmember.definition->~Type();
-		break;
-
-	case TraitMember::Tag::ProcSignature:
-		traitmember.signature->~ProcSignature();
-		break;
-
-	default :
-		assert(traitmember.tag == TraitMember::Tag::EMPTY);
-		break;
-	}
-
-	free(traitmember.signature);
-}
-
-static void expr_cleanup_helper(Expr& expr) noexcept
-{
-	if (expr.binary_op == nullptr)
-		return;
-
-	switch (expr.tag)
-	{
-	case Expr::Tag::BinaryOp:
-		expr.binary_op->~BinaryOp();
-		break;
-
-	case Expr::Tag::UnaryOp:
-		expr.unary_op->~UnaryOp();
-		break;
-
-	case Expr::Tag::Literal:
-		expr.literal->~Literal();
-		break;
-
-	case Expr::Tag::Name:
-		expr.name_ref->~Name();
-		break;
-
-	default:
-		assert(expr.tag == Expr::Tag::EMPTY);
-		break;
-	}
-
-	free(expr.binary_op);
-}
-
-static void toplevelexpr_cleanup_helper(TopLevelExpr& tl_expr) noexcept
-{
-	if (tl_expr.opt_catch != nullptr)
-	{
-		tl_expr.opt_catch->~Catch();
-
-		free(tl_expr.opt_catch);
-	}
-
-	if (tl_expr.block == nullptr)
-		return;
-
-	switch (tl_expr.tag)
-	{
-	case TopLevelExpr::Tag::Expr: {
-		tl_expr.expr->~Expr();
-		break;
-	}
-
-	case TopLevelExpr::Tag::If: {
-		tl_expr.if_block->~If();
-		break;
-	}
-
-	case TopLevelExpr::Tag::For: {
-		tl_expr.for_block->~For();
-		break;
-	}
-
-	case TopLevelExpr::Tag::Block: {
-		tl_expr.block->~Block();
-		break;
-	}
-
-	case TopLevelExpr::Tag::Switch: {
-		tl_expr.switch_block->~Switch();
-		break;
-	}
-
-	default: {
-		assert(tl_expr.tag == TopLevelExpr::Tag::EMPTY);
-		break;
-	}
-	}
-
-	free(tl_expr.block);
-}
-
-static void definition_cleanup_helper(Type& definition) noexcept
-{
-	switch (definition.tag)
-	{
-	case Type::Tag::Proc:
-		definition.proc_def.~ProcDef();
-		break;
-
-	case Type::Tag::Struct:
-		definition.struct_def.~StructDef();
-		break;
-
-	case Type::Tag::Union:
-		definition.union_def.~UnionDef();
-		break;
-
-	case Type::Tag::Enum:
-		definition.enum_def.~EnumDef();
-		break;
-
-	case Type::Tag::Bitset:
-		definition.bitset_def.~BitsetDef();
-		break;
-
-	case Type::Tag::Alias:
-		definition.alias_def.~AliasDef();
-		break;
-
-	case Type::Tag::NewType:
-		definition.newtype_def.~NewTypeDef();
-
-	case Type::Tag::Trait:
-		definition.trait_def.~TraitDef();
-		break;
-
-	case Type::Tag::Impl:
-		definition.impl_def.~ProcDef();
-		break;
-
-	case Type::Tag::Annotation:
-		definition.annotation_def.~AnnotationDef();
-		break;
-
-	case Type::Tag::Module:
-		definition.module_def.~ModuleDef();
-		break;
-
-	default:
-		assert(definition.tag == Type::Tag::EMPTY);
-		break;
-	}
-}
-
-static void proc_param_cleanup_helper(ProcParam& obj) noexcept
+static void cleanup_helper(Literal& obj) noexcept
 {
 	switch (obj.tag)
 	{
-	case ProcParam::Tag::Variable:
-		obj.variable_def.~Variable();
-		break;
-	
-	case ProcParam::Tag::GenericType:
-		// noop
+	case Literal::Tag::IntegerLiteral:
+		obj.integer_literal.~IntegerLiteral();
 		break;
 
-	default:
-		assert(obj.tag == ProcParam::Tag::EMPTY);
-	}
-}
-
-static void for_signature_cleanup_helper(ForSignature& obj) noexcept
-{
-	switch (obj.tag)
-	{
-	case ForSignature::Tag::Normal:
-		obj.normal.opt_init.~Variable();
-		obj.normal.opt_condition.~Expr();
-		obj.normal.opt_step.~Assignment();
+	case Literal::Tag::FloatLiteral:
+		obj.float_literal.~FloatLiteral();
 		break;
 
-	case ForSignature::Tag::ForEach:
-		obj.for_each.~ForEach();
+	case Literal::Tag::StringLiteral:
+		obj.string_literal.~StringLiteral();
 		break;
 
-	default:
-		assert(obj.tag == ForSignature::Tag::EMPTY);
-		break;
-	}
-}
-
-
-Literal::~Literal() noexcept
-{
-	switch (tag)
-	{
-	case Tag::Integer:
-		integer_literal.~IntegerLiteral();
-		break;
-
-	case Tag::Float:
-		float_literal.~FloatLiteral();
-		break;
-
-	case Tag::String:
-		string_literal.~StringLiteral();
-		break;
-
-	case Tag::Char:
-		char_literal.~CharLiteral();
+	case Literal::Tag::CharLiteral:
+		obj.char_literal.~CharLiteral();
 		break;
 
 	default:
@@ -323,79 +52,329 @@ Literal::~Literal() noexcept
 	}
 }
 
-Statement::~Statement() noexcept
+static void cleanup_helper(Expr& obj) noexcept
 {
-	statement_cleanup_helper(*this);
+	if (obj.name == nullptr)
+	{
+		assert(obj.tag == Expr::Tag::EMPTY);
+
+		return;
+	}
+
+	switch (obj.tag)
+	{
+	case Expr::Tag::Name:
+		obj.name->~Name();
+		break;
+
+	case Expr::Tag::Literal:
+		obj.literal->~Literal();
+		break;
+
+	case Expr::Tag::UnaryOp:
+		obj.unary_op->~UnaryOp();
+		break;
+
+	case Expr::Tag::BinaryOp:
+		obj.binary_op->~BinaryOp();
+		break;
+
+	default:
+		assert(false);
+		break;
+	}
+
+	free(obj.name);
 }
 
-TypeRef::~TypeRef() noexcept
+static void cleanup_helper(Argument& obj) noexcept
 {
-	typeref_cleanup_helper(*this);
+	if (obj.type == nullptr)
+	{
+		assert(obj.tag == Argument::Tag::EMPTY);
+
+		return;
+	}
+
+	switch (obj.tag)
+	{
+	case Argument::Tag::Type:
+		obj.type->~Type();
+		break;
+
+	case Argument::Tag::Expr:
+		obj.expr->~Expr();
+		break;
+
+	default:
+		assert(false);
+		break;
+	}
+
+	free(obj.type);
 }
 
-TraitMember::~TraitMember() noexcept
+static void cleanup_helper(Parameter& obj) noexcept
 {
-	traitmember_cleanup_helper(*this);
+	if (obj.type == nullptr)
+	{
+		assert(obj.tag == Parameter::Tag::EMPTY);
+
+		return;
+	}
+
+	switch (obj.tag)
+	{
+	case Parameter::Tag::Type:
+		obj.type->~Type();
+		break;
+
+	case Parameter::Tag::Name:
+		obj.name->~Name();
+		break;
+
+	default:
+		assert(false);
+		break;
+	}
+
+	free(obj.type);
+}
+
+static void cleanup_helper(TopLevelExpr& obj) noexcept
+{
+	if (obj.opt_catch != nullptr)
+	{
+		obj.opt_catch->~Catch();
+
+		free(obj.opt_catch);
+	}
+
+	if (obj.if_stmt == nullptr)
+	{
+		assert(obj.tag == TopLevelExpr::Tag::EMPTY);
+
+		return;
+	}
+
+	switch (obj.tag)
+	{
+	case TopLevelExpr::Tag::If:
+		obj.if_stmt->~If();
+		break;
+
+	case TopLevelExpr::Tag::For:
+		obj.for_stmt->~For();
+		break;
+
+	case TopLevelExpr::Tag::Switch:
+		obj.switch_stmt->~Switch();
+		break;
+
+	case TopLevelExpr::Tag::Expr:
+		obj.expr->~Expr();
+		break;
+
+	case TopLevelExpr::Tag::Type:
+		obj.type->~Type();
+		break;
+
+	default:
+		assert(false);
+		break;
+	}
+
+	free(obj.if_stmt);
+}
+
+static void cleanup_helper(Statement& obj) noexcept
+{
+	if (obj.if_stmt == nullptr)
+	{
+		assert(obj.tag == Statement::Tag::EMPTY);
+
+		return;
+	}
+
+	switch (obj.tag)
+	{
+	case Statement::Tag::If:
+		obj.if_stmt->~If();
+		break;
+
+	case Statement::Tag::For:
+		obj.for_stmt->~For();
+		break;
+
+	case Statement::Tag::Switch:
+		obj.switch_stmt->~Switch();
+		break;
+
+	case Statement::Tag::Return:
+	case Statement::Tag::Yield:
+		obj.return_or_yield_value->~TopLevelExpr();
+		break;
+
+	case Statement::Tag::Go:
+		obj.go_stmt->~Go();
+		break;
+
+	case Statement::Tag::Block:
+		obj.block->~Block();
+		break;
+
+	case Statement::Tag::Call:
+		obj.call->~Name();
+		break;
+
+	case Statement::Tag::Definition:
+		obj.definition->~Definition();
+		break;
+
+	case Statement::Tag::Assignment:
+		obj.assignment->~Assignment();
+		break;
+
+	default:
+		assert(false);
+		break;
+	}
+
+	free(obj.if_stmt);
+}
+
+static void cleanup_helper(ForSignature& obj) noexcept
+{
+	switch (obj.tag)
+	{
+	case ForSignature::Tag::ForEachSignature:
+		obj.for_each.~ForEachSignature();
+		break;
+
+	case ForSignature::Tag::ForLoopSignature:
+		obj.for_loop.~ForLoopSignature();
+		break;
+
+	default:
+		assert(obj.tag == ForSignature::Tag::EMPTY);
+		break;
+	}
+}
+
+static void cleanup_helper(Type& obj) noexcept
+{
+	switch (obj.tag)
+	{
+	case Type::Tag::Proc:
+		obj.proc_type.~Proc();
+		break;
+
+	case Type::Tag::Struct:
+		obj.struct_type.~Struct();
+		break;
+
+	case Type::Tag::Union:
+		obj.union_type.~Union();
+		break;
+
+	case Type::Tag::Enum:
+		obj.enum_type.~Enum();
+		break;
+
+	case Type::Tag::Trait:
+		obj.trait_type.~Trait();
+		break;
+
+	case Type::Tag::Module:
+		obj.module_type.~Module();
+		break;
+
+	case Type::Tag::Impl:
+		obj.impl_type.~Impl();
+		break;
+
+	default:
+		assert(obj.tag == Type::Tag::EMPTY);
+		break;
+	}
+}
+
+
+
+Literal::~Literal() noexcept
+{
+	cleanup_helper(*this);
 }
 
 Expr::~Expr() noexcept
 {
-	expr_cleanup_helper(*this);
+	cleanup_helper(*this);
+}
+
+Argument::~Argument() noexcept
+{
+	cleanup_helper(*this);
+}
+
+Parameter::~Parameter() noexcept
+{
+	cleanup_helper(*this);
 }
 
 TopLevelExpr::~TopLevelExpr() noexcept
 {
-	toplevelexpr_cleanup_helper(*this);
+	cleanup_helper(*this);
 }
 
-Type::~Type() noexcept
+Statement::~Statement() noexcept
 {
-	definition_cleanup_helper(*this);
-}
-
-ProcParam::~ProcParam() noexcept
-{
-	proc_param_cleanup_helper(*this);
+	cleanup_helper(*this);
 }
 
 ForSignature::~ForSignature() noexcept
 {
-	for_signature_cleanup_helper(*this);
+	cleanup_helper(*this);
+}
+
+Type::~Type() noexcept
+{
+	cleanup_helper(*this);
 }
 
 
-Type::Type() noexcept
+
+StringLiteral& StringLiteral::operator=(StringLiteral&& o) noexcept
 {
-	memset(this, 0, sizeof(*this));
-}
-
-
-
-TypeValue& TypeValue::operator=(TypeValue&& o) noexcept
-{
-	ident = std::move(o.ident);
-
 	value = std::move(o.value);
 
 	return *this;
 }
 
-Variable& Variable::operator=(Variable&& o) noexcept
+Literal& Literal::operator=(Literal&& o) noexcept
 {
-	ident = std::move(o.ident);
-	
-	opt_type_ref = std::move(o.opt_type_ref);
-
-	opt_initializer = std::move(o.opt_initializer);
-
-	return *this;
+	return move_helper(this, &o);
 }
 
-TypeName& TypeName::operator=(TypeName&& o) noexcept
+Expr& Expr::operator=(Expr&& o) noexcept
 {
-	name = std::move(o.name);
+	return move_helper(this, &o);
+}
 
-	bounds = std::move(o.bounds);
+Argument& Argument::operator=(Argument&& o) noexcept
+{
+	return move_helper(this, &o);
+}
+
+Parameter& Parameter::operator=(Parameter&& o) noexcept
+{
+	return move_helper(this, &o);
+}
+
+NamePart& NamePart::operator=(NamePart&& o) noexcept
+{
+	ident = std::move(o.ident);
+
+	args = std::move(o.args);
 
 	return *this;
 }
@@ -403,6 +382,135 @@ TypeName& TypeName::operator=(TypeName&& o) noexcept
 Name& Name::operator=(Name&& o) noexcept
 {
 	parts = std::move(o.parts);
+
+	return *this;
+}
+
+BinaryOp& BinaryOp::operator=(BinaryOp&& o) noexcept
+{
+	op = o.op;
+
+	o.op = Op::NONE;
+
+	lhs = std::move(o.lhs);
+
+	rhs = std::move(o.rhs);
+
+	return *this;
+}
+
+UnaryOp& UnaryOp::operator=(UnaryOp&& o) noexcept
+{
+	op = o.op;
+
+	o.op = Op::NONE;
+
+	operand = std::move(o.operand);
+
+	return *this;
+}
+
+Catch& Catch::operator=(Catch&& o) noexcept
+{
+	error_ident = std::move(o.error_ident);
+
+	stmt = std::move(o.stmt);
+
+	return *this;
+}
+
+TopLevelExpr& TopLevelExpr::operator=(TopLevelExpr&& o) noexcept
+{
+	return move_helper(this, &o);
+}
+
+Definition& Definition::operator=(Definition&& o) noexcept
+{
+	is_comptime = std::move(o.is_comptime);
+
+	ident = std::move(o.ident);
+
+	opt_type = std::move(o.opt_type);
+
+	opt_value = std::move(o.opt_value);
+
+	return *this;
+}
+
+EnumValue& EnumValue::operator=(EnumValue&& o) noexcept
+{
+	ident = std::move(o.ident);
+
+	opt_value = std::move(o.opt_value);
+
+	return *this;
+}
+
+Statement& Statement::operator=(Statement&& o) noexcept
+{
+	return move_helper(this, &o);
+}
+
+Assignment& Assignment::operator=(Assignment&& o) noexcept
+{
+	op = o.op;
+
+	o.op = Op::NONE;
+
+	assignee = std::move(o.assignee);
+
+	value = std::move(o.value);
+
+	return *this;
+}
+
+If& If::operator=(If&& o) noexcept
+{
+	opt_init = std::move(o.opt_init);
+
+	condition = std::move(o.condition);
+
+	body = std::move(o.body);
+
+	opt_else_body = std::move(o.opt_else_body);
+
+	return *this;
+}
+
+ForEachSignature& ForEachSignature::operator=(ForEachSignature&& o) noexcept
+{
+	loop_variable = std::move(o.loop_variable);
+
+	opt_step_variable = std::move(o.opt_step_variable);
+
+	loopee = std::move(o.loopee);
+
+	return *this;
+}
+
+ForLoopSignature& ForLoopSignature::operator=(ForLoopSignature&& o) noexcept
+{
+	opt_init = std::move(o.opt_init);
+
+	opt_cond = std::move(o.opt_cond);
+
+	opt_step = std::move(o.opt_step);
+
+	return *this;
+}
+
+ForSignature& ForSignature::operator=(ForSignature&& o) noexcept
+{
+	return move_helper(this, &o);
+}
+
+For& For::operator=(For&& o) noexcept
+{
+	signature = std::move(o.signature);
+
+	body = std::move(o.body);
+
+	opt_until_body = std::move(o.opt_until_body);
 
 	return *this;
 }
@@ -416,47 +524,116 @@ Case& Case::operator=(Case&& o) noexcept
 	return *this;
 }
 
+Switch& Switch::operator=(Switch&& o) noexcept
+{
+	switched = std::move(o.switched);
+
+	cases = std::move(o.cases);
+
+	return *this;
+}
+
+Go& Go::operator=(Go&& o) noexcept
+{
+	label = std::move(o.label);
+
+	return *this;
+}
+
+To& To::operator=(To&& o) noexcept
+{
+	cases = std::move(o.cases);
+
+	return *this;
+}
+
+Impl& Impl::operator=(Impl&& o) noexcept
+{
+	trait_name = std::move(o.trait_name);
+
+	bindings = std::move(o.bindings);
+
+	definitions = std::move(o.definitions);
+
+	return *this;
+}
+
+Block& Block::operator=(Block&& o) noexcept
+{
+	statements = std::move(o.statements);
+
+	opt_to = std::move(o.opt_to);
+
+	return *this;
+}
+
+ProcSignature& ProcSignature::operator=(ProcSignature&& o) noexcept
+{
+	parameters = std::move(o.parameters);
+
+	opt_return_type = std::move(o.opt_return_type);
+
+	return *this;
+}
+
+Proc& Proc::operator=(Proc&& o) noexcept
+{
+	signature = std::move(o.signature);
+
+	body = std::move(o.body);
+
+	return *this;
+}
+
+Struct& Struct::operator=(Struct&& o) noexcept
+{
+	members = std::move(o.members);
+
+	return *this;
+}
+
+Union& Union::operator=(Union&& o) noexcept
+{
+	members = std::move(o.members);
+
+	return *this;
+}
+
+Enum& Enum::operator=(Enum&& o) noexcept
+{
+	opt_enum_type = std::move(o.opt_enum_type);
+
+	values = std::move(o.values);
+
+	definitions = std::move(o.definitions);
+
+	return *this;
+}
+
+Trait& Trait::operator=(Trait&& o) noexcept
+{
+	bindings = std::move(o.bindings);
+
+	definitions = std::move(o.definitions);
+
+	return *this;
+}
+
+Module& Module::operator=(Module&& o) noexcept
+{
+	definitions = std::move(o.definitions);
+
+	return *this;
+}
+
 Type& Type::operator=(Type&& o) noexcept
 {
-	definition_cleanup_helper(*this);
-
-	obj_move(this, &o);
-
-	return *this;
+	return move_helper(this, &o);
 }
 
-TopLevelExpr& TopLevelExpr::operator=(TopLevelExpr&& o) noexcept
+ProgramUnit& ProgramUnit::operator=(ProgramUnit&& o) noexcept
 {
-	toplevelexpr_cleanup_helper(*this);
-
-	obj_move(this, &o);
-
-	return *this;
-}
-
-Expr& Expr::operator=(Expr&& o) noexcept
-{
-	expr_cleanup_helper(*this);
-
-	obj_move(this, &o);
-
-	return *this;
-}
-
-ProcParam& ProcParam::operator=(ProcParam&& o) noexcept
-{
-	proc_param_cleanup_helper(*this);
-
-	obj_move(this, &o);
-
-	return *this;
-}
-
-ForSignature& ForSignature::operator=(ForSignature&& o) noexcept
-{
-	for_signature_cleanup_helper(*this);
-
-	obj_move(this, &o);
+	definitions = std::move(o.definitions);
 
 	return *this;
 }

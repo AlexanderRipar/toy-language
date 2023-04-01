@@ -9,7 +9,6 @@ strview Token::type_strview() const noexcept
 	static constexpr strview types[]
 	{
 		strview::from_literal("INVALID"),
-		strview::from_literal("EndOfStream"),
 		strview::from_literal("Ident"),
 		strview::from_literal("Set"),
 		strview::from_literal("SetAdd"),
@@ -80,15 +79,13 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("Struct"),
 		strview::from_literal("Union"),
 		strview::from_literal("Enum"),
-		strview::from_literal("Bitset"),
-		strview::from_literal("Alias"),
 		strview::from_literal("Trait"),
 		strview::from_literal("Impl"),
-		strview::from_literal("Annotation"),
 		strview::from_literal("Module"),
 		strview::from_literal("Mut"),
 		strview::from_literal("Const"),
 		strview::from_literal("Pub"),
+		strview::from_literal("Undefined"),
 	};
 
 	if (static_cast<u32>(tag) >= _countof(types))
@@ -156,16 +153,10 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			t.tag = Token::Tag::Union;
 		else if (streqc({ beg, c }, strview::from_literal("enum")))
 			t.tag = Token::Tag::Enum;
-		else if (streqc({ beg, c }, strview::from_literal("bitset")))
-			t.tag = Token::Tag::Bitset;
-		else if (streqc({ beg, c }, strview::from_literal("alias")))
-			t.tag = Token::Tag::Alias;
 		else if (streqc({ beg, c }, strview::from_literal("trait")))
 			t.tag = Token::Tag::Trait;
 		else if (streqc({ beg, c }, strview::from_literal("impl")))
 			t.tag = Token::Tag::Impl;
-		else if (streqc({ beg, c }, strview::from_literal("annotation")))
-			t.tag = Token::Tag::Annotation;
 		else if (streqc({ beg, c }, strview::from_literal("module")))
 			t.tag = Token::Tag::Module;
 		else if (streqc({ beg, c }, strview::from_literal("mut")))
@@ -176,6 +167,8 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			t.tag = Token::Tag::Pub;
 		else if (streqc({ beg, c }, strview::from_literal("catch")))
 			t.tag = Token::Tag::Catch;
+		else if (streqc({ beg, c }, strview::from_literal("undef")))
+			t.tag = Token::Tag::Undefined;
 		else
 			t.tag = Token::Tag::Ident;
 	}

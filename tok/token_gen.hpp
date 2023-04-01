@@ -11,7 +11,6 @@ struct Token
 	enum class Tag
 	{
 		INVALID = 0,
-		EndOfStream,
 		Ident,
 		Set,
 		SetAdd,
@@ -82,15 +81,13 @@ struct Token
 		Struct,
 		Union,
 		Enum,
-		Bitset,
-		Alias,
 		Trait,
 		Impl,
-		Annotation,
 		Module,
 		Mut,
 		Const,
 		Pub,
+		Undefined,
 	} tag;
 
 	u32 line_number;

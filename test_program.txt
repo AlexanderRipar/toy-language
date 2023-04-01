@@ -1,6 +1,22 @@
-Result :: proc(Success : &type, Failure : &type) -> type
+X ::= struct
 {
-	assert(implements(Failure, ErrorCode))
+	tag : enum
+	{
+		x
+		y
+	}
+
+	union
+	{
+		x : u32
+
+		y : f32
+	}
+}
+
+Result ::= proc(Success :: &type, Failure :: &type) -> type
+{
+	Failure ::= implements(Failure, ErrorCode)
 
 	return struct
 	{
@@ -8,31 +24,46 @@ Result :: proc(Success : &type, Failure : &type) -> type
 
 		failure : Failure
 
-		MaybeError.is_ok :: impl(self : &Self) -> bool
-			return is_ok(failure)
+		impl MaybeError(Self)
+		{
+			is_ok ::= proc(self : &Self) -> bool
+				return is_ok(failure)
+		}
 	}
 }
 
-MaybeError :: trait(T : type)
+MaybeError ::= trait(T :: &type)
 {
-	is_ok :: proc(t : &T) -> bool
+	is_ok ::= proc(t : &T) -> bool undef
 }
 
-ErrorCode :: trait(T : type)
+IS_DEBUG ::= false
+
+debug_print ::=
+	if IS_DEBUG
+		yield proc(fmt : &Slice(char8)) -> bool return print(fmt)
+	else
+		yield proc(fmt : &Slice(char8)) -> bool return true
+
+debug_info ::=
+	if IS_DEBUG
+		yield struct{ line : u32 }
+	else
+		yield struct{}
+
+ErrorCode ::= trait(T : type)
 {
-	is_ok :: proc(t : &T) -> bool
+	is_ok ::= proc(t : &T) -> bool undef
 }
 
-WinRst :: proc(Success : &type) -> type
-{
+WinRst ::= proc(Success : &type) -> type
 	return Result(Success, HResult)
-}
 
-HResult :: enum
+HResult ::= enum
 {
-
+	// snip
 }
 
-EXIT_SUCCESS :: as(0, i32)
+EXIT_SUCCESS :: i32 = 0
 
-EXIT_FAILURE :: as(1, i32)
+EXIT_FAILURE :: i32 = 1
