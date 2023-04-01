@@ -244,7 +244,7 @@ static bool expr_pop_syop(pstate& s, const Token* t, vec<SYOp, 32>& op_stack, ve
 	return true;
 }
 
-static bool token_type_to_assign_oper(const Token::Tag t, Assignment::Op& out_assign_op) noexcept
+static bool token_tag_to_assign_oper(const Token::Tag t, Assignment::Op& out_assign_op) noexcept
 {
 	const i32 idx = static_cast<i32>(t) - static_cast<i32>(Token::Tag::Set);
 
@@ -345,7 +345,7 @@ static bool parse(pstate& s, Assignment& out) noexcept
 
 	if (const Token* t = next(s, ctx); t == nullptr)
 		return false;
-	else if (!token_type_to_assign_oper(t->tag, out.op))
+	else if (!token_tag_to_assign_oper(t->tag, out.op))
 		return error_invalid_syntax(s, ctx, t, "Expected Assignment Operator");
 
 	return parse(s, out.value);
@@ -1006,7 +1006,7 @@ static bool parse(pstate& s, Statement& out) noexcept
 
 			return parse(s, *out.definition);
 		}
-		else if (token_type_to_assign_oper(t->tag, op))
+		else if (token_tag_to_assign_oper(t->tag, op))
 		{
 			if (!alloc(&out.assignment))
 				return error_out_of_memory(s, ctx);
