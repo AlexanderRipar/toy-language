@@ -336,17 +336,26 @@ static bool parse(pstate& s, Case& out) noexcept;
 
 
 
-static bool parse(pstate& s, Assignment& out) noexcept
+static bool parse(pstate& s, Assignment& out, Name* assignee = nullptr, Assignment::Op op = Assignment::Op::NONE) noexcept
 {
 	static constexpr const char ctx[] = "Assignment";
 
-	if (!parse(s, out.assignee))
-		return false;
+	if (assignee != nullptr)
+	{
+		out.assignee = std::move(*assignee);
 
-	if (const Token* t = next(s, ctx); t == nullptr)
-		return false;
-	else if (!token_tag_to_assign_oper(t->tag, out.op))
-		return error_invalid_syntax(s, ctx, t, "Expected Assignment Operator");
+		out.op = op;
+	}
+	else
+	{
+		if (!parse(s, out.assignee))
+			return false;
+
+		if (const Token* t = next(s, ctx); t == nullptr)
+			return false;
+		else if (!token_tag_to_assign_oper(t->tag, out.op))
+			return error_invalid_syntax(s, ctx, t, "Expected Assignment Operator");
+	}
 
 	return parse(s, out.value);
 }
@@ -991,8 +1000,6 @@ static bool parse(pstate& s, Statement& out) noexcept
 	}
 	else if (t->tag == Token::Tag::Ident)
 	{
-		Assignment::Op op;
-
 		if (const Token* t1 = peek(s, 1); t1 == nullptr)
 		{
 			return error_unexpected_end(s, ctx);
@@ -1006,27 +1013,36 @@ static bool parse(pstate& s, Statement& out) noexcept
 
 			return parse(s, *out.definition);
 		}
-		else if (token_tag_to_assign_oper(t->tag, op))
+
+		Name name{};
+
+		if (!parse(s, name))
+			return false;
+
+		Assignment::Op op;
+
+		if (const Token* t1 = peek(s); t1 != nullptr && token_tag_to_assign_oper(t1->tag, op))
 		{
+			next(s, ctx);
+
 			if (!alloc(&out.assignment))
 				return error_out_of_memory(s, ctx);
 
 			out.tag = Statement::Tag::Assignment;
 
-			return parse(s, *out.assignment);
+			return parse(s, *out.assignment, &name);
 		}
 		else
 		{
+			if (name.parts.last().args.size() == 0)
+				return error_invalid_syntax(s, ctx, t, "Expected procedure call");
+
 			if (!alloc(&out.call))
 				return error_out_of_memory(s, ctx);
 
 			out.tag = Statement::Tag::Call;
 
-			if (!parse(s, *out.call))
-				return false;
-
-			if (out.call->parts.last().args.size() == 0)
-				return error_invalid_syntax(s, ctx, t, "Expected procedure call");
+			*out.call = std::move(name);
 
 			return true;
 		}
@@ -1128,12 +1144,15 @@ static bool parse(pstate& s, Literal& out) noexcept
 	}
 }
 
-static bool parse(pstate& s, Proc& out) noexcept
+static bool parse(pstate& s, Proc& out, bool no_body = false) noexcept
 {
 	static constexpr const char ctx[] = "Proc";
 
 	if (!parse(s, out.signature))
 		return false;
+
+	if (no_body)
+		return true;
 
 	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Undefined)
 	{
@@ -1543,7 +1562,7 @@ static bool parse(pstate& s, Expr& out) noexcept
 	return true;
 }
 
-static bool parse(pstate& s, Type& out) noexcept
+static bool parse(pstate& s, Type& out, bool proc_no_body = false) noexcept
 {
 	static constexpr const char ctx[] = "Type";
 
@@ -1555,7 +1574,7 @@ static bool parse(pstate& s, Type& out) noexcept
 	{
 		out.tag = Type::Tag::Proc;
 
-		return parse(s, out.proc_type);
+		return parse(s, out.proc_type, proc_no_body);
 	}
 	else if (t->tag == Token::Tag::Struct)
 	{
@@ -1735,7 +1754,7 @@ static bool parse(pstate& s, TypeRef& out) noexcept
 
 		out.tag = TypeRef::Tag::Type;
 
-		return parse(s, *out.type);
+		return parse(s, *out.type, true);
 	}
 	else
 	{

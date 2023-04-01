@@ -41,15 +41,34 @@ IS_DEBUG ::= false
 
 debug_print ::=
 	if IS_DEBUG
-		yield proc(fmt : &Slice(char8)) -> bool return print(fmt)
+		yield proc(fmt : &Slice(char8), args : &Vararg(anytype)) -> bool return print(fmt, args)
 	else
-		yield proc(fmt : &Slice(char8)) -> bool return true
+		yield proc(fmt : &Slice(char8), args : &Vararg(anytype)) -> bool return true
 
 debug_info ::=
 	if IS_DEBUG
 		yield struct{ line : u32 }
 	else
 		yield struct{}
+
+print ::= proc(fmt : &Slice(char8), args : &Vararg(anytype)) -> bool
+{
+	formatters ::= Array(size(args), Formatter)
+
+	for arg, idx <- args do
+	{
+		at(formatters, idx) = create(arg)
+	}
+
+	return true
+}
+
+Formatter :: struct
+{
+	data : &void
+
+	fmt_proc : &proc(data : &void, buf : &mut Buffer) -> bool
+}
 
 ErrorCode ::= trait(T : type)
 {
