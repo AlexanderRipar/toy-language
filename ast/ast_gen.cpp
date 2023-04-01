@@ -853,9 +853,6 @@ static bool parse(pstate& s, ProcSignature& out) noexcept
 {
 	static constexpr const char ctx[] = "ProcSignature";
 
-	if (expect(s, Token::Tag::Proc, ctx) == nullptr)
-		return false;
-
 	if (expect(s, Token::Tag::ParenBeg, ctx) == nullptr)
 		return false;
 
@@ -1152,11 +1149,6 @@ static bool parse(pstate& s, StructuredType& out) noexcept
 {
 	static constexpr const char ctx[] = "StructuredType";
 
-	if (const Token* t = next(s, ctx); t == nullptr)
-		return false;
-	else if (t->tag != Token::Tag::Struct && t->tag != Token::Tag::Union)
-		return error_invalid_syntax(s, ctx, t, "Expected Struct or Union");
-
 	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
 		return false;
 
@@ -1180,9 +1172,6 @@ static bool parse(pstate& s, StructuredType& out) noexcept
 static bool parse(pstate& s, Enum& out) noexcept
 {
 	static constexpr const char ctx[] = "Enum";
-
-	if (expect(s, Token::Tag::Enum, ctx) == nullptr)
-		return false;
 
 	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::ParenBeg)
 	{
@@ -1229,9 +1218,6 @@ static bool parse(pstate& s, Enum& out) noexcept
 static bool parse(pstate& s, Trait& out) noexcept
 {
 	static constexpr const char ctx[] = "Trait";
-
-	if (expect(s, Token::Tag::Trait, ctx) == nullptr)
-		return false;
 
 	if (expect(s, Token::Tag::ParenBeg, ctx) == nullptr)
 		return false;
@@ -1287,9 +1273,6 @@ static bool parse(pstate& s, Module& out) noexcept
 {
 	static constexpr const char ctx[] = "Module";
 
-	if (expect(s, Token::Tag::Module, ctx) == nullptr)
-		return false;
-
 	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
 		return false;
 
@@ -1313,9 +1296,6 @@ static bool parse(pstate& s, Module& out) noexcept
 static bool parse(pstate& s, Impl& out) noexcept
 {
 	static constexpr const char ctx[] = "Impl";
-
-	if (expect(s, Token::Tag::Impl, ctx) == nullptr)
-		return false;
 
 	if (!parse(s, out.trait_name))
 		return false;
@@ -1567,9 +1547,9 @@ static bool parse(pstate& s, Type& out) noexcept
 {
 	static constexpr const char ctx[] = "Type";
 
-	if (const Token* t = peek(s); t == nullptr)
+	if (const Token* t = next(s, ctx); t == nullptr)
 	{
-		return error_unexpected_end(s, ctx);
+		return false;
 	}
 	else if (t->tag == Token::Tag::Proc)
 	{
