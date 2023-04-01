@@ -329,7 +329,7 @@ static bool parse(pstate& s, Definition& out) noexcept;
 
 static bool parse(pstate& s, Argument& out) noexcept;
 
-static bool parse(pstate& s, Parameter& out) noexcept;
+static bool parse(pstate& s, TypeRef& out) noexcept;
 
 static bool parse(pstate& s, Expr& out) noexcept;
 
@@ -1771,9 +1771,9 @@ static bool parse(pstate& s, Argument& out) noexcept
 	}
 }
 
-static bool parse(pstate& s, Parameter& out) noexcept
+static bool parse(pstate& s, TypeRef& out) noexcept
 {
-	static constexpr const char ctx[] = "Parameter";
+	static constexpr const char ctx[] = "TypeRef";
 
 	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::OpBitAnd_Ref)
 	{
@@ -1791,7 +1791,7 @@ static bool parse(pstate& s, Parameter& out) noexcept
 		if (!alloc(&out.type))
 			return error_out_of_memory(s, ctx);
 
-		out.tag = Parameter::Tag::Type;
+		out.tag = TypeRef::Tag::Type;
 
 		return parse(s, *out.type);
 	}
@@ -1800,7 +1800,7 @@ static bool parse(pstate& s, Parameter& out) noexcept
 		if (!alloc(&out.name))
 			return error_out_of_memory(s, ctx);
 
-		out.tag = Parameter::Tag::Name;
+		out.tag = TypeRef::Tag::Name;
 
 		return parse(s, *out.name);
 	}

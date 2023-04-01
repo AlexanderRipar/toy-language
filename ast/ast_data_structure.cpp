@@ -114,22 +114,22 @@ static void cleanup_helper(Argument& obj) noexcept
 	free(obj.type);
 }
 
-static void cleanup_helper(Parameter& obj) noexcept
+static void cleanup_helper(TypeRef& obj) noexcept
 {
 	if (obj.type == nullptr)
 	{
-		assert(obj.tag == Parameter::Tag::EMPTY);
+		assert(obj.tag == TypeRef::Tag::EMPTY);
 
 		return;
 	}
 
 	switch (obj.tag)
 	{
-	case Parameter::Tag::Type:
+	case TypeRef::Tag::Type:
 		obj.type->~Type();
 		break;
 
-	case Parameter::Tag::Name:
+	case TypeRef::Tag::Name:
 		obj.name->~Name();
 		break;
 
@@ -316,7 +316,7 @@ Argument::~Argument() noexcept
 	cleanup_helper(*this);
 }
 
-Parameter::~Parameter() noexcept
+TypeRef::~TypeRef() noexcept
 {
 	cleanup_helper(*this);
 }
@@ -365,7 +365,7 @@ Argument& Argument::operator=(Argument&& o) noexcept
 	return move_helper(this, &o);
 }
 
-Parameter& Parameter::operator=(Parameter&& o) noexcept
+TypeRef& TypeRef::operator=(TypeRef&& o) noexcept
 {
 	return move_helper(this, &o);
 }

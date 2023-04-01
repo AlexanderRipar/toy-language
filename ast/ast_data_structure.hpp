@@ -165,7 +165,7 @@ struct Argument
 	Argument(const Argument& o) noexcept = delete;
 };
 
-struct Parameter
+struct TypeRef
 {
 	enum class Tag
 	{
@@ -183,17 +183,17 @@ struct Parameter
 		Name* name;
 	};
 
-	~Parameter() noexcept;
+	~TypeRef() noexcept;
 
-	Parameter() noexcept = default;
+	TypeRef() noexcept = default;
 
-	Parameter& operator=(Parameter&& o) noexcept;
+	TypeRef& operator=(TypeRef&& o) noexcept;
 
-	Parameter& operator=(const Parameter& o) noexcept = delete;
+	TypeRef& operator=(const TypeRef& o) noexcept = delete;
 
-	Parameter(Parameter&& o) noexcept = delete;
+	TypeRef(TypeRef&& o) noexcept = delete;
 
-	Parameter(const Parameter& o) noexcept = delete;
+	TypeRef(const TypeRef& o) noexcept = delete;
 };
 
 struct NamePart
@@ -337,7 +337,7 @@ struct Definition
 
 	strview ident;
 
-	Parameter opt_type;
+	TypeRef opt_type;
 
 	TopLevelExpr opt_value;
 
@@ -683,7 +683,7 @@ struct ProcSignature
 {
 	vec<Definition> parameters;
 
-	Parameter opt_return_type;
+	TypeRef opt_return_type;
 
 	ProcSignature() noexcept = default;
 
@@ -745,7 +745,7 @@ struct Union
 
 struct Enum
 {
-	Parameter opt_enum_type;
+	TypeRef opt_enum_type;
 
 	vec<EnumValue> values;
 
