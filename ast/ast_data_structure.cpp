@@ -269,12 +269,9 @@ static void cleanup_helper(Type& obj) noexcept
 		obj.proc_type.~Proc();
 		break;
 
-	case Type::Tag::Struct:
-		obj.struct_type.~Struct();
-		break;
-
 	case Type::Tag::Union:
-		obj.union_type.~Union();
+	case Type::Tag::Struct:
+		obj.struct_or_union_type.~StructuredType();
 		break;
 
 	case Type::Tag::Enum:
@@ -585,14 +582,7 @@ Proc& Proc::operator=(Proc&& o) noexcept
 	return *this;
 }
 
-Struct& Struct::operator=(Struct&& o) noexcept
-{
-	members = std::move(o.members);
-
-	return *this;
-}
-
-Union& Union::operator=(Union&& o) noexcept
+StructuredType& StructuredType::operator=(StructuredType&& o) noexcept
 {
 	members = std::move(o.members);
 

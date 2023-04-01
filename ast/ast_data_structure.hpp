@@ -713,34 +713,19 @@ struct Proc
 	Proc(const Proc& o) noexcept = delete;
 };
 
-struct Struct
+struct StructuredType
 {
 	vec<Definition, 0> members;
 
-	Struct() noexcept = default;
+	StructuredType() noexcept = default;
 
-	Struct& operator=(Struct&& o) noexcept;
+	StructuredType& operator=(StructuredType&& o) noexcept;
 
-	Struct& operator=(const Struct& o) noexcept = delete;
+	StructuredType& operator=(const StructuredType& o) noexcept = delete;
 
-	Struct(Struct&& o) noexcept = delete;
+	StructuredType(StructuredType&& o) noexcept = delete;
 
-	Struct(const Struct& o) noexcept = delete;
-};
-
-struct Union
-{
-	vec<Definition, 0> members;
-
-	Union() noexcept = default;
-
-	Union& operator=(Union&& o) noexcept;
-
-	Union& operator=(const Union& o) noexcept = delete;
-
-	Union(Union&& o) noexcept = delete;
-
-	Union(const Union& o) noexcept = delete;
+	StructuredType(const StructuredType& o) noexcept = delete;
 };
 
 struct Enum
@@ -812,9 +797,7 @@ struct Type
 	{
 		Proc proc_type;
 
-		Struct struct_type;
-
-		Union union_type;
+		StructuredType struct_or_union_type;
 
 		Enum enum_type;
 

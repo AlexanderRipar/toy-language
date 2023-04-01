@@ -1148,39 +1148,14 @@ static bool parse(pstate& s, Proc& out) noexcept
 	return parse(s, out.body);
 }
 
-static bool parse(pstate& s, Struct& out) noexcept
+static bool parse(pstate& s, StructuredType& out) noexcept
 {
-	static constexpr const char ctx[] = "Struct";
+	static constexpr const char ctx[] = "StructuredType";
 
-	if (expect(s, Token::Tag::Struct, ctx) == nullptr)
+	if (const Token* t = next(s, ctx); t == nullptr)
 		return false;
-
-	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
-		return false;
-
-	while (true)
-	{
-		if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::SquiggleEnd)
-		{
-			next(s, ctx);
-
-			return true;
-		}
-
-		if (!out.members.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse(s, out.members.last()))
-			return false;
-	}
-}
-
-static bool parse(pstate& s, Union& out) noexcept
-{
-	static constexpr const char ctx[] = "Union";
-
-	if (expect(s, Token::Tag::Union, ctx) == nullptr)
-		return false;
+	else if (t->tag != Token::Tag::Struct && t->tag != Token::Tag::Union)
+		return error_invalid_syntax(s, ctx, t, "Expected Struct or Union");
 
 	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
 		return false;
@@ -1606,13 +1581,13 @@ static bool parse(pstate& s, Type& out) noexcept
 	{
 		out.tag = Type::Tag::Struct;
 
-		return parse(s, out.struct_type);
+		return parse(s, out.struct_or_union_type);
 	}
 	else if (t->tag == Token::Tag::Union)
 	{
 		out.tag = Type::Tag::Union;
 
-		return parse(s, out.union_type);
+		return parse(s, out.struct_or_union_type);
 	}
 	else if (t->tag == Token::Tag::Enum)
 	{
