@@ -53,19 +53,6 @@ static bool error_unexpected_token(pstate& s, const char* ctx, const Token* curr
 	return false;
 }
 
-/*
-static bool error_not_implemented(pstate& s, const char* ctx) noexcept
-{
-	s.rst.tag = Result::Tag::NotImplemented;
-
-	s.rst.error_ctx = ctx;
-
-	s.rst.message = "Not yet implemented.";
-
-	return false;
-}
-*/
-
 static bool error_unexpected_end(pstate& s, const char* ctx) noexcept
 {
 	s.rst.tag = Result::Tag::UnexpectedEndOfStream;
