@@ -117,132 +117,174 @@ static bool alloc(T** out) noexcept
 
 
 
-struct SYOp
+// Operator for Shunting Yard algorithm
+struct ShOp
 {
-	u8 precedence;
+	enum class HelperOp : u8
+	{
+		NONE = 0,
+		ParenBeg,
+		CallBeg,
+		Comma,
+		ParenEnd,
+		BracketEnd,
+	};
 
 	u8 opcnt;
 
-	enum class Assoc : bool
-	{
-		Left = true,
-		Right = false,
-	} assoc;
-	
 	union
 	{
-		UnaryOp::Op uop;
+		UnaryOp::Op unary_op;
 
-		BinaryOp::Op bop;
+		BinaryOp::Op binary_op;
+
+		HelperOp helper_op;
 	};
+	
+	u8 precedence;
 
-	constexpr SYOp() noexcept : precedence{ 0ui8 }, opcnt{ 0ui8 }, assoc{ Assoc::Right }, uop{ UnaryOp::Op::NONE } {}
+	enum class Assoc : bool
+	{
+		Left,
+		Right,
+	} assoc;
 
-	constexpr SYOp(u8 precedence, Assoc assoc, UnaryOp::Op op) noexcept : precedence{ precedence }, opcnt{ 1ui8 }, assoc{ assoc }, uop{ op } {}
+	constexpr ShOp() noexcept :
+		opcnt{ 0ui8 }, helper_op{ HelperOp::NONE }, precedence{ 0 }, assoc{ Assoc::Left } {}
 
-	constexpr SYOp(u8 precedence, Assoc assoc, BinaryOp::Op op) noexcept : precedence{ precedence }, opcnt{ 2ui8 }, assoc{ assoc }, bop{ op } {}
+	constexpr ShOp(UnaryOp::Op op, u8 precedence, Assoc assoc) :
+		opcnt{ 1ui8 }, unary_op{ op }, precedence{ precedence }, assoc{ assoc } {}
+
+	constexpr ShOp(BinaryOp::Op op, u8 precedence, Assoc assoc) :
+		opcnt{ 2ui8 }, binary_op{ op }, precedence{ precedence }, assoc{ assoc } {}
+
+	constexpr ShOp(HelperOp op, u8 precedence, Assoc assoc) :
+		opcnt{ 0ui8 }, helper_op{ op }, precedence{ precedence }, assoc{ assoc } {}
 };
 
-static const SYOp* from_token(const Token* t, bool is_unary) noexcept
+struct ShState
 {
-	static constexpr const SYOp bin_ops[]
+	pstate& s;
+
+	bool expecting_operator = false;
+
+	u32 paren_nesting = 0;
+
+	vec<ShOp, 8> op_stk;
+
+	vec<Expr, 8> ex_stk;
+};
+
+static bool token_tag_to_sh_op(Token::Tag tag, bool expecting_operator, ShOp& out_op)
+{
+	static constexpr const ShOp bin_ops[]
 	{
-		{  3, SYOp::Assoc::Right, BinaryOp::Op::Mul    },
-		{  3, SYOp::Assoc::Right, BinaryOp::Op::Div    },
-		{  3, SYOp::Assoc::Right, BinaryOp::Op::Mod    },
-		{  4, SYOp::Assoc::Left,  BinaryOp::Op::Add    },
-		{  4, SYOp::Assoc::Left,  BinaryOp::Op::Sub    },
-		{  5, SYOp::Assoc::Left,  BinaryOp::Op::ShiftL },
-		{  5, SYOp::Assoc::Left,  BinaryOp::Op::ShiftR },
-		{  6, SYOp::Assoc::Left,  BinaryOp::Op::CmpLt  },
-		{  6, SYOp::Assoc::Left,  BinaryOp::Op::CmpLe  },
-		{  6, SYOp::Assoc::Left,  BinaryOp::Op::CmpGt  },
-		{  6, SYOp::Assoc::Left,  BinaryOp::Op::CmpGe  },
-		{  7, SYOp::Assoc::Left,  BinaryOp::Op::CmpEq  },
-		{  7, SYOp::Assoc::Left,  BinaryOp::Op::CmpNe  },
-		{  8, SYOp::Assoc::Left,  BinaryOp::Op::BitAnd },
-		{  9, SYOp::Assoc::Left,  BinaryOp::Op::BitXor },
-		{ 10, SYOp::Assoc::Left,  BinaryOp::Op::BitOr  },
-		{ 11, SYOp::Assoc::Left,  BinaryOp::Op::LogAnd },
-		{ 11, SYOp::Assoc::Left,  BinaryOp::Op::LogOr  },
+		{ BinaryOp::Op::Mul,     3, ShOp::Assoc::Right },
+		{ BinaryOp::Op::Div,     3, ShOp::Assoc::Right },
+		{ BinaryOp::Op::Mod,     3, ShOp::Assoc::Right },
+		{ BinaryOp::Op::Add,     4, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::Sub,     4, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::ShiftL,  5, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::ShiftR,  5, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::CmpLt,   6, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::CmpLe,   6, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::CmpGt,   6, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::CmpGe,   6, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::CmpEq,   7, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::CmpNe,   7, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::BitAnd,  8, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::BitXor,  9, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::BitOr,  10, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::LogAnd, 11, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::LogOr,  11, ShOp::Assoc::Left  },
+		{ BinaryOp::Op::Member,  1, ShOp::Assoc::Left  },
 	};
 
-	static constexpr const SYOp un_ops[]
+	static constexpr const ShOp un_ops[]
 	{
-		{  2, SYOp::Assoc::Left,  UnaryOp::Op::LogNot  },
-		{  2, SYOp::Assoc::Left,  UnaryOp::Op::BitNot  },
+		{ UnaryOp::Op::LogNot,  2, ShOp::Assoc::Left  },
+		{ UnaryOp::Op::BitNot,  2, ShOp::Assoc::Left  },
 	};
 
-	static constexpr const SYOp un_minus{  2, SYOp::Assoc::Left,  UnaryOp::Op::Neg };
+	static constexpr const ShOp un_minus{ UnaryOp::Op::Neg, 2, ShOp::Assoc::Left };
 
-	if (!is_unary)
+	if (expecting_operator)
 	{
-		if (const isz idx = static_cast<isz>(t->tag) - static_cast<isz>(Token::Tag::OpMul); idx < _countof(bin_ops) && idx >= 0)
-			return &bin_ops[idx];
-		else
-			return nullptr;
+		const isz idx = static_cast<isz>(tag) - static_cast<isz>(Token::Tag::OpMul);
+		
+		if (idx < 0 || idx >= _countof(bin_ops))
+			return false;
+			
+		out_op = bin_ops[idx];
 	}
-	else if (t->tag == Token::Tag::OpSub)
+	else if (tag == Token::Tag::OpSub)
 	{
-		return &un_minus;
+		out_op = un_minus;
 	}
 	else
 	{
-		if (const isz idx = static_cast<isz>(t->tag) - static_cast<isz>(Token::Tag::UOpLogNot); idx < _countof(un_ops) && idx >= 0)
-			return &un_ops[static_cast<i32>(t->tag) - static_cast<i32>(Token::Tag::UOpLogNot)];
-		else
-			return nullptr;
+		const isz idx = static_cast<isz>(tag) - static_cast<isz>(Token::Tag::UOpLogNot);
+		
+		if (idx < 0 || idx >= _countof(un_ops))
+			return false;
+
+		out_op = un_ops[idx];
 	}
-}
-
-static bool expr_pop_syop(pstate& s, const Token* t, vec<SYOp, 32>& op_stack, vec<Expr, 32>& subexprs) noexcept
-{
-	static constexpr const char ctx[] = "Expr@pop_syop";
-
-	SYOp popped = op_stack.last();
-
-	op_stack.pop();
-
-	Expr expr{};
-
-	if (popped.opcnt > subexprs.size())
-		return error_invalid_syntax(s, ctx, t, "Not enough subexpressions for binary operator");
-
-	if (popped.opcnt == 1)
-	{
-		expr.tag = Expr::Tag::UnaryOp;
-
-		if (!alloc(&expr.unary_op))
-			return error_out_of_memory(s, ctx);
-
-		expr.unary_op->op = popped.uop;
-
-		expr.unary_op->operand = std::move(subexprs.last());
-
-		subexprs.last() = std::move(expr);
-	}
-	else if (popped.opcnt == 2)
-	{
-		expr.tag = Expr::Tag::BinaryOp;
-
-		if (!alloc(&expr.binary_op))
-			return error_out_of_memory(s, ctx);
-
-		expr.binary_op->op = popped.bop;
-
-		expr.binary_op->rhs = std::move(subexprs.last());
-
-		subexprs.pop();
-
-		expr.binary_op->lhs = std::move(subexprs.last());
-
-		subexprs.last() = std::move(expr);
-	}
-	else
-		assert(false);
 
 	return true;
 }
+
+static bool expr_pop_operator(ShState& ss) noexcept
+{
+	static constexpr const char ctx[] = "Expr::pop_operator";
+
+	assert(ss.op_stk.size() != 0);
+	
+	const ShOp prev_op = ss.op_stk.last();
+
+	Expr expr{};
+
+	assert(ss.ex_stk.size() >= prev_op.opcnt);
+
+	if (prev_op.opcnt == 1)
+	{
+		if (!alloc(&expr.unary_op))
+			return error_out_of_memory(ss.s, ctx);
+
+		expr.tag = Expr::Tag::UnaryOp;
+
+		expr.unary_op->op = prev_op.unary_op;
+
+		expr.unary_op->operand = std::move(ss.ex_stk.last());
+	}
+	else if (prev_op.opcnt == 2)
+	{
+		if (!alloc(&expr.binary_op))
+			return error_out_of_memory(ss.s, ctx);
+
+		expr.tag = Expr::Tag::BinaryOp;
+
+		expr.binary_op->op = prev_op.binary_op;
+
+		expr.binary_op->rhs = std::move(ss.ex_stk.last());
+
+		ss.ex_stk.pop();
+
+		expr.binary_op->lhs = std::move(ss.ex_stk.last());
+	}
+	else
+	{
+		assert(false);
+	}
+
+	ss.ex_stk.last() = std::move(expr);
+
+	ss.op_stk.pop();
+
+	return true;
+}
+
+
 
 static bool token_tag_to_assign_oper(const Token::Tag t, Assignment::Op& out_assign_op) noexcept
 {
@@ -336,7 +378,7 @@ static bool parse(pstate& s, Case& out) noexcept;
 
 
 
-static bool parse(pstate& s, Assignment& out, Name* assignee = nullptr, Assignment::Op op = Assignment::Op::NONE) noexcept
+static bool parse(pstate& s, Assignment& out, Expr* assignee = nullptr, Assignment::Op op = Assignment::Op::NONE) noexcept
 {
 	static constexpr const char ctx[] = "Assignment";
 
@@ -552,50 +594,6 @@ static bool parse(pstate& s, ForLoopSignature& out) noexcept
 	{
 		return t->tag == Token::Tag::SquiggleBeg;
 	}
-}
-
-static bool parse(pstate& s, NamePart& out) noexcept
-{
-	static constexpr const char ctx[] = "NamePart";
-
-	if (const Token* t = expect(s, Token::Tag::Ident, ctx); t == nullptr)
-		return false;
-	else
-		out.ident = t->data_strview();
-
-	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::ParenBeg)
-	{
-		next(s, ctx);
-
-		if (const Token* t1 = peek(s); t1 == nullptr)
-		{
-			return error_unexpected_end(s, ctx);
-		}
-		else if (t1->tag != Token::Tag::ParenEnd)
-		{
-			while (true)
-			{
-				if (!out.args.push_back({}))
-					return false;
-
-				if (!parse(s, out.args.last()))
-					return false;
-
-				if (const Token* t2 = next(s, ctx); t2 == nullptr)
-					return false;
-				else if (t2->tag == Token::Tag::ParenEnd)
-					break;
-				else if (t2->tag != Token::Tag::Comma)
-					return error_invalid_syntax(s, ctx, t2, "Expected ParenEnd or Comma");
-			}
-		}
-		else
-		{
-			next(s, ctx);
-		}
-	}
-
-	return true;	
 }
 
 static bool parse(pstate& s, FloatLiteral& out) noexcept
@@ -1014,9 +1012,9 @@ static bool parse(pstate& s, Statement& out) noexcept
 			return parse(s, *out.definition);
 		}
 
-		Name name{};
+		Expr expr{};
 
-		if (!parse(s, name))
+		if (!parse(s, expr))
 			return false;
 
 		Assignment::Op op;
@@ -1030,19 +1028,20 @@ static bool parse(pstate& s, Statement& out) noexcept
 
 			out.tag = Statement::Tag::Assignment;
 
-			return parse(s, *out.assignment, &name);
+			return parse(s, *out.assignment, &expr, op);
 		}
 		else
 		{
-			if (name.parts.last().args.size() == 0)
+			if (expr.tag != Expr::Tag::Call)
 				return error_invalid_syntax(s, ctx, t, "Expected procedure call");
-
-			if (!alloc(&out.call))
-				return error_out_of_memory(s, ctx);
 
 			out.tag = Statement::Tag::Call;
 
-			*out.call = std::move(name);
+			out.call = expr.call;
+
+			expr.call = nullptr;
+
+			expr.tag = Expr::Tag::EMPTY;
 
 			return true;
 		}
@@ -1087,25 +1086,6 @@ static bool parse(pstate& s, Case& out) noexcept
 	return parse(s, out.body);
 }
 
-static bool parse(pstate& s, Name& out) noexcept
-{
-	static constexpr const char ctx[] = "Name";
-
-	while (true)
-	{
-		if (!out.parts.push_back({}))
-			return false;
-
-		if (!parse(s, out.parts.last()))
-			return false;
-			
-		if (const Token* t = peek(s); t == nullptr || t->tag != Token::Tag::Dot)
-			return true;
-
-		next(s, ctx);
-	}
-}
-
 static bool parse(pstate& s, Literal& out) noexcept
 {
 	static constexpr const char ctx[] = "Literal";
@@ -1144,6 +1124,39 @@ static bool parse(pstate& s, Literal& out) noexcept
 	}
 }
 
+static bool parse(pstate& s, Call& out, Expr&& callee) noexcept
+{
+	static constexpr const char ctx[] = "Call";
+
+	out.callee = std::move(callee);
+
+	if (expect(s, Token::Tag::ParenBeg, ctx) == nullptr)
+		return false;
+
+	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::ParenEnd)
+	{
+		next(s, ctx);
+
+		return true;
+	}
+
+	while (true)
+	{
+		if (!out.args.push_back({}))
+			return error_out_of_memory(s, ctx);
+
+		if (!parse(s, out.args.last()))
+			return false;
+
+		if (const Token* t = next(s, ctx); t == nullptr)
+			return false;
+		else if (t->tag == Token::Tag::ParenEnd)
+			return true;
+		else if (t->tag != Token::Tag::Comma)
+			return error_invalid_syntax(s, ctx, t, "Expected Comma or ParenEnd");
+	}
+}
+
 static bool parse(pstate& s, Proc& out, bool no_body = false) noexcept
 {
 	static constexpr const char ctx[] = "Proc";
@@ -1161,7 +1174,7 @@ static bool parse(pstate& s, Proc& out, bool no_body = false) noexcept
 		return true;
 	}
 
-	return parse(s, out.body);
+	return parse(s, out.opt_body);
 }
 
 static bool parse(pstate& s, StructuredType& out) noexcept
@@ -1316,8 +1329,17 @@ static bool parse(pstate& s, Impl& out) noexcept
 {
 	static constexpr const char ctx[] = "Impl";
 
-	if (!parse(s, out.trait_name))
+	const Token* log_token = peek(s);
+
+	Expr expr{};
+
+	if (!parse(s, expr))
 		return false;
+
+	if (expr.tag != Expr::Tag::Call)
+		return error_invalid_syntax(s, ctx, log_token, "Expected procedure call");
+
+	out.trait = std::move(*expr.call);
 
 	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
 		return false;
@@ -1420,19 +1442,15 @@ static bool parse(pstate& s, Expr& out) noexcept
 {
 	static constexpr const char ctx[] = "Expr";
 
-	vec<SYOp, 32> op_stack;
-
-	vec<Expr, 32> subexprs;
-
-	bool expecting_operator = false;
-
-	u32 paren_nesting = 0;
+	ShState ss{ s };
 
 	while (true)
 	{
-		if (const Token* t = peek(s); t == nullptr)
+		const Token* t = peek(s);
+
+		if (t == nullptr)
 		{
-			if (!expecting_operator)
+			if (!ss.expecting_operator)
 				return error_unexpected_end(s, ctx);
 
 			// Currently this should also be error_unexpected_end,
@@ -1442,122 +1460,190 @@ static bool parse(pstate& s, Expr& out) noexcept
 			// expected.
 			break;
 		}
-		else if (t->tag == Token::Tag::LitString || t->tag == Token::Tag::LitChar || t->tag == Token::Tag::LitInt || t->tag == Token::Tag::LitFloat)
+
+		switch (t->tag)
 		{
-			if (expecting_operator)
-				break;
-
-			if (!subexprs.push_back({}))
-				return error_out_of_memory(s, ctx);
-
-			Expr& expr = subexprs.last();
-			
-			expr.tag = Expr::Tag::Literal;
-
-			if (!alloc(&expr.literal))
-				return error_out_of_memory(s, ctx);
-
-			if (!parse(s, *expr.literal))
-				return false;
-
-			expecting_operator = true;
-		}
-		else if (t->tag == Token::Tag::Ident)
+		case Token::Tag::Ident:
+		case Token::Tag::LitString:
+		case Token::Tag::LitChar:
+		case Token::Tag::LitInt:
+		case Token::Tag::LitFloat:
 		{
-			if (expecting_operator)
-				break;
+			if (ss.expecting_operator)
+				goto POP_REMAINING_OPS;
 
-			if (!subexprs.push_back({}))
+			if (!ss.ex_stk.push_back({}))
 				return error_out_of_memory(s, ctx);
 
-			Expr& expr = subexprs.last();
-			
-			expr.tag = Expr::Tag::Name;
+			Expr& expr = ss.ex_stk.last();
 
-			if (!alloc(&expr.name))
-				return error_out_of_memory(s, ctx);
-
-			if (!parse(s, *expr.name))
-				return false;
-			
-			expecting_operator = true;
-		}
-		else if (t->tag == Token::Tag::ParenBeg)
-		{
-			if (expecting_operator)
-				break;
-
-			next(s, ctx);
-
-			++paren_nesting;
-
-			if (!op_stack.push_back({ 255, SYOp::Assoc::Left, UnaryOp::Op::NONE }))
-				return error_out_of_memory(s, ctx);
-		}
-		else if (t->tag == Token::Tag::ParenEnd)
-		{
-			if (!expecting_operator || paren_nesting == 0)
-				break;
-
-			next(s, ctx);
-
-			--paren_nesting;
-
-			assert(op_stack.size() != 0);
-
-			while (op_stack.last().precedence != 255)
+			if (t->tag == Token::Tag::Ident)
 			{
-				if (!expr_pop_syop(s, t, op_stack, subexprs))
-					return false;
+				expr.tag = Expr::Tag::Ident;
 
-				assert(op_stack.size() != 0);
+				const strview ident = t->data_strview();
+
+				expr.ident_beg = ident.begin();
+
+				expr.ident_len = static_cast<u32>(ident.len());
+
+				next(s, ctx);
 			}
-
-			op_stack.pop();
-		}
-		else
-		{
-			const SYOp* oper = from_token(t, !expecting_operator);
-
-			if (oper == nullptr)
+			else
 			{
-				if (expecting_operator)
-					break;
-				else
-					return error_invalid_syntax(s, ctx, t, "Expected a unary operator");
-			}
+				if (!alloc(&expr.literal))
+					return error_out_of_memory(s, ctx);
 
-			next(s, ctx);
+				expr.tag = Expr::Tag::Literal;
 
-			while (op_stack.size() != 0)
-			{
-				const SYOp& last = op_stack.last();
-
-				if (last.precedence >= oper->precedence && !(last.precedence == oper->precedence && oper->assoc == SYOp::Assoc::Left))
-					break;
-
-				if (!expr_pop_syop(s, t, op_stack, subexprs))
+				if (!parse(s, *expr.literal))
 					return false;
 			}
 
-			if (!op_stack.push_back(*oper))
+			ss.expecting_operator = true;
+
+			break;
+		}
+		case Token::Tag::ParenBeg:
+		{
+			if (ss.expecting_operator)
+			{
+				while (ss.op_stk.size() != 0)
+				{
+					if (ss.op_stk.last().precedence >= 1)
+						break;
+
+					if (!expr_pop_operator(ss))
+						return false;
+				}
+
+				Call* call;
+
+				if (!alloc(&call))
+					return error_out_of_memory(s, ctx);
+
+				if (!parse(s, *call, std::move(ss.ex_stk.last())))
+				{
+					free(call);
+
+					return false;
+				}
+
+				ss.ex_stk.last().tag = Expr::Tag::Call;
+
+				ss.ex_stk.last().call = call;
+			}
+			else
+			{
+				next(s, ctx);
+
+				++ss.paren_nesting;
+
+				if (!ss.op_stk.push_back({ ShOp::HelperOp::ParenBeg, 255, ShOp::Assoc::Left }))
+					return error_out_of_memory(s, ctx);
+			}
+
+			break;
+		}
+		case Token::Tag::ParenEnd:
+		{
+			if (!ss.expecting_operator || ss.paren_nesting == 0)
+				goto POP_REMAINING_OPS;
+
+			next(s, ctx);
+
+			--ss.paren_nesting;
+
+			assert(ss.op_stk.size() != 0);
+
+			while (ss.op_stk.last().precedence != 255)
+			{
+				if (!expr_pop_operator(ss))
+					return false;
+
+				assert(ss.op_stk.size() != 0);
+			}
+
+			ss.op_stk.pop();
+
+			break;
+		}
+		case Token::Tag::BracketBeg:
+		{
+			next(s, ctx);
+
+			if (!ss.expecting_operator)
+				goto POP_REMAINING_OPS;
+
+			Expr expr{};
+
+			if (!alloc(&expr.binary_op))
+				return error_out_of_memory(s, ctx);
+
+			expr.tag = Expr::Tag::BinaryOp;
+
+			expr.binary_op->op = BinaryOp::Op::Index;
+
+			expr.binary_op->lhs = std::move(ss.ex_stk.last());
+
+			if (!parse(s, expr.binary_op->rhs))
+				return false;
+
+			if (expect(s, Token::Tag::BracketEnd, ctx) == nullptr)
+				return false;
+
+			ss.ex_stk.last() = std::move(expr);
+
+			break;
+		}
+		default:
+		{
+			ShOp op;
+
+			if (!token_tag_to_sh_op(t->tag, ss.expecting_operator, op))
+			{
+				if (ss.expecting_operator)
+					goto POP_REMAINING_OPS;
+
+				return error_invalid_syntax(s, ctx, t, "Expected Unary Operator, ParenBeg, BracketBeg, Ident or Literal");
+			}
+
+			next(s, ctx);
+			
+			while (ss.op_stk.size() != 0)
+			{
+				const ShOp prev_op = ss.op_stk.last();
+
+				if (prev_op.precedence >= op.precedence && !(prev_op.precedence == op.precedence && op.assoc == ShOp::Assoc::Left))
+					break;
+
+				if (!expr_pop_operator(ss))
+					return false;
+			}
+
+			if (!ss.op_stk.push_back(op))
 				return error_out_of_memory(s, ctx);
 			
-			expecting_operator = false;
+			ss.expecting_operator = false;
+
+			break;
+		}
 		}
 	}
 
-	if (paren_nesting != 0)
+POP_REMAINING_OPS:
+
+	if (ss.paren_nesting != 0)
 		return error_invalid_syntax(s, ctx, nullptr, "Unmatched ParenBeg");
 
-	while (op_stack.size() != 0)
-		if (!expr_pop_syop(s, nullptr, op_stack, subexprs))
+	while (ss.op_stk.size() != 0)
+		if (!expr_pop_operator(ss))
 			return false;
 
-	if (subexprs.size() != 1)
+	if (ss.ex_stk.size() != 1)
 		return error_invalid_syntax(s, ctx, nullptr, "Too many subexpressions");
 
-	out = std::move(subexprs.first());
+	out = std::move(ss.ex_stk.first());
 
 	return true;
 }
@@ -1811,12 +1897,12 @@ static bool parse(pstate& s, TypeRef& out) noexcept
 	}
 	else
 	{
-		if (!alloc(&out.name))
+		if (!alloc(&out.expr))
 			return error_out_of_memory(s, ctx);
 
-		out.tag = TypeRef::Tag::Name;
+		out.tag = TypeRef::Tag::Expr;
 
-		return parse(s, *out.name);
+		return parse(s, *out.expr);
 	}
 }
 
@@ -1828,7 +1914,7 @@ static bool parse(pstate& s, Definition& out) noexcept
 	{
 		next(s, ctx);
 
-		out.ident = t->data_strview();
+		out.opt_ident = t->data_strview();
 		
 		if (const Token* t1 = next(s, ctx); t1 == nullptr)
 			return false;
@@ -1836,22 +1922,29 @@ static bool parse(pstate& s, Definition& out) noexcept
 			out.is_comptime = true;
 		else if (t1->tag != Token::Tag::Colon)
 			return error_invalid_syntax(s, ctx, t1, "Expected Colon or DoubleColon");
+			
+		if (const Token* t1 = peek(s); t1 == nullptr || t1->tag != Token::Tag::Set)
+		{
+			if (!parse(s, out.opt_type))
+				return false;
+		}
+
+		if (const Token* t1 = peek(s); t1 != nullptr && t1->tag == Token::Tag::Set)
+		{
+			next(s, ctx);
+
+			if (!parse(s, out.opt_value))
+				return false;
+		}
 	}
-
-	if (const Token* t = peek(s); t == nullptr || t->tag != Token::Tag::Set)
+	else
 	{
-		if (!parse(s, out.opt_type))
-			return false;
-	}
-
-	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Set)
-	{
-		next(s, ctx);
-
+		out.is_comptime = true;
+		
 		if (!parse(s, out.opt_value))
 			return false;
 	}
-	
+
 	return true;
 }
 

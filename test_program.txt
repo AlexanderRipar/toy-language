@@ -1,3 +1,8 @@
+x := y(a, b)(z[2]())
+
+my_func ::= proc() -> i32
+	return f[5].y(1, g(a.b.c, d + 1))
+
 my_slice : []i32
 
 my_array : [5 * 2] mut i32

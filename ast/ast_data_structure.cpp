@@ -54,7 +54,7 @@ static void cleanup_helper(Literal& obj) noexcept
 
 static void cleanup_helper(Expr& obj) noexcept
 {
-	if (obj.name == nullptr)
+	if (obj.literal == nullptr)
 	{
 		assert(obj.tag == Expr::Tag::EMPTY);
 
@@ -63,9 +63,8 @@ static void cleanup_helper(Expr& obj) noexcept
 
 	switch (obj.tag)
 	{
-	case Expr::Tag::Name:
-		obj.name->~Name();
-		break;
+	case Expr::Tag::Ident:
+		return; // Nothing to free :)
 
 	case Expr::Tag::Literal:
 		obj.literal->~Literal();
@@ -79,12 +78,16 @@ static void cleanup_helper(Expr& obj) noexcept
 		obj.binary_op->~BinaryOp();
 		break;
 
+	case Expr::Tag::Call:
+		obj.call->~Call();
+		break;
+
 	default:
 		assert(false);
 		break;
 	}
 
-	free(obj.name);
+	free(obj.literal);
 }
 
 static void cleanup_helper(Argument& obj) noexcept
@@ -129,8 +132,8 @@ static void cleanup_helper(TypeRef& obj) noexcept
 		obj.type->~Type();
 		break;
 
-	case TypeRef::Tag::Name:
-		obj.name->~Name();
+	case TypeRef::Tag::Expr:
+		obj.expr->~Expr();
 		break;
 
 	case TypeRef::Tag::Ref:
@@ -233,7 +236,7 @@ static void cleanup_helper(Statement& obj) noexcept
 		break;
 
 	case Statement::Tag::Call:
-		obj.call->~Name();
+		obj.call->~Call();
 		break;
 
 	case Statement::Tag::Definition:
@@ -366,6 +369,15 @@ Expr& Expr::operator=(Expr&& o) noexcept
 	return move_helper(this, &o);
 }
 
+Call& Call::operator=(Call&& o) noexcept
+{
+	callee = std::move(o.callee);
+
+	args = std::move(o.args);
+
+	return *this;
+}
+
 Argument& Argument::operator=(Argument&& o) noexcept
 {
 	return move_helper(this, &o);
@@ -381,22 +393,6 @@ Array& Array::operator=(Array&& o) noexcept
 	elem_type = std::move(o.elem_type);
 
 	elem_cnt = std::move(o.elem_cnt);
-
-	return *this;
-}
-
-NamePart& NamePart::operator=(NamePart&& o) noexcept
-{
-	ident = std::move(o.ident);
-
-	args = std::move(o.args);
-
-	return *this;
-}
-
-Name& Name::operator=(Name&& o) noexcept
-{
-	parts = std::move(o.parts);
 
 	return *this;
 }
@@ -443,7 +439,7 @@ Definition& Definition::operator=(Definition&& o) noexcept
 {
 	is_comptime = std::move(o.is_comptime);
 
-	ident = std::move(o.ident);
+	opt_ident = std::move(o.opt_ident);
 
 	opt_type = std::move(o.opt_type);
 
@@ -564,9 +560,7 @@ To& To::operator=(To&& o) noexcept
 
 Impl& Impl::operator=(Impl&& o) noexcept
 {
-	trait_name = std::move(o.trait_name);
-
-	bindings = std::move(o.bindings);
+	trait = std::move(o.trait);
 
 	definitions = std::move(o.definitions);
 
@@ -595,7 +589,7 @@ Proc& Proc::operator=(Proc&& o) noexcept
 {
 	signature = std::move(o.signature);
 
-	body = std::move(o.body);
+	opt_body = std::move(o.opt_body);
 
 	return *this;
 }

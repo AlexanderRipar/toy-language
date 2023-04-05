@@ -36,6 +36,8 @@ struct Catch;
 
 struct Array;
 
+struct Call;
+
 
 
 struct IntegerLiteral
@@ -108,21 +110,26 @@ struct Expr
 	enum class Tag
 	{
 		EMPTY = 0,
-		Name,
+		Ident,
 		Literal,
 		UnaryOp,
 		BinaryOp,
+		Call,
 	} tag = Tag::EMPTY;
+
+	u32 ident_len;
 
 	union
 	{
-		Name* name;
+		const char* ident_beg;
 		
 		Literal* literal;
 
 		UnaryOp* unary_op;
 
 		BinaryOp* binary_op;
+
+		Call* call;
 	};
 	
 	~Expr() noexcept;
@@ -167,13 +174,30 @@ struct Argument
 	Argument(const Argument& o) noexcept = delete;
 };
 
+struct Call
+{
+	Expr callee;
+
+	vec<Argument> args;
+
+	Call() noexcept = default;
+
+	Call& operator=(Call&& o) noexcept;
+
+	Call& operator=(const Call& o) noexcept = delete;
+
+	Call(Call&& o) noexcept = delete;
+
+	Call(const Call& o) noexcept = delete;
+};
+
 struct TypeRef
 {
 	enum class Tag : u8
 	{
 		EMPTY = 0,
 		Type,
-		Name,
+		Expr,
 		Ref,
 		Slice,
 		Array,
@@ -187,7 +211,7 @@ struct TypeRef
 	{
 		Type* type;
 
-		Name* name;
+		Expr* expr;
 
 		TypeRef* ref_or_slice;
 
@@ -224,38 +248,6 @@ struct Array
 	Array(const Array& o) noexcept = delete;
 };
 
-struct NamePart
-{
-	strview ident;
-
-	vec<Argument, 0> args;
-
-	NamePart() noexcept = default;
-
-	NamePart& operator=(NamePart&& o) noexcept;
-
-	NamePart& operator=(const NamePart& o) noexcept = delete;
-
-	NamePart(NamePart&& o) noexcept = delete;
-
-	NamePart(const NamePart& o) noexcept = delete;
-};
-
-struct Name
-{
-	vec<NamePart, 1> parts;
-
-	Name() noexcept = default;
-
-	Name& operator=(Name&& o) noexcept;
-
-	Name& operator=(const Name& o) noexcept = delete;
-
-	Name(Name&& o) noexcept = delete;
-
-	Name(const Name& o) noexcept = delete;
-};
-
 struct BinaryOp
 {
 	enum class Op : u8
@@ -279,6 +271,8 @@ struct BinaryOp
 		CmpGe,
 		CmpNe,
 		CmpEq,
+		Member,
+		Index,
 	} op;
 
 	Expr lhs;
@@ -363,7 +357,7 @@ struct Definition
 {
 	bool is_comptime;
 
-	strview ident;
+	strview opt_ident;
 
 	TypeRef opt_type;
 
@@ -430,7 +424,7 @@ struct Statement
 
 		Block* block;
 
-		Name* call;
+		Call* call;
 
 		Definition* definition;
 
@@ -485,7 +479,7 @@ struct Assignment
 		SetShiftR,
 	} op = Op::NONE;
 
-	Name assignee;
+	Expr assignee;
 
 	TopLevelExpr value;
 
@@ -673,9 +667,7 @@ struct To
 
 struct Impl
 {
-	Name trait_name;
-
-	vec<Argument, 1> bindings;
+	Call trait;
 
 	vec<Definition, 1> definitions;
 
@@ -728,7 +720,7 @@ struct Proc
 {
 	ProcSignature signature;
 
-	Statement body;
+	Statement opt_body;
 
 	Proc() noexcept = default;
 
