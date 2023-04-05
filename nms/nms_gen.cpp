@@ -1,4 +1,1 @@
-#ifndef NMS_GEN_INCLUDE_GUARD
-#define NMS_GEN_INCLUDE_GUARD
-
-#endif // NMS_GEN_INCLUDE_GUARD
+#include "nms_gen.hpp"
