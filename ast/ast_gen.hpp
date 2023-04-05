@@ -1,7 +1,7 @@
 #ifndef AST_GEN_INCLUDE_GUARD
 #define AST_GEN_INCLUDE_GUARD
 
-#include "../tok/token_gen.hpp"
+#include "../tok/tok_gen.hpp"
 #include "../util/types.hpp"
 #include "../util/vec.hpp"
 #include "../util/strview.hpp"

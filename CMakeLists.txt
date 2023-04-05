@@ -5,7 +5,7 @@ project(compilator)
 
 
 add_executable(compilator main.cpp
-	tok/token_gen.hpp tok/token_gen.cpp
+	tok/tok_gen.hpp tok/tok_gen.cpp
 	ast/ast_gen.hpp ast/ast_gen.cpp
 	ast/ast_fmt.hpp ast/ast_fmt.cpp
 	ast/ast_data_structure.hpp ast/ast_data_structure.cpp

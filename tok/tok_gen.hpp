@@ -1,5 +1,5 @@
-#ifndef TOKEN_GEN_INCLUDE_GUARD
-#define TOKEN_GEN_INCLUDE_GUARD
+#ifndef TOK_GEN_INCLUDE_GUARD
+#define TOK_GEN_INCLUDE_GUARD
 
 #include <vector>
 #include "../util/vec.hpp"
@@ -101,4 +101,4 @@ struct Token
 
 vec<Token> tokenize(strview data, bool include_comments) noexcept;
 
-#endif // TOKEN_GEN_INCLUDE_GUARD
+#endif // TOK_GEN_INCLUDE_GUARD

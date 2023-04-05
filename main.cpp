@@ -1,4 +1,4 @@
-#include "tok/token_gen.hpp"
+#include "tok/tok_gen.hpp"
 #include "ast/ast_gen.hpp"
 #include "ast/ast_fmt.hpp"
 
