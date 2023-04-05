@@ -1444,6 +1444,10 @@ static bool parse(pstate& s, Expr& out) noexcept
 
 	ShState ss{ s };
 
+	const Token* prev_paren_beg = nullptr;
+
+	const Token* const first_token = peek(s);
+
 	while (true)
 	{
 		const Token* t = peek(s);
@@ -1506,6 +1510,8 @@ static bool parse(pstate& s, Expr& out) noexcept
 		}
 		case Token::Tag::ParenBeg:
 		{
+			prev_paren_beg = t;
+
 			if (ss.expecting_operator)
 			{
 				while (ss.op_stk.size() != 0)
@@ -1645,14 +1651,18 @@ static bool parse(pstate& s, Expr& out) noexcept
 POP_REMAINING_OPS:
 
 	if (ss.paren_nesting != 0)
-		return error_invalid_syntax(s, ctx, nullptr, "Unmatched ParenBeg");
+	{
+		assert(prev_paren_beg != nullptr);
+
+		return error_invalid_syntax(s, ctx, prev_paren_beg, "Unmatched ParenBeg");
+	}
 
 	while (ss.op_stk.size() != 0)
 		if (!expr_pop_operator(ss))
 			return false;
 
 	if (ss.ex_stk.size() != 1)
-		return error_invalid_syntax(s, ctx, nullptr, "Too many subexpressions");
+		return error_invalid_syntax(s, ctx, first_token, "Too many subexpressions");
 
 	out = std::move(ss.ex_stk.first());
 
