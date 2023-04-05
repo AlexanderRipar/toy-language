@@ -1575,6 +1575,17 @@ static bool parse(pstate& s, Expr& out) noexcept
 			if (!ss.expecting_operator)
 				goto POP_REMAINING_OPS;
 
+			while (ss.op_stk.size() != 0)
+			{
+				const ShOp prev_op = ss.op_stk.last();
+
+				if (prev_op.precedence > 1)
+					break;
+
+				if (!expr_pop_operator(ss))
+					return false;
+			}
+
 			Expr expr{};
 
 			if (!alloc(&expr.binary_op))
