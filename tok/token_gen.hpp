@@ -8,7 +8,7 @@
 
 struct Token
 {
-	enum class Type
+	enum class Tag
 	{
 		INVALID = 0,
 		EndOfStream,
@@ -91,7 +91,7 @@ struct Token
 		Mut,
 		Const,
 		Pub,
-	} type;
+	} tag;
 
 	u32 line_number;
 

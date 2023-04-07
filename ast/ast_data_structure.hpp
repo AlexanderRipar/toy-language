@@ -93,14 +93,14 @@ struct CharLiteral
 
 struct Literal
 {
-	enum class Type
+	enum class Tag
 	{
 		EMPTY = 0,
 		Integer,
 		Float,
 		String,
 		Char,
-	} type = Type::EMPTY;
+	} tag = Tag::EMPTY;
 
 	union
 	{
@@ -122,14 +122,14 @@ struct Literal
 
 struct Expr
 {
-	enum class Type
+	enum class Tag
 	{
 		EMPTY = 0,
 		BinaryOp,
 		UnaryOp,
 		Literal,
 		Name,
-	} type = Type::EMPTY;
+	} tag = Tag::EMPTY;
 
 	union
 	{
@@ -153,7 +153,7 @@ struct Expr
 
 struct TopLevelExpr
 {
-	enum class Type
+	enum class Tag
 	{
 		EMPTY = 0,
 		Expr,
@@ -161,7 +161,7 @@ struct TopLevelExpr
 		For,
 		Block,
 		Switch,
-	} type = Type::EMPTY;
+	} tag = Tag::EMPTY;
 
 	union
 	{
@@ -189,7 +189,7 @@ struct TopLevelExpr
 
 struct Statement
 {
-	enum class Type
+	enum class Tag
 	{
 		EMPTY = 0,
 		Block,
@@ -202,7 +202,7 @@ struct Statement
 		VariableDef,
 		Assignment,
 		Call,
-	} type = Type::EMPTY;
+	} tag = Tag::EMPTY;
 
 	union
 	{
@@ -316,14 +316,14 @@ struct UnaryOp
 
 struct TypeRef
 {
-	enum class Type
+	enum class Tag
 	{
 		EMPTY = 0,
 		Ref,
 		Name,
 		Inline,
 		TypeExpr,
-	} type = Type::EMPTY;
+	} tag = Tag::EMPTY;
 
 	enum class Mutability
 	{
@@ -416,12 +416,12 @@ struct ForEach
 
 struct ForSignature
 {
-	enum class Type
+	enum class Tag
 	{
 		EMPTY = 0,
 		Normal,
 		ForEach,
-	} type;
+	} tag;
 
 	union
 	{
@@ -512,12 +512,12 @@ struct Yield
 
 struct ProcParam
 {
-	enum class Type
+	enum class Tag
 	{
 		EMPTY = 0,
 		VariableDef,
 		GenericType,
-	} type = Type::EMPTY;
+	} tag = Tag::EMPTY;
 
 	union
 	{
@@ -575,12 +575,12 @@ struct TypeValue
 
 struct TraitMember
 {
-	enum class Type
+	enum class Tag
 	{
 		EMPTY = 0,
 		Definition,
 		ProcSignature,
-	} type = Type::EMPTY;
+	} tag = Tag::EMPTY;
 
 	union
 	{
@@ -704,7 +704,7 @@ struct ModuleDef
 
 struct Definition
 {
-	enum class Type
+	enum class Tag
 	{
 		EMPTY = 0,
 		Proc,
@@ -718,7 +718,7 @@ struct Definition
 		Impl,
 		Annotation,
 		Module,
-	} type = Type::EMPTY;
+	} tag = Tag::EMPTY;
 
 	struct
 	{

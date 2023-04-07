@@ -91,10 +91,10 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("Pub"),
 	};
 
-	if (static_cast<u32>(type) >= _countof(types))
+	if (static_cast<u32>(tag) >= _countof(types))
 		return types[0];
 
-	return types[static_cast<u32>(type)];
+	return types[static_cast<u32>(tag)];
 }
 
 strview Token::data_strview() const noexcept
@@ -127,57 +127,57 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			++c;
 
 		if (streqc({ beg, c }, strview::from_literal("for")))
-			t.type = Token::Type::For;
+			t.tag = Token::Tag::For;
 		else if (streqc({ beg, c }, strview::from_literal("do")))
-			t.type = Token::Type::Do;
+			t.tag = Token::Tag::Do;
 		else if (streqc({ beg, c }, strview::from_literal("until")))
-			t.type = Token::Type::Until;
+			t.tag = Token::Tag::Until;
 		else if (streqc({ beg, c }, strview::from_literal("if")))
-			t.type = Token::Type::If;
+			t.tag = Token::Tag::If;
 		else if (streqc({ beg, c }, strview::from_literal("else")))
-			t.type = Token::Type::Else;
+			t.tag = Token::Tag::Else;
 		else if (streqc({ beg, c }, strview::from_literal("switch")))
-			t.type = Token::Type::Switch;
+			t.tag = Token::Tag::Switch;
 		else if (streqc({ beg, c }, strview::from_literal("go")))
-			t.type = Token::Type::Go;
+			t.tag = Token::Tag::Go;
 		else if (streqc({ beg, c }, strview::from_literal("to")))
-			t.type = Token::Type::To;
+			t.tag = Token::Tag::To;
 		else if (streqc({ beg, c }, strview::from_literal("yield")))
-			t.type = Token::Type::Yield;
+			t.tag = Token::Tag::Yield;
 		else if (streqc({ beg, c }, strview::from_literal("return")))
-			t.type = Token::Type::Return;
+			t.tag = Token::Tag::Return;
 		else if (streqc({ beg, c }, strview::from_literal("case")))
-			t.type = Token::Type::Case;
+			t.tag = Token::Tag::Case;
 		else if (streqc({ beg, c }, strview::from_literal("proc")))
-			t.type = Token::Type::Proc;
+			t.tag = Token::Tag::Proc;
 		else if (streqc({ beg, c }, strview::from_literal("struct")))
-			t.type = Token::Type::Struct;
+			t.tag = Token::Tag::Struct;
 		else if (streqc({ beg, c }, strview::from_literal("union")))
-			t.type = Token::Type::Union;
+			t.tag = Token::Tag::Union;
 		else if (streqc({ beg, c }, strview::from_literal("enum")))
-			t.type = Token::Type::Enum;
+			t.tag = Token::Tag::Enum;
 		else if (streqc({ beg, c }, strview::from_literal("bitset")))
-			t.type = Token::Type::Bitset;
+			t.tag = Token::Tag::Bitset;
 		else if (streqc({ beg, c }, strview::from_literal("alias")))
-			t.type = Token::Type::Alias;
+			t.tag = Token::Tag::Alias;
 		else if (streqc({ beg, c }, strview::from_literal("trait")))
-			t.type = Token::Type::Trait;
+			t.tag = Token::Tag::Trait;
 		else if (streqc({ beg, c }, strview::from_literal("impl")))
-			t.type = Token::Type::Impl;
+			t.tag = Token::Tag::Impl;
 		else if (streqc({ beg, c }, strview::from_literal("annotation")))
-			t.type = Token::Type::Annotation;
+			t.tag = Token::Tag::Annotation;
 		else if (streqc({ beg, c }, strview::from_literal("module")))
-			t.type = Token::Type::Module;
+			t.tag = Token::Tag::Module;
 		else if (streqc({ beg, c }, strview::from_literal("mut")))
-			t.type = Token::Type::Mut;
+			t.tag = Token::Tag::Mut;
 		else if (streqc({ beg, c }, strview::from_literal("const")))
-			t.type = Token::Type::Const;
+			t.tag = Token::Tag::Const;
 		else if (streqc({ beg, c }, strview::from_literal("pub")))
-			t.type = Token::Type::Pub;
+			t.tag = Token::Tag::Pub;
 		else if (streqc({ beg, c }, strview::from_literal("catch")))
-			t.type = Token::Type::Catch;
+			t.tag = Token::Tag::Catch;
 		else
-			t.type = Token::Type::Ident;
+			t.tag = Token::Tag::Ident;
 	}
 	else if (fst >= '0' && fst <= '9')
 	{
@@ -234,17 +234,17 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 		}
 
 		if (c != end && is_name_token_char(*c))
-			t.type = Token::Type::LitBadNumber;
+			t.tag = Token::Tag::LitBadNumber;
 		else if (is_float)
-			t.type = Token::Type::LitFloat;
+			t.tag = Token::Tag::LitFloat;
 		else
-			t.type = Token::Type::LitInt;
+			t.tag = Token::Tag::LitInt;
 	}
 	else if (fst == '\'')
 	{
 		++c;
 
-		t.type = Token::Type::LitChar;
+		t.tag = Token::Tag::LitChar;
 
 		bool escaped = false;
 
@@ -264,7 +264,7 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 	{
 		++c;
 
-		t.type = Token::Type::LitString;
+		t.tag = Token::Tag::LitString;
 
 		bool escaped = false;
 
@@ -285,37 +285,37 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 		switch(fst)
 		{
 		case '[': {
-			t.type = Token::Type::BracketBeg;
+			t.tag = Token::Tag::BracketBeg;
 			
 			break;
 		}
 
 		case ']': {
-			t.type = Token::Type::BracketEnd;
+			t.tag = Token::Tag::BracketEnd;
 			
 			break;
 		}
 		
 		case '{': {
-			t.type = Token::Type::SquiggleBeg;
+			t.tag = Token::Tag::SquiggleBeg;
 			
 			break;
 		}
 		
 		case '}': {
-			t.type = Token::Type::SquiggleEnd;
+			t.tag = Token::Tag::SquiggleEnd;
 			
 			break;
 		}
 
 		case '(': {
-			t.type = Token::Type::ParenBeg;
+			t.tag = Token::Tag::ParenBeg;
 			
 			break;
 		}
 
 		case ')': {
-			t.type = Token::Type::ParenEnd;
+			t.tag = Token::Tag::ParenEnd;
 			
 			break;
 		}
@@ -325,30 +325,30 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				++c;
 
-				t.type = Token::Type::DoubleColon;
+				t.tag = Token::Tag::DoubleColon;
 			}
 			else
 			{
-				t.type = Token::Type::Colon;
+				t.tag = Token::Tag::Colon;
 			}
 			
 			break;
 		}
 
 		case ';': {
-			t.type = Token::Type::Semicolon;
+			t.tag = Token::Tag::Semicolon;
 			
 			break;
 		}
 
 		case ',': {
-			t.type = Token::Type::Comma;
+			t.tag = Token::Tag::Comma;
 			
 			break;
 		}
 
 		case '#': {
-			t.type = Token::Type::Hashtag;
+			t.tag = Token::Tag::Hashtag;
 			
 			break;
 		}
@@ -356,13 +356,13 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 		case '.': {
 			if (c + 2 < end && c[1] == '.' && c[2] == '.')
 			{
-				t.type = Token::Type::TripleDot;
+				t.tag = Token::Tag::TripleDot;
 
 				c += 2;
 			}
 			else
 			{
-				t.type = Token::Type::Dot;
+				t.tag = Token::Tag::Dot;
 			}
 
 			break;
@@ -375,30 +375,30 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 				{
 					c += 2;
 
-					t.type = Token::Type::SetBitShl;
+					t.tag = Token::Tag::SetBitShl;
 				}
 				else
 				{
 					++c;
 
-					t.type = Token::Type::OpBitShl;
+					t.tag = Token::Tag::OpBitShl;
 				}
 			}
 			else if (nxt == '=')
 			{
 				++c;
 
-				t.type = Token::Type::OpLe;
+				t.tag = Token::Tag::OpLe;
 			}
 			else if (nxt == '-')
 			{
 				++c;
 
-				t.type = Token::Type::ArrowLeft;
+				t.tag = Token::Tag::ArrowLeft;
 			}
 			else
 			{
-				t.type = Token::Type::OpLt;
+				t.tag = Token::Tag::OpLt;
 			}
 
 			break;
@@ -411,24 +411,24 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 				{
 					c += 2;
 
-					t.type = Token::Type::SetBitShr;
+					t.tag = Token::Tag::SetBitShr;
 				}
 				else
 				{
 					++c;
 
-					t.type = Token::Type::OpBitShr;
+					t.tag = Token::Tag::OpBitShr;
 				}
 			}
 			else if (nxt == '=')
 			{
 				++c;
 
-				t.type = Token::Type::OpGe;
+				t.tag = Token::Tag::OpGe;
 			}
 			else
 			{
-				t.type = Token::Type::OpGt;
+				t.tag = Token::Tag::OpGt;
 			}
 
 			break;
@@ -439,11 +439,11 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				++c;
 
-				t.type = Token::Type::OpEq;
+				t.tag = Token::Tag::OpEq;
 			}
 			else
 			{
-				t.type = Token::Type::Set;
+				t.tag = Token::Tag::Set;
 			}
 
 			break;
@@ -454,11 +454,11 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				++c;
 
-				t.type = Token::Type::SetAdd;
+				t.tag = Token::Tag::SetAdd;
 			}
 			else
 			{
-				t.type = Token::Type::OpAdd;
+				t.tag = Token::Tag::OpAdd;
 			}
 
 			break;
@@ -469,17 +469,17 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				++c;
 
-				t.type = Token::Type::ArrowRight;
+				t.tag = Token::Tag::ArrowRight;
 			}
 			else if (nxt == '=')
 			{
 				++c;
 
-				t.type = Token::Type::SetSub;
+				t.tag = Token::Tag::SetSub;
 			}
 			else
 			{
-				t.type = Token::Type::OpSub;
+				t.tag = Token::Tag::OpSub;
 			}
 
 			break;
@@ -490,11 +490,11 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				++c;
 
-				t.type = Token::Type::SetMul;
+				t.tag = Token::Tag::SetMul;
 			}
 			else
 			{
-				t.type = Token::Type::OpMul;
+				t.tag = Token::Tag::OpMul;
 			}
 
 			break;
@@ -505,11 +505,11 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				++c;
 
-				t.type = Token::Type::SetDiv;
+				t.tag = Token::Tag::SetDiv;
 			}
 			else if (nxt == '/')
 			{
-				t.type = Token::Type::Comment;
+				t.tag = Token::Tag::Comment;
 
 				c += 2;
 
@@ -550,13 +550,13 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 				}
 				
 				if (nesting_count == 0)
-					t.type = Token::Type::Comment;
+					t.tag = Token::Tag::Comment;
 				else
-					t.type = Token::Type::IncompleteComment;
+					t.tag = Token::Tag::IncompleteComment;
 			}
 			else
 			{
-				t.type = Token::Type::OpDiv;
+				t.tag = Token::Tag::OpDiv;
 			}
 
 			break;
@@ -567,11 +567,11 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				++c;
 
-				t.type = Token::Type::SetMod;
+				t.tag = Token::Tag::SetMod;
 			}
 			else
 			{
-				t.type = Token::Type::OpMod;
+				t.tag = Token::Tag::OpMod;
 			}
 
 			break;
@@ -582,17 +582,17 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				++c;
 
-				t.type = Token::Type::OpLogAnd;
+				t.tag = Token::Tag::OpLogAnd;
 			}
 			else if (nxt == '=')
 			{
 				++c;
 
-				t.type = Token::Type::SetBitAnd;
+				t.tag = Token::Tag::SetBitAnd;
 			}
 			else
 			{
-				t.type = Token::Type::OpBitAnd_Ref;
+				t.tag = Token::Tag::OpBitAnd_Ref;
 			}
 
 			break;
@@ -603,17 +603,17 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				++c;
 
-				t.type = Token::Type::OpLogOr;
+				t.tag = Token::Tag::OpLogOr;
 			}
 			else if (nxt == '=')
 			{
 				++c;
 
-				t.type = Token::Type::SetBitOr;
+				t.tag = Token::Tag::SetBitOr;
 			}
 			else
 			{
-				t.type = Token::Type::OpBitOr;
+				t.tag = Token::Tag::OpBitOr;
 			}
 
 			break;
@@ -624,18 +624,18 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				++c;
 
-				t.type = Token::Type::SetBitXor;
+				t.tag = Token::Tag::SetBitXor;
 			}
 			else
 			{
-				t.type = Token::Type::OpBitXor;
+				t.tag = Token::Tag::OpBitXor;
 			}
 
 			break;
 		}
 
 		case '~': {
-			t.type = Token::Type::UOpBitNot;
+			t.tag = Token::Tag::UOpBitNot;
 
 			break;
 		}
@@ -645,18 +645,18 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				++c;
 
-				t.type = Token::Type::OpNe;
+				t.tag = Token::Tag::OpNe;
 			}
 			else
 			{
-				t.type = Token::Type::UOpLogNot;
+				t.tag = Token::Tag::UOpLogNot;
 			}
 
 			break;
 		}
 		
 		default: {
-			t.type = Token::Type::INVALID;
+			t.tag = Token::Tag::INVALID;
 
 			break;
 		}
@@ -701,7 +701,7 @@ vec<Token> tokenize(strview data, bool include_comments) noexcept
 
 		tokens.push_back(get_token(c, end, &c, curr_line_number));
 
-		if (!include_comments && tokens.last().type == Token::Type::Comment)
+		if (!include_comments && tokens.last().tag == Token::Tag::Comment)
 			tokens.pop();
 	}
 

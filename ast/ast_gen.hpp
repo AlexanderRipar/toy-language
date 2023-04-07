@@ -9,7 +9,7 @@
 
 struct Result
 {
-	enum class Type
+	enum class Tag
 	{
 		Ok,
 		OutOfMemory,
@@ -18,9 +18,9 @@ struct Result
 		NotImplemented,
 		UnexpectedEndOfStream,
 		Oopsie,
-	} type = Type::Ok;
+	} tag = Tag::Ok;
 
-	Token::Type expected_token;
+	Token::Tag expected_token;
 
 	const char* error_ctx;
 

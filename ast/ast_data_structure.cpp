@@ -23,50 +23,50 @@ static void statement_cleanup_helper(Statement& stmt) noexcept
 	if (stmt.assignment == nullptr)
 		return;
 
-	switch (stmt.type)
+	switch (stmt.tag)
 	{
-	case Statement::Type::Block:
+	case Statement::Tag::Block:
 		stmt.block->~Block();
 		break;
 
-	case Statement::Type::If:
+	case Statement::Tag::If:
 		stmt.if_block->~If();
 		break;
 
-	case Statement::Type::For:
+	case Statement::Tag::For:
 		stmt.for_block->~For();
 		break;
 
-	case Statement::Type::Switch:
+	case Statement::Tag::Switch:
 		stmt.switch_block->~Switch();
 		break;
 
-	case Statement::Type::VariableDef:
+	case Statement::Tag::VariableDef:
 		stmt.variable_def->~VariableDef();
 		break;
 
-	case Statement::Type::Assignment:
+	case Statement::Tag::Assignment:
 		stmt.assignment->~Assignment();
 		break;
 
-	case Statement::Type::Call:
+	case Statement::Tag::Call:
 		stmt.call->~Name();
 		break;
 
-	case Statement::Type::Go:
+	case Statement::Tag::Go:
 		stmt.go_stmt->~Go();
 		break;
 
-	case Statement::Type::Return:
+	case Statement::Tag::Return:
 		stmt.return_stmt->~Return();
 		break;
 
-	case Statement::Type::Yield:
+	case Statement::Tag::Yield:
 		stmt.yield_stmt->~Yield();
 		break;
 
 	default:
-		assert(stmt.type == Statement::Type::EMPTY);
+		assert(stmt.tag == Statement::Tag::EMPTY);
 		break;
 	}
 
@@ -78,26 +78,26 @@ static void typeref_cleanup_helper(TypeRef& typeref) noexcept
 	if (typeref.ref == nullptr)
 		return;
 
-	switch (typeref.type)
+	switch (typeref.tag)
 	{
-	case TypeRef::Type::Ref:
+	case TypeRef::Tag::Ref:
 		typeref.ref->~TypeRef();
 		break;
 
-	case TypeRef::Type::Name:
+	case TypeRef::Tag::Name:
 		typeref.name_ref->~Name();
 		break;
 
-	case TypeRef::Type::Inline:
+	case TypeRef::Tag::Inline:
 		typeref.inline_def->~Definition();
 		break;
 
-	case TypeRef::Type::TypeExpr:
+	case TypeRef::Tag::TypeExpr:
 		typeref.type_expr->~Expr();
 		break;
 
 	default:
-		assert(typeref.type == TypeRef::Type::EMPTY);
+		assert(typeref.tag == TypeRef::Tag::EMPTY);
 		break;
 	}
 
@@ -109,18 +109,18 @@ static void traitmember_cleanup_helper(TraitMember& traitmember) noexcept
 	if (traitmember.signature == nullptr)
 		return;
 
-	switch (traitmember.type)
+	switch (traitmember.tag)
 	{
-	case TraitMember::Type::Definition:
+	case TraitMember::Tag::Definition:
 		traitmember.definition->~Definition();
 		break;
 
-	case TraitMember::Type::ProcSignature:
+	case TraitMember::Tag::ProcSignature:
 		traitmember.signature->~ProcSignature();
 		break;
 
 	default :
-		assert(traitmember.type == TraitMember::Type::EMPTY);
+		assert(traitmember.tag == TraitMember::Tag::EMPTY);
 		break;
 	}
 
@@ -132,26 +132,26 @@ static void expr_cleanup_helper(Expr& expr) noexcept
 	if (expr.binary_op == nullptr)
 		return;
 
-	switch (expr.type)
+	switch (expr.tag)
 	{
-	case Expr::Type::BinaryOp:
+	case Expr::Tag::BinaryOp:
 		expr.binary_op->~BinaryOp();
 		break;
 
-	case Expr::Type::UnaryOp:
+	case Expr::Tag::UnaryOp:
 		expr.unary_op->~UnaryOp();
 		break;
 
-	case Expr::Type::Literal:
+	case Expr::Tag::Literal:
 		expr.literal->~Literal();
 		break;
 
-	case Expr::Type::Name:
+	case Expr::Tag::Name:
 		expr.name_ref->~Name();
 		break;
 
 	default:
-		assert(expr.type == Expr::Type::EMPTY);
+		assert(expr.tag == Expr::Tag::EMPTY);
 		break;
 	}
 
@@ -170,35 +170,35 @@ static void toplevelexpr_cleanup_helper(TopLevelExpr& tl_expr) noexcept
 	if (tl_expr.block == nullptr)
 		return;
 
-	switch (tl_expr.type)
+	switch (tl_expr.tag)
 	{
-	case TopLevelExpr::Type::Expr: {
+	case TopLevelExpr::Tag::Expr: {
 		tl_expr.expr->~Expr();
 		break;
 	}
 
-	case TopLevelExpr::Type::If: {
+	case TopLevelExpr::Tag::If: {
 		tl_expr.if_block->~If();
 		break;
 	}
 
-	case TopLevelExpr::Type::For: {
+	case TopLevelExpr::Tag::For: {
 		tl_expr.for_block->~For();
 		break;
 	}
 
-	case TopLevelExpr::Type::Block: {
+	case TopLevelExpr::Tag::Block: {
 		tl_expr.block->~Block();
 		break;
 	}
 
-	case TopLevelExpr::Type::Switch: {
+	case TopLevelExpr::Tag::Switch: {
 		tl_expr.switch_block->~Switch();
 		break;
 	}
 
 	default: {
-		assert(tl_expr.type == TopLevelExpr::Type::EMPTY);
+		assert(tl_expr.tag == TopLevelExpr::Tag::EMPTY);
 		break;
 	}
 	}
@@ -208,90 +208,90 @@ static void toplevelexpr_cleanup_helper(TopLevelExpr& tl_expr) noexcept
 
 static void definition_cleanup_helper(Definition& definition) noexcept
 {
-	switch (definition.type)
+	switch (definition.tag)
 	{
-	case Definition::Type::Proc:
+	case Definition::Tag::Proc:
 		definition.proc_def.~ProcDef();
 		break;
 
-	case Definition::Type::Struct:
+	case Definition::Tag::Struct:
 		definition.struct_def.~StructDef();
 		break;
 
-	case Definition::Type::Union:
+	case Definition::Tag::Union:
 		definition.union_def.~UnionDef();
 		break;
 
-	case Definition::Type::Enum:
+	case Definition::Tag::Enum:
 		definition.enum_def.~EnumDef();
 		break;
 
-	case Definition::Type::Bitset:
+	case Definition::Tag::Bitset:
 		definition.bitset_def.~BitsetDef();
 		break;
 
-	case Definition::Type::Alias:
+	case Definition::Tag::Alias:
 		definition.alias_def.~AliasDef();
 		break;
 
-	case Definition::Type::NewType:
+	case Definition::Tag::NewType:
 		definition.newtype_def.~NewTypeDef();
 
-	case Definition::Type::Trait:
+	case Definition::Tag::Trait:
 		definition.trait_def.~TraitDef();
 		break;
 
-	case Definition::Type::Impl:
+	case Definition::Tag::Impl:
 		definition.impl_def.~ProcDef();
 		break;
 
-	case Definition::Type::Annotation:
+	case Definition::Tag::Annotation:
 		definition.annotation_def.~AnnotationDef();
 		break;
 
-	case Definition::Type::Module:
+	case Definition::Tag::Module:
 		definition.module_def.~ModuleDef();
 		break;
 
 	default:
-		assert(definition.type == Definition::Type::EMPTY);
+		assert(definition.tag == Definition::Tag::EMPTY);
 		break;
 	}
 }
 
 static void proc_param_cleanup_helper(ProcParam& obj) noexcept
 {
-	switch (obj.type)
+	switch (obj.tag)
 	{
-	case ProcParam::Type::VariableDef:
+	case ProcParam::Tag::VariableDef:
 		obj.variable_def.~VariableDef();
 		break;
 	
-	case ProcParam::Type::GenericType:
+	case ProcParam::Tag::GenericType:
 		// noop
 		break;
 
 	default:
-		assert(obj.type == ProcParam::Type::EMPTY);
+		assert(obj.tag == ProcParam::Tag::EMPTY);
 	}
 }
 
 static void for_signature_cleanup_helper(ForSignature& obj) noexcept
 {
-	switch (obj.type)
+	switch (obj.tag)
 	{
-	case ForSignature::Type::Normal:
+	case ForSignature::Tag::Normal:
 		obj.normal.opt_init.~VariableDef();
 		obj.normal.opt_condition.~Expr();
 		obj.normal.opt_step.~Assignment();
 		break;
 
-	case ForSignature::Type::ForEach:
+	case ForSignature::Tag::ForEach:
 		obj.for_each.~ForEach();
 		break;
 
 	default:
-		assert(obj.type == ForSignature::Type::EMPTY);
+		assert(obj.tag == ForSignature::Tag::EMPTY);
 		break;
 	}
 }
@@ -299,21 +299,21 @@ static void for_signature_cleanup_helper(ForSignature& obj) noexcept
 
 Literal::~Literal() noexcept
 {
-	switch (type)
+	switch (tag)
 	{
-	case Type::Integer:
+	case Tag::Integer:
 		integer_literal.~IntegerLiteral();
 		break;
 
-	case Type::Float:
+	case Tag::Float:
 		float_literal.~FloatLiteral();
 		break;
 
-	case Type::String:
+	case Tag::String:
 		string_literal.~StringLiteral();
 		break;
 
-	case Type::Char:
+	case Tag::Char:
 		char_literal.~CharLiteral();
 		break;
 

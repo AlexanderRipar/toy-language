@@ -18,7 +18,7 @@ struct pstate
 
 static bool error_out_of_memory(pstate& s, const char* ctx) noexcept
 {
-	s.rst.type = Result::Type::OutOfMemory;
+	s.rst.tag = Result::Tag::OutOfMemory;
 
 	s.rst.error_ctx = ctx;
 
@@ -29,7 +29,7 @@ static bool error_out_of_memory(pstate& s, const char* ctx) noexcept
 
 static bool error_invalid_syntax(pstate& s, const char* ctx, const Token* curr, const char* msg) noexcept
 {
-	s.rst.type = Result::Type::InvalidSyntax;
+	s.rst.tag = Result::Tag::InvalidSyntax;
 
 	s.rst.error_ctx = ctx;
 
@@ -40,9 +40,9 @@ static bool error_invalid_syntax(pstate& s, const char* ctx, const Token* curr, 
 	return false;
 }
 
-static bool error_unexpected_token(pstate& s, const char* ctx, const Token* curr, Token::Type expected) noexcept
+static bool error_unexpected_token(pstate& s, const char* ctx, const Token* curr, Token::Tag expected) noexcept
 {
-	s.rst.type = Result::Type::UnexpectedToken;
+	s.rst.tag = Result::Tag::UnexpectedToken;
 
 	s.rst.error_ctx = ctx;
 
@@ -55,7 +55,7 @@ static bool error_unexpected_token(pstate& s, const char* ctx, const Token* curr
 
 static bool error_not_implemented(pstate& s, const char* ctx) noexcept
 {
-	s.rst.type = Result::Type::NotImplemented;
+	s.rst.tag = Result::Tag::NotImplemented;
 
 	s.rst.error_ctx = ctx;
 
@@ -66,7 +66,7 @@ static bool error_not_implemented(pstate& s, const char* ctx) noexcept
 
 static bool error_unexpected_end(pstate& s, const char* ctx) noexcept
 {
-	s.rst.type = Result::Type::UnexpectedEndOfStream;
+	s.rst.tag = Result::Tag::UnexpectedEndOfStream;
 
 	s.rst.error_ctx = ctx;
 
@@ -97,11 +97,11 @@ static const Token* next(pstate& s, const char* ctx) noexcept
 	return s.curr++;
 }
 
-static const Token* expect(pstate& s, Token::Type expected, const char* ctx) noexcept
+static const Token* expect(pstate& s, Token::Tag expected, const char* ctx) noexcept
 {
 	const Token* t = next(s, ctx);
 
-	if (t->type != expected)
+	if (t->tag != expected)
 	{
 		error_unexpected_token(s, ctx, t, expected);
 
@@ -188,19 +188,19 @@ static const SYOp* from_token(const Token* t, bool is_unary) noexcept
 
 	if (!is_unary)
 	{
-		if (const isz idx = static_cast<isz>(t->type) - static_cast<isz>(Token::Type::OpMul); idx < _countof(bin_ops) && idx >= 0)
+		if (const isz idx = static_cast<isz>(t->tag) - static_cast<isz>(Token::Tag::OpMul); idx < _countof(bin_ops) && idx >= 0)
 			return &bin_ops[idx];
 		else
 			return nullptr;
 	}
-	else if (t->type == Token::Type::OpSub)
+	else if (t->tag == Token::Tag::OpSub)
 	{
 		return &un_minus;
 	}
 	else
 	{
-		if (const isz idx = static_cast<isz>(t->type) - static_cast<isz>(Token::Type::UOpLogNot); idx < _countof(un_ops) && idx >= 0)
-			return &un_ops[static_cast<i32>(t->type) - static_cast<i32>(Token::Type::UOpLogNot)];
+		if (const isz idx = static_cast<isz>(t->tag) - static_cast<isz>(Token::Tag::UOpLogNot); idx < _countof(un_ops) && idx >= 0)
+			return &un_ops[static_cast<i32>(t->tag) - static_cast<i32>(Token::Tag::UOpLogNot)];
 		else
 			return nullptr;
 	}
@@ -221,7 +221,7 @@ static bool expr_pop_syop(pstate& s, const Token* t, vec<SYOp, 32>& op_stack, ve
 
 	if (popped.opcnt == 1)
 	{
-		expr.type = Expr::Type::UnaryOp;
+		expr.tag = Expr::Tag::UnaryOp;
 
 		if (!alloc(&expr.unary_op))
 			return error_out_of_memory(s, ctx);
@@ -234,7 +234,7 @@ static bool expr_pop_syop(pstate& s, const Token* t, vec<SYOp, 32>& op_stack, ve
 	}
 	else if (popped.opcnt == 2)
 	{
-		expr.type = Expr::Type::BinaryOp;
+		expr.tag = Expr::Tag::BinaryOp;
 
 		if (!alloc(&expr.binary_op))
 			return error_out_of_memory(s, ctx);
@@ -255,11 +255,11 @@ static bool expr_pop_syop(pstate& s, const Token* t, vec<SYOp, 32>& op_stack, ve
 	return true;
 }
 
-static bool token_type_to_assign_oper(const Token::Type t, Assignment::Op& out_assign_op) noexcept
+static bool token_type_to_assign_oper(const Token::Tag t, Assignment::Op& out_assign_op) noexcept
 {
-	const i32 idx = static_cast<i32>(t) - static_cast<i32>(Token::Type::Set);
+	const i32 idx = static_cast<i32>(t) - static_cast<i32>(Token::Tag::Set);
 
-	if (idx < 0 || idx >= static_cast<i32>(Token::Type::SetBitShr) - static_cast<i32>(Token::Type::Set))
+	if (idx < 0 || idx >= static_cast<i32>(Token::Tag::SetBitShr) - static_cast<i32>(Token::Tag::Set))
 		return false;
 
 	out_assign_op = static_cast<Assignment::Op>(idx + 1);
@@ -340,7 +340,7 @@ static bool parse_float_literal(pstate& s, FloatLiteral& out) noexcept
 {
 	static constexpr const char ctx[] = "FloatLiteral";
 
-	const Token* t = expect(s, Token::Type::LitFloat, ctx);
+	const Token* t = expect(s, Token::Tag::LitFloat, ctx);
 
 	if (t == nullptr)
 		return false;
@@ -354,7 +354,7 @@ static bool parse_integer_literal(pstate& s, IntegerLiteral& out) noexcept
 {
 	static constexpr const char ctx[] = "IntegerLiteral";
 
-	const Token* t = expect(s, Token::Type::LitInt, ctx);
+	const Token* t = expect(s, Token::Tag::LitInt, ctx);
 
 	if (t == nullptr)
 		return false;
@@ -420,7 +420,7 @@ static bool parse_char_literal(pstate& s, CharLiteral& out) noexcept
 {
 	static constexpr const char ctx[] = "CharLiteral";
 
-	const Token* t = expect(s, Token::Type::LitChar, ctx);
+	const Token* t = expect(s, Token::Tag::LitChar, ctx);
 
 	if (t == nullptr)
 		return false;
@@ -552,7 +552,7 @@ static bool parse_string_literal(pstate& s, StringLiteral& out) noexcept
 {
 	static constexpr const char ctx[] = "StringLiteral";
 
-	const Token* t = expect(s, Token::Type::LitString, ctx);
+	const Token* t = expect(s, Token::Tag::LitString, ctx);
 
 	if (t == nullptr)
 		return false;
@@ -604,27 +604,27 @@ static bool parse_literal(pstate& s, Literal& out) noexcept
 	{
 		return error_unexpected_end(s, ctx);
 	}
-	else if (t->type == Token::Type::LitString)
+	else if (t->tag == Token::Tag::LitString)
 	{
-		out.type = Literal::Type::String;
+		out.tag = Literal::Tag::String;
 
 		return parse_string_literal(s, out.string_literal);
 	}
-	else if (t->type == Token::Type::LitChar)
+	else if (t->tag == Token::Tag::LitChar)
 	{
-		out.type = Literal::Type::Char;
+		out.tag = Literal::Tag::Char;
 
 		return parse_char_literal(s, out.char_literal);
 	}
-	else if (t->type == Token::Type::LitInt)
+	else if (t->tag == Token::Tag::LitInt)
 	{
-		out.type = Literal::Type::Integer;
+		out.tag = Literal::Tag::Integer;
 
 		return parse_integer_literal(s, out.integer_literal);
 	}
-	else if (t->type == Token::Type::LitFloat)
+	else if (t->tag == Token::Tag::LitFloat)
 	{
-		out.type = Literal::Type::Float;
+		out.tag = Literal::Tag::Float;
 
 		return parse_float_literal(s, out.float_literal);
 	}
@@ -653,7 +653,7 @@ static bool parse_assignment(pstate& s, Assignment& out, Assignment::Op op = Ass
 
 		if (t == nullptr)
 			return false;
-		else if (!token_type_to_assign_oper(t->type, out.op))
+		else if (!token_type_to_assign_oper(t->tag, out.op))
 			return error_invalid_syntax(s, ctx, t, "Expected assignment operator");
 	}
 
@@ -664,7 +664,7 @@ static bool parse_case(pstate& s, Case& out) noexcept
 {
 	static constexpr const char ctx[] = "Case";
 
-	if (expect(s, Token::Type::Case, ctx) == nullptr)
+	if (expect(s, Token::Tag::Case, ctx) == nullptr)
 		return false;
 
 	if (!parse_expr(s, out.label))
@@ -680,7 +680,7 @@ static bool parse_yield(pstate& s, Yield& out) noexcept
 {
 	static constexpr const char ctx[] = "Yield";
 
-	if (expect(s, Token::Type::Yield, ctx) == nullptr)
+	if (expect(s, Token::Tag::Yield, ctx) == nullptr)
 		return false;
 
 	if (!parse_top_level_expr(s, out.yield_value))
@@ -693,7 +693,7 @@ static bool parse_return(pstate& s, Return& out) noexcept
 {
 	static constexpr const char ctx[] = "Return";
 
-	if (expect(s, Token::Type::Return, ctx) == nullptr)
+	if (expect(s, Token::Tag::Return, ctx) == nullptr)
 		return false;
 
 	if (!parse_top_level_expr(s, out.return_value))
@@ -706,7 +706,7 @@ static bool parse_go(pstate& s, Go& out) noexcept
 {
 	static constexpr const char ctx[] = "Go";
 
-	if (expect(s, Token::Type::Go, ctx) == nullptr)
+	if (expect(s, Token::Tag::Go, ctx) == nullptr)
 		return false;
 
 	return parse_expr(s, out.label);
@@ -716,7 +716,7 @@ static bool parse_switch(pstate& s, Switch& out) noexcept
 {
 	static constexpr const char ctx[] = "Switch";
 
-	if (expect(s, Token::Type::Switch, ctx) == nullptr)
+	if (expect(s, Token::Tag::Switch, ctx) == nullptr)
 		return false;
 
 	if (!parse_expr(s, out.switched))
@@ -730,7 +730,7 @@ static bool parse_switch(pstate& s, Switch& out) noexcept
 		if (!parse_case(s, out.cases.last()))
 			return false;
 
-		if (const Token* t = peek(s); t == nullptr || t->type != Token::Type::Case)
+		if (const Token* t = peek(s); t == nullptr || t->tag != Token::Tag::Case)
 			return true;
 	}
 }
@@ -741,7 +741,7 @@ static bool parse_for_each(pstate& s, ForEach& out) noexcept
 
 	while (true)
 	{
-		if (const Token* t = expect(s, Token::Type::Ident, ctx); t == nullptr)
+		if (const Token* t = expect(s, Token::Tag::Ident, ctx); t == nullptr)
 		{
 			return false;
 		}
@@ -755,9 +755,9 @@ static bool parse_for_each(pstate& s, ForEach& out) noexcept
 
 		if (const Token* t = next(s, ctx); t == nullptr)
 			return false;
-		else if (t->type == Token::Type::ArrowLeft)
+		else if (t->tag == Token::Tag::ArrowLeft)
 			break;
-		else if (t->type != Token::Type::Comma)
+		else if (t->tag != Token::Tag::Comma)
 			return error_invalid_syntax(s, ctx, t, "Expected ArrowLeft or Comma");
 	}
 
@@ -768,37 +768,37 @@ static bool parse_for_signature(pstate& s, ForSignature& out) noexcept
 {
 	static constexpr const char ctx[] = "ForSignature";
 
-	if (expect(s, Token::Type::For, ctx) == nullptr)
+	if (expect(s, Token::Tag::For, ctx) == nullptr)
 		return false;
 
-	if (const Token* t = peek(s, 1); t != nullptr && (t->type == Token::Type::Comma || t->type == Token::Type::ArrowLeft))
+	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Comma || t->tag == Token::Tag::ArrowLeft))
 	{
-		out.type = ForSignature::Type::ForEach;
+		out.tag = ForSignature::Tag::ForEach;
 
 		if (!parse_for_each(s, out.for_each))
 			return false;
 			
-		if (const Token* t2 = peek(s); t2 != nullptr && t2->type == Token::Type::Do)
+		if (const Token* t2 = peek(s); t2 != nullptr && t2->tag == Token::Tag::Do)
 			next(s, ctx);
 
 		return true;
 	}
-	else if (t->type == Token::Type::Colon)
+	else if (t->tag == Token::Tag::Colon)
 	{
 		if (!parse_variable_def(s, out.normal.opt_init))
 			return false;
 			
-		if (expect(s, Token::Type::Semicolon, ctx) == nullptr)
+		if (expect(s, Token::Tag::Semicolon, ctx) == nullptr)
 			return false;
 	}
 
-	if (const Token* t = peek(s); t != nullptr && t->type != Token::Type::Do && t->type != Token::Type::SquiggleBeg)
+	if (const Token* t = peek(s); t != nullptr && t->tag != Token::Tag::Do && t->tag != Token::Tag::SquiggleBeg)
 	{
 		if (!parse_expr(s, out.normal.opt_condition))
 			return false;
 	}
 
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::Semicolon)
+	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Semicolon)
 	{
 		next(s, ctx);
 
@@ -808,9 +808,9 @@ static bool parse_for_signature(pstate& s, ForSignature& out) noexcept
 
 	if (const Token* t = peek(s); t == nullptr)
 		return false;
-	else if (t->type == Token::Type::Do)
+	else if (t->tag == Token::Tag::Do)
 		next(s, ctx);
-	else if (t->type != Token::Type::SquiggleBeg)
+	else if (t->tag != Token::Tag::SquiggleBeg)
 		return error_invalid_syntax(s, ctx, t, "Expected Do or SquiggleBeg");
 
 	return true;
@@ -826,7 +826,7 @@ static bool parse_for(pstate& s, For& out) noexcept
 	if (!parse_statement(s, out.body))
 		return false;
 
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::Until)
+	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Until)
 	{
 		next(s, ctx);
 
@@ -841,10 +841,10 @@ static bool parse_if(pstate& s, If& out) noexcept
 {
 	static constexpr const char ctx[] = "If";
 
-	if (expect(s, Token::Type::If, ctx) == nullptr)
+	if (expect(s, Token::Tag::If, ctx) == nullptr)
 		return false;
 
-	if (const Token* t = peek(s, 1); t != nullptr && t->type == Token::Type::Colon)
+	if (const Token* t = peek(s, 1); t != nullptr && t->tag == Token::Tag::Colon)
 	{
 		if (!parse_variable_def(s, out.opt_init))
 			return false;
@@ -856,7 +856,7 @@ static bool parse_if(pstate& s, If& out) noexcept
 	if (!parse_statement(s, out.body))
 		return false;
 
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::Else)
+	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Else)
 	{
 		next(s, ctx);
 
@@ -871,10 +871,10 @@ static bool parse_catch(pstate& s, Catch& out) noexcept
 {
 	static constexpr const char ctx[] = "Catch";
 
-	if (expect(s, Token::Type::Catch, ctx) == nullptr)
+	if (expect(s, Token::Tag::Catch, ctx) == nullptr)
 		return false;
 
-	if (const Token* t = expect(s, Token::Type::Ident, ctx); t != nullptr)
+	if (const Token* t = expect(s, Token::Tag::Ident, ctx); t != nullptr)
 		out.error_ident = t->data_strview();
 	else
 		return false;
@@ -890,9 +890,9 @@ static bool parse_top_level_expr(pstate& s, TopLevelExpr& out) noexcept
 	{
 		return error_unexpected_end(s, ctx);
 	}
-	else if (t->type == Token::Type::If)
+	else if (t->tag == Token::Tag::If)
 	{
-		out.type = TopLevelExpr::Type::If;
+		out.tag = TopLevelExpr::Tag::If;
 
 		if (!alloc(&out.if_block))
 			return error_out_of_memory(s, ctx);
@@ -900,9 +900,9 @@ static bool parse_top_level_expr(pstate& s, TopLevelExpr& out) noexcept
 		if (!parse_if(s, *out.if_block))
 			return false;
 	}
-	else if (t->type == Token::Type::For)
+	else if (t->tag == Token::Tag::For)
 	{
-		out.type = TopLevelExpr::Type::For;
+		out.tag = TopLevelExpr::Tag::For;
 
 		if (!alloc(&out.for_block))
 			return error_out_of_memory(s, ctx);
@@ -910,9 +910,9 @@ static bool parse_top_level_expr(pstate& s, TopLevelExpr& out) noexcept
 		if (!parse_for(s, *out.for_block))
 			return false;
 	}
-	else if (t->type == Token::Type::SquiggleBeg)
+	else if (t->tag == Token::Tag::SquiggleBeg)
 	{
-		out.type = TopLevelExpr::Type::Block;
+		out.tag = TopLevelExpr::Tag::Block;
 
 		if (!alloc(&out.block))
 			return error_out_of_memory(s, ctx);
@@ -920,9 +920,9 @@ static bool parse_top_level_expr(pstate& s, TopLevelExpr& out) noexcept
 		if (!parse_block(s, *out.block))
 			return false;
 	}
-	else if (t->type == Token::Type::Switch)
+	else if (t->tag == Token::Tag::Switch)
 	{
-		out.type = TopLevelExpr::Type::Switch;
+		out.tag = TopLevelExpr::Tag::Switch;
 
 		if (!alloc(&out.switch_block))
 			return error_out_of_memory(s, ctx);
@@ -932,7 +932,7 @@ static bool parse_top_level_expr(pstate& s, TopLevelExpr& out) noexcept
 	}
 	else
 	{
-		out.type = TopLevelExpr::Type::Expr;
+		out.tag = TopLevelExpr::Tag::Expr;
 
 		if (!alloc(&out.expr))
 			return error_out_of_memory(s, ctx);
@@ -941,7 +941,7 @@ static bool parse_top_level_expr(pstate& s, TopLevelExpr& out) noexcept
 			return false;
 	}
 
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::Catch)
+	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Catch)
 	{
 		if (!alloc(&out.opt_catch))
 			return error_out_of_memory(s, ctx);
@@ -957,18 +957,18 @@ static bool parse_type_name(pstate& s, TypeName& out) noexcept
 {
 	static constexpr const char ctx[] = "TypeName";
 
-	const Token* t = expect(s, Token::Type::Ident, ctx); 
+	const Token* t = expect(s, Token::Tag::Ident, ctx); 
 	
 	if (t == nullptr)
 		return false;
 
 	out.name = t->data_strview();
 	
-	if (const Token* t1 = peek(s); t != nullptr && t1->type == Token::Type::ParenBeg)
+	if (const Token* t1 = peek(s); t != nullptr && t1->tag == Token::Tag::ParenBeg)
 	{
 		next(s, ctx);
 
-		if (const Token* t2 = peek(s); t2 != nullptr && t2->type == Token::Type::ParenEnd)
+		if (const Token* t2 = peek(s); t2 != nullptr && t2->tag == Token::Tag::ParenEnd)
 			return true;
 
 		while (true)
@@ -981,9 +981,9 @@ static bool parse_type_name(pstate& s, TypeName& out) noexcept
 
 			if (const Token* t2 = next(s, ctx); t2 == nullptr)
 				return false;
-			else if (t2->type == Token::Type::ParenEnd)
+			else if (t2->tag == Token::Tag::ParenEnd)
 				break;
-			else if (t2->type != Token::Type::Comma)
+			else if (t2->tag != Token::Tag::Comma)
 				return error_invalid_syntax(s, ctx, t, "Expected ParenEnd or Dot");
 		}
 	}
@@ -1003,7 +1003,7 @@ static bool parse_name(pstate& s, Name& out) noexcept
 		if (!parse_type_name(s, out.parts.last()))
 			return false;
 
-		if (const Token* t = peek(s); t == nullptr || t->type != Token::Type::Dot)
+		if (const Token* t = peek(s); t == nullptr || t->tag != Token::Tag::Dot)
 			return true;
 
 		next(s, ctx);
@@ -1036,7 +1036,7 @@ static bool parse_expr(pstate& s, Expr& out) noexcept
 			// expected.
 			break;
 		}
-		else if (t->type == Token::Type::LitString || t->type == Token::Type::LitChar || t->type == Token::Type::LitInt || t->type == Token::Type::LitFloat)
+		else if (t->tag == Token::Tag::LitString || t->tag == Token::Tag::LitChar || t->tag == Token::Tag::LitInt || t->tag == Token::Tag::LitFloat)
 		{
 			if (expecting_operator)
 				break;
@@ -1046,7 +1046,7 @@ static bool parse_expr(pstate& s, Expr& out) noexcept
 
 			Expr& expr = subexprs.last();
 			
-			expr.type = Expr::Type::Literal;
+			expr.tag = Expr::Tag::Literal;
 
 			if (!alloc(&expr.literal))
 				return error_out_of_memory(s, ctx);
@@ -1056,7 +1056,7 @@ static bool parse_expr(pstate& s, Expr& out) noexcept
 
 			expecting_operator = true;
 		}
-		else if (t->type == Token::Type::Ident)
+		else if (t->tag == Token::Tag::Ident)
 		{
 			if (expecting_operator)
 				break;
@@ -1066,7 +1066,7 @@ static bool parse_expr(pstate& s, Expr& out) noexcept
 
 			Expr& expr = subexprs.last();
 			
-			expr.type = Expr::Type::Name;
+			expr.tag = Expr::Tag::Name;
 
 			if (!alloc(&expr.name_ref))
 				return error_out_of_memory(s, ctx);
@@ -1076,7 +1076,7 @@ static bool parse_expr(pstate& s, Expr& out) noexcept
 			
 			expecting_operator = true;
 		}
-		else if (t->type == Token::Type::ParenBeg)
+		else if (t->tag == Token::Tag::ParenBeg)
 		{
 			if (expecting_operator)
 				break;
@@ -1088,7 +1088,7 @@ static bool parse_expr(pstate& s, Expr& out) noexcept
 			if (!op_stack.push_back({ 255, SYOp::Assoc::Left, UnaryOp::Op::EMPTY }))
 				return error_out_of_memory(s, ctx);
 		}
-		else if (t->type == Token::Type::ParenEnd)
+		else if (t->tag == Token::Tag::ParenEnd)
 		{
 			if (!expecting_operator || paren_nesting == 0)
 				break;
@@ -1160,7 +1160,7 @@ static bool parse_to(pstate& s, To& out) noexcept
 {
 	static constexpr const char ctx[] = "To";
 
-	if (expect(s, Token::Type::To, ctx) == nullptr)
+	if (expect(s, Token::Tag::To, ctx) == nullptr)
 		return false;
 
 	while (true)
@@ -1171,7 +1171,7 @@ static bool parse_to(pstate& s, To& out) noexcept
 		if (!parse_case(s, out.cases.last()))
 			return false;
 
-		if (const Token* t = peek(s); t == nullptr || t->type != Token::Type::Case)
+		if (const Token* t = peek(s); t == nullptr || t->tag != Token::Tag::Case)
 			return true;
 	}
 }
@@ -1184,63 +1184,63 @@ static bool parse_statement(pstate& s, Statement& out) noexcept
 	{
 		return error_unexpected_end(s, ctx);
 	}
-	else if (t->type == Token::Type::SquiggleBeg)
+	else if (t->tag == Token::Tag::SquiggleBeg)
 	{
-		out.type = Statement::Type::Block;
+		out.tag = Statement::Tag::Block;
 
 		if (!alloc(&out.block))
 			return error_out_of_memory(s, ctx);
 
 		return parse_block(s, *out.block);
 	}
-	else if (t->type == Token::Type::If)
+	else if (t->tag == Token::Tag::If)
 	{
-		out.type = Statement::Type::If;
+		out.tag = Statement::Tag::If;
 
 		if (!alloc(&out.if_block))
 			return error_out_of_memory(s, ctx);
 
 		return parse_if(s, *out.if_block);
 	}
-	else if (t->type == Token::Type::For)
+	else if (t->tag == Token::Tag::For)
 	{
-		out.type = Statement::Type::For;
+		out.tag = Statement::Tag::For;
 
 		if (!alloc(&out.for_block))
 			return error_out_of_memory(s, ctx);
 
 		return parse_for(s, *out.for_block);
 	}
-	else if (t->type == Token::Type::Switch)
+	else if (t->tag == Token::Tag::Switch)
 	{
-		out.type = Statement::Type::Switch;
+		out.tag = Statement::Tag::Switch;
 
 		if (!alloc(&out.switch_block))
 			return error_out_of_memory(s, ctx);
 
 		return parse_switch(s, *out.switch_block);
 	}
-	else if (t->type == Token::Type::Go)
+	else if (t->tag == Token::Tag::Go)
 	{
-		out.type = Statement::Type::Go;
+		out.tag = Statement::Tag::Go;
 
 		if (!alloc(&out.go_stmt))
 			return error_out_of_memory(s, ctx);
 
 		return parse_go(s, *out.go_stmt);
 	}
-	else if (t->type == Token::Type::Return)
+	else if (t->tag == Token::Tag::Return)
 	{
-		out.type = Statement::Type::Return;
+		out.tag = Statement::Tag::Return;
 
 		if (!alloc(&out.return_stmt))
 			return error_out_of_memory(s, ctx);
 
 		return parse_return(s, *out.return_stmt);
 	}
-	else if (t->type == Token::Type::Yield)
+	else if (t->tag == Token::Tag::Yield)
 	{
-		out.type = Statement::Type::Yield;
+		out.tag = Statement::Tag::Yield;
 
 		if (!alloc(&out.yield_stmt))
 			return error_out_of_memory(s, ctx);
@@ -1249,9 +1249,9 @@ static bool parse_statement(pstate& s, Statement& out) noexcept
 	}
 	else
 	{
-		if (const Token* t1 = peek(s, 1); t1 != nullptr && t1->type == Token::Type::Colon)
+		if (const Token* t1 = peek(s, 1); t1 != nullptr && t1->tag == Token::Tag::Colon)
 		{
-			out.type = Statement::Type::VariableDef;
+			out.tag = Statement::Tag::VariableDef;
 
 			if (!alloc(&out.variable_def))
 				return error_out_of_memory(s, ctx);
@@ -1267,9 +1267,9 @@ static bool parse_statement(pstate& s, Statement& out) noexcept
 
 			Assignment::Op assignment_op;
 
-			if (const Token* t2 = peek(s); t2 != nullptr && token_type_to_assign_oper(t2->type, assignment_op))
+			if (const Token* t2 = peek(s); t2 != nullptr && token_type_to_assign_oper(t2->tag, assignment_op))
 			{
-				out.type = Statement::Type::Assignment;
+				out.tag = Statement::Tag::Assignment;
 
 				if (!alloc(&out.assignment))
 					return false;
@@ -1279,7 +1279,7 @@ static bool parse_statement(pstate& s, Statement& out) noexcept
 			}
 			else if (name.parts.last().bounds.size() != 0)
 			{
-				out.type = Statement::Type::Call;
+				out.tag = Statement::Tag::Call;
 
 				if (!alloc(&out.call))
 					return error_out_of_memory(s, ctx);
@@ -1300,7 +1300,7 @@ static bool parse_variable_def(pstate& s, VariableDef& out) noexcept
 {
 	static constexpr const char ctx[] = "VariableDef";
 
-	if (const Token* t = expect(s, Token::Type::Ident, ctx); t == nullptr)
+	if (const Token* t = expect(s, Token::Tag::Ident, ctx); t == nullptr)
 	{
 		return false;
 	}
@@ -1309,16 +1309,16 @@ static bool parse_variable_def(pstate& s, VariableDef& out) noexcept
 		out.ident = t->data_strview();
 	}
 
-	if (expect(s, Token::Type::Colon, ctx) == nullptr)
+	if (expect(s, Token::Tag::Colon, ctx) == nullptr)
 		return false;
 
-	if (const Token* t = peek(s); t != nullptr && t->type != Token::Type::Set)
+	if (const Token* t = peek(s); t != nullptr && t->tag != Token::Tag::Set)
 	{
 		if (!parse_type_ref(s, out.opt_type_ref))
 			return false;
 	}
 
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::Set)
+	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Set)
 	{
 		next(s, ctx);
 
@@ -1339,14 +1339,14 @@ static bool parse_type_ref(pstate& s, TypeRef& out) noexcept
 
 	while (true)
 	{
-		if (t->type == Token::Type::Const)
+		if (t->tag == Token::Tag::Const)
 		{
 			if (out.mutability != TypeRef::Mutability::Immutable)
 				return error_invalid_syntax(s, ctx, t, "More than one mutability specifier used");
 
 			out.mutability = TypeRef::Mutability::Const;
 		}
-		else if (t->type == Token::Type::Mut)
+		else if (t->tag == Token::Tag::Mut)
 		{
 			if (out.mutability != TypeRef::Mutability::Immutable)
 				return error_invalid_syntax(s, ctx, t, "More than one mutability specifier used");
@@ -1366,31 +1366,31 @@ static bool parse_type_ref(pstate& s, TypeRef& out) noexcept
 			return error_unexpected_end(s, ctx);
 	}
 
-	if (t->type == Token::Type::OpBitAnd_Ref)
+	if (t->tag == Token::Tag::OpBitAnd_Ref)
 	{
 		next(s, ctx);
 
-		out.type = TypeRef::Type::Ref;
+		out.tag = TypeRef::Tag::Ref;
 
 		if (!alloc(&out.ref))
 			return error_out_of_memory(s, ctx);
 
 		return parse_type_ref(s, *out.ref);
 	}
-	else if (t->type == Token::Type::Struct || t->type == Token::Type::Union || t->type == Token::Type::Enum || t->type == Token::Type::Bitset || t->type == Token::Type::Proc)
+	else if (t->tag == Token::Tag::Struct || t->tag == Token::Tag::Union || t->tag == Token::Tag::Enum || t->tag == Token::Tag::Bitset || t->tag == Token::Tag::Proc)
 	{
-		out.type = TypeRef::Type::Inline;
+		out.tag = TypeRef::Tag::Inline;
 
 		if (!alloc(&out.inline_def))
 			return error_out_of_memory(s, ctx);
 
 		return parse_definition(s, *out.inline_def, true);
 	}
-	else if (t->type == Token::Type::Ident)
+	else if (t->tag == Token::Tag::Ident)
 	{
-		if (const Token* t1 = peek(s, 1); t1 != nullptr && t1->type == Token::Type::DoubleColon)
+		if (const Token* t1 = peek(s, 1); t1 != nullptr && t1->tag == Token::Tag::DoubleColon)
 		{
-			out.type = TypeRef::Type::Inline;
+			out.tag = TypeRef::Tag::Inline;
 
 			if (!alloc(&out.inline_def))
 				return error_out_of_memory(s, ctx);
@@ -1399,7 +1399,7 @@ static bool parse_type_ref(pstate& s, TypeRef& out) noexcept
 		}
 		else
 		{
-			out.type = TypeRef::Type::Name;
+			out.tag = TypeRef::Tag::Name;
 
 			if (!alloc(&out.name_ref))
 				return error_out_of_memory(s, ctx);
@@ -1409,7 +1409,7 @@ static bool parse_type_ref(pstate& s, TypeRef& out) noexcept
 	}
 	else
 	{
-		out.type = TypeRef::Type::TypeExpr;
+		out.tag = TypeRef::Tag::TypeExpr;
 
 		if (!alloc(&out.type_expr))
 			return error_out_of_memory(s, ctx);
@@ -1422,12 +1422,12 @@ static bool parse_type_value(pstate& s, TypeValue& out) noexcept
 {
 	static constexpr const char ctx[] = "TypeValue";
 
-	if (const Token* t = expect(s, Token::Type::Ident, ctx); t == nullptr)
+	if (const Token* t = expect(s, Token::Tag::Ident, ctx); t == nullptr)
 		return false;
 	else
 		out.ident = t->data_strview();
 
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::Set)
+	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Set)
 	{
 		next(s, ctx);
 
@@ -1441,17 +1441,17 @@ static bool parse_type_member(pstate& s, TypeMember& out) noexcept
 {
 	static constexpr const char ctx[] = "TypeMember";
 
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::Ident)
+	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Ident)
 	{
 		next(s, ctx);
 
 		out.opt_ident = t->data_strview();
 
-		if (expect(s, Token::Type::Colon, ctx) == nullptr)
+		if (expect(s, Token::Tag::Colon, ctx) == nullptr)
 			return false;
 	}
 
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::Pub)
+	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Pub)
 	{
 		next(s, ctx);
 
@@ -1465,20 +1465,20 @@ static bool parse_block(pstate& s, Block& out) noexcept
 {
 	static constexpr const char ctx[] = "Block";
 
-	if (expect(s, Token::Type::SquiggleBeg, ctx) == nullptr)
+	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
 		return false;
 
 	while (true)
 	{
-		if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::SquiggleEnd)
+		if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::SquiggleEnd)
 		{
 			next(s, ctx);
 
 			break;
 		}
-		else if (t->type == Token::Type::Ident)
+		else if (t->tag == Token::Tag::Ident)
 		{
-			if (const Token* t1 = peek(s, 1); t1 != nullptr && t1->type == Token::Type::DoubleColon)
+			if (const Token* t1 = peek(s, 1); t1 != nullptr && t1->tag == Token::Tag::DoubleColon)
 			{
 				if (!out.definitions.push_back({}))
 					return error_out_of_memory(s, ctx);
@@ -1497,7 +1497,7 @@ static bool parse_block(pstate& s, Block& out) noexcept
 			return false;
 	}
 
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::To)
+	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::To)
 		return !parse_to(s, out.to_block);
 
 	return true;
@@ -1511,14 +1511,14 @@ static bool parse_proc_param(pstate& s, ProcParam& out) noexcept
 
 	if (t == nullptr)
 		return error_unexpected_end(s, ctx);
-	else if (t->type != Token::Type::Ident)
-		return error_unexpected_token(s, ctx, t, Token::Type::Ident);
+	else if (t->tag != Token::Tag::Ident)
+		return error_unexpected_token(s, ctx, t, Token::Tag::Ident);
 
 	if (t->data_strview()[0] == '?')
 	{
 		next(s, ctx);
 
-		out.type = ProcParam::Type::GenericType;
+		out.tag = ProcParam::Tag::GenericType;
 
 		out.generic_type = t->data_strview();
 
@@ -1526,7 +1526,7 @@ static bool parse_proc_param(pstate& s, ProcParam& out) noexcept
 	}
 	else
 	{
-		out.type = ProcParam::Type::VariableDef;
+		out.tag = ProcParam::Tag::VariableDef;
 
 		return parse_variable_def(s, out.variable_def);
 	}
@@ -1536,10 +1536,10 @@ static bool parse_proc_signature(pstate& s, ProcSignature& out) noexcept
 {
 	static constexpr const char ctx[] = "ProcSignature";
 
-	if (expect(s, Token::Type::ParenBeg, ctx) == nullptr)
+	if (expect(s, Token::Tag::ParenBeg, ctx) == nullptr)
 		return false;
 
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::ParenEnd)
+	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::ParenEnd)
 	{
 		next(s, ctx);
 
@@ -1556,15 +1556,15 @@ static bool parse_proc_signature(pstate& s, ProcSignature& out) noexcept
 
 		if (const Token* t = next(s, ctx); t == nullptr)
 			return false;
-		else if (t->type == Token::Type::ParenEnd)
+		else if (t->tag == Token::Tag::ParenEnd)
 			break;
-		else if (t->type != Token::Type::Comma)
+		else if (t->tag != Token::Tag::Comma)
 			return error_invalid_syntax(s, ctx, t, "Expected ParenEnd or Comma");
 	}
 
 AFTER_PARAMS:
 
-	if (const Token* t = peek(s); t == nullptr || t->type != Token::Type::ArrowRight)
+	if (const Token* t = peek(s); t == nullptr || t->tag != Token::Tag::ArrowRight)
 		return true;
 
 	next(s, ctx);
@@ -1579,12 +1579,12 @@ static bool parse_module_def(pstate& s, ModuleDef& out) noexcept
 {
 	static constexpr const char ctx[] = "ModuleDef";
 
-	if (expect(s, Token::Type::SquiggleBeg, ctx) == nullptr)
+	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
 		return false;
 
 	for (const Token* t = peek(s); t != nullptr; t = peek(s))
 	{
-		if (t->type == Token::Type::SquiggleEnd)
+		if (t->tag == Token::Tag::SquiggleEnd)
 		{
 			next(s, ctx);
 
@@ -1646,24 +1646,24 @@ static bool parse_bitset_def(pstate& s, BitsetDef& out) noexcept
 {
 	static constexpr const char ctx[] = "BitsetDef";
 
-	if (expect(s, Token::Type::SquiggleBeg, ctx) == nullptr)
+	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
 		return false;
 
 	for (const Token* t = peek(s); t != nullptr; t = peek(s))
 	{
-		if (t->type == Token::Type::SquiggleEnd)
+		if (t->tag == Token::Tag::SquiggleEnd)
 		{
 			next(s, ctx);
 
 			return true;
 		}
-		else if (t->type == Token::Type::Ident)
+		else if (t->tag == Token::Tag::Ident)
 		{
 			if (const Token* t1 = peek(s, 1); t1 == nullptr)
 			{
 				return error_unexpected_end(s, ctx);
 			}
-			else if (t1->type == Token::Type::Set)
+			else if (t1->tag == Token::Tag::Set)
 			{
 				if (!out.values.push_back({}))
 					return error_out_of_memory(s, ctx);
@@ -1671,7 +1671,7 @@ static bool parse_bitset_def(pstate& s, BitsetDef& out) noexcept
 				if (!parse_type_value(s, out.values.last()))
 					return false;
 			}
-			else if (t1->type == Token::Type::DoubleColon)
+			else if (t1->tag == Token::Tag::DoubleColon)
 			{
 				if (!out.definitions.push_back({}))
 					return error_out_of_memory(s, ctx);
@@ -1686,7 +1686,7 @@ static bool parse_bitset_def(pstate& s, BitsetDef& out) noexcept
 		}
 		else
 		{
-			return error_unexpected_token(s, ctx, t, Token::Type::Ident);
+			return error_unexpected_token(s, ctx, t, Token::Tag::Ident);
 		}
 	}
 
@@ -1697,24 +1697,24 @@ static bool parse_enum_def(pstate& s, EnumDef& out) noexcept
 {
 	static constexpr const char ctx[] = "EnumDef";
 
-	if (expect(s, Token::Type::SquiggleBeg, ctx) == nullptr)
+	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
 		return false;
 
 	for (const Token* t = peek(s); t != nullptr; t = peek(s))
 	{
-		if (t->type == Token::Type::SquiggleEnd)
+		if (t->tag == Token::Tag::SquiggleEnd)
 		{
 			next(s, ctx);
 
 			return true;
 		}
-		else if (t->type == Token::Type::Ident)
+		else if (t->tag == Token::Tag::Ident)
 		{
 			if (const Token* t1 = peek(s, 1); t1 == nullptr)
 			{
 				return error_unexpected_end(s, ctx);
 			}
-			else if (t1->type == Token::Type::DoubleColon)
+			else if (t1->tag == Token::Tag::DoubleColon)
 			{
 				if (!out.definitions.push_back({}))
 					return error_out_of_memory(s, ctx);
@@ -1733,7 +1733,7 @@ static bool parse_enum_def(pstate& s, EnumDef& out) noexcept
 		}
 		else
 		{
-			return error_unexpected_token(s, ctx, t, Token::Type::Ident);
+			return error_unexpected_token(s, ctx, t, Token::Tag::Ident);
 		}
 	}
 
@@ -1744,18 +1744,18 @@ static bool parse_union_def(pstate& s, UnionDef& out) noexcept
 {
 	static constexpr const char ctx[] = "UnionDef";
 
-	if (expect(s, Token::Type::SquiggleBeg, ctx) == nullptr)
+	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
 		return false;
 
 	for (const Token* t = peek(s); t != nullptr; t = peek(s))
 	{
-		if (t->type == Token::Type::SquiggleEnd)
+		if (t->tag == Token::Tag::SquiggleEnd)
 		{
 			next(s, ctx);
 
 			return true;
 		}
-		else if (t->type == Token::Type::Struct || t->type == Token::Type::Union || t->type == Token::Type::Enum || t->type == Token::Type::Bitset)
+		else if (t->tag == Token::Tag::Struct || t->tag == Token::Tag::Union || t->tag == Token::Tag::Enum || t->tag == Token::Tag::Bitset)
 		{
 			if (!out.members.push_back({}))
 				return error_out_of_memory(s, ctx);
@@ -1763,13 +1763,13 @@ static bool parse_union_def(pstate& s, UnionDef& out) noexcept
 			if (!parse_type_member(s, out.members.last()))
 				return false;
 		}
-		else if (t->type == Token::Type::Ident)
+		else if (t->tag == Token::Tag::Ident)
 		{
 			if (const Token* t1 = peek(s, 1); t1 == nullptr)
 			{
 				return error_unexpected_end(s, ctx);
 			}
-			else if (t1->type == Token::Type::Colon)
+			else if (t1->tag == Token::Tag::Colon)
 			{
 				if (!out.members.push_back({}))
 					return error_out_of_memory(s, ctx);
@@ -1777,7 +1777,7 @@ static bool parse_union_def(pstate& s, UnionDef& out) noexcept
 				if (!parse_type_member(s, out.members.last()))
 					return false;
 			}
-			else if (t1->type == Token::Type::DoubleColon)
+			else if (t1->tag == Token::Tag::DoubleColon)
 			{
 				if (!out.definitions.push_back({}))
 					return error_out_of_memory(s, ctx);
@@ -1792,7 +1792,7 @@ static bool parse_union_def(pstate& s, UnionDef& out) noexcept
 		}
 		else
 		{
-			return error_unexpected_token(s, ctx, t, Token::Type::Ident);
+			return error_unexpected_token(s, ctx, t, Token::Tag::Ident);
 		}
 	}
 
@@ -1802,18 +1802,18 @@ static bool parse_union_def(pstate& s, UnionDef& out) noexcept
 static bool parse_struct_def(pstate& s, StructDef& out) noexcept
 {
 	static constexpr const char ctx[] = "StructDef";
-	if (expect(s, Token::Type::SquiggleBeg, ctx) == nullptr)
+	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
 		return false;
 
 	for (const Token* t = peek(s); t != nullptr; t = peek(s))
 	{
-		if (t->type == Token::Type::SquiggleEnd)
+		if (t->tag == Token::Tag::SquiggleEnd)
 		{
 			next(s, ctx);
 
 			return true;
 		}
-		else if (t->type == Token::Type::Struct || t->type == Token::Type::Union || t->type == Token::Type::Enum || t->type == Token::Type::Bitset)
+		else if (t->tag == Token::Tag::Struct || t->tag == Token::Tag::Union || t->tag == Token::Tag::Enum || t->tag == Token::Tag::Bitset)
 		{
 			if (!out.members.push_back({}))
 				return error_out_of_memory(s, ctx);
@@ -1821,13 +1821,13 @@ static bool parse_struct_def(pstate& s, StructDef& out) noexcept
 			if (!parse_type_member(s, out.members.last()))
 				return false;
 		}
-		else if (t->type == Token::Type::Ident)
+		else if (t->tag == Token::Tag::Ident)
 		{
 			if (const Token* t1 = peek(s, 1); t1 == nullptr)
 			{
 				return error_unexpected_end(s, ctx);
 			}
-			else if (t1->type == Token::Type::Colon)
+			else if (t1->tag == Token::Tag::Colon)
 			{
 				if (!out.members.push_back({}))
 					return error_out_of_memory(s, ctx);
@@ -1835,7 +1835,7 @@ static bool parse_struct_def(pstate& s, StructDef& out) noexcept
 				if (!parse_type_member(s, out.members.last()))
 					return false;
 			}
-			else if (t1->type == Token::Type::DoubleColon)
+			else if (t1->tag == Token::Tag::DoubleColon)
 			{
 				if (!out.definitions.push_back({}))
 					return error_out_of_memory(s, ctx);
@@ -1850,7 +1850,7 @@ static bool parse_struct_def(pstate& s, StructDef& out) noexcept
 		}
 		else
 		{
-			return error_unexpected_token(s, ctx, t, Token::Type::Ident);
+			return error_unexpected_token(s, ctx, t, Token::Tag::Ident);
 		}
 	}
 
@@ -1874,7 +1874,7 @@ static bool parse_definition(pstate& s, Definition& out, bool is_anonymous) noex
 {
 	static constexpr const char ctx[] = "Definition";
 
-	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::Ident)
+	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Ident)
 	{
 		next(s, ctx);
 
@@ -1882,12 +1882,12 @@ static bool parse_definition(pstate& s, Definition& out, bool is_anonymous) noex
 
 		out.flags.has_ident = true;
 
-		if (expect(s, Token::Type::DoubleColon, ctx) == nullptr)
+		if (expect(s, Token::Tag::DoubleColon, ctx) == nullptr)
 			return false;
 	}
 	else if (!is_anonymous)
 	{
-		return error_unexpected_token(s, ctx, t, Token::Type::Ident);
+		return error_unexpected_token(s, ctx, t, Token::Tag::Ident);
 	}
 
 	const Token* t_stereotype = peek(s);
@@ -1895,7 +1895,7 @@ static bool parse_definition(pstate& s, Definition& out, bool is_anonymous) noex
 	if (t_stereotype == nullptr)
 		return error_unexpected_end(s, ctx);
 
-	if (t_stereotype->type == Token::Type::Pub)
+	if (t_stereotype->tag == Token::Tag::Pub)
 	{
 		out.flags.is_pub = true;
 
@@ -1907,72 +1907,72 @@ static bool parse_definition(pstate& s, Definition& out, bool is_anonymous) noex
 			return false;
 	}
 
-	if (t_stereotype->type != Token::Type::Ident)
+	if (t_stereotype->tag != Token::Tag::Ident)
 		next(s, ctx);
 
-	if (t_stereotype->type == Token::Type::Proc)
+	if (t_stereotype->tag == Token::Tag::Proc)
 	{
-		out.type = Definition::Type::Proc;
+		out.tag = Definition::Tag::Proc;
 
 		return parse_proc_def(s, out.proc_def, !is_anonymous);
 	}
-	else if (t_stereotype->type == Token::Type::Struct)
+	else if (t_stereotype->tag == Token::Tag::Struct)
 	{
-		out.type = Definition::Type::Struct;
+		out.tag = Definition::Tag::Struct;
 
 		return parse_struct_def(s, out.struct_def);
 	}
-	else if (t_stereotype->type == Token::Type::Union)
+	else if (t_stereotype->tag == Token::Tag::Union)
 	{
-		out.type = Definition::Type::Union;
+		out.tag = Definition::Tag::Union;
 
 		return parse_union_def(s, out.union_def);
 	}
-	else if (t_stereotype->type == Token::Type::Enum)
+	else if (t_stereotype->tag == Token::Tag::Enum)
 	{
-		out.type = Definition::Type::Enum;
+		out.tag = Definition::Tag::Enum;
 
 		return parse_enum_def(s, out.enum_def);
 	}
-	else if (t_stereotype->type == Token::Type::Bitset)
+	else if (t_stereotype->tag == Token::Tag::Bitset)
 	{
-		out.type = Definition::Type::Bitset;
+		out.tag = Definition::Tag::Bitset;
 
 		return parse_bitset_def(s, out.bitset_def);
 	}
-	else if (t_stereotype->type == Token::Type::Alias)
+	else if (t_stereotype->tag == Token::Tag::Alias)
 	{
-		out.type = Definition::Type::Alias;
+		out.tag = Definition::Tag::Alias;
 
 		return parse_alias_def(s, out.alias_def);
 	}
-	else if (t_stereotype->type == Token::Type::Trait)
+	else if (t_stereotype->tag == Token::Tag::Trait)
 	{
-		out.type = Definition::Type::Trait;
+		out.tag = Definition::Tag::Trait;
 
 		return parse_trait_def(s, out.trait_def);
 	}
-	else if (t_stereotype->type == Token::Type::Impl)
+	else if (t_stereotype->tag == Token::Tag::Impl)
 	{
-		out.type = Definition::Type::Impl;
+		out.tag = Definition::Tag::Impl;
 
 		return parse_impl_def(s, out.impl_def);
 	}
-	else if (t_stereotype->type == Token::Type::Annotation)
+	else if (t_stereotype->tag == Token::Tag::Annotation)
 	{
-		out.type = Definition::Type::Annotation;
+		out.tag = Definition::Tag::Annotation;
 
 		return parse_annotation_def(s, out.annotation_def);
 	}
-	else if (t_stereotype->type == Token::Type::Module)
+	else if (t_stereotype->tag == Token::Tag::Module)
 	{
-		out.type = Definition::Type::Module;
+		out.tag = Definition::Tag::Module;
 
 		return parse_module_def(s, out.module_def);
 	}
 	else
 	{
-		out.type = Definition::Type::NewType;
+		out.tag = Definition::Tag::NewType;
 
 		return parse_new_type_def(s, out.newtype_def);
 	}

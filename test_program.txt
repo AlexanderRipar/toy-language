@@ -1,45 +1,38 @@
-// read a file
-
-io :: std.io
-
-print :: io.stdout.print
-
-/* 
- * TopLevelExpr 'catch' '(' Ident ( ':' Name )? ')' TopLevelExpr
- *
- * Works only on TopLevelExprs that yield a type that implements Optional or Error.
- * For Error types, the actual error value can be caught in the parentheses
- * after the 'catch'.
- * The following TopLevelExpr is only executed if an Error or None is yielded
- * from the TopLevelExpr preceding the catch.
- */
-
-main :: proc(args : Slice(Slice(char8))) -> i32
+Result :: proc(Success : &type, Failure : &type) -> type
 {
-	if args.count != 2
-		return error_print("Usage: {} filename", at(args, 0))
+	assert(implements(Failure, ErrorCode))
 
-	filename := at(args, 1)
+	return struct
+	{
+		success : Success
 
-	file : io.File = create(filename, Read) catch e
-		return error_print("Could not open file {}: {}", filename, e)
+		failure : Failure
 
-	stat := stat(file) catch e
-		return error_print("Could not get size of file {}: {}", filename, e)
-
-	buffer := Buffer(u8).create(stat.bytes) catch e {
-		return error_print("Could not allocate memory: {}", e)
+		MaybeError.is_ok :: impl(self : &Self) -> bool
+			return is_ok(failure)
 	}
-
-	bytes_read := read(file, buffer) catch e
-		return error_print("Could not read from file {}: {}", filename, e)
-
-	return 0
 }
 
-error_print :: proc(fmt : Slice(char8), args : varargs) -> i32
+MaybeError :: trait(T : type)
 {
-	print(fmt, args)
-
-	return 1
+	is_ok :: proc(t : &T) -> bool
 }
+
+ErrorCode :: trait(T : type)
+{
+	is_ok :: proc(t : &T) -> bool
+}
+
+WinRst :: proc(Success : &type) -> type
+{
+	return Result(Success, HResult)
+}
+
+HResult :: enum
+{
+
+}
+
+EXIT_SUCCESS :: as(0, i32)
+
+EXIT_FAILURE :: as(1, i32)

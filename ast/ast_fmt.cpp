@@ -212,18 +212,18 @@ static void tree_for_signature(const ForSignature& node, i32 indent, const char*
 {
 	print_beg_node("ForSignature", indent, name, true);
 
-	if (node.type == ForSignature::Type::ForEach)
+	if (node.tag == ForSignature::Tag::ForEach)
 	{
 		tree_for_each(node.for_each, indent);
 	}
-	else if (node.type == ForSignature::Type::Normal)
+	else if (node.tag == ForSignature::Tag::Normal)
 	{
 		print_beg_node("Normal", indent + 1, nullptr);
 
 		if (node.normal.opt_init.ident.begin() != nullptr)
 			tree_variable_def(node.normal.opt_init, indent + 1, "opt_init");
 
-		if (node.normal.opt_condition.type != Expr::Type::EMPTY)
+		if (node.normal.opt_condition.tag != Expr::Tag::EMPTY)
 			tree_expr(node.normal.opt_condition, indent + 1, "opt_condition");
 
 		if (node.normal.opt_step.op != Assignment::Op::EMPTY)
@@ -241,7 +241,7 @@ static void tree_for(const For& node, i32 indent, const char* name = nullptr) no
 
 	tree_statement(node.body, indent + 1, "body");
 
-	if (node.opt_until_body.type != Statement::Type::EMPTY)
+	if (node.opt_until_body.tag != Statement::Tag::EMPTY)
 		tree_statement(node.opt_until_body, indent + 1, "opt_until_body");
 
 	print_end_node(indent);
@@ -258,7 +258,7 @@ static void tree_if(const If& node, i32 indent, const char* name = nullptr) noex
 
 	tree_statement(node.body, indent + 1, "body");
 
-	if (node.opt_else_body.type != Statement::Type::EMPTY)
+	if (node.opt_else_body.tag != Statement::Tag::EMPTY)
 		tree_statement(node.opt_else_body, indent + 1, "opt_else_body");
 
 	print_end_node(indent);
@@ -268,45 +268,45 @@ static void tree_statement(const Statement& node, i32 indent, const char* name) 
 {
 	print_beg_node("Statement", indent, name, true);
 
-	switch (node.type)
+	switch (node.tag)
 	{
-	case Statement::Type::Block:
+	case Statement::Tag::Block:
 		tree_block(*node.block, indent);
 		break;
 
-	case Statement::Type::If:
+	case Statement::Tag::If:
 		tree_if(*node.if_block, indent);
 		break;
 
-	case Statement::Type::For:
+	case Statement::Tag::For:
 		tree_for(*node.for_block, indent);
 		break;
 
-	case Statement::Type::Switch:
+	case Statement::Tag::Switch:
 		tree_switch(*node.switch_block, indent);
 		break;
 
-	case Statement::Type::Go:
+	case Statement::Tag::Go:
 		tree_go(*node.go_stmt, indent);
 		break;
 
-	case Statement::Type::Return:
+	case Statement::Tag::Return:
 		tree_return(*node.return_stmt, indent);
 		break;
 
-	case Statement::Type::Yield:
+	case Statement::Tag::Yield:
 		tree_yield(*node.yield_stmt, indent);
 		break;
 
-	case Statement::Type::VariableDef:
+	case Statement::Tag::VariableDef:
 		tree_variable_def(*node.variable_def, indent);
 		break;
 
-	case Statement::Type::Assignment:
+	case Statement::Tag::Assignment:
 		tree_assignment(*node.assignment, indent);
 		break;
 
-	case Statement::Type::Call:
+	case Statement::Tag::Call:
 		tree_name(*node.call, indent);
 		break;
 
@@ -331,25 +331,25 @@ static void tree_top_level_expr(const TopLevelExpr& node, i32 indent, const char
 {
 	print_beg_node("TopLevelExpr", indent, name, true);
 
-	switch (node.type)
+	switch (node.tag)
 	{
-	case TopLevelExpr::Type::Expr:
+	case TopLevelExpr::Tag::Expr:
 		tree_expr(*node.expr, indent);
 		break;
 
-	case TopLevelExpr::Type::If:
+	case TopLevelExpr::Tag::If:
 		tree_if(*node.if_block, indent);
 		break;
 
-	case TopLevelExpr::Type::For:
+	case TopLevelExpr::Tag::For:
 		tree_for(*node.for_block, indent);
 		break;
 
-	case TopLevelExpr::Type::Block:
+	case TopLevelExpr::Tag::Block:
 		tree_block(*node.block, indent);
 		break;
 
-	case TopLevelExpr::Type::Switch:
+	case TopLevelExpr::Tag::Switch:
 		tree_switch(*node.switch_block, indent);
 		break;
 
@@ -372,10 +372,10 @@ static void tree_variable_def(const VariableDef& node, i32 indent, const char* n
 	
 	print_end_array(indent + 1);
 
-	if (node.opt_type_ref.type != TypeRef::Type::EMPTY)
+	if (node.opt_type_ref.tag != TypeRef::Tag::EMPTY)
 		tree_type_ref(node.opt_type_ref, indent + 1, "opt_type_ref");
 
-	if (node.opt_initializer.type != TopLevelExpr::Type::EMPTY)
+	if (node.opt_initializer.tag != TopLevelExpr::Tag::EMPTY)
 		tree_top_level_expr(node.opt_initializer, indent + 1, "opt_initializer");	
 
 	print_end_node(indent);
@@ -385,13 +385,13 @@ static void tree_proc_param(const ProcParam& node, i32 indent, const char* name 
 {
 	print_beg_node("ProcParam", indent, name, true);
 
-	switch (node.type)
+	switch (node.tag)
 	{
-	case ProcParam::Type::VariableDef:
+	case ProcParam::Tag::VariableDef:
 		tree_variable_def(node.variable_def, indent);
 		break;
 
-	case ProcParam::Type::GenericType:
+	case ProcParam::Tag::GenericType:
 		print_beg_node("GenericIdent", indent, nullptr);
 		
 		print_scalar("value", node.generic_type, indent + 1);
@@ -420,7 +420,7 @@ static void tree_proc_signature(const ProcSignature& node, i32 indent, const cha
 		print_end_array(indent + 1);
 	}
 
-	if (node.return_type.type != TypeRef::Type::EMPTY)
+	if (node.return_type.tag != TypeRef::Tag::EMPTY)
 	{
 		tree_type_ref(node.return_type, indent + 1);
 	}
@@ -565,21 +565,21 @@ static void tree_literal(const Literal& node, i32 indent, const char* name = nul
 {
 	print_beg_node("Literal", indent, name, true);
 
-	switch (node.type)
+	switch (node.tag)
 	{
-	case Literal::Type::Integer:
+	case Literal::Tag::Integer:
 		tree_integer_literal(node.integer_literal, indent);
 		break;
 
-	case Literal::Type::Float:
+	case Literal::Tag::Float:
 		tree_float_literal(node.float_literal, indent);
 		break;
 
-	case Literal::Type::String:
+	case Literal::Tag::String:
 		tree_string_literal(node.string_literal, indent);
 		break;
 
-	case Literal::Type::Char:
+	case Literal::Tag::Char:
 		tree_char_literal(node.char_literal, indent);
 		break;
 
@@ -595,7 +595,7 @@ static void tree_type_value(const TypeValue& node, i32 indent, const char* name 
 
 	print_scalar("ident", node.ident, indent + 1);
 
-	if (node.value.type != Expr::Type::EMPTY)
+	if (node.value.tag != Expr::Tag::EMPTY)
 		tree_expr(node.value, indent + 1, "value");
 
 	print_end_node(indent);
@@ -622,24 +622,24 @@ static void tree_expr(const Expr& node, i32 indent, const char* name) noexcept
 {
 	print_beg_node("Expr", indent, name, true);
 
-	switch (node.type)
+	switch (node.tag)
 	{
-	case Expr::Type::BinaryOp: {
+	case Expr::Tag::BinaryOp: {
 		tree_binary_op(*node.binary_op, indent);
 		break;
 	}
 
-	case Expr::Type::UnaryOp: {
+	case Expr::Tag::UnaryOp: {
 		tree_unary_op(*node.unary_op, indent);
 		break;
 	}
 
-	case Expr::Type::Literal: {
+	case Expr::Tag::Literal: {
 		tree_literal(*node.literal, indent);
 		break;
 	}
 
-	case Expr::Type::Name: {
+	case Expr::Tag::Name: {
 		tree_name(*node.name_ref, indent);
 		break;
 	}
@@ -664,24 +664,24 @@ static void tree_type_ref(const TypeRef& node, i32 indent, const char* name) noe
 	else
 		assert(false);
 
-	switch (node.type)
+	switch (node.tag)
 	{
-	case TypeRef::Type::Ref: {
+	case TypeRef::Tag::Ref: {
 		tree_type_ref(*node.ref, indent + 1);
 		break;
 	}
 
-	case TypeRef::Type::Name: {
+	case TypeRef::Tag::Name: {
 		tree_name(*node.name_ref, indent + 1);
 		break;
 	}
 
-	case TypeRef::Type::Inline: {
+	case TypeRef::Tag::Inline: {
 		tree_definition(*node.inline_def, indent + 1);
 		break;
 	}
 
-	case TypeRef::Type::TypeExpr: {
+	case TypeRef::Tag::TypeExpr: {
 		tree_expr(*node.type_expr, indent + 1);
 		break;
 	}
@@ -797,7 +797,7 @@ static void tree_enum_def(const EnumDef& node, i32 indent, const char* name = nu
 {
 	print_beg_node("EnumDef", indent, name);
 
-	if (node.enum_type.type != TypeRef::Type::EMPTY)
+	if (node.enum_type.tag != TypeRef::Tag::EMPTY)
 		tree_type_ref(node.enum_type, indent + 1, "enum_type");
 
 	if (node.values.size() != 0)
@@ -827,7 +827,7 @@ static void tree_bitset_def(const BitsetDef& node, i32 indent, const char* name 
 {
 	print_beg_node("BitsetDef", indent, name);
 
-	if (node.bitset_type.type != TypeRef::Type::EMPTY)
+	if (node.bitset_type.tag != TypeRef::Tag::EMPTY)
 		tree_type_ref(node.bitset_type, indent + 1, "bitset_type");
 
 	if (node.values.size() != 0)
@@ -933,59 +933,59 @@ static void tree_definition(const Definition& node, i32 indent, const char* name
 	else
 		print_scalar("visibility", strview::from_literal("Private"), indent + 1);
 	
-	switch (node.type)
+	switch (node.tag)
 	{
-	case Definition::Type::Proc: {
+	case Definition::Tag::Proc: {
 		tree_proc_def(node.proc_def, indent + 1);
 		break;
 		}
 
-	case Definition::Type::Struct: {
+	case Definition::Tag::Struct: {
 		tree_struct_def(node.struct_def, indent + 1);
 		break;
 		}
 
-	case Definition::Type::Union: {
+	case Definition::Tag::Union: {
 		tree_union_def(node.union_def, indent + 1);
 		break;
 		}
 
-	case Definition::Type::Enum: {
+	case Definition::Tag::Enum: {
 		tree_enum_def(node.enum_def, indent + 1);
 		break;
 		}
 
-	case Definition::Type::Bitset: {
+	case Definition::Tag::Bitset: {
 		tree_bitset_def(node.bitset_def, indent + 1);
 		break;
 		}
 
-	case Definition::Type::Alias: {
+	case Definition::Tag::Alias: {
 		tree_alias_def(node.alias_def, indent + 1);
 		break;
 		}
 
-	case Definition::Type::NewType: {
+	case Definition::Tag::NewType: {
 		tree_newtype_def(node.newtype_def, indent + 1);
 		break;
 		}
 
-	case Definition::Type::Trait: {
+	case Definition::Tag::Trait: {
 		tree_trait_def(node.trait_def, indent + 1);
 		break;
 		}
 
-	case Definition::Type::Impl: {
+	case Definition::Tag::Impl: {
 		tree_impl_def(node.impl_def, indent + 1);
 		break;
 		}
 
-	case Definition::Type::Annotation: {
+	case Definition::Tag::Annotation: {
 		tree_annotation_def(node.annotation_def, indent + 1);
 		break;
 		}
 
-	case Definition::Type::Module: {
+	case Definition::Tag::Module: {
 		tree_module_def(node.module_def, indent + 1);
 		break;
 		}
