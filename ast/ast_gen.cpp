@@ -320,7 +320,7 @@ static bool bin_val(char c, usz& inout_v) noexcept
 
 static bool parse_type_ref(pstate& s, TypeRef& out) noexcept;
 
-static bool parse_definition(pstate& s, Definition& out, bool is_anonymous) noexcept;
+static bool parse_definition(pstate& s, Type& out, bool is_anonymous) noexcept;
 
 static bool parse_name(pstate& s, Name& out) noexcept;
 
@@ -1870,9 +1870,9 @@ static bool parse_proc_def(pstate& s, ProcDef& out, bool has_body) noexcept
 	return parse_block(s, out.body);
 }
 
-static bool parse_definition(pstate& s, Definition& out, bool is_anonymous) noexcept
+static bool parse_definition(pstate& s, Type& out, bool is_anonymous) noexcept
 {
-	static constexpr const char ctx[] = "Definition";
+	static constexpr const char ctx[] = "Type";
 
 	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Ident)
 	{
@@ -1912,67 +1912,67 @@ static bool parse_definition(pstate& s, Definition& out, bool is_anonymous) noex
 
 	if (t_stereotype->tag == Token::Tag::Proc)
 	{
-		out.tag = Definition::Tag::Proc;
+		out.tag = Type::Tag::Proc;
 
 		return parse_proc_def(s, out.proc_def, !is_anonymous);
 	}
 	else if (t_stereotype->tag == Token::Tag::Struct)
 	{
-		out.tag = Definition::Tag::Struct;
+		out.tag = Type::Tag::Struct;
 
 		return parse_struct_def(s, out.struct_def);
 	}
 	else if (t_stereotype->tag == Token::Tag::Union)
 	{
-		out.tag = Definition::Tag::Union;
+		out.tag = Type::Tag::Union;
 
 		return parse_union_def(s, out.union_def);
 	}
 	else if (t_stereotype->tag == Token::Tag::Enum)
 	{
-		out.tag = Definition::Tag::Enum;
+		out.tag = Type::Tag::Enum;
 
 		return parse_enum_def(s, out.enum_def);
 	}
 	else if (t_stereotype->tag == Token::Tag::Bitset)
 	{
-		out.tag = Definition::Tag::Bitset;
+		out.tag = Type::Tag::Bitset;
 
 		return parse_bitset_def(s, out.bitset_def);
 	}
 	else if (t_stereotype->tag == Token::Tag::Alias)
 	{
-		out.tag = Definition::Tag::Alias;
+		out.tag = Type::Tag::Alias;
 
 		return parse_alias_def(s, out.alias_def);
 	}
 	else if (t_stereotype->tag == Token::Tag::Trait)
 	{
-		out.tag = Definition::Tag::Trait;
+		out.tag = Type::Tag::Trait;
 
 		return parse_trait_def(s, out.trait_def);
 	}
 	else if (t_stereotype->tag == Token::Tag::Impl)
 	{
-		out.tag = Definition::Tag::Impl;
+		out.tag = Type::Tag::Impl;
 
 		return parse_impl_def(s, out.impl_def);
 	}
 	else if (t_stereotype->tag == Token::Tag::Annotation)
 	{
-		out.tag = Definition::Tag::Annotation;
+		out.tag = Type::Tag::Annotation;
 
 		return parse_annotation_def(s, out.annotation_def);
 	}
 	else if (t_stereotype->tag == Token::Tag::Module)
 	{
-		out.tag = Definition::Tag::Module;
+		out.tag = Type::Tag::Module;
 
 		return parse_module_def(s, out.module_def);
 	}
 	else
 	{
-		out.tag = Definition::Tag::NewType;
+		out.tag = Type::Tag::NewType;
 
 		return parse_new_type_def(s, out.newtype_def);
 	}

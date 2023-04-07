@@ -89,7 +89,7 @@ static void typeref_cleanup_helper(TypeRef& typeref) noexcept
 		break;
 
 	case TypeRef::Tag::Inline:
-		typeref.inline_def->~Definition();
+		typeref.inline_def->~Type();
 		break;
 
 	case TypeRef::Tag::TypeExpr:
@@ -111,8 +111,8 @@ static void traitmember_cleanup_helper(TraitMember& traitmember) noexcept
 
 	switch (traitmember.tag)
 	{
-	case TraitMember::Tag::Definition:
-		traitmember.definition->~Definition();
+	case TraitMember::Tag::Type:
+		traitmember.definition->~Type();
 		break;
 
 	case TraitMember::Tag::ProcSignature:
@@ -206,55 +206,55 @@ static void toplevelexpr_cleanup_helper(TopLevelExpr& tl_expr) noexcept
 	free(tl_expr.block);
 }
 
-static void definition_cleanup_helper(Definition& definition) noexcept
+static void definition_cleanup_helper(Type& definition) noexcept
 {
 	switch (definition.tag)
 	{
-	case Definition::Tag::Proc:
+	case Type::Tag::Proc:
 		definition.proc_def.~ProcDef();
 		break;
 
-	case Definition::Tag::Struct:
+	case Type::Tag::Struct:
 		definition.struct_def.~StructDef();
 		break;
 
-	case Definition::Tag::Union:
+	case Type::Tag::Union:
 		definition.union_def.~UnionDef();
 		break;
 
-	case Definition::Tag::Enum:
+	case Type::Tag::Enum:
 		definition.enum_def.~EnumDef();
 		break;
 
-	case Definition::Tag::Bitset:
+	case Type::Tag::Bitset:
 		definition.bitset_def.~BitsetDef();
 		break;
 
-	case Definition::Tag::Alias:
+	case Type::Tag::Alias:
 		definition.alias_def.~AliasDef();
 		break;
 
-	case Definition::Tag::NewType:
+	case Type::Tag::NewType:
 		definition.newtype_def.~NewTypeDef();
 
-	case Definition::Tag::Trait:
+	case Type::Tag::Trait:
 		definition.trait_def.~TraitDef();
 		break;
 
-	case Definition::Tag::Impl:
+	case Type::Tag::Impl:
 		definition.impl_def.~ProcDef();
 		break;
 
-	case Definition::Tag::Annotation:
+	case Type::Tag::Annotation:
 		definition.annotation_def.~AnnotationDef();
 		break;
 
-	case Definition::Tag::Module:
+	case Type::Tag::Module:
 		definition.module_def.~ModuleDef();
 		break;
 
 	default:
-		assert(definition.tag == Definition::Tag::EMPTY);
+		assert(definition.tag == Type::Tag::EMPTY);
 		break;
 	}
 }
@@ -348,7 +348,7 @@ TopLevelExpr::~TopLevelExpr() noexcept
 	toplevelexpr_cleanup_helper(*this);
 }
 
-Definition::~Definition() noexcept
+Type::~Type() noexcept
 {
 	definition_cleanup_helper(*this);
 }
@@ -364,7 +364,7 @@ ForSignature::~ForSignature() noexcept
 }
 
 
-Definition::Definition() noexcept
+Type::Type() noexcept
 {
 	memset(this, 0, sizeof(*this));
 }
@@ -416,7 +416,7 @@ Case& Case::operator=(Case&& o) noexcept
 	return *this;
 }
 
-Definition& Definition::operator=(Definition&& o) noexcept
+Type& Type::operator=(Type&& o) noexcept
 {
 	definition_cleanup_helper(*this);
 

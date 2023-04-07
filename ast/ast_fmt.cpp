@@ -90,7 +90,7 @@ static void print_text(const char* text) noexcept
 
 static void tree_name(const Name& node, i32 indent, const char* name = nullptr) noexcept;
 
-static void tree_definition(const Definition& node, i32 indent, const char* name = nullptr) noexcept;
+static void tree_definition(const Type& node, i32 indent, const char* name = nullptr) noexcept;
 
 static void tree_type_ref(const TypeRef& node, i32 indent, const char* name = nullptr) noexcept;
 
@@ -446,7 +446,7 @@ static void tree_block(const Block& node, i32 indent, const char* name) noexcept
 	{
 	print_beg_array("definitions", indent + 1);
 
-	for (const Definition& definition : node.definitions)
+	for (const Type& definition : node.definitions)
 		tree_definition(definition, indent + 2);
 
 	print_end_array(indent + 1);
@@ -757,7 +757,7 @@ static void tree_struct_def(const StructDef& node, i32 indent, const char* name 
 	{
 		print_beg_array("definitions", indent + 1);
 
-		for (const Definition& definition : node.definitions)
+		for (const Type& definition : node.definitions)
 			tree_definition(definition, indent + 2);
 
 		print_end_array(indent + 1);
@@ -784,7 +784,7 @@ static void tree_union_def(const UnionDef& node, i32 indent, const char* name = 
 	{
 		print_beg_array("definitions", indent + 1);
 		
-		for (const Definition& definition : node.definitions)
+		for (const Type& definition : node.definitions)
 			tree_definition(definition, indent + 2);
 
 		print_end_array(indent + 1);
@@ -814,7 +814,7 @@ static void tree_enum_def(const EnumDef& node, i32 indent, const char* name = nu
 	{
 		print_beg_array("definitions", indent + 1);
 
-		for (const Definition& definition : node.definitions)
+		for (const Type& definition : node.definitions)
 			tree_definition(definition, indent + 2);
 
 		print_end_array(indent + 1);
@@ -844,7 +844,7 @@ static void tree_bitset_def(const BitsetDef& node, i32 indent, const char* name 
 	{
 		print_beg_array("definitions", indent + 1);
 
-		for (const Definition& definition : node.definitions)
+		for (const Type& definition : node.definitions)
 			tree_definition(definition, indent + 2);
 
 		print_end_array(indent + 1);
@@ -912,7 +912,7 @@ static void tree_module_def(const ModuleDef& node, i32 indent, const char* name 
 	{
 		print_beg_array("definitions", indent + 1);
 
-		for (const Definition& definition : node.definitions)
+		for (const Type& definition : node.definitions)
 			tree_definition(definition, indent + 2);
 
 		print_end_array(indent + 1);
@@ -921,9 +921,9 @@ static void tree_module_def(const ModuleDef& node, i32 indent, const char* name 
 	print_end_node(indent);
 }
 
-static void tree_definition(const Definition& node, i32 indent, const char* name) noexcept
+static void tree_definition(const Type& node, i32 indent, const char* name) noexcept
 {
-	print_beg_node("Definition", indent, name);
+	print_beg_node("Type", indent, name);
 
 	if (node.flags.has_ident)
 		print_scalar("ident", node.ident, indent + 1);
@@ -935,57 +935,57 @@ static void tree_definition(const Definition& node, i32 indent, const char* name
 	
 	switch (node.tag)
 	{
-	case Definition::Tag::Proc: {
+	case Type::Tag::Proc: {
 		tree_proc_def(node.proc_def, indent + 1);
 		break;
 		}
 
-	case Definition::Tag::Struct: {
+	case Type::Tag::Struct: {
 		tree_struct_def(node.struct_def, indent + 1);
 		break;
 		}
 
-	case Definition::Tag::Union: {
+	case Type::Tag::Union: {
 		tree_union_def(node.union_def, indent + 1);
 		break;
 		}
 
-	case Definition::Tag::Enum: {
+	case Type::Tag::Enum: {
 		tree_enum_def(node.enum_def, indent + 1);
 		break;
 		}
 
-	case Definition::Tag::Bitset: {
+	case Type::Tag::Bitset: {
 		tree_bitset_def(node.bitset_def, indent + 1);
 		break;
 		}
 
-	case Definition::Tag::Alias: {
+	case Type::Tag::Alias: {
 		tree_alias_def(node.alias_def, indent + 1);
 		break;
 		}
 
-	case Definition::Tag::NewType: {
+	case Type::Tag::NewType: {
 		tree_newtype_def(node.newtype_def, indent + 1);
 		break;
 		}
 
-	case Definition::Tag::Trait: {
+	case Type::Tag::Trait: {
 		tree_trait_def(node.trait_def, indent + 1);
 		break;
 		}
 
-	case Definition::Tag::Impl: {
+	case Type::Tag::Impl: {
 		tree_impl_def(node.impl_def, indent + 1);
 		break;
 		}
 
-	case Definition::Tag::Annotation: {
+	case Type::Tag::Annotation: {
 		tree_annotation_def(node.annotation_def, indent + 1);
 		break;
 		}
 
-	case Definition::Tag::Module: {
+	case Type::Tag::Module: {
 		tree_module_def(node.module_def, indent + 1);
 		break;
 		}
@@ -1005,7 +1005,7 @@ void ast_print_tree(const ProgramUnit& program) noexcept
 
 	fprintf(stderr, "<program-tree>\n");
 
-	for (const Definition& definition : program.definitions)
+	for (const Type& definition : program.definitions)
 		tree_definition(definition, 1);
 
 	fprintf(stderr, "</program-tree>\n");

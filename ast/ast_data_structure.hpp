@@ -5,7 +5,7 @@
 #include "../util/str.hpp"
 #include "../util/vec.hpp"
 
-struct Definition;
+struct Type;
 
 struct Name;
 
@@ -254,7 +254,7 @@ struct Block
 {
 	vec<Statement, 0> statements;
 
-	vec<Definition, 0> definitions;
+	vec<Type, 0> definitions;
 
 	To to_block;
 
@@ -338,7 +338,7 @@ struct TypeRef
 
 		Name* name_ref;
 
-		Definition* inline_def;
+		Type* inline_def;
 
 		Expr* type_expr;
 	};
@@ -578,13 +578,13 @@ struct TraitMember
 	enum class Tag
 	{
 		EMPTY = 0,
-		Definition,
+		Type,
 		ProcSignature,
 	} tag = Tag::EMPTY;
 
 	union
 	{
-		Definition* definition;
+		Type* definition;
 
 		ProcSignature* signature;
 	};
@@ -611,7 +611,7 @@ struct StructDef
 {
 	vec<TypeMember> members;
 
-	vec<Definition, 0> definitions;
+	vec<Type, 0> definitions;
 
 	StructDef() noexcept = default;
 
@@ -622,7 +622,7 @@ struct UnionDef
 {
 	vec<TypeMember> members;
 
-	vec<Definition, 0> definitions;
+	vec<Type, 0> definitions;
 
 	UnionDef() noexcept = default;
 
@@ -635,7 +635,7 @@ struct EnumDef
 
 	vec<TypeValue> values;
 
-	vec<Definition, 0> definitions;
+	vec<Type, 0> definitions;
 
 	EnumDef() noexcept = default;
 
@@ -648,7 +648,7 @@ struct BitsetDef
 
 	vec<TypeValue> values;
 
-	vec<Definition, 0> definitions;
+	vec<Type, 0> definitions;
 
 	BitsetDef() noexcept = default;
 
@@ -695,14 +695,14 @@ struct AnnotationDef
 
 struct ModuleDef
 {
-	vec<Definition, 0> definitions;
+	vec<Type, 0> definitions;
 
 	ModuleDef() noexcept = default;
 
 	ModuleDef(const ModuleDef&) noexcept = delete;
 };
 
-struct Definition
+struct Type
 {
 	enum class Tag
 	{
@@ -753,18 +753,18 @@ struct Definition
 		ModuleDef module_def;
 	};
 
-	~Definition() noexcept;
+	~Type() noexcept;
 
-	Definition() noexcept;
+	Type() noexcept;
 
-	Definition& operator=(Definition&&) noexcept;
+	Type& operator=(Type&&) noexcept;
 
-	Definition(const Definition&) = delete;
+	Type(const Type&) = delete;
 };
 
 struct ProgramUnit
 {
-	vec<Definition> definitions{};
+	vec<Type> definitions{};
 
 	ProgramUnit() noexcept = default;
 
