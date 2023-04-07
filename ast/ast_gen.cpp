@@ -1749,6 +1749,13 @@ static bool parse(pstate& s, TypeRef& out) noexcept
 {
 	static constexpr const char ctx[] = "TypeRef";
 
+	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Mut)
+	{
+		next(s, ctx);
+
+		out.is_mut = true;
+	}
+
 	if (const Token* t = peek(s); t == nullptr)
 	{
 		return error_unexpected_end(s, ctx);

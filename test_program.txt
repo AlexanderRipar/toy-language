@@ -1,6 +1,6 @@
 my_slice : []i32
 
-my_array : [5 * 2]i32
+my_array : [5 * 2] mut i32
 
 proc_to_proc_ref ::= proc() -> &proc(i : i32) -> i32
 	return
