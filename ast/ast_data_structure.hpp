@@ -11,7 +11,7 @@ struct Name;
 
 struct Block;
 
-struct VariableDef;
+struct Variable;
 
 struct Statement;
 
@@ -199,7 +199,7 @@ struct Statement
 		Go,
 		Return,
 		Yield,
-		VariableDef,
+		Variable,
 		Assignment,
 		Call,
 	} tag = Tag::EMPTY;
@@ -220,7 +220,7 @@ struct Statement
 
 		Yield* yield_stmt;
 		
-		VariableDef* variable_def;
+		Variable* variable_def;
 
 		Assignment* assignment;
 
@@ -350,7 +350,7 @@ struct TypeRef
 	TypeRef(const TypeRef&) noexcept = delete;
 };
 
-struct VariableDef
+struct Variable
 {
 	strview ident;
 
@@ -358,16 +358,16 @@ struct VariableDef
 
 	TopLevelExpr opt_initializer;
 
-	VariableDef() noexcept = default;
+	Variable() noexcept = default;
 
-	VariableDef(const VariableDef&) noexcept = delete;
+	Variable(const Variable&) noexcept = delete;
 
-	VariableDef& operator=(VariableDef&&) noexcept;
+	Variable& operator=(Variable&&) noexcept;
 };
 
 struct If
 {
-	VariableDef opt_init;
+	Variable opt_init;
 
 	Expr condition;
 
@@ -427,7 +427,7 @@ struct ForSignature
 	{
 		struct
 		{
-			VariableDef opt_init;
+			Variable opt_init;
 
 			Expr opt_condition;
 
@@ -515,13 +515,13 @@ struct ProcParam
 	enum class Tag
 	{
 		EMPTY = 0,
-		VariableDef,
+		Variable,
 		GenericType,
 	} tag = Tag::EMPTY;
 
 	union
 	{
-		VariableDef variable_def;
+		Variable variable_def;
 
 		strview generic_type;
 	};
@@ -684,7 +684,7 @@ struct TraitDef
 
 struct AnnotationDef
 {
-	VariableDef arg;
+	Variable arg;
 
 	Block body;
 

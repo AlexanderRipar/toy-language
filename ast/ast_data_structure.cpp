@@ -41,8 +41,8 @@ static void statement_cleanup_helper(Statement& stmt) noexcept
 		stmt.switch_block->~Switch();
 		break;
 
-	case Statement::Tag::VariableDef:
-		stmt.variable_def->~VariableDef();
+	case Statement::Tag::Variable:
+		stmt.variable_def->~Variable();
 		break;
 
 	case Statement::Tag::Assignment:
@@ -263,8 +263,8 @@ static void proc_param_cleanup_helper(ProcParam& obj) noexcept
 {
 	switch (obj.tag)
 	{
-	case ProcParam::Tag::VariableDef:
-		obj.variable_def.~VariableDef();
+	case ProcParam::Tag::Variable:
+		obj.variable_def.~Variable();
 		break;
 	
 	case ProcParam::Tag::GenericType:
@@ -281,7 +281,7 @@ static void for_signature_cleanup_helper(ForSignature& obj) noexcept
 	switch (obj.tag)
 	{
 	case ForSignature::Tag::Normal:
-		obj.normal.opt_init.~VariableDef();
+		obj.normal.opt_init.~Variable();
 		obj.normal.opt_condition.~Expr();
 		obj.normal.opt_step.~Assignment();
 		break;
@@ -380,7 +380,7 @@ TypeValue& TypeValue::operator=(TypeValue&& o) noexcept
 	return *this;
 }
 
-VariableDef& VariableDef::operator=(VariableDef&& o) noexcept
+Variable& Variable::operator=(Variable&& o) noexcept
 {
 	ident = std::move(o.ident);
 	

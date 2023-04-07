@@ -326,7 +326,7 @@ static bool parse_name(pstate& s, Name& out) noexcept;
 
 static bool parse_block(pstate& s, Block& out) noexcept;
 
-static bool parse_variable_def(pstate& s, VariableDef& out) noexcept;
+static bool parse_variable_def(pstate& s, Variable& out) noexcept;
 
 static bool parse_expr(pstate& s, Expr& out) noexcept;
 
@@ -1251,7 +1251,7 @@ static bool parse_statement(pstate& s, Statement& out) noexcept
 	{
 		if (const Token* t1 = peek(s, 1); t1 != nullptr && t1->tag == Token::Tag::Colon)
 		{
-			out.tag = Statement::Tag::VariableDef;
+			out.tag = Statement::Tag::Variable;
 
 			if (!alloc(&out.variable_def))
 				return error_out_of_memory(s, ctx);
@@ -1296,9 +1296,9 @@ static bool parse_statement(pstate& s, Statement& out) noexcept
 	return true;
 }
 
-static bool parse_variable_def(pstate& s, VariableDef& out) noexcept
+static bool parse_variable_def(pstate& s, Variable& out) noexcept
 {
-	static constexpr const char ctx[] = "VariableDef";
+	static constexpr const char ctx[] = "Variable";
 
 	if (const Token* t = expect(s, Token::Tag::Ident, ctx); t == nullptr)
 	{
@@ -1526,7 +1526,7 @@ static bool parse_proc_param(pstate& s, ProcParam& out) noexcept
 	}
 	else
 	{
-		out.tag = ProcParam::Tag::VariableDef;
+		out.tag = ProcParam::Tag::Variable;
 
 		return parse_variable_def(s, out.variable_def);
 	}

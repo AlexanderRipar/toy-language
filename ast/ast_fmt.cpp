@@ -98,7 +98,7 @@ static void tree_expr(const Expr& node, i32 indent, const char* name = nullptr) 
 
 static void tree_block(const Block& node, i32 indent, const char* name = nullptr) noexcept;
 
-static void tree_variable_def(const VariableDef& node, i32 indent, const char* name = nullptr) noexcept;
+static void tree_variable_def(const Variable& node, i32 indent, const char* name = nullptr) noexcept;
 
 static void tree_statement(const Statement& node, i32 indent, const char* name = nullptr) noexcept;
 
@@ -298,7 +298,7 @@ static void tree_statement(const Statement& node, i32 indent, const char* name) 
 		tree_yield(*node.yield_stmt, indent);
 		break;
 
-	case Statement::Tag::VariableDef:
+	case Statement::Tag::Variable:
 		tree_variable_def(*node.variable_def, indent);
 		break;
 
@@ -362,9 +362,9 @@ static void tree_top_level_expr(const TopLevelExpr& node, i32 indent, const char
 		tree_catch(*node.opt_catch, indent + 1);
 }
 
-static void tree_variable_def(const VariableDef& node, i32 indent, const char* name) noexcept
+static void tree_variable_def(const Variable& node, i32 indent, const char* name) noexcept
 {
-	print_beg_node("VariableDef", indent, name);
+	print_beg_node("Variable", indent, name);
 
 	print_beg_array("idents", indent + 1);
 
@@ -387,7 +387,7 @@ static void tree_proc_param(const ProcParam& node, i32 indent, const char* name 
 
 	switch (node.tag)
 	{
-	case ProcParam::Tag::VariableDef:
+	case ProcParam::Tag::Variable:
 		tree_variable_def(node.variable_def, indent);
 		break;
 
