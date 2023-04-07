@@ -1732,20 +1732,66 @@ static bool parse(pstate& s, Argument& out) noexcept
 	}
 }
 
+static bool parse(pstate& s, Array& out) noexcept
+{
+	static constexpr const char ctx[] = "Array";
+
+	if (!parse(s, out.elem_cnt))
+		return false;
+
+	if (expect(s, Token::Tag::BracketEnd, ctx) == nullptr)
+		return false;
+
+	return parse(s, out.elem_type);
+}
+
 static bool parse(pstate& s, TypeRef& out) noexcept
 {
 	static constexpr const char ctx[] = "TypeRef";
 
-	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::OpBitAnd_Ref)
-	{
-		next(s, ctx);
-
-		out.is_ref = true;
-	}
-
 	if (const Token* t = peek(s); t == nullptr)
 	{
 		return error_unexpected_end(s, ctx);
+	}
+	else if (t->tag == Token::Tag::OpBitAnd_Ref)
+	{
+		next(s, ctx);
+
+		if (!alloc(&out.ref_or_slice))
+			return error_out_of_memory(s, ctx);
+
+		out.tag = TypeRef::Tag::Ref;
+
+		return parse(s, *out.ref_or_slice);
+	}
+	else if (t->tag == Token::Tag::BracketBeg)
+	{
+		next(s, ctx);
+
+		if (const Token* t1 = peek(s); t1 == nullptr)
+		{
+			return error_unexpected_end(s, ctx);
+		}
+		else if (t1->tag == Token::Tag::BracketEnd)
+		{
+			next(s, ctx);
+
+			if (!alloc(&out.ref_or_slice))
+				return error_out_of_memory(s, ctx);
+
+			out.tag = TypeRef::Tag::Slice;
+
+			return parse(s, *out.ref_or_slice);
+		}
+		else
+		{
+			if (!alloc(&out.array))
+				return error_out_of_memory(s, ctx);
+
+			out.tag = TypeRef::Tag::Array;
+
+			return parse(s, *out.array);
+		}
 	}
 	else if (token_tag_is_type(t->tag))
 	{

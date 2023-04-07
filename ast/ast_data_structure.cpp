@@ -133,6 +133,15 @@ static void cleanup_helper(TypeRef& obj) noexcept
 		obj.name->~Name();
 		break;
 
+	case TypeRef::Tag::Ref:
+	case TypeRef::Tag::Slice:
+		obj.ref_or_slice->~TypeRef();
+		break;
+
+	case TypeRef::Tag::Array:
+		obj.array->~Array();
+		break;
+
 	default:
 		assert(false);
 		break;
@@ -365,6 +374,15 @@ Argument& Argument::operator=(Argument&& o) noexcept
 TypeRef& TypeRef::operator=(TypeRef&& o) noexcept
 {
 	return move_helper(this, &o);
+}
+
+Array& Array::operator=(Array&& o) noexcept
+{
+	elem_type = std::move(o.elem_type);
+
+	elem_cnt = std::move(o.elem_cnt);
+
+	return *this;
 }
 
 NamePart& NamePart::operator=(NamePart&& o) noexcept

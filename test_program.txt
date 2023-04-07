@@ -1,3 +1,7 @@
+my_slice : []i32
+
+my_array : [5 * 2]i32
+
 proc_to_proc_ref ::= proc() -> &proc(i : i32) -> i32
 	return
 		proc(i : i32) -> i32
@@ -93,4 +97,3 @@ HResult ::= enum
 EXIT_SUCCESS :: i32 = 0
 
 EXIT_FAILURE :: i32 = 1
-

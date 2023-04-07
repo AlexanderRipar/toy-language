@@ -34,6 +34,8 @@ struct Definition;
 
 struct Catch;
 
+struct Array;
+
 
 
 struct IntegerLiteral
@@ -167,20 +169,29 @@ struct Argument
 
 struct TypeRef
 {
-	enum class Tag
+	enum class Tag : u8
 	{
 		EMPTY = 0,
 		Type,
 		Name,
+		Ref,
+		Slice,
+		Array,
 	} tag = Tag::EMPTY;
 
-	bool is_ref;
+	bool is_mut;
+
+	u32 array_size;
 
 	union
 	{
 		Type* type;
 
 		Name* name;
+
+		TypeRef* ref_or_slice;
+
+		Array* array;
 	};
 
 	~TypeRef() noexcept;
@@ -194,6 +205,23 @@ struct TypeRef
 	TypeRef(TypeRef&& o) noexcept = delete;
 
 	TypeRef(const TypeRef& o) noexcept = delete;
+};
+
+struct Array
+{
+	TypeRef elem_type;
+
+	Expr elem_cnt;
+
+	Array() noexcept = default;
+
+	Array& operator=(Array&& o) noexcept;
+
+	Array& operator=(const Array& o) noexcept = delete;
+
+	Array(Array&& o) noexcept = delete;
+
+	Array(const Array& o) noexcept = delete;
 };
 
 struct NamePart
