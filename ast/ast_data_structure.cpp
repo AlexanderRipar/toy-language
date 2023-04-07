@@ -160,6 +160,13 @@ static void expr_cleanup_helper(Expr& expr) noexcept
 
 static void toplevelexpr_cleanup_helper(TopLevelExpr& tl_expr) noexcept
 {
+	if (tl_expr.opt_catch != nullptr)
+	{
+		tl_expr.opt_catch->~Catch();
+
+		free(tl_expr.opt_catch);
+	}
+
 	if (tl_expr.block == nullptr)
 		return;
 

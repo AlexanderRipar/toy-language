@@ -1,123 +1,45 @@
+// read a file
+
+io :: std.io
+
+print :: io.stdout.print
+
+/* 
+ * TopLevelExpr 'catch' '(' Ident ( ':' Name )? ')' TopLevelExpr
+ *
+ * Works only on TopLevelExprs that yield a type that implements Optional or Error.
+ * For Error types, the actual error value can be caught in the parentheses
+ * after the 'catch'.
+ * The following TopLevelExpr is only executed if an Error or None is yielded
+ * from the TopLevelExpr preceding the catch.
+ */
+
 main :: proc(args : Slice(Slice(char8))) -> i32
 {
+	if args.count != 2
+		return error_print("Usage: {} filename", at(args, 0))
+
+	filename := at(args, 1)
+
+	file : io.File = create(filename, Read) catch e
+		return error_print("Could not open file {}: {}", filename, e)
+
+	stat := stat(file) catch e
+		return error_print("Could not get size of file {}: {}", filename, e)
+
+	buffer := Buffer(u8).create(stat.bytes) catch e {
+		return error_print("Could not allocate memory: {}", e)
+	}
+
+	bytes_read := read(file, buffer) catch e
+		return error_print("Could not read from file {}: {}", filename, e)
+
 	return 0
 }
 
-/*
-ArrayLike :: trait(?T)
+error_print :: proc(fmt : Slice(char8), args : varargs) -> i32
 {
-	element_type :: proc(t : Type(?T)) -> &Type
+	print(fmt, args)
 
-	size :: proc(t : Type(?T)) -> Numeric
-
-	size :: proc(t : ?T) -> Numeric
+	return 1
 }
-
-VectorLike :: trait(?T)
-{
-	element_type :: proc(t : Type(?T)) -> Type
-
-	size :: proc(t : ?T) -> Numeric
-}
-*/
-
-soa :: proc(aos : &Type) -> Type
-{
-	rst : mut Type
-
-	elem := element_type(aos)
-
-	templ := aos.template_type
-
-	for m <- elem_t.members
-		append(r.members, m.name, templ_t(m, size(aos)))
-
-	arr_impl : Impl(rst, ArrayLike)
-
-	return r
-}
-
-main :: proc()
-{
-	MyData :: struct
-	{
-		a : i32
-
-		b : f64
-	}
-
-	MyAoS :: Array(MyData, 10)
-	
-	MySoA :: struct
-	{
-		as : Array(i32, 10)
-
-		bs : Array(f64, 10)
-	}
-
-	aos : MyAoS
-
-	soa : MySoA
-
-	// TODO: Fix this so it gets parsed
-	// get(aos, 2).a
-
-	get(soa.as, 2)
-
-	get(soa, 2)
-
-	Shim :: struct
-	{
-		data : &MySoA
-
-		index : isz
-	}
-
-	/*
-	a :: property(s : &Shim)
-	{
-		return get(s.data.as, s.index)
-	}
-	*/
-
-	get :: proc(soa : &MySoA, index : isz) -> Shim
-	{
-		return create(soa, index)
-	}
-
-	x := get(soa, 2).a
-}
-
-// To make conversions such as SoA <-> AoS more streamlined, member syntax for functions could be introduced,
-// with single-argument functions being callable just like a member, i.e. without parentheses
-MyStruct :: struct
-{
-	x : i32
-
-	y : i32
-}
-
-sum :: proc(s : &MyStruct) -> i32
-{
-	return s.x + s.y
-}
-
-difference_between_sums :: proc(s1 : &MyStruct, s2 : &MyStruct) -> i32
-{
-	return s1.sum - s2.sum
-}
-
-
-
-/*
- * -- Convert an ArrayLike AOS type ?Arr with elements of ?Elem into a struct of an ArrayLike type per member of ?T --
- * 
- * Create a new Type soa
- *
- * For each member ?Mem of ?Elem
- *     Add ?Arr[?Mem] to soa, named ?Mem.name
- * 
- * -- To allow for unchanged syntax
- *
- * Create a Type Shim
-*/

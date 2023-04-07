@@ -68,7 +68,7 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("For"),
 		strview::from_literal("Do"),
 		strview::from_literal("Until"),
-		strview::from_literal("When"),
+		strview::from_literal("Catch"),
 		strview::from_literal("Switch"),
 		strview::from_literal("Case"),
 		strview::from_literal("Go"),
@@ -174,8 +174,8 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			t.type = Token::Type::Const;
 		else if (streqc({ beg, c }, strview::from_literal("pub")))
 			t.type = Token::Type::Pub;
-		else if (streqc({ beg, c }, strview::from_literal("when")))
-			t.type = Token::Type::When;
+		else if (streqc({ beg, c }, strview::from_literal("catch")))
+			t.type = Token::Type::Catch;
 		else
 			t.type = Token::Type::Ident;
 	}

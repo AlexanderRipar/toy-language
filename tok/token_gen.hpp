@@ -70,7 +70,7 @@ struct Token
 		For,
 		Do,
 		Until,
-		When,
+		Catch,
 		Switch,
 		Case,
 		Go,

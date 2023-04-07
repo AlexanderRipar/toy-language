@@ -39,18 +39,10 @@ struct Expr;
 
 struct TypeRef;
 
+struct Catch;
 
-/*
- * Types
- *
- * X :: std.Array(i32, 5)
- * 
- * y : std.Array(i32, 5) = undefined
- * 
- * z := std.Array(i32, 5).undefined
- * 
- * x : X = create(5)
-*/
+
+
 struct TypeName
 {
 	strview name;
@@ -184,6 +176,8 @@ struct TopLevelExpr
 		Switch* switch_block;
 	};
 
+	Catch* opt_catch;
+
 	~TopLevelExpr() noexcept;
 
 	TopLevelExpr() noexcept = default;
@@ -238,6 +232,13 @@ struct Statement
 	Statement() noexcept = default;
 	
 	Statement(const Statement&) noexcept = delete;
+};
+
+struct Catch
+{
+	strview error_ident;
+
+	Statement stmt;
 };
 
 struct To

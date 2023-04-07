@@ -867,6 +867,21 @@ static bool parse_if(pstate& s, If& out) noexcept
 	return true;
 }
 
+static bool parse_catch(pstate& s, Catch& out) noexcept
+{
+	static constexpr const char ctx[] = "Catch";
+
+	if (expect(s, Token::Type::Catch, ctx) == nullptr)
+		return false;
+
+	if (const Token* t = expect(s, Token::Type::Ident, ctx); t != nullptr)
+		out.error_ident = t->data_strview();
+	else
+		return false;
+
+	return parse_statement(s, out.stmt);
+}
+
 static bool parse_top_level_expr(pstate& s, TopLevelExpr& out) noexcept
 {
 	static constexpr const char ctx[] = "TopLevelExpr";
@@ -882,7 +897,8 @@ static bool parse_top_level_expr(pstate& s, TopLevelExpr& out) noexcept
 		if (!alloc(&out.if_block))
 			return error_out_of_memory(s, ctx);
 
-		return parse_if(s, *out.if_block);
+		if (!parse_if(s, *out.if_block))
+			return false;
 	}
 	else if (t->type == Token::Type::For)
 	{
@@ -891,7 +907,8 @@ static bool parse_top_level_expr(pstate& s, TopLevelExpr& out) noexcept
 		if (!alloc(&out.for_block))
 			return error_out_of_memory(s, ctx);
 
-		return parse_for(s, *out.for_block);
+		if (!parse_for(s, *out.for_block))
+			return false;
 	}
 	else if (t->type == Token::Type::SquiggleBeg)
 	{
@@ -900,7 +917,8 @@ static bool parse_top_level_expr(pstate& s, TopLevelExpr& out) noexcept
 		if (!alloc(&out.block))
 			return error_out_of_memory(s, ctx);
 
-		return parse_block(s, *out.block);
+		if (!parse_block(s, *out.block))
+			return false;
 	}
 	else if (t->type == Token::Type::Switch)
 	{
@@ -909,7 +927,8 @@ static bool parse_top_level_expr(pstate& s, TopLevelExpr& out) noexcept
 		if (!alloc(&out.switch_block))
 			return error_out_of_memory(s, ctx);
 
-		return parse_switch(s, *out.switch_block);
+		if (!parse_switch(s, *out.switch_block))
+			return false;
 	}
 	else
 	{
@@ -918,8 +937,20 @@ static bool parse_top_level_expr(pstate& s, TopLevelExpr& out) noexcept
 		if (!alloc(&out.expr))
 			return error_out_of_memory(s, ctx);
 
-		return parse_expr(s, *out.expr);
+		if (!parse_expr(s, *out.expr))
+			return false;
 	}
+
+	if (const Token* t = peek(s); t != nullptr && t->type == Token::Type::Catch)
+	{
+		if (!alloc(&out.opt_catch))
+			return error_out_of_memory(s, ctx);
+
+		if (!parse_catch(s, *out.opt_catch))
+			return false;
+	}
+
+	return true;
 }
 
 static bool parse_type_name(pstate& s, TypeName& out) noexcept

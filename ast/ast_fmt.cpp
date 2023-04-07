@@ -316,6 +316,17 @@ static void tree_statement(const Statement& node, i32 indent, const char* name) 
 	}
 }
 
+static void tree_catch(const Catch& node, i32 indent, const char* name = nullptr) noexcept
+{
+	print_beg_node("Catch", indent, name);
+
+	print_scalar("error_ident", node.error_ident, indent + 1);
+
+	tree_statement(node.stmt, indent + 1, "catch_stmt");
+
+	print_end_node(indent);
+}
+
 static void tree_top_level_expr(const TopLevelExpr& node, i32 indent, const char* name) noexcept
 {
 	print_beg_node("TopLevelExpr", indent, name, true);
@@ -346,6 +357,9 @@ static void tree_top_level_expr(const TopLevelExpr& node, i32 indent, const char
 		assert(false);
 		break;
 	}
+
+	if (node.opt_catch != nullptr)
+		tree_catch(*node.opt_catch, indent + 1);
 }
 
 static void tree_variable_def(const VariableDef& node, i32 indent, const char* name) noexcept
