@@ -74,14 +74,14 @@ int main(int32_t argc, const char** argv) noexcept
 
 	vec<Token> tokens = tokenize(strview(file.data(), file.size()), false);
 
-	for (const Token& t : tokens)
-	{
-		strview data = t.data_strview();
-
-		strview type = t.type_strview();
-
-		fprintf(stderr, "ln %d %.*s \"%.*s\"\n", t.line_number, static_cast<i32>(type.len()), type.begin(), static_cast<i32>(data.len()), data.begin());
-	}
+	// for (const Token& t : tokens)
+	// {
+	// 	strview data = t.data_strview();
+	// 
+	// 	strview type = t.type_strview();
+	//
+	// 	fprintf(stderr, "ln %d %.*s \"%.*s\"\n", t.line_number, static_cast<i32>(type.len()), type.begin(), static_cast<i32>(data.len()), data.begin());
+	// }
 
 	ProgramUnit program_unit;
 
@@ -115,7 +115,7 @@ int main(int32_t argc, const char** argv) noexcept
 	case Result::Type::UnexpectedToken: {
 		Token expected{ rst.expected_token, 0, {} };
 
-		fprintf(stderr, "%s: %s (Expected %s instead of %.*s on line %d)\n", rst.error_ctx, rst.message, expected.type_strview().begin(), static_cast<i32>(rst.problematic_token->data_strview().len()), rst.problematic_token->data_strview().begin(), rst.problematic_token->line_number);
+		fprintf(stderr, "%s: (Expected %s instead of %.*s on line %d)\n", rst.error_ctx, expected.type_strview().begin(), static_cast<i32>(rst.problematic_token->data_strview().len()), rst.problematic_token->data_strview().begin(), rst.problematic_token->line_number);
 
 		break;
 	}
