@@ -1,104 +1,201 @@
-x := y(a, b)(z[2]())
+x := {
+	rng : std.rand.Fnv1a = create(seed)
 
-my_func ::= proc() -> i32
-	return f[5].y(1, g(a.b.c, d + 1))
+	for {}
+}
 
-my_slice : []i32
+rst := win32.FormatMessage(
+		  FORMAT_MESSAGE_ALLOCATE_BUFFER
+		| FORMAT_MESSAGE_FROM_SYSTEM
+		| FORMAT_MESSAGE_IGNORE_INSERTS,
+		null,
+		to(hr, DWORD),
+		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+		&buf,
+		0,
+		null)
 
-my_array : [5 * 2] mut i32
-
-proc_to_proc_ref ::= proc() -> &proc(i : i32) -> i32
-	return
-		proc(i : i32) -> i32
-		{
-			return i * i
-		}
-
-X ::= struct
+MaybeError ::= trait(S :: Type, V :: Type, E :: Type)
 {
-	tag : enum
-	{
-		x
-		y
-	}
+	is_ok :: proc(s : &S) -> bool
 
-	union
-	{
-		x : u32
+	unwrap_value :: proc(s : S) -> V
 
-		y : f32
+	unwrap_error :: proc(s : S) -> E
+
+	create :: proc(v: V) -> S
+
+	create :: proc(e: E) -> S
+}
+
+ErrorCode ::= trait(S :: Type)
+{
+	is_ok :: proc(s : &S) -> bool
+
+	short_description :: proc(s : &S) -> Stringy
+
+	long_description :: proc(s : &S) -> Stringy
+}
+
+Error ::= struct
+{
+	error_type_id : u32
+
+	error : u32
+}
+
+impl To(ErrorCode, Error)
+{
+	to :: proc(e :: ErrorCode) -> Error =
+	{
+		assert(sizeof(e) <= 4)
+
+		id ::= comptime_counter(Error, typeof(e))
+
 	}
 }
 
-Result ::= proc(Success :: &type, Failure :: &type) -> type
+Result :: proc(V :: Type) -> Type =
 {
-	Failure ::= implements(Failure, ErrorCode)
-
 	return struct
 	{
-		success : Success
+		error :: Error
 
-		failure : Failure
+		value :: V
 
-		impl MaybeError(Self)
+		pub impl MaybeError(self, V, Error)
 		{
-			is_ok ::= proc(self : &Self) -> bool
-				return is_ok(failure)
+			is_ok :: proc(s : &self) -> bool =
+				is_ok(error)
+
+			unwrap_value :: proc(s : self) =
+				if is_ok(s) return value
+				else undefined
+
+			unwrap_error :: proc(s : self) =
+				if !is_ok(s) return error
+				else undefined
 		}
 	}
 }
 
-MaybeError ::= trait(T :: &type)
+HResult ::= enum(i32)
 {
-	is_ok ::= proc(t : &T) -> bool undef
+	S_OK		= 0x00000000
+	E_ABORT		= 0x80004004
+	E_ACCESSDENIED	= 0x80070005
+	E_FAIL		= 0x80004005
+	E_HANDLE	= 0x80070006
+	E_INVALIDARG	= 0x80070057
+	E_NOINTERFACE	= 0x80004002
+	E_NOTIMPL	= 0x80004001
+	E_OUTOFMEMORY	= 0x8007000E
+	E_POINTER	= 0x80004003
+	E_UNEXPECTED	= 0x8000FFFF
 }
 
-IS_DEBUG ::= false
-
-debug_print ::=
-	if IS_DEBUG
-		yield proc(fmt : &Slice(char8), args : &Vararg(anytype)) -> bool return print(fmt, args)
-	else
-		yield proc(fmt : &Slice(char8), args : &Vararg(anytype)) -> bool return true
-
-debug_info ::=
-	if IS_DEBUG
-		yield struct{ line : u32 }
-	else
-		yield struct{}
-
-print ::= proc(fmt : &Slice(char8), args : &Vararg(anytype)) -> bool
+impl ErrorCode(HResult)
 {
-	formatters ::= Array(size(args), Formatter)
+	is_ok :: proc(s : &self) -> bool =
+		s == S_OK
 
-	for arg, idx <- args do
-	{
-		at(formatters, idx) = create(arg)
-	}
+	short_description :: proc(s : &self) -> []char8 =
+		enumerant_name(s)
 
-	return true
+	long_description :: proc(s : &self) -> Result(String) =
+		format_hresult(s)
 }
 
-Formatter :: struct
+format_hresult :: proc(hr : &HResult) -> Result(String) =
 {
-	data : &void
+	win32 ::= import("Windows.h")
 
-	fmt_proc : &proc(data : &void, buf : & Buffer) -> bool
+	buf : mut [*]char8
+
+	rst := win32.FormatMessage(
+		  FORMAT_MESSAGE_ALLOCATE_BUFFER
+		| FORMAT_MESSAGE_FROM_SYSTEM
+		| FORMAT_MESSAGE_IGNORE_INSERTS,
+		null,
+		to(hr, DWORD),
+		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+		&buf,
+		0,
+		null)
+
+	if rst == 0
+		return create(to(GetLastError(), HResult))
+	
+	defer win32.LocalFree(buf)
+
+	return from_buffer(buf, to(rst))
 }
 
-ErrorCode ::= trait(T : type)
-{
-	is_ok ::= proc(t : &T) -> bool undef
-}
 
-WinRst ::= proc(Success : &type) -> type
-	return Result(Success, HResult)
 
-HResult ::= enum
-{
-	// snip
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 EXIT_SUCCESS :: i32 = 0
-
 EXIT_FAILURE :: i32 = 1
+
+alt_guessing_game :: proc -> Result(void) =
+{
+	con ::= std.console
+
+	seed := try std.os.get_process_id()
+
+	rng : std.rand.Fnv1a = create(seed)
+
+	for
+	{
+		number : u32 = next(rng, 10) + 1
+
+		con.print("Guess the number (between 1 and 10)\n")
+
+		for
+		{
+			guess := try con.read_line()
+
+			guess : u32 = try std.parse(guess)
+
+			if guess == number
+			{
+				con.print("{} is correct! Want to go again? [Y|N]\n", guess)
+
+				for do
+					if cont := try con.read_line(); streq(cont, "Y")
+						break
+					else if streq(cont, "N")
+						return create(create())
+					else
+						con.print("Please specify either 'Y' or 'N' ('{}' specified)\n", cont)
+			}
+		}
+	}
+}
+
+main :: proc -> i32 =
+{
+	alt_guessing_game catch return EXIT_SUCCESS
+
+	return EXIT_SUCCESS
+}
