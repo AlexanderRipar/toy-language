@@ -23,7 +23,7 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("SetBitShr"),
 		strview::from_literal("UOpLogNot"),
 		strview::from_literal("UOpBitNot"),
-		strview::from_literal("OpMul"),
+		strview::from_literal("OpMul_Ptr"),
 		strview::from_literal("OpDiv"),
 		strview::from_literal("OpMod"),
 		strview::from_literal("OpAdd"),
@@ -41,13 +41,9 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("OpBitOr"),
 		strview::from_literal("OpLogAnd"),
 		strview::from_literal("OpLogOr"),
-		strview::from_literal("LitString"),
-		strview::from_literal("LitChar"),
-		strview::from_literal("LitInt"),
-		strview::from_literal("LitFloat"),
-		strview::from_literal("LitBadNumber"),
-		strview::from_literal("Colon"),
+		strview::from_literal("OpDeref"),
 		strview::from_literal("Dot"),
+		strview::from_literal("Colon"),
 		strview::from_literal("TripleDot"),
 		strview::from_literal("Semicolon"),
 		strview::from_literal("Comma"),
@@ -59,6 +55,11 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("BracketEnd"),
 		strview::from_literal("ParenBeg"),
 		strview::from_literal("ParenEnd"),
+		strview::from_literal("LitString"),
+		strview::from_literal("LitChar"),
+		strview::from_literal("LitInt"),
+		strview::from_literal("LitFloat"),
+		strview::from_literal("LitBadNumber"),
 		strview::from_literal("Hashtag"),
 		strview::from_literal("Comment"),
 		strview::from_literal("IncompleteComment"),
@@ -66,14 +67,15 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("Else"),
 		strview::from_literal("For"),
 		strview::from_literal("Do"),
+		strview::from_literal("Break"),
 		strview::from_literal("Until"),
 		strview::from_literal("Catch"),
+		strview::from_literal("Try"),
 		strview::from_literal("Switch"),
 		strview::from_literal("Case"),
-		strview::from_literal("Go"),
-		strview::from_literal("To"),
 		strview::from_literal("Yield"),
 		strview::from_literal("Return"),
+		strview::from_literal("Defer"),
 		strview::from_literal("DoubleColon"),
 		strview::from_literal("Proc"),
 		strview::from_literal("Struct"),
@@ -83,7 +85,6 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("Impl"),
 		strview::from_literal("Module"),
 		strview::from_literal("Mut"),
-		strview::from_literal("Const"),
 		strview::from_literal("Pub"),
 		strview::from_literal("Undefined"),
 	};
@@ -127,6 +128,8 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			t.tag = Token::Tag::For;
 		else if (streqc({ beg, c }, strview::from_literal("do")))
 			t.tag = Token::Tag::Do;
+		else if (streqc({ beg, c }, strview::from_literal("break")))
+			t.tag = Token::Tag::Break;
 		else if (streqc({ beg, c }, strview::from_literal("until")))
 			t.tag = Token::Tag::Until;
 		else if (streqc({ beg, c }, strview::from_literal("if")))
@@ -135,14 +138,12 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			t.tag = Token::Tag::Else;
 		else if (streqc({ beg, c }, strview::from_literal("switch")))
 			t.tag = Token::Tag::Switch;
-		else if (streqc({ beg, c }, strview::from_literal("go")))
-			t.tag = Token::Tag::Go;
-		else if (streqc({ beg, c }, strview::from_literal("to")))
-			t.tag = Token::Tag::To;
 		else if (streqc({ beg, c }, strview::from_literal("yield")))
 			t.tag = Token::Tag::Yield;
 		else if (streqc({ beg, c }, strview::from_literal("return")))
 			t.tag = Token::Tag::Return;
+		else if (streqc({ beg, c }, strview::from_literal("defer")))
+			t.tag = Token::Tag::Defer;
 		else if (streqc({ beg, c }, strview::from_literal("case")))
 			t.tag = Token::Tag::Case;
 		else if (streqc({ beg, c }, strview::from_literal("proc")))
@@ -161,13 +162,13 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			t.tag = Token::Tag::Module;
 		else if (streqc({ beg, c }, strview::from_literal("mut")))
 			t.tag = Token::Tag::Mut;
-		else if (streqc({ beg, c }, strview::from_literal("const")))
-			t.tag = Token::Tag::Const;
 		else if (streqc({ beg, c }, strview::from_literal("pub")))
 			t.tag = Token::Tag::Pub;
 		else if (streqc({ beg, c }, strview::from_literal("catch")))
 			t.tag = Token::Tag::Catch;
-		else if (streqc({ beg, c }, strview::from_literal("undef")))
+		else if (streqc({ beg, c }, strview::from_literal("try")))
+			t.tag = Token::Tag::Try;
+		else if (streqc({ beg, c }, strview::from_literal("undefined")))
 			t.tag = Token::Tag::Undefined;
 		else
 			t.tag = Token::Tag::Ident;
@@ -487,7 +488,7 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			}
 			else
 			{
-				t.tag = Token::Tag::OpMul;
+				t.tag = Token::Tag::OpMul_Ptr;
 			}
 
 			break;
@@ -644,6 +645,12 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				t.tag = Token::Tag::UOpLogNot;
 			}
+
+			break;
+		}
+
+		case '$': {
+			t.tag = Token::Tag::UOpDeref;
 
 			break;
 		}

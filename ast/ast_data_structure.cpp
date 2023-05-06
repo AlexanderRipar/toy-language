@@ -136,9 +136,10 @@ static void cleanup_helper(TypeRef& obj) noexcept
 		obj.expr->~Expr();
 		break;
 
-	case TypeRef::Tag::Ref:
+	case TypeRef::Tag::Ptr:
+	case TypeRef::Tag::MultiPtr:
 	case TypeRef::Tag::Slice:
-		obj.ref_or_slice->~TypeRef();
+		obj.ptr_or_multiptr_or_slice->~TypeRef();
 		break;
 
 	case TypeRef::Tag::Array:
@@ -155,40 +156,42 @@ static void cleanup_helper(TypeRef& obj) noexcept
 
 static void cleanup_helper(TopLevelExpr& obj) noexcept
 {
-	if (obj.opt_catch != nullptr)
+	if (obj.block_expr == nullptr)
 	{
-		obj.opt_catch->~Catch();
-
-		free(obj.opt_catch);
-	}
-
-	if (obj.if_stmt == nullptr)
-	{
-		assert(obj.tag == TopLevelExpr::Tag::EMPTY);
+		assert(obj.tag == TopLevelExpr::Tag::EMPTY || obj.tag == TopLevelExpr::Tag::Undefined);
 
 		return;
 	}
 
 	switch (obj.tag)
 	{
+	case TopLevelExpr::Tag::Block:
+		obj.block_expr->~Block();
+		break;
+
 	case TopLevelExpr::Tag::If:
-		obj.if_stmt->~If();
+		obj.if_expr->~If();
 		break;
 
 	case TopLevelExpr::Tag::For:
-		obj.for_stmt->~For();
+		obj.for_expr->~For();
 		break;
 
 	case TopLevelExpr::Tag::Switch:
-		obj.switch_stmt->~Switch();
+		obj.switch_expr->~Switch();
 		break;
 
+	case TopLevelExpr::Tag::Catch:
+		obj.catch_expr->~Catch();
+		break;
+
+	case TopLevelExpr::Tag::Try:
 	case TopLevelExpr::Tag::Expr:
-		obj.expr->~Expr();
+		obj.simple_or_try_expr->~Expr();
 		break;
 
 	case TopLevelExpr::Tag::Type:
-		obj.type->~Type();
+		obj.type_expr->~Type();
 		break;
 
 	default:
@@ -196,14 +199,14 @@ static void cleanup_helper(TopLevelExpr& obj) noexcept
 		break;
 	}
 
-	free(obj.if_stmt);
+	free(obj.if_expr);
 }
 
 static void cleanup_helper(Statement& obj) noexcept
 {
 	if (obj.if_stmt == nullptr)
 	{
-		assert(obj.tag == Statement::Tag::EMPTY);
+		assert(obj.tag == Statement::Tag::EMPTY || obj.tag == Statement::Tag::Undefined);
 
 		return;
 	}
@@ -224,11 +227,8 @@ static void cleanup_helper(Statement& obj) noexcept
 
 	case Statement::Tag::Return:
 	case Statement::Tag::Yield:
-		obj.return_or_yield_value->~TopLevelExpr();
-		break;
-
-	case Statement::Tag::Go:
-		obj.go_stmt->~Go();
+	case Statement::Tag::Break:
+		obj.return_or_yield_or_break_value->~TopLevelExpr();
 		break;
 
 	case Statement::Tag::Block:
@@ -245,6 +245,10 @@ static void cleanup_helper(Statement& obj) noexcept
 
 	case Statement::Tag::Assignment:
 		obj.assignment->~Assignment();
+		break;
+
+	case Statement::Tag::Defer:
+		obj.deferred_stmt->~Statement();
 		break;
 
 	default:
@@ -423,7 +427,9 @@ UnaryOp& UnaryOp::operator=(UnaryOp&& o) noexcept
 
 Catch& Catch::operator=(Catch&& o) noexcept
 {
-	error_ident = std::move(o.error_ident);
+	caught_expr = std::move(o.caught_expr);
+
+	opt_error_ident = std::move(o.opt_error_ident);
 
 	stmt = std::move(o.stmt);
 
@@ -544,20 +550,6 @@ Switch& Switch::operator=(Switch&& o) noexcept
 	return *this;
 }
 
-Go& Go::operator=(Go&& o) noexcept
-{
-	label = std::move(o.label);
-
-	return *this;
-}
-
-To& To::operator=(To&& o) noexcept
-{
-	cases = std::move(o.cases);
-
-	return *this;
-}
-
 Impl& Impl::operator=(Impl&& o) noexcept
 {
 	trait = std::move(o.trait);
@@ -570,8 +562,6 @@ Impl& Impl::operator=(Impl&& o) noexcept
 Block& Block::operator=(Block&& o) noexcept
 {
 	statements = std::move(o.statements);
-
-	opt_to = std::move(o.opt_to);
 
 	return *this;
 }

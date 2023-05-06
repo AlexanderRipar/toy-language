@@ -193,15 +193,6 @@ static void tree_print(const Assignment& node, u32 indent, const char* name = nu
 	print_end_node(indent);
 }
 
-static void tree_print(const Go& node, u32 indent, const char* name = nullptr) noexcept
-{
-	print_beg_node("Go", indent, name);
-
-	tree_print(node.label, indent + 1, "label");
-
-	print_end_node(indent);
-}
-
 static void tree_print(const Block& node, u32 indent, const char* name = nullptr) noexcept
 {
 	print_beg_node("Block", indent, name);
@@ -375,15 +366,15 @@ static void tree_print(const Statement& node, u32 indent, const char* name) noex
 		break;
 
 	case Statement::Tag::Return:
-		tree_print(*node.return_or_yield_value, indent, "Return");
+		tree_print(*node.return_or_yield_or_break_value, indent, "return");
 		break;
 
 	case Statement::Tag::Yield:
-		tree_print(*node.return_or_yield_value, indent, "Yield");
+		tree_print(*node.return_or_yield_or_break_value, indent, "yield");
 		break;
 
-	case Statement::Tag::Go:
-		tree_print(*node.go_stmt, indent);
+	case Statement::Tag::Break:
+		tree_print(*node.return_or_yield_or_break_value, indent, "break");
 		break;
 
 	case Statement::Tag::Block:
@@ -809,24 +800,31 @@ static void tree_print(const TopLevelExpr& node, u32 indent, const char* name) n
 
 	switch (node.tag)
 	{
+	case TopLevelExpr::Tag::Block:
+		tree_print(*node.block_expr, indent);
+
 	case TopLevelExpr::Tag::If:
-		tree_print(*node.if_stmt, indent);
+		tree_print(*node.if_expr, indent);
 		break;
 
 	case TopLevelExpr::Tag::For:
-		tree_print(*node.for_stmt, indent);
+		tree_print(*node.for_expr, indent);
 		break;
 
 	case TopLevelExpr::Tag::Switch:
-		tree_print(*node.switch_stmt, indent);
+		tree_print(*node.switch_expr, indent);
 		break;
 
 	case TopLevelExpr::Tag::Expr:
-		tree_print(*node.expr, indent);
+		tree_print(*node.simple_or_try_expr, indent);
+		break;
+
+	case TopLevelExpr::Tag::Try:
+		tree_print(*node.simple_or_try_expr, indent, "try");
 		break;
 
 	case TopLevelExpr::Tag::Type:
-		tree_print(*node.type, indent);
+		tree_print(*node.type_expr, indent);
 		break;
 		
 	default:
@@ -849,18 +847,22 @@ static void tree_print(const TypeRef& node, u32 indent, const char* name) noexce
 		tree_print(*node.expr, indent + 1, "expr");
 		break;
 
-	case TypeRef::Tag::Ref:
-		tree_print(*node.ref_or_slice, indent + 1, "ref");
+	case TypeRef::Tag::Ptr:
+		tree_print(*node.ptr_or_multiptr_or_slice, indent + 1, "ptr");
+		break;
+
+	case TypeRef::Tag::MultiPtr:
+		tree_print(*node.ptr_or_multiptr_or_slice, indent + 1, "multiptr");
 		break;
 
 	case TypeRef::Tag::Slice:
-		tree_print(*node.ref_or_slice, indent + 1, "slice");
+		tree_print(*node.ptr_or_multiptr_or_slice, indent + 1, "slice");
 		break;
 
 	case TypeRef::Tag::Array:
 		tree_print(*node.array, indent + 1, "array");
 		break;
-		
+
 	default:
 		assert(false);
 		break;

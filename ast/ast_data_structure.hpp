@@ -14,10 +14,6 @@ struct Switch;
 
 struct Return;
 
-struct Yield;
-
-struct Go;
-
 struct Block;
 
 struct Assignment;
@@ -198,12 +194,15 @@ struct TypeRef
 		EMPTY = 0,
 		Type,
 		Expr,
-		Ref,
+		Ptr,
+		MultiPtr,
 		Slice,
 		Array,
 	} tag = Tag::EMPTY;
 
 	bool is_mut;
+
+	bool is_proc_param_ref;
 
 	u32 array_size;
 
@@ -213,7 +212,7 @@ struct TypeRef
 
 		Expr* expr;
 
-		TypeRef* ref_or_slice;
+		TypeRef* ptr_or_multiptr_or_slice;
 
 		Array* array;
 	};
@@ -297,6 +296,8 @@ struct UnaryOp
 		NONE = 0,
 		BitNot,
 		LogNot,
+		Deref,
+		AddrOf,
 		Neg,
 	} op;
 
@@ -318,27 +319,33 @@ struct TopLevelExpr
 	enum class Tag
 	{
 		EMPTY = 0,
+		Block,
 		If,
 		For,
 		Switch,
+		Catch,
+		Try,
 		Expr,
 		Type,
+		Undefined,
 	} tag = Tag::EMPTY;
 
 	union
 	{
-		If* if_stmt;
+		Block* block_expr;
 
-		For* for_stmt;
+		If* if_expr;
 
-		Switch* switch_stmt;
+		For* for_expr;
 
-		Expr* expr;
+		Switch* switch_expr;
 
-		Type* type;
+		Catch* catch_expr;
+
+		Expr* simple_or_try_expr;
+
+		Type* type_expr;
 	};
-
-	Catch* opt_catch;
 
 	~TopLevelExpr() noexcept;
 
@@ -356,6 +363,8 @@ struct TopLevelExpr
 struct Definition
 {
 	bool is_comptime;
+
+	bool is_pub;
 
 	strview opt_ident;
 
@@ -401,11 +410,13 @@ struct Statement
 		Switch,
 		Return,
 		Yield,
-		Go,
+		Break,
 		Block,
 		Call,
 		Definition,
 		Assignment,
+		Defer,
+		Undefined,
 	} tag = Tag::EMPTY;
 
 	union
@@ -416,17 +427,15 @@ struct Statement
 
 		Switch* switch_stmt;
 
-		TopLevelExpr* return_or_yield_value;
-
-		Yield* yield_stmt;
-
-		Go* go_stmt;
+		TopLevelExpr* return_or_yield_or_break_value;
 
 		Block* block;
 
 		Call* call;
 
 		Definition* definition;
+
+		Statement* deferred_stmt;
 
 		Assignment* assignment;
 	};
@@ -446,7 +455,9 @@ struct Statement
 
 struct Catch
 {
-	strview error_ident;
+	Expr caught_expr;
+
+	strview opt_error_ident;
 
 	Statement stmt;
 
@@ -635,36 +646,6 @@ struct Switch
 	Switch(const Switch& o) noexcept = delete;
 };
 
-struct Go
-{
-	Expr label;
-
-	Go() noexcept = default;
-
-	Go& operator=(Go&& o) noexcept;
-
-	Go& operator=(const Go& o) noexcept = delete;
-
-	Go(Go&& o) noexcept = delete;
-
-	Go(const Go& o) noexcept = delete;
-};
-
-struct To
-{
-	vec<Case> cases;
-
-	To() noexcept = default;
-
-	To& operator=(To&& o) noexcept;
-
-	To& operator=(const To& o) noexcept = delete;
-
-	To(To&& o) noexcept = delete;
-
-	To(const To& o) noexcept = delete;
-};
-
 struct Impl
 {
 	Call trait;
@@ -685,8 +666,6 @@ struct Impl
 struct Block
 {
 	vec<Statement> statements;
-
-	To opt_to;
 
 	Block() noexcept = default;
 
