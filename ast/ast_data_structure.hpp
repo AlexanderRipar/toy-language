@@ -204,8 +204,6 @@ struct TypeRef
 
 	bool is_proc_param_ref;
 
-	u32 array_size;
-
 	union
 	{
 		Type* type;
