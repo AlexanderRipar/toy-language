@@ -93,6 +93,8 @@ static strview get_name(UnaryOp::Op op) noexcept
 		strview::from_literal("NONE"),
 		strview::from_literal("BitNot"),
 		strview::from_literal("LogNot"),
+		strview::from_literal("Deref"),
+		strview::from_literal("AddrOf"),
 		strview::from_literal("Neg"),
 	};
 
