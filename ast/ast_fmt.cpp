@@ -802,6 +802,7 @@ static void tree_print(const TopLevelExpr& node, u32 indent, const char* name) n
 	{
 	case TopLevelExpr::Tag::Block:
 		tree_print(*node.block_expr, indent);
+		break;
 
 	case TopLevelExpr::Tag::If:
 		tree_print(*node.if_expr, indent);
