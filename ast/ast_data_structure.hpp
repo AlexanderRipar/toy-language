@@ -193,11 +193,11 @@ namespace ast
 		{
 			EMPTY = 0,
 			Expr,
-			ProcSignature,
 			Array,
 			Slice,
 			Ptr,
 			MultiPtr,
+			ProcSignature,
 		} tag = Tag::EMPTY;
 
 		bool is_mut;
@@ -206,11 +206,11 @@ namespace ast
 		{
 			Expr* expr;
 
-			ProcSignature* proc_signature;
-
 			Array* array;
 
 			Type* slice_or_ptr_or_multiptr;
+
+			ProcSignature* proc_signature;
 		};
 	};
 

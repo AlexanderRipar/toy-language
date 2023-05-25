@@ -649,10 +649,6 @@ static void tree_print(FmtState& s, const ast::Type& node, const strview node_na
 		tree_print(s, *node.expr);
 		break;
 
-	case ast::Type::Tag::ProcSignature:
-		tree_print(s, *node.proc_signature);
-		break;
-
 	case ast::Type::Tag::Array:
 		tree_print(s, *node.array);
 		break;
@@ -667,6 +663,10 @@ static void tree_print(FmtState& s, const ast::Type& node, const strview node_na
 
 	case ast::Type::Tag::MultiPtr:
 		tree_print(s, *node.slice_or_ptr_or_multiptr, "MultiPtr");
+		break;
+
+	case ast::Type::Tag::ProcSignature:
+		tree_print(s, *node.proc_signature);
 		break;
 
 	default:
