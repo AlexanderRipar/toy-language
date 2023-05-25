@@ -9,7 +9,6 @@ add_executable(compilator main.cpp
 	ast/ast_gen.hpp ast/ast_gen.cpp
 	ast/ast_fmt.hpp ast/ast_fmt.cpp
 	ast/ast_data_structure.hpp ast/ast_data_structure.cpp
-	nms/nms_gen.hpp nms/nms_gen.cpp
 	util/types.hpp
 	util/strutil.hpp
 	util/strview.hpp
