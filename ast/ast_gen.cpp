@@ -1185,6 +1185,19 @@ static bool parse(pstate& s, ast::TraitSignature& out) noexcept
 	}
 }
 
+static bool parse(pstate& s, ast::Impl& out) noexcept
+{
+	constexpr const char* const ctx = "Impl";
+
+	if (expect(s, ctx, Token::Tag::Impl) == nullptr)
+		return false;
+
+	if (!parse(s, out.bound_trait))
+		return false;
+
+	return parse(s, out.body);
+}
+
 static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 {
 	constexpr const char* const ctx = "Expr";
@@ -1257,6 +1270,14 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 		out.tag = ast::Expr::Tag::Defer;
 
 		return parse(s, *out.return_or_break_or_defer);
+
+	case Token::Tag::Impl:
+		if (!alloc(s, ctx, &out.impl))
+			return false;
+
+		out.tag = ast::Expr::Tag::Impl;
+
+		return parse(s, *out.impl);
 
 	default:
 		if (const Token* t1 = peek(s, 1); t1 == nullptr || (t1->tag != Token::Tag::Colon && t1->tag != Token::Tag::DoubleColon))

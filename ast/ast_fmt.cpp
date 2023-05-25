@@ -559,6 +559,19 @@ static void tree_print(FmtState& s, const ast::TraitSignature& node) noexcept
 	close_elem(s);
 }
 
+static void tree_print(FmtState& s, const ast::Impl& node) noexcept
+{
+	start_elem(s, NodeType::Struct, "Impl");
+
+	start_elem(s, NodeType::Member, "bound_trait");
+	tree_print(s, node.bound_trait);
+
+	start_elem(s, NodeType::Member, "body");
+	tree_print(s, node.body);
+
+	close_elem(s);
+}
+
 static void tree_print(FmtState& s, const ast::Expr& node) noexcept
 {
 	start_elem(s, NodeType::Union, "Expr");
@@ -623,6 +636,10 @@ static void tree_print(FmtState& s, const ast::Expr& node) noexcept
 
 	case ast::Expr::Tag::Definition:
 		tree_print(s, *node.definition);
+		break;
+
+	case ast::Expr::Tag::Impl:
+		tree_print(s, *node.impl);
 		break;
 
 	default:

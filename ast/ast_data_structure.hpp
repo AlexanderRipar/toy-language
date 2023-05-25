@@ -29,6 +29,8 @@ namespace ast
 
 	struct Definition;
 
+	struct Impl;
+
 
 
 	struct IntegerLiteral
@@ -94,6 +96,7 @@ namespace ast
 			Break,
 			Defer,
 			Definition,
+			Impl,
 		} tag = Tag::EMPTY;
 
 		u32 ident_len;
@@ -121,7 +124,16 @@ namespace ast
 			Expr* return_or_break_or_defer;
 
 			Definition* definition;
+
+			Impl* impl;
 		};
+	};
+
+	struct Impl
+	{
+		Expr bound_trait;
+
+		Expr body;
 	};
 
 	struct BinaryOp
