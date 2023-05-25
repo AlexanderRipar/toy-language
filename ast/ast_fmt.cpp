@@ -728,8 +728,8 @@ static void tree_print(FmtState& s, const ast::FileModule& node) noexcept
 	start_elem(s, NodeType::Member, "filename");
 	start_elem(s, NodeType::Value, node.filename);
 
-	start_elem(s, NodeType::Array, "definitions");
-	for (const ast::Definition& child : node.definitions)
+	start_elem(s, NodeType::Array, "exprs");
+	for (const ast::Expr& child : node.exprs)
 		tree_print(s, child);
 	close_elem(s);
 

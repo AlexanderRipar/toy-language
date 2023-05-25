@@ -1508,10 +1508,10 @@ static bool parse(pstate& s, ast::FileModule& out) noexcept
 		if (peek(s) == nullptr)
 			return true;
 
-		if (!out.definitions.push_back({}))
+		if (!out.exprs.push_back({}))
 			return error_out_of_memory(s, ctx);
 
-		if (!parse(s, out.definitions.last()))
+		if (!parse(s, out.exprs.last()))
 			return false;
 	}
 }

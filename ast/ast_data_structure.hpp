@@ -345,7 +345,7 @@ namespace ast
 	{
 		strview filename;
 
-		vec<Definition, 0> definitions;
+		vec<Expr, 0> exprs;
 	};
 
 	void cleanup(FileModule& file_module) noexcept;
