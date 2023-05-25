@@ -3,834 +3,337 @@
 
 #include "../util/types.hpp"
 #include "../util/strview.hpp"
-#include "../util/str.hpp"
 #include "../util/vec.hpp"
 
-struct If;
-
-struct For;
-
-struct Switch;
-
-struct Return;
-
-struct Block;
-
-struct Assignment;
-
-struct Name;
-
-struct Type;
-
-struct UnaryOp;
-
-struct BinaryOp;
-
-struct Definition;
-
-struct Catch;
-
-struct Array;
-
-struct Call;
-
-
-
-struct IntegerLiteral
+namespace ast
 {
-	u64 value;
-};
+	struct Call;
 
-struct FloatLiteral
-{
-	f64 value;
-};
+	struct BinaryOp;
 
-struct StringLiteral
-{
-	str value;
+	struct UnaryOp;
 
-	StringLiteral() noexcept = default;
+	struct If;
 
-	StringLiteral& operator=(StringLiteral&& o) noexcept;
+	struct For;
 
-	StringLiteral& operator=(const StringLiteral& o) noexcept = delete;
+	struct Switch;
 
-	StringLiteral(StringLiteral&& o) noexcept = delete;
+	struct Block;
 
-	StringLiteral(const StringLiteral& o) noexcept = delete;
-};
+	struct Array;
 
-struct CharLiteral
-{
-	char8 value[4];
-};
+	struct ProcSignature;
 
-struct Literal
-{
-	enum class Tag
+
+
+	struct IntegerLiteral
 	{
-		EMPTY = 0,
-		IntegerLiteral,
-		FloatLiteral,
-		StringLiteral,
-		CharLiteral,
-	} tag = Tag::EMPTY;
-
-	union
-	{
-		IntegerLiteral integer_literal;
-
-		FloatLiteral float_literal;
-
-		StringLiteral string_literal;
-
-		CharLiteral char_literal;
+		u64 value;
 	};
 
-	~Literal() noexcept;
-
-	Literal() noexcept = default;
-
-	Literal& operator=(Literal&& o) noexcept;
-
-	Literal& operator=(const Literal& o) noexcept = delete;
-
-	Literal(Literal&& o) noexcept = delete;
-
-	Literal(const Literal& o) noexcept = delete;
-};
-
-struct Expr
-{
-	enum class Tag
+	struct FloatLiteral
 	{
-		EMPTY = 0,
-		Ident,
-		Literal,
-		UnaryOp,
-		BinaryOp,
-		Call,
-	} tag = Tag::EMPTY;
-
-	u32 ident_len;
-
-	union
-	{
-		const char* ident_beg;
-		
-		Literal* literal;
-
-		UnaryOp* unary_op;
-
-		BinaryOp* binary_op;
-
-		Call* call;
-	};
-	
-	~Expr() noexcept;
-
-	Expr() noexcept = default;
-
-	Expr& operator=(Expr&& o) noexcept;
-
-	Expr& operator=(const Expr& o) noexcept = delete;
-
-	Expr(Expr&& o) noexcept = delete;
-
-	Expr(const Expr& o) noexcept = delete;
-};
-
-struct Argument
-{
-	enum class Tag
-	{
-		EMPTY = 0,
-		Type,
-		Expr,
-	} tag = Tag::EMPTY;
-
-	union
-	{
-		Type* type;
-
-		Expr* expr;
+		f64 value;
 	};
 
-	~Argument() noexcept;
-
-	Argument() noexcept = default;
-
-	Argument& operator=(Argument&& o) noexcept;
-
-	Argument& operator=(const Argument& o) noexcept = delete;
-
-	Argument(Argument&& o) noexcept = delete;
-
-	Argument(const Argument& o) noexcept = delete;
-};
-
-struct Call
-{
-	Expr callee;
-
-	vec<Argument> args;
-
-	Call() noexcept = default;
-
-	Call& operator=(Call&& o) noexcept;
-
-	Call& operator=(const Call& o) noexcept = delete;
-
-	Call(Call&& o) noexcept = delete;
-
-	Call(const Call& o) noexcept = delete;
-};
-
-struct TypeRef
-{
-	enum class Tag : u8
+	struct StringLiteral
 	{
-		EMPTY = 0,
-		Type,
-		Expr,
-		Ptr,
-		MultiPtr,
-		Slice,
-		Array,
-	} tag = Tag::EMPTY;
-
-	bool is_mut;
-
-	bool is_proc_param_ref;
-
-	union
-	{
-		Type* type;
-
-		Expr* expr;
-
-		TypeRef* ptr_or_multiptr_or_slice;
-
-		Array* array;
+		vec<char8> value;
 	};
 
-	~TypeRef() noexcept;
-
-	TypeRef() noexcept = default;
-
-	TypeRef& operator=(TypeRef&& o) noexcept;
-
-	TypeRef& operator=(const TypeRef& o) noexcept = delete;
-
-	TypeRef(TypeRef&& o) noexcept = delete;
-
-	TypeRef(const TypeRef& o) noexcept = delete;
-};
-
-struct Array
-{
-	TypeRef elem_type;
-
-	Expr elem_cnt;
-
-	Array() noexcept = default;
-
-	Array& operator=(Array&& o) noexcept;
-
-	Array& operator=(const Array& o) noexcept = delete;
-
-	Array(Array&& o) noexcept = delete;
-
-	Array(const Array& o) noexcept = delete;
-};
-
-struct BinaryOp
-{
-	enum class Op : u8
+	struct CharLiteral
 	{
-		NONE = 0,
-		Add,
-		Sub,
-		Mul,
-		Div,
-		Mod,
-		BitAnd,
-		BitOr,
-		BitXor,
-		ShiftL,
-		ShiftR,
-		LogAnd,
-		LogOr,
-		CmpLt,
-		CmpLe,
-		CmpGt,
-		CmpGe,
-		CmpNe,
-		CmpEq,
-		Member,
-		Index,
-	} op;
-
-	Expr lhs;
-
-	Expr rhs;
-
-	BinaryOp() noexcept = default;
-
-	BinaryOp& operator=(BinaryOp&& o) noexcept;
-
-	BinaryOp& operator=(const BinaryOp& o) noexcept = delete;
-
-	BinaryOp(BinaryOp&& o) noexcept = delete;
-
-	BinaryOp(const BinaryOp& o) noexcept = delete;
-};
-
-struct UnaryOp
-{
-	enum class Op : u8
-	{
-		NONE = 0,
-		BitNot,
-		LogNot,
-		Deref,
-		AddrOf,
-		Neg,
-	} op;
-
-	Expr operand;
-
-	UnaryOp() noexcept = default;
-
-	UnaryOp& operator=(UnaryOp&& o) noexcept;
-
-	UnaryOp& operator=(const UnaryOp& o) noexcept = delete;
-
-	UnaryOp(UnaryOp&& o) noexcept = delete;
-
-	UnaryOp(const UnaryOp& o) noexcept = delete;
-};
-
-struct TopLevelExpr
-{
-	enum class Tag
-	{
-		EMPTY = 0,
-		Block,
-		If,
-		For,
-		Switch,
-		Catch,
-		Try,
-		Expr,
-		Type,
-		Undefined,
-	} tag = Tag::EMPTY;
-
-	union
-	{
-		Block* block_expr;
-
-		If* if_expr;
-
-		For* for_expr;
-
-		Switch* switch_expr;
-
-		Catch* catch_expr;
-
-		Expr* simple_or_try_expr;
-
-		Type* type_expr;
+		char8 value[4];
 	};
 
-	~TopLevelExpr() noexcept;
-
-	TopLevelExpr() noexcept = default;
-
-	TopLevelExpr& operator=(TopLevelExpr&& o) noexcept;
-
-	TopLevelExpr& operator=(const TopLevelExpr& o) noexcept = delete;
-
-	TopLevelExpr(TopLevelExpr&& o) noexcept = delete;
-
-	TopLevelExpr(const TopLevelExpr& o) noexcept = delete;
-};
-
-struct Definition
-{
-	bool is_comptime;
-
-	bool is_pub;
-
-	strview opt_ident;
-
-	TypeRef opt_type;
-
-	TopLevelExpr opt_value;
-
-	Definition() noexcept = default;
-
-	Definition& operator=(Definition&& o) noexcept;
-
-	Definition& operator=(const Definition& o) noexcept = delete;
-
-	Definition(Definition&& o) noexcept = delete;
-
-	Definition(const Definition& o) noexcept = delete;
-};
-
-struct EnumValue
-{
-	strview ident;
-
-	Expr opt_value;
-
-	EnumValue() noexcept = default;
-
-	EnumValue& operator=(EnumValue&& o) noexcept;
-
-	EnumValue& operator=(const EnumValue& o) noexcept = delete;
-
-	EnumValue(EnumValue&& o) noexcept = delete;
-
-	EnumValue(const EnumValue& o) noexcept = delete;
-};
-
-struct Statement
-{
-	enum class Tag
+	struct Literal
 	{
-		EMPTY = 0,
-		If,
-		For,
-		Switch,
-		Return,
-		Yield,
-		Break,
-		Block,
-		Call,
-		Definition,
-		Assignment,
-		Defer,
-		Undefined,
-	} tag = Tag::EMPTY;
+		enum class Tag
+		{
+			EMPTY = 0,
+			IntegerLiteral,
+			FloatLiteral,
+			StringLiteral,
+			CharLiteral,
+		} tag = Tag::EMPTY;
 
-	union
-	{
-		If* if_stmt;
+		union
+		{
+			IntegerLiteral integer_literal;
 
-		For* for_stmt;
+			FloatLiteral float_literal;
 
-		Switch* switch_stmt;
+			StringLiteral string_literal;
 
-		TopLevelExpr* return_or_yield_or_break_value;
+			CharLiteral char_literal;
+		};
 
-		Block* block;
-
-		Call* call;
-
-		Definition* definition;
-
-		Statement* deferred_stmt;
-
-		Assignment* assignment;
+		~Literal() = delete;
 	};
 
-	~Statement() noexcept;
-
-	Statement() noexcept = default;
-
-	Statement& operator=(Statement&& o) noexcept;
-
-	Statement& operator=(const Statement& o) noexcept = delete;
-
-	Statement(Statement&& o) noexcept = delete;
-
-	Statement(const Statement& o) noexcept = delete;
-};
-
-struct Catch
-{
-	Expr caught_expr;
-
-	strview opt_error_ident;
-
-	Statement stmt;
-
-	Catch() noexcept = default;
-
-	Catch& operator=(Catch&& o) noexcept;
-
-	Catch& operator=(const Catch& o) noexcept = delete;
-
-	Catch(Catch&& o) noexcept = delete;
-
-	Catch(const Catch& o) noexcept = delete;
-};
-
-struct Assignment
-{
-	enum class Op
+	struct Expr
 	{
-		NONE = 0,
-		Set,
-		SetAdd,
-		SetSub,
-		SetMul,
-		SetDiv,
-		SetMod,
-		SetBitAnd,
-		SetBitOr,
-		SetBitXor,
-		SetShiftL,
-		SetShiftR,
-	} op = Op::NONE;
+		enum class Tag
+		{
+			EMPTY = 0,
+			Ident,
+			Call,
+			Literal,
+			BinaryOp,
+			UnaryOp,
+			If,
+			For,
+			Switch,
+			Block,
+			Return,
+			Break,
+			Defer,
+		} tag = Tag::EMPTY;
 
-	Expr assignee;
+		u32 ident_len;
 
-	TopLevelExpr value;
+		union
+		{
+			const char8* ident_beg;
 
-	Assignment() noexcept = default;
+			Call* call;
 
-	Assignment& operator=(Assignment&& o) noexcept;
+			Literal* literal;
 
-	Assignment& operator=(const Assignment& o) noexcept = delete;
+			BinaryOp* binary_op;
 
-	Assignment(Assignment&& o) noexcept = delete;
+			UnaryOp* unary_op;
 
-	Assignment(const Assignment& o) noexcept = delete;
-};
+			If* if_expr;
 
-struct If
-{
-	Definition opt_init;
+			For* for_expr;
 
-	Expr condition;
+			Switch* switch_expr;
 
-	Statement body;
+			Block* block;
 
-	Statement opt_else_body;
-
-	If() noexcept = default;
-
-	If& operator=(If&& o) noexcept;
-
-	If& operator=(const If& o) noexcept = delete;
-
-	If(If&& o) noexcept = delete;
-
-	If(const If& o) noexcept = delete;
-};
-
-struct ForEachSignature
-{
-	strview loop_variable;
-
-	strview opt_step_variable;
-
-	Expr loopee;
-
-	ForEachSignature() noexcept = default;
-
-	ForEachSignature& operator=(ForEachSignature&& o) noexcept;
-
-	ForEachSignature& operator=(const ForEachSignature& o) noexcept = delete;
-
-	ForEachSignature(ForEachSignature&& o) noexcept = delete;
-
-	ForEachSignature(const ForEachSignature& o) noexcept = delete;
-};
-
-struct ForLoopSignature
-{
-	Definition opt_init;
-
-	Expr opt_cond;
-
-	Assignment opt_step;
-
-	ForLoopSignature() noexcept = default;
-
-	ForLoopSignature& operator=(ForLoopSignature&& o) noexcept;
-
-	ForLoopSignature& operator=(const ForLoopSignature& o) noexcept = delete;
-
-	ForLoopSignature(ForLoopSignature&& o) noexcept = delete;
-
-	ForLoopSignature(const ForLoopSignature& o) noexcept = delete;
-};
-
-struct ForSignature
-{
-	enum class Tag
-	{
-		EMPTY = 0,
-		ForEachSignature,
-		ForLoopSignature,
-	} tag = Tag::EMPTY;
-
-	union
-	{
-		ForEachSignature for_each;
-
-		ForLoopSignature for_loop;
+			Expr* return_or_break_or_defer;
+		};
 	};
 
-	~ForSignature() noexcept;
-
-	ForSignature() noexcept = default;
-
-	ForSignature& operator=(ForSignature&& o) noexcept;
-
-	ForSignature& operator=(const ForSignature& o) noexcept = delete;
-
-	ForSignature(ForSignature&& o) noexcept = delete;
-
-	ForSignature(const ForSignature& o) noexcept = delete;
-};
-
-struct For
-{
-	ForSignature signature;
-
-	Statement body;
-
-	Statement opt_until_body;
-
-	For() noexcept = default;
-
-	For& operator=(For&& o) noexcept;
-
-	For& operator=(const For& o) noexcept = delete;
-
-	For(For&& o) noexcept = delete;
-
-	For(const For& o) noexcept = delete;
-};
-
-struct Case
-{
-	Expr label;
-
-	Statement body;
-
-	Case() noexcept = default;
-
-	Case& operator=(Case&& o) noexcept;
-
-	Case& operator=(const Case& o) noexcept = delete;
-
-	Case(Case&& o) noexcept = delete;
-
-	Case(const Case& o) noexcept = delete;
-};
-
-struct Switch
-{
-	Expr switched;
-
-	vec<Case, 0> cases;
-
-	Switch() noexcept = default;
-
-	Switch& operator=(Switch&& o) noexcept;
-
-	Switch& operator=(const Switch& o) noexcept = delete;
-
-	Switch(Switch&& o) noexcept = delete;
-
-	Switch(const Switch& o) noexcept = delete;
-};
-
-struct Impl
-{
-	Call trait;
-
-	vec<Definition, 1> definitions;
-
-	Impl() noexcept = default;
-
-	Impl& operator=(Impl&& o) noexcept;
-
-	Impl& operator=(const Impl& o) noexcept = delete;
-
-	Impl(Impl&& o) noexcept = delete;
-
-	Impl(const Impl& o) noexcept = delete;
-};
-
-struct Block
-{
-	vec<Statement> statements;
-
-	Block() noexcept = default;
-
-	Block& operator=(Block&& o) noexcept;
-
-	Block& operator=(const Block& o) noexcept = delete;
-
-	Block(Block&& o) noexcept = delete;
-
-	Block(const Block& o) noexcept = delete;
-};
-
-struct ProcSignature
-{
-	vec<Definition> parameters;
-
-	TypeRef opt_return_type;
-
-	ProcSignature() noexcept = default;
-
-	ProcSignature& operator=(ProcSignature&& o) noexcept;
-
-	ProcSignature& operator=(const ProcSignature& o) noexcept = delete;
-
-	ProcSignature(ProcSignature&& o) noexcept = delete;
-
-	ProcSignature(const ProcSignature& o) noexcept = delete;
-};
-
-struct Proc
-{
-	ProcSignature signature;
-
-	Statement opt_body;
-
-	Proc() noexcept = default;
-
-	Proc& operator=(Proc&& o) noexcept;
-
-	Proc& operator=(const Proc& o) noexcept = delete;
-
-	Proc(Proc&& o) noexcept = delete;
-
-	Proc(const Proc& o) noexcept = delete;
-};
-
-struct StructuredType
-{
-	vec<Definition, 0> members;
-
-	StructuredType() noexcept = default;
-
-	StructuredType& operator=(StructuredType&& o) noexcept;
-
-	StructuredType& operator=(const StructuredType& o) noexcept = delete;
-
-	StructuredType(StructuredType&& o) noexcept = delete;
-
-	StructuredType(const StructuredType& o) noexcept = delete;
-};
-
-struct Enum
-{
-	TypeRef opt_enum_type;
-
-	vec<EnumValue> values;
-
-	vec<Definition> definitions;
-	
-	Enum() noexcept = default;
-
-	Enum& operator=(Enum&& o) noexcept;
-
-	Enum& operator=(const Enum& o) noexcept = delete;
-
-	Enum(Enum&& o) noexcept = delete;
-
-	Enum(const Enum& o) noexcept = delete;
-};
-
-struct Trait
-{
-	vec<Definition, 0> bindings;
-
-	vec<Definition, 0> definitions;
-
-	Trait() noexcept = default;
-
-	Trait& operator=(Trait&& o) noexcept;
-
-	Trait& operator=(const Trait& o) noexcept = delete;
-
-	Trait(Trait&& o) noexcept = delete;
-
-	Trait(const Trait& o) noexcept = delete;
-};
-
-struct Module
-{
-	vec<Definition, 0> definitions;
-
-	Module() noexcept = default;
-
-	Module& operator=(Module&& o) noexcept;
-
-	Module& operator=(const Module& o) noexcept = delete;
-
-	Module(Module&& o) noexcept = delete;
-
-	Module(const Module& o) noexcept = delete;
-};
-
-struct Type
-{
-	enum class Tag
+	struct BinaryOp
 	{
-		EMPTY = 0,
-		Proc,
-		Struct,
-		Union,
-		Enum,
-		Trait,
-		Module,
-		Impl,
-	} tag = Tag::EMPTY;
+		enum class Op : u8
+		{
+			NONE = 0,
+			Add,
+			Sub,
+			Mul,
+			Div,
+			Mod,
+			BitAnd,
+			BitOr,
+			BitXor,
+			ShiftL,
+			ShiftR,
+			LogAnd,
+			LogOr,
+			CmpLt,
+			CmpLe,
+			CmpGt,
+			CmpGe,
+			CmpNe,
+			CmpEq,
+			Member,
+			Catch,
+			Index,
+			Set,
+			SetAdd,
+			SetSub,
+			SetMul,
+			SetDiv,
+			SetMod,
+			SetBitAnd,
+			SetBitOr,
+			SetBitXor,
+			SetShiftL,
+			SetShiftR,
+		} op = Op::NONE;
 
-	union
-	{
-		Proc proc_type;
+		Expr lhs;
 
-		StructuredType struct_or_union_type;
-
-		Enum enum_type;
-
-		Trait trait_type;
-
-		Module module_type;
-
-		Impl impl_type;
+		Expr rhs;
 	};
 
-	~Type() noexcept;
+	struct UnaryOp
+	{
+		enum class Op : u8
+		{
+			NONE = 0,
+			BitNot,
+			LogNot,
+			Deref,
+			AddrOf,
+			Neg,
+			Try,
+		} op = Op::NONE;
 
-	Type() noexcept = default;
+		Expr operand;
+	};
 
-	Type& operator=(Type&& o) noexcept;
+	struct Block
+	{
+		vec<Expr, 0> statements;
+	};
 
-	Type& operator=(const Type& o) noexcept = delete;
+	struct Type
+	{
+		enum class Tag
+		{
+			EMPTY = 0,
+			Expr,
+			ProcSignature,
+			Array,
+			Slice,
+			Ptr,
+			MultiPtr,
+		} tag = Tag::EMPTY;
 
-	Type(Type&& o) noexcept = delete;
+		bool is_mut;
 
-	Type(const Type& o) noexcept = delete;
-};
+		union
+		{
+			Expr* expr;
 
-struct ProgramUnit
-{
-	vec<Definition> definitions;
+			ProcSignature* proc_signature;
 
-	ProgramUnit() noexcept = default;
+			Array* array;
 
-	ProgramUnit& operator=(ProgramUnit&& o) noexcept;
+			Type* slice_or_ptr_or_multiptr;
+		};
+	};
 
-	ProgramUnit& operator=(const ProgramUnit& o) noexcept = delete;
+	struct Array
+	{
+		Expr count;
 
-	ProgramUnit(ProgramUnit&& o) noexcept = delete;
+		Type elem_type;
+	};
 
-	ProgramUnit(const ProgramUnit& o) noexcept = delete;
-};
+	struct Definition
+	{
+		strview ident;
+
+		Type opt_type;
+
+		Expr opt_value;
+
+		bool is_pub;
+
+		bool is_comptime;
+	};
+
+	struct ProcSignature
+	{
+		Type opt_return_type;
+
+		vec<Definition, 0> parameters;
+	};
+
+	struct Argument
+	{
+		enum class Tag
+		{
+			EMPTY = 0,
+			Expr,
+			Definition,
+		} tag = Tag::EMPTY;
+
+		union
+		{
+			Expr* expr;
+
+			Definition* definition;	
+		};
+	};
+
+	struct Call
+	{
+		Expr callee;
+
+		vec<Argument, 0> arguments;
+	};
+
+	struct If
+	{
+		Definition* opt_init;
+
+		Expr condition;
+
+		Expr body;
+
+		Expr opt_else_body;
+	};
+
+	struct ForEachSignature
+	{
+		Expr looped_over;
+
+		strview loop_var;
+
+		strview opt_index_var;
+	};
+
+	struct ForLoopSignature
+	{
+		Definition* opt_init;
+
+		Expr opt_condition;
+
+		Expr opt_step;
+	};
+
+	struct For
+	{
+		enum class Tag
+		{
+			EMPTY = 0,
+			ForEachSignature,
+			ForLoopSignature,
+		} tag = Tag::EMPTY;
+
+		union
+		{
+			ForEachSignature for_each_signature;
+
+			ForLoopSignature for_loop_signature;
+		};
+
+		Expr body;
+
+		Expr opt_finally_body;
+	};
+
+	struct Case
+	{
+		Expr label;
+
+		Expr body;
+	};
+
+	struct Switch
+	{
+		Definition* opt_init;
+
+		Expr switched_expr;
+
+		vec<Case, 0> cases;
+	};
+
+	struct FileModule
+	{
+		strview filename;
+
+		vec<Definition, 0> definitions;
+	};
+
+	void cleanup(FileModule& file_module) noexcept;
+}
 
 #endif // AST_DATA_STRUCTURE_INCLUDE_GUARD

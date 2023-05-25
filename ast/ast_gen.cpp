@@ -11,14 +11,12 @@ struct pstate
 
 	const Token* curr;
 
-	Result rst;
+	ast::Result rst;
 };
-
-
 
 static bool error_out_of_memory(pstate& s, const char* ctx) noexcept
 {
-	s.rst.tag = Result::Tag::OutOfMemory;
+	s.rst.tag = ast::Result::Tag::OutOfMemory;
 
 	s.rst.error_ctx = ctx;
 
@@ -29,7 +27,7 @@ static bool error_out_of_memory(pstate& s, const char* ctx) noexcept
 
 static bool error_invalid_syntax(pstate& s, const char* ctx, const Token* curr, const char* msg) noexcept
 {
-	s.rst.tag = Result::Tag::InvalidSyntax;
+	s.rst.tag = ast::Result::Tag::InvalidSyntax;
 
 	s.rst.error_ctx = ctx;
 
@@ -42,7 +40,7 @@ static bool error_invalid_syntax(pstate& s, const char* ctx, const Token* curr, 
 
 static bool error_unexpected_token(pstate& s, const char* ctx, const Token* curr, Token::Tag expected) noexcept
 {
-	s.rst.tag = Result::Tag::UnexpectedToken;
+	s.rst.tag = ast::Result::Tag::UnexpectedToken;
 
 	s.rst.error_ctx = ctx;
 
@@ -55,7 +53,7 @@ static bool error_unexpected_token(pstate& s, const char* ctx, const Token* curr
 
 static bool error_unexpected_end(pstate& s, const char* ctx) noexcept
 {
-	s.rst.tag = Result::Tag::UnexpectedEndOfStream;
+	s.rst.tag = ast::Result::Tag::UnexpectedEndOfStream;
 
 	s.rst.error_ctx = ctx;
 
@@ -86,24 +84,39 @@ static const Token* next(pstate& s, const char* ctx) noexcept
 	return s.curr++;
 }
 
-static const Token* expect(pstate& s, Token::Tag expected, const char* ctx) noexcept
+static const Token* expect(pstate& s, const char* ctx, Token::Tag expected) noexcept
 {
 	const Token* t = next(s, ctx);
 
-	if (t->tag != expected)
+	if (t != nullptr)
 	{
-		error_unexpected_token(s, ctx, t, expected);
-
-		return nullptr;
+		if (t->tag != expected)
+			error_unexpected_token(s, ctx, t, expected);
+		else
+			return t;
 	}
 
-	return t;
+	return nullptr;
+}
+
+static const Token* next_if(pstate& s, Token::Tag expected) noexcept
+{
+	const Token* t = peek(s);
+
+	if (t != nullptr && t->tag == expected)
+	{
+		++s.curr;
+
+		return t;
+	}
+
+	return nullptr;
 }
 
 
 
 template<typename T>
-static bool alloc(T** out) noexcept
+static bool alloc(pstate& s, const char* ctx, T** out) noexcept
 {
 	if ((*out = static_cast<T*>(malloc(sizeof(T)))) != nullptr)
 	{
@@ -112,198 +125,10 @@ static bool alloc(T** out) noexcept
 		return true;
 	}
 
-	return false;
+	return error_out_of_memory(s, ctx);
 }
 
 
-
-// Operator for Shunting Yard algorithm
-struct ShOp
-{
-	enum class HelperOp : u8
-	{
-		NONE = 0,
-		ParenBeg,
-		CallBeg,
-		Comma,
-		ParenEnd,
-		BracketEnd,
-	};
-
-	u8 opcnt;
-
-	union
-	{
-		UnaryOp::Op unary_op;
-
-		BinaryOp::Op binary_op;
-
-		HelperOp helper_op;
-	};
-	
-	u8 precedence;
-
-	enum class Assoc : bool
-	{
-		Left,
-		Right,
-	} assoc;
-
-	constexpr ShOp() noexcept :
-		opcnt{ 0ui8 }, helper_op{ HelperOp::NONE }, precedence{ 0 }, assoc{ Assoc::Left } {}
-
-	constexpr ShOp(UnaryOp::Op op, u8 precedence, Assoc assoc) :
-		opcnt{ 1ui8 }, unary_op{ op }, precedence{ precedence }, assoc{ assoc } {}
-
-	constexpr ShOp(BinaryOp::Op op, u8 precedence, Assoc assoc) :
-		opcnt{ 2ui8 }, binary_op{ op }, precedence{ precedence }, assoc{ assoc } {}
-
-	constexpr ShOp(HelperOp op, u8 precedence, Assoc assoc) :
-		opcnt{ 0ui8 }, helper_op{ op }, precedence{ precedence }, assoc{ assoc } {}
-};
-
-struct ShState
-{
-	pstate& s;
-
-	bool expecting_operator = false;
-
-	u32 paren_nesting = 0;
-
-	vec<ShOp, 8> op_stk;
-
-	vec<Expr, 8> ex_stk;
-};
-
-static bool token_tag_to_sh_op(Token::Tag tag, bool expecting_operator, ShOp& out_op)
-{
-	static constexpr const ShOp bin_ops[]
-	{
-		{ BinaryOp::Op::Mul,     3, ShOp::Assoc::Right },
-		{ BinaryOp::Op::Div,     3, ShOp::Assoc::Right },
-		{ BinaryOp::Op::Mod,     3, ShOp::Assoc::Right },
-		{ BinaryOp::Op::Add,     4, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::Sub,     4, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::ShiftL,  5, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::ShiftR,  5, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::CmpLt,   6, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::CmpLe,   6, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::CmpGt,   6, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::CmpGe,   6, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::CmpEq,   7, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::CmpNe,   7, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::BitAnd,  8, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::BitXor,  9, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::BitOr,  10, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::LogAnd, 11, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::LogOr,  11, ShOp::Assoc::Left  },
-		{ BinaryOp::Op::Member,  1, ShOp::Assoc::Left  },
-	};
-
-	static constexpr const ShOp un_ops[]
-	{
-		{ UnaryOp::Op::LogNot,  2, ShOp::Assoc::Left  },
-		{ UnaryOp::Op::BitNot,  2, ShOp::Assoc::Left  },
-		{ UnaryOp::Op::Deref,   2, ShOp::Assoc::Left  },
-	};
-
-	static constexpr const ShOp un_minus{ UnaryOp::Op::Neg, 2, ShOp::Assoc::Left };
-
-	static constexpr const ShOp un_addrof{ UnaryOp::Op::AddrOf, 2, ShOp::Assoc::Left };
-
-	if (expecting_operator)
-	{
-		const isz idx = static_cast<isz>(tag) - static_cast<isz>(Token::Tag::OpMul_Ptr);
-		
-		if (idx < 0 || idx >= _countof(bin_ops))
-			return false;
-			
-		out_op = bin_ops[idx];
-	}
-	else if (tag == Token::Tag::OpSub)
-	{
-		out_op = un_minus;
-	}
-	else if (tag == Token::Tag::OpBitAnd_Ref)
-	{
-		out_op = un_addrof;
-	}
-	else
-	{
-		const isz idx = static_cast<isz>(tag) - static_cast<isz>(Token::Tag::UOpLogNot);
-		
-		if (idx < 0 || idx >= _countof(un_ops))
-			return false;
-
-		out_op = un_ops[idx];
-	}
-
-	return true;
-}
-
-static bool expr_pop_operator(ShState& ss) noexcept
-{
-	static constexpr const char ctx[] = "Expr::pop_operator";
-
-	assert(ss.op_stk.size() != 0);
-	
-	const ShOp prev_op = ss.op_stk.last();
-
-	Expr expr{};
-
-	assert(ss.ex_stk.size() >= prev_op.opcnt);
-
-	if (prev_op.opcnt == 1)
-	{
-		if (!alloc(&expr.unary_op))
-			return error_out_of_memory(ss.s, ctx);
-
-		expr.tag = Expr::Tag::UnaryOp;
-
-		expr.unary_op->op = prev_op.unary_op;
-
-		expr.unary_op->operand = std::move(ss.ex_stk.last());
-	}
-	else if (prev_op.opcnt == 2)
-	{
-		if (!alloc(&expr.binary_op))
-			return error_out_of_memory(ss.s, ctx);
-
-		expr.tag = Expr::Tag::BinaryOp;
-
-		expr.binary_op->op = prev_op.binary_op;
-
-		expr.binary_op->rhs = std::move(ss.ex_stk.last());
-
-		ss.ex_stk.pop();
-
-		expr.binary_op->lhs = std::move(ss.ex_stk.last());
-	}
-	else
-	{
-		assert(false);
-	}
-
-	ss.ex_stk.last() = std::move(expr);
-
-	ss.op_stk.pop();
-
-	return true;
-}
-
-
-
-static bool token_tag_to_assign_oper(const Token::Tag t, Assignment::Op& out_assign_op) noexcept
-{
-	const i32 idx = static_cast<i32>(t) - static_cast<i32>(Token::Tag::Set);
-
-	if (idx < 0 || idx >= static_cast<i32>(Token::Tag::SetBitShr) - static_cast<i32>(Token::Tag::Set))
-		return false;
-
-	out_assign_op = static_cast<Assignment::Op>(idx + 1);
-
-	return true;
-}
 
 static bool hex_val(char c, usz& inout_v) noexcept
 {
@@ -356,217 +181,424 @@ static bool bin_val(char c, usz& inout_v) noexcept
 
 
 
-static bool parse(pstate& s, Definition& out, bool is_proc_param = false) noexcept;
+static bool parse(pstate& s, ast::Type& out) noexcept;
 
-static bool parse(pstate& s, Argument& out) noexcept;
+static bool parse(pstate& s, ast::Definition& out) noexcept;
 
-static bool parse(pstate& s, TypeRef& out, bool is_in_proc_signature = false) noexcept;
+static bool parse(pstate& s, ast::Expr& out, bool allow_assignment = true) noexcept;
 
-static bool parse(pstate& s, Expr& out) noexcept;
+static bool parse(pstate& s, ast::Literal& out) noexcept;
 
-static bool parse(pstate& s, Name& out) noexcept;
-
-static bool parse(pstate& s, TopLevelExpr& out) noexcept;
-
-static bool parse(pstate& s, Statement& out) noexcept;
-
-static bool parse(pstate& s, If& out) noexcept;
-
-static bool parse(pstate& s, For& out) noexcept;
-
-static bool parse(pstate& s, Switch& out) noexcept;
-
-static bool parse(pstate& s, Case& out) noexcept;
+static bool parse(pstate& s, ast::Argument& out) noexcept;
 
 
 
-static bool parse(pstate& s, Assignment& out, Expr* assignee = nullptr, Assignment::Op op = Assignment::Op::NONE) noexcept
+struct ShuntingYardOp
 {
-	static constexpr const char ctx[] = "Assignment";
+	u8 precedence;
 
-	if (assignee != nullptr)
-	{
-		out.assignee = std::move(*assignee);
+	bool is_left_assoc;
 
-		out.op = op;
-	}
-	else
-	{
-		if (!parse(s, out.assignee))
-			return false;
+	ast::BinaryOp::Op binary_op;
 
-		if (const Token* t = next(s, ctx); t == nullptr)
-			return false;
-		else if (!token_tag_to_assign_oper(t->tag, out.op))
-			return error_invalid_syntax(s, ctx, t, "Expected Assignment Operator");
-	}
+	ast::UnaryOp::Op unary_op;
 
-	return parse(s, out.value);
-}
+	constexpr ShuntingYardOp() noexcept
+		: precedence{ 0 }, is_left_assoc{ 0 }, binary_op{ ast::BinaryOp::Op::NONE }, unary_op{ ast::UnaryOp::Op::NONE } {}
 
-static bool parse(pstate& s, Block& out) noexcept
+	constexpr ShuntingYardOp(u8 precedence, bool is_left_assoc, ast::BinaryOp::Op op) noexcept
+		: precedence{ precedence }, is_left_assoc{ is_left_assoc }, binary_op{ op }, unary_op{ ast::UnaryOp::Op::NONE } {}
+
+	constexpr ShuntingYardOp(u8 precedence, bool is_left_assoc, ast::UnaryOp::Op op) noexcept
+		: precedence{ precedence }, is_left_assoc{ is_left_assoc }, binary_op{ ast::BinaryOp::Op::NONE }, unary_op{ op } {}
+};
+
+static bool token_tag_to_shunting_yard_op(const Token::Tag tag, bool is_binary, ShuntingYardOp& out) noexcept
 {
-	static constexpr const char ctx[] = "Block";
+	if (is_binary)
+	{
+		static constexpr const ShuntingYardOp binary_ops[] {
+			{  4, true, ast::BinaryOp::Op::Add    },
+			{  4, true, ast::BinaryOp::Op::Sub    },
+			{  3, true, ast::BinaryOp::Op::Mul    },
+			{  3, true, ast::BinaryOp::Op::Div    },
+			{  3, true, ast::BinaryOp::Op::Mod    },
+			{  8, true, ast::BinaryOp::Op::BitAnd },
+			{ 10, true, ast::BinaryOp::Op::BitOr  },
+			{  9, true, ast::BinaryOp::Op::BitXor },
+			{  5, true, ast::BinaryOp::Op::ShiftL },
+			{  5, true, ast::BinaryOp::Op::ShiftR },
+			{ 11, true, ast::BinaryOp::Op::LogAnd },
+			{ 12, true, ast::BinaryOp::Op::LogOr  },
+			{  6, true, ast::BinaryOp::Op::CmpLt  },
+			{  6, true, ast::BinaryOp::Op::CmpLe  },
+			{  6, true, ast::BinaryOp::Op::CmpGt  },
+			{  6, true, ast::BinaryOp::Op::CmpGe  },
+			{  7, true, ast::BinaryOp::Op::CmpNe  },
+			{  7, true, ast::BinaryOp::Op::CmpEq  },
+			{  1, true, ast::BinaryOp::Op::Member },
+		};
 
-	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
+		const usz offset = static_cast<usz>(tag) - static_cast<usz>(Token::Tag::OpAdd);
+
+		const bool is_in_range = offset < _countof(binary_ops);
+
+		if (offset < _countof(binary_ops))
+			out = binary_ops[offset];
+
+		return is_in_range;
+	}
+
+	switch (tag)
+	{
+	case Token::Tag::UOpBitNot:
+		out = {  2 , false, ast::UnaryOp::Op::BitNot };
+		break;
+
+	case Token::Tag::UOpLogNot:
+		out = {  2 , false, ast::UnaryOp::Op::LogNot };
+		break;
+
+	case Token::Tag::UOpDeref:
+		out = {  2 , false, ast::UnaryOp::Op::Deref  };
+		break;
+
+	case Token::Tag::OpBitAnd_Ref:
+		out = {  2 , false, ast::UnaryOp::Op::AddrOf };
+		break;
+
+	case Token::Tag::OpSub:
+		out = {  2 , false, ast::UnaryOp::Op::Neg    };
+		break;
+
+	case Token::Tag::Try:
+		out = { 13 , false, ast::UnaryOp::Op::Try    };
+		break;
+
+	default:
 		return false;
-
-	while (true)
-	{
-		if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::SquiggleEnd)
-		{
-			next(s, ctx);
-
-			break;
-		}
-
-		if (!out.statements.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse(s, out.statements.last()))
-			return false;
 	}
 
 	return true;
 }
 
-static bool parse(pstate& s, ForEachSignature& out) noexcept
+static bool pop_shunting_yard_operator(pstate& s, vec<ShuntingYardOp, 32>& op_stk, vec<ast::Expr, 32>& expr_stk) noexcept
 {
-	static constexpr const char ctx[] = "ForEachSignature";
+	constexpr const char* const ctx = "Expr";
 
-	if (const Token* t = expect(s, Token::Tag::Ident, ctx); t == nullptr)
-		return false;
-	else
-		out.loop_variable = t->data_strview();
+	assert(op_stk.size() != 0);
 
-	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Comma)
+	const ShuntingYardOp op = op_stk.last();
+
+	op_stk.pop();
+
+	if (op.binary_op != ast::BinaryOp::Op::NONE)
 	{
-		next(s, ctx);
+		assert(expr_stk.size() >= 2);
 
-		if (const Token* t1 = next(s, ctx); t1 == nullptr)
+		ast::BinaryOp* binary_op = nullptr;
+
+		if (!alloc(s, ctx, &binary_op))
 			return false;
-		else
-			out.loop_variable = t1->data_strview();
-	}
 
-	if (expect(s, Token::Tag::ArrowLeft, ctx) == nullptr)
-		return false;
+		binary_op->rhs = expr_stk.last();
 
-	if (!parse(s, out.loopee))
-		return false;
+		expr_stk.pop();
 
-	if (const Token* t = peek(s); t == nullptr)
-	{
-		return error_unexpected_end(s, ctx);
-	}
-	else if (t->tag == Token::Tag::Do)
-	{
-		next(s, ctx);
+		binary_op->lhs = expr_stk.last();
 
-		return true;
+		binary_op->op = op.binary_op;
+
+		expr_stk.last().binary_op = binary_op;
+
+		expr_stk.last().tag = ast::Expr::Tag::BinaryOp;		
 	}
 	else
 	{
-		return t->tag == Token::Tag::SquiggleBeg;
+		assert(op.unary_op != ast::UnaryOp::Op::NONE);
+
+		assert(expr_stk.size() >= 1);
+
+		ast::UnaryOp* unary_op = nullptr;
+
+		if (!alloc(s, ctx, &unary_op))
+			return false;
+
+		unary_op->operand = expr_stk.last();
+
+		unary_op->op = op.unary_op;
+
+		expr_stk.last().unary_op = unary_op;
+
+		expr_stk.last().tag = ast::Expr::Tag::UnaryOp;
 	}
+
+	return true;
 }
 
-static bool parse(pstate& s, ForLoopSignature& out) noexcept
+static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 {
-	static constexpr const char ctx[] = "ForLoopSignature";
+	constexpr const char* const ctx = "Expr";
 
-	if (const Token* t = peek(s, 1); t == nullptr)
-	{
-		return error_unexpected_end(s, ctx);
-	}
-	else if (t->tag == Token::Tag::Colon || t->tag == Token::Tag::DoubleColon)
-	{
-		if (!parse(s, out.opt_init))
-			return false;
+	bool expecting_operator = false;
 
-		if (const Token* t1 = peek(s); t == nullptr)
+	vec<ast::Expr, 32> expr_stk;
+
+	vec<ShuntingYardOp, 32> op_stk;
+
+	usz paren_nesting = 0;
+
+	const Token* prev_paren_beg = nullptr;
+
+	const Token* const first_token = peek(s);
+
+	while (true)
+	{
+		const Token* t = peek(s);
+
+		if (t == nullptr)
 		{
-			return error_unexpected_end(s, ctx);
+			if (!expecting_operator)
+				return error_unexpected_end(s, ctx);
+			
+			goto POP_REMAINING_OPS;
 		}
-		else if (t1->tag == Token::Tag::Do)
+
+		switch (t->tag)
 		{
+		case Token::Tag::Ident: {
+
+			if (expecting_operator)
+				goto POP_REMAINING_OPS;
+
 			next(s, ctx);
 
-			return true;
+			if (!expr_stk.push_back({}))
+				return error_out_of_memory(s, ctx);
+
+			ast::Expr& expr = expr_stk.last();
+
+			const strview ident_strview = t->data_strview();
+
+			if (ident_strview.len() > UINT32_MAX)
+				return error_invalid_syntax(s, ctx, t, "Length of ident somehow exceeds (2^32)-1");
+
+			expr.ident_beg = ident_strview.begin();
+
+			expr.ident_len = static_cast<u32>(ident_strview.len());
+
+			expr.tag = ast::Expr::Tag::Ident;
+
+			expecting_operator = true;
+
+			break;
 		}
-		else if (t1->tag == Token::Tag::SquiggleBeg)
-		{
-			return true;
+
+		case Token::Tag::LitString:
+		case Token::Tag::LitChar:
+		case Token::Tag::LitInt:
+		case Token::Tag::LitFloat: {
+
+			if (expecting_operator)
+				goto POP_REMAINING_OPS;
+
+			if (!expr_stk.push_back({}))
+				return error_out_of_memory(s, ctx);
+
+			ast::Expr& expr = expr_stk.last();
+
+			if (!alloc(s, ctx, &expr.literal))
+				return false;
+
+			expr.tag = ast::Expr::Tag::Literal;
+
+			if (!parse(s, *expr.literal))
+				return false;
+
+			expecting_operator = true;
+
+			break;
 		}
-		else if (t1->tag != Token::Tag::Semicolon)
-		{
-			return error_invalid_syntax(s, ctx, t1, "Expected Do, SquiggleBeg or Semicolon");
+
+		case Token::Tag::ParenBeg: {
+
+			next(s, ctx);
+
+			if (expecting_operator)
+			{
+				while (op_stk.size() != 0 && op_stk.last().precedence <= 1)
+				{
+					if (!pop_shunting_yard_operator(s, op_stk, expr_stk))
+						return false;
+				}
+
+				ast::Call* call = nullptr;
+
+				if (!alloc(s, ctx, &call))
+					return false;
+
+				assert(expr_stk.size() != 0);
+
+				call->callee = expr_stk.last();
+
+				expr_stk.last().call = call;
+
+				expr_stk.last().tag = ast::Expr::Tag::Call;
+
+				if (next_if(s, Token::Tag::ParenEnd) != nullptr)
+					break;
+					
+				while (true)
+				{
+					if (!call->arguments.push_back({}))
+						return error_out_of_memory(s, ctx);
+
+					if (!parse(s, call->arguments.last()))
+						return false;
+
+					if (const Token* t1 = next(s, ctx); t1 == nullptr)
+						return false;
+					else if (t1->tag == Token::Tag::ParenEnd)
+						break;
+					else if (t1->tag != Token::Tag::Comma)
+						return error_invalid_syntax(s, ctx, t1, "Expected ParenEnd or Comma");
+				}
+			}
+			else
+			{
+				prev_paren_beg = t;
+				
+				++paren_nesting;
+
+				if (!op_stk.push_back({ 255, 1, ast::BinaryOp::Op::NONE }))
+					return error_out_of_memory(s, ctx);
+			}
+
+			break;
 		}
-		
-		next(s, ctx);
+
+		case Token::Tag::ParenEnd: {
+
+			if (!expecting_operator || paren_nesting == 0)
+				goto POP_REMAINING_OPS;
+
+			next(s, ctx);
+
+			--paren_nesting;
+
+			assert(op_stk.size() != 0);
+
+			while (op_stk.last().precedence != 255)
+			{
+				if (!pop_shunting_yard_operator(s, op_stk, expr_stk))
+					return false;
+
+				assert(op_stk.size() != 0);
+			}
+
+			op_stk.pop();
+			
+			break;
+		}
+
+		case Token::Tag::BracketBeg: {
+
+			if (!expecting_operator)
+				goto POP_REMAINING_OPS;
+
+			next(s, ctx);
+
+			while (op_stk.size() != 0 && op_stk.last().precedence <= 1)
+			{
+				if (!pop_shunting_yard_operator(s, op_stk, expr_stk))
+					return false;
+			}
+
+			assert(expr_stk.size() != 0);
+
+			ast::BinaryOp* index_op = nullptr;
+
+			if (!alloc(s, ctx, &index_op))
+				return false;
+
+			index_op->lhs = expr_stk.last();
+
+			index_op->op = ast::BinaryOp::Op::Index;
+
+			expr_stk.last().binary_op = index_op;
+
+			expr_stk.last().tag = ast::Expr::Tag::BinaryOp;
+
+			if (!parse(s, index_op->rhs, false))
+				return false;
+
+			if (expect(s, ctx, Token::Tag::BracketEnd) == nullptr)
+				return false;
+
+			break;
+		}
+
+		default: {
+
+			ShuntingYardOp op{};
+
+			if (!token_tag_to_shunting_yard_op(t->tag, expecting_operator, op))
+			{
+				if (expecting_operator)
+					goto POP_REMAINING_OPS;
+				else
+					return error_invalid_syntax(s, ctx, t, "Expected Ident, Literal, Unary Operator, ParenBeg or BracketBeg");
+			}
+
+			next(s, ctx);
+
+			while (op_stk.size() != 0)
+			{
+				const ShuntingYardOp prev = op_stk.last();
+
+				if (prev.precedence >= op.precedence && !(prev.precedence == op.precedence && op.is_left_assoc))
+					break;
+
+				if (!pop_shunting_yard_operator(s, op_stk, expr_stk))
+					return false;
+			}
+
+			if (!op_stk.push_back(op))
+				return error_out_of_memory(s, ctx);
+
+			expecting_operator = false;
+
+			break;
+		}
+		}
 	}
 
-	if (const Token* t = peek(s); t == nullptr)
-	{
-		return error_unexpected_end(s, ctx);
-	}
-	else if (t->tag == Token::Tag::Do)
-	{
-		next(s, ctx);
+POP_REMAINING_OPS:
 
-		return true;
-	}
-	else if (t->tag == Token::Tag::SquiggleBeg)
-	{
-		return true;
-	}
-	
-	if (!parse(s, out.opt_cond))
-		return false;
+	if (paren_nesting != 0)
+		return error_invalid_syntax(s, ctx, prev_paren_beg, "Unmatched ParenBeg");
 
-	if (const Token* t = peek(s); t == nullptr)
+	while (op_stk.size() != 0)
 	{
-		return error_unexpected_end(s, ctx);
-	}
-	else if (t->tag == Token::Tag::Do)
-	{
-		next(s, ctx);
-
-		return true;
-	}
-	else if (t->tag == Token::Tag::SquiggleBeg)
-	{
-		return true;
-	}
-	else if (t->tag != Token::Tag::Semicolon)
-	{
-		return error_invalid_syntax(s, ctx, t, "Expected Do, SquiggleBeg or Semicolon");
+		if (!pop_shunting_yard_operator(s, op_stk, expr_stk))
+			return false;
 	}
 
-	if (!parse(s, out.opt_step))
-		return false;
+	if (expr_stk.size() != 1)
+		return error_invalid_syntax(s, ctx, first_token, "Too many subexpressions");
 
-	if (const Token* t = peek(s); t == nullptr)
-	{
-		return error_unexpected_end(s, ctx);
-	}
-	else if (t->tag == Token::Tag::Do)
-	{
-		next(s, ctx);
+	out = expr_stk.first();
 
-		return true;
-	}
-	else
-	{
-		return t->tag == Token::Tag::SquiggleBeg;
-	}
+	return true;
 }
 
-static bool parse(pstate& s, FloatLiteral& out) noexcept
+
+
+static bool parse(pstate& s, ast::FloatLiteral& out) noexcept
 {
 	static constexpr const char ctx[] = "FloatLiteral";
 
-	const Token* t = expect(s, Token::Tag::LitFloat, ctx);
+	const Token* t = expect(s, ctx, Token::Tag::LitFloat);
 
 	if (t == nullptr)
 		return false;
@@ -576,11 +608,11 @@ static bool parse(pstate& s, FloatLiteral& out) noexcept
 	return true;
 }
 
-static bool parse(pstate& s, IntegerLiteral& out) noexcept
+static bool parse(pstate& s, ast::IntegerLiteral& out) noexcept
 {
 	static constexpr const char ctx[] = "IntegerLiteral";
 
-	const Token* t = expect(s, Token::Tag::LitInt, ctx);
+	const Token* t = expect(s, ctx, Token::Tag::LitInt);
 
 	if (t == nullptr)
 		return false;
@@ -642,11 +674,11 @@ static bool parse(pstate& s, IntegerLiteral& out) noexcept
 	return true;
 }
 
-static bool parse(pstate& s, CharLiteral& out) noexcept
+static bool parse(pstate& s, ast::CharLiteral& out) noexcept
 {
 	static constexpr const char ctx[] = "CharLiteral";
 
-	const Token* t = expect(s, Token::Tag::LitChar, ctx);
+	const Token* t = expect(s, ctx, Token::Tag::LitChar);
 
 	if (t == nullptr)
 		return false;
@@ -774,11 +806,11 @@ static bool parse(pstate& s, CharLiteral& out) noexcept
 	return true;
 }
 
-static bool parse(pstate& s, StringLiteral& out) noexcept
+static bool parse(pstate& s, ast::StringLiteral& out) noexcept
 {
 	static constexpr const char ctx[] = "StringLiteral";
 
-	const Token* t = expect(s, Token::Tag::LitString, ctx);
+	const Token* t = expect(s, ctx, Token::Tag::LitString);
 
 	if (t == nullptr)
 		return false;
@@ -822,79 +854,33 @@ static bool parse(pstate& s, StringLiteral& out) noexcept
 	return true;
 }
 
-static bool parse(pstate& s, ProcSignature& out) noexcept
+static bool parse(pstate& s, ast::Argument& out) noexcept
 {
-	static constexpr const char ctx[] = "ProcSignature";
+	constexpr const char* const ctx = "Argument";
 
-	if (const Token* pbeg_tok = peek(s); pbeg_tok == nullptr)
+	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Colon || t->tag == Token::Tag::DoubleColon))
 	{
-		return error_unexpected_end(s, ctx);
-	}
-	else if (pbeg_tok->tag == Token::Tag::ParenBeg)
-	{
-		next(s, ctx);
-
-		if (const Token* pend_tok = peek(s); pend_tok == nullptr)
-		{
-			return error_unexpected_end(s, ctx);
-		}
-		else if (pend_tok->tag != Token::Tag::ParenEnd)
-		{
-			while (true)
-			{
-				if (!out.parameters.push_back({}))
-					return false;
-
-				if (!parse(s, out.parameters.last(), true))
-					return false;
-
-				if (const Token* t = next(s, ctx); t == nullptr)
-					return false;
-				else if (t->tag == Token::Tag::ParenEnd)
-					break;
-				else if (t->tag != Token::Tag::Comma)
-					return error_invalid_syntax(s, ctx, t, "Expected ParenEnd or Comma");
-			}
-		}
-		else
-		{
-			next(s, ctx);
-		}
-	}
-
-	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::ArrowRight)
-	{
-		next(s, ctx);
-
-		return parse(s, out.opt_return_type);
-	}
-
-	return true;
-}
-
-static bool parse(pstate& s, EnumValue& out) noexcept
-{
-	static constexpr const char ctx[] = "EnumValue";
-
-	if (const Token* t = expect(s, Token::Tag::Ident, ctx); t == nullptr)
-		return false;
-	else
-		out.ident = t->data_strview();
-
-	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Set)
-	{
-		next(s, ctx);
-
-		if (!parse(s, out.opt_value))
+		if (!alloc(s, ctx, &out.definition))
 			return false;
-	}
 
-	return true;
+		out.tag = ast::Argument::Tag::Definition;
+
+		return parse(s, *out.definition);
+	}
+	else
+	{
+		if (!alloc(s, ctx, &out.expr))
+			return false;
+
+		out.tag = ast::Argument::Tag::Expr;
+
+		return parse(s, *out.expr);
+	}
 }
 
-static bool parse(pstate& s, Statement& out) noexcept
+static bool parse(pstate& s, ast::Literal& out) noexcept
 {
-	static constexpr const char ctx[] = "Statement";
+	constexpr const char* const ctx = "Literal";
 
 	const Token* t = peek(s);
 
@@ -903,455 +889,133 @@ static bool parse(pstate& s, Statement& out) noexcept
 
 	switch (t->tag)
 	{
-	case Token::Tag::If:
-		next(s, ctx);
+	case Token::Tag::LitString:
+		out.tag = ast::Literal::Tag::StringLiteral;
+		return parse(s, out.string_literal);
 
-		if (!alloc(&out.if_stmt))
-			return error_out_of_memory(s, ctx);
+	case Token::Tag::LitChar:
+		out.tag = ast::Literal::Tag::CharLiteral;
+		return parse(s, out.char_literal);
 
-		out.tag = Statement::Tag::If;
+	case Token::Tag::LitInt:
+		out.tag = ast::Literal::Tag::IntegerLiteral;
+		return parse(s, out.integer_literal);
+	
+	case Token::Tag::LitFloat:
+		out.tag = ast::Literal::Tag::FloatLiteral;
+		return parse(s, out.float_literal);
 
-		return parse(s, *out.if_stmt);
+	default:
+		return error_invalid_syntax(s, ctx, t, "Expected LitString, LitChar, LitInt or LitFloat");
+	}
+}
 
-	case Token::Tag::For:
-		next(s, ctx);
+static bool parse(pstate& s, ast::ForLoopSignature& out) noexcept
+{
+	constexpr const char* const ctx = "ForLoopSignature";
 
-		if (!alloc(&out.for_stmt))
-			return error_out_of_memory(s, ctx);
-
-		out.tag = Statement::Tag::For;
-
-		return parse(s, *out.for_stmt);
-
-	case Token::Tag::Switch:
-		if (!alloc(&out.switch_stmt))
-			return error_out_of_memory(s, ctx);
-
-		out.tag = Statement::Tag::Switch;
-
-		return parse(s, *out.switch_stmt);
-
-	case Token::Tag::Return:
-	case Token::Tag::Yield:
-	case Token::Tag::Break:
-		next(s, ctx);
-
-		if (!alloc(&out.return_or_yield_or_break_value))
-			return error_out_of_memory(s, ctx);
-
-		if (t->tag == Token::Tag::Return)
-			out.tag = Statement::Tag::Return;
-		else if (t->tag == Token::Tag::Yield)
-			out.tag = Statement::Tag::Yield;
-		else
-			out.tag = Statement::Tag::Break;
-
-		return parse(s, *out.return_or_yield_or_break_value);
-
-	case Token::Tag::SquiggleBeg:
-		if (!alloc(&out.block))
-			return error_out_of_memory(s, ctx);
-
-		out.tag = Statement::Tag::Block;
-
-		return parse(s, *out.block);
-
-	case Token::Tag::Defer:
-		next(s, ctx);
-
-		if (!alloc(&out.deferred_stmt))
-			return error_out_of_memory(s, ctx);
-
-		out.tag = Statement::Tag::Defer;
-
-		return parse(s, *out.deferred_stmt);
-
-	case Token::Tag::Undefined:
-		next(s, ctx);
-		
-		out.tag = Statement::Tag::Undefined;
-
-		return true;
-
-	default: {
-		const Token* ident_tok = peek(s, 0);
-
-		const Token* colon_tok = peek(s, 1);
-
-		if (ident_tok != nullptr && ident_tok->tag == Token::Tag::Ident && colon_tok != nullptr && (colon_tok->tag == Token::Tag::Colon || colon_tok->tag == Token::Tag::DoubleColon))
-		{
-			if (!alloc(&out.definition))
-				return error_out_of_memory(s, ctx);
-
-			out.tag = Statement::Tag::Definition;
-
-			return parse(s, *out.definition);
-		}
-
-		Expr expr{};
-
-		if (!parse(s, expr))
+	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Colon || t->tag == Token::Tag::DoubleColon))
+	{
+		if (!alloc(s, ctx, &out.opt_init))
 			return false;
 
-		Assignment::Op op;
+		if (!parse(s, *out.opt_init))
+			return false;
 
-		if (const Token* t1 = peek(s); t1 != nullptr && token_tag_to_assign_oper(t1->tag, op))
-		{
-			next(s, ctx);
-
-			if (!alloc(&out.assignment))
-				return error_out_of_memory(s, ctx);
-
-			out.tag = Statement::Tag::Assignment;
-
-			return parse(s, *out.assignment, &expr, op);
-		}
-		else
-		{
-			if (expr.tag != Expr::Tag::Call)
-				return error_invalid_syntax(s, ctx, t, "Expected procedure call");
-
-			out.tag = Statement::Tag::Call;
-
-			out.call = expr.call;
-
-			expr.call = nullptr;
-
-			expr.tag = Expr::Tag::EMPTY;
-
-			return true;
-		}
+		if (expect(s, ctx, Token::Tag::Semicolon) == nullptr)
+			return false;
 	}
-	}
-}
 
-static bool parse(pstate& s, ForSignature& out) noexcept
-{
-	static constexpr const char ctx[] = "ForSignature";
+	if (next_if(s, Token::Tag::Do) != nullptr)
+		return true;
 
-	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Comma || t->tag == Token::Tag::ArrowLeft))
-	{
-		out.tag = ForSignature::Tag::ForEachSignature;
-
-		return parse(s, out.for_each);
-	}
-	else
-	{
-		out.tag = ForSignature::Tag::ForLoopSignature;
-
-		return parse(s, out.for_loop);
-	}
-}
-
-static bool parse(pstate& s, Case& out) noexcept
-{
-	static constexpr const char ctx[] = "Case";
-
-	if (expect(s, Token::Tag::Case, ctx) == nullptr)
+	if (!parse(s, out.opt_condition, false))
 		return false;
 
-	if (!parse(s, out.label))
+	if (next_if(s, Token::Tag::Semicolon) != nullptr)
+	{
+		if (!parse(s, out.opt_step))
+			return false;
+	}
+
+	next_if(s, Token::Tag::Do);
+
+	return true;
+}
+
+static bool parse(pstate& s, ast::ForEachSignature& out) noexcept
+{
+	constexpr const char* const ctx = "ForEachSignature";
+
+	if (const Token* t = expect(s, ctx, Token::Tag::Ident); t == nullptr)
+		return false;
+	else
+		out.loop_var = t->data_strview();
+
+	if (next_if(s, Token::Tag::Comma) != nullptr)
+	{
+		if (const Token* t = expect(s, ctx, Token::Tag::Ident); t == nullptr)
+			return false;
+		else
+			out.opt_index_var = t->data_strview();
+	}
+
+	if (expect(s, ctx, Token::Tag::ArrowLeft) == nullptr)
+		return false;
+
+	if (!parse(s, out.looped_over, false))
+		return false;
+
+	next_if(s, Token::Tag::Do);
+
+	return true;
+}
+
+static bool parse(pstate& s, ast::Case& out) noexcept
+{
+	constexpr const char* const ctx = "Case";
+
+	if (expect(s, ctx, Token::Tag::Case) == nullptr)
+		return false;
+
+	if (!parse(s, out.label, false))
+		return false;
+
+	if (expect(s, ctx, Token::Tag::ArrowRight) == nullptr)
 		return false;
 
 	return parse(s, out.body);
 }
 
-static bool parse(pstate& s, Literal& out) noexcept
+static bool parse(pstate& s, ast::If& out) noexcept
 {
-	static constexpr const char ctx[] = "Literal";
+	constexpr const char* const ctx = "If";
 
-	if (const Token* t = peek(s); t == nullptr)
-	{
-		return error_unexpected_end(s, ctx);
-	}
-	else if (t->tag == Token::Tag::LitString)
-	{
-		out.tag = Literal::Tag::StringLiteral;
-
-		return parse(s, out.string_literal);
-	}
-	else if (t->tag == Token::Tag::LitChar)
-	{
-		out.tag = Literal::Tag::CharLiteral;
-
-		return parse(s, out.char_literal);
-	}
-	else if (t->tag == Token::Tag::LitInt)
-	{
-		out.tag = Literal::Tag::IntegerLiteral;
-
-		return parse(s, out.integer_literal);
-	}
-	else if (t->tag == Token::Tag::LitFloat)
-	{
-		out.tag = Literal::Tag::FloatLiteral;
-
-		return parse(s, out.float_literal);
-	}
-	else
-	{
-		return error_invalid_syntax(s, ctx, t, "Expected LitString, LitChar, LitInt or LitFloat");
-	}
-}
-
-static bool parse(pstate& s, Call& out, Expr&& callee) noexcept
-{
-	static constexpr const char ctx[] = "Call";
-
-	out.callee = std::move(callee);
-
-	if (expect(s, Token::Tag::ParenBeg, ctx) == nullptr)
+	if (expect(s, ctx, Token::Tag::If) == nullptr)
 		return false;
 
-	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::ParenEnd)
+	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Colon || t->tag == Token::Tag::DoubleColon))
 	{
-		next(s, ctx);
-
-		return true;
-	}
-
-	while (true)
-	{
-		if (!out.args.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse(s, out.args.last()))
+		if (!alloc(s, ctx, &out.opt_init))
 			return false;
 
-		if (const Token* t = next(s, ctx); t == nullptr)
+		if (!parse(s, *out.opt_init))
 			return false;
-		else if (t->tag == Token::Tag::ParenEnd)
-			return true;
-		else if (t->tag != Token::Tag::Comma)
-			return error_invalid_syntax(s, ctx, t, "Expected Comma or ParenEnd");
+
+		if (expect(s, ctx, Token::Tag::Semicolon) == nullptr)
+			return false;
 	}
-}
 
-static bool parse(pstate& s, Proc& out, bool no_body = false) noexcept
-{
-	static constexpr const char ctx[] = "Proc";
-
-	if (!parse(s, out.signature))
+	if (!parse(s, out.condition, false))
 		return false;
 
-	if (no_body)
-		return true;
+	next_if(s, Token::Tag::Then);
 
-	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Undefined)
-	{
-		next(s, ctx);
-
-		return true;
-	}
-
-	return parse(s, out.opt_body);
-}
-
-static bool parse(pstate& s, StructuredType& out) noexcept
-{
-	static constexpr const char ctx[] = "StructuredType";
-
-	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
-		return false;
-
-	while (true)
-	{
-		if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::SquiggleEnd)
-		{
-			next(s, ctx);
-
-			return true;
-		}
-
-		if (!out.members.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse(s, out.members.last()))
-			return false;
-	}
-}
-
-static bool parse(pstate& s, Enum& out) noexcept
-{
-	static constexpr const char ctx[] = "Enum";
-
-	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::ParenBeg)
-	{
-		next(s, ctx);
-
-		if (!parse(s, out.opt_enum_type))
-			return false;
-
-		if (expect(s, Token::Tag::ParenEnd, ctx) == nullptr)
-			return false;
-	}
-
-	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
-		return false;
-
-	while (true)
-	{
-		if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::SquiggleEnd)
-		{
-			next(s, ctx);
-
-			return true;
-		}
-
-		if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Colon || t->tag == Token::Tag::DoubleColon))
-		{
-			if (!out.definitions.push_back({}))
-				return error_out_of_memory(s, ctx);
-
-			if (!parse(s, out.definitions.last()))
-				return false;
-		}
-		else
-		{
-			if (!out.values.push_back({}))
-				return error_out_of_memory(s, ctx);
-
-			if (!parse(s, out.values.last()))
-				return false;
-		}
-	}
-}
-
-static bool parse(pstate& s, Trait& out) noexcept
-{
-	static constexpr const char ctx[] = "Trait";
-
-	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::ParenBeg)
-	{
-		next(s, ctx);
-
-		if (const Token* t1 = peek(s); t1 == nullptr || t1->tag != Token::Tag::ParenEnd)
-		{
-			while (true)
-			{
-				if (!out.bindings.push_back({}))
-					return error_out_of_memory(s, ctx);
-
-				if (!parse(s, out.bindings.last()))
-					return false;
-
-				if (const Token* t2 = next(s, ctx); t1 == nullptr)
-					return false;
-				else if (t2->tag == Token::Tag::ParenEnd)
-					break;
-				else if (t2->tag != Token::Tag::Comma)
-					return error_invalid_syntax(s, ctx, t2, "Expected ParenEnd or Comma");
-			}
-		}
-	}
-
-	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
-		return false;
-
-	while (true)
-	{
-		if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::SquiggleEnd)
-		{
-			next(s, ctx);
-
-			return true;
-		}
-
-		if (!out.definitions.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse(s, out.definitions.last()))
-			return false;
-	}
-}
-
-static bool parse(pstate& s, Module& out) noexcept
-{
-	static constexpr const char ctx[] = "Module";
-
-	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
-		return false;
-
-	while (true)
-	{
-		if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::SquiggleEnd)
-		{
-			next(s, ctx);
-
-			return true;
-		}
-
-		if (!out.definitions.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse(s, out.definitions.last()))
-			return false;
-	}
-}
-
-static bool parse(pstate& s, Impl& out) noexcept
-{
-	static constexpr const char ctx[] = "Impl";
-
-	const Token* log_token = peek(s);
-
-	Expr expr{};
-
-	if (!parse(s, expr))
-		return false;
-
-	if (expr.tag != Expr::Tag::Call)
-		return error_invalid_syntax(s, ctx, log_token, "Expected procedure call");
-
-	out.trait = std::move(*expr.call);
-
-	if (expect(s, Token::Tag::SquiggleBeg, ctx) == nullptr)
-		return false;
-
-	while (true)
-	{
-		if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::SquiggleEnd)
-		{
-			next(s, ctx);
-
-			return true;
-		}
-
-		if (!out.definitions.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse(s, out.definitions.last()))
-			return false;
-	}
-}
-
-static bool parse(pstate& s, If& out) noexcept
-{
-	static constexpr const char ctx[] = "If";
-
-	const Token* ident_tok = peek(s, 0);
-
-	const Token* colon_tok = peek(s, 1);
-
-	if (ident_tok != nullptr && ident_tok->tag == Token::Tag::Ident && colon_tok != nullptr && colon_tok->tag == Token::Tag::Colon)
-	{
-		if (!parse(s, out.opt_init))
-			return false;
-
-		if (expect(s, Token::Tag::Semicolon, ctx) == nullptr)
-			return false;
-	}
-
-	if (!parse(s, out.condition))
-		return false;
-		
 	if (!parse(s, out.body))
 		return false;
 
-	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Else)
+	if (next_if(s, Token::Tag::Else) != nullptr)
 	{
-		next(s, ctx);
-
 		if (!parse(s, out.opt_else_body))
 			return false;
 	}
@@ -1359,41 +1023,66 @@ static bool parse(pstate& s, If& out) noexcept
 	return true;
 }
 
-static bool parse(pstate& s, For& out) noexcept
+static bool parse(pstate& s, ast::For& out) noexcept
 {
-	static constexpr const char ctx[] = "For";
+	constexpr const char* const ctx = "For";
 
-	if (!parse(s, out.signature))
+	if (expect(s, ctx, Token::Tag::For) == nullptr)
 		return false;
+
+	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Comma || t->tag == Token::Tag::ArrowLeft))
+	{
+		if (!parse(s, out.for_each_signature))
+			return false;
+
+		out.tag = ast::For::Tag::ForEachSignature;
+	}
+	else
+	{
+		if (!parse(s, out.for_loop_signature))
+			return false;
+
+		out.tag = ast::For::Tag::ForLoopSignature;
+	}
 	
 	if (!parse(s, out.body))
 		return false;
 
-	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Until)
+	if (next_if(s, Token::Tag::Finally) != nullptr)
 	{
-		next(s, ctx);
-
-		if (!parse(s, out.opt_until_body))
+		if (!parse(s, out.opt_finally_body))
 			return false;
 	}
 
 	return true;
 }
 
-static bool parse(pstate& s, Switch& out) noexcept
+static bool parse(pstate& s, ast::Switch& out) noexcept
 {
-	static constexpr const char ctx[] = "Switch";
+	constexpr const char* const ctx = "Switch";
 
-	if (expect(s, Token::Tag::Switch, ctx) == nullptr)
+	if (expect(s, ctx, Token::Tag::Switch) == nullptr)
 		return false;
 
-	if (!parse(s, out.switched))
-		return false;
+	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Colon || t->tag == Token::Tag::DoubleColon))
+	{
+		if (!alloc(s, ctx, &out.opt_init))
+			return false;
 
+		if (!parse(s, *out.opt_init))
+			return false;
+
+		if (expect(s, ctx, Token::Tag::Semicolon) == nullptr)
+			return false;
+	}
+
+	if (!parse(s, out.switched_expr, false))
+		return false;
+		
 	while (true)
 	{
 		if (!out.cases.push_back({}))
-			return error_out_of_memory(s, ctx);
+			return false;
 
 		if (!parse(s, out.cases.last()))
 			return false;
@@ -1403,638 +1092,391 @@ static bool parse(pstate& s, Switch& out) noexcept
 	}
 }
 
-static bool parse(pstate& s, Expr& out) noexcept
+static bool parse(pstate& s, ast::Block& out) noexcept
 {
-	static constexpr const char ctx[] = "Expr";
+	constexpr const char* const ctx = "Block";
 
-	ShState ss{ s };
-
-	const Token* prev_paren_beg = nullptr;
-
-	const Token* const first_token = peek(s);
+	if (expect(s, ctx, Token::Tag::SquiggleBeg) == nullptr)
+		return false;
 
 	while (true)
 	{
-		const Token* t = peek(s);
-
-		if (t == nullptr)
-		{
-			if (!ss.expecting_operator)
-				return error_unexpected_end(s, ctx);
-
-			// Currently this should also be error_unexpected_end,
-			// but if there can ever be top-level VariableDefs,
-			// this would be ok, so just break. Any error will be
-			// handled by the caller anyways if further Tokens are
-			// expected.
-			break;
-		}
-
-		switch (t->tag)
-		{
-		case Token::Tag::Ident:
-		case Token::Tag::LitString:
-		case Token::Tag::LitChar:
-		case Token::Tag::LitInt:
-		case Token::Tag::LitFloat:
-		{
-			if (ss.expecting_operator)
-				goto POP_REMAINING_OPS;
-
-			if (!ss.ex_stk.push_back({}))
-				return error_out_of_memory(s, ctx);
-
-			Expr& expr = ss.ex_stk.last();
-
-			if (t->tag == Token::Tag::Ident)
-			{
-				expr.tag = Expr::Tag::Ident;
-
-				const strview ident = t->data_strview();
-
-				expr.ident_beg = ident.begin();
-
-				expr.ident_len = static_cast<u32>(ident.len());
-
-				next(s, ctx);
-			}
-			else
-			{
-				if (!alloc(&expr.literal))
-					return error_out_of_memory(s, ctx);
-
-				expr.tag = Expr::Tag::Literal;
-
-				if (!parse(s, *expr.literal))
-					return false;
-			}
-
-			ss.expecting_operator = true;
-
-			break;
-		}
-		case Token::Tag::ParenBeg:
-		{
-			prev_paren_beg = t;
-
-			if (ss.expecting_operator)
-			{
-				while (ss.op_stk.size() != 0)
-				{
-					if (ss.op_stk.last().precedence > 1)
-						break;
-
-					if (!expr_pop_operator(ss))
-						return false;
-				}
-
-				Call* call;
-
-				if (!alloc(&call))
-					return error_out_of_memory(s, ctx);
-
-				if (!parse(s, *call, std::move(ss.ex_stk.last())))
-				{
-					free(call);
-
-					return false;
-				}
-
-				ss.ex_stk.last().tag = Expr::Tag::Call;
-
-				ss.ex_stk.last().call = call;
-			}
-			else
-			{
-				next(s, ctx);
-
-				++ss.paren_nesting;
-
-				if (!ss.op_stk.push_back({ ShOp::HelperOp::ParenBeg, 255, ShOp::Assoc::Left }))
-					return error_out_of_memory(s, ctx);
-			}
-
-			break;
-		}
-		case Token::Tag::ParenEnd:
-		{
-			if (!ss.expecting_operator || ss.paren_nesting == 0)
-				goto POP_REMAINING_OPS;
-
-			next(s, ctx);
-
-			--ss.paren_nesting;
-
-			assert(ss.op_stk.size() != 0);
-
-			while (ss.op_stk.last().precedence != 255)
-			{
-				if (!expr_pop_operator(ss))
-					return false;
-
-				assert(ss.op_stk.size() != 0);
-			}
-
-			ss.op_stk.pop();
-
-			break;
-		}
-		case Token::Tag::BracketBeg:
+		if (const Token* t = peek(s); t == nullptr)
+			return error_unexpected_end(s, ctx);
+		else if (t->tag == Token::Tag::SquiggleEnd)
 		{
 			next(s, ctx);
 
-			if (!ss.expecting_operator)
-				goto POP_REMAINING_OPS;
-
-			while (ss.op_stk.size() != 0)
-			{
-				const ShOp prev_op = ss.op_stk.last();
-
-				if (prev_op.precedence > 1)
-					break;
-
-				if (!expr_pop_operator(ss))
-					return false;
-			}
-
-			Expr expr{};
-
-			if (!alloc(&expr.binary_op))
-				return error_out_of_memory(s, ctx);
-
-			expr.tag = Expr::Tag::BinaryOp;
-
-			expr.binary_op->op = BinaryOp::Op::Index;
-
-			expr.binary_op->lhs = std::move(ss.ex_stk.last());
-
-			if (!parse(s, expr.binary_op->rhs))
-				return false;
-
-			if (expect(s, Token::Tag::BracketEnd, ctx) == nullptr)
-				return false;
-
-			ss.ex_stk.last() = std::move(expr);
-
-			break;
+			return true;
 		}
-		default:
-		{
-			ShOp op;
 
-			if (!token_tag_to_sh_op(t->tag, ss.expecting_operator, op))
-			{
-				if (ss.expecting_operator)
-					goto POP_REMAINING_OPS;
+		if (!out.statements.push_back({}))
+			return error_out_of_memory(s, ctx);
 
-				return error_invalid_syntax(s, ctx, t, "Expected Unary Operator, ParenBeg, BracketBeg, Ident or Literal");
-			}
-
-			next(s, ctx);
-			
-			while (ss.op_stk.size() != 0)
-			{
-				const ShOp prev_op = ss.op_stk.last();
-
-				if (prev_op.precedence >= op.precedence && !(prev_op.precedence == op.precedence && op.assoc == ShOp::Assoc::Left))
-					break;
-
-				if (!expr_pop_operator(ss))
-					return false;
-			}
-
-			if (!ss.op_stk.push_back(op))
-				return error_out_of_memory(s, ctx);
-			
-			ss.expecting_operator = false;
-
-			break;
-		}
-		}
-	}
-
-POP_REMAINING_OPS:
-
-	if (ss.paren_nesting != 0)
-	{
-		assert(prev_paren_beg != nullptr);
-
-		return error_invalid_syntax(s, ctx, prev_paren_beg, "Unmatched ParenBeg");
-	}
-
-	while (ss.op_stk.size() != 0)
-		if (!expr_pop_operator(ss))
+		if (!parse(s, out.statements.last()))
 			return false;
+	}
+}
 
-	if (ss.ex_stk.size() != 1)
-		return error_invalid_syntax(s, ctx, first_token, "Too many subexpressions");
+static bool parse(pstate& s, ast::ProcSignature& out) noexcept
+{
+	constexpr const char* const ctx = "ProcSignature";
 
-	out = std::move(ss.ex_stk.first());
+	if (expect(s, ctx, Token::Tag::Proc) == nullptr)
+		return false;
+
+	if (next_if(s, Token::Tag::ParenBeg) != nullptr)
+	{
+		if (next_if(s, Token::Tag::ParenEnd) != nullptr)
+			goto RETURN_TYPE;
+
+		while (true)
+		{
+			if (!out.parameters.push_back({}))
+				return error_out_of_memory(s, ctx);
+
+			if (!parse(s, out.parameters.last()))
+				return false;
+
+			if (const Token* t = next(s, ctx); t == nullptr)
+				return error_unexpected_end(s, ctx);
+			else if (t->tag == Token::Tag::ParenEnd)
+				break;
+			else if (t->tag != Token::Tag::Comma)
+				return error_invalid_syntax(s, ctx, t, "Expected ParenEnd or Comma");
+		}
+	}
+
+RETURN_TYPE:
+
+	if (next_if(s, Token::Tag::ArrowRight) != nullptr)
+	{
+		if (!parse(s, out.opt_return_type))
+			return false;
+	}
 
 	return true;
 }
 
-static bool parse(pstate& s, Type& out, bool proc_no_body = false) noexcept
+static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 {
-	static constexpr const char ctx[] = "Type";
-
-	if (const Token* t = next(s, ctx); t == nullptr)
-	{
-		return false;
-	}
-	else if (t->tag == Token::Tag::Proc)
-	{
-		out.tag = Type::Tag::Proc;
-
-		return parse(s, out.proc_type, proc_no_body);
-	}
-	else if (t->tag == Token::Tag::Struct)
-	{
-		out.tag = Type::Tag::Struct;
-
-		return parse(s, out.struct_or_union_type);
-	}
-	else if (t->tag == Token::Tag::Union)
-	{
-		out.tag = Type::Tag::Union;
-
-		return parse(s, out.struct_or_union_type);
-	}
-	else if (t->tag == Token::Tag::Enum)
-	{
-		out.tag = Type::Tag::Enum;
-
-		return parse(s, out.enum_type);
-	}
-	else if (t->tag == Token::Tag::Trait)
-	{
-		out.tag = Type::Tag::Trait;
-
-		return parse(s, out.trait_type);
-	}
-	else if (t->tag == Token::Tag::Module)
-	{
-		out.tag = Type::Tag::Module;
-
-		return parse(s, out.module_type);
-	}
-	else if (t->tag == Token::Tag::Impl)
-	{
-		out.tag = Type::Tag::Impl;
-
-		return parse(s, out.impl_type);
-	}
-	else
-	{
-		return error_invalid_syntax(s, ctx, t, "Expected Proc, Struct, Union, Enum, Trait, Module or Impl");
-	}
-}
-
-static bool parse(pstate& s, Catch& out, Expr* caught_expr) noexcept
-{
-	static constexpr const char ctx[] = "Catch";
-
-	out.caught_expr = std::move(*caught_expr);
-
-	free(caught_expr);
-
-	const Token* ident_tok = peek(s, 0);
-
-	const Token* arrow_tok = peek(s, 1);
-
-	if (ident_tok != nullptr && ident_tok->tag == Token::Tag::Ident && arrow_tok != nullptr && arrow_tok->tag == Token::Tag::ArrowRight)
-	{
-		next(s, ctx);
-
-		next(s, ctx);
-
-		out.opt_error_ident = ident_tok->data_strview();
-	}
-
-	return parse(s, out.stmt);
-}
-
-static bool parse(pstate& s, TopLevelExpr& out) noexcept
-{
-	static constexpr const char ctx[] = "TopLevelExpr";
+	constexpr const char* const ctx = "Expr";
 
 	const Token* t = peek(s);
 
 	if (t == nullptr)
 		return error_unexpected_end(s, ctx);
 
-	bool is_try = false;
-
 	switch (t->tag)
 	{
-	case Token::Tag::SquiggleBeg:
-		if (!alloc(&out.block_expr))
-			return error_out_of_memory(s, ctx);
-
-		out.tag = TopLevelExpr::Tag::Block;
-
-		return parse(s, *out.block_expr);
-
 	case Token::Tag::If:
-		next(s, ctx);
+		if (!alloc(s, ctx, &out.if_expr))
+			return false;
 
-		if (!alloc(&out.if_expr))
-			return error_out_of_memory(s, ctx);
-
-		out.tag = TopLevelExpr::Tag::If;
+		out.tag = ast::Expr::Tag::If;
 
 		return parse(s, *out.if_expr);
 	
 	case Token::Tag::For:
-		next(s, ctx);
+		if (!alloc(s, ctx, &out.for_expr))
+			return false;
 
-		if (!alloc(&out.for_expr))
-			return error_out_of_memory(s, ctx);
-
-		out.tag = TopLevelExpr::Tag::For;
+		out.tag = ast::Expr::Tag::For;
 
 		return parse(s, *out.for_expr);
-	
-	case Token::Tag::Switch:
-		if (!alloc(&out.switch_expr))
-			return error_out_of_memory(s, ctx);
 
-		out.tag = TopLevelExpr::Tag::Switch;
+	case Token::Tag::Switch:
+		if (!alloc(s, ctx, &out.switch_expr))
+			return false;
+
+		out.tag = ast::Expr::Tag::Switch;
 
 		return parse(s, *out.switch_expr);
 
-	case Token::Tag::Proc:
-	case Token::Tag::Struct:
-	case Token::Tag::Union:
-	case Token::Tag::Enum:
-	case Token::Tag::Trait:
-	case Token::Tag::Module:
-	case Token::Tag::Impl:
-		if (!alloc(&out.type_expr))
-			return error_out_of_memory(s, ctx);
+	case Token::Tag::SquiggleBeg:
+		if (!alloc(s, ctx, &out.block))
+			return false;
 
-		out.tag = TopLevelExpr::Tag::Type;
+		out.tag = ast::Expr::Tag::Block;
 
-		return parse(s, *out.type_expr);
-	
-	case Token::Tag::Undefined:
+		return parse(s, *out.block);
+
+	case Token::Tag::Return:
 		next(s, ctx);
 
-		out.tag = TopLevelExpr::Tag::Undefined;
+		if (!alloc(s, ctx, &out.return_or_break_or_defer))
+			return false;
 
-		return true;
+		out.tag = ast::Expr::Tag::Return;
 
-	case Token::Tag::Try:
+		return parse(s, *out.return_or_break_or_defer, false);
+
+	case Token::Tag::Break:
 		next(s, ctx);
 
-		is_try = true;
-	
-	/* FALLTHROUGH */ default:
-		if (!alloc(&out.simple_or_try_expr))
-			return error_out_of_memory(s, ctx);
+		if (!alloc(s, ctx, &out.return_or_break_or_defer))
+			return false;
 
-		if (is_try)
-			out.tag = TopLevelExpr::Tag::Try;
-		else
-			out.tag = TopLevelExpr::Tag::Expr;
+		out.tag = ast::Expr::Tag::Break;
 
-		if (!parse(s, *out.simple_or_try_expr))
-			return false; // Do not return directly in case of catch
+		return parse(s, *out.return_or_break_or_defer, false);
+
+	case Token::Tag::Defer:
+		next(s, ctx);
+
+		if (!alloc(s, ctx, &out.return_or_break_or_defer))
+			return false;
+
+		out.tag = ast::Expr::Tag::Defer;
+
+		return parse(s, *out.return_or_break_or_defer);
+
+	default:
+		break;
 	}
 
-	if (is_try)
-		return true;
-	else if (t = peek(s); t == nullptr || t->tag != Token::Tag::Catch)
-		return true;
-
-	Expr* caught_expr = out.simple_or_try_expr;
-
-	if (!alloc(&out.catch_expr))
-		return error_out_of_memory(s, ctx);
-
-	return parse(s, *out.catch_expr, caught_expr);
-}
-
-static bool parse(pstate& s, Argument& out) noexcept
-{
-	static constexpr const char ctx[] = "Argument";
-
-	if (const Token* t = peek(s); t == nullptr)
-	{
-		return error_unexpected_end(s, ctx);
-	}
-	else if (t->tag == Token::Tag::Proc || t->tag == Token::Tag::Struct || t->tag == Token::Tag::Union || t->tag == Token::Tag::Enum || t->tag == Token::Tag::Trait || t->tag == Token::Tag::Module)
-	{
-		if (!alloc(&out.type))
-			return error_out_of_memory(s, ctx);
-
-		out.tag = Argument::Tag::Type;
-
-		return parse(s, *out.type);
-	}
-	else
-	{
-		if (!alloc(&out.expr))
-			return error_out_of_memory(s, ctx);
-
-		out.tag = Argument::Tag::Expr;
-
-		return parse(s, *out.expr);
-	}
-}
-
-static bool parse(pstate& s, Array& out) noexcept
-{
-	static constexpr const char ctx[] = "Array";
-
-	if (!parse(s, out.elem_cnt))
+	if (!parse_simple_expr(s, out))
 		return false;
 
-	if (expect(s, Token::Tag::BracketEnd, ctx) == nullptr)
+	t = peek(s);
+
+	if (t == nullptr)
+		return true;
+
+	ast::BinaryOp::Op top_level_operator;
+
+	if (t->tag == Token::Tag::Catch)
+		top_level_operator = ast::BinaryOp::Op::Catch;
+	else if (!allow_assignment)
+		return true;
+
+	switch (t->tag)
+	{
+	case Token::Tag::Catch:
+		top_level_operator = ast::BinaryOp::Op::Catch;
+		break;
+
+	case Token::Tag::Set:
+		top_level_operator = ast::BinaryOp::Op::Set;
+		break;
+
+	case Token::Tag::SetAdd:
+		top_level_operator = ast::BinaryOp::Op::SetAdd;
+		break;
+
+	case Token::Tag::SetSub:
+		top_level_operator = ast::BinaryOp::Op::SetSub;
+		break;
+
+	case Token::Tag::SetMul:
+		top_level_operator = ast::BinaryOp::Op::SetMul;
+		break;
+
+	case Token::Tag::SetDiv:
+		top_level_operator = ast::BinaryOp::Op::SetDiv;
+		break;
+
+	case Token::Tag::SetMod:
+		top_level_operator = ast::BinaryOp::Op::SetMod;
+		break;
+
+	case Token::Tag::SetBitAnd:
+		top_level_operator = ast::BinaryOp::Op::SetBitAnd;
+		break;
+
+	case Token::Tag::SetBitOr:
+		top_level_operator = ast::BinaryOp::Op::SetBitOr;
+		break;
+
+	case Token::Tag::SetBitXor:
+		top_level_operator = ast::BinaryOp::Op::SetBitXor;
+		break;
+
+	case Token::Tag::SetShiftL:
+		top_level_operator = ast::BinaryOp::Op::SetShiftL;
+		break;
+
+	case Token::Tag::SetShiftR:
+		top_level_operator = ast::BinaryOp::Op::SetShiftR;
+		break;
+
+	default:
+		return true;
+	}
+
+	next(s, ctx);
+
+	ast::BinaryOp* top_level_op = nullptr;
+
+	if (!alloc(s, ctx, &top_level_op))
+		return false;
+
+	top_level_op->op = top_level_operator;
+
+	top_level_op->lhs = out;
+
+	out.tag = ast::Expr::Tag::BinaryOp;
+
+	out.binary_op = top_level_op;
+
+	return parse(s, top_level_op->rhs);
+}
+
+static bool parse(pstate& s, ast::Array& out) noexcept
+{
+	constexpr const char* const ctx = "Array";
+
+	if (!parse(s, out.count, false))
+		return false;
+
+	if (expect(s, ctx, Token::Tag::BracketEnd) == nullptr)
 		return false;
 
 	return parse(s, out.elem_type);
 }
 
-static bool parse(pstate& s, TypeRef& out, bool is_proc_param) noexcept
+static bool parse(pstate& s, ast::Type& out) noexcept
 {
-	static constexpr const char ctx[] = "TypeRef";
+	constexpr const char* const ctx = "Type";
 
-	const Token* t = peek(s);
-
-	if (t == nullptr)
-		return error_unexpected_end(s, ctx);
-
-	if (is_proc_param && t->tag == Token::Tag::OpBitAnd_Ref)
-	{
-		next(s, ctx);
-
-		out.is_proc_param_ref = true;
-
-		t = peek(s);
-
-		if (t == nullptr)
-			return error_unexpected_end(s, ctx);
-	}
-
-	if (t->tag == Token::Tag::Mut)
-	{
-		next(s, ctx);
-
+	if (next_if(s, Token::Tag::Mut) != nullptr)
 		out.is_mut = true;
 
-		t = peek(s);
-
-		if (t == nullptr)
-			return error_unexpected_end(s, ctx);
-	}
-
-	switch(t->tag)
+	if (const Token* t = peek(s); t == nullptr)
 	{
-	case Token::Tag::OpMul_Ptr:
+		return error_unexpected_end(s, ctx);
+	}
+	else if (t->tag == Token::Tag::OpMul_Ptr)
+	{
 		next(s, ctx);
 
-		if (!alloc(&out.ptr_or_multiptr_or_slice))
-			return error_out_of_memory(s, ctx);
+		if (!alloc(s, ctx, &out.slice_or_ptr_or_multiptr))
+			return false;
 
-		out.tag = TypeRef::Tag::Ptr;
+		out.tag = ast::Type::Tag::Ptr;
 
-		return parse(s, *out.ptr_or_multiptr_or_slice);
-
-	case Token::Tag::BracketBeg:
+		return parse(s, *out.slice_or_ptr_or_multiptr);
+	}
+	else if (t->tag == Token::Tag::BracketBeg)
+	{
 		next(s, ctx);
 
 		if (const Token* t1 = peek(s); t1 == nullptr)
 		{
 			return error_unexpected_end(s, ctx);
 		}
-		else if (t1->tag == Token::Tag::BracketEnd || t1->tag == Token::Tag::OpMul_Ptr)
+		else if (t1->tag == Token::Tag::OpMul_Ptr)
 		{
 			next(s, ctx);
 
-			if (!alloc(&out.ptr_or_multiptr_or_slice))
-				return error_out_of_memory(s, ctx);
+			if (!alloc(s, ctx, &out.slice_or_ptr_or_multiptr))
+				return false;
 
-			if (t1->tag == Token::Tag::BracketEnd)
-			{
-				out.tag = TypeRef::Tag::Slice;
-			}
-			else
-			{
-				out.tag = TypeRef::Tag::MultiPtr;
+			out.tag = ast::Type::Tag::MultiPtr;
 
-				if (expect(s, Token::Tag::BracketEnd, ctx) == nullptr)
-					return false;
-			}
+			return parse(s, *out.slice_or_ptr_or_multiptr);
+		}
+		else if (t1->tag == Token::Tag::BracketEnd)
+		{
+			next(s, ctx);
+	
+			if (!alloc(s, ctx, &out.slice_or_ptr_or_multiptr))
+				return false;
 
-			return parse(s, *out.ptr_or_multiptr_or_slice);
+			out.tag = ast::Type::Tag::Slice;
+
+			return parse(s, *out.slice_or_ptr_or_multiptr);
 		}
 		else
 		{
-			if (!alloc(&out.array))
-				return error_out_of_memory(s, ctx);
+			if (!alloc(s, ctx, &out.array))
+				return false;
 
-			out.tag = TypeRef::Tag::Array;
+			out.tag = ast::Type::Tag::Array;
 
 			return parse(s, *out.array);
 		}
-	
-	case Token::Tag::Proc:
-	case Token::Tag::Struct:
-	case Token::Tag::Union:
-	case Token::Tag::Enum:
-	case Token::Tag::Trait:
-	case Token::Tag::Module:
-	case Token::Tag::Impl:
-		if (!alloc(&out.type))
-			return error_out_of_memory(s, ctx);
+	}
+	else if (t->tag == Token::Tag::Proc)
+	{
+		if (!alloc(s, ctx, &out.proc_signature))
+			return false;
 
-		out.tag = TypeRef::Tag::Type;
+		out.tag = ast::Type::Tag::ProcSignature;
 
-		return parse(s, *out.type, true);
+		return parse(s, *out.proc_signature);
+	}
+	else
+	{
+		if (!alloc(s, ctx, &out.expr))
+			return false;
 
-	default:
-		if (!alloc(&out.expr))
-			return error_out_of_memory(s, ctx);
+		out.tag = ast::Type::Tag::Expr;
 
-		out.tag = TypeRef::Tag::Expr;
-
-		return parse(s, *out.expr);
+		return parse(s, *out.expr, false);
 	}
 }
 
-static bool parse(pstate& s, Definition& out, bool is_proc_param) noexcept
+static bool parse(pstate& s, ast::Definition& out) noexcept
 {
-	static constexpr const char ctx[] = "Definition";
+	constexpr const char* const ctx = "Definition";
 
-	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Ident)
-	{
-		next(s, ctx);
+	if (const Token* t = expect(s, ctx, Token::Tag::Ident); t == nullptr)
+		return false;
+	else
+		out.ident = t->data_strview();
 
-		out.opt_ident = t->data_strview();
-		
-		if (const Token* t1 = next(s, ctx); t1 == nullptr)
-			return false;
-		else if (t1->tag == Token::Tag::DoubleColon)
-			out.is_comptime = true;
-		else if (t1->tag != Token::Tag::Colon)
-			return error_invalid_syntax(s, ctx, t1, "Expected Colon or DoubleColon");
-	}
-	
+	if (const Token* t = next(s, ctx); t == nullptr)
+		return false;
+	else if (t->tag == Token::Tag::DoubleColon)
+		out.is_comptime = true;
+	else if (t->tag != Token::Tag::Colon)
+		return error_invalid_syntax(s, ctx, t, "Expected Colon or DoubleColon");
+
+	if (next_if(s, Token::Tag::Pub) != nullptr)
+		out.is_pub = true;
+
 	if (const Token* t = peek(s); t == nullptr)
 	{
 		return error_unexpected_end(s, ctx);
 	}
 	else if (t->tag != Token::Tag::Set)
 	{
-		if (t->tag == Token::Tag::Pub)
-		{
-			next(s, ctx);
-
-			out.is_pub = true;
-
-			t = peek(s);
-
-			if (t == nullptr)
-				return error_unexpected_end(s, ctx);
-		}
-
-		if (!parse(s, out.opt_type, is_proc_param))
+		if (!parse(s, out.opt_type))
 			return false;
 	}
 
-	if (const Token* t = peek(s); t != nullptr && t->tag == Token::Tag::Set)
-	{
-		next(s, ctx);
+	if (next_if(s, Token::Tag::Set))
+		return parse(s, out.opt_value, false);
 
-		if (!parse(s, out.opt_value))
-			return false;
-	}
+	if (out.opt_type.tag == ast::Type::Tag::EMPTY)
+		return error_invalid_syntax(s, ctx, peek(s), "Expected a type, a value or both");
 
 	return true;
 }
 
-static bool parse(pstate& s, ProgramUnit& out) noexcept
+static bool parse(pstate& s, ast::FileModule& out) noexcept
 {
-	static constexpr const char ctx[] = "ProgramUnit";
+	constexpr const char* const ctx = "FileModule";
 
-	while (peek(s) != nullptr)
+	while (true)
 	{
+		if (peek(s) == nullptr)
+			return true;
+
 		if (!out.definitions.push_back({}))
 			return error_out_of_memory(s, ctx);
 
 		if (!parse(s, out.definitions.last()))
 			return false;
 	}
-
-	return true;
 }
 
-Result parse_program_unit(const vec<Token>& tokens, ProgramUnit& out_program_unit) noexcept
+ast::Result ast::parse_program_unit(const vec<Token>& tokens, FileModule& out) noexcept
 {
 	pstate s{ tokens.begin(), tokens.end(), tokens.begin(), {} };
 
-	parse(s, out_program_unit);
+	parse(s, out);
 
 	return s.rst;
 }

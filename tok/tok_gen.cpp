@@ -10,6 +10,27 @@ strview Token::type_strview() const noexcept
 	{
 		strview::from_literal("INVALID"),
 		strview::from_literal("Ident"),
+		strview::from_literal("OpAdd"),
+		strview::from_literal("OpSub"),
+		strview::from_literal("OpMul_Ptr"),
+		strview::from_literal("OpDiv"),
+		strview::from_literal("OpMod"),
+		strview::from_literal("OpBitAnd_Ref"),
+		strview::from_literal("OpBitOr"),
+		strview::from_literal("OpBitXor"),
+		strview::from_literal("OpShiftL"),
+		strview::from_literal("OpShiftR"),
+		strview::from_literal("OpLogAnd"),
+		strview::from_literal("OpLogOr"),
+		strview::from_literal("OpCmpLt"),
+		strview::from_literal("OpCmpLe"),
+		strview::from_literal("OpCmpGt"),
+		strview::from_literal("OpCmpGe"),
+		strview::from_literal("OpCmpNe"),
+		strview::from_literal("OpCmpEq"),
+		strview::from_literal("Dot"),
+		strview::from_literal("Catch"),
+		strview::from_literal("Index"),
 		strview::from_literal("Set"),
 		strview::from_literal("SetAdd"),
 		strview::from_literal("SetSub"),
@@ -19,30 +40,11 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("SetBitAnd"),
 		strview::from_literal("SetBitOr"),
 		strview::from_literal("SetBitXor"),
-		strview::from_literal("SetBitShl"),
-		strview::from_literal("SetBitShr"),
+		strview::from_literal("SetShiftL"),
+		strview::from_literal("SetShiftR"),
 		strview::from_literal("UOpLogNot"),
 		strview::from_literal("UOpBitNot"),
-		strview::from_literal("OpMul_Ptr"),
-		strview::from_literal("OpDiv"),
-		strview::from_literal("OpMod"),
-		strview::from_literal("OpAdd"),
-		strview::from_literal("OpSub"),
-		strview::from_literal("OpBitShl"),
-		strview::from_literal("OpBitShr"),
-		strview::from_literal("OpLt"),
-		strview::from_literal("OpLe"),
-		strview::from_literal("OpGt"),
-		strview::from_literal("OpGe"),
-		strview::from_literal("OpEq"),
-		strview::from_literal("OpNe"),
-		strview::from_literal("OpBitAnd_Ref"),
-		strview::from_literal("OpBitXor"),
-		strview::from_literal("OpBitOr"),
-		strview::from_literal("OpLogAnd"),
-		strview::from_literal("OpLogOr"),
-		strview::from_literal("OpDeref"),
-		strview::from_literal("Dot"),
+		strview::from_literal("UOpDeref"),
 		strview::from_literal("Colon"),
 		strview::from_literal("TripleDot"),
 		strview::from_literal("Semicolon"),
@@ -64,23 +66,19 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("Comment"),
 		strview::from_literal("IncompleteComment"),
 		strview::from_literal("If"),
+		strview::from_literal("Then"),
 		strview::from_literal("Else"),
 		strview::from_literal("For"),
 		strview::from_literal("Do"),
 		strview::from_literal("Break"),
-		strview::from_literal("Until"),
-		strview::from_literal("Catch"),
+		strview::from_literal("Finally"),
 		strview::from_literal("Try"),
 		strview::from_literal("Switch"),
 		strview::from_literal("Case"),
-		strview::from_literal("Yield"),
 		strview::from_literal("Return"),
 		strview::from_literal("Defer"),
 		strview::from_literal("DoubleColon"),
 		strview::from_literal("Proc"),
-		strview::from_literal("Struct"),
-		strview::from_literal("Union"),
-		strview::from_literal("Enum"),
 		strview::from_literal("Trait"),
 		strview::from_literal("Impl"),
 		strview::from_literal("Module"),
@@ -130,16 +128,16 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			t.tag = Token::Tag::Do;
 		else if (streqc({ beg, c }, strview::from_literal("break")))
 			t.tag = Token::Tag::Break;
-		else if (streqc({ beg, c }, strview::from_literal("until")))
-			t.tag = Token::Tag::Until;
+		else if (streqc({ beg, c }, strview::from_literal("finally")))
+			t.tag = Token::Tag::Finally;
 		else if (streqc({ beg, c }, strview::from_literal("if")))
 			t.tag = Token::Tag::If;
+		else if (streqc({ beg, c }, strview::from_literal("then")))
+			t.tag = Token::Tag::Then;
 		else if (streqc({ beg, c }, strview::from_literal("else")))
 			t.tag = Token::Tag::Else;
 		else if (streqc({ beg, c }, strview::from_literal("switch")))
 			t.tag = Token::Tag::Switch;
-		else if (streqc({ beg, c }, strview::from_literal("yield")))
-			t.tag = Token::Tag::Yield;
 		else if (streqc({ beg, c }, strview::from_literal("return")))
 			t.tag = Token::Tag::Return;
 		else if (streqc({ beg, c }, strview::from_literal("defer")))
@@ -148,12 +146,6 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			t.tag = Token::Tag::Case;
 		else if (streqc({ beg, c }, strview::from_literal("proc")))
 			t.tag = Token::Tag::Proc;
-		else if (streqc({ beg, c }, strview::from_literal("struct")))
-			t.tag = Token::Tag::Struct;
-		else if (streqc({ beg, c }, strview::from_literal("union")))
-			t.tag = Token::Tag::Union;
-		else if (streqc({ beg, c }, strview::from_literal("enum")))
-			t.tag = Token::Tag::Enum;
 		else if (streqc({ beg, c }, strview::from_literal("trait")))
 			t.tag = Token::Tag::Trait;
 		else if (streqc({ beg, c }, strview::from_literal("impl")))
@@ -369,20 +361,20 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 				{
 					c += 2;
 
-					t.tag = Token::Tag::SetBitShl;
+					t.tag = Token::Tag::SetShiftL;
 				}
 				else
 				{
 					++c;
 
-					t.tag = Token::Tag::OpBitShl;
+					t.tag = Token::Tag::OpShiftL;
 				}
 			}
 			else if (nxt == '=')
 			{
 				++c;
 
-				t.tag = Token::Tag::OpLe;
+				t.tag = Token::Tag::OpCmpLe;
 			}
 			else if (nxt == '-')
 			{
@@ -392,7 +384,7 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			}
 			else
 			{
-				t.tag = Token::Tag::OpLt;
+				t.tag = Token::Tag::OpCmpLt;
 			}
 
 			break;
@@ -405,24 +397,24 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 				{
 					c += 2;
 
-					t.tag = Token::Tag::SetBitShr;
+					t.tag = Token::Tag::SetShiftR;
 				}
 				else
 				{
 					++c;
 
-					t.tag = Token::Tag::OpBitShr;
+					t.tag = Token::Tag::OpShiftR;
 				}
 			}
 			else if (nxt == '=')
 			{
 				++c;
 
-				t.tag = Token::Tag::OpGe;
+				t.tag = Token::Tag::OpCmpGe;
 			}
 			else
 			{
-				t.tag = Token::Tag::OpGt;
+				t.tag = Token::Tag::OpCmpGt;
 			}
 
 			break;
@@ -433,7 +425,7 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				++c;
 
-				t.tag = Token::Tag::OpEq;
+				t.tag = Token::Tag::OpCmpEq;
 			}
 			else
 			{
@@ -639,7 +631,7 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				++c;
 
-				t.tag = Token::Tag::OpNe;
+				t.tag = Token::Tag::OpCmpNe;
 			}
 			else
 			{

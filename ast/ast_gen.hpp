@@ -7,28 +7,32 @@
 #include "../util/strview.hpp"
 #include "ast_data_structure.hpp"
 
-struct Result
+
+namespace ast
 {
-	enum class Tag
+	struct Result
 	{
-		Ok,
-		OutOfMemory,
-		InvalidSyntax,
-		UnexpectedToken,
-		NotImplemented,
-		UnexpectedEndOfStream,
-		Oopsie,
-	} tag = Tag::Ok;
+		enum class Tag
+		{
+			Ok,
+			OutOfMemory,
+			InvalidSyntax,
+			UnexpectedToken,
+			NotImplemented,
+			UnexpectedEndOfStream,
+			Oopsie,
+		} tag = Tag::Ok;
 
-	Token::Tag expected_token;
+		Token::Tag expected_token;
 
-	const char* error_ctx;
+		const char* error_ctx;
 
-	const char* message;
+		const char* message;
 
-	const Token* problematic_token;
-};
+		const Token* problematic_token;
+	};
 
-Result parse_program_unit(const vec<Token>& tokens, ProgramUnit& out_program_unit) noexcept;
+	Result parse_program_unit(const vec<Token>& tokens, FileModule& out_program_unit) noexcept;
+}
 
 #endif // AST_GEN_INCLUDE_GUARD

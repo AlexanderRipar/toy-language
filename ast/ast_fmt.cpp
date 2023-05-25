@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <cassert>
 
-static strview get_name(UnaryOp::Op op) noexcept
+static strview get_name(ast::UnaryOp::Op op) noexcept
 {
 	static constexpr const strview names[] {
 		
@@ -13,65 +13,70 @@ static strview get_name(UnaryOp::Op op) noexcept
 		strview::from_literal("Deref"),
 		strview::from_literal("AddrOf"),
 		strview::from_literal("Neg"),
+		strview::from_literal("Try"),
 	};
 
-	assert(static_cast<u8>(op) < _countof(names));
+	const usz index = static_cast<usz>(op) - 1;
 
-	return names[static_cast<u8>(op)];
+	const bool is_in_range = index < _countof(names);
+
+	if (is_in_range)
+		return names[index];
+	
+	assert(false);
+
+	return strview::from_literal("???");
 }
 
-static strview get_name(BinaryOp::Op op) noexcept
+static strview get_name(ast::BinaryOp::Op op) noexcept
 {
 	static constexpr const strview names[] {
-		strview::from_literal("NONE"),
-		strview::from_literal("Add"),
-		strview::from_literal("Sub"),
-		strview::from_literal("Mul"),
-		strview::from_literal("Div"),
-		strview::from_literal("Mod"),
-		strview::from_literal("BitAnd"),
-		strview::from_literal("BitOr"),
-		strview::from_literal("BitXor"),
-		strview::from_literal("ShiftL"),
-		strview::from_literal("ShiftR"),
-		strview::from_literal("LogAnd"),
-		strview::from_literal("LogOr"),
-		strview::from_literal("CmpLt"),
-		strview::from_literal("CmpLe"),
-		strview::from_literal("CmpGt"),
-		strview::from_literal("CmpGe"),
-		strview::from_literal("CmpNe"),
-		strview::from_literal("CmpEq"),
-		strview::from_literal("Member"),
-		strview::from_literal("Index"),
+			strview::from_literal("Add"),
+			strview::from_literal("Sub"),
+			strview::from_literal("Mul"),
+			strview::from_literal("Div"),
+			strview::from_literal("Mod"),
+			strview::from_literal("BitAnd"),
+			strview::from_literal("BitOr"),
+			strview::from_literal("BitXor"),
+			strview::from_literal("ShiftL"),
+			strview::from_literal("ShiftR"),
+			strview::from_literal("LogAnd"),
+			strview::from_literal("LogOr"),
+			strview::from_literal("CmpLt"),
+			strview::from_literal("CmpLe"),
+			strview::from_literal("CmpGt"),
+			strview::from_literal("CmpGe"),
+			strview::from_literal("CmpNe"),
+			strview::from_literal("CmpEq"),
+			strview::from_literal("Member"),
+			strview::from_literal("Catch"),
+			strview::from_literal("Index"),
+			strview::from_literal("Set"),
+			strview::from_literal("SetAdd"),
+			strview::from_literal("SetSub"),
+			strview::from_literal("SetMul"),
+			strview::from_literal("SetDiv"),
+			strview::from_literal("SetMod"),
+			strview::from_literal("SetBitAnd"),
+			strview::from_literal("SetBitOr"),
+			strview::from_literal("SetBitXor"),
+			strview::from_literal("SetShiftL"),
+			strview::from_literal("SetShiftR"),
 	};
 
-	assert(static_cast<u8>(op) < _countof(names));
+	const usz index = static_cast<usz>(op) - 1;
 
-	return names[static_cast<u8>(op)];
+	const bool is_in_range = index < _countof(names);
+
+	if (is_in_range)
+		return names[index];
+	
+	assert(false);
+
+	return strview::from_literal("???");
 }
 
-static strview get_name(Assignment::Op op) noexcept
-{
-	static constexpr const strview names[] {
-		strview::from_literal("NONE"),
-		strview::from_literal("Set"),
-		strview::from_literal("SetAdd"),
-		strview::from_literal("SetSub"),
-		strview::from_literal("SetMul"),
-		strview::from_literal("SetDiv"),
-		strview::from_literal("SetMod"),
-		strview::from_literal("SetBitAnd"),
-		strview::from_literal("SetBitOr"),
-		strview::from_literal("SetBitXor"),
-		strview::from_literal("SetShiftL"),
-		strview::from_literal("SetShiftR"),
-	};
-
-	assert(static_cast<u8>(op) < _countof(names));
-
-	return names[static_cast<u8>(op)];
-}
 
 enum class NodeType
 {
@@ -131,6 +136,9 @@ static void start_elem(FmtState& s, NodeType type, strview name) noexcept
 		{
 			assert(prev_is_empty);
 		}
+		
+		if (prev_type == NodeType::Member)
+			s.stk.pop();
 	}
 	else
 	{
@@ -230,423 +238,124 @@ static void close_elem(FmtState& s) noexcept
 
 
 
-static void tree_print(FmtState& s, const TypeRef& node) noexcept;
+static void tree_print(FmtState& s, const ast::Expr& node) noexcept;
 
-static void tree_print(FmtState& s, const Expr& node) noexcept;
+static void tree_print(FmtState& s, const ast::Definition& node) noexcept;
 
-static void tree_print(FmtState& s, const Definition& node) noexcept;
-
-static void tree_print(FmtState& s, const Call& node) noexcept;
-
-static void tree_print(FmtState& s, const Type& node) noexcept;
-
-static void tree_print(FmtState& s, const Statement& node) noexcept;
-
-static void tree_print(FmtState& s, const TopLevelExpr& node) noexcept;
-
-static void tree_print(FmtState& s, const Assignment& node) noexcept;
+static void tree_print(FmtState& s, const ast::Type& node, const strview node_name = strview::from_literal("Type")) noexcept;
 
 
 
-static void tree_print(FmtState& s, const ForLoopSignature& node) noexcept
+static void tree_print(FmtState& s, const ast::Case& node) noexcept
 {
-	start_elem(s, NodeType::Struct, strview::from_literal("ForLoopSignature"));
+	start_elem(s, NodeType::Struct, "Case");
 
-	if (node.opt_init.opt_type.tag != TypeRef::Tag::EMPTY || node.opt_init.opt_value.tag != TopLevelExpr::Tag::EMPTY)
-	{
-		start_elem(s, NodeType::Member, strview::from_literal("init"));
-		tree_print(s, node.opt_init);
-		close_elem(s);
-	}
-	
-	if (node.opt_cond.tag != Expr::Tag::EMPTY)
-	{
-		start_elem(s, NodeType::Member, strview::from_literal("condition"));
-		tree_print(s, node.opt_cond);
-		close_elem(s);
-	}
-	
-	if (node.opt_step.op != Assignment::Op::NONE)
-	{
-		start_elem(s, NodeType::Member, strview::from_literal("step"));
-		tree_print(s, node.opt_step);
-		close_elem(s);
-	}
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const ForEachSignature& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("ForEachSignature"));
-
-	start_elem(s, NodeType::Member, strview::from_literal("loop_variable"));
-	start_elem(s, NodeType::Value, node.loop_variable);
-	close_elem(s);
-
-	if (node.opt_step_variable.begin() != nullptr)
-	{
-		start_elem(s, NodeType::Member, strview::from_literal("step_variable"));
-		start_elem(s, NodeType::Value, node.opt_step_variable);
-		close_elem(s);
-	}
-
-	start_elem(s, NodeType::Member, strview::from_literal("loopee"));
-	tree_print(s, node.loopee);
-	close_elem(s);
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const Catch& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("Catch"));
-
-	start_elem(s, NodeType::Member, strview::from_literal("caught_expr"));
-	tree_print(s, node.caught_expr);
-	close_elem(s);
-
-	if (node.opt_error_ident.begin() != nullptr)
-	{
-		start_elem(s, NodeType::Member, strview::from_literal("error_ident"));
-		start_elem(s, NodeType::Value, node.opt_error_ident);
-		close_elem(s);
-	}
-
-	start_elem(s, NodeType::Member, strview::from_literal("stmt"));
-	tree_print(s, node.stmt);
-	close_elem(s);
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const Case& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("Case"));
-
-	start_elem(s, NodeType::Member, strview::from_literal("label"));
+	start_elem(s, NodeType::Member, "label");
 	tree_print(s, node.label);
-	close_elem(s);
-
-	start_elem(s, NodeType::Member, strview::from_literal("body"));
+	
+	start_elem(s, NodeType::Member, "body");
 	tree_print(s, node.body);
-	close_elem(s);
 
 	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const ForSignature& node) noexcept
+static void tree_print(FmtState& s, const ast::ForLoopSignature& node) noexcept
 {
-	start_elem(s, NodeType::Union, strview::from_literal("ForSignature"));
+	start_elem(s, NodeType::Struct, "ForLoopSignature");
+
+	if (node.opt_init != nullptr)
+	{
+		start_elem(s, NodeType::Member, "init");
+		tree_print(s, *node.opt_init);
+	}
+
+	if (node.opt_condition.tag != ast::Expr::Tag::EMPTY)
+	{
+		start_elem(s, NodeType::Member, "condition");
+		tree_print(s, node.opt_condition);
+	}
+
+	if (node.opt_step.tag != ast::Expr::Tag::EMPTY)
+	{
+		start_elem(s, NodeType::Member, "step");
+		tree_print(s, node.opt_step);
+	}
+
+	close_elem(s);
+}
+
+static void tree_print(FmtState& s, const ast::ForEachSignature& node) noexcept
+{
+	start_elem(s, NodeType::Struct, "ForEachSignature");
+
+	start_elem(s, NodeType::Member, "loop_var");
+	start_elem(s, NodeType::Value, node.loop_var);
+
+	if (node.opt_index_var.begin() != nullptr)
+	{
+		start_elem(s, NodeType::Member, "index_var");
+		start_elem(s, NodeType::Value, node.opt_index_var);
+	}
+
+	start_elem(s, NodeType::Member, "looped_over");
+	tree_print(s, node.looped_over);
+
+	close_elem(s);
+}
+
+static void tree_print(FmtState& s, const ast::CharLiteral& node) noexcept
+{
+	start_elem(s, NodeType::Struct, "CharLiteral");
+
+	// TODO
+	node;
+
+	close_elem(s);
+}
+
+static void tree_print(FmtState& s, const ast::StringLiteral& node) noexcept
+{
+	start_elem(s, NodeType::Struct, "StringLiteral");
+
+	start_elem(s, NodeType::Value, strview{ node.value.begin(), node.value.end() });
+
+	close_elem(s);
+}
+
+static void tree_print(FmtState& s, const ast::FloatLiteral& node) noexcept
+{
+	start_elem(s, NodeType::Struct, "FloatLiteral");
+
+	// TODO
+	node;
+
+	close_elem(s);
+}
+
+static void tree_print(FmtState& s, const ast::IntegerLiteral& node) noexcept
+{
+	start_elem(s, NodeType::Struct, "IntegerLiteral");
+
+	// TODO
+	node;
+
+	close_elem(s);
+}
+
+static void tree_print(FmtState& s, const ast::Argument& node) noexcept
+{
+	start_elem(s, NodeType::Union, "Argument");
 
 	switch (node.tag)
 	{
-	case ForSignature::Tag::ForEachSignature:
-		tree_print(s, node.for_each);
-		break;
-
-	case ForSignature::Tag::ForLoopSignature:
-		tree_print(s, node.for_loop);
-		break;
-
-	default:
-		assert(false);
-		break;
-	}
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const Assignment& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("Assignment"));
-
-	start_elem(s, NodeType::Member, strview::from_literal("operator"));
-	start_elem(s, NodeType::Value, get_name(node.op));
-	close_elem(s);
-
-	start_elem(s, NodeType::Member, strview::from_literal("assignee"));
-	tree_print(s, node.assignee);
-	close_elem(s);
-
-	start_elem(s, NodeType::Member, strview::from_literal("value"));
-	tree_print(s, node.value);
-	close_elem(s);
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const Block& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("Block"));
-
-	start_elem(s, NodeType::Array, strview::from_literal("statements"));
-	for (const Statement& child : node.statements)
-		tree_print(s, child);
-	close_elem(s);
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const Switch& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("Switch"));
-
-	start_elem(s, NodeType::Member, strview::from_literal("switched"));
-	tree_print(s, node.switched);
-	close_elem(s);
-
-	start_elem(s, NodeType::Array, strview::from_literal("cases"));
-	for (const Case& child : node.cases)
-		tree_print(s, child);
-	close_elem(s);
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const For& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("For"));
-
-	start_elem(s, NodeType::Member, strview::from_literal("signature"));
-	tree_print(s, node.signature);
-	close_elem(s);
-
-	start_elem(s, NodeType::Member, strview::from_literal("body"));
-	tree_print(s, node.body);
-	close_elem(s);
-
-	if (node.opt_until_body.tag != Statement::Tag::EMPTY)
-	{
-		start_elem(s, NodeType::Member, strview::from_literal("until"));
-		tree_print(s, node.opt_until_body);
-		close_elem(s);
-	}
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const If& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("If"));
-
-	if (node.opt_init.opt_type.tag != TypeRef::Tag::EMPTY || node.opt_init.opt_value.tag != TopLevelExpr::Tag::EMPTY)
-	{
-		start_elem(s, NodeType::Member, strview::from_literal("init"));
-		tree_print(s, node.opt_init);
-		close_elem(s);
-	}
-
-	start_elem(s, NodeType::Member, strview::from_literal("condition"));
-	tree_print(s, node.condition);
-	close_elem(s);
-
-	start_elem(s, NodeType::Member, strview::from_literal("body"));
-	tree_print(s, node.body);
-	close_elem(s);
-
-	if (node.opt_else_body.tag != Statement::Tag::EMPTY)
-	{
-		start_elem(s, NodeType::Member, strview::from_literal("else"));
-		tree_print(s, node.opt_else_body);
-		close_elem(s);
-	}
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const TopLevelExpr& node) noexcept
-{
-	start_elem(s, NodeType::Union, strview::from_literal("TopLevelExpr"));
-
-	switch (node.tag)
-	{
-	case TopLevelExpr::Tag::Block:
-		tree_print(s, *node.block_expr);
-		break;
-
-	case TopLevelExpr::Tag::If:
-		tree_print(s, *node.if_expr);
-		break;
-
-	case TopLevelExpr::Tag::For:
-		tree_print(s, *node.for_expr);
-		break;
-
-	case TopLevelExpr::Tag::Switch:
-		tree_print(s, *node.switch_expr);
-		break;
-
-	case TopLevelExpr::Tag::Catch:
-		tree_print(s, *node.catch_expr);
-		break;
-
-	case TopLevelExpr::Tag::Try:
-		start_elem(s, NodeType::Union, strview::from_literal("Try"));
-		tree_print(s, *node.simple_or_try_expr);
-		close_elem(s);
-		break;
-
-	case TopLevelExpr::Tag::Expr:
-		tree_print(s, *node.simple_or_try_expr);
-		break;
-
-	case TopLevelExpr::Tag::Type:
-		tree_print(s, *node.type_expr);
-		break;
-
-	case TopLevelExpr::Tag::Undefined:
-		start_elem(s, NodeType::Struct, strview::from_literal("Undefined"));
-		close_elem(s);
-		break;
-
-	default:
-		assert(false);
-		break;
-	}
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const Argument& node) noexcept
-{
-	start_elem(s, NodeType::Union, strview::from_literal("Argument"));
-
-	switch (node.tag)
-	{
-	case Argument::Tag::Type:
-		tree_print(s, *node.type);
-		break;
-
-	case Argument::Tag::Expr:
+	case ast::Argument::Tag::Expr:
 		tree_print(s, *node.expr);
 		break;
 
-	default:
-		assert(false);
-		break;
-	}
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const CharLiteral& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("CharLiteral"));
-
-	// TODO
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const StringLiteral& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("StringLiteral"));
-
-	start_elem(s, NodeType::Value, { node.value.begin(), node.value.end() });
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const FloatLiteral& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("FloatLiteral"));
-
-	// TODO
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const IntegerLiteral& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("IntegerLiteral"));
-
-	// TODO
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const EnumValue& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("EnumValue"));
-
-	start_elem(s, NodeType::Member, strview::from_literal("ident"));
-	start_elem(s, NodeType::Value, node.ident);
-	close_elem(s);
-
-	if (node.opt_value.tag != Expr::Tag::EMPTY)
-	{
-		start_elem(s, NodeType::Member, strview::from_literal("value"));
-		tree_print(s, node.opt_value);
-		close_elem(s);
-	}
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const Statement& node) noexcept
-{
-	start_elem(s, NodeType::Union, strview::from_literal("Statement"));
-
-	switch (node.tag)
-	{
-	case Statement::Tag::If:
-		tree_print(s, *node.if_stmt);
-		break;
-
-	case Statement::Tag::For:
-		tree_print(s, *node.for_stmt);
-		break;
-
-	case Statement::Tag::Switch:
-		tree_print(s, *node.switch_stmt);
-		break;
-
-	case Statement::Tag::Return:
-		start_elem(s, NodeType::Union, strview::from_literal("Return"));
-		tree_print(s, *node.return_or_yield_or_break_value);
-		close_elem(s);
-		break;
-
-	case Statement::Tag::Yield:
-		start_elem(s, NodeType::Union, strview::from_literal("Yield"));
-		tree_print(s, *node.return_or_yield_or_break_value);
-		close_elem(s);
-		break;
-
-	case Statement::Tag::Break:
-		start_elem(s, NodeType::Union, strview::from_literal("Break"));
-		tree_print(s, *node.return_or_yield_or_break_value);
-		close_elem(s);
-		break;
-
-	case Statement::Tag::Block:
-		tree_print(s, *node.block);
-		break;
-
-	case Statement::Tag::Call:
-		tree_print(s, *node.call);
-		break;
-
-	case Statement::Tag::Definition:
+	case ast::Argument::Tag::Definition:
 		tree_print(s, *node.definition);
 		break;
-
-	case Statement::Tag::Assignment:
-		tree_print(s, *node.assignment);
-		break;
-
-	case Statement::Tag::Defer:
-		start_elem(s, NodeType::Union, strview::from_literal("Defer"));
-		tree_print(s, *node.deferred_stmt);
-		close_elem(s);
-		break;
-
-	case Statement::Tag::Undefined:
-		start_elem(s, NodeType::Struct, strview::from_literal("Undefined"));
-		close_elem(s);
-		break;
-
+	
 	default:
 		assert(false);
 		break;
@@ -655,97 +364,148 @@ static void tree_print(FmtState& s, const Statement& node) noexcept
 	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const ProcSignature& node) noexcept
+static void tree_print(FmtState& s, const ast::Block& node) noexcept
 {
-	start_elem(s, NodeType::Struct, strview::from_literal("ProcSignature"));
+	start_elem(s, NodeType::Struct, "Block");
 
-	start_elem(s, NodeType::Array, strview::from_literal("parameters"));
-	for (const Definition& child : node.parameters)
+	start_elem(s, NodeType::Array, "statements");
+	for (const ast::Expr& child : node.statements)
 		tree_print(s, child);
 	close_elem(s);
 
-	if (node.opt_return_type.tag != TypeRef::Tag::EMPTY)
+	close_elem(s);
+}
+
+static void tree_print(FmtState& s, const ast::Switch& node) noexcept
+{
+	start_elem(s, NodeType::Struct, "Switch");
+
+	if (node.opt_init != nullptr)
 	{
-		start_elem(s, NodeType::Member, strview::from_literal("return_type"));
-		tree_print(s, node.opt_return_type);
-		close_elem(s);
+		start_elem(s, NodeType::Member, "init");
+		tree_print(s, *node.opt_init);
+	}
+
+	start_elem(s, NodeType::Member, "switched");
+	tree_print(s, node.switched_expr);
+
+	start_elem(s, NodeType::Array, "cases");
+	for (const ast::Case& child : node.cases)
+		tree_print(s, child);
+	close_elem(s);
+
+	close_elem(s);
+}
+
+static void tree_print(FmtState& s, const ast::For& node) noexcept
+{
+	start_elem(s, NodeType::Struct, "For");
+	
+	start_elem(s, NodeType::Member, "signature");
+	switch (node.tag)
+	{
+	case ast::For::Tag::ForEachSignature:
+		tree_print(s, node.for_each_signature);
+		break;
+
+	case ast::For::Tag::ForLoopSignature:
+		tree_print(s, node.for_loop_signature);
+		break;
+
+	default:
+		assert(false);
+		break;
+	}
+
+	start_elem(s, NodeType::Member, "body");
+	tree_print(s, node.body);
+
+	if (node.opt_finally_body.tag != ast::Expr::Tag::EMPTY)
+	{
+		start_elem(s, NodeType::Member, "finally_body");
+		tree_print(s, node.opt_finally_body);
 	}
 
 	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const Call& node) noexcept
+static void tree_print(FmtState& s, const ast::If& node) noexcept
 {
-	start_elem(s, NodeType::Struct, strview::from_literal("Call"));
+	start_elem(s, NodeType::Struct, "If");
+	
+	if (node.opt_init != nullptr)
+	{
+		start_elem(s, NodeType::Member, "init");
+		tree_print(s, *node.opt_init);
+	}
 
-	start_elem(s, NodeType::Member, strview::from_literal("callee"));
-	tree_print(s, node.callee);
-	close_elem(s);
+	start_elem(s, NodeType::Member, "condition");
+	tree_print(s, node.condition);
 
-	start_elem(s, NodeType::Array, strview::from_literal("args"));
-	for (const Argument& child : node.args)
-		tree_print(s, child);
-	close_elem(s);
+	start_elem(s, NodeType::Member, "body");
+	tree_print(s, node.body);
+
+	if (node.opt_else_body.tag != ast::Expr::Tag::EMPTY)
+	{
+		start_elem(s, NodeType::Member, "else_body");
+		tree_print(s, node.opt_else_body);
+	}
 
 	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const BinaryOp& node) noexcept
+static void tree_print(FmtState& s, const ast::UnaryOp& node) noexcept
 {
-	start_elem(s, NodeType::Struct, strview::from_literal("BinaryOp"));
+	start_elem(s, NodeType::Union, "UnaryOp");
 
-	start_elem(s, NodeType::Member, strview::from_literal("operator"));
-	start_elem(s, NodeType::Value, get_name(node.op));
-	close_elem(s);
+	start_elem(s, NodeType::Struct, get_name(node.op));
 
-	start_elem(s, NodeType::Member, strview::from_literal("lhs"));
-	tree_print(s, node.lhs);
-	close_elem(s);
-
-	start_elem(s, NodeType::Member, strview::from_literal("rhs"));
-	tree_print(s, node.rhs);
-	close_elem(s);
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const UnaryOp& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("UnaryOp"));
-
-	start_elem(s, NodeType::Member, strview::from_literal("operator"));
-	start_elem(s, NodeType::Value, get_name(node.op));
-	close_elem(s);
-
-	start_elem(s, NodeType::Member, strview::from_literal("operand"));
+	start_elem(s, NodeType::Member, "operand");
 	tree_print(s, node.operand);
+
 	close_elem(s);
 
 	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const Literal& node) noexcept
+static void tree_print(FmtState& s, const ast::BinaryOp& node) noexcept
 {
-	start_elem(s, NodeType::Union, strview::from_literal("Literal"));
+	start_elem(s, NodeType::Union, "BinaryOp");
+
+	start_elem(s, NodeType::Struct, get_name(node.op));
+
+	start_elem(s, NodeType::Member, "lhs");
+	tree_print(s, node.lhs);
+	
+	start_elem(s, NodeType::Member, "rhs");
+	tree_print(s, node.rhs);
+
+	close_elem(s);
+
+	close_elem(s);
+}
+
+static void tree_print(FmtState& s, const ast::Literal& node) noexcept
+{
+	start_elem(s, NodeType::Union, "Literal");
 
 	switch (node.tag)
 	{
-	case Literal::Tag::IntegerLiteral:
+	case ast::Literal::Tag::IntegerLiteral:
 		tree_print(s, node.integer_literal);
 		break;
 
-	case Literal::Tag::FloatLiteral:
+	case ast::Literal::Tag::FloatLiteral:
 		tree_print(s, node.float_literal);
 		break;
 
-	case Literal::Tag::StringLiteral:
+	case ast::Literal::Tag::StringLiteral:
 		tree_print(s, node.string_literal);
 		break;
-
-	case Literal::Tag::CharLiteral:
+	case ast::Literal::Tag::CharLiteral:
 		tree_print(s, node.char_literal);
 		break;
-	
+
 	default:
 		assert(false);
 		break;
@@ -754,152 +514,101 @@ static void tree_print(FmtState& s, const Literal& node) noexcept
 	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const Impl& node) noexcept
+static void tree_print(FmtState& s, const ast::Call& node) noexcept
 {
-	start_elem(s, NodeType::Struct, strview::from_literal("Impl"));
+	start_elem(s, NodeType::Struct, "Call");
 
-	start_elem(s, NodeType::Member, "trait");
-	tree_print(s, node.trait);
-	close_elem(s);
+	start_elem(s, NodeType::Member, "callee");
+	tree_print(s, node.callee);
 
-	start_elem(s, NodeType::Array, "definitions");
-	for (const Definition& child : node.definitions)
+	start_elem(s, NodeType::Array, "arguments");
+	for (const ast::Argument& child : node.arguments)
 		tree_print(s, child);
 	close_elem(s);
 
 	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const Module& node) noexcept
+static void tree_print(FmtState& s, const ast::ProcSignature& node) noexcept
 {
-	start_elem(s, NodeType::Struct, strview::from_literal("Module"));
+	start_elem(s, NodeType::Struct, "ProcSignature");
 
-	start_elem(s, NodeType::Array, "definitions");
-	for (const Definition& child : node.definitions)
+	start_elem(s, NodeType::Array, "parameters");
+	for (const ast::Definition& child : node.parameters)
 		tree_print(s, child);
 	close_elem(s);
 
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const Trait& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("Trait"));
-
-	start_elem(s, NodeType::Array, "bindings");
-	for (const Definition& child : node.bindings)
-		tree_print(s, child);
-	close_elem(s);
-
-	start_elem(s, NodeType::Array, "definitions");
-	for (const Definition& child : node.definitions)
-		tree_print(s, child);
-	close_elem(s);
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const Enum& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("Enum"));
-
-	if (node.opt_enum_type.tag != TypeRef::Tag::EMPTY)
+	if (node.opt_return_type.tag != ast::Type::Tag::EMPTY)
 	{
-		start_elem(s, NodeType::Member, strview::from_literal("enum_type"));
-		tree_print(s, node.opt_enum_type);
-		close_elem(s);
-	}
-
-	start_elem(s, NodeType::Array, "values");
-	for (const EnumValue& child : node.values)
-		tree_print(s, child);
-	close_elem(s);
-
-	
-	if (node.definitions.size() != 0)
-	{
-		start_elem(s, NodeType::Array, strview::from_literal("definitions"));
-		for (const Definition& child : node.definitions)
-			tree_print(s, child);
-		close_elem(s);
+		start_elem(s, NodeType::Member, "return_type");
+		tree_print(s, node.opt_return_type);
 	}
 
 	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const StructuredType& node, const strview stereotype) noexcept
+static void tree_print(FmtState& s, const ast::Expr& node) noexcept
 {
-	start_elem(s, NodeType::Struct, stereotype);
-
-	start_elem(s, NodeType::Array, "members");
-	for (const Definition& child : node.members)
-		tree_print(s, child);
-	close_elem(s);
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const Proc& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("Proc"));
-
-	start_elem(s, NodeType::Member, strview::from_literal("signature"));
-	tree_print(s, node.signature);
-	close_elem(s);
-
-	if (node.opt_body.tag != Statement::Tag::EMPTY)
-	{
-		start_elem(s, NodeType::Member, strview::from_literal("body"));
-		tree_print(s, node.opt_body);
-		close_elem(s);
-	}
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const Array& node) noexcept
-{
-	start_elem(s, NodeType::Struct, strview::from_literal("Array"));
-
-	start_elem(s, NodeType::Member, strview::from_literal("elem_cnt"));
-	tree_print(s, node.elem_cnt);
-	close_elem(s);
-
-	start_elem(s, NodeType::Member, strview::from_literal("elem_type"));
-	tree_print(s, node.elem_type);
-	close_elem(s);
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const Expr& node) noexcept
-{
-	start_elem(s, NodeType::Union, strview::from_literal("Expr"));
+	start_elem(s, NodeType::Union, "Expr");
 
 	switch (node.tag)
 	{
-	case Expr::Tag::Ident:
-		start_elem(s, NodeType::Struct, strview::from_literal("Ident"));
-		start_elem(s, NodeType::Value, { node.ident_beg, node.ident_len });
+	case ast::Expr::Tag::Ident:
+		start_elem(s, NodeType::Struct, "Ident");
+		start_elem(s, NodeType::Value, strview{ node.ident_beg, node.ident_len });
 		close_elem(s);
 		break;
 
-	case Expr::Tag::Literal:
-		tree_print(s, *node.literal);
-		break;
-
-	case Expr::Tag::UnaryOp:
-		tree_print(s, *node.unary_op);
-		break;
-
-	case Expr::Tag::BinaryOp:
-		tree_print(s, *node.binary_op);
-		break;
-
-	case Expr::Tag::Call:
+	case ast::Expr::Tag::Call:
 		tree_print(s, *node.call);
 		break;
 
+	case ast::Expr::Tag::Literal:
+		tree_print(s, *node.literal);
+		break;
+
+	case ast::Expr::Tag::BinaryOp:
+		tree_print(s, *node.binary_op);
+		break;
+
+	case ast::Expr::Tag::UnaryOp:
+		tree_print(s, *node.unary_op);
+		break;
+
+	case ast::Expr::Tag::If:
+		tree_print(s, *node.if_expr);
+		break;
+
+	case ast::Expr::Tag::For:
+		tree_print(s, *node.for_expr);
+		break;
+
+	case ast::Expr::Tag::Switch:
+		tree_print(s, *node.switch_expr);
+		break;
+
+	case ast::Expr::Tag::Block:
+		tree_print(s, *node.block);
+		break;
+
+	case ast::Expr::Tag::Return:
+		start_elem(s, NodeType::Union, "Return");
+		tree_print(s, *node.return_or_break_or_defer);
+		close_elem(s);
+		break;
+
+	case ast::Expr::Tag::Break:
+		start_elem(s, NodeType::Union, "Break");
+		tree_print(s, *node.return_or_break_or_defer);
+		close_elem(s);
+		break;
+
+	case ast::Expr::Tag::Defer:
+		start_elem(s, NodeType::Union, "Defer");
+		tree_print(s, *node.return_or_break_or_defer);
+		close_elem(s);
+		break;
+
 	default:
 		assert(false);
 		break;
@@ -908,92 +617,52 @@ static void tree_print(FmtState& s, const Expr& node) noexcept
 	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const Type& node) noexcept
+static void tree_print(FmtState& s, const ast::Array& node) noexcept
 {
-	start_elem(s, NodeType::Union, strview::from_literal("Type"));
+	start_elem(s, NodeType::Struct, "Array");
 
-	switch (node.tag)
-	{
-	case Type::Tag::Proc:
-		tree_print(s, node.proc_type);
-		break;
-	
-	case Type::Tag::Struct:
-		tree_print(s, node.struct_or_union_type, strview::from_literal("Struct"));
-		break;
-	
-	case Type::Tag::Union:
-		tree_print(s, node.struct_or_union_type, strview::from_literal("Union"));
-		break;
-	
-	case Type::Tag::Enum:
-		tree_print(s, node.enum_type);
-		break;
-	
-	case Type::Tag::Trait:
-		tree_print(s, node.trait_type);
-		break;
-	
-	case Type::Tag::Module:
-		tree_print(s, node.module_type);
-		break;
-	
-	case Type::Tag::Impl:
-		tree_print(s, node.impl_type);
-		break;
-	
-	default:
-		assert(false);
-		break;
-	}
-	
+	start_elem(s, NodeType::Member, "count");
+	tree_print(s, node.count);
+
+	start_elem(s, NodeType::Member, "elem_type");
+	tree_print(s, node.elem_type);
+
 	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const TypeRef& node) noexcept
+static void tree_print(FmtState& s, const ast::Type& node, const strview node_name) noexcept
 {
-	start_elem(s, NodeType::Struct, strview::from_literal("TypeRef"));
+	start_elem(s, NodeType::Struct, node_name);
 
-	start_elem(s, NodeType::Member, strview::from_literal("is_mut"));
-	start_elem(s, NodeType::Value, node.is_mut ? strview::from_literal("true") : strview::from_literal("false"));
-	close_elem(s);
+	start_elem(s, NodeType::Member, "is_mut");
+	start_elem(s, NodeType::Value, node.is_mut ? "true" : "false");
 
-	start_elem(s, NodeType::Member, strview::from_literal("is_proc_param_ref"));
-	start_elem(s, NodeType::Value, node.is_proc_param_ref ? strview::from_literal("true") : strview::from_literal("false"));
-	close_elem(s);
-
-	start_elem(s, NodeType::Member, strview::from_literal("typeish"));
+	start_elem(s, NodeType::Member, "data");
 
 	switch (node.tag)
 	{
-	case TypeRef::Tag::Type:
-		tree_print(s, *node.type);
-		break;
-
-	case TypeRef::Tag::Expr:
+	case ast::Type::Tag::Expr:
 		tree_print(s, *node.expr);
 		break;
 
-	case TypeRef::Tag::Ptr:
-		start_elem(s, NodeType::Union, strview::from_literal("Ptr"));
-		tree_print(s, *node.ptr_or_multiptr_or_slice);
-		close_elem(s);
+	case ast::Type::Tag::ProcSignature:
+		tree_print(s, *node.proc_signature);
 		break;
 
-	case TypeRef::Tag::MultiPtr:
-		start_elem(s, NodeType::Union, strview::from_literal("Multiptr"));
-		tree_print(s, *node.ptr_or_multiptr_or_slice);
-		close_elem(s);
-		break;
-
-	case TypeRef::Tag::Slice:
-		start_elem(s, NodeType::Union, strview::from_literal("Slice"));
-		tree_print(s, *node.ptr_or_multiptr_or_slice);
-		close_elem(s);
-		break;
-
-	case TypeRef::Tag::Array:
+	case ast::Type::Tag::Array:
 		tree_print(s, *node.array);
+		break;
+
+	case ast::Type::Tag::Slice:
+		tree_print(s, *node.slice_or_ptr_or_multiptr, "Slice");
+		break;
+
+	case ast::Type::Tag::Ptr:
+		tree_print(s, *node.slice_or_ptr_or_multiptr, "Ptr");
+		break;
+
+	case ast::Type::Tag::MultiPtr:
+		tree_print(s, *node.slice_or_ptr_or_multiptr, "MultiPtr");
 		break;
 
 	default:
@@ -1002,66 +671,59 @@ static void tree_print(FmtState& s, const TypeRef& node) noexcept
 	}
 
 	close_elem(s);
-
-	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const Definition& node) noexcept
+static void tree_print(FmtState& s, const ast::Definition& node) noexcept
 {
-	start_elem(s, NodeType::Struct, strview::from_literal("Definition"));
+	start_elem(s, NodeType::Struct, "Definition");
 
-	start_elem(s, NodeType::Member, strview::from_literal("is_comptime"));
-	start_elem(s, NodeType::Value, node.is_comptime ? strview::from_literal("true") : strview::from_literal("false"));
-	close_elem(s);
+	start_elem(s, NodeType::Member, "ident");
+	start_elem(s, NodeType::Value, node.ident);
 
-	start_elem(s, NodeType::Member, strview::from_literal("is_pub"));
-	start_elem(s, NodeType::Value, node.is_pub ? strview::from_literal("true") : strview::from_literal("false"));
-	close_elem(s);
+	start_elem(s, NodeType::Member, "is_pub");
+	start_elem(s, NodeType::Value, node.is_pub ? "true" : "false");
 
-	if (node.opt_ident.begin() != nullptr)
+	start_elem(s, NodeType::Member, "is_comptime");
+	start_elem(s, NodeType::Value, node.is_comptime ? "true" : "false");
+
+	if (node.opt_type.tag != ast::Type::Tag::EMPTY)
 	{
-		start_elem(s, NodeType::Member, strview::from_literal("ident"));
-		start_elem(s, NodeType::Value, node.opt_ident);
-		close_elem(s);
-	}
-
-	if (node.opt_type.tag != TypeRef::Tag::EMPTY)
-	{
-		start_elem(s, NodeType::Member, strview::from_literal("type"));
+		start_elem(s, NodeType::Member, "type");
 		tree_print(s, node.opt_type);
-		close_elem(s);
 	}
 
-	if (node.opt_value.tag != TopLevelExpr::Tag::EMPTY)
+	if (node.opt_value.tag != ast::Expr::Tag::EMPTY)
 	{
-		start_elem(s, NodeType::Member, strview::from_literal("value"));
+		start_elem(s, NodeType::Member, "value");
 		tree_print(s, node.opt_value);
-		close_elem(s);
 	}
 
 	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const ProgramUnit& node) noexcept
+static void tree_print(FmtState& s, const ast::FileModule& node) noexcept
 {
-	start_elem(s, NodeType::Struct, strview::from_literal("ProgramUnit"));
+	start_elem(s, NodeType::Struct, "FileModule");
 
-	start_elem(s, NodeType::Array, strview::from_literal("statements"));
-	for (const Definition& child : node.definitions)
+	start_elem(s, NodeType::Member, "filename");
+	start_elem(s, NodeType::Value, node.filename);
+
+	start_elem(s, NodeType::Array, "definitions");
+	for (const ast::Definition& child : node.definitions)
 		tree_print(s, child);
 	close_elem(s);
 
 	close_elem(s);
 }
 
-void ast_print_tree(const ProgramUnit& node) noexcept
+void ast_print_tree(const ast::FileModule& program) noexcept
 {	
 	FmtState s{};
 
-	tree_print(s, node);
+	tree_print(s, program);
 }
 
-void ast_print_text(const ProgramUnit& program) noexcept
+void ast_print_text(const ast::FileModule& program) noexcept
 {
 	program;
 

@@ -81,36 +81,36 @@ int main(int32_t argc, const char** argv) noexcept
 	// 	fprintf(stderr, "ln %d %.*s \"%.*s\"\n", t.line_number, static_cast<i32>(type.len()), type.begin(), static_cast<i32>(data.len()), data.begin());
 	// }
 
-	ProgramUnit program_unit;
+	ast::FileModule file_module;
 
-	Result rst = parse_program_unit(tokens, program_unit);
+	ast::Result rst = parse_program_unit(tokens, file_module);
 	
 	switch (rst.tag)
 	{
-	case Result::Tag::Ok:
+	case ast::Result::Tag::Ok:
 		fprintf(stderr, "Great Success!\n");
 
-		ast_print_text(program_unit);
+		ast_print_text(file_module);
 
-		ast_print_tree(program_unit);
+		ast_print_tree(file_module);
 
 		break;
 
-	case Result::Tag::OutOfMemory:
-	case Result::Tag::NotImplemented:
-	case Result::Tag::UnexpectedEndOfStream: {
+	case ast::Result::Tag::OutOfMemory:
+	case ast::Result::Tag::NotImplemented:
+	case ast::Result::Tag::UnexpectedEndOfStream: {
 		fprintf(stderr, "%s: %s\n", rst.error_ctx, rst.message);
 
 		break;
 	}
 
-	case Result::Tag::InvalidSyntax: {
+	case ast::Result::Tag::InvalidSyntax: {
 		fprintf(stderr, "%s: %s (Token %.*s on line %d)\n", rst.error_ctx, rst.message, static_cast<i32>(rst.problematic_token->data_strview().len()), rst.problematic_token->data_strview().begin(), rst.problematic_token->line_number);
 
 		break;
 	}
 
-	case Result::Tag::UnexpectedToken: {
+	case ast::Result::Tag::UnexpectedToken: {
 		Token expected{ rst.expected_token, 0, {} };
 
 		fprintf(stderr, "%s: (Expected %s instead of %.*s on line %d)\n", rst.error_ctx, expected.type_strview().begin(), static_cast<i32>(rst.problematic_token->data_strview().len()), rst.problematic_token->data_strview().begin(), rst.problematic_token->line_number);
