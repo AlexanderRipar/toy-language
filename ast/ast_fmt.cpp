@@ -609,6 +609,10 @@ static void tree_print(FmtState& s, const ast::Expr& node) noexcept
 		close_elem(s);
 		break;
 
+	case ast::Expr::Tag::Definition:
+		tree_print(s, *node.definition);
+		break;
+
 	default:
 		assert(false);
 		break;

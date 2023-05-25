@@ -1232,7 +1232,15 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 		return parse(s, *out.return_or_break_or_defer);
 
 	default:
-		break;
+		if (const Token* t1 = peek(s, 1); t1 == nullptr || (t1->tag != Token::Tag::Colon && t1->tag != Token::Tag::DoubleColon))
+			break;
+
+		if (!alloc(s, ctx, &out.definition))
+			return false;
+
+		out.tag = ast::Expr::Tag::Definition;
+
+		return parse(s, *out.definition);
 	}
 
 	if (!parse_simple_expr(s, out))

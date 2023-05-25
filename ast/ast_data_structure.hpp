@@ -25,6 +25,8 @@ namespace ast
 
 	struct ProcSignature;
 
+	struct Definition;
+
 
 
 	struct IntegerLiteral
@@ -89,6 +91,7 @@ namespace ast
 			Return,
 			Break,
 			Defer,
+			Definition,
 		} tag = Tag::EMPTY;
 
 		u32 ident_len;
@@ -114,6 +117,8 @@ namespace ast
 			Block* block;
 
 			Expr* return_or_break_or_defer;
+
+			Definition* definition;
 		};
 	};
 
