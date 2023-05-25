@@ -1158,6 +1158,33 @@ RETURN_TYPE:
 	return true;
 }
 
+static bool parse(pstate& s, ast::TraitSignature& out) noexcept
+{
+	constexpr const char* const ctx = "TraitSignature";
+
+	if (expect(s, ctx, Token::Tag::Trait) == nullptr)
+		return false;
+
+	if (expect(s, ctx, Token::Tag::ParenBeg) == nullptr)
+		return false;
+
+	while (true)
+	{
+		if (!out.parameters.push_back({}))
+			return error_out_of_memory(s, ctx);
+
+		if (!parse(s, out.parameters.last()))
+			return false;
+
+		if (const Token* t = next(s, ctx); t == nullptr)
+			return false;
+		else if (t->tag == Token::Tag::ParenEnd)
+			return true;
+		else if (t->tag != Token::Tag::Comma)
+			return error_invalid_syntax(s, ctx, t, "Expected ParenEnd or Comma");
+	}
+}
+
 static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 {
 	constexpr const char* const ctx = "Expr";
@@ -1413,6 +1440,15 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 		out.tag = ast::Type::Tag::ProcSignature;
 
 		return parse(s, *out.proc_signature);
+	}
+	else if (t->tag == Token::Tag::Trait)
+	{
+		if (!alloc(s, ctx, &out.trait_signature))
+			return false;
+
+		out.tag = ast::Type::Tag::TraitSignature;
+
+		return parse(s, *out.trait_signature);
 	}
 	else
 	{

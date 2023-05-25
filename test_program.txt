@@ -25,3 +25,5 @@ main :: proc -> i32 =
 
 	return x
 }
+
+MyTrait :: pub trait(a :: Type) = {}

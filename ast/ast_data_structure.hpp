@@ -25,6 +25,8 @@ namespace ast
 
 	struct ProcSignature;
 
+	struct TraitSignature;
+
 	struct Definition;
 
 
@@ -198,6 +200,7 @@ namespace ast
 			Ptr,
 			MultiPtr,
 			ProcSignature,
+			TraitSignature,
 		} tag = Tag::EMPTY;
 
 		bool is_mut;
@@ -211,6 +214,8 @@ namespace ast
 			Type* slice_or_ptr_or_multiptr;
 
 			ProcSignature* proc_signature;
+
+			TraitSignature* trait_signature;
 		};
 	};
 
@@ -232,6 +237,11 @@ namespace ast
 		bool is_pub;
 
 		bool is_comptime;
+	};
+
+	struct TraitSignature
+	{
+		vec<Definition, 0> parameters;
 	};
 
 	struct ProcSignature
