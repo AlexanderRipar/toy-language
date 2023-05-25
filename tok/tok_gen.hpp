@@ -83,7 +83,6 @@ struct Token
 		Proc,
 		Trait,
 		Impl,
-		Module,
 		Mut,
 		Pub,
 		Undefined,
