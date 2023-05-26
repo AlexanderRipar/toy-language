@@ -1082,7 +1082,9 @@ static bool parse(pstate& s, ast::Block& out) noexcept
 	while (true)
 	{
 		if (const Token* t = peek(s); t == nullptr)
+		{
 			return error_unexpected_end(s, ctx);
+		}
 		else if (t->tag == Token::Tag::SquiggleEnd)
 		{
 			next(s, ctx);
