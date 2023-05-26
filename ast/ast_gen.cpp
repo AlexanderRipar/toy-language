@@ -1104,9 +1104,7 @@ static bool parse(pstate& s, ast::Signature& out) noexcept
 
 	const Token* t = next(s, ctx);
 
-	bool allow_no_args;
-
-	bool allow_return_type;
+	bool is_procish;
 
 	if (t == nullptr)
 		return false;
@@ -1115,13 +1113,11 @@ static bool parse(pstate& s, ast::Signature& out) noexcept
 	{
 	case Token::Tag::Proc:
 	case Token::Tag::Func:
-		allow_no_args = true;
-		allow_return_type = true;
+		is_procish = true;
 		break;
 
 	case Token::Tag::Trait:
-		allow_no_args = false;
-		allow_return_type = false;
+		is_procish = false;
 		break;
 	
 	default:
@@ -1130,7 +1126,7 @@ static bool parse(pstate& s, ast::Signature& out) noexcept
 
 	if (const Token* t1 = next_if(s, Token::Tag::ParenBeg); t1 == nullptr)
 	{
-		if (allow_no_args)
+		if (is_procish)
 			goto RETURN_TYPE;
 		
 		return error_invalid_syntax(s, ctx, t1, "Expected ParenBeg");
@@ -1157,7 +1153,7 @@ static bool parse(pstate& s, ast::Signature& out) noexcept
 
 RETURN_TYPE:
 
-	if (!allow_return_type)
+	if (!is_procish)
 		return true;
 
 	if (next_if(s, Token::Tag::ArrowRight) != nullptr)
