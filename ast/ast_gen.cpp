@@ -189,8 +189,6 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment = true) noexc
 
 static bool parse(pstate& s, ast::Literal& out) noexcept;
 
-static bool parse(pstate& s, ast::Argument& out) noexcept;
-
 
 
 struct ShuntingYardOp
@@ -852,30 +850,6 @@ static bool parse(pstate& s, ast::StringLiteral& out) noexcept
 	}
 
 	return true;
-}
-
-static bool parse(pstate& s, ast::Argument& out) noexcept
-{
-	constexpr const char* const ctx = "Argument";
-
-	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Colon || t->tag == Token::Tag::DoubleColon))
-	{
-		if (!alloc(s, ctx, &out.definition))
-			return false;
-
-		out.tag = ast::Argument::Tag::Definition;
-
-		return parse(s, *out.definition);
-	}
-	else
-	{
-		if (!alloc(s, ctx, &out.expr))
-			return false;
-
-		out.tag = ast::Argument::Tag::Expr;
-
-		return parse(s, *out.expr);
-	}
 }
 
 static bool parse(pstate& s, ast::Literal& out) noexcept

@@ -263,28 +263,11 @@ namespace ast
 		vec<Definition, 0> parameters;
 	};
 
-	struct Argument
-	{
-		enum class Tag
-		{
-			EMPTY = 0,
-			Expr,
-			Definition,
-		} tag = Tag::EMPTY;
-
-		union
-		{
-			Expr* expr;
-
-			Definition* definition;	
-		};
-	};
-
 	struct Call
 	{
 		Expr callee;
 
-		vec<Argument, 0> arguments;
+		vec<Expr> arguments;
 	};
 
 	struct If

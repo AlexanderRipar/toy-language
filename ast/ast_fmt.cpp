@@ -344,28 +344,6 @@ static void tree_print(FmtState& s, const ast::IntegerLiteral& node) noexcept
 	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const ast::Argument& node) noexcept
-{
-	start_elem(s, NodeType::Union, "Argument");
-
-	switch (node.tag)
-	{
-	case ast::Argument::Tag::Expr:
-		tree_print(s, *node.expr);
-		break;
-
-	case ast::Argument::Tag::Definition:
-		tree_print(s, *node.definition);
-		break;
-	
-	default:
-		assert(false);
-		break;
-	}
-
-	close_elem(s);
-}
-
 static void tree_print(FmtState& s, const ast::Block& node) noexcept
 {
 	start_elem(s, NodeType::Struct, "Block");
@@ -524,7 +502,7 @@ static void tree_print(FmtState& s, const ast::Call& node) noexcept
 	tree_print(s, node.callee);
 
 	start_elem(s, NodeType::Array, "arguments");
-	for (const ast::Argument& child : node.arguments)
+	for (const ast::Expr& child : node.arguments)
 		tree_print(s, child);
 	close_elem(s);
 
