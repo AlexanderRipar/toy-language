@@ -1389,9 +1389,7 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 	const Token* t = peek(s);
 
 	if (t == nullptr)
-	{
 		return error_unexpected_end(s, ctx);
-	}
 
 	switch (t->tag)
 	{
