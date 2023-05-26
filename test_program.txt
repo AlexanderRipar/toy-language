@@ -29,3 +29,5 @@ main :: proc -> i32 =
 MyTrait :: pub trait(a :: Type) = {}
 
 impl MyTrait(i32) {}
+
+add :: func(a : isz, b : isz) = a + b

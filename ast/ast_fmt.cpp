@@ -666,6 +666,10 @@ static void tree_print(FmtState& s, const ast::Type& node, const strview node_na
 		tree_print(s, *node.signature, "ProcSignature");
 		break;
 
+	case ast::Type::Tag::FuncSignature:
+		tree_print(s, *node.signature, "FuncSignature");
+		break;
+
 	case ast::Type::Tag::TraitSignature:
 		tree_print(s, *node.signature, "TraitSignature");
 		break;

@@ -210,6 +210,7 @@ namespace ast
 			Ptr,
 			MultiPtr,
 			ProcSignature,
+			FuncSignature,
 			TraitSignature,
 		} tag = Tag::EMPTY;
 

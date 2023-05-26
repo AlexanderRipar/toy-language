@@ -81,6 +81,7 @@ struct Token
 		Defer,
 		DoubleColon,
 		Proc,
+		Func,
 		Trait,
 		Impl,
 		Mut,

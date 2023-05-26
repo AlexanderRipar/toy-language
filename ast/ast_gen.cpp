@@ -1118,6 +1118,7 @@ static bool parse(pstate& s, ast::Signature& out) noexcept
 	switch (t->tag)
 	{
 	case Token::Tag::Proc:
+	case Token::Tag::Func:
 		allow_no_args = true;
 		allow_return_type = true;
 		break;
@@ -1444,12 +1445,15 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 		}
 
 	case Token::Tag::Proc:
+	case Token::Tag::Func:
 	case Token::Tag::Trait:
 		if (!alloc(s, ctx, &out.signature))
 			return false;
 
 		if (t->tag == Token::Tag::Proc)
 			out.tag = ast::Type::Tag::ProcSignature;
+		else if (t->tag == Token::Tag::Func)
+			out.tag = ast::Type::Tag::FuncSignature;
 		else if (t->tag == Token::Tag::Trait)
 			out.tag = ast::Type::Tag::TraitSignature;
 		else

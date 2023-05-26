@@ -79,6 +79,7 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("Defer"),
 		strview::from_literal("DoubleColon"),
 		strview::from_literal("Proc"),
+		strview::from_literal("Func"),
 		strview::from_literal("Trait"),
 		strview::from_literal("Impl"),
 		strview::from_literal("Mut"),
@@ -143,6 +144,8 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			t.tag = Token::Tag::Defer;
 		else if (streqc({ beg, c }, strview::from_literal("case")))
 			t.tag = Token::Tag::Case;
+		else if (streqc({ beg, c }, strview::from_literal("func")))
+			t.tag = Token::Tag::Func;
 		else if (streqc({ beg, c }, strview::from_literal("proc")))
 			t.tag = Token::Tag::Proc;
 		else if (streqc({ beg, c }, strview::from_literal("trait")))
