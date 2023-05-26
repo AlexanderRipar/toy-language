@@ -339,7 +339,7 @@ namespace ast
 
 	struct Case
 	{
-		Expr label;
+		vec<Expr> labels;
 
 		Expr body;
 	};

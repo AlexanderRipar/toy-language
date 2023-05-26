@@ -250,8 +250,10 @@ static void tree_print(FmtState& s, const ast::Case& node) noexcept
 {
 	start_elem(s, NodeType::Struct, "Case");
 
-	start_elem(s, NodeType::Member, "label");
-	tree_print(s, node.label);
+	start_elem(s, NodeType::Array, "labels");
+	for (const ast::Expr& child : node.labels)
+		tree_print(s, child);
+	close_elem(s);
 	
 	start_elem(s, NodeType::Member, "body");
 	tree_print(s, node.body);

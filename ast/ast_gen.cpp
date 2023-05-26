@@ -978,11 +978,21 @@ static bool parse(pstate& s, ast::Case& out) noexcept
 	if (expect(s, ctx, Token::Tag::Case) == nullptr)
 		return false;
 
-	if (!parse(s, out.label, false))
-		return false;
+	while (true)
+	{
+		if (!out.labels.push_back({}))
+			return error_out_of_memory(s, ctx);
 
-	if (expect(s, ctx, Token::Tag::ArrowRight) == nullptr)
-		return false;
+		if (!parse(s, out.labels.last(), false))
+			return false;
+		
+		if (const Token* t = next(s, ctx); t == nullptr)
+			return false;
+		else if (t->tag == Token::Tag::ArrowRight)
+			break;
+		else if (t->tag != Token::Tag::Comma)
+			return error_invalid_syntax(s, ctx, t, "Expected ArrowRight or Comma");
+	}
 
 	return parse(s, out.body);
 }
