@@ -651,15 +651,15 @@ static void tree_print(FmtState& s, const ast::Type& node, const strview node_na
 		break;
 
 	case ast::Type::Tag::Slice:
-		tree_print(s, *node.slice_or_ptr_or_multiptr, "Slice");
+		tree_print(s, *node.nested_type, "Slice");
 		break;
 
 	case ast::Type::Tag::Ptr:
-		tree_print(s, *node.slice_or_ptr_or_multiptr, "Ptr");
+		tree_print(s, *node.nested_type, "Ptr");
 		break;
 
 	case ast::Type::Tag::MultiPtr:
-		tree_print(s, *node.slice_or_ptr_or_multiptr, "MultiPtr");
+		tree_print(s, *node.nested_type, "MultiPtr");
 		break;
 
 	case ast::Type::Tag::ProcSignature:

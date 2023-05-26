@@ -1398,12 +1398,12 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 	case Token::Tag::OpMul_Ptr:
 		next(s, ctx);
 
-		if (!alloc(s, ctx, &out.slice_or_ptr_or_multiptr))
+		if (!alloc(s, ctx, &out.nested_type))
 			return false;
 
 		out.tag = ast::Type::Tag::Ptr;
 
-		return parse(s, *out.slice_or_ptr_or_multiptr);
+		return parse(s, *out.nested_type);
 
 	case Token::Tag::BracketBeg:
 		next(s, ctx);
@@ -1416,23 +1416,23 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 		{
 			next(s, ctx);
 
-			if (!alloc(s, ctx, &out.slice_or_ptr_or_multiptr))
+			if (!alloc(s, ctx, &out.nested_type))
 				return false;
 
 			out.tag = ast::Type::Tag::MultiPtr;
 
-			return parse(s, *out.slice_or_ptr_or_multiptr);
+			return parse(s, *out.nested_type);
 		}
 		else if (t1->tag == Token::Tag::BracketEnd)
 		{
 			next(s, ctx);
 	
-			if (!alloc(s, ctx, &out.slice_or_ptr_or_multiptr))
+			if (!alloc(s, ctx, &out.nested_type))
 				return false;
 
 			out.tag = ast::Type::Tag::Slice;
 
-			return parse(s, *out.slice_or_ptr_or_multiptr);
+			return parse(s, *out.nested_type);
 		}
 		else
 		{

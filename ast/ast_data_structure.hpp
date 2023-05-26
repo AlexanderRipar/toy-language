@@ -222,7 +222,7 @@ namespace ast
 
 			Array* array;
 
-			Type* slice_or_ptr_or_multiptr;
+			Type* nested_type;
 
 			Signature* signature;
 		};
