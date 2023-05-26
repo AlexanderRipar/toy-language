@@ -1444,6 +1444,16 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 			return parse(s, *out.array);
 		}
 
+	case Token::Tag::TripleDot:
+		next(s, ctx);
+
+		if (!alloc(s, ctx, &out.nested_type))
+			return false;
+
+		out.tag = ast::Type::Tag::Variadic;
+
+		return parse(s, *out.nested_type);
+
 	case Token::Tag::Proc:
 	case Token::Tag::Func:
 	case Token::Tag::Trait:

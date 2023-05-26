@@ -209,6 +209,7 @@ namespace ast
 			Slice,
 			Ptr,
 			MultiPtr,
+			Variadic,
 			ProcSignature,
 			FuncSignature,
 			TraitSignature,

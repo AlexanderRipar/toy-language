@@ -31,3 +31,5 @@ MyTrait :: pub trait(a :: Type) = {}
 impl MyTrait(i32) {}
 
 add :: func(a : isz, b : isz) = a + b
+
+variadics :: proc(vargs : ...i32) -> void = {}
