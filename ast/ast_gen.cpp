@@ -128,6 +128,14 @@ static bool alloc(pstate& s, const char* ctx, T** out) noexcept
 	return error_out_of_memory(s, ctx);
 }
 
+template<typename T>
+static bool alloc_and_parse(pstate& s, const char* ctx, T** out) noexcept
+{
+	if (!alloc(s, ctx, out))
+		return false;
+
+	return parse(s, **out);
+}
 
 
 static bool hex_val(char c, usz& inout_v) noexcept
@@ -405,12 +413,9 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 			ast::Expr& expr = expr_stk.last();
 
-			if (!alloc(s, ctx, &expr.literal))
-				return false;
-
 			expr.tag = ast::Expr::Tag::Literal;
 
-			if (!parse(s, *expr.literal))
+			if (!alloc_and_parse(s, ctx, &expr.literal))
 				return false;
 
 			expecting_operator = true;
@@ -890,10 +895,7 @@ static bool parse(pstate& s, ast::ForLoopSignature& out) noexcept
 
 	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Colon || t->tag == Token::Tag::DoubleColon))
 	{
-		if (!alloc(s, ctx, &out.opt_init))
-			return false;
-
-		if (!parse(s, *out.opt_init))
+		if (!alloc_and_parse(s, ctx, &out.opt_init))
 			return false;
 
 		if (expect(s, ctx, Token::Tag::Semicolon) == nullptr)
@@ -980,10 +982,7 @@ static bool parse(pstate& s, ast::If& out) noexcept
 
 	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Colon || t->tag == Token::Tag::DoubleColon))
 	{
-		if (!alloc(s, ctx, &out.opt_init))
-			return false;
-
-		if (!parse(s, *out.opt_init))
+		if (!alloc_and_parse(s, ctx, &out.opt_init))
 			return false;
 
 		if (expect(s, ctx, Token::Tag::Semicolon) == nullptr)
@@ -1050,10 +1049,7 @@ static bool parse(pstate& s, ast::Switch& out) noexcept
 
 	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Colon || t->tag == Token::Tag::DoubleColon))
 	{
-		if (!alloc(s, ctx, &out.opt_init))
-			return false;
-
-		if (!parse(s, *out.opt_init))
+		if (!alloc_and_parse(s, ctx, &out.opt_init))
 			return false;
 
 		if (expect(s, ctx, Token::Tag::Semicolon) == nullptr)
@@ -1198,85 +1194,58 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 	switch (t->tag)
 	{
 	case Token::Tag::If:
-		if (!alloc(s, ctx, &out.if_expr))
-			return false;
-
 		out.tag = ast::Expr::Tag::If;
 
-		return parse(s, *out.if_expr);
+		return alloc_and_parse(s, ctx, &out.if_expr);
 	
 	case Token::Tag::For:
-		if (!alloc(s, ctx, &out.for_expr))
-			return false;
-
 		out.tag = ast::Expr::Tag::For;
 
-		return parse(s, *out.for_expr);
+		return alloc_and_parse(s, ctx, &out.for_expr);
 
 	case Token::Tag::Switch:
-		if (!alloc(s, ctx, &out.switch_expr))
-			return false;
-
 		out.tag = ast::Expr::Tag::Switch;
 
-		return parse(s, *out.switch_expr);
+		return alloc_and_parse(s, ctx, &out.switch_expr);
 
 	case Token::Tag::SquiggleBeg:
-		if (!alloc(s, ctx, &out.block))
-			return false;
-
 		out.tag = ast::Expr::Tag::Block;
 
-		return parse(s, *out.block);
+		return alloc_and_parse(s, ctx, &out.block);
 
 	case Token::Tag::Return:
 		next(s, ctx);
 
-		if (!alloc(s, ctx, &out.return_or_break_or_defer))
-			return false;
-
 		out.tag = ast::Expr::Tag::Return;
 
-		return parse(s, *out.return_or_break_or_defer, false);
+		return alloc_and_parse(s, ctx, &out.return_or_break_or_defer);
 
 	case Token::Tag::Break:
 		next(s, ctx);
 
-		if (!alloc(s, ctx, &out.return_or_break_or_defer))
-			return false;
-
 		out.tag = ast::Expr::Tag::Break;
 
-		return parse(s, *out.return_or_break_or_defer, false);
+		return alloc_and_parse(s, ctx, &out.return_or_break_or_defer);
 
 	case Token::Tag::Defer:
 		next(s, ctx);
 
-		if (!alloc(s, ctx, &out.return_or_break_or_defer))
-			return false;
-
 		out.tag = ast::Expr::Tag::Defer;
 
-		return parse(s, *out.return_or_break_or_defer);
+		return alloc_and_parse(s, ctx, &out.return_or_break_or_defer);
 
 	case Token::Tag::Impl:
-		if (!alloc(s, ctx, &out.impl))
-			return false;
-
 		out.tag = ast::Expr::Tag::Impl;
 
-		return parse(s, *out.impl);
+		return alloc_and_parse(s, ctx, &out.impl);
 
 	default:
 		if (const Token* t1 = peek(s, 1); t1 == nullptr || (t1->tag != Token::Tag::Colon && t1->tag != Token::Tag::DoubleColon))
 			break;
 
-		if (!alloc(s, ctx, &out.definition))
-			return false;
-
 		out.tag = ast::Expr::Tag::Definition;
 
-		return parse(s, *out.definition);
+		return alloc_and_parse(s, ctx, &out.definition);
 	}
 
 	if (!parse_simple_expr(s, out))
@@ -1396,12 +1365,9 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 	case Token::Tag::OpMul_Ptr:
 		next(s, ctx);
 
-		if (!alloc(s, ctx, &out.nested_type))
-			return false;
-
 		out.tag = ast::Type::Tag::Ptr;
 
-		return parse(s, *out.nested_type);
+		return alloc_and_parse(s, ctx, &out.nested_type);
 
 	case Token::Tag::BracketBeg:
 		next(s, ctx);
@@ -1417,60 +1383,42 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 			if (expect(s, ctx, Token::Tag::BracketEnd) == nullptr)
 				return false;
 
-			if (!alloc(s, ctx, &out.nested_type))
-				return false;
-
 			out.tag = ast::Type::Tag::MultiPtr;
 
-			return parse(s, *out.nested_type);
+			return alloc_and_parse(s, ctx, &out.nested_type);
 		}
 		else if (t1->tag == Token::Tag::BracketEnd)
 		{
 			next(s, ctx);
 	
-			if (!alloc(s, ctx, &out.nested_type))
-				return false;
-
 			out.tag = ast::Type::Tag::Slice;
 
-			return parse(s, *out.nested_type);
+			return alloc_and_parse(s, ctx, &out.nested_type);
 		}
 		else
 		{
-			if (!alloc(s, ctx, &out.array))
-				return false;
-
 			out.tag = ast::Type::Tag::Array;
 
-			return parse(s, *out.array);
+			return alloc_and_parse(s, ctx, &out.array);
 		}
 
 	case Token::Tag::TripleDot:
 		next(s, ctx);
 
-		if (!alloc(s, ctx, &out.nested_type))
-			return false;
-
 		out.tag = ast::Type::Tag::Variadic;
 
-		return parse(s, *out.nested_type);
+		return alloc_and_parse(s, ctx, &out.nested_type);
 
 	case Token::Tag::OpBitAnd_Ref:
 		next(s, ctx);
 
-		if (!alloc(s, ctx, &out.nested_type))
-			return false;
-
 		out.tag = ast::Type::Tag::Reference;
 
-		return parse(s, *out.nested_type);
+		return alloc_and_parse(s, ctx, &out.nested_type);
 
 	case Token::Tag::Proc:
 	case Token::Tag::Func:
 	case Token::Tag::Trait:
-		if (!alloc(s, ctx, &out.signature))
-			return false;
-
 		if (t->tag == Token::Tag::Proc)
 			out.tag = ast::Type::Tag::ProcSignature;
 		else if (t->tag == Token::Tag::Func)
@@ -1480,15 +1428,12 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 		else
 			assert(false);
 
-		return parse(s, *out.signature);
+		return alloc_and_parse(s, ctx, &out.signature);
 
 	default:
-		if (!alloc(s, ctx, &out.expr))
-			return false;
-
 		out.tag = ast::Type::Tag::Expr;
 
-		return parse(s, *out.expr, false);
+		return alloc_and_parse(s, ctx, &out.expr);
 	}
 }
 
