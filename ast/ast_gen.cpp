@@ -1385,12 +1385,16 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 	if (next_if(s, Token::Tag::Mut) != nullptr)
 		out.is_mut = true;
 
-	if (const Token* t = peek(s); t == nullptr)
+	const Token* t = peek(s);
+
+	if (t == nullptr)
 	{
 		return error_unexpected_end(s, ctx);
 	}
-	else if (t->tag == Token::Tag::OpMul_Ptr)
+
+	switch (t->tag)
 	{
+	case Token::Tag::OpMul_Ptr:
 		next(s, ctx);
 
 		if (!alloc(s, ctx, &out.slice_or_ptr_or_multiptr))
@@ -1399,9 +1403,8 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 		out.tag = ast::Type::Tag::Ptr;
 
 		return parse(s, *out.slice_or_ptr_or_multiptr);
-	}
-	else if (t->tag == Token::Tag::BracketBeg)
-	{
+
+	case Token::Tag::BracketBeg:
 		next(s, ctx);
 
 		if (const Token* t1 = peek(s); t1 == nullptr)
@@ -1439,27 +1442,22 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 
 			return parse(s, *out.array);
 		}
-	}
-	else if (t->tag == Token::Tag::Proc)
-	{
+
+	case Token::Tag::Proc:
+	case Token::Tag::Trait:
 		if (!alloc(s, ctx, &out.signature))
 			return false;
 
-		out.tag = ast::Type::Tag::ProcSignature;
+		if (t->tag == Token::Tag::Proc)
+			out.tag = ast::Type::Tag::ProcSignature;
+		else if (t->tag == Token::Tag::Trait)
+			out.tag = ast::Type::Tag::TraitSignature;
+		else
+			assert(false);
 
 		return parse(s, *out.signature);
-	}
-	else if (t->tag == Token::Tag::Trait)
-	{
-		if (!alloc(s, ctx, &out.signature))
-			return false;
 
-		out.tag = ast::Type::Tag::TraitSignature;
-
-		return parse(s, *out.signature);
-	}
-	else
-	{
+	default:
 		if (!alloc(s, ctx, &out.expr))
 			return false;
 
