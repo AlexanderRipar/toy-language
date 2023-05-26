@@ -114,7 +114,7 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 
 	t.line_number = inout_curr_line_number;
 
-	if (fst == '?' || fst == '_' || (fst >= 'a' && fst <= 'z') || (fst >= 'A' && fst <= 'Z'))
+	if (fst == '_' || (fst >= 'a' && fst <= 'z') || (fst >= 'A' && fst <= 'Z'))
 	{
 		++c;
 
