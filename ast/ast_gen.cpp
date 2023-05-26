@@ -1102,55 +1102,45 @@ static bool parse(pstate& s, ast::Block& out) noexcept
 	}
 }
 
-static bool parse(pstate& s, ast::ProcSignature& out) noexcept
+static bool parse(pstate& s, ast::Signature& out) noexcept
 {
 	constexpr const char* const ctx = "ProcSignature";
 
-	if (expect(s, ctx, Token::Tag::Proc) == nullptr)
+	const Token* t = next(s, ctx);
+
+	bool allow_no_args;
+
+	bool allow_return_type;
+
+	if (t == nullptr)
 		return false;
 
-	if (next_if(s, Token::Tag::ParenBeg) != nullptr)
+	switch (t->tag)
 	{
-		if (next_if(s, Token::Tag::ParenEnd) != nullptr)
+	case Token::Tag::Proc:
+		allow_no_args = true;
+		allow_return_type = true;
+		break;
+
+	case Token::Tag::Trait:
+		allow_no_args = false;
+		allow_return_type = false;
+		break;
+	
+	default:
+		return error_invalid_syntax(s, ctx, t, "Expected, Proc or Trait");
+	}
+
+	if (const Token* t1 = next_if(s, Token::Tag::ParenBeg); t1 == nullptr)
+	{
+		if (allow_no_args)
 			goto RETURN_TYPE;
-
-		while (true)
-		{
-			if (!out.parameters.push_back({}))
-				return error_out_of_memory(s, ctx);
-
-			if (!parse(s, out.parameters.last()))
-				return false;
-
-			if (const Token* t = next(s, ctx); t == nullptr)
-				return error_unexpected_end(s, ctx);
-			else if (t->tag == Token::Tag::ParenEnd)
-				break;
-			else if (t->tag != Token::Tag::Comma)
-				return error_invalid_syntax(s, ctx, t, "Expected ParenEnd or Comma");
-		}
+		
+		return error_invalid_syntax(s, ctx, t1, "Expected ParenBeg");
 	}
 
-RETURN_TYPE:
-
-	if (next_if(s, Token::Tag::ArrowRight) != nullptr)
-	{
-		if (!parse(s, out.opt_return_type))
-			return false;
-	}
-
-	return true;
-}
-
-static bool parse(pstate& s, ast::TraitSignature& out) noexcept
-{
-	constexpr const char* const ctx = "TraitSignature";
-
-	if (expect(s, ctx, Token::Tag::Trait) == nullptr)
-		return false;
-
-	if (expect(s, ctx, Token::Tag::ParenBeg) == nullptr)
-		return false;
+	if (next_if(s, Token::Tag::ParenEnd) != nullptr)
+		goto RETURN_TYPE;
 
 	while (true)
 	{
@@ -1160,13 +1150,26 @@ static bool parse(pstate& s, ast::TraitSignature& out) noexcept
 		if (!parse(s, out.parameters.last()))
 			return false;
 
-		if (const Token* t = next(s, ctx); t == nullptr)
-			return false;
-		else if (t->tag == Token::Tag::ParenEnd)
-			return true;
-		else if (t->tag != Token::Tag::Comma)
-			return error_invalid_syntax(s, ctx, t, "Expected ParenEnd or Comma");
+		if (const Token* t1 = next(s, ctx); t1 == nullptr)
+			return error_unexpected_end(s, ctx);
+		else if (t1->tag == Token::Tag::ParenEnd)
+			break;
+		else if (t1->tag != Token::Tag::Comma)
+			return error_invalid_syntax(s, ctx, t1, "Expected ParenEnd or Comma");
 	}
+
+RETURN_TYPE:
+
+	if (!allow_return_type)
+		return true;
+
+	if (next_if(s, Token::Tag::ArrowRight) != nullptr)
+	{
+		if (!parse(s, out.opt_return_type))
+			return false;
+	}
+
+	return true;
 }
 
 static bool parse(pstate& s, ast::Impl& out) noexcept
@@ -1439,21 +1442,21 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 	}
 	else if (t->tag == Token::Tag::Proc)
 	{
-		if (!alloc(s, ctx, &out.proc_signature))
+		if (!alloc(s, ctx, &out.signature))
 			return false;
 
 		out.tag = ast::Type::Tag::ProcSignature;
 
-		return parse(s, *out.proc_signature);
+		return parse(s, *out.signature);
 	}
 	else if (t->tag == Token::Tag::Trait)
 	{
-		if (!alloc(s, ctx, &out.trait_signature))
+		if (!alloc(s, ctx, &out.signature))
 			return false;
 
 		out.tag = ast::Type::Tag::TraitSignature;
 
-		return parse(s, *out.trait_signature);
+		return parse(s, *out.signature);
 	}
 	else
 	{

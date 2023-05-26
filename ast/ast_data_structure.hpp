@@ -23,9 +23,7 @@ namespace ast
 
 	struct Array;
 
-	struct ProcSignature;
-
-	struct TraitSignature;
+	struct Signature;
 
 	struct Definition;
 
@@ -225,9 +223,7 @@ namespace ast
 
 			Type* slice_or_ptr_or_multiptr;
 
-			ProcSignature* proc_signature;
-
-			TraitSignature* trait_signature;
+			Signature* signature;
 		};
 	};
 
@@ -251,12 +247,7 @@ namespace ast
 		bool is_comptime;
 	};
 
-	struct TraitSignature
-	{
-		vec<Definition, 0> parameters;
-	};
-
-	struct ProcSignature
+	struct Signature
 	{
 		Type opt_return_type;
 

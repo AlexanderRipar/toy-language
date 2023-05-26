@@ -509,9 +509,9 @@ static void tree_print(FmtState& s, const ast::Call& node) noexcept
 	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const ast::ProcSignature& node) noexcept
+static void tree_print(FmtState& s, const ast::Signature& node, const strview node_name = strview::from_literal("Signature")) noexcept
 {
-	start_elem(s, NodeType::Struct, "ProcSignature");
+	start_elem(s, NodeType::Struct, node_name);
 
 	start_elem(s, NodeType::Array, "parameters");
 	for (const ast::Definition& child : node.parameters)
@@ -523,18 +523,6 @@ static void tree_print(FmtState& s, const ast::ProcSignature& node) noexcept
 		start_elem(s, NodeType::Member, "return_type");
 		tree_print(s, node.opt_return_type);
 	}
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const ast::TraitSignature& node) noexcept
-{
-	start_elem(s, NodeType::Struct, "TraitSignature");
-
-	start_elem(s, NodeType::Array, "parameters");
-	for (const ast::Definition& child : node.parameters)
-		tree_print(s, child);
-	close_elem(s);
 
 	close_elem(s);
 }
@@ -675,11 +663,11 @@ static void tree_print(FmtState& s, const ast::Type& node, const strview node_na
 		break;
 
 	case ast::Type::Tag::ProcSignature:
-		tree_print(s, *node.proc_signature);
+		tree_print(s, *node.signature, "ProcSignature");
 		break;
 
 	case ast::Type::Tag::TraitSignature:
-		tree_print(s, *node.trait_signature);
+		tree_print(s, *node.signature, "TraitSignature");
 		break;
 
 	default:
