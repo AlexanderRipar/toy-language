@@ -33,3 +33,5 @@ impl MyTrait(i32) {}
 add :: func(a : isz, b : isz) = a + b
 
 variadics :: proc(vargs : ...i32) -> void = {}
+
+a_multiptr :: [*]u32

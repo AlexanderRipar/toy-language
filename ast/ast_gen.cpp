@@ -1416,6 +1416,9 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 		{
 			next(s, ctx);
 
+			if (expect(s, ctx, Token::Tag::BracketEnd) == nullptr)
+				return false;
+
 			if (!alloc(s, ctx, &out.nested_type))
 				return false;
 
