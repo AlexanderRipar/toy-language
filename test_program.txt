@@ -13,10 +13,10 @@ min :: proc(a : T, b : T) -> T =
 to_name :: proc(x : Bla) -> std.Strview =
 	std.Strview.create(
 		switch x
-		case A -> "a"
-		case B -> "b"
-		case C, D -> "c"
-		case _ -> "?"
+		case A => "a"
+		case B => "b"
+		case C, D => "c"
+		case _ => "?"
 	)
 
 main :: proc -> i32 =

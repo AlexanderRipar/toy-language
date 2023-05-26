@@ -962,10 +962,10 @@ static bool parse(pstate& s, ast::Case& out) noexcept
 		
 		if (const Token* t = next(s, ctx); t == nullptr)
 			return false;
-		else if (t->tag == Token::Tag::ArrowRight)
+		else if (t->tag == Token::Tag::FatArrowRight)
 			break;
 		else if (t->tag != Token::Tag::Comma)
-			return error_invalid_syntax(s, ctx, t, "Expected ArrowRight or Comma");
+			return error_invalid_syntax(s, ctx, t, "Expected FatArrowRight or Comma");
 	}
 
 	return parse(s, out.body);

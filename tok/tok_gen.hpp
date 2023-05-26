@@ -53,6 +53,7 @@ struct Token
 		Comma,
 		ArrowLeft,
 		ArrowRight,
+		FatArrowRight,
 		SquiggleBeg,
 		SquiggleEnd,
 		BracketBeg,
