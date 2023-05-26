@@ -35,3 +35,5 @@ add :: func(a : isz, b : isz) = a + b
 variadics :: proc(vargs : ...i32) -> void = {}
 
 a_multiptr :: [*]u32
+
+ref_func :: func(a : &i32) -> i32 = a + 1

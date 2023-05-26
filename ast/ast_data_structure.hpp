@@ -210,6 +210,7 @@ namespace ast
 			Ptr,
 			MultiPtr,
 			Variadic,
+			Reference,
 			ProcSignature,
 			FuncSignature,
 			TraitSignature,

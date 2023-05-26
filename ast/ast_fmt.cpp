@@ -666,6 +666,10 @@ static void tree_print(FmtState& s, const ast::Type& node, const strview node_na
 		tree_print(s, *node.nested_type, "Variadic");
 		break;
 
+	case ast::Type::Tag::Reference:
+		tree_print(s, *node.nested_type, "Reference");
+		break;
+
 	case ast::Type::Tag::ProcSignature:
 		tree_print(s, *node.signature, "ProcSignature");
 		break;
