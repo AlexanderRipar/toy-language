@@ -128,13 +128,13 @@ static bool alloc(pstate& s, const char* ctx, T** out) noexcept
 	return error_out_of_memory(s, ctx);
 }
 
-template<typename T>
-static bool alloc_and_parse(pstate& s, const char* ctx, T** out) noexcept
+template<typename T, typename... ParseArgs>
+static bool alloc_and_parse(pstate& s, const char* ctx, T** out, ParseArgs... parse_args) noexcept
 {
 	if (!alloc(s, ctx, out))
 		return false;
 
-	return parse(s, **out);
+	return parse(s, **out, parse_args...);
 }
 
 
@@ -1216,21 +1216,21 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 
 		out.tag = ast::Expr::Tag::Return;
 
-		return alloc_and_parse(s, ctx, &out.return_or_break_or_defer);
+		return alloc_and_parse(s, ctx, &out.return_or_break_or_defer, false);
 
 	case Token::Tag::Break:
 		next(s, ctx);
 
 		out.tag = ast::Expr::Tag::Break;
 
-		return alloc_and_parse(s, ctx, &out.return_or_break_or_defer);
+		return alloc_and_parse(s, ctx, &out.return_or_break_or_defer, false);
 
 	case Token::Tag::Defer:
 		next(s, ctx);
 
 		out.tag = ast::Expr::Tag::Defer;
 
-		return alloc_and_parse(s, ctx, &out.return_or_break_or_defer);
+		return alloc_and_parse(s, ctx, &out.return_or_break_or_defer, false);
 
 	case Token::Tag::Impl:
 		out.tag = ast::Expr::Tag::Impl;
@@ -1431,7 +1431,7 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 	default:
 		out.tag = ast::Type::Tag::Expr;
 
-		return alloc_and_parse(s, ctx, &out.expr);
+		return alloc_and_parse(s, ctx, &out.expr, false);
 	}
 }
 
