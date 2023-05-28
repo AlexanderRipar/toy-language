@@ -137,6 +137,15 @@ static bool alloc_and_parse(pstate& s, const char* ctx, T** out, ParseArgs... pa
 	return parse(s, **out, parse_args...);
 }
 
+template<typename T, u16 VecSize, typename... ParseArgs>
+static bool alloc_and_parse(pstate& s, const char* ctx, vec<T, VecSize>& out, ParseArgs... parse_args) noexcept
+{
+	if (!out.push_back({}))
+		return error_out_of_memory(s, ctx);
+
+	return parse(s, out.last(), parse_args...);
+}
+
 
 static bool hex_val(char c, usz& inout_v) noexcept
 {
@@ -453,10 +462,7 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 					
 				while (true)
 				{
-					if (!call->arguments.push_back({}))
-						return error_out_of_memory(s, ctx);
-
-					if (!parse(s, call->arguments.last()))
+					if (!alloc_and_parse(s, ctx, call->arguments))
 						return false;
 
 					if (const Token* t1 = next(s, ctx); t1 == nullptr)
@@ -956,10 +962,7 @@ static bool parse(pstate& s, ast::Case& out) noexcept
 
 	while (true)
 	{
-		if (!out.labels.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse(s, out.labels.last(), false))
+		if (!alloc_and_parse(s, ctx, out.labels, false))
 			return false;
 		
 		if (const Token* t = next(s, ctx); t == nullptr)
@@ -1061,10 +1064,7 @@ static bool parse(pstate& s, ast::Switch& out) noexcept
 		
 	while (true)
 	{
-		if (!out.cases.push_back({}))
-			return false;
-
-		if (!parse(s, out.cases.last()))
+		if (!alloc_and_parse(s, ctx, out.cases))
 			return false;
 
 		if (const Token* t = peek(s); t == nullptr || t->tag != Token::Tag::Case)
@@ -1092,10 +1092,7 @@ static bool parse(pstate& s, ast::Block& out) noexcept
 			return true;
 		}
 
-		if (!out.statements.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse(s, out.statements.last()))
+		if (!alloc_and_parse(s, ctx, out.statements))
 			return false;
 	}
 }
@@ -1139,10 +1136,7 @@ static bool parse(pstate& s, ast::Signature& out) noexcept
 
 	while (true)
 	{
-		if (!out.parameters.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse(s, out.parameters.last()))
+		if (!alloc_and_parse(s, ctx, out.parameters))
 			return false;
 
 		if (const Token* t1 = next(s, ctx); t1 == nullptr)
@@ -1504,10 +1498,7 @@ static bool parse(pstate& s, ast::FileModule& out) noexcept
 		if (peek(s) == nullptr)
 			return true;
 
-		if (!out.exprs.push_back({}))
-			return error_out_of_memory(s, ctx);
-
-		if (!parse(s, out.exprs.last()))
+		if (!alloc_and_parse(s, ctx, out.exprs))
 			return false;
 	}
 }
