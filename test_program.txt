@@ -21,9 +21,20 @@ to_name :: proc(x : Bla) -> std.Strview =
 
 main :: proc -> i32 =
 {
-	x := maybe_error() catch 0
 
-	return x
+	// Simple catch with that provides a default value
+	x := maybe_error1() catch 0
+
+	// More involved catch that uses the actual error and returns for one
+	// specific error
+	y := maybe_error2() catch e -> {
+		if (e == SomeError)
+			return 1
+
+		0
+	}
+
+	return x + y
 }
 
 MyTrait :: pub trait(a :: Type) = {}
