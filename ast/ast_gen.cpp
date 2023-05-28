@@ -1120,7 +1120,7 @@ static bool parse(pstate& s, ast::Signature& out) noexcept
 		break;
 	
 	default:
-		return error_invalid_syntax(s, ctx, t, "Expected, Proc or Trait");
+		return error_invalid_syntax(s, ctx, t, "Expected Proc, Func or Trait");
 	}
 
 	if (const Token* t1 = next_if(s, Token::Tag::ParenBeg); t1 == nullptr)
