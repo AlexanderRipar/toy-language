@@ -21,7 +21,7 @@ to_name :: proc(x : Bla) -> std.Strview =
 
 main :: proc -> i32 =
 {
-	x := 1
+	x := maybe_error() catch 0
 
 	return x
 }

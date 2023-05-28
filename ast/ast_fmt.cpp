@@ -6,8 +6,6 @@
 static strview get_name(ast::UnaryOp::Op op) noexcept
 {
 	static constexpr const strview names[] {
-		
-		strview::from_literal("NONE"),
 		strview::from_literal("BitNot"),
 		strview::from_literal("LogNot"),
 		strview::from_literal("Deref"),
@@ -31,38 +29,37 @@ static strview get_name(ast::UnaryOp::Op op) noexcept
 static strview get_name(ast::BinaryOp::Op op) noexcept
 {
 	static constexpr const strview names[] {
-			strview::from_literal("Add"),
-			strview::from_literal("Sub"),
-			strview::from_literal("Mul"),
-			strview::from_literal("Div"),
-			strview::from_literal("Mod"),
-			strview::from_literal("BitAnd"),
-			strview::from_literal("BitOr"),
-			strview::from_literal("BitXor"),
-			strview::from_literal("ShiftL"),
-			strview::from_literal("ShiftR"),
-			strview::from_literal("LogAnd"),
-			strview::from_literal("LogOr"),
-			strview::from_literal("CmpLt"),
-			strview::from_literal("CmpLe"),
-			strview::from_literal("CmpGt"),
-			strview::from_literal("CmpGe"),
-			strview::from_literal("CmpNe"),
-			strview::from_literal("CmpEq"),
-			strview::from_literal("Member"),
-			strview::from_literal("Catch"),
-			strview::from_literal("Index"),
-			strview::from_literal("Set"),
-			strview::from_literal("SetAdd"),
-			strview::from_literal("SetSub"),
-			strview::from_literal("SetMul"),
-			strview::from_literal("SetDiv"),
-			strview::from_literal("SetMod"),
-			strview::from_literal("SetBitAnd"),
-			strview::from_literal("SetBitOr"),
-			strview::from_literal("SetBitXor"),
-			strview::from_literal("SetShiftL"),
-			strview::from_literal("SetShiftR"),
+		strview::from_literal("Add"),
+		strview::from_literal("Sub"),
+		strview::from_literal("Mul"),
+		strview::from_literal("Div"),
+		strview::from_literal("Mod"),
+		strview::from_literal("BitAnd"),
+		strview::from_literal("BitOr"),
+		strview::from_literal("BitXor"),
+		strview::from_literal("ShiftL"),
+		strview::from_literal("ShiftR"),
+		strview::from_literal("LogAnd"),
+		strview::from_literal("LogOr"),
+		strview::from_literal("CmpLt"),
+		strview::from_literal("CmpLe"),
+		strview::from_literal("CmpGt"),
+		strview::from_literal("CmpGe"),
+		strview::from_literal("CmpNe"),
+		strview::from_literal("CmpEq"),
+		strview::from_literal("Member"),
+		strview::from_literal("Index"),
+		strview::from_literal("Set"),
+		strview::from_literal("SetAdd"),
+		strview::from_literal("SetSub"),
+		strview::from_literal("SetMul"),
+		strview::from_literal("SetDiv"),
+		strview::from_literal("SetMod"),
+		strview::from_literal("SetBitAnd"),
+		strview::from_literal("SetBitOr"),
+		strview::from_literal("SetBitXor"),
+		strview::from_literal("SetShiftL"),
+		strview::from_literal("SetShiftR"),
 	};
 
 	const usz index = static_cast<usz>(op) - 1;
@@ -540,6 +537,25 @@ static void tree_print(FmtState& s, const ast::Impl& node) noexcept
 	close_elem(s);
 }
 
+static void tree_print(FmtState& s, const ast::Catch& node) noexcept
+{
+	start_elem(s, NodeType::Struct, "Catch");
+
+	start_elem(s, NodeType::Member, "caught_expr");
+	tree_print(s, node.caught_expr);
+
+	if (node.opt_caught_ident.begin() != nullptr)
+	{
+		start_elem(s, NodeType::Member, "caught_ident");
+		start_elem(s, NodeType::Value, node.opt_caught_ident);
+	}
+
+	start_elem(s, NodeType::Member, "catching_expr");
+	tree_print(s, node.catching_expr);
+
+	close_elem(s);
+}
+
 static void tree_print(FmtState& s, const ast::Expr& node) noexcept
 {
 	start_elem(s, NodeType::Union, "Expr");
@@ -600,6 +616,10 @@ static void tree_print(FmtState& s, const ast::Expr& node) noexcept
 		start_elem(s, NodeType::Union, "Defer");
 		tree_print(s, *node.return_or_break_or_defer);
 		close_elem(s);
+		break;
+
+	case ast::Expr::Tag::Catch:
+		tree_print(s, *node.catch_expr);
 		break;
 
 	case ast::Expr::Tag::Definition:

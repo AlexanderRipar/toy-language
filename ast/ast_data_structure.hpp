@@ -21,6 +21,8 @@ namespace ast
 
 	struct Block;
 
+	struct Catch;
+
 	struct Array;
 
 	struct Signature;
@@ -93,6 +95,7 @@ namespace ast
 			Return,
 			Break,
 			Defer,
+			Catch,
 			Definition,
 			Impl,
 		} tag = Tag::EMPTY;
@@ -119,12 +122,24 @@ namespace ast
 
 			Block* block;
 
+			Catch* catch_expr;
+
 			Expr* return_or_break_or_defer;
 
 			Definition* definition;
 
 			Impl* impl;
+
 		};
+	};
+
+	struct Catch
+	{
+		strview opt_caught_ident;
+
+		Expr caught_expr;
+
+		Expr catching_expr;
 	};
 
 	struct Impl
@@ -158,7 +173,6 @@ namespace ast
 			CmpNe,
 			CmpEq,
 			Member,
-			Catch,
 			Index,
 			Set,
 			SetAdd,

@@ -1254,19 +1254,41 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 	if (t == nullptr)
 		return true;
 
+	if (t->tag == Token::Tag::Catch)
+	{
+		next(s, ctx);
+
+		ast::Catch* catch_expr;
+
+		if (!alloc(s, ctx, &catch_expr))
+			return false;
+
+		catch_expr->caught_expr = out;
+
+		out.tag = ast::Expr::Tag::Catch;
+
+		out.catch_expr = catch_expr;
+
+		if (const Token* t1 = peek(s, 1); t1 != nullptr && t1->tag == Token::Tag::ArrowRight)
+		{
+			if (const Token* ident_tok = expect(s, ctx, Token::Tag::Ident); ident_tok == nullptr)
+				return false;
+			else
+				catch_expr->opt_caught_ident = ident_tok->data_strview();
+
+			next(s, ctx);
+		}
+
+		return parse(s, catch_expr->catching_expr);
+	}
+
 	ast::BinaryOp::Op top_level_operator;
 
-	if (t->tag == Token::Tag::Catch)
-		top_level_operator = ast::BinaryOp::Op::Catch;
-	else if (!allow_assignment)
+	if (!allow_assignment)
 		return true;
 
 	switch (t->tag)
 	{
-	case Token::Tag::Catch:
-		top_level_operator = ast::BinaryOp::Op::Catch;
-		break;
-
 	case Token::Tag::Set:
 		top_level_operator = ast::BinaryOp::Op::Set;
 		break;
