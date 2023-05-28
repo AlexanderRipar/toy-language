@@ -1154,7 +1154,7 @@ RETURN_TYPE:
 
 	if (next_if(s, Token::Tag::ArrowRight) != nullptr)
 	{
-		if (!parse(s, out.opt_return_type))
+		if (!parse(s, out.opt_return_type, false))
 			return false;
 	}
 
@@ -1185,6 +1185,19 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 
 	switch (t->tag)
 	{
+	case Token::Tag::Mut:
+	case Token::Tag::BracketBeg:
+	case Token::Tag::OpMul_Ptr:
+	case Token::Tag::OpBitAnd_Ref:
+	case Token::Tag::TripleDot:
+	case Token::Tag::Proc:
+	case Token::Tag::Func:
+	case Token::Tag::Trait:
+
+		out.tag = ast::Expr::Tag::Type;
+
+		return alloc_and_parse(s, ctx, &out.type);
+
 	case Token::Tag::If:
 		out.tag = ast::Expr::Tag::If;
 
@@ -1359,7 +1372,7 @@ static bool parse(pstate& s, ast::Array& out) noexcept
 	if (expect(s, ctx, Token::Tag::BracketEnd) == nullptr)
 		return false;
 
-	return parse(s, out.elem_type);
+	return parse(s, out.elem_type, false);
 }
 
 static bool parse(pstate& s, ast::Type& out) noexcept
@@ -1381,7 +1394,7 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 
 		out.tag = ast::Type::Tag::Ptr;
 
-		return alloc_and_parse(s, ctx, &out.nested_type);
+		return alloc_and_parse(s, ctx, &out.nested_expr, false);
 
 	case Token::Tag::BracketBeg:
 		next(s, ctx);
@@ -1399,7 +1412,7 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 
 			out.tag = ast::Type::Tag::MultiPtr;
 
-			return alloc_and_parse(s, ctx, &out.nested_type);
+			return alloc_and_parse(s, ctx, &out.nested_expr, false);
 		}
 		else if (t1->tag == Token::Tag::TripleDot)
 		{
@@ -1410,7 +1423,7 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 
 			out.tag = ast::Type::Tag::TailArray;
 
-			return alloc_and_parse(s, ctx, &out.nested_type);
+			return alloc_and_parse(s, ctx, &out.nested_expr, false);
 		}
 		else if (t1->tag == Token::Tag::BracketEnd)
 		{
@@ -1418,7 +1431,7 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 	
 			out.tag = ast::Type::Tag::Slice;
 
-			return alloc_and_parse(s, ctx, &out.nested_type);
+			return alloc_and_parse(s, ctx, &out.nested_expr, false);
 		}
 		else
 		{
@@ -1432,14 +1445,14 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 
 		out.tag = ast::Type::Tag::Variadic;
 
-		return alloc_and_parse(s, ctx, &out.nested_type);
+		return alloc_and_parse(s, ctx, &out.nested_expr, false);
 
 	case Token::Tag::OpBitAnd_Ref:
 		next(s, ctx);
 
 		out.tag = ast::Type::Tag::Reference;
 
-		return alloc_and_parse(s, ctx, &out.nested_type);
+		return alloc_and_parse(s, ctx, &out.nested_expr, false);
 
 	case Token::Tag::Proc:
 	case Token::Tag::Func:
@@ -1458,7 +1471,7 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 	default:
 		out.tag = ast::Type::Tag::Expr;
 
-		return alloc_and_parse(s, ctx, &out.expr, false);
+		return alloc_and_parse(s, ctx, &out.nested_expr, false);
 	}
 }
 
@@ -1487,14 +1500,14 @@ static bool parse(pstate& s, ast::Definition& out) noexcept
 	}
 	else if (t->tag != Token::Tag::Set)
 	{
-		if (!parse(s, out.opt_type))
+		if (!parse(s, out.opt_type, false))
 			return false;
 	}
 
 	if (next_if(s, Token::Tag::Set))
 		return parse(s, out.opt_value, false);
 
-	if (out.opt_type.tag == ast::Type::Tag::EMPTY)
+	if (out.opt_type.tag == ast::Expr::Tag::EMPTY)
 		return error_invalid_syntax(s, ctx, peek(s), "Expected a type, a value or both");
 
 	return true;

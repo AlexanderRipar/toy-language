@@ -31,6 +31,8 @@ namespace ast
 
 	struct Impl;
 
+	struct Type;
+
 
 
 	struct IntegerLiteral
@@ -98,6 +100,7 @@ namespace ast
 			Catch,
 			Definition,
 			Impl,
+			Type,
 		} tag = Tag::EMPTY;
 
 		u32 ident_len;
@@ -130,6 +133,7 @@ namespace ast
 
 			Impl* impl;
 
+			Type* type;
 		};
 	};
 
@@ -235,11 +239,9 @@ namespace ast
 
 		union
 		{
-			Expr* expr;
+			Expr* nested_expr;
 
 			Array* array;
-
-			Type* nested_type;
 
 			Signature* signature;
 		};
@@ -249,14 +251,14 @@ namespace ast
 	{
 		Expr count;
 
-		Type elem_type;
+		Expr elem_type;
 	};
 
 	struct Definition
 	{
 		strview ident;
 
-		Type opt_type;
+		Expr opt_type;
 
 		Expr opt_value;
 
@@ -267,7 +269,7 @@ namespace ast
 
 	struct Signature
 	{
-		Type opt_return_type;
+		Expr opt_return_type;
 
 		vec<Definition, 0> parameters;
 	};

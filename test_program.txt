@@ -53,3 +53,5 @@ MyTailStruct ::= Struct(
 	count : u32,
 	tail : [...]*i32
 )
+
+SomewhatComplexType ::= [][]*mut f32
