@@ -682,6 +682,10 @@ static void tree_print(FmtState& s, const ast::Type& node, const strview node_na
 		tree_print(s, *node.nested_type, "MultiPtr");
 		break;
 
+	case ast::Type::Tag::TailArray:
+		tree_print(s, *node.nested_type, "TailArray");
+		break;
+
 	case ast::Type::Tag::Variadic:
 		tree_print(s, *node.nested_type, "Variadic");
 		break;

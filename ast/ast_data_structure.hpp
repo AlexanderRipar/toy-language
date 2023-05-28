@@ -223,6 +223,7 @@ namespace ast
 			Slice,
 			Ptr,
 			MultiPtr,
+			TailArray,
 			Variadic,
 			Reference,
 			ProcSignature,

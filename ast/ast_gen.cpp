@@ -1401,6 +1401,17 @@ static bool parse(pstate& s, ast::Type& out) noexcept
 
 			return alloc_and_parse(s, ctx, &out.nested_type);
 		}
+		else if (t1->tag == Token::Tag::TripleDot)
+		{
+			next(s, ctx);
+
+			if (expect(s, ctx, Token::Tag::BracketEnd) == nullptr)
+				return false;
+
+			out.tag = ast::Type::Tag::TailArray;
+
+			return alloc_and_parse(s, ctx, &out.nested_type);
+		}
 		else if (t1->tag == Token::Tag::BracketEnd)
 		{
 			next(s, ctx);
