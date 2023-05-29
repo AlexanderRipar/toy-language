@@ -101,7 +101,7 @@ int main(int32_t argc, const char** argv) noexcept
 
 	const strview filename = filename_from_filepath(argv[1]);
 
-	ast::FileModule file_module;
+	ast::FileModule file_module{};
 
 	ast::Result rst = parse_program_unit(tokens, filename, file_module);
 	
