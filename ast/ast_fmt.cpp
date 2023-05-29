@@ -683,6 +683,9 @@ static void tree_print(FmtState& s, const ast::Definition& node) noexcept
 	start_elem(s, NodeType::Member, "is_pub");
 	start_elem(s, NodeType::Value, node.is_pub ? "true" : "false");
 
+	start_elem(s, NodeType::Member, "is_global");
+	start_elem(s, NodeType::Value, node.is_global ? "true" : "false");
+
 	start_elem(s, NodeType::Member, "is_comptime");
 	start_elem(s, NodeType::Value, node.is_comptime ? "true" : "false");
 

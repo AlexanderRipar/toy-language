@@ -10,6 +10,11 @@ proc_taking_some_sized_arrays :: proc(vargs : ...[a][b]i32) = {}
 
 array_of_generics :: [get_comptime_count(a, b) + c]SomeGeneric(x)
 
+StructWithGlobalData ::= struct(
+	per_instance_data : u32,
+	global_data : global u32
+)
+
 MyPointStruct ::= struct(
 	x : u32,
 	y : u32

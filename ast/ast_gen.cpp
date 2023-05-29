@@ -1537,8 +1537,29 @@ static bool parse(pstate& s, ast::Definition& out) noexcept
 	else if (t->tag != Token::Tag::Colon)
 		return error_invalid_syntax(s, ctx, t, "Expected Colon or DoubleColon");
 
-	if (next_if(s, Token::Tag::Pub) != nullptr)
-		out.is_pub = true;
+	for (const Token* t = peek(s); t != nullptr; t = peek(s))
+	{
+		if (t->tag == Token::Tag::Pub)
+		{
+			if (out.is_pub)
+				return error_invalid_syntax(s, ctx, t, "Pub specified more than once");
+
+			out.is_pub = true;
+		}
+		else if (t->tag == Token::Tag::Global)
+		{
+			if (out.is_global)
+				return error_invalid_syntax(s, ctx, t, "Global specified more than once");
+
+			out.is_global = true;
+		}
+		else
+		{
+			break;
+		}
+
+		next(s, ctx);
+	}
 
 	if (const Token* t = peek(s); t == nullptr)
 	{

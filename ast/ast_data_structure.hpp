@@ -243,6 +243,8 @@ namespace ast
 
 		bool is_pub;
 
+		bool is_global;
+
 		bool is_comptime;
 	};
 
