@@ -50,6 +50,24 @@ ERROR_LABEL:
 	return GetLastError();
 }
 
+static strview filename_from_filepath(const char* filepath) noexcept
+{
+	const char* last_name_beg = filepath;
+
+	for (const char* curr = filepath; *curr != '\0'; ++curr)
+	{
+		if ((*curr == '/' || *curr == '\\'))
+			last_name_beg = curr + 1;
+	}
+
+	const char* extension_beg = last_name_beg;
+
+	while (*extension_beg != '\0' && *extension_beg != '.')
+		++extension_beg;
+
+	return strview{ last_name_beg, extension_beg };
+}
+
 int main(int32_t argc, const char** argv) noexcept
 {
 	if (argc != 2)
@@ -81,9 +99,11 @@ int main(int32_t argc, const char** argv) noexcept
 	// 	fprintf(stderr, "ln %d %.*s \"%.*s\"\n", t.line_number, static_cast<i32>(type.len()), type.begin(), static_cast<i32>(data.len()), data.begin());
 	// }
 
+	const strview filename = filename_from_filepath(argv[1]);
+
 	ast::FileModule file_module;
 
-	ast::Result rst = parse_program_unit(tokens, file_module);
+	ast::Result rst = parse_program_unit(tokens, filename, file_module);
 	
 	switch (rst.tag)
 	{

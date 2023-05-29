@@ -32,7 +32,7 @@ namespace ast
 		const Token* problematic_token;
 	};
 
-	Result parse_program_unit(const vec<Token>& tokens, FileModule& out_program_unit) noexcept;
+	Result parse_program_unit(const vec<Token>& tokens, const strview filename, FileModule& out_program_unit) noexcept;
 }
 
 #endif // AST_GEN_INCLUDE_GUARD

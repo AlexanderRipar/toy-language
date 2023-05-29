@@ -1548,9 +1548,11 @@ static bool parse(pstate& s, ast::Definition& out) noexcept
 	return true;
 }
 
-static bool parse(pstate& s, ast::FileModule& out) noexcept
+static bool parse(pstate& s, const strview filename, ast::FileModule& out) noexcept
 {
 	constexpr const char* const ctx = "FileModule";
+
+	out.filename = filename;
 
 	while (true)
 	{
@@ -1562,11 +1564,11 @@ static bool parse(pstate& s, ast::FileModule& out) noexcept
 	}
 }
 
-ast::Result ast::parse_program_unit(const vec<Token>& tokens, FileModule& out) noexcept
+ast::Result ast::parse_program_unit(const vec<Token>& tokens, const strview filename, FileModule& out) noexcept
 {
 	pstate s{ tokens.begin(), tokens.end(), tokens.begin(), {} };
 
-	parse(s, out);
+	parse(s, filename, out);
 
 	return s.rst;
 }
