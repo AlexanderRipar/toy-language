@@ -84,6 +84,7 @@ struct Token
 		Proc,
 		Func,
 		Trait,
+		Module,
 		Impl,
 		Mut,
 		Pub,
