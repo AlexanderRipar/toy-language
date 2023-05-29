@@ -12,6 +12,11 @@ static strview get_name(ast::UnaryOp::Op op) noexcept
 		strview::from_literal("AddrOf"),
 		strview::from_literal("Neg"),
 		strview::from_literal("Try"),
+		strview::from_literal("TypePtr"),
+		strview::from_literal("TypeSlice"),
+		strview::from_literal("TypeMultiptr"),
+		strview::from_literal("TypeTailArray"),
+		strview::from_literal("TypeVariadic"),
 	};
 
 	const usz index = static_cast<usz>(op) - 1;
@@ -60,6 +65,7 @@ static strview get_name(ast::BinaryOp::Op op) noexcept
 		strview::from_literal("SetBitXor"),
 		strview::from_literal("SetShiftL"),
 		strview::from_literal("SetShiftR"),
+		strview::from_literal("TypeArray"),
 	};
 
 	const usz index = static_cast<usz>(op) - 1;
@@ -554,82 +560,6 @@ static void tree_print(FmtState& s, const ast::Catch& node) noexcept
 	close_elem(s);
 }
 
-static void tree_print(FmtState& s, const ast::Array& node) noexcept
-{
-	start_elem(s, NodeType::Struct, "Array");
-
-	start_elem(s, NodeType::Member, "count");
-	tree_print(s, node.count);
-
-	start_elem(s, NodeType::Member, "elem_type");
-	tree_print(s, node.elem_type);
-
-	close_elem(s);
-}
-
-static void tree_print(FmtState& s, const ast::Type& node) noexcept
-{
-	start_elem(s, NodeType::Struct, "Type");
-
-	start_elem(s, NodeType::Member, "is_mut");
-	start_elem(s, NodeType::Value, node.is_mut ? "true" : "false");
-
-	start_elem(s, NodeType::Member, "data");
-
-	switch (node.tag)
-	{
-	case ast::Type::Tag::Expr:
-		tree_print(s, *node.nested_expr);
-		break;
-
-	case ast::Type::Tag::Array:
-		tree_print(s, *node.array);
-		break;
-
-	case ast::Type::Tag::Slice:
-		tree_print(s, *node.nested_expr, "Slice");
-		break;
-
-	case ast::Type::Tag::Ptr:
-		tree_print(s, *node.nested_expr, "Ptr");
-		break;
-
-	case ast::Type::Tag::MultiPtr:
-		tree_print(s, *node.nested_expr, "MultiPtr");
-		break;
-
-	case ast::Type::Tag::TailArray:
-		tree_print(s, *node.nested_expr, "TailArray");
-		break;
-
-	case ast::Type::Tag::Variadic:
-		tree_print(s, *node.nested_expr, "Variadic");
-		break;
-
-	case ast::Type::Tag::Reference:
-		tree_print(s, *node.nested_expr, "Reference");
-		break;
-
-	case ast::Type::Tag::ProcSignature:
-		tree_print(s, *node.signature, "ProcSignature");
-		break;
-
-	case ast::Type::Tag::FuncSignature:
-		tree_print(s, *node.signature, "FuncSignature");
-		break;
-
-	case ast::Type::Tag::TraitSignature:
-		tree_print(s, *node.signature, "TraitSignature");
-		break;
-
-	default:
-		assert(false);
-		break;
-	}
-
-	close_elem(s);
-}
-
 static void tree_print(FmtState& s, const ast::Expr& node, const strview node_name) noexcept
 {
 	start_elem(s, NodeType::Union, node_name);
@@ -704,8 +634,16 @@ static void tree_print(FmtState& s, const ast::Expr& node, const strview node_na
 		tree_print(s, *node.impl);
 		break;
 
-	case ast::Expr::Tag::Type:
-		tree_print(s, *node.type);
+	case ast::Expr::Tag::ProcSignature:
+		tree_print(s, *node.signature, "ProcSignature");
+		break;
+
+	case ast::Expr::Tag::FuncSignature:
+		tree_print(s, *node.signature, "FuncSignature");
+		break;
+
+	case ast::Expr::Tag::TraitSignature:
+		tree_print(s, *node.signature, "TraitSignature");
 		break;
 
 	default:

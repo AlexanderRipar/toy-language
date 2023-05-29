@@ -198,8 +198,6 @@ static bool bin_val(char c, usz& inout_v) noexcept
 
 
 
-static bool parse(pstate& s, ast::Type& out) noexcept;
-
 static bool parse(pstate& s, ast::Definition& out) noexcept;
 
 static bool parse(pstate& s, ast::Expr& out, bool allow_assignment = true) noexcept;
@@ -216,6 +214,7 @@ struct ShuntingYardOp
 		BinaryOp,
 		UnaryOp,
 		ParenBeg,
+		BracketBeg,
 	} tag = Tag::EMPTY;
 
 	u8 precedence;
@@ -304,6 +303,14 @@ static bool token_tag_to_shunting_yard_op(const Token::Tag tag, bool is_binary, 
 		out = { 13 , false, ast::UnaryOp::Op::Try    };
 		break;
 
+	case Token::Tag::OpMul_Ptr:
+		out = { 2, false, ast::UnaryOp::Op::TypePtr };
+		break;
+
+	case Token::Tag::TripleDot:
+		out = { 2, false, ast::UnaryOp::Op::TypeVariadic };
+		break;
+
 	default:
 		return false;
 	}
@@ -361,10 +368,59 @@ static bool pop_shunting_yard_operator(pstate& s, vec<ShuntingYardOp, 32>& op_st
 	}
 	else
 	{
-		assert(op.tag == ShuntingYardOp::Tag::ParenBeg);
+		assert(op.tag == ShuntingYardOp::Tag::ParenBeg || op.tag == ShuntingYardOp::Tag::BracketBeg);
 
-		return error_invalid_syntax(s, ctx, peek(s), "Misnested parentheses");
+		return error_invalid_syntax(s, ctx, peek(s), "Misnested brackets / parentheses");
 	}
+
+	return true;
+}
+
+static bool get_bracket_op(pstate& s, u32& bracket_nesting, ShuntingYardOp& out) noexcept
+{
+	constexpr const char* const ctx = "Expr";
+
+	const Token* t = peek(s);
+
+	if (t == nullptr)
+		return error_unexpected_end(s, ctx);
+
+	switch (t->tag)
+	{
+	case Token::Tag::BracketEnd:
+		next(s, ctx);
+		
+		out = { 2, false, ast::UnaryOp::Op::TypeSlice };
+
+		return true;
+
+	case Token::Tag::OpMul_Ptr:
+	case Token::Tag::TripleDot:
+		if (const Token* t1 = peek(s, 1); t1 != nullptr && t1->tag == Token::Tag::BracketEnd)
+		{
+			next(s, ctx);
+
+			next(s, ctx);
+
+			if (t->tag == Token::Tag::OpMul_Ptr)
+				out = { 2, false, ast::UnaryOp::Op::TypeMultiptr };
+			else if (t->tag == Token::Tag::TripleDot)
+				out = { 2, false, ast::UnaryOp::Op::TypeTailArray };
+			else
+				assert(false);
+
+			return true;
+		}
+
+		break;
+
+	default:
+		break;
+	}
+
+	++bracket_nesting;
+
+	out = { ShuntingYardOp::Tag::BracketBeg };
 
 	return true;
 }
@@ -381,12 +437,17 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 	usz paren_nesting = 0;
 
+	u32 bracket_nesting = 0;
+
 	const Token* prev_paren_beg = nullptr;
 
 	const Token* const first_token = peek(s);
 
 	while (true)
-	{
+	{		
+		if (next_if(s, Token::Tag::Mut) != nullptr)
+			out.is_mut = true;
+
 		const Token* t = peek(s);
 
 		if (t == nullptr)
@@ -413,12 +474,12 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 			const strview ident_strview = t->data_strview();
 
-			if (ident_strview.len() > UINT32_MAX)
-				return error_invalid_syntax(s, ctx, t, "Length of ident somehow exceeds (2^32)-1");
+			if (ident_strview.len() > UINT16_MAX)
+				return error_invalid_syntax(s, ctx, t, "Length of ident somehow exceeds (2^16)-1");
 
 			expr.ident_beg = ident_strview.begin();
 
-			expr.ident_len = static_cast<u32>(ident_strview.len());
+			expr.ident_len = static_cast<u16>(ident_strview.len());
 
 			expr.tag = ast::Expr::Tag::Ident;
 
@@ -530,37 +591,81 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 		case Token::Tag::BracketBeg: {
 
-			if (!expecting_operator)
+			if (expecting_operator)
+			{
+				if (const Token* t1 = peek(s, 1); t1 != nullptr && (t1->tag == Token::Tag::BracketEnd || t1->tag == Token::Tag::OpMul_Ptr || t1->tag == Token::Tag::TripleDot))
+					goto POP_REMAINING_OPS;
+
+				next(s, ctx);
+
+				while (op_stk.size() != 0 && op_stk.last().precedence <= 1)
+				{
+					if (!pop_shunting_yard_operator(s, op_stk, expr_stk))
+						return false;
+				}
+
+				assert(expr_stk.size() != 0);
+
+				ast::BinaryOp* index_op = nullptr;
+
+				if (!alloc(s, ctx, &index_op))
+					return false;
+
+				index_op->lhs = expr_stk.last();
+
+				index_op->op = ast::BinaryOp::Op::Index;
+
+				expr_stk.last().binary_op = index_op;
+
+				expr_stk.last().tag = ast::Expr::Tag::BinaryOp;
+
+				if (!parse(s, index_op->rhs, false))
+					return false;
+
+				if (expect(s, ctx, Token::Tag::BracketEnd) == nullptr)
+					return false;
+			}
+			else
+			{
+				next(s, ctx);
+
+				ShuntingYardOp op;
+
+				if (!get_bracket_op(s, bracket_nesting, op))
+					return false;
+
+				if (!op_stk.push_back(op))
+					return error_out_of_memory(s, ctx);
+			}
+
+			break;
+		}
+
+		case Token::Tag::BracketEnd: {
+
+			if (!expecting_operator || bracket_nesting == 0)
 				goto POP_REMAINING_OPS;
 
 			next(s, ctx);
 
-			while (op_stk.size() != 0 && op_stk.last().precedence <= 1)
+			--bracket_nesting;
+
+			assert(op_stk.size() != 0);
+
+			while (op_stk.last().precedence != 255)
 			{
 				if (!pop_shunting_yard_operator(s, op_stk, expr_stk))
 					return false;
+
+				assert(op_stk.size() != 0);
 			}
 
-			assert(expr_stk.size() != 0);
+			if (op_stk.last().tag != ShuntingYardOp::Tag::BracketBeg)
+				return error_invalid_syntax(s, ctx, t, "Misnested brackets / parentheses");
 
-			ast::BinaryOp* index_op = nullptr;
+			op_stk.last() = { 2, true, ast::BinaryOp::Op::TypeArray };
 
-			if (!alloc(s, ctx, &index_op))
-				return false;
-
-			index_op->lhs = expr_stk.last();
-
-			index_op->op = ast::BinaryOp::Op::Index;
-
-			expr_stk.last().binary_op = index_op;
-
-			expr_stk.last().tag = ast::Expr::Tag::BinaryOp;
-
-			if (!parse(s, index_op->rhs, false))
-				return false;
-
-			if (expect(s, ctx, Token::Tag::BracketEnd) == nullptr)
-				return false;
+			expecting_operator = false;
 
 			break;
 		}
@@ -1203,18 +1308,21 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 
 	switch (t->tag)
 	{
-	case Token::Tag::Mut:
-	case Token::Tag::BracketBeg:
-	case Token::Tag::OpMul_Ptr:
-	case Token::Tag::OpBitAnd_Ref:
-	case Token::Tag::TripleDot:
 	case Token::Tag::Proc:
+		out.tag = ast::Expr::Tag::ProcSignature;
+
+		return alloc_and_parse(s, ctx, &out.signature);
+
 	case Token::Tag::Func:
+		out.tag = ast::Expr::Tag::FuncSignature;
+
+		return alloc_and_parse(s, ctx, &out.signature);
+		
 	case Token::Tag::Trait:
 
-		out.tag = ast::Expr::Tag::Type;
+		out.tag = ast::Expr::Tag::TraitSignature;
 
-		return alloc_and_parse(s, ctx, &out.type);
+		return alloc_and_parse(s, ctx, &out.signature);
 
 	case Token::Tag::If:
 		out.tag = ast::Expr::Tag::If;
@@ -1378,119 +1486,6 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 	out.binary_op = top_level_op;
 
 	return parse(s, top_level_op->rhs);
-}
-
-static bool parse(pstate& s, ast::Array& out) noexcept
-{
-	constexpr const char* const ctx = "Array";
-
-	if (!parse(s, out.count, false))
-		return false;
-
-	if (expect(s, ctx, Token::Tag::BracketEnd) == nullptr)
-		return false;
-
-	return parse(s, out.elem_type, false);
-}
-
-static bool parse(pstate& s, ast::Type& out) noexcept
-{
-	constexpr const char* const ctx = "Type";
-
-	if (next_if(s, Token::Tag::Mut) != nullptr)
-		out.is_mut = true;
-
-	const Token* t = peek(s);
-
-	if (t == nullptr)
-		return error_unexpected_end(s, ctx);
-
-	switch (t->tag)
-	{
-	case Token::Tag::OpMul_Ptr:
-		next(s, ctx);
-
-		out.tag = ast::Type::Tag::Ptr;
-
-		return alloc_and_parse(s, ctx, &out.nested_expr, false);
-
-	case Token::Tag::BracketBeg:
-		next(s, ctx);
-
-		if (const Token* t1 = peek(s); t1 == nullptr)
-		{
-			return error_unexpected_end(s, ctx);
-		}
-		else if (t1->tag == Token::Tag::OpMul_Ptr)
-		{
-			next(s, ctx);
-
-			if (expect(s, ctx, Token::Tag::BracketEnd) == nullptr)
-				return false;
-
-			out.tag = ast::Type::Tag::MultiPtr;
-
-			return alloc_and_parse(s, ctx, &out.nested_expr, false);
-		}
-		else if (t1->tag == Token::Tag::TripleDot)
-		{
-			next(s, ctx);
-
-			if (expect(s, ctx, Token::Tag::BracketEnd) == nullptr)
-				return false;
-
-			out.tag = ast::Type::Tag::TailArray;
-
-			return alloc_and_parse(s, ctx, &out.nested_expr, false);
-		}
-		else if (t1->tag == Token::Tag::BracketEnd)
-		{
-			next(s, ctx);
-	
-			out.tag = ast::Type::Tag::Slice;
-
-			return alloc_and_parse(s, ctx, &out.nested_expr, false);
-		}
-		else
-		{
-			out.tag = ast::Type::Tag::Array;
-
-			return alloc_and_parse(s, ctx, &out.array);
-		}
-
-	case Token::Tag::TripleDot:
-		next(s, ctx);
-
-		out.tag = ast::Type::Tag::Variadic;
-
-		return alloc_and_parse(s, ctx, &out.nested_expr, false);
-
-	case Token::Tag::OpBitAnd_Ref:
-		next(s, ctx);
-
-		out.tag = ast::Type::Tag::Reference;
-
-		return alloc_and_parse(s, ctx, &out.nested_expr, false);
-
-	case Token::Tag::Proc:
-	case Token::Tag::Func:
-	case Token::Tag::Trait:
-		if (t->tag == Token::Tag::Proc)
-			out.tag = ast::Type::Tag::ProcSignature;
-		else if (t->tag == Token::Tag::Func)
-			out.tag = ast::Type::Tag::FuncSignature;
-		else if (t->tag == Token::Tag::Trait)
-			out.tag = ast::Type::Tag::TraitSignature;
-		else
-			assert(false);
-
-		return alloc_and_parse(s, ctx, &out.signature);
-
-	default:
-		out.tag = ast::Type::Tag::Expr;
-
-		return alloc_and_parse(s, ctx, &out.nested_expr, false);
-	}
 }
 
 static bool parse(pstate& s, ast::Definition& out) noexcept

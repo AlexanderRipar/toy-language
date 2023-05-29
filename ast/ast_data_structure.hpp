@@ -31,8 +31,6 @@ namespace ast
 
 	struct Impl;
 
-	struct Type;
-
 
 
 	struct IntegerLiteral
@@ -100,10 +98,14 @@ namespace ast
 			Catch,
 			Definition,
 			Impl,
-			Type,
+			ProcSignature,
+			FuncSignature,
+			TraitSignature,
 		} tag = Tag::EMPTY;
 
-		u32 ident_len;
+		bool is_mut;
+
+		u16 ident_len;
 
 		union
 		{
@@ -133,7 +135,7 @@ namespace ast
 
 			Impl* impl;
 
-			Type* type;
+			Signature* signature;
 		};
 	};
 
@@ -189,6 +191,7 @@ namespace ast
 			SetBitXor,
 			SetShiftL,
 			SetShiftR,
+			TypeArray,
 		} op = Op::NONE;
 
 		Expr lhs;
@@ -207,6 +210,11 @@ namespace ast
 			AddrOf,
 			Neg,
 			Try,
+			TypePtr,
+			TypeSlice,
+			TypeMultiptr,
+			TypeTailArray,
+			TypeVariadic,
 		} op = Op::NONE;
 
 		Expr operand;
@@ -215,36 +223,6 @@ namespace ast
 	struct Block
 	{
 		vec<Expr, 0> statements;
-	};
-
-	struct Type
-	{
-		enum class Tag
-		{
-			EMPTY = 0,
-			Expr,
-			Array,
-			Slice,
-			Ptr,
-			MultiPtr,
-			TailArray,
-			Variadic,
-			Reference,
-			ProcSignature,
-			FuncSignature,
-			TraitSignature,
-		} tag = Tag::EMPTY;
-
-		bool is_mut;
-
-		union
-		{
-			Expr* nested_expr;
-
-			Array* array;
-
-			Signature* signature;
-		};
 	};
 
 	struct Array
