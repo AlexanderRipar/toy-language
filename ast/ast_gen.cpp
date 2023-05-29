@@ -215,6 +215,7 @@ struct ShuntingYardOp
 		UnaryOp,
 		ParenBeg,
 		BracketBeg,
+		Mut,
 	} tag = Tag::EMPTY;
 
 	u8 precedence;
@@ -237,8 +238,8 @@ struct ShuntingYardOp
 	constexpr ShuntingYardOp(u8 precedence, bool is_left_assoc, ast::UnaryOp::Op op) noexcept
 		: tag{ Tag::UnaryOp }, precedence{ precedence }, is_left_assoc{ is_left_assoc }, unary_op{ op } {}
 
-	constexpr ShuntingYardOp(Tag tag) noexcept
-		: tag{ tag }, precedence{ 255 }, is_left_assoc{ true }, binary_op{ ast::BinaryOp::Op::NONE } {}
+	constexpr ShuntingYardOp(Tag tag, u8 precedence = 255, bool is_left_assoc = true) noexcept
+		: tag{ tag }, precedence{ precedence }, is_left_assoc{ is_left_assoc }, binary_op{ ast::BinaryOp::Op::NONE } {}
 };
 
 static bool token_tag_to_shunting_yard_op(const Token::Tag tag, bool is_binary, ShuntingYardOp& out) noexcept
@@ -345,9 +346,11 @@ static bool pop_shunting_yard_operator(pstate& s, vec<ShuntingYardOp, 32>& op_st
 
 		binary_op->op = op.binary_op;
 
+		memset(&expr_stk.last(), 0, sizeof(expr_stk.last()));
+
 		expr_stk.last().binary_op = binary_op;
 
-		expr_stk.last().tag = ast::Expr::Tag::BinaryOp;		
+		expr_stk.last().tag = ast::Expr::Tag::BinaryOp;
 	}
 	else if (op.tag == ShuntingYardOp::Tag::UnaryOp)
 	{
@@ -362,9 +365,18 @@ static bool pop_shunting_yard_operator(pstate& s, vec<ShuntingYardOp, 32>& op_st
 
 		unary_op->op = op.unary_op;
 
+		memset(&expr_stk.last(), 0, sizeof(expr_stk.last()));
+
 		expr_stk.last().unary_op = unary_op;
 
 		expr_stk.last().tag = ast::Expr::Tag::UnaryOp;
+	}
+	else if (op.tag == ShuntingYardOp::Tag::Mut)
+	{
+		if (expr_stk.last().is_mut)
+			return error_invalid_syntax(s, ctx, peek(s), "Multiple occurrences of Mut");
+
+		expr_stk.last().is_mut = true;
 	}
 	else
 	{
@@ -444,9 +456,12 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 	const Token* const first_token = peek(s);
 
 	while (true)
-	{		
+	{
 		if (next_if(s, Token::Tag::Mut) != nullptr)
-			out.is_mut = true;
+		{
+			if (!op_stk.push_back({ ShuntingYardOp::Tag::Mut, 2, false }))
+				return error_out_of_memory(s, ctx);
+		}
 
 		const Token* t = peek(s);
 
