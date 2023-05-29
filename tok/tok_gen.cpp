@@ -86,6 +86,7 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("Impl"),
 		strview::from_literal("Mut"),
 		strview::from_literal("Pub"),
+		strview::from_literal("Global"),
 		strview::from_literal("Undefined"),
 	};
 
@@ -164,6 +165,8 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			t.tag = Token::Tag::Catch;
 		else if (streqc({ beg, c }, strview::from_literal("try")))
 			t.tag = Token::Tag::Try;
+		else if (streqc({ beg, c }, strview::from_literal("global")))
+			t.tag = Token::Tag::Global;
 		else if (streqc({ beg, c }, strview::from_literal("undefined")))
 			t.tag = Token::Tag::Undefined;
 		else

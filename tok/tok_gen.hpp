@@ -88,6 +88,7 @@ struct Token
 		Impl,
 		Mut,
 		Pub,
+		Global,
 		Undefined,
 	} tag;
 
