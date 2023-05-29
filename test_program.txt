@@ -31,8 +31,7 @@ to_name :: proc(x : Bla) -> std.Strview =
 
 main :: proc -> i32 =
 {
-
-	// Simple catch with that provides a default value
+	// Simple catch that provides a default value
 	x := maybe_error1() catch 0
 
 	// More involved catch that uses the actual error and returns for one
