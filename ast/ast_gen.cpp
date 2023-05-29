@@ -210,22 +210,36 @@ static bool parse(pstate& s, ast::Literal& out) noexcept;
 
 struct ShuntingYardOp
 {
+	enum class Tag : u8
+	{
+		EMPTY = 0,
+		BinaryOp,
+		UnaryOp,
+		ParenBeg,
+	} tag = Tag::EMPTY;
+
 	u8 precedence;
 
 	bool is_left_assoc;
 
-	ast::BinaryOp::Op binary_op;
+	union
+	{
+		ast::BinaryOp::Op binary_op;
 
-	ast::UnaryOp::Op unary_op;
+		ast::UnaryOp::Op unary_op;
+	};
 
 	constexpr ShuntingYardOp() noexcept
-		: precedence{ 0 }, is_left_assoc{ 0 }, binary_op{ ast::BinaryOp::Op::NONE }, unary_op{ ast::UnaryOp::Op::NONE } {}
+		: tag{ Tag::EMPTY }, precedence{ 0 }, is_left_assoc{ 0 }, binary_op{ ast::BinaryOp::Op::NONE } {}
 
 	constexpr ShuntingYardOp(u8 precedence, bool is_left_assoc, ast::BinaryOp::Op op) noexcept
-		: precedence{ precedence }, is_left_assoc{ is_left_assoc }, binary_op{ op }, unary_op{ ast::UnaryOp::Op::NONE } {}
+		: tag{ Tag::BinaryOp }, precedence{ precedence }, is_left_assoc{ is_left_assoc }, binary_op{ op } {}
 
 	constexpr ShuntingYardOp(u8 precedence, bool is_left_assoc, ast::UnaryOp::Op op) noexcept
-		: precedence{ precedence }, is_left_assoc{ is_left_assoc }, binary_op{ ast::BinaryOp::Op::NONE }, unary_op{ op } {}
+		: tag{ Tag::UnaryOp }, precedence{ precedence }, is_left_assoc{ is_left_assoc }, unary_op{ op } {}
+
+	constexpr ShuntingYardOp(Tag tag) noexcept
+		: tag{ tag }, precedence{ 255 }, is_left_assoc{ true }, binary_op{ ast::BinaryOp::Op::NONE } {}
 };
 
 static bool token_tag_to_shunting_yard_op(const Token::Tag tag, bool is_binary, ShuntingYardOp& out) noexcept
@@ -307,7 +321,7 @@ static bool pop_shunting_yard_operator(pstate& s, vec<ShuntingYardOp, 32>& op_st
 
 	op_stk.pop();
 
-	if (op.binary_op != ast::BinaryOp::Op::NONE)
+	if (op.tag == ShuntingYardOp::Tag::BinaryOp)
 	{
 		assert(expr_stk.size() >= 2);
 
@@ -328,10 +342,8 @@ static bool pop_shunting_yard_operator(pstate& s, vec<ShuntingYardOp, 32>& op_st
 
 		expr_stk.last().tag = ast::Expr::Tag::BinaryOp;		
 	}
-	else
+	else if (op.tag == ShuntingYardOp::Tag::UnaryOp)
 	{
-		assert(op.unary_op != ast::UnaryOp::Op::NONE);
-
 		assert(expr_stk.size() >= 1);
 
 		ast::UnaryOp* unary_op = nullptr;
@@ -346,6 +358,12 @@ static bool pop_shunting_yard_operator(pstate& s, vec<ShuntingYardOp, 32>& op_st
 		expr_stk.last().unary_op = unary_op;
 
 		expr_stk.last().tag = ast::Expr::Tag::UnaryOp;
+	}
+	else
+	{
+		assert(op.tag == ShuntingYardOp::Tag::ParenBeg);
+
+		return error_invalid_syntax(s, ctx, peek(s), "Misnested parentheses");
 	}
 
 	return true;
@@ -479,7 +497,7 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 				
 				++paren_nesting;
 
-				if (!op_stk.push_back({ 255, 1, ast::BinaryOp::Op::NONE }))
+				if (!op_stk.push_back({ ShuntingYardOp::Tag::ParenBeg }))
 					return error_out_of_memory(s, ctx);
 			}
 
@@ -497,7 +515,7 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 			assert(op_stk.size() != 0);
 
-			while (op_stk.last().precedence != 255)
+			while (op_stk.last().tag != ShuntingYardOp::Tag::ParenBeg)
 			{
 				if (!pop_shunting_yard_operator(s, op_stk, expr_stk))
 					return false;
