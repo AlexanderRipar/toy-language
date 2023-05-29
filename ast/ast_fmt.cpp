@@ -562,7 +562,21 @@ static void tree_print(FmtState& s, const ast::Catch& node) noexcept
 
 static void tree_print(FmtState& s, const ast::Expr& node, const strview node_name) noexcept
 {
-	start_elem(s, NodeType::Union, node_name);
+	if (node.is_mut)
+	{
+		start_elem(s, NodeType::Struct, node_name);
+
+		start_elem(s, NodeType::Member, "is_mut");
+		start_elem(s, NodeType::Value, "true");
+
+		start_elem(s, NodeType::Member, "expr");
+	}
+	else
+	{
+		start_elem(s, NodeType::Union, node_name);
+	}
+
+
 
 	switch (node.tag)
 	{
