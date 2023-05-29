@@ -703,15 +703,7 @@ static void tree_print(FmtState& s, const ast::Definition& node) noexcept
 
 static void tree_print(FmtState& s, const ast::FileModule& node) noexcept
 {
-	start_elem(s, NodeType::Struct, "FileModule");
-
-	start_elem(s, NodeType::Member, "filename");
-	start_elem(s, NodeType::Value, node.filename);
-
-	start_elem(s, NodeType::Member, "root_module");
 	tree_print(s, node.root_module);
-
-	close_elem(s);
 }
 
 void ast_print_tree(const ast::FileModule& program) noexcept
