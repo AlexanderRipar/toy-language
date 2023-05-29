@@ -330,7 +330,7 @@ namespace ast
 	{
 		strview filename;
 
-		vec<Expr, 0> exprs;
+		Definition root_module;
 	};
 
 	void cleanup(FileModule& file_module) noexcept;
