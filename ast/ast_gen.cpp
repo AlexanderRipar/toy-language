@@ -708,6 +708,9 @@ POP_REMAINING_OPS:
 	if (paren_nesting != 0)
 		return error_invalid_syntax(s, ctx, prev_paren_beg, "Unmatched ParenBeg");
 
+	if (bracket_nesting != 0)
+		return error_invalid_syntax(s, ctx, first_token, "Unmatched BracketBeg");
+
 	while (op_stk.size() != 0)
 	{
 		if (!pop_shunting_yard_operator(s, op_stk, expr_stk))
