@@ -479,51 +479,42 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 			break;
 		}
 
+		case Token::Tag::LitString:
+		case Token::Tag::LitChar:
+		case Token::Tag::LitInt:
+		case Token::Tag::LitFloat:
 		case Token::Tag::Ident: {
 
 			if (expecting_operator)
 				goto POP_REMAINING_OPS;
 
-			next(s, ctx);
-
 			if (!expr_stk.push_back({}))
 				return error_out_of_memory(s, ctx);
 
 			ast::Expr& expr = expr_stk.last();
 
-			const strview ident_strview = t->data_strview();
+			if (t->tag == Token::Tag::Ident)
+			{
+				next(s, ctx);
 
-			if (ident_strview.len() > UINT16_MAX)
-				return error_invalid_syntax(s, ctx, t, "Length of ident somehow exceeds (2^16)-1");
+				expr.tag = ast::Expr::Tag::Ident;
 
-			expr.ident_beg = ident_strview.begin();
+				const strview ident_strview = t->data_strview();
 
-			expr.ident_len = static_cast<u16>(ident_strview.len());
+				if (ident_strview.len() > UINT16_MAX)
+					return error_invalid_syntax(s, ctx, t, "Length of ident somehow exceeds (2^16)-1");
 
-			expr.tag = ast::Expr::Tag::Ident;
+				expr.ident_beg = ident_strview.begin();
 
-			expecting_operator = true;
+				expr.ident_len = static_cast<u16>(ident_strview.len());
+			}
+			else
+			{
+				expr.tag = ast::Expr::Tag::Literal;
 
-			break;
-		}
-
-		case Token::Tag::LitString:
-		case Token::Tag::LitChar:
-		case Token::Tag::LitInt:
-		case Token::Tag::LitFloat: {
-
-			if (expecting_operator)
-				goto POP_REMAINING_OPS;
-
-			if (!expr_stk.push_back({}))
-				return error_out_of_memory(s, ctx);
-
-			ast::Expr& expr = expr_stk.last();
-
-			expr.tag = ast::Expr::Tag::Literal;
-
-			if (!alloc_and_parse(s, ctx, &expr.literal))
-				return false;
+				if (!alloc_and_parse(s, ctx, &expr.literal))
+					return false;
+			}
 
 			expecting_operator = true;
 
