@@ -433,8 +433,6 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 	u32 bracket_nesting = 0;
 
-	const Token* prev_paren_beg = nullptr;
-
 	const Token* const first_token = peek(s);
 
 	while (true)
@@ -546,8 +544,6 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 			}
 			else
 			{
-				prev_paren_beg = t;
-
 				++paren_nesting;
 
 				if (!op_stk.push_back({ ShuntingYardOp::Tag::ParenBeg }))
@@ -706,7 +702,7 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 POP_REMAINING_OPS:
 
 	if (paren_nesting != 0)
-		return error_invalid_syntax(s, ctx, prev_paren_beg, "Unmatched ParenBeg");
+		return error_invalid_syntax(s, ctx, first_token, "Unmatched ParenBeg");
 
 	if (bracket_nesting != 0)
 		return error_invalid_syntax(s, ctx, first_token, "Unmatched BracketBeg");
