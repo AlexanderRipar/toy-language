@@ -46,9 +46,10 @@ struct Token
 		SetShiftR,
 		UOpBitNot,	// Start of range relied on for unary operators. These must remain continuous and in the same order.
 		UOpLogNot,
-		UOpDeref,	// End of range relied on for unary operators.
-		Colon,
+		UOpDeref,
 		TripleDot,
+		Try,		// End of range relied on for unary operators.
+		Colon,
 		Semicolon,
 		Comma,
 		ArrowLeft,
@@ -75,7 +76,6 @@ struct Token
 		Do,
 		Break,
 		Finally,
-		Try,
 		Switch,
 		Case,
 		Return,
