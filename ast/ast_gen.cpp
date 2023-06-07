@@ -1195,12 +1195,10 @@ static bool parse(pstate& s, ast::Block& out, bool is_top_level = false) noexcep
 {
 	constexpr const char* const ctx = "Block";
 
-	if (const Token& t = next_if(s, Token::Tag::SquiggleBeg); t.tag == Token::Tag::INVALID && !is_top_level)
+	if (!is_top_level)
 	{
-		if (s.curr >= s.end)
-			return error_unexpected_end(s, ctx);
-		
-		return error_unexpected_token(s, ctx, peek(s), Token::Tag::SquiggleBeg);
+		if (expect(s, ctx, Token::Tag::SquiggleBeg).tag == Token::Tag::INVALID)
+			return false;
 	}
 
 	while (true)
