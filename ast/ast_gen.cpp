@@ -447,7 +447,7 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 	vec<ShuntingYardOp, 32> op_stk;
 
-	usz paren_nesting = 0;
+	u32 paren_nesting = 0;
 
 	u32 bracket_nesting = 0;
 
