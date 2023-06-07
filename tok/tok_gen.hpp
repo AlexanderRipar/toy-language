@@ -38,7 +38,7 @@ struct Token
 		Try,		// End of range relied on for unary operators.
 		Catch,
 		Index,
-		Set,
+		Set,		// Start of range relied on for set operators. These must remain continuous and in the same order.
 		SetAdd,
 		SetSub,
 		SetMul,
@@ -48,7 +48,7 @@ struct Token
 		SetBitOr,
 		SetBitXor,
 		SetShiftL,
-		SetShiftR,
+		SetShiftR,	// End of range relied on for set operators.
 		Colon,
 		Semicolon,
 		Comma,

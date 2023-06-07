@@ -1421,78 +1421,31 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 
 		return parse(s, catch_expr->catching_expr);
 	}
-
-	ast::BinaryOp::Op top_level_operator;
-
-	if (!allow_assignment)
-		return true;
-
-	switch (t.tag)
+	else if (allow_assignment && t.tag >= Token::Tag::Set && t.tag <= Token::Tag::SetShiftR)
 	{
-	case Token::Tag::Set:
-		top_level_operator = ast::BinaryOp::Op::Set;
-		break;
+		next(s, ctx);
 
-	case Token::Tag::SetAdd:
-		top_level_operator = ast::BinaryOp::Op::SetAdd;
-		break;
+		const ast::BinaryOp::Op set_operator = static_cast<ast::BinaryOp::Op>(static_cast<usz>(ast::BinaryOp::Op::Set) + static_cast<usz>(t.tag) - static_cast<usz>(Token::Tag::Set));
 
-	case Token::Tag::SetSub:
-		top_level_operator = ast::BinaryOp::Op::SetSub;
-		break;
+		ast::BinaryOp* top_level_op = nullptr;
 
-	case Token::Tag::SetMul:
-		top_level_operator = ast::BinaryOp::Op::SetMul;
-		break;
+		if (!alloc(s, ctx, &top_level_op))
+			return false;
 
-	case Token::Tag::SetDiv:
-		top_level_operator = ast::BinaryOp::Op::SetDiv;
-		break;
+		top_level_op->op = set_operator;
 
-	case Token::Tag::SetMod:
-		top_level_operator = ast::BinaryOp::Op::SetMod;
-		break;
+		top_level_op->lhs = out;
 
-	case Token::Tag::SetBitAnd:
-		top_level_operator = ast::BinaryOp::Op::SetBitAnd;
-		break;
+		out.tag = ast::Expr::Tag::BinaryOp;
 
-	case Token::Tag::SetBitOr:
-		top_level_operator = ast::BinaryOp::Op::SetBitOr;
-		break;
+		out.binary_op = top_level_op;
 
-	case Token::Tag::SetBitXor:
-		top_level_operator = ast::BinaryOp::Op::SetBitXor;
-		break;
-
-	case Token::Tag::SetShiftL:
-		top_level_operator = ast::BinaryOp::Op::SetShiftL;
-		break;
-
-	case Token::Tag::SetShiftR:
-		top_level_operator = ast::BinaryOp::Op::SetShiftR;
-		break;
-
-	default:
+		return parse(s, top_level_op->rhs);
+	}
+	else
+	{
 		return true;
 	}
-
-	next(s, ctx);
-
-	ast::BinaryOp* top_level_op = nullptr;
-
-	if (!alloc(s, ctx, &top_level_op))
-		return false;
-
-	top_level_op->op = top_level_operator;
-
-	top_level_op->lhs = out;
-
-	out.tag = ast::Expr::Tag::BinaryOp;
-
-	out.binary_op = top_level_op;
-
-	return parse(s, top_level_op->rhs);
 }
 
 static bool parse(pstate& s, ast::Definition& out) noexcept
