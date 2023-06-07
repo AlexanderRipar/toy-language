@@ -102,18 +102,14 @@ static const Token& expect(pstate& s, const char* ctx, Token::Tag expected) noex
 	return t;
 }
 
-static const Token& next_if(pstate& s, Token::Tag expected) noexcept
+static bool next_if(pstate& s, Token::Tag expected) noexcept
 {
 	const Token& t = peek(s);
 
 	if (t.tag == expected)
-	{
 		++s.curr;
 
-		return t;
-	}
-
-	return end_token;
+	return t.tag == expected;
 }
 
 
@@ -529,7 +525,7 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 				expr_stk.last().tag = ast::Expr::Tag::Call;
 
-				if (next_if(s, Token::Tag::ParenEnd).tag != Token::Tag::INVALID)
+				if (next_if(s, Token::Tag::ParenEnd))
 					break;
 
 				while (true)
@@ -1029,13 +1025,13 @@ static bool parse(pstate& s, ast::ForLoopSignature& out) noexcept
 			return false;
 	}
 
-	if (next_if(s, Token::Tag::Do).tag != Token::Tag::INVALID)
+	if (next_if(s, Token::Tag::Do))
 		return true;
 
 	if (!parse(s, out.opt_condition, false))
 		return false;
 
-	if (next_if(s, Token::Tag::Semicolon).tag != Token::Tag::INVALID)
+	if (next_if(s, Token::Tag::Semicolon))
 	{
 		if (!parse(s, out.opt_step))
 			return false;
@@ -1055,7 +1051,7 @@ static bool parse(pstate& s, ast::ForEachSignature& out) noexcept
 	else
 		out.loop_var = t.data_strview();
 
-	if (next_if(s, Token::Tag::Comma).tag != Token::Tag::INVALID)
+	if (next_if(s, Token::Tag::Comma))
 	{
 		if (const Token& t = expect(s, ctx, Token::Tag::Ident); t.tag == Token::Tag::INVALID)
 			return false;
@@ -1119,7 +1115,7 @@ static bool parse(pstate& s, ast::If& out) noexcept
 	if (!parse(s, out.body))
 		return false;
 
-	if (next_if(s, Token::Tag::Else).tag != Token::Tag::INVALID)
+	if (next_if(s, Token::Tag::Else))
 	{
 		if (!parse(s, out.opt_else_body))
 			return false;
@@ -1153,7 +1149,7 @@ static bool parse(pstate& s, ast::For& out) noexcept
 	if (!parse(s, out.body))
 		return false;
 
-	if (next_if(s, Token::Tag::Finally).tag != Token::Tag::INVALID)
+	if (next_if(s, Token::Tag::Finally))
 	{
 		if (!parse(s, out.opt_finally_body))
 			return false;
@@ -1251,15 +1247,15 @@ static bool parse(pstate& s, ast::Signature& out) noexcept
 		return error_invalid_syntax(s, ctx, t, "Expected Proc, Func or Trait");
 	}
 
-	if (const Token& t1 = next_if(s, Token::Tag::ParenBeg); t1.tag == Token::Tag::INVALID)
+	if (!next_if(s, Token::Tag::ParenBeg))
 	{
 		if (is_procish)
 			goto RETURN_TYPE;
 		
-		return error_invalid_syntax(s, ctx, t1, "Expected ParenBeg");
+		return error_invalid_syntax(s, ctx, peek(s), "Expected ParenBeg");
 	}
 
-	if (next_if(s, Token::Tag::ParenEnd).tag != Token::Tag::INVALID)
+	if (next_if(s, Token::Tag::ParenEnd))
 		goto RETURN_TYPE;
 
 	while (true)
@@ -1278,7 +1274,7 @@ RETURN_TYPE:
 	if (!is_procish)
 		return true;
 
-	if (next_if(s, Token::Tag::ArrowRight).tag != Token::Tag::INVALID)
+	if (next_if(s, Token::Tag::ArrowRight))
 	{
 		if (!parse(s, out.opt_return_type, false))
 			return false;
@@ -1496,7 +1492,7 @@ static bool parse(pstate& s, ast::Definition& out) noexcept
 			return false;
 	}
 
-	if (next_if(s, Token::Tag::Set).tag != Token::Tag::INVALID)
+	if (next_if(s, Token::Tag::Set))
 		return parse(s, out.opt_value, false);
 
 	if (out.opt_type.tag == ast::Expr::Tag::EMPTY)
