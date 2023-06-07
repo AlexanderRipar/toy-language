@@ -1,3 +1,5 @@
+a[1] = 0
+
 fixed_size_array :: [a][b]i32
 
 an_array :: *mut []i32 = get_ints()

@@ -577,7 +577,10 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 		case Token::Tag::ParenEnd: {
 
-			if (!expecting_operator || paren_nesting == 0)
+			if (!expecting_operator)
+				return error_invalid_syntax(s, ctx, t, "Expected Ident, Literal or Unary Operator");
+
+			if (paren_nesting == 0)
 				goto POP_REMAINING_OPS;
 
 			next(s, ctx);
