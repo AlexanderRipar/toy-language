@@ -248,11 +248,8 @@ static bool token_tag_to_shunting_yard_op(const Token::Tag tag, bool is_binary, 
 	{
 		static constexpr const ShuntingYardOp binary_ops[] {
 			{  4, true, ast::BinaryOp::Op::Add    },
-			{  4, true, ast::BinaryOp::Op::Sub    },
-			{  3, true, ast::BinaryOp::Op::Mul    },
 			{  3, true, ast::BinaryOp::Op::Div    },
 			{  3, true, ast::BinaryOp::Op::Mod    },
-			{  8, true, ast::BinaryOp::Op::BitAnd },
 			{ 10, true, ast::BinaryOp::Op::BitOr  },
 			{  9, true, ast::BinaryOp::Op::BitXor },
 			{  5, true, ast::BinaryOp::Op::ShiftL },
@@ -266,6 +263,9 @@ static bool token_tag_to_shunting_yard_op(const Token::Tag tag, bool is_binary, 
 			{  7, true, ast::BinaryOp::Op::CmpNe  },
 			{  7, true, ast::BinaryOp::Op::CmpEq  },
 			{  1, true, ast::BinaryOp::Op::Member },
+			{  4, true, ast::BinaryOp::Op::Sub    },
+			{  3, true, ast::BinaryOp::Op::Mul    },
+			{  8, true, ast::BinaryOp::Op::BitAnd },
 		};
 
 		const usz offset = static_cast<usz>(tag) - static_cast<usz>(Token::Tag::OpAdd);
@@ -277,46 +277,28 @@ static bool token_tag_to_shunting_yard_op(const Token::Tag tag, bool is_binary, 
 
 		return is_in_range;
 	}
-
-	switch (tag)
+	else
 	{
-	case Token::Tag::UOpBitNot:
-		out = {  2 , false, ast::UnaryOp::Op::BitNot };
-		break;
+		static constexpr ShuntingYardOp unary_ops[] {
+			{  2, false, ast::UnaryOp::Op::Neg          },
+			{  2, false, ast::UnaryOp::Op::TypePtr      },
+			{  2, false, ast::UnaryOp::Op::AddrOf       },
+			{  2, false, ast::UnaryOp::Op::BitNot       },
+			{  2, false, ast::UnaryOp::Op::LogNot       },
+			{  2, false, ast::UnaryOp::Op::Deref        },
+			{  2, false, ast::UnaryOp::Op::TypeVariadic },
+			{ 13, false, ast::UnaryOp::Op::Try          },
+		};
 
-	case Token::Tag::UOpLogNot:
-		out = {  2 , false, ast::UnaryOp::Op::LogNot };
-		break;
+		const usz offset = static_cast<usz>(tag) - static_cast<usz>(Token::Tag::OpSub);
 
-	case Token::Tag::UOpDeref:
-		out = {  2 , false, ast::UnaryOp::Op::Deref  };
-		break;
+		const bool is_in_range = offset < _countof(unary_ops);
 
-	case Token::Tag::OpBitAnd_Ref:
-		out = {  2 , false, ast::UnaryOp::Op::AddrOf };
-		break;
+		if (is_in_range)
+			out = unary_ops[offset];
 
-	case Token::Tag::OpSub:
-		out = {  2 , false, ast::UnaryOp::Op::Neg    };
-		break;
-
-	case Token::Tag::Try:
-		out = { 13 , false, ast::UnaryOp::Op::Try    };
-		break;
-
-	case Token::Tag::OpMul_Ptr:
-		out = { 2, false, ast::UnaryOp::Op::TypePtr };
-		break;
-
-	case Token::Tag::TripleDot:
-		out = { 2, false, ast::UnaryOp::Op::TypeVariadic };
-		break;
-
-	default:
-		return false;
+		return is_in_range;
 	}
-
-	return true;
 }
 
 static bool pop_shunting_yard_operator(pstate& s, vec<ShuntingYardOp, 32>& op_stk, vec<ast::Expr, 32>& expr_stk) noexcept

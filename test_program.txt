@@ -1,5 +1,7 @@
 a[1] = 0
 
+if !!(-a < ~b) then x() else -y()
+
 fixed_size_array :: [a][b]i32
 
 an_array :: *mut []i32 = get_ints()

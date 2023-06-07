@@ -13,11 +13,8 @@ struct Token
 		INVALID = 0,
 		Ident,
 		OpAdd,		// Start of range relied on for binary operators. These must remain continuous and in the same order.
-		OpSub,
-		OpMul_Ptr,
 		OpDiv,
 		OpMod,
-		OpBitAnd_Ref,
 		OpBitOr,
 		OpBitXor,
 		OpShiftL,
@@ -30,7 +27,15 @@ struct Token
 		OpCmpGe,
 		OpCmpNe,
 		OpCmpEq,
-		Dot,		// End of range relied on for binary operators.
+		Dot,
+		OpSub,		// Start of range relied on for unary operators. These must remain continuous and in the same order.
+		OpMul_Ptr,	// yes, these overlap :)
+		OpBitAnd_Ref,	// End of range relied on for binary operators.
+		UOpBitNot,
+		UOpLogNot,
+		UOpDeref,
+		TripleDot,
+		Try,		// End of range relied on for unary operators.
 		Catch,
 		Index,
 		Set,
@@ -44,11 +49,6 @@ struct Token
 		SetBitXor,
 		SetShiftL,
 		SetShiftR,
-		UOpBitNot,	// Start of range relied on for unary operators. These must remain continuous and in the same order.
-		UOpLogNot,
-		UOpDeref,
-		TripleDot,
-		Try,		// End of range relied on for unary operators.
 		Colon,
 		Semicolon,
 		Comma,
