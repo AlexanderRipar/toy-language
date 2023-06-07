@@ -272,7 +272,7 @@ static bool token_tag_to_shunting_yard_op(const Token::Tag tag, bool is_binary, 
 
 		const bool is_in_range = offset < _countof(binary_ops);
 
-		if (offset < _countof(binary_ops))
+		if (is_in_range)
 			out = binary_ops[offset];
 
 		return is_in_range;
