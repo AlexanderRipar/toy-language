@@ -457,12 +457,6 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 	while (true)
 	{
-		if (next_if(s, Token::Tag::Mut) != nullptr)
-		{
-			if (!op_stk.push_back({ ShuntingYardOp::Tag::Mut, 2, false }))
-				return error_out_of_memory(s, ctx);
-		}
-
 		const Token* t = peek(s);
 
 		if (t == nullptr)
@@ -475,6 +469,16 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 		switch (t->tag)
 		{
+		case Token::Tag::Mut: {
+			
+			next(s, ctx);
+
+			if (!op_stk.push_back({ ShuntingYardOp::Tag::Mut, 2, false }))
+				return error_out_of_memory(s, ctx);
+
+			break;
+		}
+
 		case Token::Tag::Ident: {
 
 			if (expecting_operator)
