@@ -25,7 +25,7 @@ static bool error_out_of_memory(pstate& s, const char* ctx) noexcept
 	return false;
 }
 
-static bool error_invalid_syntax(pstate& s, const char* ctx, const Token* curr, const char* msg) noexcept
+static bool error_invalid_syntax(pstate& s, const char* ctx, const Token& curr, const char* msg) noexcept
 {
 	s.rst.tag = ast::Result::Tag::InvalidSyntax;
 
@@ -33,12 +33,12 @@ static bool error_invalid_syntax(pstate& s, const char* ctx, const Token* curr, 
 
 	s.rst.message = msg;
 
-	s.rst.problematic_token = curr;
+	s.rst.problematic_token = &curr;
 
 	return false;
 }
 
-static bool error_unexpected_token(pstate& s, const char* ctx, const Token* curr, Token::Tag expected) noexcept
+static bool error_unexpected_token(pstate& s, const char* ctx, const Token& curr, Token::Tag expected) noexcept
 {
 	s.rst.tag = ast::Result::Tag::UnexpectedToken;
 
@@ -46,7 +46,7 @@ static bool error_unexpected_token(pstate& s, const char* ctx, const Token* curr
 
 	s.rst.expected_token = expected;
 
-	s.rst.problematic_token = curr;
+	s.rst.problematic_token = &curr;
 
 	return false;
 }
@@ -63,54 +63,57 @@ static bool error_unexpected_end(pstate& s, const char* ctx) noexcept
 }
 
 
+static const Token end_token{ Token::Tag::INVALID, 0, {} };
 
-static const Token* peek(const pstate& s, usz offset = 0) noexcept
+static const Token& peek(const pstate& s, usz offset = 0) noexcept
 {
 	if (s.curr + offset >= s.end)
-		return nullptr;
+		return end_token;
 
-	return s.curr + offset;
+	return s.curr[offset];
 }
 
-static const Token* next(pstate& s, const char* ctx) noexcept
+static const Token& next(pstate& s, const char* ctx) noexcept
 {
 	if (s.curr >= s.end)
 	{
 		error_unexpected_end(s, ctx);
 
-		return nullptr;
+		return end_token;
 	}
 
-	return s.curr++;
+	return *s.curr++;
 }
 
-static const Token* expect(pstate& s, const char* ctx, Token::Tag expected) noexcept
+static const Token& expect(pstate& s, const char* ctx, Token::Tag expected) noexcept
 {
-	const Token* t = next(s, ctx);
+	const Token& t = next(s, ctx);
 
-	if (t != nullptr)
+	if (t.tag != expected)
 	{
-		if (t->tag != expected)
-			error_unexpected_token(s, ctx, t, expected);
+		if (t.tag == Token::Tag::INVALID)
+			error_unexpected_end(s, ctx);
 		else
-			return t;
+			error_unexpected_token(s, ctx, t, expected);
+
+		return end_token;
 	}
 
-	return nullptr;
+	return t;
 }
 
-static const Token* next_if(pstate& s, Token::Tag expected) noexcept
+static const Token& next_if(pstate& s, Token::Tag expected) noexcept
 {
-	const Token* t = peek(s);
+	const Token& t = peek(s);
 
-	if (t != nullptr && t->tag == expected)
+	if (t.tag == expected)
 	{
 		++s.curr;
 
 		return t;
 	}
 
-	return nullptr;
+	return end_token;
 }
 
 
@@ -374,13 +377,13 @@ static bool get_bracket_op(pstate& s, u32& bracket_nesting, ShuntingYardOp& out)
 {
 	constexpr const char* const ctx = "Expr";
 
-	const Token* t = peek(s);
+	const Token& t = peek(s);
 
-	if (t == nullptr)
+	switch (t.tag)
+	{
+	case Token::Tag::INVALID:
 		return error_unexpected_end(s, ctx);
 
-	switch (t->tag)
-	{
 	case Token::Tag::BracketEnd:
 		next(s, ctx);
 		
@@ -390,15 +393,15 @@ static bool get_bracket_op(pstate& s, u32& bracket_nesting, ShuntingYardOp& out)
 
 	case Token::Tag::OpMul_Ptr:
 	case Token::Tag::TripleDot:
-		if (const Token* t1 = peek(s, 1); t1 != nullptr && t1->tag == Token::Tag::BracketEnd)
+		if (const Token& t1 = peek(s, 1); t1.tag == Token::Tag::BracketEnd)
 		{
 			next(s, ctx);
 
 			next(s, ctx);
 
-			if (t->tag == Token::Tag::OpMul_Ptr)
+			if (t.tag == Token::Tag::OpMul_Ptr)
 				out = { 2, false, ast::UnaryOp::Op::TypeMultiptr };
-			else if (t->tag == Token::Tag::TripleDot)
+			else if (t.tag == Token::Tag::TripleDot)
 				out = { 2, false, ast::UnaryOp::Op::TypeTailArray };
 			else
 				assert(false);
@@ -433,22 +436,22 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 	u32 bracket_nesting = 0;
 
-	const Token* const first_token = peek(s);
+	const Token& first_token = peek(s);
 
 	while (true)
 	{
-		const Token* t = peek(s);
+		const Token& t = peek(s);
 
-		if (t == nullptr)
+		switch (t.tag)
 		{
+		case Token::Tag::INVALID: {
+
 			if (!expecting_operator)
 				return error_unexpected_end(s, ctx);
-			
+
 			goto POP_REMAINING_OPS;
 		}
 
-		switch (t->tag)
-		{
 		case Token::Tag::Mut: {
 			
 			next(s, ctx);
@@ -473,13 +476,13 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 			ast::Expr& expr = expr_stk.last();
 
-			if (t->tag == Token::Tag::Ident)
+			if (t.tag == Token::Tag::Ident)
 			{
 				next(s, ctx);
 
 				expr.tag = ast::Expr::Tag::Ident;
 
-				const strview ident_strview = t->data_strview();
+				const strview ident_strview = t.data_strview();
 
 				if (ident_strview.len() > UINT16_MAX)
 					return error_invalid_syntax(s, ctx, t, "Length of ident somehow exceeds (2^16)-1");
@@ -526,7 +529,7 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 				expr_stk.last().tag = ast::Expr::Tag::Call;
 
-				if (next_if(s, Token::Tag::ParenEnd) != nullptr)
+				if (next_if(s, Token::Tag::ParenEnd).tag != Token::Tag::INVALID)
 					break;
 
 				while (true)
@@ -534,11 +537,9 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 					if (!alloc_and_parse(s, ctx, call->arguments))
 						return false;
 
-					if (const Token* t1 = next(s, ctx); t1 == nullptr)
-						return false;
-					else if (t1->tag == Token::Tag::ParenEnd)
+					if (const Token& t1 = next(s, ctx); t1.tag == Token::Tag::ParenEnd)
 						break;
-					else if (t1->tag != Token::Tag::Comma)
+					else if (t1.tag != Token::Tag::Comma)
 						return error_invalid_syntax(s, ctx, t1, "Expected ParenEnd or Comma");
 				}
 			}
@@ -584,7 +585,7 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 			if (expecting_operator)
 			{
-				if (const Token* t1 = peek(s, 1); t1 != nullptr && (t1->tag == Token::Tag::BracketEnd || t1->tag == Token::Tag::OpMul_Ptr || t1->tag == Token::Tag::TripleDot))
+				if (const Token& t1 = peek(s, 1); t1.tag == Token::Tag::BracketEnd || t1.tag == Token::Tag::OpMul_Ptr || t1.tag == Token::Tag::TripleDot)
 					goto POP_REMAINING_OPS;
 
 				next(s, ctx);
@@ -613,7 +614,7 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 				if (!parse(s, index_op->rhs, false))
 					return false;
 
-				if (expect(s, ctx, Token::Tag::BracketEnd) == nullptr)
+				if (expect(s, ctx, Token::Tag::BracketEnd).tag == Token::Tag::INVALID)
 					return false;
 			}
 			else
@@ -668,7 +669,7 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 			ShuntingYardOp op{};
 
-			if (!token_tag_to_shunting_yard_op(t->tag, expecting_operator, op))
+			if (!token_tag_to_shunting_yard_op(t.tag, expecting_operator, op))
 			{
 				if (expecting_operator)
 					goto POP_REMAINING_OPS;
@@ -727,12 +728,12 @@ static bool parse(pstate& s, ast::FloatLiteral& out) noexcept
 {
 	static constexpr const char ctx[] = "FloatLiteral";
 
-	const Token* t = expect(s, ctx, Token::Tag::LitFloat);
+	const Token& t = expect(s, ctx, Token::Tag::LitFloat);
 
-	if (t == nullptr)
+	if (t.tag == Token::Tag::INVALID)
 		return false;
 
-	out.value = atof(t->data_strview().begin());
+	out.value = atof(t.data_strview().begin());
 
 	return true;
 }
@@ -741,12 +742,12 @@ static bool parse(pstate& s, ast::IntegerLiteral& out) noexcept
 {
 	static constexpr const char ctx[] = "IntegerLiteral";
 
-	const Token* t = expect(s, ctx, Token::Tag::LitInt);
+	const Token& t = expect(s, ctx, Token::Tag::LitInt);
 
-	if (t == nullptr)
+	if (t.tag == Token::Tag::INVALID)
 		return false;
 
-	const strview str = t->data_strview();
+	const strview str = t.data_strview();
 
 	usz value = 0;
 
@@ -807,12 +808,12 @@ static bool parse(pstate& s, ast::CharLiteral& out) noexcept
 {
 	static constexpr const char ctx[] = "CharLiteral";
 
-	const Token* t = expect(s, ctx, Token::Tag::LitChar);
+	const Token& t = expect(s, ctx, Token::Tag::LitChar);
 
-	if (t == nullptr)
+	if (t.tag == Token::Tag::INVALID)
 		return false;
 
-	const strview str = t->data_strview();
+	const strview str = t.data_strview();
 
 	if (str.len() == 0)
 		return error_invalid_syntax(s, ctx, t, "Empty character literal");
@@ -939,12 +940,12 @@ static bool parse(pstate& s, ast::StringLiteral& out) noexcept
 {
 	static constexpr const char ctx[] = "StringLiteral";
 
-	const Token* t = expect(s, ctx, Token::Tag::LitString);
+	const Token& t = expect(s, ctx, Token::Tag::LitString);
 
-	if (t == nullptr)
+	if (t.tag == Token::Tag::INVALID)
 		return false;
 
-	const strview str = t->data_strview();
+	const strview str = t.data_strview();
 
 	for (const char* c = str.begin(); c != str.end(); ++c)
 	{
@@ -987,13 +988,13 @@ static bool parse(pstate& s, ast::Literal& out) noexcept
 {
 	constexpr const char* const ctx = "Literal";
 
-	const Token* t = peek(s);
+	const Token& t = peek(s);
 
-	if (t == nullptr)
+	switch (t.tag)
+	{
+	case Token::Tag::INVALID:
 		return error_unexpected_end(s, ctx);
 
-	switch (t->tag)
-	{
 	case Token::Tag::LitString:
 		out.tag = ast::Literal::Tag::StringLiteral;
 		return parse(s, out.string_literal);
@@ -1019,22 +1020,22 @@ static bool parse(pstate& s, ast::ForLoopSignature& out) noexcept
 {
 	constexpr const char* const ctx = "ForLoopSignature";
 
-	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Colon || t->tag == Token::Tag::DoubleColon))
+	if (const Token& t = peek(s, 1); t.tag == Token::Tag::Colon || t.tag == Token::Tag::DoubleColon)
 	{
 		if (!alloc_and_parse(s, ctx, &out.opt_init))
 			return false;
 
-		if (expect(s, ctx, Token::Tag::Semicolon) == nullptr)
+		if (expect(s, ctx, Token::Tag::Semicolon).tag == Token::Tag::INVALID)
 			return false;
 	}
 
-	if (next_if(s, Token::Tag::Do) != nullptr)
+	if (next_if(s, Token::Tag::Do).tag != Token::Tag::INVALID)
 		return true;
 
 	if (!parse(s, out.opt_condition, false))
 		return false;
 
-	if (next_if(s, Token::Tag::Semicolon) != nullptr)
+	if (next_if(s, Token::Tag::Semicolon).tag != Token::Tag::INVALID)
 	{
 		if (!parse(s, out.opt_step))
 			return false;
@@ -1049,20 +1050,20 @@ static bool parse(pstate& s, ast::ForEachSignature& out) noexcept
 {
 	constexpr const char* const ctx = "ForEachSignature";
 
-	if (const Token* t = expect(s, ctx, Token::Tag::Ident); t == nullptr)
+	if (const Token& t = expect(s, ctx, Token::Tag::Ident); t.tag == Token::Tag::INVALID)
 		return false;
 	else
-		out.loop_var = t->data_strview();
+		out.loop_var = t.data_strview();
 
-	if (next_if(s, Token::Tag::Comma) != nullptr)
+	if (next_if(s, Token::Tag::Comma).tag != Token::Tag::INVALID)
 	{
-		if (const Token* t = expect(s, ctx, Token::Tag::Ident); t == nullptr)
+		if (const Token& t = expect(s, ctx, Token::Tag::Ident); t.tag == Token::Tag::INVALID)
 			return false;
 		else
-			out.opt_index_var = t->data_strview();
+			out.opt_index_var = t.data_strview();
 	}
 
-	if (expect(s, ctx, Token::Tag::ArrowLeft) == nullptr)
+	if (expect(s, ctx, Token::Tag::ArrowLeft).tag == Token::Tag::INVALID)
 		return false;
 
 	if (!parse(s, out.looped_over, false))
@@ -1077,7 +1078,7 @@ static bool parse(pstate& s, ast::Case& out) noexcept
 {
 	constexpr const char* const ctx = "Case";
 
-	if (expect(s, ctx, Token::Tag::Case) == nullptr)
+	if (expect(s, ctx, Token::Tag::Case).tag == Token::Tag::INVALID)
 		return false;
 
 	while (true)
@@ -1085,11 +1086,9 @@ static bool parse(pstate& s, ast::Case& out) noexcept
 		if (!alloc_and_parse(s, ctx, out.labels, false))
 			return false;
 		
-		if (const Token* t = next(s, ctx); t == nullptr)
-			return false;
-		else if (t->tag == Token::Tag::FatArrowRight)
+		if (const Token& t = next(s, ctx); t.tag == Token::Tag::FatArrowRight)
 			break;
-		else if (t->tag != Token::Tag::Comma)
+		else if (t.tag != Token::Tag::Comma)
 			return error_invalid_syntax(s, ctx, t, "Expected FatArrowRight or Comma");
 	}
 
@@ -1100,15 +1099,15 @@ static bool parse(pstate& s, ast::If& out) noexcept
 {
 	constexpr const char* const ctx = "If";
 
-	if (expect(s, ctx, Token::Tag::If) == nullptr)
+	if (expect(s, ctx, Token::Tag::If).tag == Token::Tag::INVALID)
 		return false;
 
-	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Colon || t->tag == Token::Tag::DoubleColon))
+	if (const Token& t = peek(s, 1); t.tag == Token::Tag::Colon || t.tag == Token::Tag::DoubleColon)
 	{
 		if (!alloc_and_parse(s, ctx, &out.opt_init))
 			return false;
 
-		if (expect(s, ctx, Token::Tag::Semicolon) == nullptr)
+		if (expect(s, ctx, Token::Tag::Semicolon).tag == Token::Tag::INVALID)
 			return false;
 	}
 
@@ -1120,7 +1119,7 @@ static bool parse(pstate& s, ast::If& out) noexcept
 	if (!parse(s, out.body))
 		return false;
 
-	if (next_if(s, Token::Tag::Else) != nullptr)
+	if (next_if(s, Token::Tag::Else).tag != Token::Tag::INVALID)
 	{
 		if (!parse(s, out.opt_else_body))
 			return false;
@@ -1133,10 +1132,10 @@ static bool parse(pstate& s, ast::For& out) noexcept
 {
 	constexpr const char* const ctx = "For";
 
-	if (expect(s, ctx, Token::Tag::For) == nullptr)
+	if (expect(s, ctx, Token::Tag::For).tag == Token::Tag::INVALID)
 		return false;
 
-	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Comma || t->tag == Token::Tag::ArrowLeft))
+	if (const Token& t = peek(s, 1); t.tag == Token::Tag::Comma || t.tag == Token::Tag::ArrowLeft)
 	{
 		if (!parse(s, out.for_each_signature))
 			return false;
@@ -1154,7 +1153,7 @@ static bool parse(pstate& s, ast::For& out) noexcept
 	if (!parse(s, out.body))
 		return false;
 
-	if (next_if(s, Token::Tag::Finally) != nullptr)
+	if (next_if(s, Token::Tag::Finally).tag != Token::Tag::INVALID)
 	{
 		if (!parse(s, out.opt_finally_body))
 			return false;
@@ -1167,15 +1166,15 @@ static bool parse(pstate& s, ast::Switch& out) noexcept
 {
 	constexpr const char* const ctx = "Switch";
 
-	if (expect(s, ctx, Token::Tag::Switch) == nullptr)
+	if (expect(s, ctx, Token::Tag::Switch).tag == Token::Tag::INVALID)
 		return false;
 
-	if (const Token* t = peek(s, 1); t != nullptr && (t->tag == Token::Tag::Colon || t->tag == Token::Tag::DoubleColon))
+	if (const Token& t = peek(s, 1); t.tag == Token::Tag::Colon || t.tag == Token::Tag::DoubleColon)
 	{
 		if (!alloc_and_parse(s, ctx, &out.opt_init))
 			return false;
 
-		if (expect(s, ctx, Token::Tag::Semicolon) == nullptr)
+		if (expect(s, ctx, Token::Tag::Semicolon).tag == Token::Tag::INVALID)
 			return false;
 	}
 
@@ -1187,7 +1186,7 @@ static bool parse(pstate& s, ast::Switch& out) noexcept
 		if (!alloc_and_parse(s, ctx, out.cases))
 			return false;
 
-		if (const Token* t = peek(s); t == nullptr || t->tag != Token::Tag::Case)
+		if (const Token& t = peek(s); t.tag != Token::Tag::Case)
 			return true;
 	}
 }
@@ -1196,24 +1195,24 @@ static bool parse(pstate& s, ast::Block& out, bool is_top_level = false) noexcep
 {
 	constexpr const char* const ctx = "Block";
 
-	if (const Token* t = next_if(s, Token::Tag::SquiggleBeg); t == nullptr && !is_top_level)
+	if (const Token& t = next_if(s, Token::Tag::SquiggleBeg); t.tag == Token::Tag::INVALID && !is_top_level)
 	{
-		if (t == nullptr)
+		if (s.curr >= s.end)
 			return error_unexpected_end(s, ctx);
 		
-		return error_unexpected_token(s, ctx, t, Token::Tag::SquiggleBeg);
+		return error_unexpected_token(s, ctx, peek(s), Token::Tag::SquiggleBeg);
 	}
 
 	while (true)
 	{
-		if (const Token* t = peek(s); t == nullptr)
+		if (const Token& t = peek(s); t.tag == Token::Tag::INVALID)
 		{
 			if (is_top_level)
 				return true;
 
 			return error_unexpected_end(s, ctx);
 		}
-		else if (t->tag == Token::Tag::SquiggleEnd)
+		else if (t.tag == Token::Tag::SquiggleEnd)
 		{
 			if (is_top_level)
 				return error_invalid_syntax(s, ctx, t, "SquiggleEnd at end of top level Block");
@@ -1232,15 +1231,15 @@ static bool parse(pstate& s, ast::Signature& out) noexcept
 {
 	constexpr const char* const ctx = "ProcSignature";
 
-	const Token* t = next(s, ctx);
+	const Token& t = next(s, ctx);
 
 	bool is_procish;
 
-	if (t == nullptr)
+	switch (t.tag)
+	{
+	case Token::Tag::INVALID:
 		return false;
 
-	switch (t->tag)
-	{
 	case Token::Tag::Proc:
 	case Token::Tag::Func:
 		is_procish = true;
@@ -1254,7 +1253,7 @@ static bool parse(pstate& s, ast::Signature& out) noexcept
 		return error_invalid_syntax(s, ctx, t, "Expected Proc, Func or Trait");
 	}
 
-	if (const Token* t1 = next_if(s, Token::Tag::ParenBeg); t1 == nullptr)
+	if (const Token& t1 = next_if(s, Token::Tag::ParenBeg); t1.tag == Token::Tag::INVALID)
 	{
 		if (is_procish)
 			goto RETURN_TYPE;
@@ -1262,7 +1261,7 @@ static bool parse(pstate& s, ast::Signature& out) noexcept
 		return error_invalid_syntax(s, ctx, t1, "Expected ParenBeg");
 	}
 
-	if (next_if(s, Token::Tag::ParenEnd) != nullptr)
+	if (next_if(s, Token::Tag::ParenEnd).tag != Token::Tag::INVALID)
 		goto RETURN_TYPE;
 
 	while (true)
@@ -1270,11 +1269,9 @@ static bool parse(pstate& s, ast::Signature& out) noexcept
 		if (!alloc_and_parse(s, ctx, out.parameters))
 			return false;
 
-		if (const Token* t1 = next(s, ctx); t1 == nullptr)
-			return error_unexpected_end(s, ctx);
-		else if (t1->tag == Token::Tag::ParenEnd)
+		if (const Token& t1 = next(s, ctx); t1.tag == Token::Tag::ParenEnd)
 			break;
-		else if (t1->tag != Token::Tag::Comma)
+		else if (t1.tag != Token::Tag::Comma)
 			return error_invalid_syntax(s, ctx, t1, "Expected ParenEnd or Comma");
 	}
 
@@ -1283,7 +1280,7 @@ RETURN_TYPE:
 	if (!is_procish)
 		return true;
 
-	if (next_if(s, Token::Tag::ArrowRight) != nullptr)
+	if (next_if(s, Token::Tag::ArrowRight).tag != Token::Tag::INVALID)
 	{
 		if (!parse(s, out.opt_return_type, false))
 			return false;
@@ -1296,7 +1293,7 @@ static bool parse(pstate& s, ast::Impl& out) noexcept
 {
 	constexpr const char* const ctx = "Impl";
 
-	if (expect(s, ctx, Token::Tag::Impl) == nullptr)
+	if (expect(s, ctx, Token::Tag::Impl).tag == Token::Tag::INVALID)
 		return false;
 
 	if (!parse(s, out.bound_trait))
@@ -1309,13 +1306,11 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 {
 	constexpr const char* const ctx = "Expr";
 
-	const Token* t = peek(s);
-
-	if (t == nullptr)
+	switch (peek(s).tag)
+	{
+	case Token::Tag::INVALID:
 		return error_unexpected_end(s, ctx);
 
-	switch (t->tag)
-	{
 	case Token::Tag::Proc:
 		out.tag = ast::Expr::Tag::ProcSignature;
 
@@ -1386,7 +1381,7 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 		return true; // Nothing to parse
 
 	default:
-		if (const Token* t1 = peek(s, 1); t1 == nullptr || (t1->tag != Token::Tag::Colon && t1->tag != Token::Tag::DoubleColon))
+		if (const Token& t = peek(s, 1); t.tag != Token::Tag::Colon && t.tag != Token::Tag::DoubleColon)
 			break;
 
 		out.tag = ast::Expr::Tag::Definition;
@@ -1397,12 +1392,9 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 	if (!parse_simple_expr(s, out))
 		return false;
 
-	t = peek(s);
+	const Token& t = peek(s);
 
-	if (t == nullptr)
-		return true;
-
-	if (t->tag == Token::Tag::Catch)
+	if (t.tag == Token::Tag::Catch)
 	{
 		next(s, ctx);
 
@@ -1417,12 +1409,12 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 
 		out.catch_expr = catch_expr;
 
-		if (const Token* t1 = peek(s, 1); t1 != nullptr && t1->tag == Token::Tag::ArrowRight)
+		if (peek(s, 1).tag == Token::Tag::ArrowRight)
 		{
-			if (const Token* ident_tok = expect(s, ctx, Token::Tag::Ident); ident_tok == nullptr)
+			if (const Token& ident_tok = expect(s, ctx, Token::Tag::Ident); ident_tok.tag == Token::Tag::INVALID)
 				return false;
 			else
-				catch_expr->opt_caught_ident = ident_tok->data_strview();
+				catch_expr->opt_caught_ident = ident_tok.data_strview();
 
 			next(s, ctx);
 		}
@@ -1435,7 +1427,7 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 	if (!allow_assignment)
 		return true;
 
-	switch (t->tag)
+	switch (t.tag)
 	{
 	case Token::Tag::Set:
 		top_level_operator = ast::BinaryOp::Op::Set;
@@ -1507,28 +1499,28 @@ static bool parse(pstate& s, ast::Definition& out) noexcept
 {
 	constexpr const char* const ctx = "Definition";
 
-	if (const Token* t = expect(s, ctx, Token::Tag::Ident); t == nullptr)
+	if (const Token& t = expect(s, ctx, Token::Tag::Ident); t.tag == Token::Tag::INVALID)
 		return false;
 	else
-		out.ident = t->data_strview();
+		out.ident = t.data_strview();
 
-	if (const Token* t = next(s, ctx); t == nullptr)
-		return false;
-	else if (t->tag == Token::Tag::DoubleColon)
+	if (const Token& t = next(s, ctx); t.tag == Token::Tag::DoubleColon)
 		out.is_comptime = true;
-	else if (t->tag != Token::Tag::Colon)
+	else if (t.tag != Token::Tag::Colon)
 		return error_invalid_syntax(s, ctx, t, "Expected Colon or DoubleColon");
 
-	for (const Token* t = peek(s); t != nullptr; t = peek(s))
+	while (true)
 	{
-		if (t->tag == Token::Tag::Pub)
+		const Token& t = peek(s);
+
+		if (t.tag == Token::Tag::Pub)
 		{
 			if (out.is_pub)
 				return error_invalid_syntax(s, ctx, t, "Pub specified more than once");
 
 			out.is_pub = true;
 		}
-		else if (t->tag == Token::Tag::Global)
+		else if (t.tag == Token::Tag::Global)
 		{
 			if (out.is_global)
 				return error_invalid_syntax(s, ctx, t, "Global specified more than once");
@@ -1543,17 +1535,17 @@ static bool parse(pstate& s, ast::Definition& out) noexcept
 		next(s, ctx);
 	}
 
-	if (const Token* t = peek(s); t == nullptr)
+	if (const Token& t = peek(s); t.tag == Token::Tag::INVALID)
 	{
 		return error_unexpected_end(s, ctx);
 	}
-	else if (t->tag != Token::Tag::Set)
+	else if (t.tag != Token::Tag::Set)
 	{
 		if (!parse(s, out.opt_type, false))
 			return false;
 	}
 
-	if (next_if(s, Token::Tag::Set))
+	if (next_if(s, Token::Tag::Set).tag != Token::Tag::INVALID)
 		return parse(s, out.opt_value, false);
 
 	if (out.opt_type.tag == ast::Expr::Tag::EMPTY)
