@@ -530,7 +530,7 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 
 				if (next_if(s, Token::Tag::ParenEnd) != nullptr)
 					break;
-					
+
 				while (true)
 				{
 					if (!alloc_and_parse(s, ctx, call->arguments))
@@ -547,7 +547,7 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 			else
 			{
 				prev_paren_beg = t;
-				
+
 				++paren_nesting;
 
 				if (!op_stk.push_back({ ShuntingYardOp::Tag::ParenBeg }))
