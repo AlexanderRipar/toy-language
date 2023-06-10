@@ -89,7 +89,6 @@ struct Token
 		Mut,
 		Pub,
 		Global,
-		Undefined,
 	} tag;
 
 	u32 line_number;
