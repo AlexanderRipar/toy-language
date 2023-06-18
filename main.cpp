@@ -1,54 +1,10 @@
 #include "tok/tok_gen.hpp"
 #include "ast/ast_gen.hpp"
 #include "ast/ast_fmt.hpp"
+#include "util/file.hpp"
 
 #include <cassert>
 #include <cstdio>
-#include <Windows.h>
-
-u32 get_file_contents(const char* filename, vec<char, 0>& out_content) noexcept
-{
-	HANDLE h = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-
-	if (h == INVALID_HANDLE_VALUE)
-		goto ERROR_LABEL;
-
-	LARGE_INTEGER size;
-
-	if (!GetFileSizeEx(h, &size))
-		goto ERROR_LABEL;
-
-	if (!out_content.reserve(size.QuadPart))
-		goto ERROR_LABEL;
-
-	out_content.set_size(size.QuadPart);
-
-	usz read_so_far = 0;
-
-	while (size.QuadPart != 0)
-	{
-		DWORD bytes_read;
-
-		const DWORD to_read = static_cast<DWORD>(size.QuadPart > INT_MAX ? INT_MAX : size.QuadPart);
-
-		if (!ReadFile(h, out_content.begin() + read_so_far, to_read, &bytes_read, nullptr))
-			goto ERROR_LABEL;
-
-		size.QuadPart -= to_read;
-	}
-
-	CloseHandle(h);
-
-	return 0;
-
-ERROR_LABEL:
-
-	CloseHandle(h);
-
-	out_content.clear();
-
-	return GetLastError();
-}
 
 static strview filename_from_filepath(const char* filepath) noexcept
 {
@@ -77,18 +33,43 @@ int main(int32_t argc, const char** argv) noexcept
 		return 2;
 	}
 
-	vec<char, 0> file;
+	File file;
 
-	if (u32 rst = get_file_contents(argv[1], file); rst != 0)
+	if (!open_file(argv[1], File::Access::Read, File::Create::Normal, File::Create::Fail, file))
 	{
-		fprintf(stderr, "ERROR: Could not open file %s: %d\n", argv[1], rst);
+		fprintf(stderr, "ERROR: Could not open file %s\n", argv[1]);
 
 		return 1;
 	}
-	
+
+	usz filesize;
+
+	if (!get_file_size(file, filesize))
+	{
+		fprintf(stderr, "ERROR: Could not determine size of file %s\n", argv[1]);
+
+		return 1;
+	}
+
+	char* file_content = static_cast<char*>(malloc(filesize));
+
+	if (file_content == nullptr)
+	{
+		fprintf(stderr, "ERROR: malloc failed\n");
+
+		return 1;
+	}
+
+	if (!read_file(file, file_content, static_cast<u32>(filesize), nullptr))
+	{
+		fprintf(stderr, "ERROR: Could not read from file %s\n", argv[1]);
+
+		return 1;
+	}
+
 	fprintf(stderr, "Tokenizing...\n\n");
 
-	vec<Token> tokens = tokenize(strview(file.data(), file.size()), false);
+	vec<Token> tokens = tokenize(strview(file_content, filesize), false);
 
 	// for (const Token& t : tokens)
 	// {
