@@ -71,15 +71,6 @@ int main(int32_t argc, const char** argv) noexcept
 
 	vec<Token> tokens = tokenize(strview(file_content, filesize), false);
 
-	// for (const Token& t : tokens)
-	// {
-	// 	strview data = t.data_strview();
-	// 
-	// 	strview type = t.type_strview();
-	//
-	// 	fprintf(stderr, "ln %d %.*s \"%.*s\"\n", t.line_number, static_cast<i32>(type.len()), type.begin(), static_cast<i32>(data.len()), data.begin());
-	// }
-
 	const strview filename = filename_from_filepath(argv[1]);
 
 	ast::FileModule file_module{};
