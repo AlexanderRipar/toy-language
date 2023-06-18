@@ -14,6 +14,7 @@ add_executable(compilator main.cpp
 	util/strview.hpp
 	util/vec.hpp
 	util/str.hpp
+	util/minimal_os.hpp
 )
 
 target_compile_features(compilator PRIVATE cxx_std_17)
