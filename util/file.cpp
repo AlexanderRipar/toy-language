@@ -157,7 +157,8 @@ bool read_file(File file, void* buf, u32 buf_bytes, u32* out_bytes_read) noexcep
 	if (ReadFile(reinterpret_cast<HANDLE>(file.m_data), buf, buf_bytes, &bytes_read, nullptr) == 0)
 		return false;
 
-	*out_bytes_read = bytes_read;
+	if (out_bytes_read != nullptr)
+		*out_bytes_read = bytes_read;
 
 	return true;
 }
