@@ -55,7 +55,7 @@ namespace ast
 
 	struct Literal
 	{
-		enum class Tag
+		enum class Tag : u8
 		{
 			EMPTY = 0,
 			IntegerLiteral,
@@ -80,7 +80,7 @@ namespace ast
 
 	struct Expr
 	{
-		enum class Tag
+		enum class Tag : u8
 		{
 			EMPTY = 0,
 			Ident,
@@ -293,7 +293,7 @@ namespace ast
 
 	struct For
 	{
-		enum class Tag
+		enum class Tag : u8
 		{
 			EMPTY = 0,
 			ForEachSignature,
