@@ -237,6 +237,9 @@ static void close_elem(FmtState& s) noexcept
 	}
 
 	s.stk.pop();
+
+	if (s.stk.size() == 0)
+		fprintf(OUT_FILE, "\n");
 }
 
 
