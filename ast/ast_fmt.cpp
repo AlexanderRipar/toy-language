@@ -295,12 +295,12 @@ static void tree_print(FmtState& s, const ast::ForEachSignature& node) noexcept
 	start_elem(s, NodeType::Struct, "ForEachSignature");
 
 	start_elem(s, NodeType::Member, "loop_var");
-	start_elem(s, NodeType::Value, node.loop_var);
+	start_elem(s, NodeType::Value, node.loop_var.to_strview());
 
 	if (node.opt_index_var.begin() != nullptr)
 	{
 		start_elem(s, NodeType::Member, "index_var");
-		start_elem(s, NodeType::Value, node.opt_index_var);
+		start_elem(s, NodeType::Value, node.opt_index_var.to_strview());
 	}
 
 	start_elem(s, NodeType::Member, "looped_over");
@@ -554,7 +554,7 @@ static void tree_print(FmtState& s, const ast::Catch& node) noexcept
 	if (node.opt_caught_ident.begin() != nullptr)
 	{
 		start_elem(s, NodeType::Member, "caught_ident");
-		start_elem(s, NodeType::Value, node.opt_caught_ident);
+		start_elem(s, NodeType::Value, node.opt_caught_ident.to_strview());
 	}
 
 	start_elem(s, NodeType::Member, "catching_expr");
@@ -681,7 +681,7 @@ static void tree_print(FmtState& s, const ast::Definition& node) noexcept
 	start_elem(s, NodeType::Struct, "Definition");
 
 	start_elem(s, NodeType::Member, "ident");
-	start_elem(s, NodeType::Value, node.ident);
+	start_elem(s, NodeType::Value, node.ident.to_strview());
 
 	start_elem(s, NodeType::Member, "is_pub");
 	start_elem(s, NodeType::Value, node.is_pub ? "true" : "false");

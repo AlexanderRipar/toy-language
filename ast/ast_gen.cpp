@@ -1049,7 +1049,7 @@ static bool parse(pstate& s, ast::ForEachSignature& out) noexcept
 	if (const Token& t = expect(s, ctx, Token::Tag::Ident); t.tag == Token::Tag::INVALID)
 		return false;
 	else
-		out.loop_var = t.data_strview();
+		out.loop_var = hashed_strview{ t.data_strview() };
 
 	if (next_if(s, Token::Tag::Comma))
 	{

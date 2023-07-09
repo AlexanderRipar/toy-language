@@ -142,7 +142,7 @@ namespace ast
 
 	struct Catch
 	{
-		strview opt_caught_ident;
+		hashed_strview opt_caught_ident;
 
 		Expr caught_expr;
 
@@ -235,7 +235,7 @@ namespace ast
 
 	struct Definition
 	{
-		strview ident;
+		hashed_strview ident;
 
 		Expr opt_type;
 
@@ -277,9 +277,9 @@ namespace ast
 	{
 		Expr looped_over;
 
-		strview loop_var;
+		hashed_strview loop_var;
 
-		strview opt_index_var;
+		hashed_strview opt_index_var;
 	};
 
 	struct ForLoopSignature
