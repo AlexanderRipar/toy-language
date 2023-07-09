@@ -33,6 +33,53 @@ namespace ast
 
 
 
+	struct DefinitionMap
+	{
+	private:
+
+		static constexpr u32 INITIAL_CAPACITY = 4;
+
+		static constexpr u32 INITIAL_LIST_CAPACITY = 4;
+
+		struct KeyEntry
+		{
+			u16 hash;
+
+			u16 value_count;
+		};
+
+		union ValueEntry
+		{
+			const ast::Definition* definition;
+
+			const ast::Definition** list;
+		};
+
+		u32 m_capacity = 0;
+
+		u32 m_used = 0;
+
+		void* m_data = nullptr;
+
+		KeyEntry* m_keys() noexcept { return static_cast<KeyEntry*>(m_data); }
+
+		ValueEntry* m_values() noexcept { return reinterpret_cast<ValueEntry*>(m_keys() + m_capacity); }
+
+		const KeyEntry* m_keys() const noexcept { return static_cast<const KeyEntry*>(m_data); }
+
+		const ValueEntry* m_values() const noexcept { return reinterpret_cast<const ValueEntry*>(m_keys() + m_capacity); }
+
+		bool ensure_capacity() noexcept;
+
+	public:
+
+		bool add(const ast::Definition& definition) noexcept;
+
+		u32 get(const hashed_strview ident, const ast::Definition* const ** out_matches) const noexcept;
+	};
+
+
+
 	struct IntegerLiteral
 	{
 		u64 value;
