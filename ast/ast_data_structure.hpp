@@ -293,6 +293,8 @@ namespace ast
 		bool is_global;
 
 		bool is_comptime;
+
+		DefinitionMap nested_definitions;
 	};
 
 	struct Signature
