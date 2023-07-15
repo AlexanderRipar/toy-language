@@ -709,7 +709,17 @@ static void tree_print(FmtState& s, const ast::Definition& node) noexcept
 
 static void tree_print(FmtState& s, const ast::FileModule& node) noexcept
 {
-	tree_print(s, node.root_module);
+	start_elem(s, NodeType::Struct, "FileModule");
+
+	start_elem(s, NodeType::Member, "filename");
+	start_elem(s, NodeType::Value, node.filename);
+
+	start_elem(s, NodeType::Array, "statements");
+	for (const ast::Expr& child : node.statements)
+		tree_print(s, child);
+	close_elem(s);
+
+	close_elem(s);
 }
 
 void ast_print_tree(const ast::FileModule& program) noexcept

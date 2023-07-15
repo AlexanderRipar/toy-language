@@ -1187,30 +1187,21 @@ static bool parse(pstate& s, ast::Switch& out) noexcept
 	}
 }
 
-static bool parse(pstate& s, ast::Block& out, bool is_top_level = false) noexcept
+static bool parse(pstate& s, ast::Block& out) noexcept
 {
 	constexpr const char* const ctx = "Block";
 
-	if (!is_top_level)
-	{
-		if (expect(s, ctx, Token::Tag::SquiggleBeg).tag == Token::Tag::INVALID)
-			return false;
-	}
+	if (expect(s, ctx, Token::Tag::SquiggleBeg).tag == Token::Tag::INVALID)
+		return false;
 
 	while (true)
 	{
 		if (const Token& t = peek(s); t.tag == Token::Tag::INVALID)
 		{
-			if (is_top_level)
-				return true;
-
 			return error_unexpected_end(s, ctx);
 		}
 		else if (t.tag == Token::Tag::SquiggleEnd)
 		{
-			if (is_top_level)
-				return error_invalid_syntax(s, ctx, t, "SquiggleEnd at end of top level Block");
-
 			next(s, ctx);
 
 			return true;
@@ -1507,17 +1498,13 @@ static bool parse(pstate& s, const strview filename, ast::FileModule& out) noexc
 
 	out.filename = filename;
 
-	out.root_module.ident = filename;
+	while (peek(s).tag != Token::Tag::INVALID)
+	{
+		if (!alloc_and_parse(s, ctx, out.statements))
+			return false;
+	}
 
-	out.root_module.is_comptime = true;
-
-	out.root_module.is_pub = true;
-
-	out.root_module.opt_type.tag = ast::Expr::Tag::Module;
-
-	out.root_module.opt_value.tag = ast::Expr::Tag::Block;
-
-	return alloc_and_parse(s, ctx, &out.root_module.opt_value.block, true);
+	return true;
 }
 
 ast::Result ast::parse_program_unit(const vec<Token>& tokens, const strview filename, FileModule& out) noexcept
