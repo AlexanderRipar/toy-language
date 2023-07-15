@@ -148,7 +148,6 @@ namespace ast
 			ProcSignature,
 			FuncSignature,
 			TraitSignature,
-			Module,
 		} tag = Tag::EMPTY;
 
 		bool is_mut;

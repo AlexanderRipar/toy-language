@@ -76,9 +76,8 @@ SomewhatComplexType ::= [][]*mut f32
 
 paren_test := ((a + b) * c) - (d + e * f)
 
-my_module :: module =
-{
+my_module ::= module(
 	a_constant :: u8 = 1
 
 	a_function :: func(a : f32, b : f32) -> f32 = a * b
-}
+)

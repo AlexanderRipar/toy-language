@@ -82,7 +82,6 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("Proc"),
 		strview::from_literal("Func"),
 		strview::from_literal("Trait"),
-		strview::from_literal("Module"),
 		strview::from_literal("Impl"),
 		strview::from_literal("Mut"),
 		strview::from_literal("Pub"),
@@ -152,8 +151,6 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			t.tag = Token::Tag::Proc;
 		else if (streqc({ beg, c }, strview::from_literal("trait")))
 			t.tag = Token::Tag::Trait;
-		else if (streqc({ beg, c }, strview::from_literal("module")))
-			t.tag = Token::Tag::Module;
 		else if (streqc({ beg, c }, strview::from_literal("impl")))
 			t.tag = Token::Tag::Impl;
 		else if (streqc({ beg, c }, strview::from_literal("mut")))

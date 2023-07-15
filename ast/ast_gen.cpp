@@ -1358,13 +1358,6 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 
 		return alloc_and_parse(s, ctx, &out.impl);
 
-	case Token::Tag::Module:
-		next(s, ctx);
-
-		out.tag = ast::Expr::Tag::Module;
-
-		return true; // Nothing to parse
-
 	default:
 		if (const Token& t = peek(s, 1); t.tag != Token::Tag::Colon && t.tag != Token::Tag::DoubleColon)
 			break;

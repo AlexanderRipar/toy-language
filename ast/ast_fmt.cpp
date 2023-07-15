@@ -663,11 +663,6 @@ static void tree_print(FmtState& s, const ast::Expr& node, const strview node_na
 		tree_print(s, *node.signature, "TraitSignature");
 		break;
 
-	case ast::Expr::Tag::Module:
-		start_elem(s, NodeType::Struct, "Module");
-		close_elem(s);
-		break;
-
 	default:
 		assert(false);
 		break;
