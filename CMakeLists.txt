@@ -10,7 +10,6 @@ add_executable(compilator main.cpp
 	ast/ast_fmt.hpp ast/ast_fmt.cpp
 	ast/ast_data_structure.hpp ast/ast_data_structure.cpp
 	evl/evl_gen.hpp evl/evl_gen.cpp
-	evl/evl_data_structure.hpp evl/evl_data_structure.cpp
 	util/types.hpp
 	util/strutil.hpp
 	util/strview.hpp
