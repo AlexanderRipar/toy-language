@@ -14,6 +14,7 @@ add_executable(compilator main.cpp
 	util/types.hpp
 	util/strutil.hpp
 	util/strview.hpp
+	util/bytevec.hpp
 	util/vec.hpp
 	util/str.hpp
 	util/minimal_os.hpp
