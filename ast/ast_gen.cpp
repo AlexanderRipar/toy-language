@@ -246,25 +246,26 @@ static bool token_tag_to_shunting_yard_op(const Token::Tag tag, bool is_binary, 
 	if (is_binary)
 	{
 		static constexpr const ShuntingYardOp binary_ops[] {
-			{  4, true, ast::BinaryOp::Op::Add    },
-			{  3, true, ast::BinaryOp::Op::Div    },
-			{  3, true, ast::BinaryOp::Op::Mod    },
-			{ 10, true, ast::BinaryOp::Op::BitOr  },
-			{  9, true, ast::BinaryOp::Op::BitXor },
-			{  5, true, ast::BinaryOp::Op::ShiftL },
-			{  5, true, ast::BinaryOp::Op::ShiftR },
-			{ 11, true, ast::BinaryOp::Op::LogAnd },
-			{ 12, true, ast::BinaryOp::Op::LogOr  },
-			{  6, true, ast::BinaryOp::Op::CmpLt  },
-			{  6, true, ast::BinaryOp::Op::CmpLe  },
-			{  6, true, ast::BinaryOp::Op::CmpGt  },
-			{  6, true, ast::BinaryOp::Op::CmpGe  },
-			{  7, true, ast::BinaryOp::Op::CmpNe  },
-			{  7, true, ast::BinaryOp::Op::CmpEq  },
-			{  1, true, ast::BinaryOp::Op::Member },
-			{  4, true, ast::BinaryOp::Op::Sub    },
-			{  3, true, ast::BinaryOp::Op::Mul    },
-			{  8, true, ast::BinaryOp::Op::BitAnd },
+			{  4,  true, ast::BinaryOp::Op::Add    },
+			{  3,  true, ast::BinaryOp::Op::Div    },
+			{  3,  true, ast::BinaryOp::Op::Mod    },
+			{ 10,  true, ast::BinaryOp::Op::BitOr  },
+			{  9,  true, ast::BinaryOp::Op::BitXor },
+			{  5,  true, ast::BinaryOp::Op::ShiftL },
+			{  5,  true, ast::BinaryOp::Op::ShiftR },
+			{ 11,  true, ast::BinaryOp::Op::LogAnd },
+			{ 12,  true, ast::BinaryOp::Op::LogOr  },
+			{  6,  true, ast::BinaryOp::Op::CmpLt  },
+			{  6,  true, ast::BinaryOp::Op::CmpLe  },
+			{  6,  true, ast::BinaryOp::Op::CmpGt  },
+			{  6,  true, ast::BinaryOp::Op::CmpGe  },
+			{  7,  true, ast::BinaryOp::Op::CmpNe  },
+			{  7,  true, ast::BinaryOp::Op::CmpEq  },
+			{  1,  true, ast::BinaryOp::Op::Member },
+			{  1,  true, ast::UnaryOp::Op::Deref   },
+			{  4,  true, ast::BinaryOp::Op::Sub    },
+			{  3,  true, ast::BinaryOp::Op::Mul    },
+			{  8,  true, ast::BinaryOp::Op::BitAnd },
 		};
 
 		const usz offset = static_cast<usz>(tag) - static_cast<usz>(Token::Tag::OpAdd);
@@ -284,7 +285,6 @@ static bool token_tag_to_shunting_yard_op(const Token::Tag tag, bool is_binary, 
 			{  2, false, ast::UnaryOp::Op::AddrOf       },
 			{  2, false, ast::UnaryOp::Op::BitNot       },
 			{  2, false, ast::UnaryOp::Op::LogNot       },
-			{  2, false, ast::UnaryOp::Op::Deref        },
 			{  2, false, ast::UnaryOp::Op::TypeVariadic },
 			{ 13, false, ast::UnaryOp::Op::Try          },
 		};
@@ -685,11 +685,21 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 				if (!pop_shunting_yard_operator(s, op_stk, expr_stk))
 					return false;
 			}
-
+			
 			if (!op_stk.push_back(op))
 				return error_out_of_memory(s, ctx);
 
-			expecting_operator = false;
+			if (op.tag == ShuntingYardOp::Tag::UnaryOp && op.unary_op == ast::UnaryOp::Op::Deref)
+			{
+				if (!pop_shunting_yard_operator(s, op_stk, expr_stk))
+					return false;
+
+				expecting_operator = true;
+			}
+			else
+			{
+				expecting_operator = false;
+			}
 
 			break;
 		}

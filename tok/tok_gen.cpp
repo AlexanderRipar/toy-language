@@ -26,12 +26,12 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("OpCmpNe"),
 		strview::from_literal("OpCmpEq"),
 		strview::from_literal("Dot"),
+		strview::from_literal("UOpDeref"),
 		strview::from_literal("OpSub"),
 		strview::from_literal("OpMul_Ptr"),
 		strview::from_literal("OpBitAnd_Ref"),
 		strview::from_literal("UOpBitNot"),
 		strview::from_literal("UOpLogNot"),
-		strview::from_literal("UOpDeref"),
 		strview::from_literal("TripleDot"),
 		strview::from_literal("Try"),
 		strview::from_literal("Catch"),
@@ -346,6 +346,12 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 
 				c += 2;
 			}
+			else if (nxt == '*')
+			{
+				t.tag = Token::Tag::UOpDeref;
+
+				++c;
+			}
 			else
 			{
 				t.tag = Token::Tag::Dot;
@@ -647,12 +653,6 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			break;
 		}
 
-		case '$': {
-			t.tag = Token::Tag::UOpDeref;
-
-			break;
-		}
-		
 		default: {
 			t.tag = Token::Tag::INVALID;
 

@@ -28,12 +28,12 @@ struct Token
 		OpCmpNe,
 		OpCmpEq,
 		Dot,
+		UOpDeref,	// Counted as a binary operator here, since it is postfix
 		OpSub,		// Start of range relied on for unary operators. These must remain continuous and in the same order.
 		OpMul_Ptr,	// yes, these overlap :)
 		OpBitAnd_Ref,	// End of range relied on for binary operators.
 		UOpBitNot,
 		UOpLogNot,
-		UOpDeref,
 		TripleDot,
 		Try,		// End of range relied on for unary operators.
 		Catch,
