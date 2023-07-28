@@ -4,6 +4,114 @@
 #include <utility>
 #include <new>
 #include "types.hpp"
+#include "bytevec.hpp"
+
+template<typename T>
+struct Vec
+{
+private:
+
+	ByteVec m_vec{};
+
+public:
+
+	Vec() noexcept = default;
+
+	Vec(const Vec<T>& other) noexcept = delete;
+
+	Vec(Vec<T>&& other) noexcept : m_vec{ other.m_vec } { other.m_vec.reset(); }
+
+	~Vec() noexcept
+	{
+		for (T* t = begin(); t != end(); ++t)
+			t->~T();
+	}
+
+	bool reserve(u32 count) noexcept
+	{
+		return m_vec.reserve(count * sizeof(T));
+	}
+
+	bool append(const T& t) noexcept
+	{
+		void* region;
+
+		if (!m_vec.get_append_region(sizeof(T), &region))
+			return false;
+
+		*static_cast<T*>(region) = t;
+
+		return true;
+	}
+
+	bool append(T&& t) noexcept
+	{
+		void* region;
+
+		if (!m_vec.get_append_region(sizeof(T), &region))
+			return false;
+
+		*static_cast<T*>(region) = std::move(t);
+
+		return true;
+	}
+
+	bool append(u32 count, const T* ts) noexcept
+	{
+		void* region;
+
+		if (!m_vec.get_append_region(count * sizeof(T), &region))
+			return false;
+
+		for (u32 i = 0; i != count; ++i)
+		static_cast<T*>(region)[i] = ts[i];
+
+		return true;
+	}
+
+	void pop() noexcept
+	{
+		assert(!m_vec.is_empty());
+
+		m_vec.pop(sizeof(T));
+	}
+
+	bool get_append_region(u32 count, T** out) noexcept
+	{
+		void* tmp;
+
+		if (!m_vec.get_append_region(count * sizeof(T), &tmp))
+			return false;
+
+		memset(tmp, 0, count * sizeof(T));
+
+		*out = tmp;
+
+		return true;
+	}
+
+	T& front() noexcept { return *begin(); }
+
+	const T& front() const noexcept { return *begin(); }
+
+	T& back() noexcept { return *end(); }
+
+	const T& back() const noexcept { return *end(); }
+
+	T& operator[](usz i) noexcept { return begin()[i]; }
+
+	const T& operator[](usz i) const noexcept { return begin()[i]; }
+
+	T* begin() noexcept { return static_cast<T*>(m_vec.begin()); }
+
+	const T* begin() const noexcept { return static_cast<const T*>(m_vec.begin()); }
+
+	T* end() noexcept { return static_cast<T*>(m_vec.end()); }
+
+	const T* end() const noexcept { return static_cast<const T*>(m_vec.end()); }
+
+	u32 size() const noexcept { return m_vec.bytes() / sizeof(T); }
+};
 
 template<typename T, u16 Local_Capacity = sizeof(usz) * 2 / sizeof(T)>
 struct vec
