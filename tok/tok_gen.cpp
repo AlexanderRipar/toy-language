@@ -35,7 +35,6 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("TripleDot"),
 		strview::from_literal("Try"),
 		strview::from_literal("Catch"),
-		strview::from_literal("Index"),
 		strview::from_literal("Set"),
 		strview::from_literal("SetAdd"),
 		strview::from_literal("SetSub"),
