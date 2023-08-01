@@ -83,3 +83,7 @@ my_module ::= module(
 )
 
 a + x.y.*.z.* + w
+
+proc_ptr : *proc(x : i32, y : i32) -> i32 = undefined
+
+_ = proc_ptr.*(1, 2)

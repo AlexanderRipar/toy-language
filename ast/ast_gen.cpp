@@ -458,6 +458,32 @@ static bool parse_simple_expr(pstate& s, ast::Expr& out) noexcept
 			break;
 		}
 
+		case Token::Tag::Proc:
+		case Token::Tag::Func:
+		case Token::Tag::Trait: {
+
+			if (!expr_stk.push_back({}))
+				return error_out_of_memory(s, ctx);
+
+			ast::Expr& expr = expr_stk.last();
+
+			if (t.tag == Token::Tag::Proc)
+				expr.tag = ast::Expr::Tag::ProcSignature;
+			else if (t.tag == Token::Tag::Func)
+				expr.tag = ast::Expr::Tag::FuncSignature;
+			else if (t.tag == Token::Tag::Func)
+				expr.tag = ast::Expr::Tag::TraitSignature;
+			else
+				assert(false);
+
+			if (!alloc_and_parse(s, ctx, &expr.signature))
+				return false;
+
+			expecting_operator = true;
+
+			break;
+		}
+
 		case Token::Tag::LitString:
 		case Token::Tag::LitChar:
 		case Token::Tag::LitInt:
