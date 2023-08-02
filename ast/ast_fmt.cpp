@@ -384,6 +384,12 @@ static void tree_print(FmtState& s, const ast::Switch& node) noexcept
 static void tree_print(FmtState& s, const ast::For& node) noexcept
 {
 	start_elem(s, NodeType::Struct, "For");
+
+	if (node.opt_label.ident.begin() != nullptr)
+	{
+		start_elem(s, NodeType::Member, "label");
+		start_elem(s, NodeType::Value, node.opt_label.ident);
+	}
 	
 	start_elem(s, NodeType::Member, "signature");
 	switch (node.tag)

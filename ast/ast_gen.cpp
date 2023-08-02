@@ -1164,6 +1164,16 @@ static bool parse(pstate& s, ast::For& out) noexcept
 {
 	constexpr const char* const ctx = "For";
 
+	if (next_if(s, Token::Tag::At))
+	{
+		const Token& label_tok = expect(s, ctx, Token::Tag::Ident);
+
+		if (label_tok.tag == Token::Tag::INVALID)
+			return false;
+
+		out.opt_label.ident = label_tok.data_strview();
+	}
+
 	if (expect(s, ctx, Token::Tag::For).tag == Token::Tag::INVALID)
 		return false;
 
@@ -1377,6 +1387,7 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 		return alloc_and_parse(s, ctx, &out.if_expr);
 	
 	case Token::Tag::For:
+	case Token::Tag::At:
 		out.tag = ast::Expr::Tag::For;
 
 		return alloc_and_parse(s, ctx, &out.for_expr);

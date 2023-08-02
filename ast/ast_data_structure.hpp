@@ -371,6 +371,8 @@ namespace ast
 			ForLoopSignature for_loop_signature;
 		};
 
+		Label opt_label;
+
 		Expr body;
 
 		Expr opt_finally_body;
