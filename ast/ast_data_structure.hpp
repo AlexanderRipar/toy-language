@@ -21,6 +21,8 @@ namespace ast
 
 	struct Block;
 
+	struct Break;
+
 	struct Catch;
 
 	struct Array;
@@ -125,6 +127,11 @@ namespace ast
 		~Literal() = delete;
 	};
 
+	struct Label
+	{
+		strview ident;
+	};
+
 	struct Expr
 	{
 		enum class Tag : u8
@@ -139,8 +146,8 @@ namespace ast
 			For,
 			Switch,
 			Block,
-			Return,
 			Break,
+			Return,
 			Defer,
 			Catch,
 			Definition,
@@ -174,6 +181,8 @@ namespace ast
 
 			Block* block;
 
+			Break* break_expr;
+
 			Catch* catch_expr;
 
 			Expr* return_or_break_or_defer;
@@ -184,6 +193,13 @@ namespace ast
 
 			Signature* signature;
 		};
+	};
+
+	struct Break
+	{
+		Label opt_label;
+
+		Expr opt_value;
 	};
 
 	struct Catch

@@ -48,6 +48,7 @@ struct Token
 		SetBitXor,
 		SetShiftL,
 		SetShiftR,	// End of range relied on for set operators.
+		At,
 		Colon,
 		Semicolon,
 		Comma,

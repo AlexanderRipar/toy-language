@@ -1323,6 +1323,29 @@ static bool parse(pstate& s, ast::Impl& out) noexcept
 	return parse(s, out.body);
 }
 
+static bool parse(pstate& s, ast::Break& out) noexcept
+{
+	constexpr const char* const ctx = "Break";
+
+	if (next_if(s, Token::Tag::At))
+	{
+		const Token& label_tok = expect(s, ctx, Token::Tag::Ident);
+
+		if (label_tok.tag == Token::Tag::INVALID)
+			return false;
+
+		out.opt_label.ident = label_tok.data_strview();
+	}
+
+	if (!next_if(s, Token::Tag::Semicolon))
+	{
+		if (!parse_simple_expr(s, out.opt_value))
+			return false;
+	}
+
+	return true;
+}
+
 static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 {
 	constexpr const char* const ctx = "Expr";
@@ -1368,17 +1391,17 @@ static bool parse(pstate& s, ast::Expr& out, bool allow_assignment) noexcept
 
 		return alloc_and_parse(s, ctx, &out.block);
 
-	case Token::Tag::Return:
-		next(s, ctx);
-
-		out.tag = ast::Expr::Tag::Return;
-
-		return alloc_and_parse(s, ctx, &out.return_or_break_or_defer, false);
-
 	case Token::Tag::Break:
 		next(s, ctx);
 
 		out.tag = ast::Expr::Tag::Break;
+
+		return alloc_and_parse(s, ctx, &out.break_expr);
+
+	case Token::Tag::Return:
+		next(s, ctx);
+
+		out.tag = ast::Expr::Tag::Return;
 
 		return alloc_and_parse(s, ctx, &out.return_or_break_or_defer, false);
 

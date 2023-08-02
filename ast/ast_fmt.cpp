@@ -563,6 +563,25 @@ static void tree_print(FmtState& s, const ast::Catch& node) noexcept
 	close_elem(s);
 }
 
+static void tree_print(FmtState& s, const ast::Break& node) noexcept
+{
+	start_elem(s, NodeType::Struct, "Break");
+
+	if (node.opt_label.ident.begin() != nullptr)
+	{
+		start_elem(s, NodeType::Member, "label");
+		start_elem(s, NodeType::Value, node.opt_label.ident);
+	}
+
+	if (node.opt_value.tag != ast::Expr::Tag::EMPTY)
+	{
+		start_elem(s, NodeType::Member, "value");
+		tree_print(s, node.opt_value);
+	}
+
+	close_elem(s);
+}
+
 static void tree_print(FmtState& s, const ast::Expr& node, const strview node_name) noexcept
 {
 	if (node.is_mut)
@@ -629,7 +648,7 @@ static void tree_print(FmtState& s, const ast::Expr& node, const strview node_na
 
 	case ast::Expr::Tag::Break:
 		start_elem(s, NodeType::Union, "Break");
-		tree_print(s, *node.return_or_break_or_defer);
+		tree_print(s, *node.break_expr);
 		close_elem(s);
 		break;
 

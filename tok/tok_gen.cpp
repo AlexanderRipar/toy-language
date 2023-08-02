@@ -46,6 +46,7 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("SetBitXor"),
 		strview::from_literal("SetShiftL"),
 		strview::from_literal("SetShiftR"),
+		strview::from_literal("At"),
 		strview::from_literal("Colon"),
 		strview::from_literal("Semicolon"),
 		strview::from_literal("Comma"),
@@ -649,6 +650,13 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 			{
 				t.tag = Token::Tag::UOpLogNot;
 			}
+
+			break;
+		}
+
+		case '@': {
+
+			t.tag = Token::Tag::At;
 
 			break;
 		}
