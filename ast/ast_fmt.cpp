@@ -17,6 +17,8 @@ static strview get_name(ast::UnaryOp::Op op) noexcept
 		strview::from_literal("TypeMultiptr"),
 		strview::from_literal("TypeTailArray"),
 		strview::from_literal("TypeVariadic"),
+		strview::from_literal("TypeNullPtr"),
+		strview::from_literal("TypeNullMultiPtr"),
 	};
 
 	const usz index = static_cast<usz>(op) - 1;

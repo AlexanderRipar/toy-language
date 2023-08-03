@@ -35,6 +35,7 @@ struct Token
 		UOpBitNot,
 		UOpLogNot,
 		TripleDot,
+		QuestionMark,
 		Try,		// End of range relied on for unary operators.
 		Catch,
 		Set,		// Start of range relied on for set operators. These must remain continuous and in the same order.

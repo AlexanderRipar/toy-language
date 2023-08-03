@@ -278,6 +278,8 @@ namespace ast
 			TypeMultiptr,
 			TypeTailArray,
 			TypeVariadic,
+			TypeNullPtr,
+			TypeNullMultiPtr,
 		} op = Op::NONE;
 
 		Expr operand;

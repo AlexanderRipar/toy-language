@@ -286,6 +286,7 @@ static bool token_tag_to_shunting_yard_op(const Token::Tag tag, bool is_binary, 
 			{  2, false, ast::UnaryOp::Op::BitNot       },
 			{  2, false, ast::UnaryOp::Op::LogNot       },
 			{  2, false, ast::UnaryOp::Op::TypeVariadic },
+			{  2, false, ast::UnaryOp::Op::TypeNullPtr  },
 			{ 13, false, ast::UnaryOp::Op::Try          },
 		};
 
@@ -389,6 +390,7 @@ static bool get_bracket_op(pstate& s, u32& bracket_nesting, ShuntingYardOp& out)
 
 	case Token::Tag::OpMul_Ptr:
 	case Token::Tag::TripleDot:
+	case Token::Tag::QuestionMark:
 		if (const Token& t1 = peek(s, 1); t1.tag == Token::Tag::BracketEnd)
 		{
 			next(s, ctx);
@@ -399,6 +401,8 @@ static bool get_bracket_op(pstate& s, u32& bracket_nesting, ShuntingYardOp& out)
 				out = { 2, false, ast::UnaryOp::Op::TypeMultiptr };
 			else if (t.tag == Token::Tag::TripleDot)
 				out = { 2, false, ast::UnaryOp::Op::TypeTailArray };
+			else if (t.tag == Token::Tag::QuestionMark)
+				out = { 2, false, ast::UnaryOp::Op::TypeNullMultiPtr };
 			else
 				assert(false);
 

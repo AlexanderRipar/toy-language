@@ -90,3 +90,7 @@ _ = proc_ptr.*(1, 2)
 
 @my_label for i <- range(0, 64) do
 	break @my_label i + 1
+
+opt_ptr : ?i16
+
+opt_multiptr : [?]i16

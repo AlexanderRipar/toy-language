@@ -33,6 +33,7 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("UOpBitNot"),
 		strview::from_literal("UOpLogNot"),
 		strview::from_literal("TripleDot"),
+		strview::from_literal("QuestionMark"),
 		strview::from_literal("Try"),
 		strview::from_literal("Catch"),
 		strview::from_literal("Set"),
@@ -657,6 +658,13 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 		case '@': {
 
 			t.tag = Token::Tag::At;
+
+			break;
+		}
+
+		case '?': {
+
+			t.tag = Token::Tag::QuestionMark;
 
 			break;
 		}
