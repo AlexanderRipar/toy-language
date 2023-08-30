@@ -1,3 +1,6 @@
+#ifndef UTIL_FILE_INCLUDE_GUARD
+#define UTIL_FILE_INCLUDE_GUARD
+
 #include "strview.hpp"
 #include "types.hpp"
 
@@ -31,3 +34,5 @@ bool get_file_size(File file, u64& out_size) noexcept;
 
 bool close_file(File file) noexcept;
 
+
+#endif // UTIL_FILE_INCLUDE_GUARD
