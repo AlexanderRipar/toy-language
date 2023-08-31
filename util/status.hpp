@@ -18,9 +18,9 @@ struct [[nodiscard]] Status
 {
 	enum class Kind
 	{
-		OK,
+		Ok,
 		Custom,
-		OS,
+		Os,
 	};
 
 	u64 m_err_union;
@@ -29,7 +29,7 @@ struct [[nodiscard]] Status
 
 	explicit Status(Kind kind, u32 error_code) noexcept : m_err_union{ static_cast<u64>(kind) << 32 | error_code } {}
 
-	static Status from_os(u32 e) noexcept { return Status{ Kind::OS, e }; }
+	static Status from_os(u32 e) noexcept { return Status{ Kind::Os, e }; }
 
 	static Status from_custom(CustomError e) noexcept
 	{

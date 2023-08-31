@@ -89,7 +89,7 @@ strview Status::kind_name() const noexcept
 	static constexpr const strview names[] {
 		strview::from_literal("Ok"),
 		strview::from_literal("Custom"),
-		strview::from_literal("OS"),
+		strview::from_literal("Os"),
 	};
 
 	u32 i = static_cast<u32>(kind());
@@ -108,7 +108,7 @@ u32 Status::error_message(char* buf, u32 buf_bytes) const noexcept
 
 	switch (kind())
 	{
-	case Kind::OK: {
+	case Kind::Ok: {
 
 		constexpr const char ok_msg[] = "[[No error]]";
 
@@ -144,7 +144,7 @@ u32 Status::error_message(char* buf, u32 buf_bytes) const noexcept
 		return static_cast<u32>(msg_bytes);
 	}
 
-	case Kind::OS: {
+	case Kind::Os: {
 
 		char* format_msg_buf;
 
