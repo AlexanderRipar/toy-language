@@ -10,6 +10,7 @@ enum class CustomError
 {
 	OutOfMemory,
 	BadCommandLine,
+	PartialRead,
 };
 
 struct [[nodiscard]] Status
