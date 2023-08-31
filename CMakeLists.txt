@@ -16,6 +16,7 @@ add_executable(compilator main.cpp
 	util/bytevec.hpp
 	util/vec.hpp
 	util/str.hpp
+	util/slice.hpp
 	util/minimal_os.hpp
 	util/file.hpp util/file.cpp
 	util/status.hpp util/status.cpp
