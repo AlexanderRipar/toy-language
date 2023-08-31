@@ -18,9 +18,7 @@ namespace ast
 			OutOfMemory,
 			InvalidSyntax,
 			UnexpectedToken,
-			NotImplemented,
 			UnexpectedEndOfStream,
-			Oopsie,
 		} tag = Tag::Ok;
 
 		Token::Tag expected_token;

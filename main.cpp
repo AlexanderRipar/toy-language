@@ -89,7 +89,6 @@ int main(int32_t argc, const char** argv) noexcept
 		break;
 
 	case ast::Result::Tag::OutOfMemory:
-	case ast::Result::Tag::NotImplemented:
 	case ast::Result::Tag::UnexpectedEndOfStream: {
 		fprintf(stderr, "%s: %s\n", rst.error_ctx, rst.message);
 
