@@ -5,6 +5,7 @@
 
 #include "types.hpp"
 #include "strview.hpp"
+#include "slice.hpp"
 
 enum class CustomError
 {
@@ -52,18 +53,31 @@ struct [[nodiscard]] Status
 
 	strview kind_name() const noexcept;
 
-	u32 error_message(char* buf, u32 buf_size) noexcept;
+	u32 error_message(char* buf, u32 buf_bytes) const noexcept;
 };
 
-bool operator==(Status lhs, Status rhs) noexcept
+inline bool operator==(Status lhs, Status rhs) noexcept
 {
 	return lhs.m_err_union == rhs.m_err_union;
 }
 
-bool operator!=(Status lhs, Status rhs) noexcept
+inline bool operator!=(Status lhs, Status rhs) noexcept
 {
 	return lhs.m_err_union != rhs.m_err_union;
 }
+
+struct ErrorLocation
+{
+	const char* file;
+
+	const char* function;
+
+	u32 line_number;
+};
+
+Slice<const ErrorLocation> get_error_trace() noexcept;
+
+u32 get_dropped_trace_count() noexcept;
 
 #ifdef STATUS_DISABLE_TRACE
 #pragma detect_mismatch("status_disable_trace", "true")
@@ -79,15 +93,6 @@ bool operator!=(Status lhs, Status rhs) noexcept
 
 namespace impl
 {
-	struct ErrorLocation
-	{
-		const char* file;
-
-		const char* function;
-
-		u32 line_number;
-	};
-
 	__declspec(noinline) void push_error_location(const ErrorLocation& loc) noexcept;
 
 	Status register_error(Status status, const ErrorLocation& loc) noexcept;
@@ -97,11 +102,11 @@ namespace impl
 #define CONSTEXPR_LINE_NUM_CAT_HELPER(x, y) CONSTEXPR_LINE_NUM_CAT_HELPER2(x, y)
 #define CONSTEXPR_LINE CONSTEXPR_LINE_NUM_CAT_HELPER(__LINE__, u)
 
-#define TRY(macro_arg_) do { if (const Status macro_status_ = (macro_arg_); !macro_status_.is_ok()) { static constexpr impl::ErrorLocation macro_loc_{ __FILE__, __FUNCTION__, CONSTEXPR_LINE }; impl::push_error_location(macro_loc_); return macro_status_; } } while (false)
+#define TRY(macro_arg_) do { if (const Status macro_status_ = (macro_arg_); !macro_status_.is_ok()) { static constexpr ErrorLocation macro_loc_{ __FILE__, __FUNCTION__, CONSTEXPR_LINE }; impl::push_error_location(macro_loc_); return macro_status_; } } while (false)
 
-#define STATUS_FROM_CUSTOM(macro_error_) impl::register_error(Status::from_custom(macro_error_), impl::ErrorLocation{ __FILE__, __FUNCTION__, CONSTEXPR_LINE })
+#define STATUS_FROM_CUSTOM(macro_error_) impl::register_error(Status::from_custom(macro_error_), ErrorLocation{ __FILE__, __FUNCTION__, CONSTEXPR_LINE })
 
-#define STATUS_FROM_OS(macro_error_) impl::register_error(Status::from_os(macro_error_), impl::ErrorLocation{ __FILE__, __FUNCTION__, CONSTEXPR_LINE })
+#define STATUS_FROM_OS(macro_error_) impl::register_error(Status::from_os(macro_error_), ErrorLocation{ __FILE__, __FUNCTION__, CONSTEXPR_LINE })
 
 #endif // STATUS_DISABLE_TRACE
 
