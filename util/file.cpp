@@ -124,7 +124,7 @@ static DWORD interpret_create(File::Create existing_mode, File::Create new_mode)
 	}
 }
 
-bool open_file(strview filepath, File::Access access, File::Create existing_mode, File::Create new_mode, File& out) noexcept
+bool file_open(strview filepath, File::Access access, File::Create existing_mode, File::Create new_mode, File& out) noexcept
 {
 	wchar_t stack_buf[STACK_BUF_SIZE];
 
@@ -150,7 +150,7 @@ bool open_file(strview filepath, File::Access access, File::Create existing_mode
 	return true;
 }
 
-bool read_file(File file, void* buf, u32 buf_bytes, u32* out_bytes_read) noexcept
+bool file_read(File file, void* buf, u32 buf_bytes, u32* out_bytes_read) noexcept
 {
 	DWORD bytes_read;
 
@@ -163,7 +163,7 @@ bool read_file(File file, void* buf, u32 buf_bytes, u32* out_bytes_read) noexcep
 	return true;
 }
 
-bool write_file(File file, const void* buf, u32 buf_bytes) noexcept
+bool file_write(File file, const void* buf, u32 buf_bytes) noexcept
 {
 	DWORD bytes_written;
 
@@ -173,7 +173,7 @@ bool write_file(File file, const void* buf, u32 buf_bytes) noexcept
 	return bytes_written == buf_bytes;
 }
 
-bool seek_file(File file, isz location) noexcept
+bool file_seek(File file, isz location) noexcept
 {
 	LARGE_INTEGER move_dst;
 
@@ -182,7 +182,7 @@ bool seek_file(File file, isz location) noexcept
 	return SetFilePointerEx(reinterpret_cast<HANDLE>(file.m_data), move_dst, nullptr, FILE_BEGIN) != 0;
 }
 
-bool get_file_size(File file, u64& out_size) noexcept
+bool file_get_size(File file, u64& out_size) noexcept
 {
 	LARGE_INTEGER file_size;
 
@@ -194,7 +194,7 @@ bool get_file_size(File file, u64& out_size) noexcept
 	return true;
 }
 
-bool close_file(File file) noexcept
+bool file_close(File file) noexcept
 {
 	if (file.m_data == 0)
 		return true;

@@ -35,7 +35,7 @@ int main(int32_t argc, const char** argv) noexcept
 
 	File file;
 
-	if (!open_file(argv[1], File::Access::Read, File::Create::Normal, File::Create::Fail, file))
+	if (!file_open(argv[1], File::Access::Read, File::Create::Normal, File::Create::Fail, file))
 	{
 		fprintf(stderr, "ERROR: Could not open file %s\n", argv[1]);
 
@@ -44,7 +44,7 @@ int main(int32_t argc, const char** argv) noexcept
 
 	usz filesize;
 
-	if (!get_file_size(file, filesize))
+	if (!file_get_size(file, filesize))
 	{
 		fprintf(stderr, "ERROR: Could not determine size of file %s\n", argv[1]);
 
@@ -60,7 +60,7 @@ int main(int32_t argc, const char** argv) noexcept
 		return 1;
 	}
 
-	if (!read_file(file, file_content, static_cast<u32>(filesize), nullptr))
+	if (!file_read(file, file_content, static_cast<u32>(filesize), nullptr))
 	{
 		fprintf(stderr, "ERROR: Could not read from file %s\n", argv[1]);
 

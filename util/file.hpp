@@ -24,17 +24,17 @@ struct File
 	};
 };
 
-bool open_file(strview filepath, File::Access access, File::Create existing_mode, File::Create new_mode, File& out) noexcept;
+bool file_open(strview filepath, File::Access access, File::Create existing_mode, File::Create new_mode, File& out) noexcept;
 
-bool read_file(File file, void* buf, u32 buf_bytes, u32* out_bytes_read) noexcept;
+bool file_read(File file, void* buf, u32 buf_bytes, u32* out_bytes_read) noexcept;
 
-bool write_file(File file, const void* buf, u32 buf_bytes) noexcept;
+bool file_write(File file, const void* buf, u32 buf_bytes) noexcept;
 
-bool seek_file(File file, isz location) noexcept;
+bool file_seek(File file, isz location) noexcept;
 
-bool get_file_size(File file, u64& out_size) noexcept;
+bool file_get_size(File file, u64& out_size) noexcept;
 
-bool close_file(File file) noexcept;
+bool file_close(File file) noexcept;
 
 
 #endif // UTIL_FILE_INCLUDE_GUARD
