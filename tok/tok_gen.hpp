@@ -1,7 +1,6 @@
 #ifndef TOK_GEN_INCLUDE_GUARD
 #define TOK_GEN_INCLUDE_GUARD
 
-#include <vector>
 #include "../util/vec.hpp"
 #include "../util/strview.hpp"
 #include "../util/types.hpp"
