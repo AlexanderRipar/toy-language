@@ -7,7 +7,7 @@
 
 static constexpr const usz STACK_BUF_SIZE = 2048;
 
-static wchar_t* interpret_filepath(strview filepath, wchar_t* stack_buf) noexcept
+static Status interpret_filepath(strview filepath, wchar_t* stack_buf, wchar_t*& out) noexcept
 {
 	i32 wchar_cnt = MultiByteToWideChar(CP_UTF8, 0, filepath.begin(), static_cast<i32>(filepath.len()), stack_buf, STACK_BUF_SIZE - 1);
 
@@ -20,20 +20,24 @@ static wchar_t* interpret_filepath(strview filepath, wchar_t* stack_buf) noexcep
 		if (wchar_cnt == 0)
 		{
 			if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
-				goto ERROR;
+				return STATUS_FROM_OS(GetLastError());
 
 			wchar_cnt = MultiByteToWideChar(CP_UTF8, 0, filepath.begin(), static_cast<i32>(filepath.len()), nullptr, 0);
 
 			if (wchar_cnt == 0)
-				goto ERROR;
+				return STATUS_FROM_OS(GetLastError());
 
 			wchar_filepath = static_cast<wchar_t*>(malloc((wchar_cnt + 1) * sizeof(wchar_t)));
 
 			if (wchar_filepath == nullptr)
-				goto ERROR;
+				return STATUS_FROM_CUSTOM(CustomError::OutOfMemory);
 
 			if (MultiByteToWideChar(CP_UTF8, 0, filepath.begin(), static_cast<i32>(filepath.len()), wchar_filepath, wchar_cnt) == 0)
-				goto ERROR;
+			{
+				free(wchar_filepath);
+
+				return STATUS_FROM_OS(GetLastError());
+			}
 		}
 
 		wchar_filepath[wchar_cnt] = '\0';
@@ -41,12 +45,22 @@ static wchar_t* interpret_filepath(strview filepath, wchar_t* stack_buf) noexcep
 		const DWORD req_full_wchar_cnt = GetFullPathNameW(wchar_filepath, 0, wchar_filepath, nullptr);
 
 		if (req_full_wchar_cnt == 0)
-			goto ERROR;
+		{
+			if (wchar_filepath != stack_buf)
+				free(wchar_filepath);
+
+			return STATUS_FROM_OS(GetLastError());
+		}
 
 		full_filepath = static_cast<wchar_t*>(malloc((req_full_wchar_cnt + 4) * sizeof(wchar_t)));
 
 		if (full_filepath == nullptr)
-			goto ERROR;
+		{
+			if (wchar_filepath != stack_buf)
+				free(wchar_filepath);
+
+			return STATUS_FROM_CUSTOM(CustomError::OutOfMemory);
+		}
 
 		full_filepath[0] = '\\';
 		full_filepath[1] = '\\';
@@ -54,28 +68,26 @@ static wchar_t* interpret_filepath(strview filepath, wchar_t* stack_buf) noexcep
 		full_filepath[3] = '\\';
 
 		if (GetFullPathNameW(wchar_filepath + 4, req_full_wchar_cnt, full_filepath + 4, nullptr) == 0)
-			goto ERROR;
+		{
+			if (wchar_filepath != stack_buf)
+				free(wchar_filepath);
+
+			return STATUS_FROM_OS(GetLastError());
+		}
 
 		if (wchar_filepath != stack_buf)
 			free(wchar_filepath);
 
-		return full_filepath;
-
-	ERROR:
-
-		if (wchar_filepath != stack_buf)
-			free(wchar_filepath);
-
-		free(full_filepath);
-
-		return nullptr;
+		out = full_filepath;
 	}
 	else
 	{
 		stack_buf[wchar_cnt] = '\0'; 
 
-		return stack_buf;
+		out = stack_buf;
 	}
+
+	return {};
 };
 
 static DWORD interpret_access(File::Access access, File::Create existing_mode) noexcept
@@ -124,14 +136,13 @@ static DWORD interpret_create(File::Create existing_mode, File::Create new_mode)
 	}
 }
 
-bool file_open(strview filepath, File::Access access, File::Create existing_mode, File::Create new_mode, File& out) noexcept
+Status file_open(strview filepath, File::Access access, File::Create existing_mode, File::Create new_mode, File& out) noexcept
 {
 	wchar_t stack_buf[STACK_BUF_SIZE];
 
-	wchar_t* final_path = interpret_filepath(filepath, stack_buf);
-
-	if (final_path == nullptr)
-		return false;
+	wchar_t* final_path;
+	
+	TRY(interpret_filepath(filepath, stack_buf, final_path));
 
 	DWORD final_access = interpret_access(access, existing_mode);
 
@@ -143,61 +154,70 @@ bool file_open(strview filepath, File::Access access, File::Create existing_mode
 		free(final_path);
 
 	if (h == INVALID_HANDLE_VALUE)
-		return false;
+		return STATUS_FROM_OS(GetLastError());
 
 	out.m_data = reinterpret_cast<usz>(h);
 
-	return true;
+	return {};
 }
 
-bool file_read(File file, void* buf, u32 buf_bytes, u32* out_bytes_read) noexcept
+Status file_read(File file, void* buf, u32 buf_bytes, u32* out_bytes_read) noexcept
 {
 	DWORD bytes_read;
 
 	if (ReadFile(reinterpret_cast<HANDLE>(file.m_data), buf, buf_bytes, &bytes_read, nullptr) == 0)
-		return false;
+		return STATUS_FROM_OS(GetLastError());
 
 	if (out_bytes_read != nullptr)
 		*out_bytes_read = bytes_read;
 
-	return true;
+	return {};
 }
 
-bool file_write(File file, const void* buf, u32 buf_bytes) noexcept
+Status file_write(File file, const void* buf, u32 buf_bytes) noexcept
 {
 	DWORD bytes_written;
 
 	if (WriteFile(reinterpret_cast<HANDLE>(file.m_data), buf, buf_bytes, &bytes_written, nullptr) == 0)
-		return false;
+		return STATUS_FROM_OS(GetLastError());
 
-	return bytes_written == buf_bytes;
+	if (bytes_written != buf_bytes)
+		return STATUS_FROM_CUSTOM(CustomError::PartialRead);
+
+	return {};
 }
 
-bool file_seek(File file, isz location) noexcept
+Status file_seek(File file, isz location) noexcept
 {
 	LARGE_INTEGER move_dst;
 
 	move_dst.QuadPart = location;
 
-	return SetFilePointerEx(reinterpret_cast<HANDLE>(file.m_data), move_dst, nullptr, FILE_BEGIN) != 0;
+	if (SetFilePointerEx(reinterpret_cast<HANDLE>(file.m_data), move_dst, nullptr, FILE_BEGIN) == 0)
+		return STATUS_FROM_OS(GetLastError());
+
+	return {};
 }
 
-bool file_get_size(File file, u64& out_size) noexcept
+Status file_get_size(File file, u64& out_size) noexcept
 {
 	LARGE_INTEGER file_size;
 
 	if (GetFileSizeEx(reinterpret_cast<HANDLE>(file.m_data), &file_size) == 0)
-		return false;
+		return STATUS_FROM_OS(GetLastError());
 
 	out_size = file_size.QuadPart;
 
-	return true;
+	return {};
 }
 
-bool file_close(File file) noexcept
+Status file_close(File file) noexcept
 {
 	if (file.m_data == 0)
-		return true;
+		return {};
 
-	return CloseHandle(reinterpret_cast<HANDLE>(file.m_data)) != 0;
+	if (CloseHandle(reinterpret_cast<HANDLE>(file.m_data)) == 0)
+		return STATUS_FROM_OS(GetLastError());
+
+	return {};
 }

@@ -1,6 +1,7 @@
 #include "tok/tok_gen.hpp"
 #include "ast/ast_gen.hpp"
 #include "ast/ast_fmt.hpp"
+#include "util/status.hpp"
 #include "util/file.hpp"
 
 #include <cassert>
@@ -24,48 +25,29 @@ static strview filename_from_filepath(const char* filepath) noexcept
 	return strview{ last_name_beg, extension_beg };
 }
 
-int main(int32_t argc, const char** argv) noexcept
+static Status run(i32 argc, const char** argv) noexcept
 {
 	if (argc != 2)
 	{
 		fprintf(stderr, "Usage: %s text-filename\n", argv[0]);
 
-		return 2;
+		return STATUS_FROM_CUSTOM(CustomError::BadCommandLine);
 	}
 
 	File file;
 
-	if (!file_open(argv[1], File::Access::Read, File::Create::Normal, File::Create::Fail, file))
-	{
-		fprintf(stderr, "ERROR: Could not open file %s\n", argv[1]);
-
-		return 1;
-	}
+	TRY(file_open(argv[1], File::Access::Read, File::Create::Normal, File::Create::Fail, file));
 
 	usz filesize;
 
-	if (!file_get_size(file, filesize))
-	{
-		fprintf(stderr, "ERROR: Could not determine size of file %s\n", argv[1]);
-
-		return 1;
-	}
+	TRY(file_get_size(file, filesize));
 
 	char* file_content = static_cast<char*>(malloc(filesize));
 
 	if (file_content == nullptr)
-	{
-		fprintf(stderr, "ERROR: malloc failed\n");
+		return STATUS_FROM_CUSTOM(CustomError::OutOfMemory);
 
-		return 1;
-	}
-
-	if (!file_read(file, file_content, static_cast<u32>(filesize), nullptr))
-	{
-		fprintf(stderr, "ERROR: Could not read from file %s\n", argv[1]);
-
-		return 1;
-	}
+	TRY(file_read(file, file_content, static_cast<u32>(filesize), nullptr));
 
 	fprintf(stderr, "Tokenizing...\n\n");
 
@@ -115,5 +97,17 @@ int main(int32_t argc, const char** argv) noexcept
 		break;
 	}
 
-	return 0;
+	return {};
+}
+
+int main(int32_t argc, const char** argv) noexcept
+{
+	if (const Status s = run(argc, argv); !s.is_ok())
+	{
+		// TODO: Print error message
+
+		return EXIT_FAILURE;
+	}
+	
+	return EXIT_SUCCESS;
 }
