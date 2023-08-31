@@ -18,6 +18,7 @@ add_executable(compilator main.cpp
 	util/str.hpp
 	util/minimal_os.hpp
 	util/file.hpp util/file.cpp
+	util/status.hpp util/status.cpp
 )
 
 target_compile_features(compilator PRIVATE cxx_std_17)
