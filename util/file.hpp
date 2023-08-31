@@ -30,6 +30,8 @@ bool read_file(File file, void* buf, u32 buf_bytes, u32* out_bytes_read) noexcep
 
 bool write_file(File file, const void* buf, u32 buf_bytes) noexcept;
 
+bool seek_file(File file, isz location) noexcept;
+
 bool get_file_size(File file, u64& out_size) noexcept;
 
 bool close_file(File file) noexcept;
