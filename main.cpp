@@ -104,7 +104,29 @@ int main(int32_t argc, const char** argv) noexcept
 {
 	if (const Status s = run(argc, argv); !s.is_ok())
 	{
-		// TODO: Print error message
+		char error_msg_buf[1024];
+
+		static constexpr const char msg_too_long_msg[] = "[[Error message too long]]";
+
+		if (s.error_message(error_msg_buf, sizeof(error_msg_buf)) > sizeof(error_msg_buf))
+			memcpy(error_msg_buf, msg_too_long_msg, sizeof(msg_too_long_msg));
+
+		const strview kind_name = s.kind_name();
+
+		fprintf(stderr, "Encountered %.*sError 0x%x: \"%s\"\nwhile calling\n", static_cast<i32>(kind_name.len()), kind_name.begin(), s.error_code(), error_msg_buf);
+
+		Slice<const ErrorLocation> error_trace = get_error_trace();
+
+		if (error_trace.count() != 0)
+			fprintf(stderr, "Trace (function that originated the error first):\n");
+		else
+			fprintf(stderr, "No trace available.\n");
+
+		for (const ErrorLocation& loc : error_trace)
+			fprintf(stderr, "    %s in function %s (line %d)\n", loc.file, loc.function, loc.line_number);
+
+		if (const u32 dropped_count = get_dropped_trace_count(); dropped_count != 0)
+			fprintf(stderr, "    ... And %d more\n", dropped_count);
 
 		return EXIT_FAILURE;
 	}
