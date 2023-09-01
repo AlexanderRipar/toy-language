@@ -13,6 +13,7 @@ enum class CustomError
 	BadCommandLine,
 	PartialRead,
 	IncompleteComment,
+	InvalidCharacter,
 };
 
 struct [[nodiscard]] Status

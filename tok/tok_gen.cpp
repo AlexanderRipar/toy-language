@@ -103,7 +103,7 @@ static bool is_name_token_char(char c) noexcept
 	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
 }
 
-static Token get_token(const char* beg, const char* const end, const char** out_token_end, uint32_t& inout_curr_line_number) noexcept
+static Status get_token(const char* beg, const char* const end, const char** out_token_end, uint32_t& inout_curr_line_number, Token& out) noexcept
 {
 	const char fst = *beg;
 
@@ -621,9 +621,7 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 		}
 
 		default: {
-			t.tag = Token::Tag::INVALID;
-
-			break;
+			return STATUS_FROM_CUSTOM(CustomError::InvalidCharacter);
 		}
 		}
 
@@ -638,7 +636,9 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 
 	*out_token_end = c;
 
-	return t;
+	out = t;
+
+	return {};
 }
 
 Status tokenize(strview data, vec<Token>& out) noexcept
@@ -719,7 +719,10 @@ Status tokenize(strview data, vec<Token>& out) noexcept
 		if (c == end)
 			break;
 
-		tokens.push_back(get_token(c, end, &c, curr_line_number));
+		if (!tokens.push_back({}))
+			return STATUS_FROM_CUSTOM(CustomError::OutOfMemory);
+
+		TRY(get_token(c, end, &c, curr_line_number, tokens.last()));
 	}
 
 	out = std::move(tokens);
