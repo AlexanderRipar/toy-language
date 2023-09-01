@@ -124,6 +124,7 @@ u32 Status::error_message(char* buf, u32 buf_bytes) const noexcept
 			strview::from_literal("OutOfMemory"),
 			strview::from_literal("BadCommandLine"),
 			strview::from_literal("PartialRead"),
+			strview::from_literal("IncompleteComment"),
 
 			strview::from_literal("[[Unknown]]"),
 		};

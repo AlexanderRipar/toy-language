@@ -68,8 +68,6 @@ struct Token
 		LitFloat,
 		LitBadNumber,
 		Hashtag,
-		Comment,
-		IncompleteComment,
 		If,
 		Then,
 		Else,
@@ -100,6 +98,6 @@ struct Token
 	strview data_strview() const noexcept;
 };
 
-Status tokenize(strview data, bool include_comments, vec<Token>& out) noexcept;
+Status tokenize(strview data, vec<Token>& out) noexcept;
 
 #endif // TOK_GEN_INCLUDE_GUARD

@@ -91,6 +91,12 @@ _ = proc_ptr.*(1, 2)
 @my_label for i <- range(0, 64) do
 	break @my_label i + 1
 
+/*
+This is a normal block comment
+*/
+
 opt_ptr : ?i16
+
+/* This is a /* nested */ block comment */
 
 opt_multiptr : [?]i16

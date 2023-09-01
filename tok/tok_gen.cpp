@@ -66,8 +66,6 @@ strview Token::type_strview() const noexcept
 		strview::from_literal("LitFloat"),
 		strview::from_literal("LitBadNumber"),
 		strview::from_literal("Hashtag"),
-		strview::from_literal("Comment"),
-		strview::from_literal("IncompleteComment"),
 		strview::from_literal("If"),
 		strview::from_literal("Then"),
 		strview::from_literal("Else"),
@@ -507,53 +505,6 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 
 				t.tag = Token::Tag::SetDiv;
 			}
-			else if (nxt == '/')
-			{
-				t.tag = Token::Tag::Comment;
-
-				c += 2;
-
-				while (c != end && *c != '\r' && *c != '\n')
-					++c;
-
-				t.data = { beg, c };
-			}
-			else if (nxt == '*')
-			{
-				uint32_t nesting_count = 1;
-
-				c += 2;
-
-				while (c != end)
-				{
-					if (c + 1 < end && c[0] == '*' && c[1] == '/')
-					{
-						++c;
-
-						--nesting_count;
-						
-						if (nesting_count == 0)
-							break;
-					}
-					else if (c + 1 < end && c[0] == '/' && c[1] == '*')
-					{
-						++c;
-
-						++nesting_count;
-					}
-					else if (*c == '\n')
-					{
-						++inout_curr_line_number;
-					}
-					
-					++c;
-				}
-				
-				if (nesting_count == 0)
-					t.tag = Token::Tag::Comment;
-				else
-					t.tag = Token::Tag::IncompleteComment;
-			}
 			else
 			{
 				t.tag = Token::Tag::OpDiv;
@@ -690,7 +641,7 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 	return t;
 }
 
-Status tokenize(strview data, bool include_comments, vec<Token>& out) noexcept
+Status tokenize(strview data, vec<Token>& out) noexcept
 {
 	u32 curr_line_number = 1;
 
@@ -702,21 +653,73 @@ Status tokenize(strview data, bool include_comments, vec<Token>& out) noexcept
 
 	while (c != end)
 	{
-		while(c != end && is_whitespace(*c))
+		while (c != end)
 		{
 			if (*c == '\n')
-				++curr_line_number;
+			{
+				curr_line_number += 1;
 
-			++c;
+				c += 1;
+			}
+			else if (*c == '/' && c + 1 < end && (c[1] == '/' || c[1] == '*'))
+			{
+				if (c[1] == '/')
+				{
+					c += 2;
+
+					while (c != end && *c != '\n')
+						c += 1;
+				}
+				else
+				{
+					c += 2;
+
+					u32 nesting_level = 1;
+
+					while (nesting_level != 0)
+					{
+						if (c + 1 >= end)
+							return STATUS_FROM_CUSTOM(CustomError::IncompleteComment);
+
+						if (*c == '*' && c[1] == '/')
+						{
+							nesting_level -= 1;
+
+							c += 2;
+						}
+						else if (*c == '/' && c[1] == '*')
+						{
+							nesting_level += 1;
+
+							c += 2;
+						}
+						else if (*c == '\n')
+						{
+							curr_line_number += 1;
+
+							c += 1;
+						}
+						else
+						{
+							c += 1;
+						}
+					}
+				}
+			}
+			else if (*c == ' ' || *c == '\t' || *c == '\r' || *c == '\f')
+			{
+				c += 1;
+			}
+			else
+			{
+				break;
+			}
 		}
 
 		if (c == end)
 			break;
 
 		tokens.push_back(get_token(c, end, &c, curr_line_number));
-
-		if (!include_comments && tokens.last().tag == Token::Tag::Comment)
-			tokens.pop();
 	}
 
 	out = std::move(tokens);

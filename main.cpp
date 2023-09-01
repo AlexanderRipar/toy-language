@@ -53,7 +53,7 @@ static Status run(i32 argc, const char** argv) noexcept
 
 	vec<Token> tokens;
 	
-	TRY(tokenize(strview(file_content, filesize), false, tokens));
+	TRY(tokenize(strview(file_content, filesize), tokens));
 
 	const strview filename = filename_from_filepath(argv[1]);
 
