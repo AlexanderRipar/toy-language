@@ -690,7 +690,7 @@ static Token get_token(const char* beg, const char* const end, const char** out_
 	return t;
 }
 
-vec<Token> tokenize(strview data, bool include_comments) noexcept
+Status tokenize(strview data, bool include_comments, vec<Token>& out) noexcept
 {
 	u32 curr_line_number = 1;
 
@@ -719,5 +719,7 @@ vec<Token> tokenize(strview data, bool include_comments) noexcept
 			tokens.pop();
 	}
 
-	return std::move(tokens);
+	out = std::move(tokens);
+
+	return {};
 }

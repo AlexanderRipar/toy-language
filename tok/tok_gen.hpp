@@ -4,6 +4,7 @@
 #include "../util/vec.hpp"
 #include "../util/strview.hpp"
 #include "../util/types.hpp"
+#include "../util/status.hpp"
 
 struct Token
 {
@@ -99,6 +100,6 @@ struct Token
 	strview data_strview() const noexcept;
 };
 
-vec<Token> tokenize(strview data, bool include_comments) noexcept;
+Status tokenize(strview data, bool include_comments, vec<Token>& out) noexcept;
 
 #endif // TOK_GEN_INCLUDE_GUARD

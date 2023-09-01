@@ -51,7 +51,9 @@ static Status run(i32 argc, const char** argv) noexcept
 
 	fprintf(stderr, "Tokenizing...\n\n");
 
-	vec<Token> tokens = tokenize(strview(file_content, filesize), false);
+	vec<Token> tokens;
+	
+	TRY(tokenize(strview(file_content, filesize), false, tokens));
 
 	const strview filename = filename_from_filepath(argv[1]);
 
