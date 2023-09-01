@@ -137,7 +137,7 @@ u32 Status::error_message(char* buf, u32 buf_bytes) const noexcept
 			return sizeof(unkown_msg);
 		}
 
-		const u64 msg_bytes = custom_msgs[err].len();
+		const u64 msg_bytes = custom_msgs[err].len() + 1;
 
 		if (msg_bytes <= buf_bytes)
 			memcpy(buf, custom_msgs[err].begin(), msg_bytes);
