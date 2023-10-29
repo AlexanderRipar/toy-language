@@ -1,0 +1,5 @@
+I. Make working with any data layout comfortable, even at compile time
+	Three factors for mutability and initialization
+	1. Compile-time or run-time initialized?
+	2. Run-time constant or mutable?
+	3. Compile time constant or mutable (Given compile-time initialized)?
