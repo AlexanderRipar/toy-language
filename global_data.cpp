@@ -1054,61 +1054,121 @@ struct DataEntryAndIndex
 	s32 index;
 };
 
-static u32 create_inline_hash(u32 hash, u32 inline_hash_mask) noexcept
+static u16 robin_hood_hash(u32 raw_hash, u32 hash_mask) noexcept
 {
-	const u32 raw_inline_hash = hash & inline_hash_mask;
+	const u16 h = (raw_hash >> 16) & hash_mask;
 
-	return raw_inline_hash == 0 ? 0x8000'0000 : raw_inline_hash;
+	return h == 0 ? 0x8000 : h;
 }
 
-static u32 create_index(const void* data, const void* entry, u32 hash, u32 inline_hash_mask) noexcept
-{
-	const u32 offset = static_cast<u32>((static_cast<const byte*>(entry) - static_cast<const byte*>(data)) / 4);
-
-	return offset | create_inline_hash(hash, inline_hash_mask);
-}
-
-template<typename DataEntry>
+template<typename T>
 static u32 data_entry_bytes(u16 tail_bytes)
 {
-	return (offsetof(DataEntry, tail) + tail_bytes + alignof(DataEntry) - 1) & ~(alignof(DataEntry) - 1);
+	return (offsetof(T, tail) + tail_bytes + alignof(T) - 1) & ~(alignof(T) - 1);
 }
 
-template<typename DataEntry, u32 LOCAL_HASH_BITS>
-static bool init_map_data(LinearMapData<DataEntry, LOCAL_HASH_BITS>* map) noexcept
+template<typename T>
+static T* next_data_entry(T* e) noexcept
 {
-	void* indices = VirtualAlloc(nullptr, map->indices_reserved_bytes, MEM_RESERVE, PAGE_READWRITE);
+	return reinterpret_cast<T*>(reinterpret_cast<byte*>(e) + data_entry_bytes<T>(e->tail_bytes));
+}
+
+template<typename T>
+static const T* next_data_entry(const T* e) noexcept
+{
+	return reinterpret_cast<const T*>(reinterpret_cast<const byte*>(e) + data_entry_bytes<T>(e->tail_bytes));
+}
+
+template<typename T>
+static void map_create_ind_for_data_entry(RobinHoodMap<T>* map, const T* e) noexcept
+{
+	u16* const inds = static_cast<u16*>(map->inds);
+
+	u32* const offs = reinterpret_cast<u32*>(inds + map->inds_committed_count);
+
+	const u32 hash = e->hash;
+
+	const u32 index_mask = map->inds_committed_count - 1;
+
+	u32 i = hash & index_mask;
+
+	u16 ind_to_insert = robin_hood_hash(hash, map->index_hash_mask);
+
+	u32 off_to_insert = static_cast<u32>((reinterpret_cast<const byte*>(e) - static_cast<const byte*>(map->data)) / alignof(T));
+
+	while (true)
+	{
+		const u16 ind = inds[i];
+
+		if (ind == 0)
+		{
+			inds[i] = ind_to_insert;
+
+			offs[i] = off_to_insert;
+
+			return;
+		}
+		else if (static_cast<u16>(ind & map->index_psl_mask) < (ind_to_insert & map->index_psl_mask))
+		{
+			const u16 new_ind_to_insert = inds[i];
+
+			const u32 new_off_to_insert = offs[i];
+
+			inds[i] = ind_to_insert;
+
+			offs[i] = off_to_insert;
+
+			ind_to_insert = new_ind_to_insert;
+
+			off_to_insert = new_off_to_insert;
+		}
+
+		assert((ind_to_insert & map->index_psl_mask) != map->index_psl_mask);
+
+		ind_to_insert += 1;
+
+		if (i == index_mask)
+			i = 0;
+		else
+			i += 1;
+	}
+}
+
+template<typename T>
+static bool map_init(RobinHoodMap<T>* map) noexcept
+{
+	void* inds = VirtualAlloc(nullptr, map->inds_reserved_count * 6, MEM_RESERVE, PAGE_READWRITE);
 
 	void* data = VirtualAlloc(nullptr, map->data_reserved_bytes, MEM_RESERVE, PAGE_READWRITE);
 
-	if (indices == nullptr || data == nullptr)
+	if (inds == nullptr || data == nullptr)
 		goto ERROR;
 
-	if (VirtualAlloc(indices, 1ui64 << map->initial_indices_commit_log2, MEM_COMMIT, PAGE_READWRITE) == nullptr)
+	if (VirtualAlloc(inds, map->inds_initial_commit_count * 6, MEM_COMMIT, PAGE_READWRITE) == nullptr)
 		goto ERROR;
 
-	if (VirtualAlloc(data, map->data_commit_increment_bytes, MEM_COMMIT, PAGE_READWRITE) == nullptr)
+	if (VirtualAlloc(data, map->data_initial_commit_bytes, MEM_COMMIT, PAGE_READWRITE) == nullptr)
 		goto ERROR;
 
 	map->lock = SRWLOCK_INIT;
 
-	map->indices = indices;
+	map->inds = inds;
 
-	map->indices_used_bytes = 0;
+	map->inds_used_count = 0;
 
-	map->indices_committed_bytes_log2 = map->initial_indices_commit_log2;
+	map->inds_committed_count = map->inds_initial_commit_count;
 
 	map->data = data;
 
 	map->data_used_bytes = 0;
 
-	map->data_committed_bytes = map->data_commit_increment_bytes;
+	map->data_committed_bytes = map->data_initial_commit_bytes;
 
 	return true;
 
 ERROR:
-	if (indices != nullptr)
-		VirtualFree(indices, 0, MEM_RELEASE);
+	if (inds != nullptr)
+		VirtualFree(inds, 0, MEM_RELEASE);
 
 	if (data != nullptr)
 		VirtualFree(data, 0, MEM_RELEASE);
@@ -1116,13 +1176,13 @@ ERROR:
 	return false;
 }
 
-template<typename DataEntry, u32 LOCAL_HASH_BITS>
-static bool deinit_map_data(LinearMapData<DataEntry, LOCAL_HASH_BITS>* map) noexcept
+template<typename T>
+static bool map_deinit(RobinHoodMap<T>* map) noexcept
 {
 	bool is_ok = true;
 
-	if (map->indices != nullptr)
-		is_ok &= static_cast<bool>(VirtualFree(map->indices, 0, MEM_RELEASE));
+	if (map->inds != nullptr)
+		is_ok &= static_cast<bool>(VirtualFree(map->inds, 0, MEM_RELEASE));
 
 	if (map->data != nullptr)
 		is_ok &= static_cast<bool>(VirtualFree(map->data, 0, MEM_RELEASE));
@@ -1132,8 +1192,8 @@ static bool deinit_map_data(LinearMapData<DataEntry, LOCAL_HASH_BITS>* map) noex
 	return is_ok;
 }
 
-template<typename DataEntry, u32 LOCAL_HASH_BITS>
-static bool grow_map_data(LinearMapData<DataEntry, LOCAL_HASH_BITS>* map, u32 extra_bytes) noexcept
+template<typename T>
+static bool map_grow_data(RobinHoodMap<T>* map, u32 extra_bytes) noexcept
 {
 	if (map->data_reserved_bytes == map->data_committed_bytes)
 		return false;
@@ -1148,86 +1208,86 @@ static bool grow_map_data(LinearMapData<DataEntry, LOCAL_HASH_BITS>* map, u32 ex
 	return true;
 }
 
-template<typename DataEntry, u32 LOCAL_HASH_BITS>
-static bool grow_map_indices(LinearMapData<DataEntry, LOCAL_HASH_BITS>* map) noexcept
+template<typename T>
+static bool map_grow_inds(RobinHoodMap<T>* map) noexcept
 {
-	const u64 indices_committed_bytes = 1ui64 << map->indices_committed_bytes_log2;
-
-	if (indices_committed_bytes == map->indices_reserved_bytes)
+	if (map->inds_committed_count == map->inds_reserved_count)
 		return false;
 
-	if (VirtualAlloc(static_cast<byte*>(map->indices) + indices_committed_bytes, indices_committed_bytes, MEM_COMMIT, PAGE_READWRITE) == nullptr)
+	if (VirtualAlloc(static_cast<byte*>(map->inds) + map->inds_committed_count * 6, map->inds_committed_count * 6, MEM_COMMIT, PAGE_READWRITE) == nullptr)
 		return false;
 
-	map->indices_committed_bytes_log2 += 1;
+	memset(map->inds, 0, map->inds_committed_count * 6);
 
-	memset(map->indices, 0, indices_committed_bytes);
+	map->inds_committed_count *= 2;
 
-	const u32 index_mask = (1 << (map->indices_committed_bytes_log2 - 2)) - 1;
-
-	for (byte* e = static_cast<byte*>(map->data); e != static_cast<byte*>(map->data) + map->data_used_bytes; )
-	{
-		const DataEntry* entry = reinterpret_cast<DataEntry*>(e);
-	
-		const u32 hash = entry->hash;
-
-		u32 i = hash & index_mask;
-
-		while (static_cast<u32*>(map->indices)[i] != 0)
-		{
-			if (i == index_mask)
-				i = 0;
-			else
-				i += 1;
-		}
-
-		static_cast<u32*>(map->indices)[i] = create_index(map->data, e, hash, map->inline_hash_mask);
-
-		const u32 e_bytes = data_entry_bytes<DataEntry>(reinterpret_cast<DataEntry*>(e)->tail_bytes);
-
-		e += e_bytes;
-	}
+	for (T* e = static_cast<T*>(map->data); e != reinterpret_cast<T*>(static_cast<byte*>(map->data) + map->data_used_bytes); e = next_data_entry(e))
+		map_create_ind_for_data_entry(map, e);
 
 	return true;
 }
 
-template<typename DataEntry, u32 LOCAL_HASH_BITS>
-static DataEntryAndIndex<DataEntry> insert_or_find_data_entry(LinearMapData<DataEntry, LOCAL_HASH_BITS>* map, Range<char8> name, u32 hash) noexcept
+template<typename T>
+static u32 map_find_entry(const volatile RobinHoodMap<T>* map, Range<char8> name, u32 hash) noexcept
 {
-	if (name.count() > UINT16_MAX)
-		return { nullptr, -1 };
+	const u16* const inds = static_cast<const u16*>(map->inds);
 
-	const u16 name_bytes = static_cast<u16>(name.count());
+	const u32* const offs = reinterpret_cast<const u32*>(inds + map->inds_committed_count);
 
-	// Optimistally assume that name is likely already present in the map.
-	// For this case, a shared lock is sufficient, since we aren't writing
-	// anything.
-	AcquireSRWLockShared(&map->lock);
+	const byte* const data = static_cast<byte*>(map->data);
 
-	const u32 index_mask = static_cast<u32>((1ui64 << map->indices_committed_bytes_log2) / sizeof(index_mask) - 1);
+	const u32 index_mask = map->inds_committed_count - 1;
 
-	const u32 inline_hash = create_inline_hash(hash, map->inline_hash_mask);
+	u16 ind_to_find = robin_hood_hash(hash, map->index_hash_mask);
 
 	u32 i = hash & index_mask;
 
-	for (u32 index = static_cast<u32*>(map->indices)[i]; index != 0; index = static_cast<u32*>(map->indices)[i])
+	while (true)
 	{
-		if ((index & map->inline_hash_mask) == inline_hash)
+		const u16 ind = inds[i];
+
+		if (ind == ind_to_find)
 		{
-			DataEntry* entry = reinterpret_cast<DataEntry*>(static_cast<byte*>(map->data) + (index & ~map->inline_hash_mask) * alignof(DataEntry));
+			const u32 off = offs[i];
 
-			if (entry->hash == hash && entry->tail_bytes == name_bytes && memcmp(entry->tail, name.begin(), name_bytes) == 0)
-			{
-				ReleaseSRWLockShared(&map->lock);
+			const T* e = reinterpret_cast<const T*>(data + off * alignof(T));
 
-				return { entry, static_cast<s32>(index & ~map->inline_hash_mask) };
-			}
+			if (e->tail_bytes == name.count() && memcmp(e->tail, name.begin(), name.count()) == 0)
+				return off;
 		}
+		else if (ind == 0 || (ind & map->index_psl_mask) < (ind_to_find & map->index_psl_mask))
+		{
+			return ~0u;
+		}
+
+		ind_to_find += 1;
 
 		if (i == index_mask)
 			i = 0;
 		else
 			i += 1;
+	}
+}
+
+template<typename T>
+static u32 map_insert_or_find_data_entry(RobinHoodMap<T>* map, Range<char8> name, u32 hash) noexcept
+{
+	// Optimistally assume that name is likely already present in the map.
+	// For this case, a shared lock is sufficient, since we aren't writing
+	// anything.
+	AcquireSRWLockShared(&map->lock);
+
+	assert(name.count() < 0x10000);
+
+	const u16 name_bytes = static_cast<u16>(name.count());
+
+	const u32 shared_found_ind = map_find_entry(map, name, hash);
+
+	if (shared_found_ind != ~0u)
+	{
+		ReleaseSRWLockShared(&map->lock);
+
+		return shared_found_ind;
 	}
 
 	// Our optimistic assumption was wrong.
@@ -1237,181 +1297,134 @@ static DataEntryAndIndex<DataEntry> insert_or_find_data_entry(LinearMapData<Data
 	ReleaseSRWLockShared(&map->lock);
 	AcquireSRWLockExclusive(&map->lock);
 
-	// Get new index_mask in case indices_committed_bytes_log2 has changed
-	// while we did not hold the lock (i.e. in case a rehash has occurred).
-	// This is done through a volatile pointer to ensure that the access is
-	// not optimized away and simply replaced by the earlier read into
-	// index_mask (which would also making the below equality check
-	// trivially omissible).
-	const u32 exclusive_index_mask = static_cast<u32>((1ui64 << static_cast<volatile LinearMapData<DataEntry, LOCAL_HASH_BITS>*>(map)->indices_committed_bytes_log2) / sizeof(exclusive_index_mask) - 1);
-
-	// Reset index into indices in case a rehash has occurred while the
-	// lock was released.
-	// Otherwise, check whether the name we're looking for has been
-	// inserted in the meantime by continuing our search from where we left
-	// off before acquiring our exclusive lock.
-	if (exclusive_index_mask != index_mask)
-		i = hash & exclusive_index_mask;
-
 	// Check whether name was inserted while we did not hold the lock.
-	for (u32 index = static_cast<u32*>(map->indices)[i]; index != 0; index = static_cast<u32*>(map->indices)[i])
+	// Since map_find_entry takes map as volatile, this cannot accidentally
+	// be optimized away by reusing shared_found_ind.
+	const u32 exlusive_found_ind = map_find_entry(map, name, hash);
+
+	if (exlusive_found_ind != ~0u)
 	{
-		if ((index & map->inline_hash_mask) == inline_hash)
-		{
-			DataEntry* entry = reinterpret_cast<DataEntry*>(static_cast<byte*>(map->data) + (index & ~map->inline_hash_mask) * alignof(DataEntry));
+		ReleaseSRWLockExclusive(&map->lock);
 
-			if (entry->hash == hash && entry->tail_bytes == name_bytes && memcmp(entry->tail, name.begin(), name_bytes) == 0)
-			{
-				ReleaseSRWLockExclusive(&map->lock);
-
-				return { entry, static_cast<s32>(index & ~map->inline_hash_mask) };
-			}
-		}
-
-		if (i == exclusive_index_mask)
-			i = 0;
-		else
-			i += 1;
+		return exlusive_found_ind;
 	}
 
-	// The name really is not in the map yet. Insert it.
+	const u32 extra_bytes = data_entry_bytes<T>(name_bytes);
 
-	const u32 new_entry_bytes = data_entry_bytes<DataEntry>(name_bytes);
-
-	// Grow the data area if necessary
-	if (map->data_used_bytes + new_entry_bytes > map->data_committed_bytes)
+	if (map->data_used_bytes + extra_bytes > map->data_committed_bytes)
 	{
-		if (!grow_map_data(map, new_entry_bytes))
+		if (!map_grow_data(map, extra_bytes))
 		{
 			ReleaseSRWLockExclusive(&map->lock);
 
-			return { nullptr, -1 };
+			return ~0u;
 		}
 	}
 
-	// Insert DataEntry
-	DataEntry* new_entry = reinterpret_cast<DataEntry*>(static_cast<byte*>(map->data) + map->data_used_bytes);
+	T* e = reinterpret_cast<T*>(static_cast<byte*>(map->data) + map->data_used_bytes);
 
-	map->data_used_bytes += new_entry_bytes;
+	e->hash = hash;
 
-	new_entry->hash = hash;
+	e->tail_bytes = name_bytes;
 
-	new_entry->tail_bytes = name_bytes;
+	memcpy(e->tail, name.begin(), name_bytes);
 
-	memcpy(new_entry->tail, name.begin(), name_bytes);
+	map->data_used_bytes += extra_bytes;
 
-	// Insert index to point to the new DataEntry
-	const u32 new_index = static_cast<u32>(reinterpret_cast<byte*>(new_entry) - reinterpret_cast<byte*>(map->data)) / alignof(DataEntry);
+	// Since inds never gets full, inserting into it without checking
+	// inds_committed_count is greater than inds_used_count is fine. This
+	// is ensured by the below check, which grows inds 'prematurely', thus
+	// also ensuring our load factor does not get out of hand.
+	map_create_ind_for_data_entry(map, e);
 
-	static_cast<u32*>(map->indices)[i] = new_index | inline_hash;
+	map->inds_used_count += 1;
 
-	// Since indices never gets full, growing this without a check for
-	// indices_committed_bytes_log2 is fine. That is basically done
-	// afterwards (which, again, is fine, since it is never allowed to get
-	// full).
-	map->indices_used_bytes += 4;
-
-	// If indices is getting too full, double its size and rehash.
-	if (map->indices_used_bytes * 6ui64 > (5ui64 << map->indices_committed_bytes_log2))
+	if (map->inds_used_count * 6 > map->inds_committed_count * 5)
 	{
-		if (!grow_map_indices(map))
+		if (!map_grow_inds(map))
 		{
 			ReleaseSRWLockExclusive(&map->lock);
 
-			return { nullptr, -1 };
+			return ~0u;
 		}
 	}
 
 	ReleaseSRWLockExclusive(&map->lock);
 
-	return { new_entry, static_cast<s32>(new_index) };
+	return static_cast<u32>((reinterpret_cast<byte*>(e) - static_cast<byte*>(map->data)) / alignof(T));
 }
 
-template<typename DataEntry, u32 LOCAL_HASH_BITS>
-static void get_map_diagnostics(const LinearMapData<DataEntry, LOCAL_HASH_BITS>* map, SimpleMapDiagnostics* out) noexcept
+template<typename T>
+static void map_get_diagnostics(const RobinHoodMap<T>* map, SimpleMapDiagnostics* out) noexcept
 {
-	out->indices_committed_count = (1u << map->indices_committed_bytes_log2) / 4;
+	out->indices_used_count = map->inds_used_count;
 
-	out->indices_used_count = map->indices_used_bytes / 4;
-
-	out->data_overhead = offsetof(DataEntry, tail);
-
-	out->data_stride = alignof(DataEntry);
+	out->indices_committed_count = map->inds_committed_count;
 
 	out->data_used_bytes = map->data_used_bytes;
 
 	out->data_committed_bytes = map->data_committed_bytes;
+
+	out->data_overhead = offsetof(T, tail);
+
+	out->data_stride = alignof(T);
 }
 
-template<typename DataEntry, u32 LOCAL_HASH_BITS>
-static void get_map_diagnostics(const LinearMapData<DataEntry, LOCAL_HASH_BITS>* map, FullMapDiagnostics* out) noexcept
+template<typename T>
+static void map_get_diagnostics(const RobinHoodMap<T>* map, FullMapDiagnostics* out) noexcept
 {
-	get_map_diagnostics(map, &out->simple);
+	const u16* const inds = static_cast<const u16*>(map->inds);
+
+	map_get_diagnostics(map, &out->simple);
 
 	memset(out->probe_seq_len_counts, 0, sizeof(out->probe_seq_len_counts));
 
-	const u32* indices = static_cast<const u32*>(map->indices);
+	u16 max_psl = 0;
 
-	const byte* const data_beg = static_cast<const byte*>(map->data);
+	for (u32 i = 0; i != map->inds_committed_count; ++i)
+	{
+		if (inds[i] == 0)
+			continue;
 
-	const byte* const data_end = data_beg + map->data_used_bytes;
+		const u16 psl = inds[i] & map->index_psl_mask;
 
-	const u32 index_mask = ((1u << map->indices_committed_bytes_log2) - 1) / 4;
+		out->probe_seq_len_counts[psl] += 1;
 
-	u32 max_psl = 0;
+		if (psl > max_psl)
+			max_psl = psl;
+	}
 
 	u32 total_string_bytes = 0;
 
 	u16 max_string_bytes = 0;
 
-	for (const byte* e = data_beg; e != data_end; e = e + data_entry_bytes<DataEntry>(reinterpret_cast<const DataEntry*>(e)->tail_bytes))
+	for (T* e = static_cast<T*>(map->data); e != reinterpret_cast<T*>(static_cast<byte*>(map->data) + map->data_used_bytes); e = next_data_entry(e))
 	{
-		const DataEntry* entry = reinterpret_cast<const DataEntry*>(e);
+		const u16 string_bytes = e->tail_bytes;
 
-		const u32 hash = entry->hash;
+		total_string_bytes += string_bytes;
 
-		const u32 target_index = create_index(data_beg, e, hash, map->inline_hash_mask);
-
-		const u32 initial_index = hash & index_mask;
-
-		u32 psl = 0;
-
-		while (indices[(initial_index + psl) & index_mask] != target_index)
-		{
-			assert(indices[(initial_index + psl) & index_mask] != 0);
-
-			psl += 1;
-		}
-
-		if (psl > max_psl)
-			max_psl = psl;
-
-		if (psl < _countof(out->probe_seq_len_counts))
-			out->probe_seq_len_counts[psl] += 1;
-
-		if (entry->tail_bytes > max_string_bytes)
-			max_string_bytes = entry->tail_bytes;
-
-		total_string_bytes += entry->tail_bytes;
+		if (string_bytes > max_string_bytes)
+			max_string_bytes = string_bytes;
 	}
 
 	out->max_probe_seq_len = max_psl + 1;
 
-	out->total_string_bytes = total_string_bytes;
-
 	out->max_string_bytes = max_string_bytes;
+
+	out->total_string_bytes = total_string_bytes;
 }
 
 
 
 bool StringSet::init() noexcept
 {
-	return init_map_data(&m_map);
+	return map_init(&m_map);
 }
 
 bool StringSet::deinit() noexcept
 {
-	return deinit_map_data(&m_map);
+	return map_deinit(&m_map);
 }
 
 s32 StringSet::index_from(Range<char8> string) noexcept
@@ -1423,7 +1436,7 @@ s32 StringSet::index_from(Range<char8> string) noexcept
 
 s32 StringSet::index_from(Range<char8> string, u32 hash) noexcept
 {
-	return insert_or_find_data_entry(&m_map, string, hash).index;
+	return map_insert_or_find_data_entry(&m_map, string, hash);
 }
 
 Range<char8> StringSet::string_from(s32 index) const noexcept
@@ -1437,45 +1450,45 @@ Range<char8> StringSet::string_from(s32 index) const noexcept
 
 void StringSet::get_diagnostics(SimpleMapDiagnostics* out) const noexcept
 {
-	get_map_diagnostics(&m_map, out);
+	map_get_diagnostics(&m_map, out);
 }
 
 void StringSet::get_diagnostics(FullMapDiagnostics* out) const noexcept
 {
-	get_map_diagnostics(&m_map, out);
+	map_get_diagnostics(&m_map, out);
 }
 
 
 
 bool InputFileSet::init() noexcept
 {
-	return init_map_data(&m_map);
+	return map_init(&m_map);
 }
 
 bool InputFileSet::deinit() noexcept
 {
-	return deinit_map_data(&m_map);
+	return map_deinit(&m_map);
 }
 
 bool InputFileSet::add_file(Range<char8> path, HANDLE handle) noexcept
 {
 	const u32 hash = fnv1a(path);
 
-	DataEntryAndIndex rst = insert_or_find_data_entry(&m_map, path, hash);
+	const u32 index = map_insert_or_find_data_entry(&m_map, path, hash);
 
-	if (rst.index == -1)
+	if (index == ~0u)
 		return false;
 
-	rst.entry->handle = handle;
+	DataEntry* entry = reinterpret_cast<DataEntry*>(static_cast<byte*>(m_map.data) + index * alignof(DataEntry));
 
-	u32 next_index;
+	entry->handle = handle;
 
 	if (m_head == nullptr)
-		next_index = ~0u;
+		entry->next_index = ~0u;
 	else
-		next_index = static_cast<u32>((reinterpret_cast<byte*>(m_head) - static_cast<byte*>(m_map.data)) / alignof(DataEntry));
+		entry->next_index = static_cast<u32>((reinterpret_cast<byte*>(m_head) - static_cast<byte*>(m_map.data)) / alignof(DataEntry));
 
-	m_head = rst.entry;
+	m_head = entry;
 
 	return true;
 }
@@ -1499,12 +1512,12 @@ HANDLE InputFileSet::get_file() noexcept
 
 void InputFileSet::get_diagnostics(SimpleMapDiagnostics* out) const noexcept
 {
-	get_map_diagnostics(&m_map, out);
+	map_get_diagnostics(&m_map, out);
 }
 
 void InputFileSet::get_diagnostics(FullMapDiagnostics* out) const noexcept
 {
-	get_map_diagnostics(&m_map, out);
+	map_get_diagnostics(&m_map, out);
 }
 
 

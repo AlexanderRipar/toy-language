@@ -44,34 +44,39 @@ struct FullMapDiagnostics
 	u32 max_string_bytes;
 };
 
-template<typename DataEntry, u32 INLINE_HASH_BITS>
-struct LinearMapData
+template<typename DataEntry>
+struct RobinHoodMap
 {
-	static constexpr u64 data_reserved_bytes = 1ui64 << 31;
+	static constexpr u32 index_psl_bits = 6;
 
-	static constexpr u64 indices_reserved_bytes = 1ui64 << 29;
+	static constexpr u16 index_psl_mask = (1 << index_psl_bits) - 1;
 
-	static constexpr u32 data_commit_increment_bytes = 1024 * 1024;
+	static constexpr u16 index_hash_mask = static_cast<u16>(~index_psl_mask);
 
-	static constexpr u32 initial_indices_commit_log2 = 15;
+	static constexpr u32 inds_reserved_count = 1u << 27;
 
-	static constexpr u32 inline_hash_bits = INLINE_HASH_BITS;
+	static constexpr u32 data_reserved_bytes = 1u << 29;
 
-	static constexpr u32 inline_hash_mask = ~(~0u >> inline_hash_bits);
+	static constexpr u32 inds_initial_commit_count = 1u << 15;
+
+	static constexpr u32 data_initial_commit_bytes = 1u << 19;
+
+	static constexpr u32 data_commit_increment_bytes = 1u << 15;
+
 
 	SRWLOCK lock;
 
+	void* inds;
+
 	void* data;
+
+	u32 inds_used_count;
+
+	u32 inds_committed_count;
 
 	u32 data_used_bytes;
 
 	u32 data_committed_bytes;
-
-	void* indices;
-
-	u32 indices_committed_bytes_log2;
-
-	u32 indices_used_bytes;
 };
 
 struct StringSet
@@ -90,7 +95,7 @@ private:
 		#pragma warning(pop)
 	};
 
-	LinearMapData<DataEntry, Token::MAX_TAG_BITS> m_map;
+	RobinHoodMap<DataEntry> m_map;
 
 public:
 
@@ -130,7 +135,7 @@ private:
 
 	DataEntry* m_head;
 
-	LinearMapData<DataEntry, 5> m_map;
+	RobinHoodMap<DataEntry> m_map;
 
 public:
 
