@@ -192,7 +192,7 @@ namespace test::global_data
 
 			buf.n += 1;
 
-			const u64 n_idx = buf.n;
+			const u64 highest_n = buf.n;
 
 			const s32 idx1 = s.index_from(buf.range());
 
@@ -215,7 +215,7 @@ namespace test::global_data
 				buf.n -= 1;
 			}
 
-			buf.n = n_idx;
+			buf.n = highest_n;
 
 			const s32 idx2 = s.index_from(buf.range());
 
@@ -224,6 +224,10 @@ namespace test::global_data
 			const Range returned_range = s.string_from(idx2);
 
 			CHECK_RANGES_EQ(buf.range(), returned_range, "string_from returns same string for same index");
+
+			s.get_diagnostics(&diag);
+
+			CHECK_EQ(diag.indices_used_count, highest_n, "number of indices equals number of distinct inserted strings");
 
 			CHECK_EQ(s.deinit(), true, "StringSet::deinit() returns true");
 
@@ -342,7 +346,7 @@ namespace test::global_data
 
 					buf.n += 1;
 				}
-				
+
 				FullMapDiagnostics diag;
 
 				s.get_diagnostics(&diag);
