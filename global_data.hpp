@@ -44,7 +44,7 @@ struct FullMapDiagnostics
 	u32 max_string_bytes;
 };
 
-template<typename DataEntry>
+template<typename DataEntry, u32 INLINE_HASH_BITS>
 struct GenericMapData
 {
 	static constexpr u64 data_reserved_bytes = 1ui64 << 31;
@@ -55,7 +55,7 @@ struct GenericMapData
 
 	static constexpr u32 initial_indices_commit_log2 = 15;
 
-	static constexpr u32 inline_hash_bits = DataEntry::inline_hash_bits;
+	static constexpr u32 inline_hash_bits = INLINE_HASH_BITS;
 
 	static constexpr u32 inline_hash_mask = ~(~0u >> inline_hash_bits);
 
@@ -80,8 +80,6 @@ private:
 
 	struct DataEntry
 	{
-		static constexpr u32 inline_hash_bits = Token::MAX_TAG_BITS;
-
 		u32 hash;
 
 		u16 tail_bytes;
@@ -92,7 +90,7 @@ private:
 		#pragma warning(pop)
 	};
 
-	GenericMapData<DataEntry> m_map;
+	GenericMapData<DataEntry, Token::MAX_TAG_BITS> m_map;
 
 public:
 
@@ -116,8 +114,6 @@ struct InputFileSet
 private:
 	struct DataEntry
 	{
-		static constexpr u32 inline_hash_bits = 5;
-
 		u32 hash;
 
 		u32 next_index;
@@ -134,7 +130,7 @@ private:
 
 	DataEntry* m_head;
 
-	GenericMapData<DataEntry> m_map;
+	GenericMapData<DataEntry, 5> m_map;
 
 public:
 
