@@ -1075,7 +1075,7 @@ static u32 data_entry_bytes(u16 tail_bytes)
 }
 
 template<typename DataEntry, u32 LOCAL_HASH_BITS>
-static bool init_map_data(GenericMapData<DataEntry, LOCAL_HASH_BITS>* map) noexcept
+static bool init_map_data(LinearMapData<DataEntry, LOCAL_HASH_BITS>* map) noexcept
 {
 	void* indices = VirtualAlloc(nullptr, map->indices_reserved_bytes, MEM_RESERVE, PAGE_READWRITE);
 
@@ -1117,7 +1117,7 @@ ERROR:
 }
 
 template<typename DataEntry, u32 LOCAL_HASH_BITS>
-static bool deinit_map_data(GenericMapData<DataEntry, LOCAL_HASH_BITS>* map) noexcept
+static bool deinit_map_data(LinearMapData<DataEntry, LOCAL_HASH_BITS>* map) noexcept
 {
 	bool is_ok = true;
 
@@ -1133,7 +1133,7 @@ static bool deinit_map_data(GenericMapData<DataEntry, LOCAL_HASH_BITS>* map) noe
 }
 
 template<typename DataEntry, u32 LOCAL_HASH_BITS>
-static bool grow_map_data(GenericMapData<DataEntry, LOCAL_HASH_BITS>* map, u32 extra_bytes) noexcept
+static bool grow_map_data(LinearMapData<DataEntry, LOCAL_HASH_BITS>* map, u32 extra_bytes) noexcept
 {
 	if (map->data_reserved_bytes == map->data_committed_bytes)
 		return false;
@@ -1149,7 +1149,7 @@ static bool grow_map_data(GenericMapData<DataEntry, LOCAL_HASH_BITS>* map, u32 e
 }
 
 template<typename DataEntry, u32 LOCAL_HASH_BITS>
-static bool grow_map_indices(GenericMapData<DataEntry, LOCAL_HASH_BITS>* map) noexcept
+static bool grow_map_indices(LinearMapData<DataEntry, LOCAL_HASH_BITS>* map) noexcept
 {
 	const u64 indices_committed_bytes = 1ui64 << map->indices_committed_bytes_log2;
 
@@ -1192,7 +1192,7 @@ static bool grow_map_indices(GenericMapData<DataEntry, LOCAL_HASH_BITS>* map) no
 }
 
 template<typename DataEntry, u32 LOCAL_HASH_BITS>
-static DataEntryAndIndex<DataEntry> insert_or_find_data_entry(GenericMapData<DataEntry, LOCAL_HASH_BITS>* map, Range<char8> name, u32 hash) noexcept
+static DataEntryAndIndex<DataEntry> insert_or_find_data_entry(LinearMapData<DataEntry, LOCAL_HASH_BITS>* map, Range<char8> name, u32 hash) noexcept
 {
 	if (name.count() > UINT16_MAX)
 		return { nullptr, -1 };
@@ -1243,7 +1243,7 @@ static DataEntryAndIndex<DataEntry> insert_or_find_data_entry(GenericMapData<Dat
 	// not optimized away and simply replaced by the earlier read into
 	// index_mask (which would also making the below equality check
 	// trivially omissible).
-	const u32 exclusive_index_mask = static_cast<u32>((1ui64 << static_cast<volatile GenericMapData<DataEntry, LOCAL_HASH_BITS>*>(map)->indices_committed_bytes_log2) / sizeof(exclusive_index_mask) - 1);
+	const u32 exclusive_index_mask = static_cast<u32>((1ui64 << static_cast<volatile LinearMapData<DataEntry, LOCAL_HASH_BITS>*>(map)->indices_committed_bytes_log2) / sizeof(exclusive_index_mask) - 1);
 
 	// Reset index into indices in case a rehash has occurred while the
 	// lock was released.
@@ -1328,7 +1328,7 @@ static DataEntryAndIndex<DataEntry> insert_or_find_data_entry(GenericMapData<Dat
 }
 
 template<typename DataEntry, u32 LOCAL_HASH_BITS>
-static void get_map_diagnostics(const GenericMapData<DataEntry, LOCAL_HASH_BITS>* map, SimpleMapDiagnostics* out) noexcept
+static void get_map_diagnostics(const LinearMapData<DataEntry, LOCAL_HASH_BITS>* map, SimpleMapDiagnostics* out) noexcept
 {
 	out->indices_committed_count = (1u << map->indices_committed_bytes_log2) / 4;
 
@@ -1344,7 +1344,7 @@ static void get_map_diagnostics(const GenericMapData<DataEntry, LOCAL_HASH_BITS>
 }
 
 template<typename DataEntry, u32 LOCAL_HASH_BITS>
-static void get_map_diagnostics(const GenericMapData<DataEntry, LOCAL_HASH_BITS>* map, FullMapDiagnostics* out) noexcept
+static void get_map_diagnostics(const LinearMapData<DataEntry, LOCAL_HASH_BITS>* map, FullMapDiagnostics* out) noexcept
 {
 	get_map_diagnostics(map, &out->simple);
 

@@ -45,7 +45,7 @@ struct FullMapDiagnostics
 };
 
 template<typename DataEntry, u32 INLINE_HASH_BITS>
-struct GenericMapData
+struct LinearMapData
 {
 	static constexpr u64 data_reserved_bytes = 1ui64 << 31;
 
@@ -90,7 +90,7 @@ private:
 		#pragma warning(pop)
 	};
 
-	GenericMapData<DataEntry, Token::MAX_TAG_BITS> m_map;
+	LinearMapData<DataEntry, Token::MAX_TAG_BITS> m_map;
 
 public:
 
@@ -130,7 +130,7 @@ private:
 
 	DataEntry* m_head;
 
-	GenericMapData<DataEntry, 5> m_map;
+	LinearMapData<DataEntry, 5> m_map;
 
 public:
 
