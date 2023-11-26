@@ -11,7 +11,14 @@ using thread_proc = u32 (*) (void* arg);
 
 u32 run_on_threads_and_wait(u32 thread_count, thread_proc f, void* arg, u32 timeout) noexcept;
 
-void log_error(FILE* f, const char8* fmt, ...) noexcept;
+enum class LogLevel
+{
+	None,
+	Info,
+	Failure,
+};
+
+void log(LogLevel level, FILE* f, const char8* fmt, ...) noexcept;
 
 #define TEST_INIT u32 error_count_ = 0
 
@@ -22,7 +29,7 @@ void log_error(FILE* f, const char8* fmt, ...) noexcept;
 		const auto va_ = (a_); \
 		const auto vb_ = (b_); \
 		if (!(check_)) { \
-			log_error(out_file, "%s (ln %d): Check '%s' failed. Aborting test case. ('%s' was %s '%s')\n", \
+			log(LogLevel::Failure, out_file, "%s (ln %d): Check '%s' failed. Aborting test case. ('%s' was %s '%s')\n", \
 				__FUNCTION__, \
 				__LINE__, \
 				__FUNCTION__, \

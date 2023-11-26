@@ -68,13 +68,33 @@ u32 run_on_threads_and_wait(u32 thread_count, thread_proc f, void* arg, u32 time
 	return data.error_count;
 }
 
-void log_error(FILE* f, const char8* fmt, ...) noexcept
+void log(LogLevel level, FILE* f, const char8* fmt, ...) noexcept
 {
+	switch (level)
+	{
+	case LogLevel::None:
+		break;
+
+	case LogLevel::Info:
+		fprintf(f, "[Info] ");
+		break;
+
+	case LogLevel::Failure:
+		fprintf(f, "[Fail] ");
+		break;
+
+	default:
+		assert(false);
+		fprintf(f, "[????] ");
+		break;
+	}
+
 	va_list args;
 
 	va_start(args, fmt);
 
-	vfprintf(stderr, fmt, args);
+	if (level == LogLevel::Failure)
+		vfprintf(stderr, fmt, args);
 
 	if (f != nullptr)
 		vfprintf(f, fmt, args);
