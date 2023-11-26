@@ -117,6 +117,7 @@ public:
 struct InputFileSet
 {
 private:
+
 	struct DataEntry
 	{
 		u32 hash;
