@@ -338,9 +338,9 @@ namespace test::global_data
 
 			IncrementCharBuffer buf;
 
-			for (u32 i = 0; i != 10; ++i)
+			for (u32 iter = 0; iter != 40; ++iter)
 			{
-				for (u32 j = 0; j != 100000; ++j)
+				for (u32 i = 0; i != 50000; ++i)
 				{
 					CHECK_NE(s.index_from(buf.range()), -1, "StringSet::index_from succeeds");
 
@@ -351,15 +351,13 @@ namespace test::global_data
 
 				s.get_diagnostics(&diag);
 
-				fprintf(stdout,
-					"StringSet Diagnostics\n"
-					"Allocated indices:   %u\n"
-					"Used indices:        %u\n"
-					"Load factor:         %f\n"
-					"Max Probe Seq. Len.: %u\n"
-					"Probe Sequence Length distribution:\n",
-					diag.simple.indices_committed_count,
+				log(LogLevel::Info, out_file,
+					"StringSet Stats\n"
+					"Used indices    Allocated indices    Load factor    Max Probe Seq. Length (PSL)\n"
+					"  %10u           %10u       %8.2f                        %7u\n"
+					"PSL Dist | ",
 					diag.simple.indices_used_count,
+					diag.simple.indices_committed_count,
 					static_cast<float>(diag.simple.indices_used_count) / diag.simple.indices_committed_count,
 					diag.max_probe_seq_len);
 
@@ -368,10 +366,28 @@ namespace test::global_data
 					diag.max_probe_seq_len :
 					static_cast<u32>(array_count(diag.probe_seq_len_counts));
 
-				for (u32 j = 0; j != max_saved_psl; ++j)
-					fprintf(stdout, "    %u: %u\n", j + 1, diag.probe_seq_len_counts[j]);
+				u32 psl = 0;
 
-				fprintf(stdout, "\n");
+				for (u32 i = 0; i != 10; ++i)
+					log(LogLevel::None, out_file, "%8u", i + 1);
+
+				log(LogLevel::None, out_file, "\n---------+---------------------------------------------------------------------------------\n");
+
+				while (psl != max_saved_psl)
+				{
+					const u32 next_psl = psl + 10 < max_saved_psl ? psl + 10 : max_saved_psl;
+
+					log(LogLevel::None, out_file, "    %4u | ", psl);
+
+					for (u32 i = psl; i != next_psl; ++i)
+						log(LogLevel::None, out_file, "%8u", diag.probe_seq_len_counts[i]);
+
+					log(LogLevel::None, out_file, "\n");
+
+					psl = next_psl;
+				}
+
+				log(LogLevel::None, out_file, "\n");
 			}
 
 			TEST_RETURN;
