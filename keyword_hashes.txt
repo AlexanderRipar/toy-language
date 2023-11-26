@@ -1,0 +1,330 @@
+if      => 687720A4 => 00100101000001001110111000010110
+then    => CA38EDF4 => 00101111101101110001110001010011
+else    => 0F67C00A => 01010000000000111110011011110000
+for     => 408F5E0E => 01110000011110101111000100000010
+do      => 6D7728CE => 01110011000101001110111010110110
+finally => 435DBFB2 => 01001101111111011011101011000010
+switch  => BEDF78E5 => 10100111000111101111101101111101
+case    => F8B6C091 => 10001001000000110110110100011111
+try     => 256CA1C0 => 00000011100001010011011010100100
+catch   => F6AEB04E => 01110010000011010111010101101111
+defer   => 4D6AB893 => 11001001000111010101011010110010
+func    => 93A36C0F => 11110000001101101100010111001001
+proc    => 74DA5455 => 10101010001010100101101100101110
+trait   => CB5FDDC7 => 11100011101110111111101011010011
+impl    => 69CD1D1B => 11011000101110001011001110010110
+where   => BF6EC4A2 => 01000101001000110111011011111101
+let     => 2681BE70 => 00001110011111011000000101100100
+mut     => 2A7DF2CD => 10110011010011111011111001010100
+auto    => CCC737C4 => 00100011111011001110001100110011
+pub     => 367749BA => 01011101100100101110111001101100
+global  => 57572DAC => 00110101101101001110101011101010
+
+static u32 fnv1a_(Range<char8> string) noexcept
+{
+	u32 hash = 2166136261;
+
+	for (const char8 c : string)
+		hash = (hash * 16777619) ^ c;
+
+	return hash;
+}
+
+// no collisions for len = 7, off = 5
+void find_shortest_simple()
+{
+	const char* keywords[] = {
+		"if",
+		"then",
+		"else",
+		"for",
+		"do",
+		"finally",
+		"switch",
+		"case",
+		"try",
+		"catch",
+		"defer",
+		"func",
+		"proc",
+		"trait",
+		"impl",
+		"where",
+		"let",
+		"mut",
+		"auto",
+		"pub",
+		"global",
+	};
+
+	// BEST KNOWN: 7 bits from offset 7
+
+	static constexpr u32 keyword_count = sizeof(keywords) / sizeof(*keywords);
+
+	u32 hashes[keyword_count];
+
+	for (u32 i = 0; i != keyword_count; ++i)
+		hashes[i] = fnv1a_(Range{ keywords[i], strlen(keywords[i]) });
+
+	static constexpr u32 min_subhash_length = 4;
+
+	static constexpr u32 max_subhash_length = 8;
+
+	bool subhashes[1 << max_subhash_length]{};
+
+	for (u32 len = min_subhash_length; len != max_subhash_length; ++len)
+	{
+		const u32 mask = (1 << len) - 1;
+
+		for (u32 off = 0; off != 32 - len; ++off)
+		{
+			memset(subhashes, 0, sizeof(subhashes));
+
+			for (u32 i = 0; i != keyword_count; ++i)
+			{
+				const u32 subhash = (hashes[i] >> off) & mask;
+
+				if (subhashes[subhash])
+					goto COLLISION;
+
+				subhashes[subhash] = true;
+			}
+
+			printf("no collisions for len = %d, off = %d\n", len, off);
+
+			return;
+
+		COLLISION:;
+		}
+	}
+}
+
+// no collisions for len = 6, off1 = 2, off2 = 12
+void find_best_xor()
+{
+	const char* keywords[] = {
+		"if",
+		"then",
+		"else",
+		"for",
+		"do",
+		"finally",
+		"switch",
+		"case",
+		"try",
+		"catch",
+		"defer",
+		"func",
+		"proc",
+		"trait",
+		"impl",
+		"where",
+		"let",
+		"mut",
+		"auto",
+		"pub",
+		"global",
+	};
+
+	// BEST KNOWN: 7 bits from offset 7
+
+	static constexpr u32 keyword_count = sizeof(keywords) / sizeof(*keywords);
+
+	u32 hashes[keyword_count];
+
+	for (u32 i = 0; i != keyword_count; ++i)
+		hashes[i] = fnv1a_(Range{ keywords[i], strlen(keywords[i]) });
+
+	static constexpr u32 min_subhash_length = 4;
+
+	static constexpr u32 max_subhash_length = 7;
+
+	bool subhashes[1 << max_subhash_length]{};
+
+	for (u32 len = min_subhash_length; len != max_subhash_length; ++len)
+	{
+		const u32 mask = (1 << len) - 1;
+
+		for (u32 off1 = 0; off1 != 32 - len; ++off1)
+		{
+			for (u32 off2 = 0; off2 != 32 - len; ++off2)
+			{
+				memset(subhashes, 0, sizeof(subhashes));
+
+				for (u32 i = 0; i != keyword_count; ++i)
+				{
+					const u32 subhash = ((hashes[i] >> off1) ^ (hashes[i] >> off2)) & mask;
+
+					if (subhashes[subhash])
+						goto COLLISION;
+
+					subhashes[subhash] = true;
+				}
+
+				printf("no collisions for len = %d, off1 = %d, off2 = %d\n", len, off1, off2);
+
+				return 0;
+
+			COLLISION:;
+			}
+		}
+	}
+}
+
+// no collisions for len = 5 with 4 runs and i = 1, j = 2, k = 10, l = 25 and m = 28
+// no collisions for len = 5 with 5 runs and i = 1, j = 4, k = 10, l = 12 and m = 15
+// no collisions for len = 5 with 4 runs and i = 1, j = 7, k = 8, l = 15 and m = 31
+// no collisions for len = 5 with 4 runs and i = 1, j = 7, k = 8, l = 19 and m = 31
+// no collisions for len = 5 with 4 runs and i = 1, j = 8, k = 14, l = 15 and m = 31
+// no collisions for len = 5 with 5 runs and i = 1, j = 10, k = 12, l = 15 and m = 27
+// no collisions for len = 5 with 4 runs and i = 1, j = 10, k = 14, l = 15 and m = 28
+// no collisions for len = 5 with 5 runs and i = 3, j = 11, k = 14, l = 21 and m = 26
+// no collisions for len = 5 with 3 runs and i = 5, j = 6, k = 14, l = 15 and m = 24
+// no collisions for len = 5 with 5 runs and i = 5, j = 11, k = 14, l = 19 and m = 23
+// no collisions for len = 5 with 4 runs and i = 5, j = 12, k = 14, l = 15 and m = 29
+// no collisions for len = 5 with 5 runs and i = 5, j = 12, k = 15, l = 26 and m = 29
+// no collisions for len = 5 with 4 runs and i = 10, j = 12, k = 14, l = 26 and m = 27
+// no collisions for len = 5 with 4 runs and i = 10, j = 12, k = 15, l = 26 and m = 27
+// minimum number of runs found: 3 with i = 5, j = 6, k = 14, l = 15 and m = 24
+// "",
+// "if",
+// "auto",
+// "",
+// "for",
+// "pub",
+// "proc",
+// "switch",
+// "",
+// "",
+// "catch",
+// "let",
+// "case",
+// "",
+// "mut",
+// "then",
+// "impl",
+// "global",
+// "do",
+// "",
+// "func",
+// "",
+// "",
+// "",
+// "defer",
+// "finally",
+// "try",
+// "",
+// "else",
+// "where",
+// "trait",
+// "",
+void find_best_bits()
+{
+	const char* keywords[] = {
+		"if",
+		"then",
+		"else",
+		"for",
+		"do",
+		"finally",
+		"switch",
+		"case",
+		"try",
+		"catch",
+		"defer",
+		"func",
+		"proc",
+		"trait",
+		"impl",
+		"where",
+		"let",
+		"mut",
+		"auto",
+		"pub",
+		"global",
+	};
+
+	static constexpr u32 keyword_count = sizeof(keywords) / sizeof(*keywords);
+
+	u32 hashes[keyword_count];
+
+	for (u32 i = 0; i != keyword_count; ++i)
+		hashes[i] = fnv1a_(Range{ keywords[i], strlen(keywords[i]) });
+
+	u32 min_runs = 100;
+
+	s32 best_i = -1;
+	s32 best_j = -1;
+	s32 best_k = -1;
+	s32 best_l = -1;
+	s32 best_m = -1;
+
+	for (s32 i = 0; i != 32; ++i)
+	{
+		for (s32 j = i + 1; j != 32; ++j)
+		{
+			for (s32 k = j + 1; k != 32; ++k)
+			{
+				for (s32 l = k + 1; l != 32; ++l)
+				{
+					for (s32 m = l + 1; m != 32; ++m)
+					{
+						u32 collision_mask = 0;
+
+						for (s32 n = 0; n != keyword_count; ++n)
+						{
+							const u32 hash = hashes[n];
+
+							const u32 subhash = ((hash >> i) & 1) | ((hash >> (j - 1)) & 2) | ((hash >> (k - 2)) & 4) | ((hash >> (l - 3)) & 8) | ((hash >> (m - 4)) & 16);
+
+							if (collision_mask & (1 << subhash))
+								goto COLLISION;
+
+							collision_mask |= (1 << subhash);
+						}
+
+						const u32 runs = 1 + (j != i + 1) + (k != j + 1) + (l != k + 1) + (m != l + 1);
+
+						if (runs < min_runs)
+						{
+							min_runs = runs;
+
+							best_i = i;
+							best_j = j;
+							best_k = k;
+							best_l = l;
+							best_m = m;
+						}
+
+						printf("no collisions for len = 5 with %d runs and i = %d, j = %d, k = %d, l = %d and m = %d\n", runs, i, j, k, l, m);
+
+					COLLISION:;
+					}
+				}
+			}
+		}
+	}
+
+	if (min_runs == 100)
+	{
+		printf("no solutions found.\n");
+	}
+	else
+	{
+		printf("minimum number of runs found: %d with i = %d, j = %d, k = %d, l = %d and m = %d\n", min_runs, best_i, best_j, best_k, best_l, best_m);
+
+		const char8* keyword_indices[32]{};
+
+		for (s32 i = 0; i != keyword_count; ++i)
+		{
+			const u32 hash = hashes[i];
+
+			const u32 subhash = ((hash >> best_i) & 1) | ((hash >> (best_j - 1)) & 2) | ((hash >> (best_k - 2)) & 4) | ((hash >> (best_l - 3)) & 8) | ((hash >> (best_m - 4)) & 16);
+
+			keyword_indices[subhash] = keywords[i];
+		}
+
+		for (u32 i = 0; i != 32; ++i)
+			printf("\"%s\",\n", keyword_indices[i] == nullptr ? "" : keyword_indices[i]);
+	}
+}

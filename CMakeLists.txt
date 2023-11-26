@@ -1,31 +1,26 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(compilator)
+project(compil0r)
 
 
 
-add_executable(compilator main.cpp
-	tok/tok_gen.hpp tok/tok_gen.cpp
-	ast/ast_gen.hpp ast/ast_gen.cpp
-	ast/ast_fmt.hpp ast/ast_fmt.cpp
-	ast/ast_data_structure.hpp ast/ast_data_structure.cpp
-	evl/evl_gen.hpp evl/evl_gen.cpp
-	util/types.hpp
-	util/strutil.hpp
-	util/strview.hpp
-	util/bytevec.hpp
-	util/vec.hpp
-	util/str.hpp
-	util/slice.hpp
-	util/minimal_os.hpp
-	util/file.hpp util/file.cpp
-	util/status.hpp util/status.cpp
+add_executable(
+	compil0r main.cpp
+	common.hpp
+	minwin.hpp
+	range.hpp
+	token.hpp
+	global_data.hpp global_data.cpp
+	init.hpp init.cpp
+	lex0r.hpp lex0r.cpp
 )
 
-target_compile_features(compilator PRIVATE cxx_std_17)
+target_compile_features(compil0r PRIVATE cxx_std_17)
 
 if (MSVC)
-	target_compile_options(compilator PRIVATE /W4 /wd4201)
+	target_compile_options(compil0r PRIVATE /W4 /wd4201)
 else()
-	target_compile_options(compilator PRIVATE -Wall -Wpedantic -Wextra)
+	target_compile_options(compil0r PRIVATE -Wall -Wpedantic -Wextra)
 endif()
+
+add_subdirectory(test)
