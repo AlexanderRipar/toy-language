@@ -31,6 +31,7 @@ void log_error(FILE* f, const char8* fmt, ...) noexcept;
 				failure_text_, \
 				#b_ \
 			); \
+			__debugbreak(); \
 			error_count_ += 1; \
 			TEST_RETURN; \
 		} \
