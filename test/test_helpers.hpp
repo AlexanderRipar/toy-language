@@ -20,7 +20,12 @@ enum class LogLevel
 
 void log(LogLevel level, FILE* f, const char8* fmt, ...) noexcept;
 
+
+#define TESTCASE(name_) u32 name_(FILE* out_file) noexcept
+
 #define TEST_INIT u32 error_count_ = 0
+
+#define TEST_TBD out_file
 
 #define TEST_RETURN return error_count_
 
@@ -64,6 +69,8 @@ void log(LogLevel level, FILE* f, const char8* fmt, ...) noexcept;
 
 #define RAIIWRAPPER(type_, desctructor_) struct RAII##type_##_IMPL_ { type_ t{}; ~RAII##type_##_IMPL_() noexcept { t.desctructor_(); } }
 
-#define RUN_TEST(expr_) do { error_count_ += (expr_); } while (false)
+#define RUN_TEST(name_) do { error_count_ += name_(out_file); } while (false)
+
+#define RUN_TEST_WITH_ARGS(name_, ...) do { error_count_ += name_(__VA_ARGS__); } while (false)
 
 #endif // TEST_HELPERS_INCLUDE_GUARD

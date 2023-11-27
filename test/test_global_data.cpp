@@ -22,9 +22,33 @@ namespace test::global_data
 
 		union IncrementCharBuffer
 		{
-			char8 chars[8];
+			char8 chars[8]{ '0', '0', '0', '0', '0', '0', '0', '0' };
 
-			u64 n = 0;
+			void advance() noexcept
+			{
+				for (u32 i = 0; i != 8; ++i)
+				{
+					if (chars[i] == '9')
+					{
+						chars[i] = 'A';
+
+						break;
+					}
+					else if (chars[i] != 'F')
+					{
+						chars[i] += 1;
+
+						break;
+					}
+
+					chars[i] = '0';
+				}
+			}
+
+			void reset() noexcept
+			{
+				memset(chars, '0', sizeof(chars));
+			}
 
 			Range<char8> range() const noexcept
 			{
@@ -50,7 +74,7 @@ namespace test::global_data
 			{
 				CHECK_NE(s->index_from(buf.range()), -1, "index_from running in parallel does not return -1");
 
-				buf.n += 1;
+				buf.advance();
 			}
 
 			TEST_RETURN;
@@ -58,7 +82,7 @@ namespace test::global_data
 
 
 
-		static u32 init_deinit(FILE* out_file) noexcept
+		static TESTCASE(init_deinit)
 		{
 			TEST_INIT;
 
@@ -81,7 +105,7 @@ namespace test::global_data
 			TEST_RETURN;
 		}
 
-		static u32 insert_and_get_single(FILE* out_file) noexcept
+		static TESTCASE(insert_and_get_single)
 		{
 			TEST_INIT;
 
@@ -112,7 +136,7 @@ namespace test::global_data
 			TEST_RETURN;
 		}
 
-		static u32 insert_and_get_multiple(FILE* out_file) noexcept
+		static TESTCASE(insert_and_get_multiple)
 		{
 			TEST_INIT;
 
@@ -153,7 +177,7 @@ namespace test::global_data
 			TEST_RETURN;
 		}
 
-		static u32 grow_data(FILE* out_file) noexcept
+		static TESTCASE(grow_data)
 		{
 			TEST_INIT;
 
@@ -173,11 +197,15 @@ namespace test::global_data
 
 			u32 prev_data_used_bytes = diag.data_used_bytes;
 
+			u32 insert_count = 0;
+
 			while (diag.data_committed_bytes == initial_data_committed_bytes)
 			{
-				buf.n += 1;
-
 				CHECK_NE(s.index_from(buf.range()), -1, "index_from succeeds until data commit increase");
+
+				buf.advance();
+
+				insert_count += 1;
 
 				s.get_diagnostics(&diag);
 
@@ -190,32 +218,28 @@ namespace test::global_data
 				prev_data_used_bytes = curr_data_used_bytes;
 			}
 
-			buf.n += 1;
-
-			const u64 highest_n = buf.n;
-
 			const s32 idx1 = s.index_from(buf.range());
 
-			buf.n -= 1;
-
 			CHECK_NE(idx1, -1, "index_from succeeds for new string after data commit increases");
+
+			insert_count += 1;
 
 			s.get_diagnostics(&diag);
 
 			const u32 new_data_used_bytes = diag.data_used_bytes;
 
-			while (buf.n != 0)
+			IncrementCharBuffer buf2;
+
+			while (memcmp(&buf, &buf2, sizeof(buf)) != 0)
 			{
-				CHECK_NE(s.index_from(buf.range()), -1, "index_from with same strings succeeds after data commit increases");
+				CHECK_NE(s.index_from(buf2.range()), -1, "index_from with same strings succeeds after data commit increases");
+
+				buf2.advance();
 
 				s.get_diagnostics(&diag);
 
 				CHECK_EQ(diag.data_used_bytes, new_data_used_bytes, "used bytes do not increase when calling from_index with same strings");
-
-				buf.n -= 1;
 			}
-
-			buf.n = highest_n;
 
 			const s32 idx2 = s.index_from(buf.range());
 
@@ -227,14 +251,14 @@ namespace test::global_data
 
 			s.get_diagnostics(&diag);
 
-			CHECK_EQ(diag.indices_used_count, highest_n, "number of indices equals number of distinct inserted strings");
+			CHECK_EQ(diag.indices_used_count, insert_count, "number of indices equals number of distinct inserted strings");
 
 			CHECK_EQ(s.deinit(), true, "StringSet::deinit() returns true");
 
 			TEST_RETURN;
 		}
 
-		static u32 grow_indices(FILE* out_file) noexcept
+		static TESTCASE(grow_indices)
 		{
 			TEST_INIT;
 
@@ -262,9 +286,9 @@ namespace test::global_data
 
 			while (diag.indices_committed_count == initial_indices_committed_count)
 			{
-				buf.n += 1;
-
 				CHECK_NE(s.index_from(buf.range()), -1, "index_from succeeds until indices commit increases");
+
+				buf.advance();
 
 				s.get_diagnostics(&diag);
 
@@ -277,8 +301,6 @@ namespace test::global_data
 				prev_indices_used_count = curr_indices_used_count;
 			}
 
-			buf.n += 1;
-
 			const s32 index = s.index_from(buf.range());
 
 			CHECK_NE(index, -1, "Calling index_from with a new string after rehashing indices does not fail");
@@ -289,7 +311,7 @@ namespace test::global_data
 
 			CHECK_RANGES_EQ(buf.range(), s.string_from(index), "Calling string_from on index created after rehashing indices returns the correct string");
 
-			buf.n = 0;
+			buf.reset();
 
 			CHECK_RANGES_EQ(buf.range(), s.string_from(initial_index), "Calling string_from after rehashing indices with an index created before returns the correct string");
 
@@ -298,7 +320,7 @@ namespace test::global_data
 			TEST_RETURN;
 		}
 
-		static u32 insert_parallel(FILE* out_file) noexcept
+		static TESTCASE(insert_parallel)
 		{
 			TEST_INIT;
 
@@ -313,7 +335,7 @@ namespace test::global_data
 
 			CHECK_EQ(s.init(), true, "StringSet::init returns true");
 
-			RUN_TEST(run_on_threads_and_wait(32, insert_parallel_thread_proc, &args, INFINITE));
+			RUN_TEST_WITH_ARGS(run_on_threads_and_wait, 32, insert_parallel_thread_proc, &args, INFINITE);
 
 			SimpleMapDiagnostics diag;
 
@@ -326,7 +348,7 @@ namespace test::global_data
 			TEST_RETURN;
 		}
 
-		static u32 diagnostics(FILE* out_file) noexcept
+		static TESTCASE(diagnostics)
 		{
 			TEST_INIT;
 
@@ -338,21 +360,22 @@ namespace test::global_data
 
 			IncrementCharBuffer buf;
 
+			log(LogLevel::Info, out_file, "StringSet Statistics\n");
+
 			for (u32 iter = 0; iter != 40; ++iter)
 			{
 				for (u32 i = 0; i != 50000; ++i)
 				{
 					CHECK_NE(s.index_from(buf.range()), -1, "StringSet::index_from succeeds");
 
-					buf.n += 1;
+					buf.advance();
 				}
 
 				FullMapDiagnostics diag;
 
 				s.get_diagnostics(&diag);
 
-				log(LogLevel::Info, out_file,
-					"StringSet Stats\n"
+				log(LogLevel::None, out_file,
 					"Used indices    Allocated indices    Load factor    Max Probe Seq. Length (PSL)\n"
 					"  %10u           %10u       %8.2f                        %7u\n"
 					"PSL Dist | ",
@@ -393,23 +416,23 @@ namespace test::global_data
 			TEST_RETURN;
 		}
 
-		static u32 run(FILE* out_file) noexcept
+		static TESTCASE(run)
 		{
 			TEST_INIT;
 
-			RUN_TEST(init_deinit(out_file));
+			RUN_TEST(init_deinit);
 
-			RUN_TEST(insert_and_get_single(out_file));
+			RUN_TEST(insert_and_get_single);
 
-			RUN_TEST(insert_and_get_multiple(out_file));
+			RUN_TEST(insert_and_get_multiple);
 
-			RUN_TEST(grow_data(out_file));
+			RUN_TEST(grow_data);
 
-			RUN_TEST(grow_indices(out_file));
+			RUN_TEST(grow_indices);
 
-			RUN_TEST(insert_parallel(out_file));
+			RUN_TEST(insert_parallel);
 
-			RUN_TEST(diagnostics(out_file));
+			RUN_TEST(diagnostics);
 
 			TEST_RETURN;
 		}
@@ -417,12 +440,104 @@ namespace test::global_data
 
 	namespace input_file_set
 	{
-		// @TODO
-		static u32 run(FILE* out_file) noexcept
+		using RAIIInputFileSet = RAIIWRAPPER(InputFileSet, deinit);
+
+
+
+		static TESTCASE(init_deinit)
 		{
 			TEST_INIT;
 
-			out_file;
+			RAIIInputFileSet rs1;
+
+			InputFileSet& s1 = rs1.t;
+
+			CHECK_EQ(s1.init(), true, "Initialize unitialized InputFileSet");
+
+			CHECK_EQ(s1.deinit(), true, "Deinitialize initialized InputFileSet");
+
+			CHECK_EQ(s1.deinit(), true, "Deinitialize deinitialized InputFileSet");
+
+			RAIIInputFileSet rs2{};
+
+			InputFileSet& s2 = rs2.t;
+
+			CHECK_EQ(s2.deinit(), true, "Deinitialize default-initialized InputFileSet");
+
+			TEST_RETURN;
+		}
+
+		static TESTCASE(insert_single)
+		{
+			TEST_INIT;
+
+			TEST_TBD;
+
+			TEST_RETURN;
+		}
+
+		static TESTCASE(insert_multiple)
+		{
+			TEST_INIT;
+
+			TEST_TBD;
+
+			TEST_RETURN;
+		}
+
+		static TESTCASE(get_single)
+		{
+			TEST_INIT;
+
+			TEST_TBD;
+
+			TEST_RETURN;
+		}
+
+		static TESTCASE(get_multiple)
+		{
+			TEST_INIT;
+
+			TEST_TBD;
+
+			TEST_RETURN;
+		}
+
+		static TESTCASE(insert_and_get_parallel)
+		{
+			TEST_INIT;
+
+			TEST_TBD;
+
+			TEST_RETURN;
+		}
+
+		static TESTCASE(diagnostics)
+		{
+			TEST_INIT;
+
+			TEST_TBD;
+
+			TEST_RETURN;
+		}
+
+		static TESTCASE(run)
+		{
+			TEST_INIT;
+
+			RUN_TEST(init_deinit);
+
+			RUN_TEST(insert_single);
+
+			RUN_TEST(insert_multiple);
+
+			RUN_TEST(get_single);
+
+			RUN_TEST(get_multiple);
+
+			RUN_TEST(insert_and_get_parallel);
+
+			RUN_TEST(diagnostics);
 
 			TEST_RETURN;
 		}
@@ -431,11 +546,11 @@ namespace test::global_data
 	namespace read_list
 	{
 		// @TODO
-		static u32 run(FILE* out_file) noexcept
+		static TESTCASE(run)
 		{
 			TEST_INIT;
 
-			out_file;
+			TEST_TBD;
 
 			TEST_RETURN;
 		}
@@ -444,27 +559,27 @@ namespace test::global_data
 	namespace init
 	{
 		// @TODO
-		static u32 run(FILE* out_file) noexcept
+		static TESTCASE(run)
 		{
 			TEST_INIT;
 
-			out_file;
+			TEST_TBD;
 
 			TEST_RETURN;
 		}
 	}
 
-	u32 run(FILE* out_file) noexcept
+	TESTCASE(run)
 	{
 		TEST_INIT;
 
-		RUN_TEST(string_set::run(out_file));
+		RUN_TEST(string_set::run);
 
-		RUN_TEST(input_file_set::run(out_file));
+		RUN_TEST(input_file_set::run);
 
-		RUN_TEST(read_list::run(out_file));
+		RUN_TEST(read_list::run);
 
-		RUN_TEST(init::run(out_file));
+		RUN_TEST(init::run);
 
 		TEST_RETURN;
 	}
