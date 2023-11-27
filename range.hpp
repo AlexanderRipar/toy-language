@@ -62,4 +62,10 @@ public:
 	}
 };
 
+template<typename T>
+static inline Range<byte> byte_range_from(const T* t) noexcept
+{
+	return { reinterpret_cast<const byte*>(t), sizeof(T) };
+}
+
 #endif // RANGE_INCLUDE_GUARD
