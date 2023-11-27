@@ -55,6 +55,11 @@ public:
 	{
 		return m_end - m_begin;
 	}
+
+	Range<byte> as_byte_range() const noexcept
+	{
+		return { reinterpret_cast<const byte*>(m_begin), reinterpret_cast<const byte*>(m_end) };
+	}
 };
 
 #endif // RANGE_INCLUDE_GUARD
