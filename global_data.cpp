@@ -1481,6 +1481,11 @@ bool InputFileSet::add_file(Range<char8> path, HANDLE handle) noexcept
 
 	DataEntry* entry = reinterpret_cast<DataEntry*>(static_cast<byte*>(m_map.data) + index * alignof(DataEntry));
 
+	if (entry->handle != nullptr)
+		return true;
+
+	AcquireSRWLockExclusive(&m_map.lock);
+
 	entry->handle = handle;
 
 	if (m_head == nullptr)
@@ -1490,11 +1495,15 @@ bool InputFileSet::add_file(Range<char8> path, HANDLE handle) noexcept
 
 	m_head = entry;
 
+	ReleaseSRWLockExclusive(&m_map.lock);
+
 	return true;
 }
 
 HANDLE InputFileSet::get_file() noexcept
 {
+	AcquireSRWLockExclusive(&m_map.lock);
+
 	if (m_head == nullptr)
 		return nullptr;
 
@@ -1506,6 +1515,8 @@ HANDLE InputFileSet::get_file() noexcept
 		m_head = nullptr;
 	else
 		m_head = reinterpret_cast<DataEntry*>(reinterpret_cast<byte*>(m_map.data) + next_index * alignof(DataEntry));
+
+	ReleaseSRWLockExclusive(&m_map.lock);
 
 	return ret;
 }
