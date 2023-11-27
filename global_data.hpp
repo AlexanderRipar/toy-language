@@ -5,12 +5,13 @@
 #include "range.hpp"
 #include "token.hpp"
 #include "minwin.hpp"
+#include <cstddef>
 
-static inline u32 fnv1a(Range<char8> string) noexcept
+static inline u32 fnv1a(Range<byte> bytes) noexcept
 {
 	u32 hash = 2166136261;
 
-	for (const char8 c : string)
+	for (const char8 c : bytes)
 		hash = (hash * 16777619) ^ c;
 
 	return hash;
@@ -44,7 +45,14 @@ struct FullMapDiagnostics
 	u32 max_string_bytes;
 };
 
-template<typename DataEntry>
+// DataEntry requires
+// static constexpr u32 stride() noexcept
+// static constexpr u32 overhead() noexcept
+// u32 get_hash() const noexcept
+// void init(DataEntry*, const Key&, u32) noexcept
+// bool equal_to_key(const Key&, u32) const noexcept
+// static u32 get_required_bytes(const Key&) noexcept -- This must always return an integer multiple of stride
+template<typename K, typename V>
 struct RobinHoodMap
 {
 	static constexpr u32 index_psl_bits = 6;
@@ -93,9 +101,23 @@ private:
 		#pragma warning(disable : 4200)
 		char8 tail[];
 		#pragma warning(pop)
+
+		void init(Range<char8> key, u32 key_hash) noexcept;
+
+		static constexpr u32 stride() noexcept;
+
+		static constexpr u32 overhead() noexcept;
+
+		static u32 get_required_bytes(Range<char8> key) noexcept;
+
+		u32 get_used_bytes() const noexcept;
+
+		u32 get_hash() const noexcept;
+
+		bool equal_to_key(Range<char8> key, u32 key_hash) const noexcept;
 	};
 
-	RobinHoodMap<DataEntry> m_map;
+	RobinHoodMap<Range<char8>, DataEntry> m_map;
 
 public:
 
@@ -114,6 +136,17 @@ public:
 	void get_diagnostics(FullMapDiagnostics* out) const noexcept;
 };
 
+struct FileId
+{
+	HANDLE handle;
+
+	u64 file_bytes;
+
+	u64 file_index;
+
+	u32 volume_serial_number;
+};
+
 struct InputFileSet
 {
 private:
@@ -122,21 +155,34 @@ private:
 	{
 		u32 hash;
 
+		u32 volume_serial_number;
+
+		u64 file_index;
+
 		u32 next_index;
 
 		HANDLE handle;
 
-		u16 tail_bytes;
+		u64 file_bytes;
 
-		#pragma warning(push)
-		#pragma warning(disable : 4200)
-		char8 tail[];
-		#pragma warning(pop)
+		void init(FileId key, u32 key_hash) noexcept;
+
+		static constexpr u32 stride() noexcept;
+
+		static constexpr u32 overhead() noexcept;
+
+		static u32 get_required_bytes(FileId key) noexcept;
+
+		u32 get_used_bytes() const noexcept;
+
+		u32 get_hash() const noexcept;
+
+		bool equal_to_key(FileId key, u32 key_hash) const noexcept;
 	};
 
 	DataEntry* m_head;
 
-	RobinHoodMap<DataEntry> m_map;
+	RobinHoodMap<FileId, DataEntry> m_map;
 
 public:
 
@@ -144,9 +190,9 @@ public:
 
 	bool deinit() noexcept;
 
-	bool add_file(Range<char8> path, HANDLE handle) noexcept;
+	bool add_file(FileId id) noexcept;
 
-	HANDLE get_file() noexcept;
+	FileId get_file() noexcept;
 
 	void get_diagnostics(SimpleMapDiagnostics* out) const noexcept;
 

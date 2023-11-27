@@ -1046,6 +1046,94 @@ static DWORD worker_thread_proc(void* parameter) noexcept
 }
 */
 
+
+
+void StringSet::DataEntry::init(Range<char8> key, u32 key_hash) noexcept
+{
+	hash = key_hash;
+
+	tail_bytes = static_cast<u16>(key.count());
+
+	memcpy(tail, key.begin(), key.count());
+}
+
+constexpr u32 StringSet::DataEntry::stride() noexcept
+{
+	return alignof(DataEntry);
+}
+
+constexpr u32 StringSet::DataEntry::overhead() noexcept
+{
+	return offsetof(DataEntry, tail);
+}
+
+u32 StringSet::DataEntry::get_required_bytes(Range<char8> key) noexcept
+{
+	return (offsetof(DataEntry, tail) + key.count() + alignof(DataEntry) - 1) & ~(alignof(DataEntry) - 1);
+}
+
+u32 StringSet::DataEntry::get_used_bytes() const noexcept
+{
+	return (offsetof(DataEntry, tail) + tail_bytes + alignof(DataEntry) - 1) & ~(alignof(DataEntry) - 1);
+}
+
+u32 StringSet::DataEntry::get_hash() const noexcept
+{
+	return hash;
+}
+
+bool StringSet::DataEntry::equal_to_key(Range<char8> key, u32 key_hash) const noexcept
+{
+	return hash == key_hash && tail_bytes == key.count() && memcmp(tail, key.begin(), tail_bytes) == 0;
+}
+
+
+
+void InputFileSet::DataEntry::init(FileId key, u32 key_hash) noexcept
+{
+	hash = key_hash;
+
+	handle = key.handle;
+
+	file_bytes = key.file_bytes;
+
+	file_index = key.file_index;
+
+	volume_serial_number = key.volume_serial_number;
+}
+
+constexpr u32 InputFileSet::DataEntry::stride() noexcept
+{
+	return sizeof(DataEntry);
+}
+
+constexpr u32 InputFileSet::DataEntry::overhead() noexcept
+{
+	return sizeof(DataEntry);
+}
+
+u32 InputFileSet::DataEntry::get_required_bytes([[maybe_unused]] FileId key) noexcept
+{
+	return sizeof(DataEntry);
+}
+
+u32 InputFileSet::DataEntry::get_used_bytes() const noexcept
+{
+	return sizeof(DataEntry);
+}
+
+u32 InputFileSet::DataEntry::get_hash() const noexcept
+{
+	return hash;
+}
+
+bool InputFileSet::DataEntry::equal_to_key(FileId key, u32 key_hash) const noexcept
+{
+	return hash == key_hash && volume_serial_number == key.volume_serial_number && file_index == key.file_index;
+}
+
+
+
 template<typename DataEntry>
 struct DataEntryAndIndex
 {
@@ -1061,32 +1149,14 @@ static u16 robin_hood_hash(u32 raw_hash, u32 hash_mask) noexcept
 	return h == 0 ? 0x8000 : h;
 }
 
-template<typename T>
-static u32 data_entry_bytes(u16 tail_bytes)
-{
-	return (offsetof(T, tail) + tail_bytes + alignof(T) - 1) & ~(alignof(T) - 1);
-}
-
-template<typename T>
-static T* next_data_entry(T* e) noexcept
-{
-	return reinterpret_cast<T*>(reinterpret_cast<byte*>(e) + data_entry_bytes<T>(e->tail_bytes));
-}
-
-template<typename T>
-static const T* next_data_entry(const T* e) noexcept
-{
-	return reinterpret_cast<const T*>(reinterpret_cast<const byte*>(e) + data_entry_bytes<T>(e->tail_bytes));
-}
-
-template<typename T>
-static void map_create_ind_for_data_entry(RobinHoodMap<T>* map, const T* e) noexcept
+template<typename K, typename V>
+static void map_create_ind_for_data_entry(RobinHoodMap<K, V>* map, const V* e) noexcept
 {
 	u16* const inds = static_cast<u16*>(map->inds);
 
 	u32* const offs = reinterpret_cast<u32*>(inds + map->inds_committed_count);
 
-	const u32 hash = e->hash;
+	const u32 hash = e->get_hash();
 
 	const u32 index_mask = map->inds_committed_count - 1;
 
@@ -1094,7 +1164,7 @@ static void map_create_ind_for_data_entry(RobinHoodMap<T>* map, const T* e) noex
 
 	u16 ind_to_insert = robin_hood_hash(hash, map->index_hash_mask);
 
-	u32 off_to_insert = static_cast<u32>((reinterpret_cast<const byte*>(e) - static_cast<const byte*>(map->data)) / alignof(T));
+	u32 off_to_insert = static_cast<u32>((reinterpret_cast<const byte*>(e) - static_cast<const byte*>(map->data)) / V::stride());
 
 	while (true)
 	{
@@ -1134,8 +1204,8 @@ static void map_create_ind_for_data_entry(RobinHoodMap<T>* map, const T* e) noex
 	}
 }
 
-template<typename T>
-static bool map_init(RobinHoodMap<T>* map) noexcept
+template<typename K, typename V>
+static bool map_init(RobinHoodMap<K, V>* map) noexcept
 {
 	void* inds = VirtualAlloc(nullptr, map->inds_reserved_count * 6, MEM_RESERVE, PAGE_READWRITE);
 
@@ -1176,8 +1246,8 @@ ERROR:
 	return false;
 }
 
-template<typename T>
-static bool map_deinit(RobinHoodMap<T>* map) noexcept
+template<typename K, typename V>
+static bool map_deinit(RobinHoodMap<K, V>* map) noexcept
 {
 	bool is_ok = true;
 
@@ -1192,8 +1262,8 @@ static bool map_deinit(RobinHoodMap<T>* map) noexcept
 	return is_ok;
 }
 
-template<typename T>
-static bool map_grow_data(RobinHoodMap<T>* map, u32 extra_bytes) noexcept
+template<typename K, typename V>
+static bool map_grow_data(RobinHoodMap<K, V>* map, u32 extra_bytes) noexcept
 {
 	if (map->data_reserved_bytes == map->data_committed_bytes)
 		return false;
@@ -1208,8 +1278,8 @@ static bool map_grow_data(RobinHoodMap<T>* map, u32 extra_bytes) noexcept
 	return true;
 }
 
-template<typename T>
-static bool map_grow_inds(RobinHoodMap<T>* map) noexcept
+template<typename K, typename V>
+static bool map_grow_inds(RobinHoodMap<K, V>* map) noexcept
 {
 	if (map->inds_committed_count == map->inds_reserved_count)
 		return false;
@@ -1221,14 +1291,14 @@ static bool map_grow_inds(RobinHoodMap<T>* map) noexcept
 
 	map->inds_committed_count *= 2;
 
-	for (T* e = static_cast<T*>(map->data); e != reinterpret_cast<T*>(static_cast<byte*>(map->data) + map->data_used_bytes); e = next_data_entry(e))
-		map_create_ind_for_data_entry(map, e);
+	for (byte* e = static_cast<byte*>(map->data); e != static_cast<byte*>(map->data) + map->data_used_bytes; e += reinterpret_cast<V*>(e)->get_used_bytes())
+		map_create_ind_for_data_entry(map, reinterpret_cast<V*>(e));
 
 	return true;
 }
 
-template<typename T>
-static u32 map_find_entry(const volatile RobinHoodMap<T>* map, Range<char8> name, u32 hash) noexcept
+template<typename K, typename V>
+static u32 map_find_entry(const volatile RobinHoodMap<K, V>* map, K key, u32 hash) noexcept
 {
 	const u16* const inds = static_cast<const u16*>(map->inds);
 
@@ -1250,9 +1320,9 @@ static u32 map_find_entry(const volatile RobinHoodMap<T>* map, Range<char8> name
 		{
 			const u32 off = offs[i];
 
-			const T* e = reinterpret_cast<const T*>(data + off * alignof(T));
+			const V* e = reinterpret_cast<const V*>(data + off * V::stride());
 
-			if (e->tail_bytes == name.count() && memcmp(e->tail, name.begin(), name.count()) == 0)
+			if (e->equal_to_key(key, hash))
 				return off;
 		}
 		else if (ind == 0 || (ind & map->index_psl_mask) < (ind_to_find & map->index_psl_mask))
@@ -1269,19 +1339,15 @@ static u32 map_find_entry(const volatile RobinHoodMap<T>* map, Range<char8> name
 	}
 }
 
-template<typename T>
-static u32 map_insert_or_find_data_entry(RobinHoodMap<T>* map, Range<char8> name, u32 hash) noexcept
+template<typename K, typename V>
+static u32 map_insert_or_find_data_entry(RobinHoodMap<K, V>* map, K key, u32 hash) noexcept
 {
 	// Optimistally assume that name is likely already present in the map.
 	// For this case, a shared lock is sufficient, since we aren't writing
 	// anything.
 	AcquireSRWLockShared(&map->lock);
 
-	assert(name.count() < 0x10000);
-
-	const u16 name_bytes = static_cast<u16>(name.count());
-
-	const u32 shared_found_ind = map_find_entry(map, name, hash);
+	const u32 shared_found_ind = map_find_entry(map, key, hash);
 
 	if (shared_found_ind != ~0u)
 	{
@@ -1300,7 +1366,7 @@ static u32 map_insert_or_find_data_entry(RobinHoodMap<T>* map, Range<char8> name
 	// Check whether name was inserted while we did not hold the lock.
 	// Since map_find_entry takes map as volatile, this cannot accidentally
 	// be optimized away by reusing shared_found_ind.
-	const u32 exlusive_found_ind = map_find_entry(map, name, hash);
+	const u32 exlusive_found_ind = map_find_entry(map, key, hash);
 
 	if (exlusive_found_ind != ~0u)
 	{
@@ -1309,7 +1375,7 @@ static u32 map_insert_or_find_data_entry(RobinHoodMap<T>* map, Range<char8> name
 		return exlusive_found_ind;
 	}
 
-	const u32 extra_bytes = data_entry_bytes<T>(name_bytes);
+	const u32 extra_bytes = V::get_required_bytes(key);
 
 	if (map->data_used_bytes + extra_bytes > map->data_committed_bytes)
 	{
@@ -1321,13 +1387,9 @@ static u32 map_insert_or_find_data_entry(RobinHoodMap<T>* map, Range<char8> name
 		}
 	}
 
-	T* e = reinterpret_cast<T*>(static_cast<byte*>(map->data) + map->data_used_bytes);
+	V* e = reinterpret_cast<V*>(static_cast<byte*>(map->data) + map->data_used_bytes);
 
-	e->hash = hash;
-
-	e->tail_bytes = name_bytes;
-
-	memcpy(e->tail, name.begin(), name_bytes);
+	e->init(key, hash);
 
 	map->data_used_bytes += extra_bytes;
 
@@ -1351,11 +1413,11 @@ static u32 map_insert_or_find_data_entry(RobinHoodMap<T>* map, Range<char8> name
 
 	ReleaseSRWLockExclusive(&map->lock);
 
-	return static_cast<u32>((reinterpret_cast<byte*>(e) - static_cast<byte*>(map->data)) / alignof(T));
+	return static_cast<u32>((reinterpret_cast<byte*>(e) - static_cast<byte*>(map->data)) / V::stride());
 }
 
-template<typename T>
-static void map_get_diagnostics(const RobinHoodMap<T>* map, SimpleMapDiagnostics* out) noexcept
+template<typename K, typename V>
+static void map_get_diagnostics(const RobinHoodMap<K, V>* map, SimpleMapDiagnostics* out) noexcept
 {
 	out->indices_used_count = map->inds_used_count;
 
@@ -1365,13 +1427,13 @@ static void map_get_diagnostics(const RobinHoodMap<T>* map, SimpleMapDiagnostics
 
 	out->data_committed_bytes = map->data_committed_bytes;
 
-	out->data_overhead = offsetof(T, tail);
+	out->data_overhead = V::overhead();
 
-	out->data_stride = alignof(T);
+	out->data_stride = V::stride();
 }
 
-template<typename T>
-static void map_get_diagnostics(const RobinHoodMap<T>* map, FullMapDiagnostics* out) noexcept
+template<typename K, typename V>
+static void map_get_diagnostics(const RobinHoodMap<K, V>* map, FullMapDiagnostics* out) noexcept
 {
 	const u16* const inds = static_cast<const u16*>(map->inds);
 
@@ -1394,25 +1456,27 @@ static void map_get_diagnostics(const RobinHoodMap<T>* map, FullMapDiagnostics* 
 			max_psl = psl;
 	}
 
-	u32 total_string_bytes = 0;
+	u32 max_e_bytes = 0;
 
-	u16 max_string_bytes = 0;
+	const byte* e = static_cast<const byte*>(map->data);
 
-	for (T* e = static_cast<T*>(map->data); e != reinterpret_cast<T*>(static_cast<byte*>(map->data) + map->data_used_bytes); e = next_data_entry(e))
+	const byte* end = static_cast<byte*>(map->data) + map->data_used_bytes;
+
+	while (e != end)
 	{
-		const u16 string_bytes = e->tail_bytes;
+		const u32 e_bytes = reinterpret_cast<const V*>(e)->get_used_bytes();
 
-		total_string_bytes += string_bytes;
+		if (e_bytes > max_e_bytes)
+			max_e_bytes = e_bytes;
 
-		if (string_bytes > max_string_bytes)
-			max_string_bytes = string_bytes;
+		e += e_bytes;
 	}
 
 	out->max_probe_seq_len = max_psl + 1;
 
-	out->max_string_bytes = max_string_bytes;
+	out->max_string_bytes = max_e_bytes - V::overhead();
 
-	out->total_string_bytes = total_string_bytes;
+	out->total_string_bytes = map->data_used_bytes - map->inds_used_count * V::overhead();
 }
 
 
@@ -1429,7 +1493,7 @@ bool StringSet::deinit() noexcept
 
 s32 StringSet::index_from(Range<char8> string) noexcept
 {
-	const u32 hash = fnv1a(string);
+	const u32 hash = fnv1a(string.as_byte_range());
 
 	return index_from(string, hash);
 }
@@ -1470,11 +1534,11 @@ bool InputFileSet::deinit() noexcept
 	return map_deinit(&m_map);
 }
 
-bool InputFileSet::add_file(Range<char8> path, HANDLE handle) noexcept
+bool InputFileSet::add_file(FileId id) noexcept
 {
-	const u32 hash = fnv1a(path);
+	const u32 hash = fnv1a(byte_range_from(&id));
 
-	const u32 index = map_insert_or_find_data_entry(&m_map, path, hash);
+	const u32 index = map_insert_or_find_data_entry(&m_map, id, hash);
 
 	if (index == ~0u)
 		return false;
@@ -1485,8 +1549,6 @@ bool InputFileSet::add_file(Range<char8> path, HANDLE handle) noexcept
 		return true;
 
 	AcquireSRWLockExclusive(&m_map.lock);
-
-	entry->handle = handle;
 
 	if (m_head == nullptr)
 		entry->next_index = ~0u;
@@ -1500,14 +1562,14 @@ bool InputFileSet::add_file(Range<char8> path, HANDLE handle) noexcept
 	return true;
 }
 
-HANDLE InputFileSet::get_file() noexcept
+FileId InputFileSet::get_file() noexcept
 {
 	AcquireSRWLockExclusive(&m_map.lock);
 
 	if (m_head == nullptr)
-		return nullptr;
+		return {};
 
-	HANDLE ret = m_head->handle;
+	const FileId id{ m_head->handle, m_head->file_bytes, m_head->file_index, m_head->volume_serial_number };
 
 	u32 next_index = m_head->next_index;
 
@@ -1518,7 +1580,7 @@ HANDLE InputFileSet::get_file() noexcept
 
 	ReleaseSRWLockExclusive(&m_map.lock);
 
-	return ret;
+	return id;
 }
 
 void InputFileSet::get_diagnostics(SimpleMapDiagnostics* out) const noexcept
