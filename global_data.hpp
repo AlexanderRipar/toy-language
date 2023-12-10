@@ -180,7 +180,7 @@ private:
 		bool equal_to_key(FileId key, u32 key_hash) const noexcept;
 	};
 
-	DataEntry* m_head;
+	u32 m_head;
 
 	RobinHoodMap<FileId, DataEntry> m_map;
 

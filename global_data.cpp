@@ -1093,7 +1093,10 @@ void InputFileSet::DataEntry::init(FileId key, u32 key_hash) noexcept
 {
 	hash = key_hash;
 
-	handle = key.handle;
+	// Leave this as null to be initialized later.
+	// This is necessary to distinguish between newly inserted and "reused"
+	// entries.
+	handle = nullptr;
 
 	file_bytes = key.file_bytes;
 
@@ -1417,6 +1420,22 @@ static u32 map_insert_or_find_data_entry(RobinHoodMap<K, V>* map, K key, u32 has
 }
 
 template<typename K, typename V>
+static V* map_data_entry_from_index(RobinHoodMap<K, V>* map, u32 index) noexcept
+{
+	assert(index < map->data_used_bytes / V::stride());
+
+	return reinterpret_cast<V*>(static_cast<byte*>(map->data) + index * V::stride());
+}
+
+template<typename K, typename V>
+static const V* map_data_entry_from_index(const RobinHoodMap<K, V>* map, u32 index) noexcept
+{
+	assert(index < map->data_used_bytes / V::stride());
+
+	return reinterpret_cast<const V*>(static_cast<const byte*>(map->data) + index * V::stride());
+}
+
+template<typename K, typename V>
 static void map_get_diagnostics(const RobinHoodMap<K, V>* map, SimpleMapDiagnostics* out) noexcept
 {
 	out->indices_used_count = map->inds_used_count;
@@ -1505,9 +1524,7 @@ s32 StringSet::index_from(Range<char8> string, u32 hash) noexcept
 
 Range<char8> StringSet::string_from(s32 index) const noexcept
 {
-	assert(index >= 0 && static_cast<u32>(index) < (m_map.data_used_bytes / 4));
-
-	const DataEntry* entry = reinterpret_cast<const DataEntry*>(static_cast<const byte*>(m_map.data) + index * alignof(DataEntry));
+	const DataEntry* entry = map_data_entry_from_index(&m_map, index);
 
 	return Range{ entry->tail, entry->tail_bytes };
 }
@@ -1543,44 +1560,47 @@ bool InputFileSet::add_file(FileId id) noexcept
 	if (index == ~0u)
 		return false;
 
-	DataEntry* entry = reinterpret_cast<DataEntry*>(static_cast<byte*>(m_map.data) + index * alignof(DataEntry));
+	DataEntry* entry = map_data_entry_from_index(&m_map, index);
 
 	if (entry->handle != nullptr)
 		return true;
 
-	AcquireSRWLockExclusive(&m_map.lock);
+	// Initialize entry->handle only at this point and not in DataEntry::init
+	// to differentiate newly inserted entries.
+	entry->handle = id.handle;
 
-	if (m_head == nullptr)
-		entry->next_index = ~0u;
-	else
-		entry->next_index = static_cast<u32>((reinterpret_cast<byte*>(m_head) - static_cast<byte*>(m_map.data)) / alignof(DataEntry));
+	while (true)
+	{
+		u32 old_head = static_cast<volatile InputFileSet*>(this)->m_head;
 
-	m_head = entry;
+		entry->next_index = old_head;
 
-	ReleaseSRWLockExclusive(&m_map.lock);
+		if (InterlockedCompareExchange(&m_head, index, old_head) == old_head)
+			break;
+	}
 
 	return true;
 }
 
 FileId InputFileSet::get_file() noexcept
 {
-	AcquireSRWLockExclusive(&m_map.lock);
+	// While usually a variable tracking the number of pop operations would be
+	// required alongside the head (See e.g.
+	// http://15418.courses.cs.cmu.edu/spring2013/article/46) this is not
+	// necessary in this case, since the same index can never be pushed twice,
+	// thus entirely avoiding problematic ABA scenarios.
+	while (true)
+	{
+		const u32 old_head = static_cast<volatile InputFileSet*>(this)->m_head;
 
-	if (m_head == nullptr)
-		return {};
+		if (m_head == ~0u)
+			return {};
 
-	const FileId id{ m_head->handle, m_head->file_bytes, m_head->file_index, m_head->volume_serial_number };
+		const DataEntry* entry = map_data_entry_from_index(&m_map, old_head);
 
-	u32 next_index = m_head->next_index;
-
-	if (next_index == ~0u)
-		m_head = nullptr;
-	else
-		m_head = reinterpret_cast<DataEntry*>(reinterpret_cast<byte*>(m_map.data) + next_index * alignof(DataEntry));
-
-	ReleaseSRWLockExclusive(&m_map.lock);
-
-	return id;
+		if (InterlockedCompareExchange(&m_head, entry->next_index, old_head) == old_head)
+			return { entry->handle, entry->file_bytes, entry->file_index, entry->volume_serial_number };
+	}
 }
 
 void InputFileSet::get_diagnostics(SimpleMapDiagnostics* out) const noexcept
