@@ -7,20 +7,39 @@ project(compil0r)
 add_executable(
 	compil0r main.cpp
 	common.hpp
-	minwin.hpp
 	range.hpp
+	memory.hpp
+	container.hpp
+	threading.hpp
 	token.hpp
-	global_data.hpp global_data.cpp
-	init.hpp init.cpp
-	lex0r.hpp lex0r.cpp
+	minos.hpp minos.cpp
+	config.hpp config.cpp
+	task_manag0r.hpp task_manag0r.cpp
 )
+
+target_link_libraries(compil0r PRIVATE synchronization)
 
 target_compile_features(compil0r PRIVATE cxx_std_17)
 
 if (MSVC)
-	target_compile_options(compil0r PRIVATE /W4 /wd4201)
+	target_link_options(compil0r PRIVATE
+		"$<$<NOT:$<CONFIG:Debug>>:/DEBUG>"
+		"$<$<NOT:$<CONFIG:Debug>>:/OPT:REF>"
+		"$<$<NOT:$<CONFIG:Debug>>:/OPT:ICF>"
+	)
+
+	target_compile_options(compil0r PRIVATE
+		/W4
+		/wd4201
+		"$<$<NOT:$<CONFIG:Debug>>:/Zi>"
+	)
 else()
-	target_compile_options(compil0r PRIVATE -Wall -Wpedantic -Wextra)
+	target_compile_options(compil0r PRIVATE
+		-Wall
+		-Wpedantic
+		-Wextra
+		-g
+	)
 endif()
 
 add_subdirectory(test)

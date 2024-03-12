@@ -1,9 +1,7 @@
 #include "../common.hpp"
-#include "../minwin.hpp"
+#include "tests.hpp"
 #include <cstdio>
 #include <cstdlib>
-
-#include "test_global_data.hpp"
 
 s32 main(s32 argc, const char8** argv)
 {
@@ -27,12 +25,18 @@ s32 main(s32 argc, const char8** argv)
 
 	u32 error_count = 0;
 
-	error_count += test::global_data::run(out_file);
+	error_count += test::container(out_file);
+
+	error_count += test::threading(out_file);
 
 	if (error_count == 0)
-		return EXIT_SUCCESS;
+	{
+		fprintf(stdout, "All tests passed.\n");
 
-	fprintf(stderr, "%u test cases failed. See %s for log.\n", error_count, argv[1]);
+		return EXIT_SUCCESS;
+	}
+
+	fprintf(stdout, "%u test cases failed. See %s for log.\n", error_count, argc == 2 ? argv[1] : "above");
 
 	return EXIT_FAILURE;
 }

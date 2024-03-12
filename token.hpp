@@ -4,18 +4,8 @@
 #include "common.hpp"
 #include <cassert>
 
-struct Token
+enum class Token : u8
 {
-private:
-
-	u32 m_rep;
-
-public:
-
-	static constexpr u8 MAX_TAG_BITS = 6;
-
-	enum class Tag : u8
-	{
 		EMPTY = 0,
 		KwdIf,      // if
 		KwdThen,    // then
@@ -91,27 +81,52 @@ public:
 		LitString,  // '"' .* '"'
 		Ident,      // ( 'a' - 'z' | 'A' - 'Z' ) ( 'a' - 'z' | 'A' - 'Z' | '0' - '9' | '_' )*
 		MAX,
-	};
+};
 
-	static_assert(static_cast<u8>(Tag::MAX) <= (1 << MAX_TAG_BITS));
+static constexpr u32 MAX_TOKEN_TAG_BITS = 6;
 
-	Token() noexcept = default;
+static_assert(static_cast<u32>(Token::MAX) < (1 << MAX_TOKEN_TAG_BITS));
 
-	Token(Tag tag) noexcept : m_rep{ static_cast<u32>(tag) } {}
+struct BuiltinToken
+{
+private:
 
-	Token(Tag tag, s32 index) noexcept : m_rep{ static_cast<u32>(tag) | static_cast<u32>(index << MAX_TAG_BITS) }
+	Token m_rep;
+
+public:
+
+	BuiltinToken() noexcept = default;
+
+	BuiltinToken(Token tag) noexcept : m_rep{ tag } {}
+
+	Token tag() const noexcept
 	{
-		assert(index >= 0 && index < (1 << (32 - MAX_TAG_BITS)));
+		return m_rep;
+	}
+};
+
+struct NamedToken
+{
+private:
+
+	u32 m_rep;
+
+public:
+	NamedToken() noexcept = default;
+
+	NamedToken(Token tag, u32 index) noexcept : m_rep{ static_cast<u32>(tag) | static_cast<u32>(index << MAX_TOKEN_TAG_BITS) }
+	{
+		assert(index < (1 << (32 - MAX_TOKEN_TAG_BITS)));
 	}
 
-	Tag tag() const noexcept
+	Token tag() const noexcept
 	{
-		return static_cast<Tag>(m_rep & ((1 << MAX_TAG_BITS) - 1));
+		return static_cast<Token>(m_rep & ((1 << MAX_TOKEN_TAG_BITS) - 1));
 	}
 
 	s32 index() const noexcept
 	{
-		return static_cast<s32>(m_rep >> MAX_TAG_BITS);
+		return static_cast<s32>(m_rep >> MAX_TOKEN_TAG_BITS);
 	}
 };
 
