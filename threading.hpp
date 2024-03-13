@@ -894,7 +894,7 @@ private:
 
 	std::atomic<u32> m_rehash_lock;
 
-	std::atomic<s32> m_awaited_write_count;
+	std::atomic<u32> m_awaited_write_count;
 
 
 
@@ -1003,7 +1003,7 @@ private:
 
 		m_awaited_write_count.store(0, std::memory_order_release);
 
-		s32 active_write_count = 0;
+		u32 active_write_count = 0;
 
 		for (u32 i = 0; i != m_thread_count; ++i)
 		{
@@ -1011,10 +1011,12 @@ private:
 				active_write_count += 1;
 		}
 
-		s32 pending_write_count = m_awaited_write_count.fetch_add(active_write_count, std::memory_order_relaxed) + active_write_count;
+		u32 pending_write_count = m_awaited_write_count.fetch_add(active_write_count, std::memory_order_relaxed) + active_write_count;
 
 		while (pending_write_count > 0)
 		{
+			ASSERT_OR_IGNORE(static_cast<s32>(pending_write_count) > 0);
+
 			minos::address_wait(&m_awaited_write_count, &pending_write_count, sizeof(m_awaited_write_count));
 
 			pending_write_count = m_awaited_write_count.load(std::memory_order_relaxed);
