@@ -21,9 +21,9 @@ public:
 
     bool commit(u64 offset, u64 bytes) noexcept
     {
-        assert(bytes != 0);
+        ASSERT_OR_IGNORE(bytes != 0);
 
-        assert(offset + bytes <= m_bytes);
+        ASSERT_OR_IGNORE(offset + bytes <= m_bytes);
 
         return minos::commit(static_cast<byte*>(m_ptr) + offset, bytes);
     }
