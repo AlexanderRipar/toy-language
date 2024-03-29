@@ -99,60 +99,6 @@ public:
 };
 
 template<typename T, typename Index = u32>
-struct ThreadsafeFixedAllocator
-{
-private:
-
-	union Entry
-	{
-		T t;
-
-		u32 next_free_index;
-
-		struct NextFreeIndex_Func
-		{
-			u32* operator()(Entry* e) noexcept { return &e->next_free_index; }
-		};
-	};
-
-	FixedBuffer<Entry, Index> m_buf;
-
-	ThreadsafeIndexStackList<Entry, typename Entry::NextFreeIndex_Func> m_freelist;
-
-public:
-
-	bool init(MemorySubregion memory) noexcept
-	{
-		m_freelist.init();
-
-		if (!m_buf.init(memory))
-			return false;
-
-		const Index capacity = static_cast<Index>(memory.count() / sizeof(Entry));
-
-		for (Index i = 0; i != capacity; ++i)
-			m_buf.data()[i].next_free_index = i + 1;
-
-		if (capacity != 0)
-		{
-			m_buf.data()[capacity - 1].next_free_index = ~0u;
-
-			m_freelist.push_unsafe(0, m_buf.data());
-		}
-	}
-
-	T* alloc() noexcept
-	{
-		return m_freelist.pop(m_buf.data());
-	}
-
-	void dealloc(T* ptr) noexcept
-	{
-		m_freelist.push(ptr - m_buf.data(), m_buf.data());
-	}
-};
-
-template<typename T, typename Index = u32>
 struct ThreadsafeGrowableAllocator
 {
 private:
