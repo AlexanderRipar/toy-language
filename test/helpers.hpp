@@ -13,7 +13,6 @@ u32 run_on_threads_and_wait(FILE* out_file, u32 thread_count, thread_proc proc, 
 
 enum class LogLevel
 {
-	None,
 	Info,
 	Failure,
 };

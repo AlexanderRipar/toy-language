@@ -94,9 +94,6 @@ void log(LogLevel level, FILE* f, const char8* fmt, ...) noexcept
 {
 	switch (level)
 	{
-	case LogLevel::None:
-		break;
-
 	case LogLevel::Info:
 		fprintf(f, "[Info] ");
 		break;
