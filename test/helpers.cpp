@@ -92,31 +92,36 @@ u32 run_on_threads_and_wait(FILE* out_file, u32 thread_count, thread_proc proc, 
 
 void log(LogLevel level, FILE* f, const char8* fmt, ...) noexcept
 {
+	const char8* prefix = "[info] ";
+
 	switch (level)
 	{
-	case LogLevel::Info:
-		fprintf(f, "[Info] ");
-		break;
-
 	case LogLevel::Failure:
-		fprintf(f, "[Fail] ");
+		prefix = "[FAIL] ";
+
+		fprintf(stderr, prefix);
+
+		va_list stderr_args;
+		va_start(stderr_args, fmt);
+
+		vfprintf(stderr, fmt, stderr_args);
+
+		va_end(stderr_args);
+
+		// fallthrough
+
+	case LogLevel::Info:
+		fprintf(f, prefix);
+		
+		va_list outfile_args;
+		va_start(outfile_args, fmt);
+
+		vfprintf(f, fmt, outfile_args);
+
+		va_end(outfile_args);
 		break;
 
 	default:
-		assert(false);
-		fprintf(f, "[????] ");
-		break;
+		ASSERT_UNREACHABLE;
 	}
-
-	va_list args;
-
-	va_start(args, fmt);
-
-	if (level == LogLevel::Failure)
-		vfprintf(stderr, fmt, args);
-
-	if (f != nullptr)
-		vfprintf(f, fmt, args);
-
-	va_end(args);
 }
