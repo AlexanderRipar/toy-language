@@ -64,7 +64,7 @@ u32 minos::page_bytes() noexcept
 
 	GetSystemInfo(&sysinfo);
 
-	return sysinfo.dwAllocationGranularity;
+	return sysinfo.dwPageSize;
 }
 
 void minos::address_wait(void* address, void* undesired, u32 bytes) noexcept
