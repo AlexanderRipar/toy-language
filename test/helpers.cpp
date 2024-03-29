@@ -78,7 +78,14 @@ u32 run_on_threads_and_wait(FILE* out_file, u32 thread_count, thread_proc proc, 
 
 	while (remaining_thread_count != 0)
 	{
-		minos::address_wait_timeout(&data->remaining_thread_count, &remaining_thread_count, sizeof(remaining_thread_count), timeout);
+		if (!minos::address_wait_timeout(&data->remaining_thread_count, &remaining_thread_count, sizeof(remaining_thread_count), timeout))
+		{
+			log(LogLevel::Failure, out_file, "run_on_threads_and_wait timed out after %u milliseconds\n", timeout);
+
+			__debugbreak();
+
+			exit(1);
+		}
 
 		remaining_thread_count = data->remaining_thread_count.load();
 	}
