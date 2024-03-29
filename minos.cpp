@@ -160,3 +160,121 @@ void minos::thread_close(ThreadHandle handle) noexcept
 {
 	ASSERT_OR_EXIT(CloseHandle(handle.m_rep));
 }
+
+bool minos::file_create(Range<char8> filepath, Access access, CreateMode createmode, AccessPattern pattern, FileHandle* out) noexcept
+{
+	char16 filepath_utf16[8192];
+
+	const s32 filepath_utf16_chars = MultiByteToWideChar(CP_UTF8, 0, filepath.begin(), static_cast<s32>(filepath.count()), filepath_utf16, static_cast<s32>(array_count(filepath_utf16) - 1));
+
+	if (filepath_utf16_chars == 0)
+		return false;
+
+	filepath_utf16[filepath_utf16_chars] = '\0';
+
+	DWORD native_access;
+
+	switch (access)
+	{
+	case Access::Read:
+		native_access = GENERIC_READ;
+		break;
+
+	case Access::Write:
+		native_access = GENERIC_WRITE;
+		break;
+
+	case Access::ReadWrite:
+		native_access = GENERIC_READ | GENERIC_WRITE;
+		break;
+
+	case Access::Execute:
+		native_access = GENERIC_EXECUTE;
+		break;
+
+	default:
+		ASSERT_UNREACHABLE;
+	}
+
+	DWORD native_createmode;
+
+	switch (createmode)
+	{
+	case CreateMode::Open:
+		native_createmode = OPEN_EXISTING;
+		break;
+	
+	case CreateMode::Create:
+		native_createmode = CREATE_NEW;
+		break;
+
+	case CreateMode::OpenOrCreate:
+		native_createmode = OPEN_ALWAYS;
+		break;
+
+	case CreateMode::Recreate:
+		native_createmode = CREATE_ALWAYS;
+		break;
+
+	default:
+		ASSERT_UNREACHABLE;
+	}
+
+	DWORD native_flags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED;
+
+	switch (pattern)
+	{
+	case AccessPattern::Sequential:
+		native_flags |= FILE_FLAG_SEQUENTIAL_SCAN;
+		break;
+
+	case AccessPattern::RandomAccess:
+		native_flags |= FILE_FLAG_RANDOM_ACCESS;
+		break;
+
+	case AccessPattern::Unbuffered:
+		native_flags |= FILE_FLAG_NO_BUFFERING;
+		break;
+	
+	default:
+		ASSERT_UNREACHABLE;
+	}
+
+	const HANDLE handle = CreateFileW(filepath_utf16, native_access, FILE_SHARE_READ, nullptr, native_createmode, native_flags, nullptr);
+
+	if (handle == INVALID_HANDLE_VALUE)
+		return false;
+
+	out->m_rep = handle;
+
+	return true;
+}
+
+void minos::file_close(FileHandle handle) noexcept
+{
+	ASSERT_OR_EXIT(CloseHandle(handle.m_rep));
+}
+
+bool minos::file_read(FileHandle handle, void* buffer, u32 bytes_to_read, Overlapped* overlapped) noexcept
+{
+	if (ReadFile(handle.m_rep, buffer, bytes_to_read, nullptr, reinterpret_cast<OVERLAPPED*>(overlapped)))
+		return true;
+		
+	return GetLastError() == ERROR_IO_PENDING;
+}
+
+bool minos::file_get_info(FileHandle handle, FileInfo* out) noexcept
+{
+	BY_HANDLE_FILE_INFORMATION info;
+
+	if (!GetFileInformationByHandle(handle.m_rep, &info))
+		return false;
+
+	out->identity.volume_serial = info.dwVolumeSerialNumber;
+
+	out->identity.index = info.nFileIndexLow | (static_cast<u64>(info.nFileIndexHigh) << 32);
+
+	out->file_bytes = info.nFileSizeLow | (static_cast<u64>(info.nFileSizeHigh) << 32);
+
+	return true;
+}
