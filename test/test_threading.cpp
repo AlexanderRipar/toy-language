@@ -4,6 +4,16 @@
 #include "../range.hpp"
 #include "../hash.hpp"
 
+namespace indexstacklist_tests
+{
+
+}
+
+TESTCASE(indexstacklist)
+{
+	TEST_TBD;
+}
+
 namespace map_tests
 {
 	template<typename T>
@@ -671,6 +681,8 @@ TESTCASE(map)
 u32 test::threading(FILE* out_file) noexcept
 {
 	TEST_INIT;
+
+	RUN_TEST(indexstacklist);
 
 	RUN_TEST(map);
 
