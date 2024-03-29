@@ -102,6 +102,15 @@ __declspec(noreturn) void minos::exit_process(u32 exit_code) noexcept
 	ExitProcess(exit_code);
 }
 
+u32 minos::logical_processor_count() noexcept
+{
+	SYSTEM_INFO si;
+
+	GetSystemInfo(&si);
+
+	return si.dwNumberOfProcessors;
+}
+
 bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_name, ThreadHandle* opt_out) noexcept
 {
 	static constexpr u32 MAX_THREAD_NAME_CHARS = 255;
@@ -150,13 +159,4 @@ bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_nam
 void minos::thread_close(ThreadHandle handle) noexcept
 {
 	ASSERT_OR_EXIT(CloseHandle(handle.m_rep));
-}
-
-u32 minos::logical_processor_count() noexcept
-{
-	SYSTEM_INFO si;
-
-	GetSystemInfo(&si);
-
-	return si.dwNumberOfProcessors;
 }

@@ -40,11 +40,11 @@ namespace minos
 
 	__declspec(noreturn) void exit_process(u32 exit_code) noexcept;
 
+	u32 logical_processor_count() noexcept;
+
 	bool thread_create(thread_proc proc, void* param, Range<char8> thread_identifier, ThreadHandle* opt_out = nullptr) noexcept;
 
 	void thread_close(ThreadHandle handle) noexcept;
-
-	u32 logical_processor_count() noexcept;
 }
 
 #endif // MINSO_HPP_INCLUDE_GUARD
