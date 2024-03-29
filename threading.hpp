@@ -317,6 +317,54 @@ public:
 template<typename K, typename V>
 struct alignas(minos::CACHELINE_BYTES) ThreadsafeMap2
 {
+public:
+
+	struct InitInfo
+	{
+		// Number of distinct threads that will be accessing this map.
+		// Each of these threads must be associated with a unique id in the
+		// range [0..thread_count), which is passed to methods working on this
+		// map. thread_count may not be 0.
+		u32 thread_count;
+
+		struct
+		{
+			// Maximum size of the map's lookup array.
+			// This must be a power of two that is greater than or equal to
+			// half the system's page size in bytes and greater than or equal
+			// to map.initial_commit_count.
+			u32 reserve_count;
+
+			// Initial size of the map's lookup array.
+			// This must be a power of two that is greater than or equal to
+			// half the system's page size in bytes and less than or equal to
+			// map.reserve_count.
+			u32 initial_commit_count;
+		} map;
+
+		struct
+		{
+			// Maximum number of strides that can be held by the map's backing
+			// store.
+			// This must be a non-zero multiple of
+			// store.per_thread_commit_increment_strides and must be greater
+			// than or equal to
+			// store.per_thread_initial_commit_strides * thread_count.
+			u32 reserve_strides;
+
+			// Initial number of strides assigned to each thread.
+			// This must be a non-zero multiple of
+			// store.per_thread_commit_increment_strides
+			u32 per_thread_initial_commit_strides;
+
+			// Number of strides that are added to a thread's claimed store
+			// when it runs out of store.
+			// This must be a non-zero multiple of the number of strides that
+			// fit into a page on the current system.
+			u32 per_thread_commit_increment_strides;
+		} store;
+	};
+
 private:
 
 	struct alignas(minos::CACHELINE_BYTES) PerThreadData
@@ -794,61 +842,52 @@ private:
 		return value;
 	}
 
-public:
-
-	struct InitInfo
-	{
-		u32 thread_count;
-
-		struct
-		{
-			u32 reserve_count;
-
-			u32 initial_commit_count;
-		} map;
-
-		struct
-		{
-			u32 reserve_strides;
-
-			u32 per_thread_initial_commit_strides;
-
-			u32 per_thread_commit_increment_strides;
-		} store;
-	};
-
-	// @TODO: Add checks for nonsensical inputs
-	bool adjust_init_info(InitInfo* info) noexcept
+	static void check_init_info(InitInfo info) noexcept
 	{
 		const u32 page_bytes = minos::page_bytes();
 
-		const u32 map_reserve_count = next_pow2(info->map.reserve_count, page_bytes / 2);
-
-		const u32 map_initial_commit_count = next_pow2(info->map.initial_commit_count, page_bytes / 2);
-
 		const u32 strides_per_page = page_bytes / STRIDE;
 
-		const u32 store_increment_strides = next_multiple(info->store.per_thread_commit_increment_strides, strides_per_page);
+		ASSERT_OR_EXIT(info.thread_count != 0);
 
-		const u32 store_init_strides = next_multiple(info->store.per_thread_initial_commit_strides, store_increment_strides);
 
-		const u32 store_reserve_strides = next_multiple(info->store.reserve_strides, store_increment_strides);
+		ASSERT_OR_EXIT(is_pow2(info.map.initial_commit_count));
 
-		info->map.reserve_count = map_reserve_count;
+		ASSERT_OR_EXIT(info.map.initial_commit_count >= page_bytes / 2);
 
-		info->map.initial_commit_count = map_initial_commit_count;
 
-		info->store.reserve_strides = store_reserve_strides;
+		ASSERT_OR_EXIT(is_pow2(info.map.reserve_count));
 
-		info->store.per_thread_initial_commit_strides = store_init_strides;
+		ASSERT_OR_EXIT(info.map.reserve_count >= page_bytes / 2);
 
-		info->store.per_thread_commit_increment_strides = store_increment_strides;
+		ASSERT_OR_EXIT(info.map.reserve_count >= info.map.initial_commit_count);
 
-		return true;
+
+		ASSERT_OR_EXIT(info.store.per_thread_commit_increment_strides != 0);
+
+		ASSERT_OR_EXIT(info.store.per_thread_commit_increment_strides % strides_per_page == 0);
+
+
+		ASSERT_OR_EXIT(info.store.per_thread_initial_commit_strides % info.store.per_thread_commit_increment_strides == 0);
+
+		ASSERT_OR_EXIT(info.store.per_thread_initial_commit_strides >= info.store.per_thread_commit_increment_strides);
+
+
+		ASSERT_OR_EXIT(info.store.reserve_strides != 0);
+
+		ASSERT_OR_EXIT(info.store.reserve_strides % info.store.per_thread_commit_increment_strides == 0);
+
+		ASSERT_OR_EXIT(info.store.reserve_strides >= info.store.per_thread_initial_commit_strides * info.thread_count);
+
+		ASSERT_OR_EXIT(info.map.max_insertion_distance >= 64);
 	}
+
+public:
 
 	static u64 required_bytes(InitInfo info) noexcept
 	{
+		check_init_info(info);
+
 		const u64 page_mask = minos::page_bytes() - 1;
 
 		const u64 map_bytes = static_cast<u64>(info.map.reserve_count) * 6;
@@ -862,6 +901,8 @@ public:
 
 	bool init(InitInfo info, MemorySubregion memory) noexcept
 	{
+		check_init_info(info);
+
 		memset(this, 0, sizeof(*this));
 
 		u64 offset = 0;
