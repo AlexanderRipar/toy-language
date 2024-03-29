@@ -14,6 +14,16 @@ TESTCASE(indexstacklist)
 	TEST_TBD;
 }
 
+namespace stridedindexstacklist_tests
+{
+
+}
+
+TESTCASE(stridedindexstacklist)
+{
+	TEST_TBD;
+}
+
 namespace map_tests
 {
 	template<typename T>
@@ -683,6 +693,8 @@ u32 test::threading(FILE* out_file) noexcept
 	TEST_INIT;
 
 	RUN_TEST(indexstacklist);
+
+	RUN_TEST(stridedindexstacklist);
 
 	RUN_TEST(map);
 

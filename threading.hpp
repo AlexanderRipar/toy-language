@@ -115,6 +115,116 @@ public:
 	}
 };
 
+template<typename T, u32 NEXT_FIELD_OFFSET>
+struct ThreadsafeStridedIndexStackListHeader
+{
+private:
+
+	std::atomic<u64> m_all;
+
+public:
+
+	void init() noexcept
+	{
+		m_all.store(0x0000'0000'FFFF'FFFFui64, std::memory_order_relaxed);
+	}
+
+	void init(void* begin, u32 stride, u32 count) noexcept
+	{
+		if (count == 0)
+		{
+			init();
+
+			return;
+		}
+
+		for (u32 i = 0; i != count - 1; ++i)
+			*reinterpret_cast<u32*>(static_cast<byte*>(begin) + static_cast<u64>(stride) * i + NEXT_FIELD_OFFSET) = i + 1;
+
+		*reinterpret_cast<u32*>(static_cast<byte*>(begin) + static_cast<u64>(stride) * (count - 1) + NEXT_FIELD_OFFSET) = ~0u;
+
+		m_all.store(0, std::memory_order_relaxed);
+	}
+
+	T* pop(void* begin, u32 stride) noexcept
+	{
+		u64 all = m_all.load(std::memory_order_consume);
+
+		while (true)
+		{
+			const u32 head = static_cast<u32>(all);
+
+			if (head == ~0u)
+				return nullptr;
+
+			const u32* next_ptr = reinterpret_cast<u32*>(static_cast<byte*>(begin) + static_cast<u64>(head) * stride + NEXT_FIELD_OFFSET);
+
+			const u32 next = *next_ptr;
+
+			const u64 new_all = (all ^ next ^ head) + (1ui64 << 32);
+
+			if (m_all.compare_exchange_weak(all, new_all, std::memory_order_acquire))
+				return reinterpret_cast<T*>(static_cast<byte*>(begin) + static_cast<u64>(head) * stride);
+		}
+	}
+
+	bool push(void* begin, u32 stride, u32 index) noexcept
+	{
+		u32* const new_next_ptr = reinterpret_cast<u32*>(static_cast<byte*>(begin) + static_cast<u64>(stride) * index + NEXT_FIELD_OFFSET);
+
+		u64 all = m_all.load(std::memory_order_relaxed);
+
+		while (true)
+		{
+			const u32 head = static_cast<u32>(all);
+
+			*new_next_ptr = head;
+
+			const u64 new_all = all ^ index ^ head;
+
+			if (m_all.compare_exchange_weak(all, new_all, std::memory_order_release))
+				return head == ~0u;
+		}
+	}
+
+	T* pop_unsafe(void* begin, u32 stride) noexcept
+	{
+		u64 all = m_all.load(std::memory_order_relaxed);
+
+		const u32 head = static_cast<u32>(all);
+
+		if (head == 0xFFFF'FFFF)
+			return nullptr;
+
+		const u32* next_ptr = static_cast<byte*>(begin) + static_cast<u64>(head) * stride + NEXT_FIELD_OFFSET;
+
+		const u32 next = *next_ptr;
+
+		const u64 new_all = (all ^ next ^ head) + (1ui64 << 32);
+
+		m_all.store(new_all, std::memory_order_relaxed);
+
+		return reinterpret_cast<T*>(static_cast<byte*>(begin) + static_cast<u64>(head) * stride);
+	}
+
+	bool push_unsafe(void* begin, u32 stride, u32 index) noexcept
+	{
+		u32* const new_next_ptr = reinterpret_cast<u32*>(static_cast<byte*>(begin) + static_cast<u64>(stride) * index + NEXT_FIELD_OFFSET);
+
+		u64 all = m_all.load(std::memory_order_relaxed);
+
+		const u32 head = static_cast<u32>(all);
+		
+		*new_next_ptr = head;
+
+		const u64 new_all = all ^ index ^ head;
+
+		m_all.store(new_all, std::memory_order_relaxed);
+
+		return head == ~0u;
+	}
+};
+
 template<typename K, typename V>
 struct alignas(minos::CACHELINE_BYTES) ThreadsafeMap2
 {
