@@ -19,6 +19,19 @@ public:
 
     MemorySubregion(void* ptr, u64 bytes) noexcept : m_ptr{ ptr }, m_bytes{ bytes } {}
 
+    MemorySubregion partition_head(u64 bytes) noexcept
+    {
+        ASSERT_OR_IGNORE(bytes <= m_bytes);
+
+        MemorySubregion head{ m_ptr, bytes };
+
+        m_ptr = static_cast<byte*>(m_ptr) + bytes;
+
+        m_bytes -= bytes;
+
+        return head;
+    }
+
     bool commit(u64 offset, u64 bytes) noexcept
     {
         ASSERT_OR_IGNORE(bytes != 0);
