@@ -1470,7 +1470,7 @@ public:
 
 		bool is_new;
 
-		V* const value = lookup_or_store(thread_id, key, key_hash, is_new);
+		V* const value = find_or_insert(thread_id, key, key_hash, is_new);
 
 		if (opt_is_new != nullptr)
 			*opt_is_new = is_new;
