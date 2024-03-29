@@ -9,6 +9,160 @@
 #pragma warning(push)
 #pragma warning(disable : 4324) // structure was padded due to alignment specifier
 
+template<typename T, u32 MEMBER_ALIGNMENT = minos::CACHELINE_BYTES>
+struct alignas(MEMBER_ALIGNMENT) ThreadsafeRingBufferHeader
+{
+private:
+
+	static_assert(MEMBER_ALIGNMENT >= sizeof(u32) && is_pow2(MEMBER_ALIGNMENT));
+
+	static constexpr u32 SEQUENCE_SHIFT = 16;
+
+	static constexpr u32 COMPLETED_SHIFT = 8;
+
+	static constexpr u32 PENDING_SHIFT = 0;
+
+
+	static constexpr u32 SEQUEUNCE_MASK = 0xFFFFu << SEQUENCE_SHIFT;
+
+	static constexpr u32 COMPLETED_MASK = 0xFFu << COMPLETED_SHIFT;
+
+	static constexpr u32 PENDING_MASK = 0xFFu << PENDING_SHIFT;
+
+
+	static constexpr u32 COMPLETED_ONE = 1ui32 << COMPLETED_SHIFT;
+
+	static constexpr u32 PENDING_ONE = 1ui32 << PENDING_SHIFT;
+
+
+
+	std::atomic<u32> alignas(MEMBER_ALIGNMENT) m_enqueue;
+
+	std::atomic<u32> alignas(MEMBER_ALIGNMENT) m_dequeue;
+
+public:
+
+	void init() noexcept
+	{
+		m_enqueue.store(0, std::memory_order_relaxed);
+
+		m_dequeue.store(0, std::memory_order_relaxed);
+	}
+
+	bool try_enqueue(T* queue, u32 capacity, T entry, u32* opt_out_sequence = nullptr) noexcept
+	{
+		ASSERT_OR_IGNORE(is_pow2(capacity));
+
+		u32 enqueue_all = m_enqueue.load(std::memory_order_relaxed);
+
+		while (true)
+		{
+			const u32 dequeue_all = m_dequeue.load(std::memory_order_relaxed);
+
+			const u32 dequeue_seq = (dequeue_all & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
+
+			const u32 dequeue_pending = (dequeue_all & PENDING_MASK) >> PENDING_SHIFT;
+
+			const u32 release_seq = dequeue_seq - dequeue_pending;
+
+			const u32 enqueue_seq = (enqueue_all & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
+
+			if (enqueue_seq == release_seq + capacity)
+				return false;
+
+			ASSERT_OR_IGNORE(enqueue_seq < release_seq + capacity);
+
+			ASSERT_OR_EXIT((enqueue_all & PENDING_MASK) != PENDING_MASK);
+
+			if (!m_enqueue.compare_exchange_strong(enqueue_all, enqueue_all + PENDING_ONE, std::memory_order_acquire))
+				continue;
+
+			const u32 enqueue_ind = enqueue_seq & (capacity - 1);
+
+			queue[enqueue_ind] = entry;
+
+			if ((enqueue_all & PENDING_MASK) == 0)
+			{
+				u32 enqueue_expected = enqueue_all + PENDING_ONE;
+
+				const u32 new_enqueue_all = enqueue_seq + (1 << SEQUENCE_SHIFT);
+
+				if (m_enqueue.compare_exchange_strong(enqueue_expected, new_enqueue_all, std::memory_order_release))
+					return true;
+			}
+
+			u32 new_enqueue_all = m_enqueue.fetch_add(COMPLETED_ONE, std::memory_order_release) + COMPLETED_ONE;
+
+			const u32 new_enqueue_completed = (new_enqueue_all & COMPLETED_MASK) >> COMPLETED_SHIFT;
+
+			const u32 new_enqueue_pending = (new_enqueue_all & PENDING_MASK) >> PENDING_SHIFT;
+
+			if (new_enqueue_completed == new_enqueue_pending)
+				(void) m_enqueue.compare_exchange_strong(new_enqueue_all, (new_enqueue_all & SEQUEUNCE_MASK) + (new_enqueue_completed << SEQUENCE_SHIFT), std::memory_order_relaxed);
+
+			if (opt_out_sequence != nullptr)
+				*opt_out_sequence = enqueue_seq;
+
+			return true;
+		}
+	}
+
+	bool try_dequeue(T* queue, u32 capacity, T* out) noexcept
+	{
+		ASSERT_OR_IGNORE(is_pow2(capacity));
+
+		u32 dequeue_all = m_dequeue.load(std::memory_order_relaxed);
+
+		while (true)
+		{
+			const u32 enqueue_all = m_enqueue.load(std::memory_order_relaxed);
+
+			const u32 enqueue_seq = (enqueue_all & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
+
+			const u32 enqueue_pending = (enqueue_all & PENDING_MASK) >> PENDING_MASK;
+
+			const u32 publish_seq = enqueue_seq - enqueue_pending;
+
+			const u32 dequeue_seq = (dequeue_all & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
+
+			if (publish_seq == dequeue_seq)
+				return false;
+
+			ASSERT_OR_IGNORE(dequeue_seq < publish_seq);
+
+			ASSERT_OR_EXIT((dequeue_all & PENDING_MASK) != PENDING_MASK);
+
+			if (!m_dequeue.compare_exchange_strong(dequeue_all, dequeue_all + PENDING_ONE, std::memory_order_acquire))
+				continue;
+
+			const u32 dequeue_ind = dequeue_seq & (capacity - 1);
+
+			*out = queue[dequeue_ind];
+
+			if ((dequeue_all & PENDING_MASK) == 0)
+			{
+				u32 dequeue_expected = dequeue_all + PENDING_ONE;
+
+				const u32 new_dequeue_all = dequeue_all + (1 << SEQUENCE_SHIFT);
+
+				if (m_dequeue.compare_exchange_strong(dequeue_expected, new_dequeue_all, std::memory_order_release))
+					return true;
+			}
+
+			u32 new_dequeue_all = m_dequeue.fetch_add(COMPLETED_ONE, std::memory_order_release) + COMPLETED_ONE;
+
+			const u32 new_dequeue_completed = (new_dequeue_all & COMPLETED_MASK) >> COMPLETED_SHIFT;
+
+			const u32 new_dequeue_pending = (new_dequeue_all & PENDING_MASK) >> PENDING_SHIFT;
+
+			if (new_dequeue_completed == new_dequeue_pending)
+				(void) m_dequeue.compare_exchange_strong(new_dequeue_all, (new_dequeue_all & SEQUEUNCE_MASK) + (new_dequeue_completed << SEQUENCE_SHIFT), std::memory_order_relaxed);
+
+			return true;
+		}
+	}
+};
+
 template<typename T, u32 NEXT_FIELD_OFFSET>
 struct ThreadsafeIndexStackListHeader
 {

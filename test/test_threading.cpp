@@ -4,6 +4,16 @@
 #include "../range.hpp"
 #include "../hash.hpp"
 
+namespace ringbuffer_tests
+{
+
+}
+
+TESTCASE(ringbuffer)
+{
+	TEST_TBD;
+}
+
 namespace indexstacklist_tests
 {
 
@@ -691,6 +701,8 @@ TESTCASE(map)
 u32 test::threading(FILE* out_file) noexcept
 {
 	TEST_INIT;
+
+	RUN_TEST(ringbuffer);
 
 	RUN_TEST(indexstacklist);
 
