@@ -4,11 +4,6 @@
 #include "../range.hpp"
 #include "../hash.hpp"
 
-namespace growable_buffer_tests
-{
-
-}
-
 namespace map_tests
 {
 	template<typename T>
@@ -647,11 +642,6 @@ namespace map_tests
 	}
 }
 
-TESTCASE(growable_buffer)
-{
-	TEST_TBD;
-}
-
 TESTCASE(map)
 {
 	TEST_INIT;
@@ -686,8 +676,6 @@ TESTCASE(map)
 u32 test::threading(FILE* out_file) noexcept
 {
 	TEST_INIT;
-
-	RUN_TEST(growable_buffer);
 
 	RUN_TEST(map);
 
