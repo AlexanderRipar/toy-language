@@ -9,43 +9,6 @@
 #pragma warning(push)
 #pragma warning(disable : 4324) // structure was padded due to alignment specifier
 
-struct Semaphore
-{
-private:
-
-	std::atomic<u32> m_count;
-
-public:
-
-	void init() noexcept
-	{
-		m_count.store(0, std::memory_order_relaxed);
-	}
-
-	void signal() noexcept
-	{
-		m_count.fetch_add(1);
-
-		minos::address_wake_single(&m_count);
-	}
-
-	void wait() noexcept
-	{
-		while (true)
-		{
-			u32 count = m_count.load();
-
-			while (count != 0)
-			{
-				if (m_count.compare_exchange_weak(count, count - 1))
-					return;
-			}
-
-			minos::address_wait(&m_count, &count, sizeof(count));
-		}
-	}
-};
-
 struct Mutex
 {
 private:

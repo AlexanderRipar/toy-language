@@ -4,11 +4,6 @@
 #include "../range.hpp"
 #include "../hash.hpp"
 
-namespace semaphore_tests
-{
-
-}
-
 namespace mutex_tests
 {
 
@@ -667,11 +662,6 @@ namespace map_tests
 	}
 }
 
-TESTCASE(semaphore)
-{
-	TEST_TBD;
-}
-
 TESTCASE(mutex)
 {
 	TEST_TBD;
@@ -726,8 +716,6 @@ TESTCASE(map)
 u32 test::threading(FILE* out_file) noexcept
 {
 	TEST_INIT;
-
-	RUN_TEST(semaphore);
 
 	RUN_TEST(mutex);
 
