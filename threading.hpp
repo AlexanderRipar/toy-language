@@ -9,53 +9,6 @@
 #pragma warning(push)
 #pragma warning(disable : 4324) // structure was padded due to alignment specifier
 
-struct Mutex
-{
-private:
-
-	std::atomic<u32> m_claimed;
-
-public:
-
-	void init() noexcept
-	{
-		m_claimed.store(false, std::memory_order_relaxed);
-	}
-
-	void acquire(u32 retry_count) noexcept
-	{
-		while (true)
-		{
-			u32 curr_spin_count = 0;
-
-			u32 claimed = m_claimed.load();
-
-			do
-			{
-				if (claimed == 0)
-				{
-					if (m_claimed.compare_exchange_weak(claimed, 1))
-						return;
-				}
-
-				curr_spin_count += 1;
-
-				minos::yield();
-			}
-			while (curr_spin_count <= retry_count);
-			
-			minos::address_wait(&m_claimed, &claimed, sizeof(claimed));
-		}
-	}
-
-	void release() noexcept
-	{
-		m_claimed.store(0);
-
-		minos::address_wake_single(&m_claimed);
-	}
-};
-
 struct ReadWriteLock
 {
 private:

@@ -4,11 +4,6 @@
 #include "../range.hpp"
 #include "../hash.hpp"
 
-namespace mutex_tests
-{
-
-}
-
 namespace read_write_lock_tests
 {
 
@@ -662,11 +657,6 @@ namespace map_tests
 	}
 }
 
-TESTCASE(mutex)
-{
-	TEST_TBD;
-}
-
 TESTCASE(read_write_lock)
 {
 	TEST_TBD;
@@ -716,8 +706,6 @@ TESTCASE(map)
 u32 test::threading(FILE* out_file) noexcept
 {
 	TEST_INIT;
-
-	RUN_TEST(mutex);
 
 	RUN_TEST(read_write_lock);
 
