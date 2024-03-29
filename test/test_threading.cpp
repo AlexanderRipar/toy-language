@@ -123,11 +123,10 @@ namespace map_tests
 		info.thread_count = 16;
 		info.map.reserve_count = 1u << 18;
 		info.map.initial_commit_count = 1u << 12;
+		info.map.max_insertion_distance = 1024;
 		info.store.reserve_strides = 1u << 18;
 		info.store.per_thread_commit_increment_strides = 1u << 12;
 		info.store.per_thread_initial_commit_strides = 1u << 12;
-
-		REQUIRE_EQ(out_map->adjust_init_info(&info), true, "ThreadsafeMap.adjust_init_info succeeds with small-sized parameters");
 
 		const u64 required_bytes = out_map->required_bytes(info);
 
@@ -327,11 +326,10 @@ namespace map_tests
 			info.thread_count = 16;
 			info.map.reserve_count = 1u << 18;
 			info.map.initial_commit_count = 1u << 12;
+			info.map.max_insertion_distance = 1024;
 			info.store.reserve_strides = 1u << 20;
 			info.store.per_thread_commit_increment_strides = 1u << 12;
 			info.store.per_thread_initial_commit_strides = 1u << 14;
-
-			REQUIRE_EQ(map.adjust_init_info(&info), true, "ThreadsafeMap.adjust_init_info succeeds with medium parameters");
 
 			const u64 required_bytes = map.required_bytes(info);
 
@@ -356,13 +354,12 @@ namespace map_tests
 
 			decltype(map)::InitInfo info;
 			info.thread_count = 1;
-			info.map.reserve_count = 1u;
-			info.map.initial_commit_count = 1u;
-			info.store.reserve_strides = 1u;
-			info.store.per_thread_commit_increment_strides = 1u;
-			info.store.per_thread_initial_commit_strides = 1u;
-
-			REQUIRE_EQ(map.adjust_init_info(&info), true, "ThreadsafeMap.adjust_init_info succeeds with small parameters");
+			info.map.reserve_count = 4096;
+			info.map.initial_commit_count = 4096;
+			info.map.max_insertion_distance = 1024;
+			info.store.reserve_strides = 4096;
+			info.store.per_thread_commit_increment_strides = 4096;
+			info.store.per_thread_initial_commit_strides = 4096;
 
 			const u64 required_bytes = map.required_bytes(info);
 
@@ -389,11 +386,10 @@ namespace map_tests
 			info.thread_count = 1024;
 			info.map.reserve_count = 1u << 31;
 			info.map.initial_commit_count = 1u << 20;
+			info.map.max_insertion_distance = 1024;
 			info.store.reserve_strides = 1u << 31;
 			info.store.per_thread_commit_increment_strides = 1u << 16;
 			info.store.per_thread_initial_commit_strides = 1u << 16;
-
-			REQUIRE_EQ(map.adjust_init_info(&info), true, "ThreadsafeMap.adjust_init_info succeeds with large parameters");
 
 			const u64 required_bytes = map.required_bytes(info);
 
@@ -425,11 +421,10 @@ namespace map_tests
 				info.thread_count = 16;
 				info.map.reserve_count = 1u << 18;
 				info.map.initial_commit_count = 1u << 12;
+				info.map.max_insertion_distance = 1024;
 				info.store.reserve_strides = 1u << 18;
 				info.store.per_thread_commit_increment_strides = 1u << 12;
 				info.store.per_thread_initial_commit_strides = 1u << 12;
-
-				REQUIRE_EQ(map.adjust_init_info(&info), true, "ThreadsafeMap.adjust_init_info succeeds with small-sized parameters");
 
 				const u64 required_bytes = map.required_bytes(info);
 

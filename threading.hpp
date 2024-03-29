@@ -340,6 +340,16 @@ public:
 			// half the system's page size in bytes and less than or equal to
 			// map.reserve_count.
 			u32 initial_commit_count;
+
+			// Upper bound on the number of map entries that may be affected by
+			// an insertion. If more entries are affected, a rehash is
+			// triggered.
+			// This is *not* equivalent to the entry's probe sequence length,
+			// since multiple map entries may be moved during an insertion.
+			// This must be at least 64.
+			// Inserting may actually rehash before this threshold is reached
+			// if the map is suffiently small. 
+			u32 max_insertion_distance;
 		} map;
 
 		struct
@@ -410,6 +420,8 @@ private:
 	u32 m_map_reserved_count;
 
 	u32 m_store_reserved_strides;
+
+	u32 m_max_checked_cacheline_count;
 
 	u32 m_store_commit_increment_strides;
 
@@ -735,7 +747,13 @@ private:
 
 		acquire_thread_write_lock(thread_data);
 
-		const u32 mask = m_map_committed_count.load(std::memory_order_relaxed) - 1;
+		const u32 map_committed_count = m_map_committed_count.load(std::memory_order_relaxed);
+
+		const u32 mask = map_committed_count - 1;
+
+		const u32 max_checked_cacheline_count = map_committed_count / 4 < m_max_checked_cacheline_count ? map_committed_count / 2 : m_max_checked_cacheline_count;
+
+		u32 checked_cacheline_count = 0;
 
 		u16* const map = m_map;
 
@@ -793,10 +811,12 @@ private:
 			{
 				acquire_map_cacheline_lock(map, find_index);
 
+				checked_cacheline_count += 1;
+
 				find_index += 1;
 			}
 
-			if ((entry_to_find & PSL_MASK) == PSL_MASK)
+			if ((entry_to_find & PSL_MASK) == PSL_MASK || checked_cacheline_count == max_checked_cacheline_count)
 			{
 				release_map_cacheline_locks(map, mask, initial_index & ~MAP_CACHELINE_MASK, find_index & ~MAP_CACHELINE_MASK);
 
@@ -938,6 +958,8 @@ public:
 		m_map_reserved_count = info.map.reserve_count;
 
 		m_store_reserved_strides = info.store.reserve_strides;
+
+		m_max_checked_cacheline_count = (info.map.max_insertion_distance + MAP_CACHELINE_MASK) / (MAP_CACHELINE_MASK + 1);
 
 		m_store_commit_increment_strides = info.store.per_thread_commit_increment_strides;
 
