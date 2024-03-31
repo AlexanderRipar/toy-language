@@ -350,7 +350,7 @@ public:
 		if (head == 0xFFFF'FFFF)
 			return nullptr;
 
-		const u32* next_ptr = static_cast<byte*>(begin) + static_cast<u64>(head) * stride + NEXT_FIELD_OFFSET;
+		const u32* next_ptr = reinterpret_cast<u32*>(static_cast<byte*>(begin) + static_cast<u64>(head) * stride + NEXT_FIELD_OFFSET);
 
 		const u32 next = *next_ptr;
 
