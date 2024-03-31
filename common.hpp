@@ -23,7 +23,7 @@ using uint = u64;
 using sint = s64;
 
 template<typename T, uint COUNT>
-inline uint array_count([[maybe_unused]] const T(&arr)[COUNT]) noexcept
+inline constexpr uint array_count([[maybe_unused]] const T(&arr)[COUNT]) noexcept
 {
 	return COUNT;
 }
