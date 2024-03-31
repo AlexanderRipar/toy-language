@@ -24,7 +24,7 @@ void log(LogLevel level, FILE* f, const char8* fmt, ...) noexcept;
 
 #define TESTCASE_WITH_ARGS(name_, ...) static u32 name_(FILE* out_file, __VA_ARGS__) noexcept
 
-#define TESTCASE_THREADPROC(name_) static u32 name_(FILE* out_file, void* arg, [[maybe_unused]] u32 thread_id, [[maybe_unused]] u32 thread_count) noexcept
+#define TESTCASE_THREADPROC(name_) static u32 name_([[maybe_unused]] FILE* out_file, void* arg, [[maybe_unused]] u32 thread_id, [[maybe_unused]] u32 thread_count) noexcept
 
 #define TEST_THREADPROC_GET_ARGS_AS(...) static_cast<__VA_ARGS__*>(arg)
 
