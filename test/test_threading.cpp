@@ -294,6 +294,31 @@ namespace stridedindexstacklist_tests
 
 			TEST_RETURN;
 		}
+
+		TESTCASE(unsafe_pushes_and_pops_with_doubled_stride_return_pushed_elements)
+		{
+			TEST_INIT;
+
+			ThreadsafeStridedIndexStackListHeader<Node, offsetof(Node, next)> stack;
+
+			Node nodes[4];
+
+			constexpr u32 STRIDE = sizeof(Node) * 2;
+
+			stack.init();
+
+			stack.push_unsafe(nodes, STRIDE, 0);
+
+			stack.push_unsafe(nodes, STRIDE, 1);
+
+			CHECK_EQ(stack.pop_unsafe(nodes, STRIDE), nodes + 2, "pop_unsafe after two push_unsafes returns later element");
+
+			CHECK_EQ(stack.pop_unsafe(nodes, STRIDE), nodes, "Second pop_unsafe after two push_unsafes returns earlier element");
+
+			CHECK_EQ(stack.pop_unsafe(nodes, STRIDE), nullptr, "Third pop_unsafe after two push_unsafes returns nullptr");
+
+			TEST_RETURN;
+		}
 	}
 
 	namespace parallel
@@ -407,6 +432,8 @@ TESTCASE(stridedindexstacklist)
 	RUN_TEST(exclusive::push_unsafe_then_pop_returns_pushed_element);
 
 	RUN_TEST(exclusive::push_then_pop_unsafe_returns_pushed_element);
+
+	RUN_TEST(exclusive::unsafe_pushes_and_pops_with_doubled_stride_return_pushed_elements);
 
 	RUN_TEST(parallel::push_does_not_loose_nodes);
 
