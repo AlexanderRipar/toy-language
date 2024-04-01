@@ -143,7 +143,7 @@ public:
 			{
 				u32 dequeue_expected = dequeue_all + PENDING_ONE;
 
-				const u32 new_dequeue_all = (dequeue_all + 1) << SEQUENCE_SHIFT;
+				const u32 new_dequeue_all = (dequeue_seq + 1) << SEQUENCE_SHIFT;
 
 				if (m_dequeue.compare_exchange_strong(dequeue_expected, new_dequeue_all, std::memory_order_release))
 					return true;
