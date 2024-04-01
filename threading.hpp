@@ -49,7 +49,7 @@ public:
 		m_dequeue.store(0, std::memory_order_relaxed);
 	}
 
-	bool try_enqueue(T* queue, u32 capacity, T entry, u32* opt_out_sequence = nullptr) noexcept
+	bool enqueue(T* queue, u32 capacity, T entry, u32* opt_out_sequence = nullptr) noexcept
 	{
 		ASSERT_OR_IGNORE(is_pow2(capacity));
 
@@ -107,7 +107,7 @@ public:
 		}
 	}
 
-	bool try_dequeue(T* queue, u32 capacity, T* out) noexcept
+	bool dequeue(T* queue, u32 capacity, T* out) noexcept
 	{
 		ASSERT_OR_IGNORE(is_pow2(capacity));
 

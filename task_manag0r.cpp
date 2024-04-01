@@ -471,7 +471,7 @@ public:
 
 		// No FileReads available at the moment; Push to pending
 		if (fileread == nullptr)
-			ASSERT_OR_EXIT(m_pending_file_queue_header.try_enqueue(m_pending_file_queue, m_max_queued_fileread_count, m_filedata.index_from(filedata)));
+			ASSERT_OR_EXIT(m_pending_file_queue_header.enqueue(m_pending_file_queue, m_max_queued_fileread_count, m_filedata.index_from(filedata)));
 
 		const u32 required_blockread_count = static_cast<u32>((filedata->file_bytes + m_buffer_bytes_per_blockread - 1) / m_buffer_bytes_per_blockread);
 
@@ -504,7 +504,7 @@ public:
 
 			const u32 blockread_index = static_cast<u32>(blockread - m_blockreads);
 
-			ASSERT_OR_EXECUTE(fileread->blockread_index_queue_header.try_enqueue(fileread->blockread_index_queue, m_blockread_queue_capacity_per_fileread, static_cast<u16>(blockread_index), &blockread->index_in_fileread));
+			ASSERT_OR_EXECUTE(fileread->blockread_index_queue_header.enqueue(fileread->blockread_index_queue, m_blockread_queue_capacity_per_fileread, static_cast<u16>(blockread_index), &blockread->index_in_fileread));
 
 			blockread->overlapped.offset = blockread->index_in_fileread * m_buffer_bytes_per_blockread;
 
