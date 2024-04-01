@@ -19,12 +19,327 @@ TESTCASE(ringbuffer)
 
 namespace indexstacklist_tests
 {
+	struct Node
+	{
+		u32 data;
 
+		u32 next;
+	};
+
+	struct PushThreadProcArgs
+	{
+		u32 node_count_per_thread;
+
+		Node* nodes;
+		
+		ThreadsafeIndexStackListHeader<Node, offsetof(Node, next)> stack;
+	};
+
+	struct PopThreadProcArgs
+	{
+		std::atomic<u32> popped_node_count;
+
+		Node* nodes;
+
+		ThreadsafeIndexStackListHeader<Node, offsetof(Node, next)> stack;
+	};
+
+	struct PushAndPopThreadProcArgs
+	{
+		u32 iteration_count;
+
+		Node* nodes;
+
+		ThreadsafeIndexStackListHeader<Node, offsetof(Node, next)> stack; 
+	};
+
+	TESTCASE_THREADPROC(push_parallel_threadproc)
+	{
+		TEST_INIT;
+
+		PushThreadProcArgs* const args = TEST_THREADPROC_GET_ARGS_AS(PushThreadProcArgs);
+
+		for (u32 i = thread_id * args->node_count_per_thread; i != (thread_id + 1) * args->node_count_per_thread; ++i)
+			args->stack.push(args->nodes, i);
+
+		TEST_RETURN;
+	}
+
+	TESTCASE_THREADPROC(pop_parallel_threadproc)
+	{
+		TEST_INIT;
+
+		PopThreadProcArgs* const args = TEST_THREADPROC_GET_ARGS_AS(PopThreadProcArgs);
+
+		u32 popped_node_count = 0;
+
+		while (args->stack.pop(args->nodes) != nullptr)
+			popped_node_count += 1;
+
+		args->popped_node_count.fetch_add(popped_node_count, std::memory_order_relaxed);
+
+		TEST_RETURN;
+	}
+
+	TESTCASE_THREADPROC(push_and_pop_parallel_threadproc)
+	{
+		TEST_INIT;
+
+		Node* popped_list = nullptr;
+
+		PushAndPopThreadProcArgs* const args = TEST_THREADPROC_GET_ARGS_AS(PushAndPopThreadProcArgs);
+
+		for (u32 iter = 0; iter != args->iteration_count; ++iter)
+		{
+			while (true)
+			{
+				Node* const popped = args->stack.pop(args->nodes);
+
+				if (popped == nullptr)
+					break;
+
+				popped->next = static_cast<u32>(popped_list == nullptr ? ~0u : popped_list - args->nodes);
+
+				popped_list = popped;
+			}
+
+			while (popped_list != nullptr)
+			{
+				const u32 popped_next = popped_list->next;
+
+				args->stack.push(args->nodes, static_cast<u32>(popped_list - args->nodes));
+
+				popped_list = popped_next == ~0u ? nullptr : args->nodes + popped_next;
+			}
+		}
+
+		TEST_RETURN;
+	}
+
+	namespace exclusive
+	{
+		TESTCASE(pop_on_empty_list_returns_null)
+		{
+			TEST_INIT;
+
+			ThreadsafeIndexStackListHeader<Node, offsetof(Node, next)> stack;
+
+			Node dummy_node[1];
+
+			stack.init();
+
+			CHECK_EQ(stack.pop(dummy_node), nullptr, "Popping an empty stack returns nullptr");
+
+			CHECK_EQ(stack.pop(dummy_node), nullptr, "Popping an empty stack a second time still returns nullptr");
+
+			TEST_RETURN;
+		}
+
+		TESTCASE(init_with_array_then_pop_returns_all_elements)
+		{
+			TEST_INIT;
+
+			ThreadsafeIndexStackListHeader<Node, offsetof(Node, next)> stack;
+
+			Node nodes[512];
+
+			for (u32 i = 0; i != array_count(nodes); ++i)
+				nodes[i].data = i;
+
+			stack.init(nodes, static_cast<u32>(array_count(nodes)));
+
+			u32 popped_node_count = 0;
+
+			while (true)
+			{
+				const Node* node = stack.pop(nodes);
+
+				if (node == nullptr)
+					break;
+
+				CHECK_EQ(node->data, popped_node_count, "init with array initializes the stack with the array's first element on top");
+
+				popped_node_count += 1;
+			}
+
+			CHECK_EQ(popped_node_count, array_count(nodes), "Expected number of nodes are popped after init with array");
+
+			TEST_RETURN;
+		}
+
+		TESTCASE(push_then_pop_returns_pushed_element)
+		{
+			TEST_INIT;
+
+			ThreadsafeIndexStackListHeader<Node, offsetof(Node, next)> stack;
+
+			Node node[1];
+
+			stack.init();
+
+			stack.push(node, 0);
+
+			CHECK_EQ(stack.pop(node), node, "Pop returns previously pushed element");
+
+			CHECK_EQ(stack.pop(node), nullptr, "Pop after popping all elements returns nullptr");
+
+			TEST_RETURN;
+		}
+
+		TESTCASE(push_unsafe_then_pop_returns_pushed_element)
+		{
+			TEST_INIT;
+
+			ThreadsafeIndexStackListHeader<Node, offsetof(Node, next)> stack;
+
+			Node node[1];
+
+			stack.init();
+
+			stack.push_unsafe(node, 0);
+
+			CHECK_EQ(stack.pop(node), node, "Pop returns previously (unsafely) pushed element");
+
+			CHECK_EQ(stack.pop(node), nullptr, "Pop after popping all elements returns nullptr");
+
+			TEST_RETURN;
+		}
+
+		TESTCASE(push_then_pop_unsafe_returns_pushed_element)
+		{
+			TEST_INIT;
+
+			ThreadsafeIndexStackListHeader<Node, offsetof(Node, next)> stack;
+
+			Node node[1];
+
+			stack.init();
+
+			stack.push(node, 0);
+
+			CHECK_EQ(stack.pop_unsafe(node), node, "Pop returns previously (unsafely) pushed element");
+
+			CHECK_EQ(stack.pop_unsafe(node), nullptr, "Pop after popping all elements returns nullptr");
+
+			TEST_RETURN;
+		}
+	}
+
+	namespace parallel
+	{
+		TESTCASE(push_does_not_loose_nodes)
+		{
+			TEST_INIT;
+
+			static constexpr u32 NODE_COUNT_PER_THREAD = 65536;
+
+			static constexpr u32 THREAD_COUNT = 8;
+
+			PushThreadProcArgs args;
+
+			args.node_count_per_thread = NODE_COUNT_PER_THREAD;
+
+			args.stack.init();
+
+			REQUIRE_NE(args.nodes = static_cast<Node*>(malloc(NODE_COUNT_PER_THREAD * THREAD_COUNT * sizeof(Node))), nullptr, "malloc succeeds");
+
+			RUN_TEST_WITH_ARGS(run_on_threads_and_wait, THREAD_COUNT, push_parallel_threadproc, &args, 2000);
+
+			u32 pushed_node_count = 0;
+
+			while (args.stack.pop(args.nodes) != nullptr)
+				pushed_node_count += 1;
+
+			CHECK_EQ(pushed_node_count, NODE_COUNT_PER_THREAD * THREAD_COUNT, "Number of sequentially popped nodes is equal to nodes pushed in parallel");
+
+			free(args.nodes);
+
+			TEST_RETURN;
+		}
+
+		TESTCASE(pop_does_not_duplicate_nodes)
+		{
+			TEST_INIT;
+
+			static constexpr u32 NODE_COUNT_PER_THREAD = 65536;
+
+			static constexpr u32 THREAD_COUNT = 8;
+
+			PopThreadProcArgs args;
+
+			args.popped_node_count.store(0, std::memory_order_relaxed);
+
+			args.stack.init();
+
+			REQUIRE_NE(args.nodes = static_cast<Node*>(malloc(NODE_COUNT_PER_THREAD * THREAD_COUNT * sizeof(Node))), nullptr, "malloc succeeds");
+
+			for (u32 i = 0; i != NODE_COUNT_PER_THREAD * THREAD_COUNT; ++i)
+				args.stack.push(args.nodes, i);
+
+			RUN_TEST_WITH_ARGS(run_on_threads_and_wait, THREAD_COUNT, pop_parallel_threadproc, &args, 2000);
+
+			CHECK_EQ(args.popped_node_count.load(std::memory_order_relaxed), NODE_COUNT_PER_THREAD * THREAD_COUNT, "Number of sequentially pushed nodes is equal to nodes popped in parallel");
+
+			free(args.nodes);
+
+			TEST_RETURN;
+		}
+
+		TESTCASE(push_and_pop_does_not_drop_nodes)
+		{
+			TEST_INIT;
+
+			static constexpr u32 THREAD_COUNT = 8;
+
+			static constexpr u32 TOTAL_NODE_COUNT = 30'000;
+
+			static constexpr u32 THREAD_ITERATION_COUNT = 10;
+
+			PushAndPopThreadProcArgs args;
+
+			args.iteration_count = THREAD_ITERATION_COUNT;
+
+			CHECK_NE(args.nodes = static_cast<Node*>(malloc(TOTAL_NODE_COUNT * sizeof(Node))), nullptr, "malloc succeeds");
+
+			args.stack.init(args.nodes, TOTAL_NODE_COUNT);
+
+			RUN_TEST_WITH_ARGS(run_on_threads_and_wait, THREAD_COUNT, push_and_pop_parallel_threadproc, &args, ~0u);
+
+			u32 popped_node_count = 0;
+
+			while (args.stack.pop(args.nodes) != nullptr)
+				popped_node_count += 1;
+
+			CHECK_EQ(popped_node_count, TOTAL_NODE_COUNT, "Popping and re-pushing batches of nodes in parallel does not loose any nodes");
+
+			TEST_RETURN;
+		}
+	}
 }
 
 TESTCASE(indexstacklist)
 {
-	TEST_TBD;
+	TEST_INIT;
+
+	using namespace indexstacklist_tests;
+
+	RUN_TEST(exclusive::pop_on_empty_list_returns_null);
+
+	RUN_TEST(exclusive::init_with_array_then_pop_returns_all_elements);
+
+	RUN_TEST(exclusive::push_then_pop_returns_pushed_element);
+
+	RUN_TEST(exclusive::push_unsafe_then_pop_returns_pushed_element);
+
+	RUN_TEST(exclusive::push_then_pop_unsafe_returns_pushed_element);
+
+	RUN_TEST(parallel::push_does_not_loose_nodes);
+
+	RUN_TEST(parallel::pop_does_not_duplicate_nodes);
+
+	RUN_TEST(parallel::push_and_pop_does_not_drop_nodes);
+
+	TEST_RETURN;
 }
 
 namespace stridedindexstacklist_tests
