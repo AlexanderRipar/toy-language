@@ -119,7 +119,7 @@ public:
 
 			const u32 enqueue_seq = (enqueue_all & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
 
-			const u32 enqueue_pending = (enqueue_all & PENDING_MASK) >> PENDING_MASK;
+			const u32 enqueue_pending = (enqueue_all & PENDING_MASK) >> PENDING_SHIFT;
 
 			const u32 publish_seq = enqueue_seq - enqueue_pending;
 
