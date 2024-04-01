@@ -177,6 +177,42 @@ namespace stridedindexstacklist_tests
 			TEST_RETURN;
 		}
 
+		TESTCASE(init_with_double_stride_then_pop_returns_every_second_element)
+		{
+			TEST_INIT;
+
+			ThreadsafeStridedIndexStackListHeader<Node, offsetof(Node, next)> stack;
+
+			Node nodes[512];
+
+			constexpr u32 ADJ_COUNT = static_cast<u32>(array_count(nodes) / 2);
+
+			constexpr u32 STRIDE = sizeof(Node) * 2;
+
+			for (u32 i = 0; i != array_count(nodes); ++i)
+				nodes[i].data = i;
+
+			stack.init(nodes, STRIDE, ADJ_COUNT);
+
+			u32 popped_node_count = 0;
+
+			while (true)
+			{
+				const Node* node = stack.pop(nodes, STRIDE);
+
+				if (node == nullptr)
+					break;
+
+				CHECK_EQ(node->data, popped_node_count * 2, "init with array and doubled stride initializes the stack with every other element and the array's first element on top");
+
+				popped_node_count += 1;
+			}
+
+			CHECK_EQ(popped_node_count, ADJ_COUNT, "Expected number of nodes are popped after init with array and doubled stride");
+
+			TEST_RETURN;
+		}
+
 		TESTCASE(push_then_pop_returns_pushed_element)
 		{
 			TEST_INIT;
@@ -336,6 +372,8 @@ TESTCASE(stridedindexstacklist)
 	RUN_TEST(exclusive::pop_on_empty_list_returns_null);
 
 	RUN_TEST(exclusive::init_with_array_then_pop_returns_all_elements);
+
+	RUN_TEST(exclusive::init_with_double_stride_then_pop_returns_every_second_element);
 
 	RUN_TEST(exclusive::push_then_pop_returns_pushed_element);
 
