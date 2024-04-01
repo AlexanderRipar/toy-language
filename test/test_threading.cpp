@@ -232,6 +232,31 @@ namespace stridedindexstacklist_tests
 			TEST_RETURN;
 		}
 
+		TESTCASE(pushes_then_pops_with_doubled_stride_return_pushed_elements)
+		{
+			TEST_INIT;
+
+			ThreadsafeStridedIndexStackListHeader<Node, offsetof(Node, next)> stack;
+
+			Node nodes[4];
+
+			constexpr u32 STRIDE = sizeof(Node) * 2;
+
+			stack.init();
+
+			stack.push(nodes, STRIDE, 0);
+
+			stack.push(nodes, STRIDE, 1);
+
+			CHECK_EQ(stack.pop(nodes, STRIDE), nodes + 2, "pop after two pushes returns later element");
+
+			CHECK_EQ(stack.pop(nodes, STRIDE), nodes, "Second pop after two pushes returns earlier element");
+
+			CHECK_EQ(stack.pop(nodes, STRIDE), nullptr, "Third pop after two pushes returns nullptr");
+
+			TEST_RETURN;
+		}
+
 		TESTCASE(push_unsafe_then_pop_returns_pushed_element)
 		{
 			TEST_INIT;
@@ -376,6 +401,8 @@ TESTCASE(stridedindexstacklist)
 	RUN_TEST(exclusive::init_with_double_stride_then_pop_returns_every_second_element);
 
 	RUN_TEST(exclusive::push_then_pop_returns_pushed_element);
+
+	RUN_TEST(exclusive::pushes_then_pops_with_doubled_stride_return_pushed_elements);
 
 	RUN_TEST(exclusive::push_unsafe_then_pop_returns_pushed_element);
 
