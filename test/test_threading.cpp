@@ -156,29 +156,23 @@ namespace stridedindexstacklist_tests
 			for (u32 i = 0; i != array_count(nodes); ++i)
 				nodes[i].data = i;
 
-			stack.init(nodes, sizeof(*nodes), static_cast<u32>(array_count(nodes)));
+			stack.init(nodes, sizeof(Node), static_cast<u32>(array_count(nodes)));
 
-			u8 bitset[(array_count(nodes) + 7) / 8]{};
+			u32 popped_node_count = 0;
 
-			for (const Node* node = stack.pop(nodes, sizeof(*nodes)); node != nullptr; node = stack.pop(nodes, sizeof(*nodes)))
+			while (true)
 			{
-				const u32 byte_index = node->data >> 3;
+				const Node* node = stack.pop(nodes, sizeof(Node));
 
-				const u32 mask = 1 << (node->data & 0x7);
+				if (node == nullptr)
+					break;
 
-				CHECK_EQ(bitset[byte_index] & mask, 0, "Node has not been popped previously");
+				CHECK_EQ(node->data, popped_node_count, "init with array initializes the stack with the array's first element on top");
 
-				bitset[byte_index] |= mask;
+				popped_node_count += 1;
 			}
 
-			for (u32 i = 0; i != array_count(bitset) - 1; ++i)
-				CHECK_EQ(bitset[i], 0xFF, "All distinct nodes have been popped");
-
-			const u32 raw_remainder_mask = (1 << (array_count(nodes) & 7)) - 1;
-
-			const u32 remainder_mask = raw_remainder_mask == 0 ? 0xFF : raw_remainder_mask;
-
-			CHECK_EQ(bitset[array_count(bitset) - 1], remainder_mask, "All distinct nodes have been popped, with no additional ones");
+			CHECK_EQ(popped_node_count, array_count(nodes), "Expected number of nodes are popped after init with array");
 
 			TEST_RETURN;
 		}
