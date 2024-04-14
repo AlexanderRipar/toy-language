@@ -517,6 +517,8 @@ private:
 		{
 			const u16 existing_entry = map[insert_index];
 
+			ASSERT_OR_IGNORE(indirection_to_insert != 0);
+
 			if (existing_entry == 0)
 			{
 				map[insert_index] = entry_to_insert;
@@ -785,7 +787,12 @@ private:
 		{
 			if (const u16 entry = map[index]; entry == expected_entry)
 			{
-				V* const value = value_from(indirections[index]);
+				const u32 indirection = indirections[index];
+
+				if (indirection == 0)
+					continue;
+
+				V* const value = value_from(indirection);
 
 				if (value->equal_to_key(key, key_hash))
 					return value;
@@ -841,7 +848,11 @@ private:
 
 			if (existing_entry == entry_to_find)
 			{
-				V* value = value_from(indirections[find_index]);
+				const u32 indirection = indirections[find_index];
+
+				ASSERT_OR_IGNORE(indirection != 0);
+
+				V* value = value_from(indirection);
 
 				if (value->equal_to_key(key, key_hash))
 				{
@@ -1014,15 +1025,18 @@ public:
 
 		m_indirections = reinterpret_cast<u32*>(m_map + info.map.reserve_count);
 
-		m_store = m_indirections + info.map.reserve_count;
+		// Let store point to one before its actual beginning, so that valid
+		// indirections / indices are never 0.
+		m_store = reinterpret_cast<byte*>(m_indirections + info.map.reserve_count) - STRIDE;
 
-		m_thread_data = reinterpret_cast<PerThreadData*>(reinterpret_cast<byte*>(m_store) + info.store.reserve_strides * STRIDE);
+		// Correct for above adjustment to m_store by adding an additional stride. 
+		m_thread_data = reinterpret_cast<PerThreadData*>(reinterpret_cast<byte*>(m_store) + info.store.reserve_strides * STRIDE + STRIDE);
 
 		m_thread_count = info.thread_count;
 
 		m_map_reserved_count = info.map.reserve_count;
 
-		m_store_reserved_strides = info.store.reserve_strides;
+		m_store_reserved_strides = info.store.reserve_strides + 1;
 
 		m_max_checked_cacheline_count = (info.map.max_insertion_distance + MAP_CACHELINE_MASK) / (MAP_CACHELINE_MASK + 1);
 
@@ -1030,7 +1044,7 @@ public:
 
 		m_map_committed_count.store(info.map.initial_commit_count, std::memory_order_relaxed);
 
-		m_store_committed_strides.store(info.thread_count * info.store.per_thread_initial_commit_strides, std::memory_order_relaxed);
+		m_store_committed_strides.store(info.thread_count * info.store.per_thread_initial_commit_strides + 1, std::memory_order_relaxed);
 
 		m_rehash_lock.store(0, std::memory_order_relaxed);
 
@@ -1042,9 +1056,9 @@ public:
 		{
 			m_thread_data[i].head_stride = ~0u;
 
-			m_thread_data[i].allocation_curr_stride = i * stride_increment;
+			m_thread_data[i].allocation_curr_stride = i * stride_increment + 1;
 
-			m_thread_data[i].allocation_end_stride = (i + 1) * stride_increment;
+			m_thread_data[i].allocation_end_stride = (i + 1) * stride_increment + 1;
 		}
 
 		return true;
