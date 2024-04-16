@@ -16,29 +16,38 @@ private:
 
 	static_assert(MEMBER_ALIGNMENT >= sizeof(u32) && is_pow2(MEMBER_ALIGNMENT));
 
-	static constexpr u32 SEQUENCE_SHIFT = 16;
+	static constexpr u32 SEQUENCE_SHIFT = 40;
 
-	static constexpr u32 COMPLETED_SHIFT = 8;
+	static constexpr u32 COMPLETED_SHIFT = 20;
 
 	static constexpr u32 PENDING_SHIFT = 0;
 
 
-	static constexpr u32 SEQUEUNCE_MASK = 0xFFFFu << SEQUENCE_SHIFT;
+	static constexpr u32 SEQUENCE_BITS = 24;
 
-	static constexpr u32 COMPLETED_MASK = 0xFFu << COMPLETED_SHIFT;
+	static constexpr u32 COMPLETED_BITS = 20;
 
-	static constexpr u32 PENDING_MASK = 0xFFu << PENDING_SHIFT;
-
-
-	static constexpr u32 COMPLETED_ONE = 1ui32 << COMPLETED_SHIFT;
-
-	static constexpr u32 PENDING_ONE = 1ui32 << PENDING_SHIFT;
+	static constexpr u32 PENDING_BITS = 20;
 
 
+	static constexpr u64 SEQUEUNCE_MASK = ((1ui64 << SEQUENCE_BITS) - 1) << SEQUENCE_SHIFT;
 
-	std::atomic<u32> alignas(MEMBER_ALIGNMENT) m_enqueue;
+	static constexpr u64 COMPLETED_MASK = ((1ui64 << COMPLETED_BITS) - 1) << COMPLETED_SHIFT;
 
-	std::atomic<u32> alignas(MEMBER_ALIGNMENT) m_dequeue;
+	static constexpr u64 PENDING_MASK = ((1ui64 << PENDING_BITS) - 1) << PENDING_SHIFT;
+
+
+	static constexpr u64 SEQUENCE_ONE = 1ui64 << SEQUENCE_SHIFT;
+
+	static constexpr u64 COMPLETED_ONE = 1ui64 << COMPLETED_SHIFT;
+
+	static constexpr u64 PENDING_ONE = 1ui64 << PENDING_SHIFT;
+
+
+
+	std::atomic<u64> alignas(MEMBER_ALIGNMENT) m_enqueue;
+
+	std::atomic<u64> alignas(MEMBER_ALIGNMENT) m_dequeue;
 
 public:
 
@@ -53,55 +62,63 @@ public:
 	{
 		ASSERT_OR_IGNORE(is_pow2(capacity));
 
-		u32 enqueue_all = m_enqueue.load(std::memory_order_relaxed);
+		u64 enqueue_all = m_enqueue.load(std::memory_order_relaxed);
 
 		while (true)
 		{
-			const u32 dequeue_all = m_dequeue.load(std::memory_order_relaxed);
+			u64 dequeue_all = m_dequeue.load(std::memory_order_relaxed);
 
-			const u32 dequeue_seq = (dequeue_all & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
+			const u64 dequeue_seq = (dequeue_all & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
 
-			const u32 dequeue_pending = (dequeue_all & PENDING_MASK) >> PENDING_SHIFT;
+			const u64 enqueue_seq = (enqueue_all & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
 
-			const u32 release_seq = dequeue_seq - dequeue_pending;
+			const u64 enqueue_pending = (enqueue_all & PENDING_MASK) >> PENDING_SHIFT;
 
-			const u32 enqueue_seq = (enqueue_all & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
+			const u64 insertion_seq = enqueue_seq + enqueue_pending;
 
-			if (enqueue_seq == release_seq + capacity)
+			// Queue is full; No insertion possible
+			if (insertion_seq == dequeue_seq + capacity)
 				return false;
 
-			ASSERT_OR_IGNORE(enqueue_seq < release_seq + capacity);
+			ASSERT_OR_IGNORE(enqueue_pending != (PENDING_MASK >> PENDING_SHIFT));
 
-			ASSERT_OR_EXIT((enqueue_all & PENDING_MASK) != PENDING_MASK);
-
-			if (!m_enqueue.compare_exchange_strong(enqueue_all, enqueue_all + PENDING_ONE, std::memory_order_acquire))
+			// Acquire slot by incrementing pending count
+			if (!m_enqueue.compare_exchange_strong(enqueue_all, enqueue_all + PENDING_ONE, std::memory_order_acq_rel))
 				continue;
 
-			const u32 enqueue_ind = enqueue_seq & (capacity - 1);
+			const u64 insertion_index = insertion_seq & (capacity - 1);
 
-			queue[enqueue_ind] = entry;
+			queue[insertion_index] = entry;
 
-			if ((enqueue_all & PENDING_MASK) == 0)
+			if (opt_out_sequence != nullptr)
+				*opt_out_sequence = static_cast<u32>(insertion_seq);
+
+			// If we think it's likely that there are no other running
+			// enqueues, try to fast-path updating m_enqueue to publish our
+			// operation
+			/*
+			if (enqueue_pending == 0)
 			{
 				u32 enqueue_expected = enqueue_all + PENDING_ONE;
 
-				const u32 new_enqueue_all = (enqueue_seq + 1) << SEQUENCE_SHIFT;
-
-				if (m_enqueue.compare_exchange_strong(enqueue_expected, new_enqueue_all, std::memory_order_release))
+				if (m_enqueue.compare_exchange_strong(enqueue_expected, enqueue_all + SEQUENCE_ONE, std::memory_order_release))
 					return true;
 			}
+			*/
 
-			u32 new_enqueue_all = m_enqueue.fetch_add(COMPLETED_ONE, std::memory_order_release) + COMPLETED_ONE;
+			// There are other ongoing enqueues; Increment the number of
+			// completed enqueues, and, if it matches the number of pending
+			// ones, reset both and add it to the sequence
+			u64 published = m_enqueue.fetch_add(COMPLETED_ONE, std::memory_order_relaxed) + COMPLETED_ONE;
 
-			const u32 new_enqueue_completed = (new_enqueue_all & COMPLETED_MASK) >> COMPLETED_SHIFT;
+			const u64 published_seq = (published & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
 
-			const u32 new_enqueue_pending = (new_enqueue_all & PENDING_MASK) >> PENDING_SHIFT;
+			const u64 published_completed = (published & COMPLETED_MASK) >> COMPLETED_SHIFT;
 
-			if (new_enqueue_completed == new_enqueue_pending)
-				(void) m_enqueue.compare_exchange_strong(new_enqueue_all, (new_enqueue_all & SEQUEUNCE_MASK) + (new_enqueue_completed << SEQUENCE_SHIFT), std::memory_order_relaxed);
+			const u64 published_pending = (published & PENDING_MASK) >> PENDING_SHIFT;
 
-			if (opt_out_sequence != nullptr)
-				*opt_out_sequence = enqueue_seq;
+			if (published_completed == published_pending)
+				m_enqueue.compare_exchange_strong(published, (published_seq + published_completed) << SEQUENCE_SHIFT, std::memory_order_release);
 
 			return true;
 		}
@@ -111,52 +128,55 @@ public:
 	{
 		ASSERT_OR_IGNORE(is_pow2(capacity));
 
-		u32 dequeue_all = m_dequeue.load(std::memory_order_relaxed);
+		u64 dequeue_all = m_dequeue.load(std::memory_order_relaxed);
 
 		while (true)
 		{
-			const u32 enqueue_all = m_enqueue.load(std::memory_order_relaxed);
+			const u64 enqueue_all = m_enqueue.load(std::memory_order_relaxed);
 
-			const u32 enqueue_seq = (enqueue_all & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
+			const u64 enqueue_seq = (enqueue_all & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
 
-			const u32 enqueue_pending = (enqueue_all & PENDING_MASK) >> PENDING_SHIFT;
+			const u64 dequeue_seq = (dequeue_all & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
 
-			const u32 publish_seq = enqueue_seq - enqueue_pending;
+			const u64 dequeue_pending = (dequeue_all & PENDING_MASK) >> PENDING_SHIFT;
 
-			const u32 dequeue_seq = (dequeue_all & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
+			const u64 retrieval_seq = dequeue_seq + dequeue_pending;
 
-			if (publish_seq == dequeue_seq)
+			// Queue is empty; Nothing to dequeue
+			if (retrieval_seq == enqueue_seq)
 				return false;
 
-			ASSERT_OR_IGNORE(dequeue_seq < publish_seq);
+			ASSERT_OR_IGNORE(dequeue_pending != (PENDING_MASK >> PENDING_SHIFT));
 
-			ASSERT_OR_EXIT((dequeue_all & PENDING_MASK) != PENDING_MASK);
-
-			if (!m_dequeue.compare_exchange_strong(dequeue_all, dequeue_all + PENDING_ONE, std::memory_order_acquire))
+			if (!m_dequeue.compare_exchange_strong(dequeue_all, dequeue_all + PENDING_ONE, std::memory_order_acq_rel))
 				continue;
 
-			const u32 dequeue_ind = dequeue_seq & (capacity - 1);
+			const u64 retrieval_index = retrieval_seq & (capacity - 1);
 
-			*out = queue[dequeue_ind];
+			*out = queue[retrieval_index];
 
+			/*
 			if ((dequeue_all & PENDING_MASK) == 0)
 			{
-				u32 dequeue_expected = dequeue_all + PENDING_ONE;
+				u64 dequeue_expected = dequeue_all + PENDING_ONE;
 
-				const u32 new_dequeue_all = (dequeue_seq + 1) << SEQUENCE_SHIFT;
+				const u64 new_dequeue_all = (dequeue_seq + 1) << SEQUENCE_SHIFT;
 
 				if (m_dequeue.compare_exchange_strong(dequeue_expected, new_dequeue_all, std::memory_order_release))
 					return true;
 			}
+			*/
 
-			u32 new_dequeue_all = m_dequeue.fetch_add(COMPLETED_ONE, std::memory_order_release) + COMPLETED_ONE;
+			u64 published = m_dequeue.fetch_add(COMPLETED_ONE, std::memory_order_relaxed) + COMPLETED_ONE;
 
-			const u32 new_dequeue_completed = (new_dequeue_all & COMPLETED_MASK) >> COMPLETED_SHIFT;
+			const u64 published_seq = (published & SEQUEUNCE_MASK) >> SEQUENCE_SHIFT;
 
-			const u32 new_dequeue_pending = (new_dequeue_all & PENDING_MASK) >> PENDING_SHIFT;
+			const u64 published_completed = (published & COMPLETED_MASK) >> COMPLETED_SHIFT;
 
-			if (new_dequeue_completed == new_dequeue_pending)
-				(void) m_dequeue.compare_exchange_strong(new_dequeue_all, (new_dequeue_all & SEQUEUNCE_MASK) + (new_dequeue_completed << SEQUENCE_SHIFT), std::memory_order_relaxed);
+			const u64 published_pending = (published & PENDING_MASK) >> PENDING_SHIFT;
+
+			if (published_completed == published_pending)
+				(void) m_dequeue.compare_exchange_strong(published, (published_seq + published_completed) << SEQUENCE_SHIFT, std::memory_order_release);
 
 			return true;
 		}
