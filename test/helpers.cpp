@@ -335,6 +335,6 @@ u32 test_system_deinit() noexcept
 	{
 		log(LogLevel::Info, "%d tests failed.\n", g_test_system_data.error_count.load(std::memory_order_relaxed));
 
-		return 2;
+		return 1;
 	}
 }
