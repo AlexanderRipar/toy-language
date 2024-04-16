@@ -221,6 +221,11 @@ void add_error() noexcept
 	g_test_system_data.error_count.fetch_add(1, std::memory_order_relaxed);
 }
 
+bool is_debugbreak_enabled() noexcept
+{
+	return g_test_system_data.timeout == 0;
+}
+
 void test_system_init(u32 argc, const char8** argv) noexcept
 {
 	for (u32 i = 1; i != argc; ++i)

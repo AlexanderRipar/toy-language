@@ -33,6 +33,8 @@ void log(LogLevel level, const char8* fmt, ...) noexcept;
 
 void add_error() noexcept;
 
+bool is_debugbreak_enabled() noexcept;
+
 void test_system_init(u32 argc, const char8** argv) noexcept;
 
 u32 test_system_deinit() noexcept;
@@ -75,7 +77,8 @@ inline static constexpr const char8* log_string_impl_() noexcept
 				failure_text_, \
 				vb_ \
 			); \
-			__debugbreak(); \
+			if (is_debugbreak_enabled()) \
+				__debugbreak(); \
 			add_error(); \
 			return; \
 		} \
