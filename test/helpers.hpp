@@ -51,11 +51,11 @@ inline static constexpr const char8* log_string_impl_() noexcept
 	using Type = std::remove_cv_t<T>;
 
 	if constexpr (std::is_same_v<Type, bool>)
-		return "[%s%d] Check '%s' failed. Aborting test case. ('%d' was %s '%d')\n";
+		return "[%s:%d] Check '%s' failed. Aborting test case. ('%d' was %s '%d')\n";
 	else if constexpr (std::is_integral_v<Type> && std::is_signed_v<Type>)
-		return "[%s%d] Check '%s' failed. Aborting test case. ('%lld' was %s '%lld')\n";
+		return "[%s:%d] Check '%s' failed. Aborting test case. ('%lld' was %s '%lld')\n";
 	else if constexpr (std::is_integral_v<Type>)
-		return "[%s%d] Check '%s' failed. Aborting test case. ('%llu' was %s '%llu')\n";
+		return "[%s:%d] Check '%s' failed. Aborting test case. ('%llu' was %s '%llu')\n";
 	else if constexpr (std::is_same_v<Type, float> || std::is_same_v<Type, double>)
 		return "[%s:%d] Check '%s' failed. Aborting test case. ('%llu' was %s '%llu')\n";
 	else if constexpr (std::is_pointer_v<Type>)
