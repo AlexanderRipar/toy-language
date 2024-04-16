@@ -22,6 +22,54 @@ struct ThreadData
 	#pragma warning(pop)
 };
 
+struct SillyMutex
+{
+private:
+
+	static constexpr u32 LOCK_BIT = 1;
+
+	std::atomic<u32> m_rep;
+
+public:
+
+	void init() noexcept
+	{
+		m_rep = 0;
+	}
+
+	void acquire() noexcept
+	{
+		u32 rep = m_rep.load(std::memory_order_relaxed);
+
+		if ((rep & LOCK_BIT) == 0)
+		{
+			if (m_rep.compare_exchange_strong(rep, rep | LOCK_BIT, std::memory_order_acquire))
+				return;
+		}
+
+		rep = m_rep.fetch_add(2, std::memory_order_relaxed);
+
+		while (true)
+		{
+			minos::address_wait(&m_rep, &rep, sizeof(rep));
+
+			rep = m_rep.load(std::memory_order_relaxed);
+
+			if ((rep & LOCK_BIT) == 0)
+			{
+				if (m_rep.compare_exchange_strong(rep, (rep - 2) | LOCK_BIT, std::memory_order_acquire))
+					return;
+			}
+		}
+	}
+
+	void release() noexcept
+	{
+		if (m_rep.fetch_and(~LOCK_BIT, std::memory_order_release) != LOCK_BIT)
+			minos::address_wake_single(&m_rep);
+	}
+};
+
 struct
 {
 	bool silent = false;
@@ -31,6 +79,8 @@ struct
 	FILE* logfile = nullptr;
 
 	std::atomic<u32> error_count = 0;
+
+	SillyMutex logfile_mutex;
 
 } g_test_system_data;
 
@@ -137,6 +187,8 @@ void log(LogLevel level, const char8* fmt, ...) noexcept
 		ASSERT_UNREACHABLE;
 	}
 
+	g_test_system_data.logfile_mutex.acquire();
+
 	if (g_test_system_data.logfile != nullptr)
 	{
 		fprintf(g_test_system_data.logfile, prefix);
@@ -149,17 +201,19 @@ void log(LogLevel level, const char8* fmt, ...) noexcept
 		va_end(args);
 	}
 
-	if (g_test_system_data.silent)
-		return;
+	if (!g_test_system_data.silent)
+	{
+		fprintf(stdout, prefix);
 
-	fprintf(stdout, prefix);
+		va_list args;
+		va_start(args, fmt);
 
-	va_list args;
-	va_start(args, fmt);
+		vfprintf(stdout, fmt, args);
 
-	vfprintf(stdout, fmt, args);
+		va_end(args);
+	}
 
-	va_end(args);
+	g_test_system_data.logfile_mutex.release();
 }
 
 void add_error() noexcept
@@ -265,6 +319,8 @@ void test_system_init(u32 argc, const char8** argv) noexcept
 			exit(1);
 		}
 	}
+
+	g_test_system_data.logfile_mutex.init();
 }
 
 u32 test_system_deinit() noexcept
