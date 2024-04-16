@@ -278,3 +278,8 @@ bool minos::file_get_info(FileHandle handle, FileInfo* out) noexcept
 
 	return true;
 }
+
+void minos::sleep(u32 milliseconds) noexcept
+{
+	Sleep(milliseconds);
+}

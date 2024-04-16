@@ -106,6 +106,8 @@ namespace minos
 	bool file_read(FileHandle handle, void* buffer, u32 bytes_to_read, Overlapped* overlapped) noexcept;
 
 	bool file_get_info(FileHandle handle, FileInfo* out) noexcept;
+
+	void sleep(u32 milliseconds) noexcept;
 }
 
 #endif // MINSO_HPP_INCLUDE_GUARD
