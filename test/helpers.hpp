@@ -70,7 +70,7 @@ inline static constexpr const char8* log_string_impl_() noexcept
 		const auto vb_ = (b_); \
 		if (!(check_)) { \
 			log(LogLevel::Failure, log_string_impl_<decltype(va_)>(), \
-				__FUNCTION__, \
+				__FILE__, \
 				__LINE__, \
 				title_, \
 				va_, \
