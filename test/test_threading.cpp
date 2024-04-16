@@ -18,12 +18,30 @@ namespace ringbuffer_tests
 		u32 capacity;
 
 		u32 operation_count;
+
+		std::atomic<u64> accumulated_result;
 	};
 
 	static void enqueue_threadproc(ThreadProcArgs* args, u32 thread_id, [[maybe_unused]] u32 thread_count) noexcept
 	{
 		for (u32 i = 0; i != args->operation_count; ++i)
 			CHECK_EQ(args->header.enqueue(args->queue, args->capacity, i + thread_id * args->operation_count), true, "Enqueue on non-full queue succeeds");
+	}
+
+	static void dequeue_threadproc(ThreadProcArgs* args, [[maybe_unused]] u32 thread_id, [[maybe_unused]] u32 thread_count) noexcept
+	{
+		u64 sum = 0;
+
+		for (u32 i = 0; i != args->operation_count; ++i)
+		{
+			u32 entry;
+
+			CHECK_EQ(args->header.dequeue(args->queue, args->capacity, &entry), true, "dequeue on non-empty queue succeeds");
+
+			sum += entry;
+		}
+
+		args->accumulated_result.fetch_add(sum, std::memory_order_relaxed);
 	}
 
 	namespace exclusive
@@ -126,7 +144,33 @@ namespace ringbuffer_tests
 
 		static void dequeues_do_not_loose_entries() noexcept
 		{
-			TEST_TBD;
+			static constexpr u32 ENQUEUE_COUNT_PER_THREAD = 8192;
+
+			static constexpr u32 THREAD_COUNT = 16;
+
+			static constexpr u32 QUEUE_CAPACITY = next_pow2(ENQUEUE_COUNT_PER_THREAD * THREAD_COUNT);
+
+			ThreadProcArgs args;
+			args.header.init();
+			args.operation_count = ENQUEUE_COUNT_PER_THREAD;
+			args.capacity = QUEUE_CAPACITY;
+			args.queue = static_cast<u32*>(malloc(QUEUE_CAPACITY * sizeof(u32)));
+			args.accumulated_result.store(0, std::memory_order_relaxed);
+
+			for (u32 i = 0; i != ENQUEUE_COUNT_PER_THREAD * THREAD_COUNT; ++i)
+				CHECK_EQ(args.header.enqueue(args.queue, args.capacity, i), true, "Enqueue returns true on a non-full queue");
+
+			run_on_threads_and_wait(THREAD_COUNT, dequeue_threadproc, &args);
+
+			u32 unused;
+
+			CHECK_EQ(args.header.dequeue(args.queue, args.capacity, &unused), false, "Dequeue returns false on empty queue");
+
+			static constexpr u64 N = ENQUEUE_COUNT_PER_THREAD * THREAD_COUNT - 1;
+
+			static constexpr u64 EXPECTED = (N * N + N) / 2;
+
+			CHECK_EQ(args.accumulated_result.load(std::memory_order_relaxed), EXPECTED, "Accumulated dequeued results match accumulated enqueued results");
 		}
 
 		static void enqueues_and_dequeues_do_not_loose_entries() noexcept
