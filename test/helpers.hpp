@@ -6,92 +6,99 @@
 #include "../minos.hpp"
 #include <cstdio>
 #include <cstdarg>
+#include <type_traits>
 
-using thread_proc = u32 (*) (FILE* out_file, void* arg, u32 thread_id, u32 thread_count);
+template<typename T>
+using thread_proc = void (*) (T* arg, u32 thread_id, u32 thread_count);
 
-u32 run_on_threads_and_wait(FILE* out_file, u32 thread_count, thread_proc proc, void* arg, u32 timeout) noexcept;
+template<typename T>
+void run_on_threads_and_wait(u32 thread_count, thread_proc<T> proc, T* arg) noexcept
+{
+	run_on_threads_and_wait_impl_(thread_count, reinterpret_cast<thread_proc_impl_>(proc), arg);
+}
+
+
+using thread_proc_impl_ = void (*) (void* arg, u32 thread_id, u32 thread_count);
+
+void run_on_threads_and_wait_impl_(u32 thread_count, thread_proc_impl_ proc, void* arg) noexcept;
 
 enum class LogLevel
 {
 	Info,
 	Failure,
+	Fatal,
 };
 
-void log(LogLevel level, FILE* f, const char8* fmt, ...) noexcept;
+void log(LogLevel level, const char8* fmt, ...) noexcept;
+
+void add_error() noexcept;
+
+void test_system_init(u32 argc, const char8** argv) noexcept;
+
+u32 test_system_deinit() noexcept;
 
 
-#define TESTCASE(name_) static u32 name_(FILE* out_file) noexcept
-
-#define TESTCASE_WITH_ARGS(name_, ...) static u32 name_(FILE* out_file, __VA_ARGS__) noexcept
-
-#define TESTCASE_THREADPROC(name_) static u32 name_([[maybe_unused]] FILE* out_file, void* arg, [[maybe_unused]] u32 thread_id, [[maybe_unused]] u32 thread_count) noexcept
 
 #define TEST_THREADPROC_GET_ARGS_AS(...) static_cast<__VA_ARGS__*>(arg)
 
-#define TEST_INIT u32 error_count_ = 0
+#define TEST_TBD do { log(LogLevel::Info, "Test case '%s' not yet implemented (%s:%d)\n", __FUNCTION__, __FILE__, __LINE__); return; } while (false)
 
-#define TEST_TBD out_file; return 0
+template<typename T>
+inline static constexpr const char8* log_string_impl_() noexcept
+{
+	using Type = std::remove_cv_t<T>;
 
-#define TEST_RETURN return error_count_
+	if constexpr (std::is_same_v<Type, bool>)
+		return "%s (ln %d): Check '%s' failed. Aborting test case. ('%d' was %s '%d')\n";
+	else if constexpr (std::is_integral_v<Type> && std::is_signed_v<Type>)
+		return "%s (ln %d): Check '%s' failed. Aborting test case. ('%lld' was %s '%lld')\n";
+	else if constexpr (std::is_integral_v<Type>)
+		return "%s (ln %d): Check '%s' failed. Aborting test case. ('%llu' was %s '%llu')\n";
+	else if constexpr (std::is_same_v<Type, float> || std::is_same_v<Type, double>)
+		return "%s (ln %d): Check '%s' failed. Aborting test case. ('%llu' was %s '%llu')\n";
+	else if constexpr (std::is_pointer_v<Type>)
+		return "%s (ln %d): Check '%s' failed. Aborting test case. ('%p' was %s '%p')\n";
+	else
+		static_assert(false);
+}
 
-#define ASSERT_BASE_(a_, b_, title_, check_, failure_text_, is_fatal_) \
+#define ASSERT_BASE_(a_, b_, title_, check_, failure_text_) \
 	do { \
 		const auto va_ = (a_); \
 		const auto vb_ = (b_); \
 		if (!(check_)) { \
-			log(LogLevel::Failure, out_file, "%s (ln %d): Check '%s' failed. %s('%s' was %s '%s')\n", \
+			log(LogLevel::Failure, log_string_impl_<decltype(va_)>(), \
 				__FUNCTION__, \
 				__LINE__, \
 				title_, \
-				is_fatal_ ? "Aborting test case. " : "", \
-				#a_, \
+				va_, \
 				failure_text_, \
-				#b_ \
+				vb_ \
 			); \
 			__debugbreak(); \
-			error_count_ += 1; \
-			if constexpr (is_fatal_) \
-				TEST_RETURN; \
+			add_error(); \
+			return; \
 		} \
 	} while (false)
 
 
 
-#define CHECK_EQ(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ == vb_, "not equal to", false)
+#define CHECK_EQ(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ == vb_, "not equal to")
 
-#define CHECK_NE(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ != vb_, "equal to", false)
+#define CHECK_NE(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ != vb_, "equal to")
 
-#define CHECK_LT(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ < vb_, "not less than", false)
+#define CHECK_LT(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ < vb_, "not less than")
 
-#define CHECK_LE(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ <= vb_, "greater than", false)
+#define CHECK_LE(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ <= vb_, "greater than")
 
-#define CHECK_GT(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ > vb_, "not greater than", false)
+#define CHECK_GT(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ > vb_, "not greater than")
 
-#define CHECK_GE(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ >= vb_, "less than", false)
+#define CHECK_GE(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ >= vb_, "less than")
 
-#define CHECK_RANGES_EQ(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_.count() == vb_.count() && memcmp(va_.begin(), vb_.begin(), va_.count()) == 0, "not equal to", false)
-
-
-#define REQUIRE_EQ(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ == vb_, "not equal to", true)
-
-#define REQUIRE_NE(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ != vb_, "equal to", true)
-
-#define REQUIRE_LT(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ < vb_, "not less than", true)
-
-#define REQUIRE_LE(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ <= vb_, "greater than", true)
-
-#define REQUIRE_GT(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ > vb_, "not greater than", true)
-
-#define REQUIRE_GE(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_ >= vb_, "less than", true)
-
-#define REQUIRE_RANGES_EQ(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_.count() == vb_.count() && memcmp(va_.begin(), vb_.begin(), va_.count()) == 0, "not equal to", true)
+#define CHECK_RANGES_EQ(a_, b_, title_) ASSERT_BASE_(a_, b_, title_, va_.count() == vb_.count() && memcmp(va_.begin(), vb_.begin(), va_.count()) == 0, "not equal to")
 
 
 
 #define RAIIWRAPPER(type_, desctructor_) struct RAII##type_##_IMPL_ { type_ t{}; ~RAII##type_##_IMPL_() noexcept { t.desctructor_(); } }
-
-#define RUN_TEST(name_) do { error_count_ += name_(out_file); } while (false)
-
-#define RUN_TEST_WITH_ARGS(name_, ...) do { error_count_ += name_(out_file, __VA_ARGS__); } while (false)
 
 #endif // HELPERS_INCLUDE_GUARD

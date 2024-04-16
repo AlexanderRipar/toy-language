@@ -47,7 +47,7 @@ endif()
 add_custom_command(
   OUTPUT test_output.txt
   DEPENDS test
-  COMMAND test test_output.txt
+  COMMAND test --timeout 5000 --logfile test_output.txt
   VERBATIM
 )
 

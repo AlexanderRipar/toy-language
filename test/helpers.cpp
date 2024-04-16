@@ -10,11 +10,9 @@ struct ThreadData
 
 	std::atomic<u32> remaining_thread_count;
 
-	std::atomic<u32> error_count;
+	std::atomic<u32> started_thread_count;
 
-	FILE* out_file;
-
-	thread_proc proc;
+	thread_proc_impl_ proc;
 
 	void* arg;
 
@@ -24,37 +22,68 @@ struct ThreadData
 	#pragma warning(pop)
 };
 
+struct
+{
+	bool silent = false;
+
+	u32 timeout = 0;
+
+	FILE* logfile = nullptr;
+
+	std::atomic<u32> error_count = 0;
+
+} g_test_system_data;
+
 static u32 run_thread_helper_proc(void* arg) noexcept
 {
 	u32 thread_id = *static_cast<u32*>(arg);
 
 	ThreadData* data = reinterpret_cast<ThreadData*>(static_cast<byte*>(arg) - thread_id * sizeof(u32) - sizeof(ThreadData));
 
-	const u32 error_count = data->proc(data->out_file, data->arg, thread_id, data->thread_count);
+	if (data->started_thread_count.fetch_add(1, std::memory_order_relaxed) + 1 == data->thread_count)
+	{
+		minos::address_wake_all(&data->started_thread_count);
+	}
+	else
+	{
+		u32 started_thread_count = data->started_thread_count.load(std::memory_order_relaxed);
 
-	data->error_count.fetch_add(error_count);
+		while (started_thread_count != data->thread_count)
+		{
+			minos::address_wait(&data->started_thread_count, &started_thread_count, sizeof(started_thread_count));
 
-	if (data->remaining_thread_count.fetch_sub(1) == 1)
+			started_thread_count = data->started_thread_count.load(std::memory_order_relaxed);
+		}
+	}
+
+	data->proc(data->arg, thread_id, data->thread_count);
+
+	if (data->remaining_thread_count.fetch_sub(1, std::memory_order_relaxed) == 1)
 		minos::address_wake_single(&data->remaining_thread_count);
 
 	return 0;
 }
 
-u32 run_on_threads_and_wait(FILE* out_file, u32 thread_count, thread_proc proc, void* arg, u32 timeout) noexcept
+static u32 timeout_thread_proc([[maybe_unused]] void*) noexcept
 {
-	TEST_INIT;
+	minos::sleep(g_test_system_data.timeout);
 
+	log(LogLevel::Fatal, "Tests timed out after %d ms\n", g_test_system_data.timeout);
+
+	exit(1);
+}
+
+void run_on_threads_and_wait_impl_(u32 thread_count, thread_proc_impl_ proc, void* arg) noexcept
+{
 	ThreadData* data = static_cast<ThreadData*>(malloc(sizeof(ThreadData) + thread_count * sizeof(u32)));
 
 	CHECK_NE(data, nullptr, "malloc failed\n");
 
 	data->thread_count = thread_count;
 
+	data->started_thread_count.store(0, std::memory_order_relaxed);
+
 	data->remaining_thread_count.store(thread_count, std::memory_order_relaxed);
-
-	data->error_count.store(0, std::memory_order_relaxed);
-
-	data->out_file = out_file;
 
 	data->proc = proc;
 
@@ -78,57 +107,178 @@ u32 run_on_threads_and_wait(FILE* out_file, u32 thread_count, thread_proc proc, 
 
 	while (remaining_thread_count != 0)
 	{
-		if (!minos::address_wait_timeout(&data->remaining_thread_count, &remaining_thread_count, sizeof(remaining_thread_count), timeout))
-		{
-			log(LogLevel::Failure, out_file, "run_on_threads_and_wait timed out after %u milliseconds\n", timeout);
-
-			__debugbreak();
-
-			exit(1);
-		}
+		minos::address_wait(&data->remaining_thread_count, &remaining_thread_count, sizeof(remaining_thread_count));
 
 		remaining_thread_count = data->remaining_thread_count.load();
 	}
 
-	u32 error_count = data->error_count.load(std::memory_order_relaxed);
-
 	free(data);
-
-	return error_count;
 }
 
-void log(LogLevel level, FILE* f, const char8* fmt, ...) noexcept
+void log(LogLevel level, const char8* fmt, ...) noexcept
 {
-	const char8* prefix = "[info] ";
-
-	switch (level)
+	const char8* prefix;
+	
+	switch(level)
 	{
-	case LogLevel::Failure:
-		prefix = "[FAIL] ";
-
-		fprintf(stderr, prefix);
-
-		va_list stderr_args;
-		va_start(stderr_args, fmt);
-
-		vfprintf(stderr, fmt, stderr_args);
-
-		va_end(stderr_args);
-
-		// fallthrough
-
 	case LogLevel::Info:
-		fprintf(f, prefix);
-		
-		va_list outfile_args;
-		va_start(outfile_args, fmt);
+		prefix = "[info]  ";
+		break;
 
-		vfprintf(f, fmt, outfile_args);
+	case LogLevel::Failure:
+		prefix = "[FAIL]  ";
+		break;
 
-		va_end(outfile_args);
+	case LogLevel::Fatal:
+		prefix = "[OOPS]  ";
 		break;
 
 	default:
 		ASSERT_UNREACHABLE;
+	}
+
+	if (g_test_system_data.logfile != nullptr)
+	{
+		fprintf(g_test_system_data.logfile, prefix);
+
+		va_list args;
+		va_start(args, fmt);
+
+		vfprintf(g_test_system_data.logfile, fmt, args);
+
+		va_end(args);
+	}
+
+	if (g_test_system_data.silent)
+		return;
+
+	fprintf(stdout, prefix);
+
+	va_list args;
+	va_start(args, fmt);
+
+	vfprintf(stdout, fmt, args);
+
+	va_end(args);
+}
+
+void add_error() noexcept
+{
+	g_test_system_data.error_count.fetch_add(1, std::memory_order_relaxed);
+}
+
+void test_system_init(u32 argc, const char8** argv) noexcept
+{
+	for (u32 i = 1; i != argc; ++i)
+	{
+		if (strcmp(argv[i], "--logfile") == 0)
+		{
+			i += 1;
+
+			if (i == argc)
+			{
+				fprintf(stderr, "[Test Init] Expected filename after --logfile\n");
+
+				exit(1);
+			}
+
+			if (g_test_system_data.logfile != nullptr)
+			{
+				fprintf(stderr, "[Test Init] --logfile may only appear once\n");
+
+				exit(1);
+			}
+
+			if (fopen_s(&g_test_system_data.logfile, argv[i], "w") != 0)
+			{
+				fprintf(stderr, "[Test Init] Could not open logfile %s\n", argv[i]);
+
+				exit(1);
+			}
+		}
+		else if (strcmp(argv[i], "--silent") == 0)
+		{
+			if (g_test_system_data.silent)
+			{
+				fprintf(stderr, "[Test Init] --silent may only appear once\n");
+
+				exit(1);
+			}
+
+			g_test_system_data.silent = true;
+		}
+		else if (strcmp(argv[i], "--timeout") == 0)
+		{
+			i += 1;
+
+			if (i == argc)
+			{
+				fprintf(stderr, "[Test Init] Expected timeout value in milliseconds after --timeout\n");
+
+				exit(1);
+			}
+
+			if (g_test_system_data.timeout != 0)
+			{
+				fprintf(stderr, "[Test Init] --timeout may only appear once\n");
+
+				exit(1);
+			}
+
+			u32 timeout = 0;
+
+			for (const char8* c = argv[i]; *c != '\0'; ++c)
+			{
+				if (*c < '0' || *c > '9')
+				{
+					fprintf(stderr, "[Test Init] Expected timeout value as a base 10 number after --timeout\n");
+
+					exit(1);
+				}
+
+				timeout = timeout * 10 + *c - '0';
+			}
+
+			if (timeout < 1000)
+			{
+				fprintf(stderr, "[Test Init] Increasing timeout from the given %d to the minimum of 1000 ms\n", timeout);
+
+				timeout = 1000;
+			}
+
+			g_test_system_data.timeout = timeout;
+		}
+		else
+		{
+			fprintf(stderr, "[Test Init] Unknown option '%s' encountered\n", argv[i]);
+
+			exit(1);
+		}
+	}
+
+	if (g_test_system_data.timeout != 0)
+	{
+		if (!minos::thread_create(timeout_thread_proc, nullptr, Range{ "Timout watchdog" }))
+		{
+			fprintf(stderr, "[Test Init] Failed to create timeout watchdog thread\n");
+
+			exit(1);
+		}
+	}
+}
+
+u32 test_system_deinit() noexcept
+{
+	if (g_test_system_data.error_count == 0)
+	{
+		log(LogLevel::Info, "All tests passed\n");
+
+		return 0;
+	}
+	else
+	{
+		log(LogLevel::Info, "%d tests failed.\n", g_test_system_data.error_count.load(std::memory_order_relaxed));
+
+		return 2;
 	}
 }

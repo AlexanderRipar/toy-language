@@ -2,13 +2,13 @@
 #define TESTS_INCLUDE_GUARD
 
 #include "../common.hpp"
-#include <cstdio>
+#include "helpers.hpp"
 
 namespace test
 {
-	u32 container(FILE* out_file) noexcept;
+	void container() noexcept;
 
-	u32 threading(FILE* out_file) noexcept;
+	void threading() noexcept;
 }
 
 #endif // TESTS_INCLUDE_GUARD

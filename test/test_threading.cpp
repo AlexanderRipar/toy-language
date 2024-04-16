@@ -9,12 +9,150 @@
 
 namespace ringbuffer_tests
 {
+	struct ThreadProcArgs
+	{
+		ThreadsafeRingBufferHeader<u32> header;
 
+		u32* queue;
+
+		u32 capacity;
+
+		u32 operation_count;
+	};
+
+	static void enqueue_threadproc(ThreadProcArgs* args, u32 thread_id, [[maybe_unused]] u32 thread_count) noexcept
+	{
+		for (u32 i = 0; i != args->operation_count; ++i)
+			CHECK_EQ(args->header.enqueue(args->queue, args->capacity, i + thread_id * args->operation_count), true, "Enqueue on non-full queue succeeds");
+	}
+
+	namespace exclusive
+	{
+		static void dequeue_on_empty_buffer_returns_false() noexcept
+		{
+			ThreadsafeRingBufferHeader<u32> header;
+
+			u32 buffer[8];
+
+			header.init();
+
+			u32 deqeued_element;
+
+			CHECK_EQ(header.dequeue(buffer, static_cast<u32>(array_count(buffer)), &deqeued_element), false, "dequeue on empty buffer returns false");
+		}
+
+		static void enqueue_then_dequeue_returns_true_and_enqueued_element() noexcept
+		{
+			ThreadsafeRingBufferHeader<u32> header;
+
+			u32 buffer[8];
+
+			header.init();
+
+			CHECK_EQ(header.enqueue(buffer, static_cast<u32>(array_count(buffer)), 0xFEEDBEEF), true, "enqueue on buffer with free space returns true");
+
+			u32 deqeued_element;
+
+			CHECK_EQ(header.dequeue(buffer, static_cast<u32>(array_count(buffer)), &deqeued_element), true, "dequeue on non-empty buffer returns true");
+
+			CHECK_EQ(deqeued_element, 0xFEEDBEEF, "dequeued element has the expected value");
+		}
+
+		static void enqueue_on_full_buffer_returns_false() noexcept
+		{
+			ThreadsafeRingBufferHeader<u32> header;
+
+			u32 buffer[8];
+
+			header.init();
+
+			for (u32 i = 0; i != static_cast<u32>(array_count(buffer)); ++i)
+				CHECK_EQ(header.enqueue(buffer, static_cast<u32>(array_count(buffer)), i), true, "enqueue on buffer with free space returns true");
+
+			CHECK_EQ(header.enqueue(buffer, static_cast<u32>(array_count(buffer)), 0xDEADBEEF), false, "enqueue on full buffer returns false");
+		}
+
+		static void dequeue_returns_elements_in_fifo_order() noexcept
+		{
+			ThreadsafeRingBufferHeader<u32> header;
+
+			u32 buffer[8];
+
+			header.init();
+
+			for (u32 i = 0; i != static_cast<u32>(array_count(buffer)); ++i)
+				CHECK_EQ(header.enqueue(buffer, static_cast<u32>(array_count(buffer)), i), true, "enqueue on buffer with free space returns true");
+
+			for (u32 i = 0; i != static_cast<u32>(array_count(buffer)); ++i)
+			{
+				u32 deqeued_element;
+
+				CHECK_EQ(header.dequeue(buffer, static_cast<u32>(array_count(buffer)), &deqeued_element), true, "dequeue on non-empty buffer returns true");
+
+				CHECK_EQ(deqeued_element, i, "nth dequeued element is nth enqueued element");
+			}
+		}
+	}
+
+	namespace parallel
+	{
+		static void enqueues_do_not_loose_entries() noexcept
+		{
+			static constexpr u32 ENQUEUE_COUNT_PER_THREAD = 8192;
+
+			static constexpr u32 THREAD_COUNT = 16;
+
+			static constexpr u32 QUEUE_CAPACITY = next_pow2(ENQUEUE_COUNT_PER_THREAD * THREAD_COUNT);
+
+			ThreadProcArgs args;
+			args.header.init();
+			args.operation_count = ENQUEUE_COUNT_PER_THREAD;
+			args.capacity = QUEUE_CAPACITY;
+			args.queue = static_cast<u32*>(malloc(QUEUE_CAPACITY * sizeof(u32)));
+
+			run_on_threads_and_wait(THREAD_COUNT, enqueue_threadproc, &args);
+
+			for (u32 i = 0; i != ENQUEUE_COUNT_PER_THREAD * THREAD_COUNT; ++i)
+			{
+				u32 unused;
+
+				CHECK_EQ(args.header.dequeue(args.queue, args.capacity, &unused), true, "Dequeue succeeds on non-empty queue");
+			}
+
+			u32 unused;
+
+			CHECK_EQ(args.header.dequeue(args.queue, args.capacity, &unused), false, "Dequeue returns false on empty queue");
+		}
+
+		static void dequeues_do_not_loose_entries() noexcept
+		{
+			TEST_TBD;
+		}
+
+		static void enqueues_and_dequeues_do_not_loose_entries() noexcept
+		{
+			TEST_TBD;
+		}
+	}
 }
 
-TESTCASE(ringbuffer)
+static void ringbuffer() noexcept
 {
-	TEST_TBD;
+	using namespace ringbuffer_tests;
+
+	exclusive::dequeue_on_empty_buffer_returns_false();
+
+	exclusive::enqueue_then_dequeue_returns_true_and_enqueued_element();
+
+	exclusive::enqueue_on_full_buffer_returns_false();
+
+	exclusive::dequeue_returns_elements_in_fifo_order();
+
+	// parallel::enqueues_do_not_loose_entries();
+
+	parallel::dequeues_do_not_loose_entries();
+
+	parallel::enqueues_and_dequeues_do_not_loose_entries();
 }
 
 namespace indexstacklist_tests
@@ -53,41 +191,25 @@ namespace indexstacklist_tests
 		ThreadsafeIndexStackListHeader<Node, offsetof(Node, next)> stack; 
 	};
 
-	TESTCASE_THREADPROC(push_parallel_threadproc)
+	static void push_parallel_threadproc(PushThreadProcArgs* args, u32 thread_id, [[maybe_unused]] u32 thread_count) noexcept
 	{
-		TEST_INIT;
-
-		PushThreadProcArgs* const args = TEST_THREADPROC_GET_ARGS_AS(PushThreadProcArgs);
-
 		for (u32 i = thread_id * args->node_count_per_thread; i != (thread_id + 1) * args->node_count_per_thread; ++i)
 			args->stack.push(args->nodes, i);
-
-		TEST_RETURN;
 	}
 
-	TESTCASE_THREADPROC(pop_parallel_threadproc)
+	static void pop_parallel_threadproc(PopThreadProcArgs* args, [[maybe_unused]] u32 thread_id, [[maybe_unused]] u32 thread_count) noexcept
 	{
-		TEST_INIT;
-
-		PopThreadProcArgs* const args = TEST_THREADPROC_GET_ARGS_AS(PopThreadProcArgs);
-
 		u32 popped_node_count = 0;
 
 		while (args->stack.pop(args->nodes) != nullptr)
 			popped_node_count += 1;
 
 		args->popped_node_count.fetch_add(popped_node_count, std::memory_order_relaxed);
-
-		TEST_RETURN;
 	}
 
-	TESTCASE_THREADPROC(push_and_pop_parallel_threadproc)
+	static void push_and_pop_parallel_threadproc(PushAndPopThreadProcArgs* args, [[maybe_unused]] u32 thread_id, [[maybe_unused]] u32 thread_count) noexcept
 	{
-		TEST_INIT;
-
 		Node* popped_list = nullptr;
-
-		PushAndPopThreadProcArgs* const args = TEST_THREADPROC_GET_ARGS_AS(PushAndPopThreadProcArgs);
 
 		for (u32 iter = 0; iter != args->iteration_count; ++iter)
 		{
@@ -112,16 +234,12 @@ namespace indexstacklist_tests
 				popped_list = popped_next == ~0u ? nullptr : args->nodes + popped_next;
 			}
 		}
-
-		TEST_RETURN;
 	}
 
 	namespace exclusive
 	{
-		TESTCASE(pop_on_empty_list_returns_null)
+		static void pop_on_empty_list_returns_null() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeIndexStackListHeader<Node, offsetof(Node, next)> stack;
 
 			Node dummy_node[1];
@@ -131,14 +249,10 @@ namespace indexstacklist_tests
 			CHECK_EQ(stack.pop(dummy_node), nullptr, "Popping an empty stack returns nullptr");
 
 			CHECK_EQ(stack.pop(dummy_node), nullptr, "Popping an empty stack a second time still returns nullptr");
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(init_with_array_then_pop_returns_all_elements)
+		static void init_with_array_then_pop_returns_all_elements() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeIndexStackListHeader<Node, offsetof(Node, next)> stack;
 
 			Node nodes[512];
@@ -163,14 +277,10 @@ namespace indexstacklist_tests
 			}
 
 			CHECK_EQ(popped_node_count, array_count(nodes), "Expected number of nodes are popped after init with array");
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(push_then_pop_returns_pushed_element)
+		static void push_then_pop_returns_pushed_element() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeIndexStackListHeader<Node, offsetof(Node, next)> stack;
 
 			Node node[1];
@@ -182,14 +292,10 @@ namespace indexstacklist_tests
 			CHECK_EQ(stack.pop(node), node, "Pop returns previously pushed element");
 
 			CHECK_EQ(stack.pop(node), nullptr, "Pop after popping all elements returns nullptr");
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(push_unsafe_then_pop_returns_pushed_element)
+		static void push_unsafe_then_pop_returns_pushed_element() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeIndexStackListHeader<Node, offsetof(Node, next)> stack;
 
 			Node node[1];
@@ -201,14 +307,10 @@ namespace indexstacklist_tests
 			CHECK_EQ(stack.pop(node), node, "Pop returns previously (unsafely) pushed element");
 
 			CHECK_EQ(stack.pop(node), nullptr, "Pop after popping all elements returns nullptr");
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(push_then_pop_unsafe_returns_pushed_element)
+		static void push_then_pop_unsafe_returns_pushed_element() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeIndexStackListHeader<Node, offsetof(Node, next)> stack;
 
 			Node node[1];
@@ -220,17 +322,13 @@ namespace indexstacklist_tests
 			CHECK_EQ(stack.pop_unsafe(node), node, "Pop returns previously (unsafely) pushed element");
 
 			CHECK_EQ(stack.pop_unsafe(node), nullptr, "Pop after popping all elements returns nullptr");
-
-			TEST_RETURN;
 		}
 	}
 
 	namespace parallel
 	{
-		TESTCASE(push_does_not_loose_nodes)
+		static void push_does_not_loose_nodes() noexcept
 		{
-			TEST_INIT;
-
 			static constexpr u32 NODE_COUNT_PER_THREAD = 65536;
 
 			static constexpr u32 THREAD_COUNT = 8;
@@ -241,9 +339,9 @@ namespace indexstacklist_tests
 
 			args.stack.init();
 
-			REQUIRE_NE(args.nodes = static_cast<Node*>(malloc(NODE_COUNT_PER_THREAD * THREAD_COUNT * sizeof(Node))), nullptr, "malloc succeeds");
+			CHECK_NE(args.nodes = static_cast<Node*>(malloc(NODE_COUNT_PER_THREAD * THREAD_COUNT * sizeof(Node))), nullptr, "malloc succeeds");
 
-			RUN_TEST_WITH_ARGS(run_on_threads_and_wait, THREAD_COUNT, push_parallel_threadproc, &args, 2000);
+			run_on_threads_and_wait(THREAD_COUNT, push_parallel_threadproc, &args);
 
 			u32 pushed_node_count = 0;
 
@@ -253,14 +351,10 @@ namespace indexstacklist_tests
 			CHECK_EQ(pushed_node_count, NODE_COUNT_PER_THREAD * THREAD_COUNT, "Number of sequentially popped nodes is equal to nodes pushed in parallel");
 
 			free(args.nodes);
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(pop_does_not_duplicate_nodes)
+		static void pop_does_not_duplicate_nodes() noexcept
 		{
-			TEST_INIT;
-
 			static constexpr u32 NODE_COUNT_PER_THREAD = 65536;
 
 			static constexpr u32 THREAD_COUNT = 8;
@@ -271,24 +365,20 @@ namespace indexstacklist_tests
 
 			args.stack.init();
 
-			REQUIRE_NE(args.nodes = static_cast<Node*>(malloc(NODE_COUNT_PER_THREAD * THREAD_COUNT * sizeof(Node))), nullptr, "malloc succeeds");
+			CHECK_NE(args.nodes = static_cast<Node*>(malloc(NODE_COUNT_PER_THREAD * THREAD_COUNT * sizeof(Node))), nullptr, "malloc succeeds");
 
 			for (u32 i = 0; i != NODE_COUNT_PER_THREAD * THREAD_COUNT; ++i)
 				args.stack.push(args.nodes, i);
 
-			RUN_TEST_WITH_ARGS(run_on_threads_and_wait, THREAD_COUNT, pop_parallel_threadproc, &args, 2000);
+			run_on_threads_and_wait(THREAD_COUNT, pop_parallel_threadproc, &args);
 
 			CHECK_EQ(args.popped_node_count.load(std::memory_order_relaxed), NODE_COUNT_PER_THREAD * THREAD_COUNT, "Number of sequentially pushed nodes is equal to nodes popped in parallel");
 
 			free(args.nodes);
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(push_and_pop_does_not_drop_nodes)
+		static void push_and_pop_does_not_drop_nodes() noexcept
 		{
-			TEST_INIT;
-
 			static constexpr u32 THREAD_COUNT = 8;
 
 			static constexpr u32 TOTAL_NODE_COUNT = 30'000;
@@ -303,7 +393,7 @@ namespace indexstacklist_tests
 
 			args.stack.init(args.nodes, TOTAL_NODE_COUNT);
 
-			RUN_TEST_WITH_ARGS(run_on_threads_and_wait, THREAD_COUNT, push_and_pop_parallel_threadproc, &args, ~0u);
+			run_on_threads_and_wait(THREAD_COUNT, push_and_pop_parallel_threadproc, &args);
 
 			u32 popped_node_count = 0;
 
@@ -311,35 +401,29 @@ namespace indexstacklist_tests
 				popped_node_count += 1;
 
 			CHECK_EQ(popped_node_count, TOTAL_NODE_COUNT, "Popping and re-pushing batches of nodes in parallel does not loose any nodes");
-
-			TEST_RETURN;
 		}
 	}
 }
 
-TESTCASE(indexstacklist)
+static void indexstacklist() noexcept
 {
-	TEST_INIT;
-
 	using namespace indexstacklist_tests;
 
-	RUN_TEST(exclusive::pop_on_empty_list_returns_null);
+	exclusive::pop_on_empty_list_returns_null();
 
-	RUN_TEST(exclusive::init_with_array_then_pop_returns_all_elements);
+	exclusive::init_with_array_then_pop_returns_all_elements();
 
-	RUN_TEST(exclusive::push_then_pop_returns_pushed_element);
+	exclusive::push_then_pop_returns_pushed_element();
 
-	RUN_TEST(exclusive::push_unsafe_then_pop_returns_pushed_element);
+	exclusive::push_unsafe_then_pop_returns_pushed_element();
 
-	RUN_TEST(exclusive::push_then_pop_unsafe_returns_pushed_element);
+	exclusive::push_then_pop_unsafe_returns_pushed_element();
 
-	RUN_TEST(parallel::push_does_not_loose_nodes);
+	parallel::push_does_not_loose_nodes();
 
-	RUN_TEST(parallel::pop_does_not_duplicate_nodes);
+	parallel::pop_does_not_duplicate_nodes();
 
-	RUN_TEST(parallel::push_and_pop_does_not_drop_nodes);
-
-	TEST_RETURN;
+	parallel::push_and_pop_does_not_drop_nodes();
 }
 
 namespace stridedindexstacklist_tests
@@ -378,41 +462,25 @@ namespace stridedindexstacklist_tests
 		ThreadsafeStridedIndexStackListHeader<Node, offsetof(Node, next)> stack; 
 	};
 
-	TESTCASE_THREADPROC(push_parallel_threadproc)
+	static void push_parallel_threadproc(PushThreadProcArgs* args, u32 thread_id, [[maybe_unused]] u32 thread_count) noexcept
 	{
-		TEST_INIT;
-
-		PushThreadProcArgs* const args = TEST_THREADPROC_GET_ARGS_AS(PushThreadProcArgs);
-
 		for (u32 i = thread_id * args->node_count_per_thread; i != (thread_id + 1) * args->node_count_per_thread; ++i)
 			args->stack.push(args->nodes, sizeof(*args->nodes), i);
-
-		TEST_RETURN;
 	}
 
-	TESTCASE_THREADPROC(pop_parallel_threadproc)
+	static void pop_parallel_threadproc(PopThreadProcArgs* args, [[maybe_unused]] u32 thread_id, [[maybe_unused]] u32 thread_count) noexcept
 	{
-		TEST_INIT;
-
-		PopThreadProcArgs* const args = TEST_THREADPROC_GET_ARGS_AS(PopThreadProcArgs);
-
 		u32 popped_node_count = 0;
 
 		while (args->stack.pop(args->nodes, sizeof(Node)) != nullptr)
 			popped_node_count += 1;
 
 		args->popped_node_count.fetch_add(popped_node_count, std::memory_order_relaxed);
-
-		TEST_RETURN;
 	}
 
-	TESTCASE_THREADPROC(push_and_pop_parallel_threadproc)
+	static void push_and_pop_parallel_threadproc(PushAndPopThreadProcArgs* args, [[maybe_unused]] u32 thread_id, [[maybe_unused]] u32 thread_count) noexcept
 	{
-		TEST_INIT;
-
 		Node* popped_list = nullptr;
-
-		PushAndPopThreadProcArgs* const args = TEST_THREADPROC_GET_ARGS_AS(PushAndPopThreadProcArgs);
 
 		for (u32 iter = 0; iter != args->iteration_count; ++iter)
 		{
@@ -437,16 +505,12 @@ namespace stridedindexstacklist_tests
 				popped_list = popped_next == ~0u ? nullptr : args->nodes + popped_next;
 			}
 		}
-
-		TEST_RETURN;
 	}
 
 	namespace exclusive
 	{
-		TESTCASE(pop_on_empty_list_returns_null)
+		static void pop_on_empty_list_returns_null() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeStridedIndexStackListHeader<Node, offsetof(Node, next)> stack;
 
 			Node dummy_node[1];
@@ -456,14 +520,10 @@ namespace stridedindexstacklist_tests
 			CHECK_EQ(stack.pop(dummy_node, sizeof(*dummy_node)), nullptr, "Popping an empty stack returns nullptr");
 
 			CHECK_EQ(stack.pop(dummy_node, sizeof(*dummy_node)), nullptr, "Popping an empty stack a second time still returns nullptr");
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(init_with_array_then_pop_returns_all_elements)
+		static void init_with_array_then_pop_returns_all_elements() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeStridedIndexStackListHeader<Node, offsetof(Node, next)> stack;
 
 			Node nodes[512];
@@ -488,14 +548,10 @@ namespace stridedindexstacklist_tests
 			}
 
 			CHECK_EQ(popped_node_count, array_count(nodes), "Expected number of nodes are popped after init with array");
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(init_with_double_stride_then_pop_returns_every_second_element)
+		static void init_with_double_stride_then_pop_returns_every_second_element() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeStridedIndexStackListHeader<Node, offsetof(Node, next)> stack;
 
 			Node nodes[512];
@@ -524,14 +580,10 @@ namespace stridedindexstacklist_tests
 			}
 
 			CHECK_EQ(popped_node_count, ADJ_COUNT, "Expected number of nodes are popped after init with array and doubled stride");
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(push_then_pop_returns_pushed_element)
+		static void push_then_pop_returns_pushed_element() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeStridedIndexStackListHeader<Node, offsetof(Node, next)> stack;
 
 			Node node[1];
@@ -543,14 +595,10 @@ namespace stridedindexstacklist_tests
 			CHECK_EQ(stack.pop(node, sizeof(*node)), node, "Pop returns previously pushed element");
 
 			CHECK_EQ(stack.pop(node, sizeof(*node)), nullptr, "Pop after popping all elements returns nullptr");
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(pushes_then_pops_with_doubled_stride_return_pushed_elements)
+		static void pushes_then_pops_with_doubled_stride_return_pushed_elements() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeStridedIndexStackListHeader<Node, offsetof(Node, next)> stack;
 
 			Node nodes[4];
@@ -568,14 +616,10 @@ namespace stridedindexstacklist_tests
 			CHECK_EQ(stack.pop(nodes, STRIDE), nodes, "Second pop after two pushes returns earlier element");
 
 			CHECK_EQ(stack.pop(nodes, STRIDE), nullptr, "Third pop after two pushes returns nullptr");
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(push_unsafe_then_pop_returns_pushed_element)
+		static void push_unsafe_then_pop_returns_pushed_element() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeStridedIndexStackListHeader<Node, offsetof(Node, next)> stack;
 
 			Node node[1];
@@ -587,14 +631,10 @@ namespace stridedindexstacklist_tests
 			CHECK_EQ(stack.pop(node, sizeof(*node)), node, "Pop returns previously (unsafely) pushed element");
 
 			CHECK_EQ(stack.pop(node, sizeof(*node)), nullptr, "Pop after popping all elements returns nullptr");
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(push_then_pop_unsafe_returns_pushed_element)
+		static void push_then_pop_unsafe_returns_pushed_element() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeStridedIndexStackListHeader<Node, offsetof(Node, next)> stack;
 
 			Node node[1];
@@ -606,14 +646,10 @@ namespace stridedindexstacklist_tests
 			CHECK_EQ(stack.pop_unsafe(node, sizeof(*node)), node, "Pop returns previously (unsafely) pushed element");
 
 			CHECK_EQ(stack.pop_unsafe(node, sizeof(*node)), nullptr, "Pop after popping all elements returns nullptr");
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(unsafe_pushes_and_pops_with_doubled_stride_return_pushed_elements)
+		static void unsafe_pushes_and_pops_with_doubled_stride_return_pushed_elements() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeStridedIndexStackListHeader<Node, offsetof(Node, next)> stack;
 
 			Node nodes[4];
@@ -631,17 +667,13 @@ namespace stridedindexstacklist_tests
 			CHECK_EQ(stack.pop_unsafe(nodes, STRIDE), nodes, "Second pop_unsafe after two push_unsafes returns earlier element");
 
 			CHECK_EQ(stack.pop_unsafe(nodes, STRIDE), nullptr, "Third pop_unsafe after two push_unsafes returns nullptr");
-
-			TEST_RETURN;
 		}
 	}
 
 	namespace parallel
 	{
-		TESTCASE(push_does_not_loose_nodes)
+		static void push_does_not_loose_nodes() noexcept
 		{
-			TEST_INIT;
-
 			static constexpr u32 NODE_COUNT_PER_THREAD = 65536;
 
 			static constexpr u32 THREAD_COUNT = 8;
@@ -652,9 +684,9 @@ namespace stridedindexstacklist_tests
 
 			args.stack.init();
 
-			REQUIRE_NE(args.nodes = static_cast<Node*>(malloc(NODE_COUNT_PER_THREAD * THREAD_COUNT * sizeof(Node))), nullptr, "malloc succeeds");
+			CHECK_NE(args.nodes = static_cast<Node*>(malloc(NODE_COUNT_PER_THREAD * THREAD_COUNT * sizeof(Node))), nullptr, "malloc succeeds");
 
-			RUN_TEST_WITH_ARGS(run_on_threads_and_wait, THREAD_COUNT, push_parallel_threadproc, &args, 2000);
+			run_on_threads_and_wait(THREAD_COUNT, push_parallel_threadproc, &args);
 
 			u32 pushed_node_count = 0;
 
@@ -664,14 +696,10 @@ namespace stridedindexstacklist_tests
 			CHECK_EQ(pushed_node_count, NODE_COUNT_PER_THREAD * THREAD_COUNT, "Number of sequentially popped nodes is equal to nodes pushed in parallel");
 
 			free(args.nodes);
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(pop_does_not_duplicate_nodes)
+		static void pop_does_not_duplicate_nodes() noexcept
 		{
-			TEST_INIT;
-
 			static constexpr u32 NODE_COUNT_PER_THREAD = 65536;
 
 			static constexpr u32 THREAD_COUNT = 8;
@@ -682,24 +710,20 @@ namespace stridedindexstacklist_tests
 
 			args.stack.init();
 
-			REQUIRE_NE(args.nodes = static_cast<Node*>(malloc(NODE_COUNT_PER_THREAD * THREAD_COUNT * sizeof(Node))), nullptr, "malloc succeeds");
+			CHECK_NE(args.nodes = static_cast<Node*>(malloc(NODE_COUNT_PER_THREAD * THREAD_COUNT * sizeof(Node))), nullptr, "malloc succeeds");
 
 			for (u32 i = 0; i != NODE_COUNT_PER_THREAD * THREAD_COUNT; ++i)
 				args.stack.push(args.nodes, sizeof(Node), i);
 
-			RUN_TEST_WITH_ARGS(run_on_threads_and_wait, THREAD_COUNT, pop_parallel_threadproc, &args, 2000);
+			run_on_threads_and_wait(THREAD_COUNT, pop_parallel_threadproc, &args);
 
 			CHECK_EQ(args.popped_node_count.load(std::memory_order_relaxed), NODE_COUNT_PER_THREAD * THREAD_COUNT, "Number of sequentially pushed nodes is equal to nodes popped in parallel");
 
 			free(args.nodes);
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(push_and_pop_does_not_drop_nodes)
+		static void push_and_pop_does_not_drop_nodes() noexcept
 		{
-			TEST_INIT;
-
 			static constexpr u32 THREAD_COUNT = 8;
 
 			static constexpr u32 TOTAL_NODE_COUNT = 30'000;
@@ -714,7 +738,7 @@ namespace stridedindexstacklist_tests
 
 			args.stack.init(args.nodes, sizeof(Node), TOTAL_NODE_COUNT);
 
-			RUN_TEST_WITH_ARGS(run_on_threads_and_wait, THREAD_COUNT, push_and_pop_parallel_threadproc, &args, ~0u);
+			run_on_threads_and_wait(THREAD_COUNT, push_and_pop_parallel_threadproc, &args);
 
 			u32 popped_node_count = 0;
 
@@ -722,41 +746,35 @@ namespace stridedindexstacklist_tests
 				popped_node_count += 1;
 
 			CHECK_EQ(popped_node_count, TOTAL_NODE_COUNT, "Popping and re-pushing batches of nodes in parallel does not loose any nodes");
-
-			TEST_RETURN;
 		}
 	}
 }
 
-TESTCASE(stridedindexstacklist)
+static void stridedindexstacklist() noexcept
 {
-	TEST_INIT;
-
 	using namespace stridedindexstacklist_tests;
 
-	RUN_TEST(exclusive::pop_on_empty_list_returns_null);
+	exclusive::pop_on_empty_list_returns_null();
 
-	RUN_TEST(exclusive::init_with_array_then_pop_returns_all_elements);
+	exclusive::init_with_array_then_pop_returns_all_elements();
 
-	RUN_TEST(exclusive::init_with_double_stride_then_pop_returns_every_second_element);
+	exclusive::init_with_double_stride_then_pop_returns_every_second_element();
 
-	RUN_TEST(exclusive::push_then_pop_returns_pushed_element);
+	exclusive::push_then_pop_returns_pushed_element();
 
-	RUN_TEST(exclusive::pushes_then_pops_with_doubled_stride_return_pushed_elements);
+	exclusive::pushes_then_pops_with_doubled_stride_return_pushed_elements();
 
-	RUN_TEST(exclusive::push_unsafe_then_pop_returns_pushed_element);
+	exclusive::push_unsafe_then_pop_returns_pushed_element();
 
-	RUN_TEST(exclusive::push_then_pop_unsafe_returns_pushed_element);
+	exclusive::push_then_pop_unsafe_returns_pushed_element();
 
-	RUN_TEST(exclusive::unsafe_pushes_and_pops_with_doubled_stride_return_pushed_elements);
+	exclusive::unsafe_pushes_and_pops_with_doubled_stride_return_pushed_elements();
 
-	RUN_TEST(parallel::push_does_not_loose_nodes);
+	parallel::push_does_not_loose_nodes();
 
-	RUN_TEST(parallel::pop_does_not_duplicate_nodes);
+	parallel::pop_does_not_duplicate_nodes();
 
-	RUN_TEST(parallel::push_and_pop_does_not_drop_nodes);
-
-	TEST_RETURN;
+	parallel::push_and_pop_does_not_drop_nodes();
 }
 
 namespace map_tests
@@ -870,10 +888,8 @@ namespace map_tests
 	}
 
 	template<typename Key, typename Value>
-	TESTCASE_WITH_ARGS(init_standard_map, ThreadsafeMap2<Key, Value>* out_map, MemoryRegion* out_region)
+	static void init_standard_map(ThreadsafeMap2<Key, Value>* out_map, MemoryRegion* out_region)
 	{
-		TEST_INIT;
-
 		ThreadsafeMap2<Key, Value>::InitInfo info;
 		info.thread_count = 16;
 		info.map.reserve_count = 1u << 18;
@@ -885,22 +901,16 @@ namespace map_tests
 
 		const u64 required_bytes = out_map->required_bytes(info);
 
-		REQUIRE_EQ(out_region->init(required_bytes), true, "MemoryRegion.init succeeds");
+		CHECK_EQ(out_region->init(required_bytes), true, "MemoryRegion.init succeeds");
 
 		MemorySubregion memory = out_region->subregion(0, required_bytes);
 
-		REQUIRE_EQ(out_map->init(info, memory), true, "ThreadsafeMap.init succeeds");
-
-		TEST_RETURN;
+		CHECK_EQ(out_map->init(info, memory), true, "ThreadsafeMap.init succeeds");
 	}
 
 	template<typename Key, typename Value>
-	TESTCASE_THREADPROC(insert_thread_proc)
+	static void insert_thread_proc(InsertThreadProcArgs<Key, Value>* args, u32 thread_id, [[maybe_unused]] u32 thread_count) noexcept
 	{
-		TEST_INIT;
-
-		InsertThreadProcArgs<Key, Value>* const args = TEST_THREADPROC_GET_ARGS_AS(InsertThreadProcArgs<Key, Value>);
-
 		KeyGenerator<Key> gen;
 
 		gen.init(args->insertion_count, args->duplicate_insertions, thread_id);
@@ -952,8 +962,6 @@ namespace map_tests
 
 			CHECK_EQ(value->equal_to_key(key, hash), true, "ThreadsafeMap.value_from returns the value associated with the correct key");
 		}
-
-		TEST_RETURN;
 	}
 
 	struct FixedSizeValue
@@ -1071,10 +1079,8 @@ namespace map_tests
 
 	namespace init
 	{
-		TESTCASE(success_on_normal)
+		static void success_on_normal() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeMap2<u32, FixedSizeValue> map;
 
 			decltype(map)::InitInfo info;
@@ -1090,21 +1096,17 @@ namespace map_tests
 
 			MemoryRegion region;
 
-			REQUIRE_EQ(region.init(required_bytes), true, "MemoryRegion.init succeeds");
+			CHECK_EQ(region.init(required_bytes), true, "MemoryRegion.init succeeds");
 
 			MemorySubregion memory = region.subregion(0, required_bytes);
 
 			CHECK_EQ(map.init(info, memory), true, "ThreadsafeMap.init succeeds with medium parameters");
 
 			CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(success_on_small)
+		static void success_on_small() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeMap2<u32, FixedSizeValue> map;
 
 			decltype(map)::InitInfo info;
@@ -1120,21 +1122,17 @@ namespace map_tests
 
 			MemoryRegion region;
 
-			REQUIRE_EQ(region.init(required_bytes), true, "MemoryRegion.init succeeds");
+			CHECK_EQ(region.init(required_bytes), true, "MemoryRegion.init succeeds");
 
 			MemorySubregion memory = region.subregion(0, required_bytes);
 
 			CHECK_EQ(map.init(info, memory), true, "ThreadsafeMap.init succeeds with small parameters");
 
 			CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
-
-			TEST_RETURN;
 		}
 
-		TESTCASE(success_on_large)
+		static void success_on_large() noexcept
 		{
-			TEST_INIT;
-
 			ThreadsafeMap2<u32, FixedSizeValue> map;
 
 			decltype(map)::InitInfo info;
@@ -1150,15 +1148,13 @@ namespace map_tests
 
 			MemoryRegion region;
 
-			REQUIRE_EQ(region.init(required_bytes), true, "MemoryRegion.init succeeds");
+			CHECK_EQ(region.init(required_bytes), true, "MemoryRegion.init succeeds");
 
 			MemorySubregion memory = region.subregion(0, required_bytes);
 
 			CHECK_EQ(map.init(info, memory), true, "ThreadsafeMap.init succeeds with large parameters");
 
 			CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
-
-			TEST_RETURN;
 		}
 	}
 
@@ -1166,10 +1162,8 @@ namespace map_tests
 	{
 		namespace fixed_length
 		{
-			TESTCASE(insert_single)
+			static void insert_single() noexcept
 			{
-				TEST_INIT;
-
 				ThreadsafeMap2<u32, FixedSizeValue> map;
 
 				decltype(map)::InitInfo info;
@@ -1185,11 +1179,11 @@ namespace map_tests
 
 				MemoryRegion region;
 
-				REQUIRE_EQ(region.init(required_bytes), true, "MemoryRegion.init succeeds");
+				CHECK_EQ(region.init(required_bytes), true, "MemoryRegion.init succeeds");
 
 				MemorySubregion memory = region.subregion(0, required_bytes);
 
-				REQUIRE_EQ(map.init(info, memory), true, "ThreadsafeMap.init succeeds");
+				CHECK_EQ(map.init(info, memory), true, "ThreadsafeMap.init succeeds");
 
 				const u32 key = 0xFEEDBEEF;
 
@@ -1210,19 +1204,15 @@ namespace map_tests
 				CHECK_EQ(is_new2, false, "ThreadsafeMap.value_from sets *opt_is_new to false on the insertion of pre-existing key");
 
 				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
-
-				TEST_RETURN;
 			}
 
-			TESTCASE(insert_multiple)
+			static void insert_multiple() noexcept
 			{
-				TEST_INIT;
-
 				ThreadsafeMap2<u32, FixedSizeValue> map;
 
 				MemoryRegion region;
 
-				RUN_TEST_WITH_ARGS(init_standard_map, &map, &region);
+				init_standard_map(&map, &region);
 
 				InsertThreadProcArgs<u32, FixedSizeValue> args;
 
@@ -1230,25 +1220,21 @@ namespace map_tests
 				args.duplicate_insertions = false;
 				args.insertion_count = 200'000;
 
-				RUN_TEST_WITH_ARGS(run_on_threads_and_wait, 1, insert_thread_proc<u32, FixedSizeValue>, &args, 2000);
+				run_on_threads_and_wait(1, insert_thread_proc<u32, FixedSizeValue>, &args);
 
 				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
-
-				TEST_RETURN;
 			}
 		}
 
 		namespace varying_length
 		{
-			TESTCASE(insert_single)
+			static void insert_single() noexcept
 			{
-				TEST_INIT;
-
 				ThreadsafeMap2<Range<char8>, VariableSizeValue> map;
 
 				MemoryRegion region;
 
-				RUN_TEST_WITH_ARGS(init_standard_map, &map, &region);
+				init_standard_map(&map, &region);
 
 				InsertThreadProcArgs<Range<char8>, VariableSizeValue> args;
 
@@ -1256,22 +1242,18 @@ namespace map_tests
 				args.duplicate_insertions = false;
 				args.insertion_count = 1;
 
-				RUN_TEST_WITH_ARGS(run_on_threads_and_wait, 1, insert_thread_proc<Range<char8>, VariableSizeValue>, &args, 2000);
+				run_on_threads_and_wait(1, insert_thread_proc<Range<char8>, VariableSizeValue>, &args);
 
 				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
-
-				TEST_RETURN;
 			}
 
-			TESTCASE(insert_multiple)
+			static void insert_multiple() noexcept
 			{
-				TEST_INIT;
-
 				ThreadsafeMap2<Range<char8>, VariableSizeValue> map;
 
 				MemoryRegion region;
 
-				RUN_TEST_WITH_ARGS(init_standard_map, &map, &region);
+				init_standard_map(&map, &region);
 
 				InsertThreadProcArgs<Range<char8>, VariableSizeValue> args;
 
@@ -1279,11 +1261,9 @@ namespace map_tests
 				args.duplicate_insertions = false;
 				args.insertion_count = 1'000;
 
-				RUN_TEST_WITH_ARGS(run_on_threads_and_wait, 1, insert_thread_proc<Range<char8>, VariableSizeValue>, &args, 2000);
+				run_on_threads_and_wait(1, insert_thread_proc<Range<char8>, VariableSizeValue>, &args);
 
 				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
-
-				TEST_RETURN;
 			}
 		}
 	}
@@ -1292,15 +1272,13 @@ namespace map_tests
 	{
 		namespace fixed_length
 		{
-			TESTCASE(insert_no_overlap)
+			static void insert_no_overlap() noexcept
 			{
-				TEST_INIT;
-
 				ThreadsafeMap2<u32, FixedSizeValue> map;
 
 				MemoryRegion region;
 
-				RUN_TEST_WITH_ARGS(init_standard_map, &map, &region);
+				init_standard_map(&map, &region);
 
 				InsertThreadProcArgs<u32, FixedSizeValue> args;
 
@@ -1308,22 +1286,18 @@ namespace map_tests
 				args.duplicate_insertions = false;
 				args.insertion_count = 200'000 / 16;
 
-				RUN_TEST_WITH_ARGS(run_on_threads_and_wait, 16, insert_thread_proc<u32, FixedSizeValue>, &args, 2000);
+				run_on_threads_and_wait(16, insert_thread_proc<u32, FixedSizeValue>, &args);
 
 				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
-
-				TEST_RETURN;
 			}
 
-			TESTCASE(insert_overlap)
+			static void insert_overlap() noexcept
 			{
-				TEST_INIT;
-
 				ThreadsafeMap2<u32, FixedSizeValue> map;
 
 				MemoryRegion region;
 
-				RUN_TEST_WITH_ARGS(init_standard_map, &map, &region);
+				init_standard_map(&map, &region);
 
 				InsertThreadProcArgs<u32, FixedSizeValue> args;
 
@@ -1333,25 +1307,21 @@ namespace map_tests
 
 				// @TODO: This sometimes fails on the assertion in ThreadsafeMap.release_thread_write_lock with old_write_lock being 0.
 				// @TODO: It also sometimes fails the assert that *out_is_new is set to false on reinsertion.
-				RUN_TEST_WITH_ARGS(run_on_threads_and_wait, 16, insert_thread_proc<u32, FixedSizeValue>, &args, 2000);
+				run_on_threads_and_wait(16, insert_thread_proc<u32, FixedSizeValue>, &args);
 
 				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
-
-				TEST_RETURN;
 			}
 		}
 
 		namespace varying_length
 		{
-			TESTCASE(insert_no_overlap)
+			static void insert_no_overlap() noexcept
 			{
-				TEST_INIT;
-
 				ThreadsafeMap2<Range<char8>, VariableSizeValue> map;
 
 				MemoryRegion region;
 
-				RUN_TEST_WITH_ARGS(init_standard_map, &map, &region);
+				init_standard_map(&map, &region);
 
 				InsertThreadProcArgs<Range<char8>, VariableSizeValue> args;
 
@@ -1359,22 +1329,18 @@ namespace map_tests
 				args.duplicate_insertions = false;
 				args.insertion_count = 1000 / 16;
 
-				RUN_TEST_WITH_ARGS(run_on_threads_and_wait, 16, insert_thread_proc<Range<char8>, VariableSizeValue>, &args, 2000);
+				run_on_threads_and_wait(16, insert_thread_proc<Range<char8>, VariableSizeValue>, &args);
 
 				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
-
-				TEST_RETURN;
 			}
 
-			TESTCASE(insert_overlap)
+			static void insert_overlap() noexcept
 			{
-				TEST_INIT;
-
 				ThreadsafeMap2<Range<char8>, VariableSizeValue> map;
 
 				MemoryRegion region;
 
-				RUN_TEST_WITH_ARGS(init_standard_map, &map, &region);
+				init_standard_map(&map, &region);
 
 				InsertThreadProcArgs<Range<char8>, VariableSizeValue> args;
 
@@ -1382,58 +1348,48 @@ namespace map_tests
 				args.duplicate_insertions = true;
 				args.insertion_count = 1000;
 
-				RUN_TEST_WITH_ARGS(run_on_threads_and_wait, 16, insert_thread_proc<Range<char8>, VariableSizeValue>, &args, 2000);
+				run_on_threads_and_wait(16, insert_thread_proc<Range<char8>, VariableSizeValue>, &args);
 
 				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
-
-				TEST_RETURN;
 			}
 		}
 	}
 }
 
-TESTCASE(map)
+static void map() noexcept
 {
-	TEST_INIT;
-
 	using namespace map_tests;
 
-	RUN_TEST(init::success_on_normal);
+	init::success_on_normal();
 
-	RUN_TEST(init::success_on_small);
+	init::success_on_small();
 
-	RUN_TEST(init::success_on_large);
+	init::success_on_large();
 
-	RUN_TEST(exclusive::fixed_length::insert_single);
+	exclusive::fixed_length::insert_single();
 
-	RUN_TEST(exclusive::fixed_length::insert_multiple);
+	exclusive::fixed_length::insert_multiple();
 
-	RUN_TEST(exclusive::varying_length::insert_single);
+	exclusive::varying_length::insert_single();
 
-	RUN_TEST(exclusive::varying_length::insert_multiple);
+	exclusive::varying_length::insert_multiple();
 
-	RUN_TEST(parallel::fixed_length::insert_no_overlap);
+	parallel::fixed_length::insert_no_overlap();
 
-	RUN_TEST(parallel::fixed_length::insert_overlap);
+	parallel::fixed_length::insert_overlap();
 
-	RUN_TEST(parallel::varying_length::insert_no_overlap);
+	parallel::varying_length::insert_no_overlap();
 
-	RUN_TEST(parallel::varying_length::insert_overlap);
-
-	TEST_RETURN;
+	parallel::varying_length::insert_overlap();
 }
 
-u32 test::threading(FILE* out_file) noexcept
+void test::threading() noexcept
 {
-	TEST_INIT;
+	ringbuffer();
 
-	RUN_TEST(ringbuffer);
+	indexstacklist();
 
-	RUN_TEST(indexstacklist);
+	stridedindexstacklist();
 
-	RUN_TEST(stridedindexstacklist);
-
-	RUN_TEST(map);
-
-	TEST_RETURN;
+	map();
 }
