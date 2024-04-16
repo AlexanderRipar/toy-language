@@ -148,7 +148,7 @@ static void ringbuffer() noexcept
 
 	exclusive::dequeue_returns_elements_in_fifo_order();
 
-	// parallel::enqueues_do_not_loose_entries();
+	parallel::enqueues_do_not_loose_entries();
 
 	parallel::dequeues_do_not_loose_entries();
 
