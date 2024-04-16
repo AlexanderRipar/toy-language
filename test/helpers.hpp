@@ -41,7 +41,7 @@ u32 test_system_deinit() noexcept;
 
 #define TEST_THREADPROC_GET_ARGS_AS(...) static_cast<__VA_ARGS__*>(arg)
 
-#define TEST_TBD do { log(LogLevel::Info, "Test case '%s' not yet implemented (%s:%d)\n", __FUNCTION__, __FILE__, __LINE__); return; } while (false)
+#define TEST_TBD do { log(LogLevel::Info, "[%s:%d] Test case '%s' has not been implemented yet\n", __FILE__, __LINE__, __FUNCTION__); return; } while (false)
 
 template<typename T>
 inline static constexpr const char8* log_string_impl_() noexcept
@@ -49,15 +49,15 @@ inline static constexpr const char8* log_string_impl_() noexcept
 	using Type = std::remove_cv_t<T>;
 
 	if constexpr (std::is_same_v<Type, bool>)
-		return "%s (ln %d): Check '%s' failed. Aborting test case. ('%d' was %s '%d')\n";
+		return "[%s%d] Check '%s' failed. Aborting test case. ('%d' was %s '%d')\n";
 	else if constexpr (std::is_integral_v<Type> && std::is_signed_v<Type>)
-		return "%s (ln %d): Check '%s' failed. Aborting test case. ('%lld' was %s '%lld')\n";
+		return "[%s%d] Check '%s' failed. Aborting test case. ('%lld' was %s '%lld')\n";
 	else if constexpr (std::is_integral_v<Type>)
-		return "%s (ln %d): Check '%s' failed. Aborting test case. ('%llu' was %s '%llu')\n";
+		return "[%s%d] Check '%s' failed. Aborting test case. ('%llu' was %s '%llu')\n";
 	else if constexpr (std::is_same_v<Type, float> || std::is_same_v<Type, double>)
-		return "%s (ln %d): Check '%s' failed. Aborting test case. ('%llu' was %s '%llu')\n";
+		return "[%s:%d] Check '%s' failed. Aborting test case. ('%llu' was %s '%llu')\n";
 	else if constexpr (std::is_pointer_v<Type>)
-		return "%s (ln %d): Check '%s' failed. Aborting test case. ('%p' was %s '%p')\n";
+		return "[%s:%d] Check '%s' failed. Aborting test case. ('%p' was %s '%p')\n";
 	else
 		static_assert(false);
 }
