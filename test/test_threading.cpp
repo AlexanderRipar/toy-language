@@ -44,6 +44,22 @@ namespace ringbuffer_tests
 		args->accumulated_result.fetch_add(sum, std::memory_order_relaxed);
 	}
 
+	static void enqdeq_threadproc(ThreadProcArgs* args, [[maybe_unused]] u32 thread_id, [[maybe_unused]] u32 thread_count) noexcept
+	{
+		u32 dequeued_count = 0;
+		for (u32 rep = 0; rep != args->operation_count; ++rep)
+		{
+			CHECK_EQ(args->header.enqueue(args->queue, args->capacity, 1), true, "enqueue called on a non-full queue returns true");
+
+			u32 unused;
+
+			if (args->header.dequeue(args->queue, args->capacity, &unused))
+				dequeued_count += 1;
+		}
+
+		args->accumulated_result.fetch_add(dequeued_count, std::memory_order_relaxed);
+	}
+
 	namespace exclusive
 	{
 		static void dequeue_on_empty_buffer_returns_false() noexcept
@@ -175,7 +191,29 @@ namespace ringbuffer_tests
 
 		static void enqueues_and_dequeues_do_not_loose_entries() noexcept
 		{
-			TEST_TBD;
+			static constexpr u32 ENQDEQ_COUNT_PER_THREAD = 8192;
+
+			static constexpr u32 THREAD_COUNT = 16;
+
+			static constexpr u32 QUEUE_CAPACITY = next_pow2(ENQDEQ_COUNT_PER_THREAD * THREAD_COUNT);
+
+			ThreadProcArgs args;
+			args.header.init();
+			args.operation_count = ENQDEQ_COUNT_PER_THREAD;
+			args.capacity = QUEUE_CAPACITY;
+			args.queue = static_cast<u32*>(malloc(QUEUE_CAPACITY * sizeof(u32)));
+			args.accumulated_result.store(0, std::memory_order_relaxed);
+
+			run_on_threads_and_wait(THREAD_COUNT, enqdeq_threadproc, &args);
+
+			u32 leftover_dequeue_count = 0;
+
+			u32 unused;
+
+			while (args.header.dequeue(args.queue, args.capacity, &unused))
+				leftover_dequeue_count += 1;
+
+			CHECK_EQ(args.accumulated_result.load(std::memory_order_relaxed) + leftover_dequeue_count, ENQDEQ_COUNT_PER_THREAD * THREAD_COUNT, "Count of dequeues performed concurrent to enqueues, plus dequeues left over afterwards equals count of enqueues");
 		}
 	}
 }
