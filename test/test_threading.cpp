@@ -132,7 +132,7 @@ namespace ringbuffer_tests
 	{
 		static void enqueues_do_not_loose_entries() noexcept
 		{
-			static constexpr u32 ENQUEUE_COUNT_PER_THREAD = 8192;
+			static constexpr u32 ENQUEUE_COUNT_PER_THREAD = 32768;
 
 			static constexpr u32 THREAD_COUNT = 16;
 
@@ -160,7 +160,7 @@ namespace ringbuffer_tests
 
 		static void dequeues_do_not_loose_entries() noexcept
 		{
-			static constexpr u32 ENQUEUE_COUNT_PER_THREAD = 8192;
+			static constexpr u32 ENQUEUE_COUNT_PER_THREAD = 32768;
 
 			static constexpr u32 THREAD_COUNT = 16;
 
@@ -191,7 +191,7 @@ namespace ringbuffer_tests
 
 		static void enqueues_and_dequeues_do_not_loose_entries() noexcept
 		{
-			static constexpr u32 ENQDEQ_COUNT_PER_THREAD = 8192;
+			static constexpr u32 ENQDEQ_COUNT_PER_THREAD = 32768;
 
 			static constexpr u32 THREAD_COUNT = 16;
 
