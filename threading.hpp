@@ -96,15 +96,13 @@ public:
 			// If we think it's likely that there are no other running
 			// enqueues, try to fast-path updating m_enqueue to publish our
 			// operation
-			/*
 			if (enqueue_pending == 0)
 			{
-				u32 enqueue_expected = enqueue_all + PENDING_ONE;
+				u64 enqueue_expected = enqueue_all + PENDING_ONE;
 
-				if (m_enqueue.compare_exchange_strong(enqueue_expected, enqueue_all + SEQUENCE_ONE, std::memory_order_release))
+				if (m_enqueue.compare_exchange_strong(enqueue_expected, (enqueue_seq + 1) << SEQUENCE_SHIFT, std::memory_order_release))
 					return true;
 			}
-			*/
 
 			// There are other ongoing enqueues; Increment the number of
 			// completed enqueues, and, if it matches the number of pending
@@ -155,17 +153,13 @@ public:
 
 			*out = queue[retrieval_index];
 
-			/*
 			if ((dequeue_all & PENDING_MASK) == 0)
 			{
 				u64 dequeue_expected = dequeue_all + PENDING_ONE;
 
-				const u64 new_dequeue_all = (dequeue_seq + 1) << SEQUENCE_SHIFT;
-
-				if (m_dequeue.compare_exchange_strong(dequeue_expected, new_dequeue_all, std::memory_order_release))
+				if (m_dequeue.compare_exchange_strong(dequeue_expected, (dequeue_seq + 1) << SEQUENCE_SHIFT, std::memory_order_release))
 					return true;
 			}
-			*/
 
 			u64 published = m_dequeue.fetch_add(COMPLETED_ONE, std::memory_order_relaxed) + COMPLETED_ONE;
 
