@@ -173,7 +173,7 @@ union FileRead
 
 		u32 required_blockread_count;
 
-		ThreadsafeRingBufferHeader<u16, sizeof(u64)> blockread_index_queue_header;
+		ThreadsafeRingBufferHeader<u16> blockread_index_queue_header;
 
 		u16 blockread_index_queue[];
 	};
