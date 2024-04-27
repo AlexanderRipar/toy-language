@@ -167,15 +167,11 @@ union FileRead
 
 		u32 index_in_heap;
 
-		u32 sequence_number;
+		std::atomic<u32> next_blockread_sequence_number;
 
 		u32 valid_bytes_in_last_blockread;
 
 		u32 required_blockread_count;
-
-		ThreadsafeRingBufferHeader<u16> blockread_index_queue_header;
-
-		u16 blockread_index_queue[];
 	};
 
 	u32 freelist_next;
@@ -281,8 +277,185 @@ public:
 	}
 };
 
+struct FileReadPriorityQueue
+{
+private:
+
+	struct HeapEntry
+	{
+		u16 fileread_index;
+
+		u16 blockread_count;
+	};
+
+	static constexpr u32 HEAP_SHIFT = 4;
+
+	static constexpr u16 HEAP_N = 1 << HEAP_SHIFT;
 
 
+
+	Mutex m_mutex;
+
+	FixedBuffer<HeapEntry, u16> alignas(minos::CACHELINE_BYTES) m_priorities;
+
+	u32 m_fileread_count;
+
+	u32 m_max_blockread_count_per_fileread;
+
+	void swap_heap_entries(FileRead* filereads, u16 index0, u16 index1) noexcept
+	{
+		HeapEntry entry0 = m_priorities.data()[index0];
+
+		HeapEntry entry1 = m_priorities.data()[index1];
+
+		m_priorities.data()[index0] = entry1;
+
+		m_priorities.data()[index1] = entry0;
+
+		filereads[entry0.fileread_index].index_in_heap = index1;
+
+		filereads[entry1.fileread_index].index_in_heap = index0;
+	}
+
+	void heapify_down(FileRead* filereads, u16 parent_index, u16 parent_blockread_count) noexcept
+	{
+		while (parent_index < m_fileread_count)
+		{
+			const u16 child_index = (parent_index + 1) << HEAP_SHIFT;
+
+			u16 swap_index;
+
+			u16 min_blockread_count = parent_blockread_count;
+
+			for (u16 i = child_index; i != child_index + HEAP_N; ++i)
+			{
+				if (m_priorities.data()[i].blockread_count < min_blockread_count)
+				{
+					min_blockread_count = m_priorities.data()[i].blockread_count;
+
+					swap_index = i;
+				}
+			}
+
+			if (min_blockread_count == parent_blockread_count)
+				return;
+
+			swap_heap_entries(filereads, parent_index, swap_index);
+
+			parent_index = swap_index;
+
+			parent_blockread_count = min_blockread_count;
+		}
+	}
+
+	void heapify_up(FileRead* filereads, u16 child_index, u16 child_blockread_count) noexcept
+	{
+		while (child_index != 0)
+		{
+			const u16 parent_index = (child_index >> 2) - 1;
+
+			if (child_blockread_count >= m_priorities.data()[parent_index].blockread_count)
+				return;
+
+			swap_heap_entries(filereads, child_index, parent_index);
+
+			child_index = parent_index;
+		}
+	}
+
+
+
+public:
+
+	struct InitInfo
+	{
+		u32 max_active_fileread_count;
+
+		u32 max_blockread_count_per_fileread;
+	};
+
+	static u64 required_bytes(InitInfo info) noexcept
+	{
+		u32 leaf_count = HEAP_N;
+
+		u32 actual_count = leaf_count;
+
+		while (actual_count < info.max_active_fileread_count)
+		{
+			leaf_count *= HEAP_N;
+
+			actual_count += leaf_count;
+		}
+
+		return actual_count * sizeof(HeapEntry);
+	}
+
+	bool init() noexcept
+	{
+		// @TODO: Implement
+		ASSERT_OR_EXIT(false);
+
+		m_mutex.init();
+
+		return true;
+	}
+
+	void decrease_read_count(FileRead* filereads, u16 fileread_index) noexcept
+	{
+		ASSERT_OR_IGNORE(fileread_index < m_fileread_count);
+
+		m_mutex.acquire();
+
+		const u16 new_blockread_count = m_priorities.data()[fileread_index].blockread_count - 1;
+
+		ASSERT_OR_IGNORE(new_blockread_count < m_max_blockread_count_per_fileread);
+
+		m_priorities.data()[fileread_index].blockread_count = new_blockread_count;
+
+		heapify_up(filereads, fileread_index, new_blockread_count);
+
+		m_mutex.release();
+	}
+
+	u16 get_min_read_count_index_and_increase(FileRead* filereads) noexcept
+	{
+		m_mutex.acquire();
+
+		u16 min_index;
+
+		u16 min_read_count = 0xFFFF;
+
+		for (u16 i = 0; i != HEAP_N; ++i)
+		{
+			if (m_priorities.data()[i].blockread_count < min_read_count)
+			{
+				min_index = i;
+
+				min_read_count = m_priorities.data()[i].blockread_count;
+			}
+		}
+
+		if (min_read_count == m_max_blockread_count_per_fileread)
+		{
+			m_mutex.release();
+
+			return 0xFFFF;
+		}
+
+		m_priorities.data()[min_index].blockread_count = min_read_count + 1;
+
+		const u16 return_index = m_priorities.data()[min_index].fileread_index;
+
+		heapify_down(filereads, min_index, min_read_count + 1);
+
+		m_mutex.release();
+
+		return return_index;
+	}
+};
+
+
+/*
 struct alignas(minos::CACHELINE_BYTES) File0r
 {
 private:
@@ -518,5 +691,6 @@ public:
 		// @TODO: Get fileread into heap
 	}
 };
+*/
 
 #pragma warning(pop)
