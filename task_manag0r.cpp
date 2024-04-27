@@ -296,7 +296,7 @@ private:
 
 	Mutex m_mutex;
 
-	FixedBuffer<HeapEntry, u16> alignas(minos::CACHELINE_BYTES) m_priorities;
+	HeapEntry* alignas(minos::CACHELINE_BYTES) m_priorities;
 
 	u32 m_fileread_count;
 
@@ -304,13 +304,13 @@ private:
 
 	void swap_heap_entries(FileRead* filereads, u16 index0, u16 index1) noexcept
 	{
-		HeapEntry entry0 = m_priorities.data()[index0];
+		HeapEntry entry0 = m_priorities[index0];
 
-		HeapEntry entry1 = m_priorities.data()[index1];
+		HeapEntry entry1 = m_priorities[index1];
 
-		m_priorities.data()[index0] = entry1;
+		m_priorities[index0] = entry1;
 
-		m_priorities.data()[index1] = entry0;
+		m_priorities[index1] = entry0;
 
 		filereads[entry0.fileread_index].index_in_heap = index1;
 
@@ -329,9 +329,9 @@ private:
 
 			for (u16 i = child_index; i != child_index + HEAP_N; ++i)
 			{
-				if (m_priorities.data()[i].blockread_count < min_blockread_count)
+				if (m_priorities[i].blockread_count < min_blockread_count)
 				{
-					min_blockread_count = m_priorities.data()[i].blockread_count;
+					min_blockread_count = m_priorities[i].blockread_count;
 
 					swap_index = i;
 				}
@@ -354,7 +354,7 @@ private:
 		{
 			const u16 parent_index = (child_index >> 2) - 1;
 
-			if (child_blockread_count >= m_priorities.data()[parent_index].blockread_count)
+			if (child_blockread_count >= m_priorities[parent_index].blockread_count)
 				return;
 
 			swap_heap_entries(filereads, child_index, parent_index);
@@ -406,11 +406,11 @@ public:
 
 		m_mutex.acquire();
 
-		const u16 new_blockread_count = m_priorities.data()[fileread_index].blockread_count - 1;
+		const u16 new_blockread_count = m_priorities[fileread_index].blockread_count - 1;
 
 		ASSERT_OR_IGNORE(new_blockread_count < m_max_blockread_count_per_fileread);
 
-		m_priorities.data()[fileread_index].blockread_count = new_blockread_count;
+		m_priorities[fileread_index].blockread_count = new_blockread_count;
 
 		heapify_up(filereads, fileread_index, new_blockread_count);
 
@@ -427,11 +427,11 @@ public:
 
 		for (u16 i = 0; i != HEAP_N; ++i)
 		{
-			if (m_priorities.data()[i].blockread_count < min_read_count)
+			if (m_priorities[i].blockread_count < min_read_count)
 			{
 				min_index = i;
 
-				min_read_count = m_priorities.data()[i].blockread_count;
+				min_read_count = m_priorities[i].blockread_count;
 			}
 		}
 
@@ -442,9 +442,9 @@ public:
 			return 0xFFFF;
 		}
 
-		m_priorities.data()[min_index].blockread_count = min_read_count + 1;
+		m_priorities[min_index].blockread_count = min_read_count + 1;
 
-		const u16 return_index = m_priorities.data()[min_index].fileread_index;
+		const u16 return_index = m_priorities[min_index].fileread_index;
 
 		heapify_down(filereads, min_index, min_read_count + 1);
 
