@@ -5,6 +5,13 @@
 #include "minos.hpp"
 #include <cstring>
 
+struct MemoryRequirements
+{
+    u64 bytes;
+
+    u32 alignment;
+};
+
 struct MemorySubregion
 {
 private:
