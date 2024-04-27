@@ -2,7 +2,6 @@
 #define THREADING_INCLUDE_GUARD
 
 #include "minos.hpp"
-#include "container.hpp"
 #include "memory.hpp"
 #include <atomic>
 

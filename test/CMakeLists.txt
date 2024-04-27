@@ -8,7 +8,6 @@ add_executable(test
 	test_threading.cpp
 	../common.hpp
 	../range.hpp
-	../container.hpp
 	../threading.hpp
 	../token.hpp
 	../minos.hpp ../minos.cpp
