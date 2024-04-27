@@ -223,19 +223,37 @@ public:
 		decltype(m_files)::InitInfo files;
 	};
 
-	static u64 required_bytes(InitInfo info) noexcept
+	static MemoryRequirements get_memory_requirements(InitInfo info) noexcept
 	{
-		return decltype(m_filenames)::required_bytes(info.filenames) + decltype(m_files)::required_bytes(info.files);
+		const MemoryRequirements filenames_req = decltype(m_filenames)::get_memory_requirements(info.filenames);
+
+		const MemoryRequirements files_req = decltype(m_files)::get_memory_requirements(info.files);
+
+		const u64 files_alignment_mask = files_req.alignment - 1;
+
+		const u64 files_offset = (filenames_req.bytes + files_alignment_mask) & ~files_alignment_mask;
+
+		const u64 total_bytes = files_offset + files_req.bytes;
+
+		const u32 total_alignment = filenames_req.alignment > files_req.alignment ? filenames_req.alignment : files_req.alignment;
+
+		return { total_bytes, total_alignment };
 	}
 
-	bool init(InitInfo info, MemorySubregion memory) noexcept
+	bool init(InitInfo info, byte* memory) noexcept
 	{
-		MemorySubregion filename_memory = memory.partition_head(decltype(m_filenames)::required_bytes(info.filenames));
+		const MemoryRequirements filenames_req = m_filenames.get_memory_requirements(info.filenames);
 
-		if (!m_filenames.init(info.filenames, filename_memory))
+		const MemoryRequirements files_req = m_files.get_memory_requirements(info.files);
+
+		const u64 files_alignment_mask = files_req.alignment - 1;
+
+		const u64 files_offset = (filenames_req.bytes + files_alignment_mask) & ~files_alignment_mask;
+
+		if (!m_filenames.init(info.filenames, memory))
 			return false;
 
-		return m_files.init(info.files, memory);
+		return m_files.init(info.files, memory + files_offset);
 	}
 
 	FileData* get_filedata(u32 thread_id, Range<char8> filepath, bool& out_is_new) noexcept

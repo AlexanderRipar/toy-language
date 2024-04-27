@@ -1049,7 +1049,7 @@ private:
 
 public:
 
-	static u64 required_bytes(InitInfo info) noexcept
+	static MemoryRequirements get_memory_requirements(const InitInfo& info) noexcept
 	{
 		check_init_info(info);
 
@@ -1061,10 +1061,10 @@ public:
 		
 		const u64 thread_bytes = (static_cast<u64>(info.thread_count) * sizeof(PerThreadData) + page_mask) & ~page_mask;
 
-		return map_bytes + store_bytes + thread_bytes;
+		return { map_bytes + store_bytes + thread_bytes, static_cast<u32>(page_mask + 1) };
 	}
 
-	bool init(InitInfo info, MemorySubregion memory) noexcept
+	bool init(const InitInfo& info, byte* memory) noexcept
 	{
 		check_init_info(info);
 
@@ -1072,25 +1072,25 @@ public:
 
 		u64 offset = 0;
 
-		if (!memory.commit(0, info.map.initial_commit_count * sizeof(u16)))
+		if (!minos::commit(memory + offset, info.map.initial_commit_count * sizeof(u16)))
 			return false;
 
 		offset += info.map.reserve_count * sizeof(u16);
 
-		if (!memory.commit(offset, info.map.initial_commit_count * sizeof(u32)))
+		if (!minos::commit(memory + offset, info.map.initial_commit_count * sizeof(u32)))
 			return false;
 		
 		offset += info.map.reserve_count * sizeof(u32);
 
-		if (!memory.commit(offset, info.thread_count * info.store.per_thread_initial_commit_strides * STRIDE))
+		if (!minos::commit(memory + offset, info.thread_count * info.store.per_thread_initial_commit_strides * STRIDE))
 			return false;
 
 		offset += info.store.reserve_strides * STRIDE;
 
-		if (!memory.commit(offset, info.thread_count * sizeof(PerThreadData)))
+		if (!minos::commit(memory + offset, info.thread_count * sizeof(PerThreadData)))
 			return false;
 
-		m_map = static_cast<u16*>(memory.data());
+		m_map = reinterpret_cast<u16*>(memory);
 
 		m_indirections = reinterpret_cast<u32*>(m_map + info.map.reserve_count);
 

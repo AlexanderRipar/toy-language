@@ -970,7 +970,7 @@ namespace map_tests
 	}
 
 	template<typename Key, typename Value>
-	static void init_standard_map(ThreadsafeMap2<Key, Value>* out_map, MemoryRegion* out_region)
+	static void init_standard_map(ThreadsafeMap2<Key, Value>* out_map, byte** out_memory)
 	{
 		ThreadsafeMap2<Key, Value>::InitInfo info;
 		info.thread_count = 16;
@@ -981,13 +981,15 @@ namespace map_tests
 		info.store.per_thread_commit_increment_strides = 1u << 12;
 		info.store.per_thread_initial_commit_strides = 1u << 12;
 
-		const u64 required_bytes = out_map->required_bytes(info);
+		const MemoryRequirements req = out_map->get_memory_requirements(info);
 
-		CHECK_EQ(out_region->init(required_bytes), true, "MemoryRegion.init succeeds");
+		byte* memory = static_cast<byte*>(minos::reserve(req.bytes));
 
-		MemorySubregion memory = out_region->subregion(0, required_bytes);
+		CHECK_NE(memory, nullptr, "minos::reserve succeeds");
 
 		CHECK_EQ(out_map->init(info, memory), true, "ThreadsafeMap.init succeeds");
+
+		*out_memory = memory;
 	}
 
 	template<typename Key, typename Value>
@@ -1174,17 +1176,15 @@ namespace map_tests
 			info.store.per_thread_commit_increment_strides = 1u << 12;
 			info.store.per_thread_initial_commit_strides = 1u << 14;
 
-			const u64 required_bytes = map.required_bytes(info);
+			const MemoryRequirements req = map.get_memory_requirements(info);
 
-			MemoryRegion region;
+			byte* memory = static_cast<byte*>(minos::reserve(req.bytes));
 
-			CHECK_EQ(region.init(required_bytes), true, "MemoryRegion.init succeeds");
-
-			MemorySubregion memory = region.subregion(0, required_bytes);
+			CHECK_NE(memory, nullptr, "minos::reserve succeeds");
 
 			CHECK_EQ(map.init(info, memory), true, "ThreadsafeMap.init succeeds with medium parameters");
 
-			CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
+			CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
 		}
 
 		static void success_on_small() noexcept
@@ -1200,17 +1200,15 @@ namespace map_tests
 			info.store.per_thread_commit_increment_strides = 4096;
 			info.store.per_thread_initial_commit_strides = 4096;
 
-			const u64 required_bytes = map.required_bytes(info);
+			const MemoryRequirements req = map.get_memory_requirements(info);
 
-			MemoryRegion region;
+			byte* memory = static_cast<byte*>(minos::reserve(req.bytes));
 
-			CHECK_EQ(region.init(required_bytes), true, "MemoryRegion.init succeeds");
-
-			MemorySubregion memory = region.subregion(0, required_bytes);
+			CHECK_NE(memory, nullptr, "minos::reserve succeeds");
 
 			CHECK_EQ(map.init(info, memory), true, "ThreadsafeMap.init succeeds with small parameters");
 
-			CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
+			CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
 		}
 
 		static void success_on_large() noexcept
@@ -1226,17 +1224,15 @@ namespace map_tests
 			info.store.per_thread_commit_increment_strides = 1u << 16;
 			info.store.per_thread_initial_commit_strides = 1u << 16;
 
-			const u64 required_bytes = map.required_bytes(info);
+			const MemoryRequirements req = map.get_memory_requirements(info);
 
-			MemoryRegion region;
+			byte* memory = static_cast<byte*>(minos::reserve(req.bytes));
 
-			CHECK_EQ(region.init(required_bytes), true, "MemoryRegion.init succeeds");
-
-			MemorySubregion memory = region.subregion(0, required_bytes);
+			CHECK_NE(memory, nullptr, "minos::reserve succeeds");
 
 			CHECK_EQ(map.init(info, memory), true, "ThreadsafeMap.init succeeds with large parameters");
 
-			CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
+			CHECK_EQ(minos::unreserve(memory), true, "MemoryRegion.deinit succeeds after successful initialization");
 		}
 	}
 
@@ -1257,13 +1253,11 @@ namespace map_tests
 				info.store.per_thread_commit_increment_strides = 1u << 12;
 				info.store.per_thread_initial_commit_strides = 1u << 12;
 
-				const u64 required_bytes = map.required_bytes(info);
+				const MemoryRequirements req = map.get_memory_requirements(info);
 
-				MemoryRegion region;
+				byte* memory = static_cast<byte*>(minos::reserve(req.bytes));
 
-				CHECK_EQ(region.init(required_bytes), true, "MemoryRegion.init succeeds");
-
-				MemorySubregion memory = region.subregion(0, required_bytes);
+				CHECK_NE(memory, nullptr, "minos::reserve succeeds");
 
 				CHECK_EQ(map.init(info, memory), true, "ThreadsafeMap.init succeeds");
 
@@ -1285,16 +1279,16 @@ namespace map_tests
 
 				CHECK_EQ(is_new2, false, "ThreadsafeMap.value_from sets *opt_is_new to false on the insertion of pre-existing key");
 
-				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
+				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
 			}
 
 			static void insert_multiple() noexcept
 			{
 				ThreadsafeMap2<u32, FixedSizeValue> map;
 
-				MemoryRegion region;
+				byte* memory;
 
-				init_standard_map(&map, &region);
+				init_standard_map(&map, &memory);
 
 				InsertThreadProcArgs<u32, FixedSizeValue> args;
 
@@ -1304,7 +1298,7 @@ namespace map_tests
 
 				run_on_threads_and_wait(1, insert_thread_proc<u32, FixedSizeValue>, &args);
 
-				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
+				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
 			}
 		}
 
@@ -1314,9 +1308,9 @@ namespace map_tests
 			{
 				ThreadsafeMap2<Range<char8>, VariableSizeValue> map;
 
-				MemoryRegion region;
+				byte* memory;
 
-				init_standard_map(&map, &region);
+				init_standard_map(&map, &memory);
 
 				InsertThreadProcArgs<Range<char8>, VariableSizeValue> args;
 
@@ -1326,16 +1320,16 @@ namespace map_tests
 
 				run_on_threads_and_wait(1, insert_thread_proc<Range<char8>, VariableSizeValue>, &args);
 
-				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
+				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
 			}
 
 			static void insert_multiple() noexcept
 			{
 				ThreadsafeMap2<Range<char8>, VariableSizeValue> map;
 
-				MemoryRegion region;
+				byte* memory;
 
-				init_standard_map(&map, &region);
+				init_standard_map(&map, &memory);
 
 				InsertThreadProcArgs<Range<char8>, VariableSizeValue> args;
 
@@ -1345,7 +1339,7 @@ namespace map_tests
 
 				run_on_threads_and_wait(1, insert_thread_proc<Range<char8>, VariableSizeValue>, &args);
 
-				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
+				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
 			}
 		}
 	}
@@ -1358,9 +1352,9 @@ namespace map_tests
 			{
 				ThreadsafeMap2<u32, FixedSizeValue> map;
 
-				MemoryRegion region;
+				byte* memory;
 
-				init_standard_map(&map, &region);
+				init_standard_map(&map, &memory);
 
 				InsertThreadProcArgs<u32, FixedSizeValue> args;
 
@@ -1370,16 +1364,16 @@ namespace map_tests
 
 				run_on_threads_and_wait(16, insert_thread_proc<u32, FixedSizeValue>, &args);
 
-				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
+				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
 			}
 
 			static void insert_overlap() noexcept
 			{
 				ThreadsafeMap2<u32, FixedSizeValue> map;
 
-				MemoryRegion region;
+				byte* memory;
 
-				init_standard_map(&map, &region);
+				init_standard_map(&map, &memory);
 
 				InsertThreadProcArgs<u32, FixedSizeValue> args;
 
@@ -1391,7 +1385,7 @@ namespace map_tests
 				// @TODO: It also sometimes fails the assert that *out_is_new is set to false on reinsertion.
 				run_on_threads_and_wait(16, insert_thread_proc<u32, FixedSizeValue>, &args);
 
-				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
+				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
 			}
 		}
 
@@ -1401,9 +1395,9 @@ namespace map_tests
 			{
 				ThreadsafeMap2<Range<char8>, VariableSizeValue> map;
 
-				MemoryRegion region;
+				byte* memory;
 
-				init_standard_map(&map, &region);
+				init_standard_map(&map, &memory);
 
 				InsertThreadProcArgs<Range<char8>, VariableSizeValue> args;
 
@@ -1413,16 +1407,16 @@ namespace map_tests
 
 				run_on_threads_and_wait(16, insert_thread_proc<Range<char8>, VariableSizeValue>, &args);
 
-				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
+				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
 			}
 
 			static void insert_overlap() noexcept
 			{
 				ThreadsafeMap2<Range<char8>, VariableSizeValue> map;
 
-				MemoryRegion region;
+				byte* memory;
 
-				init_standard_map(&map, &region);
+				init_standard_map(&map, &memory);
 
 				InsertThreadProcArgs<Range<char8>, VariableSizeValue> args;
 
@@ -1432,7 +1426,7 @@ namespace map_tests
 
 				run_on_threads_and_wait(16, insert_thread_proc<Range<char8>, VariableSizeValue>, &args);
 
-				CHECK_EQ(region.deinit(), true, "MemoryRegion.deinit succeeds after successful initialization");
+				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
 			}
 		}
 	}
