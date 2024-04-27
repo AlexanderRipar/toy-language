@@ -6,8 +6,6 @@
 
 namespace test
 {
-	void container() noexcept;
-
 	void threading() noexcept;
 }
 

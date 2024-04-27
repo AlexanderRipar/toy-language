@@ -4,7 +4,6 @@ add_executable(test
 	main.cpp
 	tests.hpp
 	helpers.hpp helpers.cpp
-	test_container.cpp
 	test_threading.cpp
 	../common.hpp
 	../range.hpp
