@@ -1,5 +1,6 @@
 #include "helpers.hpp"
 #include "../minos.hpp"
+#include "../threading.hpp"
 #include <cstdlib>
 #include <cstdio>
 #include <atomic>
@@ -22,54 +23,6 @@ struct ThreadData
 	#pragma warning(pop)
 };
 
-struct SillyMutex
-{
-private:
-
-	static constexpr u32 LOCK_BIT = 1;
-
-	std::atomic<u32> m_rep;
-
-public:
-
-	void init() noexcept
-	{
-		m_rep = 0;
-	}
-
-	void acquire() noexcept
-	{
-		u32 rep = m_rep.load(std::memory_order_relaxed);
-
-		if ((rep & LOCK_BIT) == 0)
-		{
-			if (m_rep.compare_exchange_strong(rep, rep | LOCK_BIT, std::memory_order_acquire))
-				return;
-		}
-
-		rep = m_rep.fetch_add(2, std::memory_order_relaxed);
-
-		while (true)
-		{
-			minos::address_wait(&m_rep, &rep, sizeof(rep));
-
-			rep = m_rep.load(std::memory_order_relaxed);
-
-			if ((rep & LOCK_BIT) == 0)
-			{
-				if (m_rep.compare_exchange_strong(rep, (rep - 2) | LOCK_BIT, std::memory_order_acquire))
-					return;
-			}
-		}
-	}
-
-	void release() noexcept
-	{
-		if (m_rep.fetch_and(~LOCK_BIT, std::memory_order_release) != LOCK_BIT)
-			minos::address_wake_single(&m_rep);
-	}
-};
-
 struct
 {
 	bool silent = false;
@@ -80,7 +33,7 @@ struct
 
 	std::atomic<u32> error_count = 0;
 
-	SillyMutex logfile_mutex;
+	Mutex logfile_mutex;
 
 } g_test_system_data;
 
