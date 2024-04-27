@@ -131,34 +131,4 @@ public:
     }
 };
 
-struct MemoryRegionStackAllocator
-{
-private:
-	
-	MemoryRegion m_region;
-
-	u64 m_used_bytes;
-
-public:
-
-	bool init(u64 bytes) noexcept
-	{
-		if (!m_region.init(bytes))
-			return false;
-
-		m_used_bytes = 0;
-
-		return true;
-	}
-
-	MemorySubregion push(u64 bytes)
-	{
-		MemorySubregion region = m_region.subregion(m_used_bytes, bytes);
-
-		m_used_bytes += region.count();
-
-		return region;
-	}
-};
-
 #endif // MEMORY_INCLUDE_GUARD
