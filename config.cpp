@@ -214,6 +214,13 @@ static void advance(ConfigParseState* s) noexcept
 
 			s->character += 1;
 		}
+		else if (c == '#')
+		{
+			s->curr += 1;
+
+			while (*s->curr != '\n' && *s->curr != '\0')
+				s->curr += 1;
+		}
 		else if (c == '\n')
 		{
 			s->curr += 1;
