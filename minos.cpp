@@ -279,6 +279,13 @@ bool minos::file_get_info(FileHandle handle, FileInfo* out) noexcept
 	return true;
 }
 
+bool minos::overlapped_wait(FileHandle handle, Overlapped* overlapped) noexcept
+{
+		DWORD bytes;
+
+		return GetOverlappedResult(handle.m_rep, reinterpret_cast<OVERLAPPED*>(overlapped), &bytes, true);
+}
+
 void minos::sleep(u32 milliseconds) noexcept
 {
 	Sleep(milliseconds);

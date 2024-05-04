@@ -107,6 +107,8 @@ namespace minos
 
 	bool file_get_info(FileHandle handle, FileInfo* out) noexcept;
 
+	bool overlapped_wait(FileHandle handle, Overlapped* overlapped) noexcept;
+
 	void sleep(u32 milliseconds) noexcept;
 }
 
