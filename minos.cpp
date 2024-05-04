@@ -161,7 +161,7 @@ void minos::thread_close(ThreadHandle handle) noexcept
 	ASSERT_OR_EXIT(CloseHandle(handle.m_rep));
 }
 
-bool minos::file_create(Range<char8> filepath, Access access, CreateMode createmode, AccessPattern pattern, FileHandle* out) noexcept
+bool minos::file_create(Range<char8> filepath, Access access, CreateMode createmode, AccessPattern pattern, SyncMode syncmode, FileHandle* out) noexcept
 {
 	char16 filepath_utf16[8192];
 
@@ -220,7 +220,7 @@ bool minos::file_create(Range<char8> filepath, Access access, CreateMode createm
 		ASSERT_UNREACHABLE;
 	}
 
-	DWORD native_flags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED;
+	DWORD native_flags = FILE_ATTRIBUTE_NORMAL;
 
 	switch (pattern)
 	{
@@ -236,6 +236,19 @@ bool minos::file_create(Range<char8> filepath, Access access, CreateMode createm
 		native_flags |= FILE_FLAG_NO_BUFFERING;
 		break;
 	
+	default:
+		ASSERT_UNREACHABLE;
+	}
+
+	switch (syncmode)
+	{
+	case SyncMode::Asynchronous:
+		native_flags |= FILE_FLAG_OVERLAPPED;
+		break;
+
+	case SyncMode::Synchronous:
+		break;
+
 	default:
 		ASSERT_UNREACHABLE;
 	}

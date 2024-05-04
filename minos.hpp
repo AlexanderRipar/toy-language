@@ -31,6 +31,12 @@ namespace minos
 		Unbuffered,
 	};
 
+	enum class SyncMode
+	{
+		Asynchronous,
+		Synchronous,
+	};
+
 	struct ThreadHandle
 	{
 		void* m_rep;
@@ -113,7 +119,7 @@ namespace minos
 
 	void thread_close(ThreadHandle handle) noexcept;
 
-	bool file_create(Range<char8> filepath, Access access, CreateMode createmode, AccessPattern pattern, FileHandle* out) noexcept;
+	bool file_create(Range<char8> filepath, Access access, CreateMode createmode, AccessPattern pattern, SyncMode syncmode, FileHandle* out) noexcept;
 
 	void file_close(FileHandle handle) noexcept;
 

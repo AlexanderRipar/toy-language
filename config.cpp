@@ -590,7 +590,7 @@ static bool parse_config(const char8* config_string, u32 config_string_chars, Co
 		else if (is_at_name(s))
 		{
 			const u32 pushed_count = push_contexts(s);
-			
+
 			if (pushed_count == 0)
 				return false;
 
@@ -633,7 +633,7 @@ bool read_config_from_file(const char8* config_filepath, ConfigParseError* out_e
 {
 	minos::FileHandle filehandle;
 
-	if (!minos::file_create(range_from_cstring(config_filepath), minos::Access::Read, minos::CreateMode::Open, minos::AccessPattern::Sequential, &filehandle))
+	if (!minos::file_create(range_from_cstring(config_filepath), minos::Access::Read, minos::CreateMode::Open, minos::AccessPattern::Sequential, minos::SyncMode::Synchronous, &filehandle))
 	{
 		*out_error = { "Could not open file", 0, 0 };
 
@@ -688,13 +688,6 @@ bool read_config_from_file(const char8* config_filepath, ConfigParseError* out_e
 	minos::Overlapped overlapped{};
 
 	if (!minos::file_read(filehandle, buffer, static_cast<u32>(fileinfo.file_bytes), &overlapped))
-	{
-		*out_error = { "Could not read config file", 0, 0 };
-
-		return false;
-	}
-
-	if (!minos::overlapped_wait(filehandle, &overlapped))
 	{
 		*out_error = { "Could not read config file", 0, 0 };
 

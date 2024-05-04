@@ -295,7 +295,7 @@ public:
 
 		FileKey key;
 
-		ASSERT_OR_EXIT(minos::file_create(filepath, minos::Access::Read, minos::CreateMode::Open, minos::AccessPattern::Unbuffered, &key.handle));
+		ASSERT_OR_EXIT(minos::file_create(filepath, minos::Access::Read, minos::CreateMode::Open, minos::AccessPattern::Unbuffered, minos::SyncMode::Asynchronous, &key.handle));
 
 		ASSERT_OR_EXIT(minos::file_get_info(key.handle, &key.info));
 
