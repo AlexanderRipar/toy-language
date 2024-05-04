@@ -9,6 +9,18 @@
 #pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
 #pragma warning(disable : 4324) // structure was padded due to alignment specifier
 
+struct BlockRead;
+
+static constexpr u32 FILEREAD_COUNT_BITS = 12;
+
+static constexpr u32 MAX_FILEREAD_COUNT = (1 << FILEREAD_COUNT_BITS) - 1;
+
+static constexpr u32 BLOCKREAD_COUNT_BITS = 16;
+
+static constexpr u32 MAX_BLOCKREAD_COUNT = (1 << BLOCKREAD_COUNT_BITS) - 1;
+
+static constexpr u32 MAX_CONCURRENT_BLOCKREADS_PER_FILEREAD = 254;
+
 // 'Key' for looking up the FileData corresponding to an os file.
 // The info's FileIdentity is the only part that is used for the lookup. The
 // other members are used for initializing the FileData before publishing it.
@@ -158,50 +170,64 @@ struct FileProxy
 
 union FileRead
 {
+	struct alignas(4) Position
+	{
+		u16 issued_blockread_count;
+
+		u16 last_issued_blockread_index;
+	};
+
 	struct
 	{
 		minos::FileHandle filehandle;
 
+		u32 file_index;
+
+		u32 bytes_in_final_blockread;
+
+		std::atomic<Position> position;
+
+		u16 required_blockread_count;
+
+		u16 index_in_heap;
+
 		TaskType content_type;
-
-		u32 index_in_heap;
-
-		std::atomic<u32> next_blockread_sequence_number;
-
-		u32 valid_bytes_in_last_blockread;
-
-		u32 required_blockread_count;
 	};
 
 	u32 freelist_next;
 };
 
-struct BlockRead
+struct alignas(64) BlockRead
 {
-	minos::Overlapped overlapped;
-
-	FileRead* fileread;
-
-	union
+	struct alignas(8) Position
 	{
-		u32 index_in_fileread;
+		u16 fileread_index;
 
-		u32 freelist_next;
+		u16 index_in_fileread;
+
+		u16 next_blockread_index;
+
+		u16 zero_padding;
 	};
 
-	// 0 if read is pending
-	// 1 if read has completed XOR all preceding reads have completed
-	// 2 if read has completed AND all preceding reads have completed
-	std::atomic<u32> completion_state;
+	minos::Overlapped overlapped;
+
+	byte* buffer;
+
+	std::atomic<Position> position;
+
+	std::atomic<u16> completion_state;
+
+	u32 freelist_next;
 };
 
 struct RemainderBuffer
 {
 	u16 valid_buffer_bytes;
 
-	char8 buffer[8189];
+	byte buffer[8189];
 
-	char8 reserved_terminator;
+	byte reserved_terminator;
 };
 
 
@@ -223,7 +249,7 @@ public:
 		decltype(m_files)::InitInfo files;
 	};
 
-	static MemoryRequirements get_memory_requirements(InitInfo info) noexcept
+	static MemoryRequirements get_memory_requirements(const InitInfo& info) noexcept
 	{
 		const MemoryRequirements filenames_req = decltype(m_filenames)::get_memory_requirements(info.filenames);
 
@@ -240,7 +266,7 @@ public:
 		return { total_bytes, total_alignment };
 	}
 
-	bool init(InitInfo info, byte* memory) noexcept
+	bool init(const InitInfo& info, byte* memory) noexcept
 	{
 		const MemoryRequirements filenames_req = m_filenames.get_memory_requirements(info.filenames);
 
@@ -288,7 +314,7 @@ public:
 		return m_files.index_from(filedata);
 	}
 
-	FileData* fileread_from(u32 index) noexcept
+	FileData* filedata_from(u32 index) noexcept
 	{
 		return m_files.value_from(index);
 	}
@@ -296,18 +322,31 @@ public:
 
 struct FileReadPriorityQueue
 {
+	struct InitInfo
+	{
+		u32 max_active_fileread_count;
+
+		u32 max_concurrent_blockread_count_per_fileread;
+	};
+
 private:
 
 	struct HeapEntry
 	{
-		u16 fileread_index;
+		u32 priority : 8;
 
-		u16 blockread_count;
+		u32 fileread_index : 12;
+
+		u32 remaining_blockread_count : 12;
 	};
 
 	static constexpr u32 HEAP_SHIFT = 4;
 
 	static constexpr u16 HEAP_N = 1 << HEAP_SHIFT;
+
+	static constexpr u32 MAX_REMAINING_BLOCKREAD_COUNT = (1 << 12) - 1;
+
+	static constexpr u32 LEAST_PRIORITY = 0xFF;
 
 
 
@@ -315,11 +354,13 @@ private:
 
 	HeapEntry* alignas(minos::CACHELINE_BYTES) m_priorities;
 
-	u32 m_fileread_count;
-
 	u32 m_max_blockread_count_per_fileread;
 
-	void swap_heap_entries(FileRead* filereads, u16 index0, u16 index1) noexcept
+	u32 m_active_fileread_count;
+
+
+
+	void swap_heap_entries(FileRead* filereads, u32 index0, u32 index1) noexcept
 	{
 		HeapEntry entry0 = m_priorities[index0];
 
@@ -329,49 +370,51 @@ private:
 
 		m_priorities[index1] = entry0;
 
-		filereads[entry0.fileread_index].index_in_heap = index1;
+		filereads[entry0.fileread_index].index_in_heap = static_cast<u16>(index1);
 
-		filereads[entry1.fileread_index].index_in_heap = index0;
+		filereads[entry1.fileread_index].index_in_heap = static_cast<u16>(index0);
 	}
 
-	void heapify_down(FileRead* filereads, u16 parent_index, u16 parent_blockread_count) noexcept
+	void heapify_down(FileRead* filereads, u32 parent_index, u32 parent_priority) noexcept
 	{
-		while (parent_index < m_fileread_count)
+		while (parent_index < m_active_fileread_count)
 		{
-			const u16 child_index = (parent_index + 1) << HEAP_SHIFT;
+			const u32 child_index = (parent_index + 1) << HEAP_SHIFT;
 
-			u16 swap_index;
+			u32 swap_index;
 
-			u16 min_blockread_count = parent_blockread_count;
+			u32 min_priority = parent_priority;
 
-			for (u16 i = child_index; i != child_index + HEAP_N; ++i)
+			const u32 end_index = child_index + HEAP_N < m_active_fileread_count ? child_index + HEAP_N : m_active_fileread_count;
+
+			for (u32 i = child_index; i != end_index; ++i)
 			{
-				if (m_priorities[i].blockread_count < min_blockread_count)
+				if (const u32 priority = m_priorities[i].priority; priority < min_priority)
 				{
-					min_blockread_count = m_priorities[i].blockread_count;
+					min_priority = priority;
 
 					swap_index = i;
 				}
 			}
 
-			if (min_blockread_count == parent_blockread_count)
+			if (min_priority == parent_priority)
 				return;
 
 			swap_heap_entries(filereads, parent_index, swap_index);
 
 			parent_index = swap_index;
 
-			parent_blockread_count = min_blockread_count;
+			parent_priority = min_priority;
 		}
 	}
 
-	void heapify_up(FileRead* filereads, u16 child_index, u16 child_blockread_count) noexcept
+	void heapify_up(FileRead* filereads, u32 child_index, u32 child_priority) noexcept
 	{
-		while (child_index != 0)
+		while (child_index > HEAP_N)
 		{
-			const u16 parent_index = (child_index >> 2) - 1;
+			const u32 parent_index = (child_index >> 2) - 1;
 
-			if (child_blockread_count >= m_priorities[parent_index].blockread_count)
+			if (child_priority >= m_priorities[parent_index].priority)
 				return;
 
 			swap_heap_entries(filereads, child_index, parent_index);
@@ -380,18 +423,14 @@ private:
 		}
 	}
 
-
-
-public:
-
-	struct InitInfo
+	static void check_init_info(const InitInfo& info) noexcept
 	{
-		u32 max_active_fileread_count;
+		ASSERT_OR_EXIT(info.max_active_fileread_count < MAX_FILEREAD_COUNT);
 
-		u32 max_blockread_count_per_fileread;
-	};
+		ASSERT_OR_EXIT(info.max_concurrent_blockread_count_per_fileread < LEAST_PRIORITY);
+	}
 
-	static u64 required_bytes(InitInfo info) noexcept
+	static u64 adjust_heap_count(const InitInfo& info) noexcept
 	{
 		u32 leaf_count = HEAP_N;
 
@@ -404,310 +443,580 @@ public:
 			actual_count += leaf_count;
 		}
 
-		return actual_count * sizeof(HeapEntry);
+		return actual_count;
 	}
 
-	bool init() noexcept
+public:
+
+	static MemoryRequirements get_memory_requirements(const InitInfo& info) noexcept
 	{
-		// @TODO: Implement
-		ASSERT_OR_EXIT(false);
+		return { adjust_heap_count(info) * sizeof(HeapEntry), minos::CACHELINE_BYTES };
+	}
+
+	bool init(const InitInfo& info, byte* memory) noexcept
+	{
+		if (!minos::commit(memory, get_memory_requirements(info).bytes))
+			return false;
 
 		m_mutex.init();
+
+		m_priorities = reinterpret_cast<HeapEntry*>(memory);
+
+		m_max_blockread_count_per_fileread = info.max_concurrent_blockread_count_per_fileread;
+
+		m_active_fileread_count = 0;
 
 		return true;
 	}
 
-	void decrease_read_count(FileRead* filereads, u16 fileread_index) noexcept
+	void decrease_read_count(FileRead* filereads, FileRead* to_decrease) noexcept
 	{
-		ASSERT_OR_IGNORE(fileread_index < m_fileread_count);
+		const u32 index_in_heap = to_decrease->index_in_heap;
 
 		m_mutex.acquire();
 
-		const u16 new_blockread_count = m_priorities[fileread_index].blockread_count - 1;
-
-		ASSERT_OR_IGNORE(new_blockread_count < m_max_blockread_count_per_fileread);
-
-		m_priorities[fileread_index].blockread_count = new_blockread_count;
-
-		heapify_up(filereads, fileread_index, new_blockread_count);
-
-		m_mutex.release();
-	}
-
-	u16 get_min_read_count_index_and_increase(FileRead* filereads) noexcept
-	{
-		m_mutex.acquire();
-
-		u16 min_index;
-
-		u16 min_read_count = 0xFFFF;
-
-		for (u16 i = 0; i != HEAP_N; ++i)
-		{
-			if (m_priorities[i].blockread_count < min_read_count)
-			{
-				min_index = i;
-
-				min_read_count = m_priorities[i].blockread_count;
-			}
-		}
-
-		if (min_read_count == m_max_blockread_count_per_fileread)
+		if (m_priorities[index_in_heap].remaining_blockread_count == 0)
 		{
 			m_mutex.release();
 
-			return 0xFFFF;
+			return;
 		}
 
-		m_priorities[min_index].blockread_count = min_read_count + 1;
+		const u32 new_priority = m_priorities[index_in_heap].priority - 1;
 
-		const u16 return_index = m_priorities[min_index].fileread_index;
+		ASSERT_OR_IGNORE(new_priority < m_max_blockread_count_per_fileread);
 
-		heapify_down(filereads, min_index, min_read_count + 1);
+		m_priorities[index_in_heap].priority = new_priority;
+
+		heapify_up(filereads, index_in_heap, new_priority);
+
+		m_mutex.release();
+	}
+
+	FileRead* get_min_read_count_and_increase(FileRead* filereads) noexcept
+	{
+		m_mutex.acquire();
+
+		u32 min_index;
+
+		u32 min_priority = LEAST_PRIORITY;
+
+		for (u16 i = 0; i != HEAP_N; ++i)
+		{
+			if (const u32 priority = m_priorities[i].priority; priority < min_priority)
+			{
+				min_index = i;
+
+				min_priority = priority;
+			}
+		}
+
+		if (min_priority >= m_max_blockread_count_per_fileread)
+		{
+			m_mutex.release();
+
+			return nullptr;
+		}
+
+		u32 new_priority = min_priority + 1;
+
+		if (m_priorities[min_index].remaining_blockread_count == 1)
+		{
+			new_priority = LEAST_PRIORITY;
+
+			m_active_fileread_count -= 1;
+		}
+
+		m_priorities[min_index].remaining_blockread_count -= 1;
+
+		m_priorities[min_index].priority = new_priority;
+
+		FileRead* const to_return = filereads + m_priorities[min_index].fileread_index;
+
+		heapify_down(filereads, min_index, new_priority);
 
 		m_mutex.release();
 
-		return return_index;
+		return to_return;
+	}
+
+	void insert_at_min_read_count(FileRead* filereads, FileRead* to_insert) noexcept
+	{
+		m_mutex.acquire();
+
+		const u32 fileread_index = static_cast<u32>(to_insert - filereads);
+
+		ASSERT_OR_IGNORE(fileread_index <= MAX_FILEREAD_COUNT);
+
+		ASSERT_OR_IGNORE(to_insert->required_blockread_count <= MAX_REMAINING_BLOCKREAD_COUNT);
+
+		m_priorities[m_active_fileread_count] = { fileread_index, to_insert->required_blockread_count, 0 };
+
+		to_insert->index_in_heap = static_cast<u16>(m_active_fileread_count);
+
+		m_active_fileread_count += 1;
+
+		heapify_up(filereads, m_active_fileread_count - 1, 0);
+
+		m_mutex.release();
 	}
 };
 
-
-/*
-struct alignas(minos::CACHELINE_BYTES) File0r
+static void scan_buffer(byte* buffer, u32 bytes, RemainderBuffer* rem, FileData* filedata) noexcept
 {
-private:
+	// @TODO
+	buffer;
+	bytes;
+	rem;
+	filedata;
+}
 
-	struct HeapLine
-	{
-		static constexpr u32 COUNT = minos::CACHELINE_BYTES / sizeof(u16);
-
-		u16 inds[COUNT];
-	};
-
-	// Map handling conversion from filepaths to FileData.
-	FileMap m_filedata;
-
-	// Maximum number of BlockReads that can be associated with a given
-	// FileRead at the same time.
-	u32 m_max_blockread_count_per_fileread;
-
-	// Capacity of the queue storing associated BlockRead indices for every
-	// FileRead. Due to the way ThreadsafeRingBufferHeader is implemented this
-	// must always be a power of two. It is the smallest power of two that is
-	// greater than or equal to m_max_blockread_count_per_fileread. 
-	u32 m_blockread_queue_capacity_per_fileread;
-
-	// Byte stride used for indexing into m_filereads. This is necessary as
-	// each FileRead is followed by an array of u16s representing indices
-	// into m_blockreads. The size of this array depends on the runtime
-	// parameter m_blockread_queue_capacity_per_fileread, meaning that FileRead
-	// is in fact a variable-sized struct.
-	u32 m_fileread_stride;
-
-	// Number of bytes reserved as read buffer for each BlockRead.
-	// Always a multiple of the system's page size.
-	u32 m_buffer_bytes_per_blockread;
-
-	// Byte stride used for indexing into m_blockread_buffers. This is distinct
-	// from m_buffer_bytes_per_blockread, since every buffer is followed by a
-	// padding page to allow for a sentinel ('\0') to be appended to each read,
-	// even if it uses the entire buffer.
-	u32 m_blockread_buffer_stride;
-
-	// Capacity of the queue holding indices into m_files.
-	u32 m_max_queued_fileread_count;
-
-	char8* m_blockread_buffers;
-
-	BlockRead* m_blockreads;
-
-	byte* m_filereads;
-
-	RemainderBuffer* m_remainder_buffers;
-
-	HeapLine* m_fileread_heap;
-
-	u32* m_pending_file_queue;
-
-	std::atomic<u32> alignas(minos::CACHELINE_BYTES) m_heap_status;
-
-	std::atomic<u32> m_heap_used_count;
-
-	ThreadsafeIndexStackListHeader<BlockRead, offsetof(BlockRead, freelist_next)> alignas(minos::CACHELINE_BYTES) m_blockread_freelist;
-
-	ThreadsafeStridedIndexStackListHeader<FileRead, offsetof(FileRead, freelist_next)> alignas(minos::CACHELINE_BYTES) m_fileread_freelist;
-
-	ThreadsafeRingBufferHeader<u32> m_pending_file_queue_header;
-
-public:
-
+struct FileFilet
+{
 	struct InitInfo
 	{
 		FileMap::InitInfo filemap;
 
-		u32 max_blockreads_per_fileread;
+		// Upper bound on the number of file requests which can be queued in
+		// case no FileRead is available at the time.
+		// This must be a power of two.
+		u32 max_pending_fileread_count;
 
-		u32 blockread_buffer_bytes;
-
-		u32 max_blockread_count;
-
+		// Maximum number of FileReads that can be processed concurrently.
 		u32 max_fileread_count;
 
-		u32 max_queued_fileread_count;
+		// Maximum number of BlockReads that can be processed concurrently.
+		u32 max_blockread_count;
+
+		// Maximum number of BlockReads that can be associated with a single
+		// FileRead at a time.
+		u32 max_concurrent_blockread_count_per_fileread;
+
+		// Number of bytes that are read with every BlockRead.
+		// This must be a nonzero multiple of the system's page size.
+		u32 bytes_per_blockread;
 	};
 
-	static u64 required_bytes(InitInfo info) noexcept
+private:
+
+	struct MemoryDetails
 	{
-		const u64 page_mask = minos::page_bytes() - 1;
+		u64 read_buffer_offset;
 
-		const u64 filemap_bytes = FileMap::required_bytes(info.filemap);
+		u64 read_buffer_bytes;
 
-		const u64 blockread_bytes = (info.blockread_buffer_bytes + page_mask + 1) * info.max_blockread_count;
+		u64 filemap_offset;
 
-		const u32 queue_count_per_fileread = next_pow2(info.max_blockreads_per_fileread);
+		u64 filemap_bytes;
 
-		const u64 queue_bytes_per_fileread = next_multiple(queue_count_per_fileread * sizeof(*FileRead::blockread_index_queue), alignof(FileRead));
+		u64 pqueue_offset;
 
-		const u64 fileread_bytes = ((sizeof(FileRead) + queue_bytes_per_fileread) * info.max_fileread_count + page_mask) & ~page_mask;
+		u64 pqueue_bytes;
 
-		const u64 remainder_buffer_bytes = sizeof(RemainderBuffer) * info.max_fileread_count;
+		u64 fileread_offset;
 
-		const u64 heap_bytes = ((info.max_fileread_count + HeapLine::COUNT - 1) / HeapLine::COUNT) * sizeof(HeapLine);
+		u64 fileread_bytes;
 
-		const u64 pending_file_queue_bytes = info.max_queued_fileread_count * sizeof(*m_pending_file_queue);
+		u64 blockread_offset;
 
-		return filemap_bytes + blockread_bytes + fileread_bytes + remainder_buffer_bytes + heap_bytes + pending_file_queue_bytes;
+		u64 blockread_bytes;
+
+		u64 remainder_offset;
+
+		u64 remainder_bytes;
+
+		u64 pending_filedata_offset;
+
+		u64 pending_filedata_bytes;
+
+		u64 bytes;
+
+		u32 alignment;
+	};
+
+
+
+	FileMap m_filemap;
+
+	FileReadPriorityQueue m_pqueue;
+
+	FileRead* m_filereads;
+
+	BlockRead* m_blockreads;
+
+	byte* m_buffers;
+
+	RemainderBuffer* m_remainders;
+
+	u32* m_pending_filedata_index_buffer;
+
+	u32 m_max_pending_filedata_count;
+
+	u32 m_bytes_per_buffer;
+
+	u32 m_max_blockreads_per_fileread;
+
+	minos::CompletionHandle m_completion;
+
+	minos::ThreadHandle m_completion_thread;
+
+	ThreadsafeIndexStackListHeader<FileRead, offsetof(FileRead, freelist_next)> m_fileread_freelist;
+
+	ThreadsafeIndexStackListHeader<BlockRead, offsetof(BlockRead, freelist_next)> m_blockread_freelist;
+
+	ThreadsafeRingBufferHeader<u32> m_pending_filedata_queue;
+
+
+
+	static MemoryDetails get_memory_details(const InitInfo& info) noexcept
+	{
+		const MemoryRequirements filemap_req = FileMap::get_memory_requirements(info.filemap);
+
+		FileReadPriorityQueue::InitInfo pqueue_info;
+		pqueue_info.max_active_fileread_count = info.max_fileread_count;
+		pqueue_info.max_concurrent_blockread_count_per_fileread = info.max_concurrent_blockread_count_per_fileread;
+
+		const MemoryRequirements pqueue_req = FileReadPriorityQueue::get_memory_requirements(pqueue_info);
+
+		MemoryDetails off;
+
+		off.read_buffer_offset = 0;
+		off.read_buffer_bytes = info.bytes_per_blockread * info.max_blockread_count;
+
+		off.filemap_offset = align_to(off.read_buffer_offset + off.read_buffer_bytes, filemap_req.alignment);
+		off.filemap_bytes = filemap_req.bytes;
+
+		off.pqueue_offset = align_to(off.filemap_offset + filemap_req.bytes, pqueue_req.alignment);
+		off.pqueue_bytes = pqueue_req.bytes;
+
+		off.fileread_offset = align_to(off.pqueue_offset + off.pqueue_bytes, alignof(FileRead));
+		off.fileread_bytes = info.max_fileread_count * sizeof(FileRead);
+
+		off.blockread_offset = align_to(off.fileread_offset + off.fileread_bytes, alignof(BlockRead));
+		off.blockread_bytes = info.max_blockread_count * sizeof(BlockRead);
+
+		off.remainder_offset = align_to(off.blockread_offset + off.blockread_bytes, alignof(RemainderBuffer));
+		off.remainder_bytes = info.max_fileread_count * sizeof(RemainderBuffer);
+
+		off.pending_filedata_offset = align_to(off.remainder_offset + off.remainder_bytes, alignof(u32));
+		off.pending_filedata_bytes = info.max_pending_fileread_count * sizeof(u32);
+
+		off.bytes = off.pending_filedata_offset + off.pending_filedata_bytes;
+
+		// Minimum recommended alignment for read buffers to be used with
+		// FILE_FLAG_UNBUFFERED, since it is larger than or equal to realistic
+		// physical sector size (which is also always a power of two)
+		off.alignment = minos::page_bytes();
+
+		if (off.alignment < filemap_req.alignment)
+			off.alignment = filemap_req.alignment;
+
+		if (off.alignment < pqueue_req.alignment)
+			off.alignment = pqueue_req.alignment;
+
+		return off;
 	}
 
-	bool init(InitInfo info, MemorySubregion memory) noexcept
+	FileRead::Position claim_next_blockread_for_fileread(FileRead* fileread, BlockRead* blockread) noexcept
 	{
-		const u64 filemap_bytes = FileMap::required_bytes(info.filemap);
+		const u16 fileread_index = static_cast<u16>(fileread - m_filereads);
 
-		MemorySubregion filemap_memory = memory.partition_head(filemap_bytes);
+		const u16 blockread_index = static_cast<u16>(blockread - m_blockreads);
 
-		if (!m_filedata.init(info.filemap, filemap_memory))
-			return false;
+		FileRead::Position position = fileread->position.load(std::memory_order_seq_cst);
 
-		const u64 page_mask = minos::page_bytes() - 1;
-
-		const u64 bytes_per_blockread = (info.blockread_buffer_bytes + page_mask + 1);
-
-		const u64 blockread_bytes = bytes_per_blockread * info.max_blockread_count;
-
-		const u32 queue_count_per_fileread = next_pow2(info.max_blockreads_per_fileread);
-
-		const u64 queue_bytes_per_fileread = next_multiple(info.max_blockreads_per_fileread * sizeof(*FileRead::blockread_index_queue), alignof(FileRead));
-
-		const u64 fileread_bytes = ((sizeof(FileRead) + queue_bytes_per_fileread) * info.max_fileread_count + page_mask) & ~page_mask;
-
-		const u64 remainder_buffer_bytes = sizeof(RemainderBuffer) * info.max_fileread_count;
-
-		const u64 heap_bytes = ((info.max_fileread_count + HeapLine::COUNT - 1) / HeapLine::COUNT) * sizeof(HeapLine);
-
-		const u64 pending_file_queue_bytes = info.max_queued_fileread_count * sizeof(*m_pending_file_queue);
-
-		if (!memory.commit(0, blockread_bytes + fileread_bytes + remainder_buffer_bytes + heap_bytes + pending_file_queue_bytes))
-			return false;
-
-		m_max_blockread_count_per_fileread = info.max_blockreads_per_fileread;
-
-		m_blockread_queue_capacity_per_fileread = queue_count_per_fileread;
-
-		m_fileread_stride = static_cast<u32>(sizeof(FileRead) + queue_bytes_per_fileread);
-
-		m_buffer_bytes_per_blockread = info.blockread_buffer_bytes;
-
-		m_blockread_buffer_stride = static_cast<u32>(bytes_per_blockread);
-
-		m_max_queued_fileread_count = info.max_queued_fileread_count;
-
-		m_blockreads = static_cast<BlockRead*>(memory.data());
-
-		m_filereads = static_cast<byte*>(memory.data()) + blockread_bytes;
-
-		m_remainder_buffers = reinterpret_cast<RemainderBuffer*>(static_cast<byte*>(memory.data()) + blockread_bytes + fileread_bytes);
-		
-		m_fileread_heap = reinterpret_cast<HeapLine*>(static_cast<byte*>(memory.data()) + blockread_bytes + fileread_bytes + remainder_buffer_bytes);
-
-		m_pending_file_queue = reinterpret_cast<u32*>(static_cast<byte*>(memory.data()) + blockread_bytes + fileread_bytes + remainder_buffer_bytes + heap_bytes);
-
-		m_heap_status.store(0, std::memory_order_relaxed);
-
-		m_heap_used_count.store(0, std::memory_order_relaxed);
-
-		m_blockread_freelist.init(m_blockreads, info.max_blockread_count);
-
-		m_fileread_freelist.init(m_filereads, m_fileread_stride, info.max_fileread_count);
-
-		m_pending_file_queue_header.init();
-
-		return true;
-	}
-
-	bool issue_fileread(u32 thread_id, Range<char8> filepath, TaskType content_type) noexcept
-	{
-		bool is_new_filedata;
-
-		FileData* const filedata = m_filedata.get_filedata(thread_id, filepath, is_new_filedata);
-
-		if (!is_new_filedata)
+		while (true)
 		{
-			// @TODO: File already read/being read
+			blockread->position.store({ fileread_index, position.issued_blockread_count, 0xFFFF, 0 }, std::memory_order_seq_cst);
 
-			return false;
+			const FileRead::Position new_position = { static_cast<u16>(position.issued_blockread_count + 1), blockread_index };
+
+			if (fileread->position.compare_exchange_strong(position, new_position, std::memory_order_seq_cst))
+				return position;
+		}
+	}
+
+	// @TODO: This should be a slow path; The usual case, when the FileRead
+	// only requires a single BlockRead, can be done with way fewer atomics
+	void issue_blockread_for_fileread(FileRead* fileread, BlockRead* blockread) noexcept
+	{
+		blockread->completion_state.store(0, std::memory_order_relaxed);
+
+		const u16 fileread_index = static_cast<u16>(fileread - m_filereads);
+
+		const u16 blockread_index = static_cast<u16>(blockread - m_blockreads);
+
+		const FileRead::Position fileread_pos = claim_next_blockread_for_fileread(fileread, blockread);
+
+		const u16 prev_blockread_index = fileread_pos.last_issued_blockread_index;
+
+		const u16 index_in_fileread = fileread_pos.issued_blockread_count;
+
+		if (prev_blockread_index == 0xFFFF)
+		{
+			blockread->completion_state.store(1, std::memory_order_relaxed);
+		}
+		else
+		{
+			BlockRead* const prev_blockread = m_blockreads + prev_blockread_index;
+
+			BlockRead::Position prev_position = prev_blockread->position.load(std::memory_order_seq_cst);
+
+			if (prev_position.fileread_index != fileread_index || prev_position.index_in_fileread + 1 != index_in_fileread)
+			{
+				blockread->completion_state.store(1, std::memory_order_relaxed);
+			}
+			else
+			{
+				const BlockRead::Position new_position = { fileread_index, static_cast<u16>(index_in_fileread - 1), blockread_index, 0 };
+
+				if (!prev_blockread->position.compare_exchange_strong(prev_position, new_position, std::memory_order_seq_cst))
+					blockread->completion_state.store(1, std::memory_order_relaxed);
+			}
 		}
 
-		FileRead* const fileread = m_fileread_freelist.pop(m_filereads, m_fileread_stride);
+		blockread->overlapped.offset = static_cast<u64>(index_in_fileread) * m_bytes_per_buffer;
 
-		// No FileReads available at the moment; Push to pending
-		if (fileread == nullptr)
-			ASSERT_OR_EXIT(m_pending_file_queue_header.enqueue(m_pending_file_queue, m_max_queued_fileread_count, m_filedata.index_from(filedata)));
+		blockread->overlapped.unused_0 = 0;
+		blockread->overlapped.unused_1 = 0;
 
-		const u32 required_blockread_count = static_cast<u32>((filedata->file_bytes + m_buffer_bytes_per_blockread - 1) / m_buffer_bytes_per_blockread);
+		blockread->buffer = m_buffers + static_cast<u64>(blockread_index) * m_bytes_per_buffer;
 
-		fileread->filehandle = filedata->filehandle;
+		ASSERT_OR_EXIT(minos::file_read(
+				fileread->filehandle,
+				blockread->buffer,
+				index_in_fileread == fileread->required_blockread_count ? fileread->bytes_in_final_blockread : m_bytes_per_buffer,
+				&blockread->overlapped
+		));
+	}
 
-		fileread->content_type = content_type;
-
-		fileread->index_in_heap = 0; // @TODO: Figure out how to actually get this into the heap and set the index accordingly
-
-		fileread->valid_bytes_in_last_blockread = static_cast<u32>(filedata->file_bytes - static_cast<u64>((required_blockread_count - 1) * m_buffer_bytes_per_blockread));
-
-		fileread->required_blockread_count = required_blockread_count;
-
-		fileread->blockread_index_queue_header.init();
-
-		const u32 max_initial_blockread_count = required_blockread_count < m_max_blockread_count_per_fileread ? required_blockread_count : m_max_blockread_count_per_fileread;
-
-		u32 added_blockread_count = 0;
-
-		for (u32 i = 0; i != max_initial_blockread_count; ++i)
+	void pump_reads() noexcept
+	{
+		while (true)
 		{
 			BlockRead* const blockread = m_blockread_freelist.pop(m_blockreads);
 
 			if (blockread == nullptr)
-				break;
+				return;
 
-			blockread->fileread = fileread;
+			FileRead* const fileread = m_pqueue.get_min_read_count_and_increase(m_filereads);
 
-			blockread->completion_state = 0;
+			if (fileread == nullptr)
+			{
+				m_blockread_freelist.push(m_blockreads, static_cast<u32>(blockread - m_blockreads));
 
-			const u32 blockread_index = static_cast<u32>(blockread - m_blockreads);
+				return;
+			}
 
-			ASSERT_OR_EXECUTE(fileread->blockread_index_queue_header.enqueue(fileread->blockread_index_queue, m_blockread_queue_capacity_per_fileread, static_cast<u16>(blockread_index), &blockread->index_in_fileread));
+			issue_blockread_for_fileread(fileread, blockread);
+		}
+	}
 
-			blockread->overlapped.offset = blockread->index_in_fileread * m_buffer_bytes_per_blockread;
+	void dispatch_completed_blockread(FileData* filedata, FileRead* fileread, BlockRead* blockread, RemainderBuffer* remainder) noexcept
+	{
+		// @TODO: Implement
+		switch (fileread->content_type)
+		{
+		case TaskType::Scan:
+			scan_buffer(blockread->buffer, blockread->position.load(std::memory_order_relaxed).index_in_fileread == fileread->required_blockread_count - 1 ? fileread->bytes_in_final_blockread : m_bytes_per_buffer, remainder, filedata);
+			break;
 
-			const u32 bytes_to_read = blockread->index_in_fileread == fileread->required_blockread_count - 1 ? fileread->valid_bytes_in_last_blockread : m_buffer_bytes_per_blockread;
+		default:
+			ASSERT_UNREACHABLE;
+		}
+	}
 
-			ASSERT_OR_EXIT(minos::file_read(fileread->filehandle, m_blockread_buffers + m_buffer_bytes_per_blockread * blockread_index, bytes_to_read, &blockread->overlapped));
+	// @TODO: This should be a slow path; The usual case, when the FileRead
+	// only requires a single BlockRead, can be done with way fewer atomics
+	bool process_completed_blockread(BlockRead* blockread) noexcept
+	{
+		const u16 fileread_index = blockread->position.load(std::memory_order_relaxed).fileread_index;
 
-			added_blockread_count += 1;
+		FileRead* const fileread = m_filereads + fileread_index;
+
+		RemainderBuffer* const remainder = m_remainders + fileread_index;
+
+		FileData* const filedata = m_filemap.filedata_from(fileread->file_index);
+
+		if (blockread->completion_state.exchange(1, std::memory_order_relaxed) == 0)
+			return false;
+
+		while (true)
+		{
+			// @TODO: Process data in blockread
+			dispatch_completed_blockread(filedata, fileread, blockread, remainder);
+
+			const BlockRead::Position position = blockread->position.exchange({ 0xFFFF, 0xFFFF, 0, 0 }, std::memory_order_seq_cst);
+
+			m_blockread_freelist.push(m_blockreads, static_cast<u32>(blockread - m_blockreads));
+
+			// Check if we have reached the last currently active (and linked)
+			// BlockReads in the FileRead
+			if (position.next_blockread_index != 0xFFFF)
+			{
+				blockread = m_blockreads + position.next_blockread_index;
+
+				if (blockread->completion_state.exchange(1, std::memory_order_relaxed) == 0)
+					return true;
+
+				continue;
+			}
+
+			// Check if we just processed the last BlockRead of the FileRead,
+			// thus completing the FileRead
+			if (position.index_in_fileread != fileread->required_blockread_count)
+				return true;
+
+			// If there are pending files, directly issue a new read.
+			// Otherwise, add the FileRead to the list freelist.
+			u32 new_filedata_index;
+
+			if (m_pending_filedata_queue.dequeue(m_pending_filedata_index_buffer, m_max_pending_filedata_count, &new_filedata_index))
+				initiate_fileread_for_filedata(m_filemap.filedata_from(new_filedata_index), new_filedata_index, fileread);
+			else
+				m_fileread_freelist.push(m_filereads, static_cast<u32>(fileread - m_filereads));
+
+			// @TODO: Notify filedata that we're done
+
+			return true;
 		}
 
-		// @TODO: Get fileread into heap
+		ASSERT_UNREACHABLE;
+	}
+
+	static u32 completion_thread_proc(void* param) noexcept
+	{
+		FileFilet* const filet = static_cast<FileFilet*>(param);
+
+		while (true)
+		{
+			minos::CompletionResult result;
+
+			ASSERT_OR_EXIT(minos::completion_wait(filet->m_completion, &result));
+
+			if (result.key == 2)
+				return 0;
+
+			ASSERT_OR_IGNORE(result.key == 1);
+
+			if (filet->process_completed_blockread(reinterpret_cast<BlockRead*>(result.overlapped)))
+				filet->pump_reads();
+		}
+
+		ASSERT_UNREACHABLE;
+	}
+
+	void initiate_fileread_for_filedata(FileData* filedata, u32 filedata_index, FileRead* fileread) noexcept
+	{
+		const u16 required_blockread_count = static_cast<u16>((filedata->file_bytes + m_bytes_per_buffer - 1) / m_bytes_per_buffer);
+
+		fileread->filehandle = filedata->filehandle;
+		fileread->file_index = filedata_index;
+		fileread->bytes_in_final_blockread = static_cast<u32>(filedata->file_bytes - (required_blockread_count - 1) * m_bytes_per_buffer);
+		fileread->position.store({ 0, 0xFFFF }, std::memory_order_relaxed);
+		fileread->required_blockread_count = required_blockread_count;
+		fileread->content_type = TaskType::Scan;
+
+		RemainderBuffer* remainder = m_remainders + (fileread - m_filereads);
+		remainder->valid_buffer_bytes = 0;
+
+		m_pqueue.insert_at_min_read_count(m_filereads, fileread);
+
+		pump_reads();
+	}
+
+public:
+
+	static MemoryRequirements get_memory_requirements(const InitInfo& info) noexcept
+	{
+		const MemoryDetails details = get_memory_details(info);
+
+		return { details.bytes, details.alignment };
+	}
+
+	bool init(const InitInfo& info, byte* memory) noexcept
+	{
+		const MemoryDetails details = get_memory_details(info);
+
+		if (!minos::commit(memory + details.read_buffer_offset, details.read_buffer_bytes))
+			return false;
+
+		if (!minos::commit(memory + details.fileread_offset, details.fileread_bytes))
+			return false;
+
+		if (!minos::commit(memory + details.blockread_offset, details.blockread_bytes))
+			return false;
+
+		if (!minos::commit(memory + details.remainder_offset, details.remainder_bytes))
+			return false;
+
+		if (!minos::commit(memory + details.pending_filedata_offset, details.pending_filedata_bytes))
+			return false;
+
+		if (!m_filemap.init(info.filemap, memory + details.filemap_offset))
+			return false;
+
+		FileReadPriorityQueue::InitInfo pqueue_info;
+		pqueue_info.max_active_fileread_count = info.max_fileread_count;
+		pqueue_info.max_concurrent_blockread_count_per_fileread = info.max_concurrent_blockread_count_per_fileread;
+
+		if (!m_pqueue.init(pqueue_info, memory + details.pqueue_offset))
+			return false;
+
+		if (!minos::completion_create(&m_completion))
+			return false;
+
+		if (!minos::thread_create(completion_thread_proc, this, range_from_cstring("completion worker"), &m_completion_thread))
+			return false;
+
+		m_buffers = memory + details.read_buffer_offset;
+
+		m_filereads = reinterpret_cast<FileRead*>(memory + details.fileread_offset);
+
+		m_blockreads = reinterpret_cast<BlockRead*>(memory + details.blockread_offset);
+
+		m_remainders = reinterpret_cast<RemainderBuffer*>(memory + details.remainder_offset);
+
+		m_pending_filedata_index_buffer = reinterpret_cast<u32*>(memory + details.pending_filedata_offset);
+
+		m_bytes_per_buffer = info.bytes_per_blockread;
+
+		m_max_blockreads_per_fileread = info.max_concurrent_blockread_count_per_fileread;
+
+		m_max_pending_filedata_count = info.max_pending_fileread_count;
+
+		m_blockread_freelist.init(m_blockreads, info.max_blockread_count);
+
+		m_fileread_freelist.init(m_filereads, info.max_fileread_count);
+
+		m_pending_filedata_queue.init();
+
+		for (u32 i = 0; i != info.max_blockread_count; ++i)
+			ASSERT_OR_EXIT(minos::event_create(&m_blockreads[i].overlapped.event));
+
+		return true;
+	}
+
+	FileData* request_filedata(u32 thread_id, Range<char8> filepath) noexcept
+	{
+		bool is_new;
+
+		FileData* const filedata = m_filemap.get_filedata(thread_id, filepath, is_new);
+
+		const u32 filedata_index = m_filemap.index_from(filedata);
+
+		if (!is_new)
+			return filedata;
+
+		FileRead* const fileread = m_fileread_freelist.pop(m_filereads);
+
+		if (fileread == nullptr)
+			ASSERT_OR_EXIT(m_pending_filedata_queue.enqueue(m_pending_filedata_index_buffer, m_max_pending_filedata_count, filedata_index));
+		else
+			initiate_fileread_for_filedata(filedata, filedata_index, fileread);
+
+		return filedata;
 	}
 };
-*/
 
 #pragma warning(pop)

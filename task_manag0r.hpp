@@ -4,7 +4,7 @@
 #include "common.hpp"
 #include "range.hpp"
 
-enum class TaskType
+enum class TaskType : u8
 {
 	NONE = 0,
 	Scan,
