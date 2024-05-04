@@ -47,7 +47,20 @@ struct Config
 	} memory;
 };
 
-bool read_config_from_file(const char8* config_filepath, Config* out) noexcept;
+struct ConfigParseError
+{
+	const char8* message;
+
+	u32 line;
+
+	u32 character;
+
+	u32 character_in_context;
+
+	char8 context[120];
+};
+
+bool read_config_from_file(const char8* config_filepath, ConfigParseError* out_error, Config* out) noexcept;
 
 
 #endif // CONFIG_INCLUDE_GUARD

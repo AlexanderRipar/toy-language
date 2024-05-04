@@ -86,22 +86,30 @@ static constexpr ConfigEntry config_template[] {
 
 
 
+struct ConfigParseState
+{
+	const char8* curr;
+
+	u32 line;
+
+	u32 character;
+
+	Config* config;
+
+	u32 context_stack_count;
+
+	ConfigEntry* context_stack[8];
+
+	ConfigEntry config_entries[array_count(config_template)];
+
+	ConfigParseError* error;
+
+	const char8* end;
+};
+
 static bool is_name_char(const char8 c) noexcept
 {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-';
-}
-
-static bool is_whitespace(const char8 c) noexcept
-{
-	return c == '\n' || c == '\r' || c == '\t' || c == ' ';
-}
-
-static const char8* skip_whitespace(const char8* c) noexcept
-{
-	while (is_whitespace(*c))
-		c += 1;
-	
-	return c;
 }
 
 static bool name_equal(const char8* curr, const char8* name, const char8** out_next) noexcept
@@ -129,58 +137,200 @@ static bool name_equal(const char8* curr, const char8* name, const char8** out_n
 	}
 }
 
-static ConfigEntry* lookup_name_element(const char8* curr, ConfigEntry* context, const char8** out_next) noexcept
+static bool parse_error(ConfigParseState* s, const char8* message) noexcept
 {
-	if (context->type != ConfigType::Container)
-		return nullptr;
+	static constexpr u32 MAX_PREV_COPY = 40;
 
-	ConfigEntry* children = context + 1;
+	static constexpr u32 MAX_CONTEXT = sizeof(s->error->context);
 
-	for (u32 i = 0; i != context->container_child_count; ++i)
+	static_assert(MAX_PREV_COPY < sizeof(s->error->context) / 2);
+
+	ConfigParseError* const error = s->error;
+
+	error->message = message;
+
+	error->line = s->line;
+
+	error->character = s->character;
+
+	const u32 adj_character = s->character - 1;
+
+	u32 prev_copy = adj_character;
+
+	u32 copy_offset = 0;
+
+	if (adj_character > MAX_PREV_COPY)
 	{
-		if (name_equal(curr, children[i].name, out_next))
-			return children + i;
+		prev_copy = MAX_PREV_COPY;
+
+		copy_offset = 4;
+
+		error->context[0] = '.';
+		error->context[1] = '.';
+		error->context[2] = '.';
+		error->context[3] = ' ';
+	}
+
+	error->character_in_context = prev_copy + copy_offset;
+
+	memcpy(error->context + copy_offset, s->curr - prev_copy, prev_copy);
+
+	u32 i = 0;
+
+	while (i + prev_copy + copy_offset < MAX_CONTEXT - 5)
+	{
+		const char8 c = s->curr[i];
+
+		if (c == '\0' || c == '\n' || (c == '\r' && s->curr[i + 1] == '\n'))
+		{
+			error->context[i + prev_copy + copy_offset] = '\0';
+
+			return false;
+		}
+
+		error->context[i + prev_copy + copy_offset] = c;
+
+		i += 1;
+	}
+
+	error->context[MAX_CONTEXT - 5] = ' ';
+	error->context[MAX_CONTEXT - 4] = '.';
+	error->context[MAX_CONTEXT - 3] = '.';
+	error->context[MAX_CONTEXT - 2] = '.';
+	error->context[MAX_CONTEXT - 1] = '\0';
+
+	return false;
+}
+
+static void advance(ConfigParseState* s) noexcept
+{
+	while (true)
+	{
+		const char8 c = *s->curr;
+
+		if (c == ' ' || c == '\t' || c == '\r')
+		{
+			s->curr += 1;
+
+			s->character += 1;
+		}
+		else if (c == '\n')
+		{
+			s->curr += 1;
+
+			s->character = 1;
+
+			s->line += 1;
+		}
+		else
+		{
+			break;
+		}
+	}
+}
+
+static bool is_at_name(const ConfigParseState* s)
+{
+	const char8 c = *s->curr;
+
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-';
+}
+
+static bool next_char_if(ConfigParseState* s, char8 c, bool skip_advance = false) noexcept
+{
+	if (*s->curr != c)
+		return false;
+
+	s->character += 1;
+
+	s->curr += 1;
+
+	if (!skip_advance)
+		advance(s);
+
+	return true;
+}
+
+static void reset_context(ConfigParseState* s) noexcept
+{
+	s->context_stack_count = 1;
+}
+
+static void pop_contexts(ConfigParseState* s, u32 count) noexcept
+{
+	ASSERT_OR_IGNORE(count < s->context_stack_count);
+
+	s->context_stack_count -= count;
+}
+
+static bool push_single_context(ConfigParseState* s) noexcept
+{
+	ConfigEntry* const parent = s->context_stack[s->context_stack_count - 1];
+
+	if (parent->type != ConfigType::Container)
+		return parse_error(s, "Expected value instead of key");
+
+	ConfigEntry* const children = parent + 1;
+
+	for (u32 i = 0; i != parent->container_child_count; ++i)
+	{
+		const char8* next;
+
+		if (name_equal(s->curr, children[i].name, &next))
+		{
+			s->character += static_cast<u32>(next - s->curr);
+
+			s->curr = next;
+
+			advance(s);
+
+			s->context_stack[s->context_stack_count] = children + i;
+
+			s->context_stack_count += 1;
+
+			return true;
+		}
 
 		if (children[i].type == ConfigType::Container)
 			i += children[i].container_child_count;
 	}
 
-	return nullptr;
+	return parse_error(s, "Unexpected key");
 }
 
-static ConfigEntry* lookup_composite_name(const char8* curr, ConfigEntry* context, const char8** out_next) noexcept
+static u32 push_contexts(ConfigParseState* s) noexcept
 {
-	ConfigEntry* e = lookup_name_element(curr, context, &curr);
+	if (!push_single_context(s))
+		return 0;
 
-	if (e == nullptr)
-		return false;
+	u32 push_count = 1;
 
-	curr = skip_whitespace(curr);
-
-	while (*curr == '.')
+	while (next_char_if(s, '.'))
 	{
-		curr = skip_whitespace(curr + 1);
+		if (!push_single_context(s))
+		{
+			pop_contexts(s, push_count);
 
-		e = lookup_name_element(curr, e, &curr);
+			return 0;
+		}
 
-		if (e == nullptr)
-			return false;
-
-		curr = skip_whitespace(curr);
+		push_count += 1;
 	}
 
-	*out_next = curr;
-
-	return e;
+	return push_count;
 }
 
-static bool parse_value(const char8* curr, ConfigEntry* context, Config* out, const char8** out_next) noexcept
+static bool parse_value(ConfigParseState* s) noexcept
 {
+	ConfigEntry* const context = s->context_stack[s->context_stack_count - 1];
+
 	if (context->type == ConfigType::Container)
-		return false;
+		return parse_error(s, "Cannot assign value to key not expecting a value");
 
 	if (context->seen)
 		return false;
+
+	const char8* curr = s->curr;
 
 	switch (context->type)
 	{
@@ -195,7 +345,7 @@ static bool parse_value(const char8* curr, ConfigEntry* context, Config* out, co
 				curr += 2;
 
 				if ((*curr < '0' || *curr > '9') && (*curr < 'a' || *curr > 'f') && (*curr < 'A' || *curr > 'F'))
-					return false;
+					return parse_error(s, "Integer needs at least one digit");
 
 				while (true)
 				{
@@ -216,7 +366,7 @@ static bool parse_value(const char8* curr, ConfigEntry* context, Config* out, co
 				curr += 2;
 
 				if (*curr < '0' || *curr > '7')
-					return false;
+					return parse_error(s, "Integer needs at least one digit");
 
 				while (*curr >= '0' || *curr <= '7')
 				{
@@ -230,7 +380,7 @@ static bool parse_value(const char8* curr, ConfigEntry* context, Config* out, co
 				curr += 2;
 
 				if (*curr != '0' && *curr != '1')
-					return false;
+					return parse_error(s, "Integer needs at least one digit");
 
 				while (*curr == '0' || *curr == '1')
 				{
@@ -245,7 +395,7 @@ static bool parse_value(const char8* curr, ConfigEntry* context, Config* out, co
 			}
 			else
 			{
-				return false;
+				return parse_error(s, "Integer may not contain leading zeroes");
 			}
 		}
 		else if (*curr >= '1' && *curr <= '9')
@@ -259,9 +409,13 @@ static bool parse_value(const char8* curr, ConfigEntry* context, Config* out, co
 		}
 
 		if (is_name_char(*curr))
-			return false;
+			return parse_error(s, "Integer value must be followed by whitespace");
 
-		*reinterpret_cast<u32*>(reinterpret_cast<byte*>(out) + context->offset) = value;
+		*reinterpret_cast<u32*>(reinterpret_cast<byte*>(s->config) + context->offset) = value;
+
+		s->character += static_cast<u32>(curr - s->curr);
+
+		s->curr = curr;
 
 		break;
 	}
@@ -280,7 +434,11 @@ static bool parse_value(const char8* curr, ConfigEntry* context, Config* out, co
 		if (is_name_char(*curr))
 			return false;
 
-		*reinterpret_cast<bool*>(reinterpret_cast<byte*>(out) + context->offset) = value;
+		*reinterpret_cast<bool*>(reinterpret_cast<byte*>(s->config) + context->offset) = value;
+
+		s->character += static_cast<u32>(curr - s->curr);
+
+		s->curr = curr;
 
 		break;
 	}
@@ -291,7 +449,7 @@ static bool parse_value(const char8* curr, ConfigEntry* context, Config* out, co
 
 		// @TODO: Implement string parsing
 
-		return false;
+		return parse_error(s, "Strings are not currently supported");
 	}
 
 	default:
@@ -300,56 +458,53 @@ static bool parse_value(const char8* curr, ConfigEntry* context, Config* out, co
 
 	context->seen = true;
 
-	*out_next = skip_whitespace(curr);
+	advance(s);
 
 	return true;
 }
 
-static bool parse_inline_table(const char8* curr, ConfigEntry* context, Config* out, const char8** out_next) noexcept
+static bool parse_inline_table(ConfigParseState* s) noexcept
 {
-	if (context->type != ConfigType::Container)
-		return false;
+	if (s->context_stack[s->context_stack_count - 1]->type != ConfigType::Container)
+		return parse_error(s, "Cannot assign an Inline Table to a key expecting a value");
 
 	while (true)
 	{
-		if (!is_name_char(*curr))
+		const u32 pushed_count = push_contexts(s);
+
+		if (pushed_count == 0)
 			return false;
 
-		ConfigEntry* child = lookup_composite_name(curr, context, &curr);
+		if (!next_char_if(s, '='))
+			return parse_error(s, "Expected '=' after key");
 
-		if (child == nullptr)
-			return false;
-
-		if (*curr != '=')
-			return false;
-
-		curr = skip_whitespace(curr + 1);
-
-		if (*curr == '{')
+		if (next_char_if(s, '{'))
 		{
-			curr = skip_whitespace(curr + 1);
-
-			if (!parse_inline_table(curr, child, out, &curr))
+			if (!parse_inline_table(s))
 				return false;
 		}
 		else
 		{
-			if (!parse_value(curr, child, out, &curr))
+			if (!parse_value(s))
 				return false;
 		}
 
-		if (*curr == '}')
-			break;
-		else if (*curr != ',')
-			return false;
+		pop_contexts(s, pushed_count);
 
-		curr = skip_whitespace(curr + 1);
+		if (next_char_if(s, '}'))
+			return true;
+
+		if (!next_char_if(s, ','))
+			return parse_error(s, "Expected '}' or ',' after key-value pair in Inline Table");
 	}
-
-	*out_next = skip_whitespace(curr + 1);
-
-	return true;
 }
+
+static bool is_at_end(const ConfigParseState* s) noexcept
+{
+	return *s->curr == '\0' && s->curr == s->end;
+}
+
+
 
 static void set_config_defaults(MutRange<ConfigEntry> entries, Config* out) noexcept
 {
@@ -392,101 +547,114 @@ static bool validate_config(const Config* config) noexcept
 	return true;
 }
 
-static bool parse_config(const char8* config, Config* out) noexcept
+static bool parse_config(const char8* config_string, u32 config_string_chars, ConfigParseError* out_error, Config* out) noexcept
 {
 	memset(out, 0, sizeof(*out));
 
-	const char8* curr = skip_whitespace(config);
+	ConfigParseState state;
+	state.curr = config_string;
+	state.line = 1;
+	state.character = 1;
+	state.config = out;
+	state.context_stack_count = 1;
+	state.context_stack[0] = state.config_entries;
+	memcpy(state.config_entries, config_template, sizeof(config_template));
+	state.error = out_error;
+	state.end = config_string + config_string_chars;
 
-	ConfigEntry config_copy[array_count(config_template)];
+	ConfigParseState* const s = &state;
 
-	memcpy(config_copy, config_template, sizeof(config_copy));
-
-	ConfigEntry* const root_context = config_copy;
-
-	ConfigEntry* context = root_context;
+	advance(s);
 
 	while (true)
 	{
-		if (*curr == '[')
+		if (next_char_if(s, '[', true))
 		{
-			if (curr[1] == '[')
+			if (next_char_if(s, '['))
 			{
-				return false;
+				return parse_error(s, "Arrays of Tables are not currently supported");
 			}
 			else
 			{
-				curr = skip_whitespace(curr + 1);
+				advance(s);
 
-				context = lookup_composite_name(curr, root_context, &curr);
+				reset_context(s);
 
-				if (context == nullptr)
+				if (push_contexts(s) == 0)
 					return false;
 
-				if (*curr != ']')
-					return false;
-
-				curr += 1;
+				if (!next_char_if(s, ']'))
+					return parse_error(s, "Expected ']' at end of Table definition");
 			}
 		}
-		else if (is_name_char(*curr))
+		else if (is_at_name(s))
 		{
-			ConfigEntry* const child = lookup_composite_name(curr, context, &curr);
-
-			if (child == nullptr)
+			const u32 pushed_count = push_contexts(s);
+			
+			if (pushed_count == 0)
 				return false;
 
-			if (*curr != '=')
-				return false;
+			if (!next_char_if(s, '='))
+				return parse_error(s, "Expected '=' after key");
 
-			curr = skip_whitespace(curr + 1);
-
-			if (*curr == '{')
+			if (next_char_if(s, '{'))
 			{
-				curr = skip_whitespace(curr + 1);
-
-				if (!parse_inline_table(curr, child, out, &curr))
+				if (!parse_inline_table(s))
 					return false;
 			}
-			else if (*curr == '[')
+			else if (next_char_if(s, '['))
 			{
-				return false;
+				return parse_error(s, "Arrays are not currently supported");
 			}
 			else
 			{
-				if (!parse_value(curr, child, out, &curr))
+				if (!parse_value(s))
 					return false;
 			}
+
+			pop_contexts(s, pushed_count);
 		}
-		else if (*curr == '\0')
+		else if (is_at_end(s))
 		{
 			break;
 		}
 		else
 		{
-			return false;
+			return parse_error(s, "Unexpected character");
 		}
 	}
 
-	set_config_defaults(MutRange{ config_copy }, out);
+	set_config_defaults(MutRange{ state.config_entries }, out);
 
 	return validate_config(out);
 }
 
-bool read_config_from_file(const char8* config_filepath, Config* out) noexcept
+bool read_config_from_file(const char8* config_filepath, ConfigParseError* out_error, Config* out) noexcept
 {
 	minos::FileHandle filehandle;
 
 	if (!minos::file_create(range_from_cstring(config_filepath), minos::Access::Read, minos::CreateMode::Open, minos::AccessPattern::Sequential, &filehandle))
+	{
+		*out_error = { "Could not open file", 0, 0 };
+
 		return false;
+	}
 
 	minos::FileInfo fileinfo;
 
 	if (!minos::file_get_info(filehandle, &fileinfo))
+	{
+		*out_error = { "Could not determine file length", 0, 0 };
+
 		return false;
+	}
 
 	if (fileinfo.file_bytes > UINT32_MAX)
+	{
+		*out_error = { "Config file exceeds the maximum size of 4GB", 0, 0 };
+
 		return false;
+	}
 
 	char8 stack_buffer[8192];
 
@@ -497,11 +665,17 @@ bool read_config_from_file(const char8* config_filepath, Config* out) noexcept
 		buffer = static_cast<char8*>(minos::reserve(fileinfo.file_bytes));
 
 		if (buffer == nullptr)
+		{
+			*out_error = { "Failed to allocate buffer", 0, 0 };
+
 			return false;
+		}
 
 		if (!minos::commit(buffer, fileinfo.file_bytes))
 		{
 			minos::unreserve(buffer);
+
+			*out_error = { "Failed to allocate buffer", 0, 0 };
 
 			return false;
 		}
@@ -514,16 +688,24 @@ bool read_config_from_file(const char8* config_filepath, Config* out) noexcept
 	minos::Overlapped overlapped{};
 
 	if (!minos::file_read(filehandle, buffer, static_cast<u32>(fileinfo.file_bytes), &overlapped))
+	{
+		*out_error = { "Could not read config file", 0, 0 };
+
 		return false;
+	}
 
 	if (!minos::overlapped_wait(filehandle, &overlapped))
+	{
+		*out_error = { "Could not read config file", 0, 0 };
+
 		return false;
+	}
 
 	minos::file_close(filehandle);
 
 	buffer[fileinfo.file_bytes] = '\0';
 
-	const bool parse_ok = parse_config(buffer, out);
+	const bool parse_ok = parse_config(buffer, static_cast<u32>(fileinfo.file_bytes), out_error, out);
 
 	if (buffer != stack_buffer)
 		minos::unreserve(buffer);

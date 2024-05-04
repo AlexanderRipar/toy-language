@@ -23,8 +23,14 @@ s32 main(s32 argc, const char8** argv)
 	{
 		Config config;
 
-		if (!read_config_from_file(argv[2], &config))
+		ConfigParseError error;
+
+		if (!read_config_from_file(argv[2], &error, &config))
+		{
+			fprintf(stderr, "[%s:%u:%u] %s:\n    %s\n    %*s^\n", argv[2], error.line, error.character, error.message, error.context, error.character_in_context, "");
+
 			return EXIT_FAILURE;
+		}
 
 		fprintf(stdout,
 			"entrypoint = {\n"
