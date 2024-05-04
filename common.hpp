@@ -22,12 +22,6 @@ using char16 = wchar_t;
 using uint = u64;
 using sint = s64;
 
-template<typename T, uint COUNT>
-inline constexpr uint array_count([[maybe_unused]] const T(&arr)[COUNT]) noexcept
-{
-	return COUNT;
-}
-
 template<typename T>
 inline T assert_value_helper(T t) noexcept
 {
@@ -71,6 +65,19 @@ template<typename T>
 static constexpr inline T next_multiple(T n, T factor) noexcept
 {
 	return ((n + factor - 1) / factor) * factor;
+}
+
+template<typename T, uint COUNT>
+inline constexpr uint array_count([[maybe_unused]] const T(&arr)[COUNT]) noexcept
+{
+	return COUNT;
+}
+
+inline u64 align_to(u64 n, u64 alignment) noexcept
+{
+	ASSERT_OR_IGNORE(is_pow2(alignment));
+
+	return (n + alignment - 1) & ~(alignment - 1);
 }
 
 #endif // COMMON_INCLUDE_GUARD
