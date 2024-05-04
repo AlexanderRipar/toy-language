@@ -2,7 +2,6 @@
 #define RANGE_INCLUDE_GUARD
 
 #include "common.hpp"
-#include <cassert>
 
 template<typename T>
 struct Range
@@ -59,6 +58,16 @@ template<typename T>
 static inline Range<byte> byte_range_from(const T* t) noexcept
 {
 	return { reinterpret_cast<const byte*>(t), sizeof(T) };
+}
+
+static inline Range<char8> range_from_cstring(const char8* str) noexcept
+{
+	u64 len = 0;
+
+	while (str[len] != '\0')
+		++len;
+
+	return { str, len };
 }
 
 template<typename T>
