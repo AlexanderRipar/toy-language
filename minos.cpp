@@ -53,9 +53,9 @@ bool minos::commit(void* ptr, u64 bytes) noexcept
 	return VirtualAlloc(ptr, bytes, MEM_COMMIT, PAGE_READWRITE) != nullptr;
 }
 
-bool minos::unreserve(void* ptr) noexcept
+void minos::unreserve(void* ptr) noexcept
 {
-	return VirtualFree(ptr, 0, MEM_RELEASE);
+	ASSERT_OR_EXIT(VirtualFree(ptr, 0, MEM_RELEASE) != 0);
 }
 
 u32 minos::page_bytes() noexcept

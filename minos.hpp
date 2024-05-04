@@ -77,7 +77,7 @@ namespace minos
 
 	bool commit(void* ptr, u64 bytes) noexcept;
 
-	bool unreserve(void* ptr) noexcept;
+	void unreserve(void* ptr) noexcept;
 
 	u32 page_bytes() noexcept;
 

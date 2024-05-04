@@ -1184,7 +1184,7 @@ namespace map_tests
 
 			CHECK_EQ(map.init(info, memory), true, "ThreadsafeMap.init succeeds with medium parameters");
 
-			CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
+			minos::unreserve(memory);
 		}
 
 		static void success_on_small() noexcept
@@ -1208,7 +1208,7 @@ namespace map_tests
 
 			CHECK_EQ(map.init(info, memory), true, "ThreadsafeMap.init succeeds with small parameters");
 
-			CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
+			minos::unreserve(memory);
 		}
 
 		static void success_on_large() noexcept
@@ -1232,7 +1232,7 @@ namespace map_tests
 
 			CHECK_EQ(map.init(info, memory), true, "ThreadsafeMap.init succeeds with large parameters");
 
-			CHECK_EQ(minos::unreserve(memory), true, "MemoryRegion.deinit succeeds after successful initialization");
+			minos::unreserve(memory);
 		}
 	}
 
@@ -1279,7 +1279,7 @@ namespace map_tests
 
 				CHECK_EQ(is_new2, false, "ThreadsafeMap.value_from sets *opt_is_new to false on the insertion of pre-existing key");
 
-				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
+				minos::unreserve(memory);
 			}
 
 			static void insert_multiple() noexcept
@@ -1298,7 +1298,7 @@ namespace map_tests
 
 				run_on_threads_and_wait(1, insert_thread_proc<u32, FixedSizeValue>, &args);
 
-				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
+				minos::unreserve(memory);
 			}
 		}
 
@@ -1320,7 +1320,7 @@ namespace map_tests
 
 				run_on_threads_and_wait(1, insert_thread_proc<Range<char8>, VariableSizeValue>, &args);
 
-				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
+				minos::unreserve(memory);
 			}
 
 			static void insert_multiple() noexcept
@@ -1339,7 +1339,7 @@ namespace map_tests
 
 				run_on_threads_and_wait(1, insert_thread_proc<Range<char8>, VariableSizeValue>, &args);
 
-				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
+				minos::unreserve(memory);
 			}
 		}
 	}
@@ -1364,7 +1364,7 @@ namespace map_tests
 
 				run_on_threads_and_wait(16, insert_thread_proc<u32, FixedSizeValue>, &args);
 
-				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
+				minos::unreserve(memory);
 			}
 
 			static void insert_overlap() noexcept
@@ -1385,7 +1385,7 @@ namespace map_tests
 				// @TODO: It also sometimes fails the assert that *out_is_new is set to false on reinsertion.
 				run_on_threads_and_wait(16, insert_thread_proc<u32, FixedSizeValue>, &args);
 
-				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
+				minos::unreserve(memory);
 			}
 		}
 
@@ -1407,7 +1407,7 @@ namespace map_tests
 
 				run_on_threads_and_wait(16, insert_thread_proc<Range<char8>, VariableSizeValue>, &args);
 
-				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
+				minos::unreserve(memory);
 			}
 
 			static void insert_overlap() noexcept
@@ -1426,7 +1426,7 @@ namespace map_tests
 
 				run_on_threads_and_wait(16, insert_thread_proc<Range<char8>, VariableSizeValue>, &args);
 
-				CHECK_EQ(minos::unreserve(memory), true, "minos::unreserve succeeds on pointer received from minos::reserve");
+				minos::unreserve(memory);
 			}
 		}
 	}
