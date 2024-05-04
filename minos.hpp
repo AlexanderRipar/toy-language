@@ -45,6 +45,11 @@ namespace minos
 	{
 		void* m_rep;
 	};
+
+	struct CompletionHandle
+	{
+		void* m_rep;
+	};
 	
 	struct FileIdentity
 	{
@@ -69,6 +74,15 @@ namespace minos
 		u64 offset;
 
 		EventHandle event;
+	};
+
+	struct CompletionResult
+	{
+		u64 key;
+
+		Overlapped* overlapped;
+
+		u32 bytes;
 	};
 
 	static constexpr u32 CACHELINE_BYTES = 64;
@@ -116,6 +130,14 @@ namespace minos
 	void event_wake(EventHandle handle) noexcept;
 
 	void event_wait(EventHandle handle) noexcept;
+
+	bool completion_create(CompletionHandle* out) noexcept;
+
+	void completion_close(CompletionHandle handle) noexcept;
+
+	void completion_associate_file(CompletionHandle completion, FileHandle file, u64 key) noexcept;
+
+	bool completion_wait(CompletionHandle completion, CompletionResult* out) noexcept;
 
 	void sleep(u32 milliseconds) noexcept;
 }

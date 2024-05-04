@@ -313,6 +313,38 @@ void minos::event_wait(EventHandle handle) noexcept
 	ASSERT_OR_EXIT(WaitForSingleObject(handle.m_rep, INFINITE) == 0);
 }
 
+bool minos::completion_create(CompletionHandle* out) noexcept
+{
+	HANDLE handle = CreateIoCompletionPort(nullptr, nullptr, 0, 1);
+
+	if (handle == nullptr)
+		return false;
+
+	out->m_rep = handle;
+
+	return true;
+}
+
+void minos::completion_close(CompletionHandle handle) noexcept
+{
+	ASSERT_OR_EXIT(CloseHandle(handle.m_rep));
+}
+
+void minos::completion_associate_file(CompletionHandle completion, FileHandle file, u64 key) noexcept
+{
+	ASSERT_OR_EXIT(CreateIoCompletionPort(file.m_rep, completion.m_rep, key, 0) != nullptr);
+}
+
+bool minos::completion_wait(CompletionHandle completion, CompletionResult* out) noexcept
+{
+	return GetQueuedCompletionStatus(
+			completion.m_rep,
+			reinterpret_cast<DWORD*>(&out->bytes),
+			reinterpret_cast<ULONG_PTR*>(&out->key),
+			reinterpret_cast<OVERLAPPED**>(&out->overlapped), INFINITE
+	);
+}
+
 void minos::sleep(u32 milliseconds) noexcept
 {
 	Sleep(milliseconds);
