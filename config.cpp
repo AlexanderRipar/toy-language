@@ -1,401 +1,532 @@
 #include "config.hpp"
 
-#include <cstdio>
-#include <cassert>
+#include "common.hpp"
+#include "minos.hpp"
+#include <cstddef>
+#include <type_traits>
 #include <cstring>
 
-static config::Config g_config;
-
-enum class ArgType
+enum class ConfigType : u8
 {
 	NONE = 0,
-	Bool,
-	U32,
+	Container,
+	Integer,
+	Boolean,
 	String,
 };
 
-struct ArgDesc
+struct ConfigEntry
 {
-	ArgType type;
+	ConfigType type;
 
-	bool found;
+	bool seen;
 
-	const char* name;
+	u32 offset;
+
+	const char8* name;
 
 	union
 	{
-		struct
-		{
-			bool* target;
+		u32 container_child_count;
 
-			bool default_value;
-		} bool_data;
+		u32 integer_default;
 
-		struct
-		{
-			u32* target;
+		bool boolean_default;
 
-			u32 default_value;
-
-			u32 min_value;
-
-			u32 max_value;
-		} u32_data;
-
-		struct
-		{
-			const char8** target;
-
-			const char8* default_value;
-		} string_data;
+		const char8* string_default;
 	};
 
-	ArgDesc(const char8* name, const char8** target, const char8* default_value) noexcept
-		: type{ ArgType::String }, found{ false }, name{ name }, string_data{ target, default_value } {}
+	ConfigEntry() noexcept = default;
 
-	ArgDesc(const char8* name, u32* target, u32 default_value, u32 min_value, u32 max_value) noexcept
-		: type{ ArgType::U32 }, found{ false }, name{ name }, u32_data{ target, default_value, min_value, max_value } {}
+	constexpr ConfigEntry(ConfigType type, u32 offset, const char8* name, u32 default_value_or_child_count)
+		: type{ type }, seen{ false }, offset{ offset }, name{ name }, integer_default{ default_value_or_child_count } {}
 
-	ArgDesc(const char8* name, bool* target, bool default_value) noexcept
-		: type{ ArgType::Bool }, found{ false }, name{ name }, bool_data{ target, default_value } {}
+	constexpr ConfigEntry(ConfigType type, u32 offset, const char8* name, bool default_value)
+		: type{ type }, seen{ false }, offset{ offset }, name{ name }, boolean_default{ default_value } {}
+
+	constexpr ConfigEntry(ConfigType type, u32 offset, const char8* name, const char8* default_value)
+		: type{ type }, seen{ false }, offset{ offset }, name{ name }, string_default{ default_value } {}
 };
 
-static void print_usage(const char8* invocation, u32 desc_count, const ArgDesc* descs) noexcept
+#define CONFIG_CONTAINER(name, member, parent_type, child_count) \
+	ConfigEntry{ ConfigType::Container, static_cast<u32>(offsetof(parent_type, member)), name, child_count }
+
+#define CONFIG_INTEGER(name, member, parent_type, default_value) \
+	ConfigEntry{ ConfigType::Integer, static_cast<u32>(offsetof(parent_type, member)), name, default_value }
+
+#define CONFIG_BOOLEAN(name, member, parent_type, default_value) \
+	ConfigEntry{ ConfigType::Boolean, static_cast<u32>(offsetof(parent_type, member)), name, default_value }
+
+#define CONFIG_STRING(name, member, parent_type, default_value) \
+	ConfigEntry{ ConfigType::String, static_cast<u32>(offsetof(parent_type, member)), name, default_value }
+
+
+
+static constexpr ConfigEntry config_template[] {
+	ConfigEntry{ ConfigType::Container, 0, nullptr, 18u },
+	CONFIG_CONTAINER("entrypoint", entrypoint, Config, 2u ),
+		CONFIG_STRING("filepath", entrypoint.filepath, Config, nullptr),
+		CONFIG_STRING("symbol", entrypoint.symbol, Config, nullptr),
+	CONFIG_CONTAINER("input", input, Config, 5u),
+		CONFIG_INTEGER("bytes-per-read", input.bytes_per_read, Config, 65'536u),
+		CONFIG_INTEGER("max-concurrent-reads", input.max_concurrent_reads, Config, 16u),
+		CONFIG_INTEGER("max-concurrent-files", input.max_concurrent_files, Config, 8u),
+		CONFIG_INTEGER("max-concurrent-reads-per-file", input.max_concurrent_reads_per_file, Config, 2u),
+		CONFIG_INTEGER("max-pending-files", input.max_pending_files, Config, 4096u),
+	CONFIG_CONTAINER("memory", memory, Config, 8u),
+		CONFIG_CONTAINER("files", memory.files, Config, 7u),
+			CONFIG_INTEGER("reserve", memory.files.reserve, Config, 4096u),
+			CONFIG_INTEGER("initial-commit", memory.files.initial_commit, Config, 4096u),
+			CONFIG_INTEGER("commit-increment", memory.files.commit_increment, Config, 4096u),
+			CONFIG_CONTAINER("lookup", memory.files.lookup, Config, 3u),
+				CONFIG_INTEGER("reserve", memory.files.lookup.reserve, Config, 4096u),
+				CONFIG_INTEGER("initial-commit", memory.files.lookup.initial_commit, Config, 4096u),
+				CONFIG_INTEGER("commit-increment", memory.files.lookup.commit_increment, Config, 4096u),
+};
+
+
+
+static bool is_name_char(const char8 c) noexcept
 {
-	fprintf(stderr, "Usage: %s", invocation);
-
-	for (u32 i = 0; i != desc_count; ++i)
-	{
-		fprintf(stderr, " [--%s", descs[i].name);
-
-		switch (descs[i].type)
-		{
-		case ArgType::Bool:
-			fprintf(stderr, "[=(true|false)]]");
-			break;
-
-		case ArgType::U32:
-			fprintf(stderr, "=(%u..%u)]", descs[i].u32_data.min_value, descs[i].u32_data.max_value);
-			break;
-
-		case ArgType::String:
-			fprintf(stderr, "=value]");
-			break;
-
-		default:
-			fprintf(stderr, "=???]");
-			break;
-		}
-	}
-
-	fprintf(stderr, " input-files ...\n");
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-';
 }
 
-static const char8* arg_get_param(const char8* arg, const ArgDesc* desc) noexcept
+static bool is_whitespace(const char8 c) noexcept
 {
-	const char8* name = desc->name;
+	return c == '\n' || c == '\r' || c == '\t' || c == ' ';
+}
 
-	while (*name != '\0')
+static const char8* skip_whitespace(const char8* c) noexcept
+{
+	while (is_whitespace(*c))
+		c += 1;
+	
+	return c;
+}
+
+static bool name_equal(const char8* curr, const char8* name, const char8** out_next) noexcept
+{
+	u32 i = 0;
+
+	while (true)
 	{
-		if (*arg != *name)
-			return nullptr;
+		const char8 c = curr[i];
 
-		arg += 1;
+		if (!is_name_char(c))
+		{
+			if (name[i] != '\0')
+				return false;
 
-		name += 1;
+			*out_next = curr + i;
+
+			return true;
+		}
+
+		if (c != name[i])
+			return false;
+
+		i += 1;
 	}
+}
 
-	if (*arg == '=')
-		return arg + 1;
+static ConfigEntry* lookup_name_element(const char8* curr, ConfigEntry* context, const char8** out_next) noexcept
+{
+	if (context->type != ConfigType::Container)
+		return nullptr;
 
-	if (*arg == '\0' && desc->type == ArgType::Bool)
-		return arg;
+	ConfigEntry* children = context + 1;
+
+	for (u32 i = 0; i != context->container_child_count; ++i)
+	{
+		if (name_equal(curr, children[i].name, out_next))
+			return children + i;
+
+		if (children[i].type == ConfigType::Container)
+			i += children[i].container_child_count;
+	}
 
 	return nullptr;
 }
 
-static bool parse_u32(const char8* text, u32* out) noexcept
+static ConfigEntry* lookup_composite_name(const char8* curr, ConfigEntry* context, const char8** out_next) noexcept
 {
-	u32 value = 0;
+	ConfigEntry* e = lookup_name_element(curr, context, &curr);
 
-	if (*text == '\0')
-	{
+	if (e == nullptr)
 		return false;
-	}
-	else if (*text == '0')
+
+	curr = skip_whitespace(curr);
+
+	while (*curr == '.')
 	{
-		text += 1;
+		curr = skip_whitespace(curr + 1);
 
-		if (*text == 'x')
-		{
-			text += 1;
+		e = lookup_name_element(curr, e, &curr);
 
-			if (*text == '\0')
-				return false;
+		if (e == nullptr)
+			return false;
 
-			while (*text != '\0')
-			{
-				if (*text >= '0' && *text <= '9')
-					value = value * 16 + *text - '0';
-				else if (*text >= 'a' && *text <= 'f')
-					value = value * 16 + *text - 'a';
-				else if (*text >= 'A' && *text <= 'F')
-					value = value * 16 + *text - 'A';
-				else
-					return false;
-
-				text += 1;
-			}
-
-			*out = value;
-
-			return true;
-		}
-		else if (*text == 'b')
-		{
-			text += 1;
-
-			if (*text == '\0')
-				return false;
-
-			while(*text != '\0')
-			{
-				if (*text >= '0' && *text <= '1')
-					value = value * 2 + *text - '0';
-				else
-					return false;
-
-				text += 1;
-			}
-
-			*out = value;
-
-			return true;
-		}
-		else if (*text == 'o')
-		{
-			text += 1;
-
-			if (*text == '\0')
-				return false;
-
-			while (*text != '\0')
-			{
-				if (*text >= '0' && *text <= '7')
-					value = value * 8 + *text - '0';
-				else
-					return false;
-
-				text += 1;
-			}
-
-			*out = value;
-
-			return true;
-		}
+		curr = skip_whitespace(curr);
 	}
 
-	while (*text != '\0')
+	*out_next = curr;
+
+	return e;
+}
+
+static bool parse_value(const char8* curr, ConfigEntry* context, Config* out, const char8** out_next) noexcept
+{
+	if (context->type == ConfigType::Container)
+		return false;
+
+	if (context->seen)
+		return false;
+
+	switch (context->type)
 	{
-		if (*text >= '0' && *text <= '9')
-			value = value * 10 + *text - '0';
+	case ConfigType::Integer:
+	{
+		u32 value = 0;
+
+		if (*curr == '0')
+		{
+			if (curr[1] == 'x')
+			{
+				curr += 2;
+
+				if ((*curr < '0' || *curr > '9') && (*curr < 'a' || *curr > 'f') && (*curr < 'A' || *curr > 'F'))
+					return false;
+
+				while (true)
+				{
+					if (*curr >= '0' && *curr <= '9')
+						value = value * 16 + *curr - '0';
+					else if (*curr >= 'a' && *curr <= 'f')
+						value = value * 16 + *curr - 'a' + 10;
+					else if (*curr >= 'A' && *curr <= 'F')
+						value = value * 16 + *curr - 'A' + 10;
+					else
+						break;
+
+					curr += 1;
+				}
+			}
+			else if (curr[1] == 'o')
+			{
+				curr += 2;
+
+				if (*curr < '0' || *curr > '7')
+					return false;
+
+				while (*curr >= '0' || *curr <= '7')
+				{
+					value = value * 8 + *curr - '0';
+
+					curr += 1;
+				}
+			}
+			else if (curr[1] == 'b')
+			{
+				curr += 2;
+
+				if (*curr != '0' && *curr != '1')
+					return false;
+
+				while (*curr == '0' || *curr == '1')
+				{
+					value = value * 2 + *curr - '0';
+
+					curr += 1;
+				}
+			}
+			else if (curr[1] < '0' || curr[1] > '9')
+			{
+				curr += 1;
+			}
+			else
+			{
+				return false;
+			}
+		}
+		else if (*curr >= '1' && *curr <= '9')
+		{
+			while (*curr >= '0' && *curr <= '9')
+			{
+				value = value * 10 + *curr - '0';
+
+				curr += 1;
+			}
+		}
+
+		if (is_name_char(*curr))
+			return false;
+
+		*reinterpret_cast<u32*>(reinterpret_cast<byte*>(out) + context->offset) = value;
+
+		break;
+	}
+
+	case ConfigType::Boolean:
+	{
+		bool value;
+
+		if (name_equal(curr, "true", &curr))
+			value = true;
+		else if (name_equal(curr, "false", &curr))
+			value = false;
 		else
 			return false;
 
-		text += 1;
+		if (is_name_char(*curr))
+			return false;
+
+		*reinterpret_cast<bool*>(reinterpret_cast<byte*>(out) + context->offset) = value;
+
+		break;
 	}
 
-	*out = value;
+	case ConfigType::String:
+	{
+		Range<char8> value;
+
+		// @TODO: Implement string parsing
+
+		return false;
+	}
+
+	default:
+		ASSERT_UNREACHABLE;
+	}
+
+	context->seen = true;
+
+	*out_next = skip_whitespace(curr);
 
 	return true;
 }
 
-bool config::init(u32 argc, const char8** argv) noexcept
+static bool parse_inline_table(const char8* curr, ConfigEntry* context, Config* out, const char8** out_next) noexcept
 {
-	const u32 logical_processor_count = minos::logical_processor_count();
-
-	ArgDesc descs[] {
-		{ "worker-thread-count",                &g_config.base.worker_thread_count,               logical_processor_count, 1,      1024         },
-		{ "max-string-length",                  &g_config.base.max_string_length,                  256,                    4096,   65536        },
-		{ "max-concurrent-read-count",          &g_config.read.max_concurrent_read_count,          16,                     1,      65536        },
-		{ "max-concurrent-read-count-per-file", &g_config.read.max_concurrent_read_count_per_file, 4,                      1,      512          },
-		{ "max-concurrent-file-read-count",     &g_config.read.max_concurrent_file_read_count,     1,                      0x80,   4096         },
-		{ "bytes-per-read",                     &g_config.read.bytes_per_read,                     0x1'0000,               0x1000, 0x8000'0000  },
-		{ "file-max-count",                     &g_config.mem.file_max_count,                      0x100'0000,             0x100,  0x4000'0000  },
-		{ "file-commit-increment-count",        &g_config.mem.file_commit_increment_count,         0x8'0000,               0x100,  0x100'0000   },
-		{ "file-initial-commit-count",          &g_config.mem.file_initial_commit_count,           0x20'0000,              0x100,  0x100'0000   },
-		{ "file-initial-lookup-count",          &g_config.mem.file_initial_lookup_count,           0x1000,                 0x40,   0x100'0000   },
-	};
-
-	const char8* invocation = argv[0];
-
-	for (const char8* c = invocation; *c != '\0'; ++c)
-	{
-		if (*c == '\\')
-			invocation = c + 1;
-	}
-
-	if (argc == 1)
-	{
-		print_usage(invocation, static_cast<u32>(array_count(descs)), descs);
-
-		fprintf(stderr, "Use \"%s --help\" for more details", invocation);
-
+	if (context->type != ConfigType::Container)
 		return false;
-	}
 
-	u32 argind = 1;
-
-	while (argind != argc)
+	while (true)
 	{
-		const char8* const arg = argv[argind];
-
-		if (arg[0] != '-' || arg[1] != '-')
-			break;
-
-		ArgDesc* desc = nullptr;
-
-		const char8* arg_param = nullptr;
-
-		for (u32 i = 0; i != array_count(descs); ++i)
-		{
-			arg_param = arg_get_param(arg + 2, &descs[i]);
-
-			if (arg_param != nullptr)
-			{
-				desc = &descs[i];
-
-				break;
-			}
-		}
-
-		if (desc == nullptr)
-		{
-			fprintf(stderr, "Unknown option %s.\n", arg);
-
-			print_usage(invocation, static_cast<u32>(array_count(descs)), descs);
-
+		if (!is_name_char(*curr))
 			return false;
-		}
 
-		if (desc->found)
-		{
-			fprintf(stderr, "More than one value specified for option --%s.\n", desc->name);
+		ConfigEntry* child = lookup_composite_name(curr, context, &curr);
 
+		if (child == nullptr)
 			return false;
-		}
 
-		desc->found = true;
+		if (*curr != '=')
+			return false;
 
-		switch (desc->type)
+		curr = skip_whitespace(curr + 1);
+
+		if (*curr == '{')
 		{
-		case ArgType::Bool: {
+			curr = skip_whitespace(curr + 1);
 
-			if (*arg_param == '\0' || strcmp(arg_param, "true") == 0)
-			{
-				*desc->bool_data.target = true;
-			}
-			else if (strcmp(arg_param, "false") == 0)
-			{
-				*desc->bool_data.target = false;
-			}
-			else
-			{
-				fprintf(stderr, "Invalid value '%s' supplied for option --%s. Expected no value, 'true' or 'false'.", arg_param, desc->name);
-
+			if (!parse_inline_table(curr, child, out, &curr))
 				return false;
-			}
+		}
+		else
+		{
+			if (!parse_value(curr, child, out, &curr))
+				return false;
+		}
 
+		if (*curr == '}')
 			break;
-		}
+		else if (*curr != ',')
+			return false;
 
-		case ArgType::U32: {
-
-			u32 arg_value;
-
-			if (!parse_u32(arg_param, &arg_value))
-			{
-				fprintf(stderr, "Invalid value '%s' supplied for option --%s. Expected numeric value.", arg_param, desc->name);
-
-				return false;
-			}
-			else if (arg_value < desc->u32_data.min_value)
-			{
-				fprintf(stderr, "The value '%s' (%u) supplied for option --%s is too small. Expected numeric value from '%u' to '%u'", arg_param, arg_value, desc->name, desc->u32_data.min_value, desc->u32_data.max_value);
-
-				return false;
-			}
-			else if (arg_value > desc->u32_data.max_value)
-			{
-				fprintf(stderr, "The value '%s' (%u) supplied for option --%s is too large. Expected numeric value from '%u' to '%u'", arg_param, arg_value, desc->name, desc->u32_data.min_value, desc->u32_data.max_value);
-
-				return false;
-			}
-
-			*desc->u32_data.target = arg_value;
-
-			break;
-		}
-
-		case ArgType::String: {
-
-			*desc->string_data.target = arg_param;
-
-			break;
-		}
-
-		default: {
-
-			ASSERT_UNREACHABLE;
-		}
-		}
-
-		argind += 1;
+		curr = skip_whitespace(curr + 1);
 	}
 
-	if (argind == argc)
+	*out_next = skip_whitespace(curr + 1);
+
+	return true;
+}
+
+static void set_config_defaults(MutRange<ConfigEntry> entries, Config* out) noexcept
+{
+	for (ConfigEntry& entry : entries)
 	{
-		fprintf(stderr, "No files to be compiled specified.\n");
-
-		print_usage(invocation, static_cast<u32>(array_count(descs)), descs);
-
-		return false;
-	}
-
-	g_config.input.initial_input_file_count = argc - argind;
-
-	g_config.input.initial_input_files = &argv[argind];
-
-	for (u32 i = 0; i != array_count(descs); ++i)
-	{
-		if (descs[i].found)
+		if (entry.seen)
 			continue;
 
-		switch (descs[i].type)
+		void* const target = reinterpret_cast<byte*>(out) + entry.offset;
+
+		switch (entry.type)
 		{
-		case ArgType::Bool:
-			*descs[i].bool_data.target = descs[i].bool_data.default_value;
+		case ConfigType::Container:
+			continue;
+
+		case ConfigType::Integer:
+			*static_cast<u32*>(target) = entry.integer_default;
 			break;
 
-		case ArgType::U32:
-			*descs[i].u32_data.target = descs[i].u32_data.default_value;
+		case ConfigType::Boolean:
+			*static_cast<bool*>(target) = entry.boolean_default;
 			break;
 
-		case ArgType::String:
-			*descs[i].string_data.target = descs[i].string_data.default_value;
+		case ConfigType::String:
+			*static_cast<Range<char8>*>(target) = entry.string_default == nullptr ? Range<char8>{} : range_from_cstring(entry.string_default);
 			break;
-
+		
 		default:
 			ASSERT_UNREACHABLE;
 		}
 	}
+}
 
-	g_config.base.invocation = invocation;
+static bool validate_config(const Config* config) noexcept
+{
+	// @TODO: Implement validation logic
+
+	config;
 
 	return true;
 }
 
-const config::Config* config::get() noexcept
+static bool parse_config(const char8* config, Config* out) noexcept
 {
-	return &g_config;
+	memset(out, 0, sizeof(*out));
+
+	const char8* curr = skip_whitespace(config);
+
+	ConfigEntry config_copy[array_count(config_template)];
+
+	memcpy(config_copy, config_template, sizeof(config_copy));
+
+	ConfigEntry* const root_context = config_copy;
+
+	ConfigEntry* context = root_context;
+
+	while (true)
+	{
+		if (*curr == '[')
+		{
+			if (curr[1] == '[')
+			{
+				return false;
+			}
+			else
+			{
+				curr = skip_whitespace(curr + 1);
+
+				context = lookup_composite_name(curr, root_context, &curr);
+
+				if (context == nullptr)
+					return false;
+
+				if (*curr != ']')
+					return false;
+
+				curr += 1;
+			}
+		}
+		else if (is_name_char(*curr))
+		{
+			ConfigEntry* const child = lookup_composite_name(curr, context, &curr);
+
+			if (child == nullptr)
+				return false;
+
+			if (*curr != '=')
+				return false;
+
+			curr = skip_whitespace(curr + 1);
+
+			if (*curr == '{')
+			{
+				curr = skip_whitespace(curr + 1);
+
+				if (!parse_inline_table(curr, child, out, &curr))
+					return false;
+			}
+			else if (*curr == '[')
+			{
+				return false;
+			}
+			else
+			{
+				if (!parse_value(curr, child, out, &curr))
+					return false;
+			}
+		}
+		else if (*curr == '\0')
+		{
+			break;
+		}
+		else
+		{
+			return false;
+		}
+	}
+
+	set_config_defaults(MutRange{ config_copy }, out);
+
+	return validate_config(out);
+}
+
+bool read_config_from_file(const char8* config_filepath, Config* out) noexcept
+{
+	minos::FileHandle filehandle;
+
+	if (!minos::file_create(range_from_cstring(config_filepath), minos::Access::Read, minos::CreateMode::Open, minos::AccessPattern::Sequential, &filehandle))
+		return false;
+
+	minos::FileInfo fileinfo;
+
+	if (!minos::file_get_info(filehandle, &fileinfo))
+		return false;
+
+	if (fileinfo.file_bytes > UINT32_MAX)
+		return false;
+
+	char8 stack_buffer[8192];
+
+	char8* buffer;
+
+	if (sizeof(stack_buffer) <= fileinfo.file_bytes)
+	{
+		buffer = static_cast<char8*>(minos::reserve(fileinfo.file_bytes));
+
+		if (buffer == nullptr)
+			return false;
+
+		if (!minos::commit(buffer, fileinfo.file_bytes))
+		{
+			minos::unreserve(buffer);
+
+			return false;
+		}
+	}
+	else
+	{
+		buffer = stack_buffer;
+	}
+
+	minos::Overlapped overlapped{};
+
+	if (!minos::file_read(filehandle, buffer, static_cast<u32>(fileinfo.file_bytes), &overlapped))
+		return false;
+
+	if (!minos::overlapped_wait(filehandle, &overlapped))
+		return false;
+
+	minos::file_close(filehandle);
+
+	buffer[fileinfo.file_bytes] = '\0';
+
+	const bool parse_ok = parse_config(buffer, out);
+
+	if (buffer != stack_buffer)
+		minos::unreserve(buffer);
+
+	return parse_ok;
 }
