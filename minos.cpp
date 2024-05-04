@@ -286,6 +286,33 @@ bool minos::overlapped_wait(FileHandle handle, Overlapped* overlapped) noexcept
 		return GetOverlappedResult(handle.m_rep, reinterpret_cast<OVERLAPPED*>(overlapped), &bytes, true);
 }
 
+bool minos::event_create(EventHandle* out) noexcept
+{
+	HANDLE event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+
+	if (event == nullptr)
+		return false;
+
+	out->m_rep = event;
+
+	return true;
+}
+
+void minos::event_close(EventHandle handle) noexcept
+{
+	ASSERT_OR_EXIT(CloseHandle(handle.m_rep));
+}
+
+void minos::event_wake(EventHandle handle) noexcept
+{
+	ASSERT_OR_EXIT(SetEvent(handle.m_rep));
+}
+
+void minos::event_wait(EventHandle handle) noexcept
+{
+	ASSERT_OR_EXIT(WaitForSingleObject(handle.m_rep, INFINITE) == 0);
+}
+
 void minos::sleep(u32 milliseconds) noexcept
 {
 	Sleep(milliseconds);

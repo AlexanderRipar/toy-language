@@ -109,6 +109,14 @@ namespace minos
 
 	bool overlapped_wait(FileHandle handle, Overlapped* overlapped) noexcept;
 
+	bool event_create(EventHandle* out) noexcept;
+
+	void event_close(EventHandle handle) noexcept;
+
+	void event_wake(EventHandle handle) noexcept;
+
+	void event_wait(EventHandle handle) noexcept;
+
 	void sleep(u32 milliseconds) noexcept;
 }
 
