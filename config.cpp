@@ -146,6 +146,11 @@ static bool heap_alloc(ConfigHeap* heap, u32 bytes, void** out) noexcept
 	return true;
 }
 
+static void heap_cleanup(ConfigHeap* heap)
+{
+	minos::unreserve(heap->ptr);
+}
+
 
 
 struct EscapeSequenceBuffer
@@ -700,6 +705,12 @@ static bool parse_error(ConfigParseState* s, Range<char8> issue, const char8* me
 	memcpy(error->context, copy_begin, copy_count);
 
 	error->context[copy_count] = '\0';
+
+	// Cleanup
+
+	heap_cleanup(&s->heap);
+
+	memset(s->config, 0, sizeof(*s->config));
 
 	return false;
 }
@@ -1313,6 +1324,8 @@ static bool parse_config(const char8* config_string, u32 config_string_chars, Co
 	if (!heap_init(&state.heap))
 		return alloc_error(&state);
 
+	out->m_heap_ptr_ = state.heap.ptr;
+
 	advance(&state.tokens);
 
 	while (true)
@@ -1455,4 +1468,9 @@ bool read_config_from_file(const char8* config_filepath, ConfigParseError* out_e
 		minos::unreserve(buffer);
 
 	return parse_ok;
+}
+
+void deinit_config(Config* config) noexcept
+{
+	minos::unreserve(config->m_heap_ptr_);
 }

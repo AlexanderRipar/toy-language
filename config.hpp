@@ -66,5 +66,6 @@ struct ConfigParseError
 
 bool read_config_from_file(const char8* config_filepath, ConfigParseError* out_error, Config* out) noexcept;
 
+void deinit_config(Config* config) noexcept;
 
 #endif // CONFIG_INCLUDE_GUARD

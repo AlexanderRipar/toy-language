@@ -85,6 +85,8 @@ s32 main(s32 argc, const char8** argv)
 			config.memory.files.lookup.commit_increment
 		);
 
+		deinit_config(&config);
+
 		return EXIT_SUCCESS;
 	}
 	else
