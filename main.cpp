@@ -27,15 +27,27 @@ s32 main(s32 argc, const char8** argv)
 
 		if (!read_config_from_file(argv[2], &error, &config))
 		{
-			fprintf(stderr, "[%s:%u:%u] %s:\n    %s\n    %*s^\n", argv[2], error.line, error.character, error.message, error.context, error.character_in_context, "");
+			fprintf(stderr,
+				"[%s:%u:%u] %s:\n    %s\n    %*s",
+				argv[2],
+				error.line_number,
+				error.character_number,
+				error.message,
+				error.context,
+				error.context_begin, "");
+
+			for (u32 i = 0; i != error.context_end - error.context_begin; ++i)
+				fprintf(stderr, "^");
+
+			fprintf(stderr, "\n");
 
 			return EXIT_FAILURE;
 		}
 
 		fprintf(stdout,
 			"entrypoint = {\n"
-			"    filepath = %c%.*s%c\n"
-			"    symbol = %c%.*s%c\n"
+			"    filepath = %.*s\n"
+			"    symbol = %.*s\n"
 			"}\n"
 			"\n"
 			"input = {\n"
@@ -58,12 +70,8 @@ s32 main(s32 argc, const char8** argv)
 			"        }\n"
 			"    }\n"
 			"}\n",
-			config.entrypoint.filepath.begin() == nullptr ? '(' : '"',
 			static_cast<s32>(config.entrypoint.filepath.count()), config.entrypoint.filepath.begin(),
-			config.entrypoint.filepath.begin() == nullptr ? ')' : '"',
-			config.entrypoint.filepath.begin() == nullptr ? '(' : '"',
 			static_cast<s32>(config.entrypoint.symbol.count()), config.entrypoint.symbol.begin(),
-			config.entrypoint.filepath.begin() == nullptr ? ')' : '"',
 			config.input.bytes_per_read,
 			config.input.max_concurrent_reads,
 			config.input.max_concurrent_files,

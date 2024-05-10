@@ -45,19 +45,23 @@ struct Config
 			} lookup;
 		} files;
 	} memory;
+
+	void* m_heap_ptr_;
 };
 
 struct ConfigParseError
 {
 	const char8* message;
 
-	u32 line;
+	u32 line_number;
 
-	u32 character;
+	u32 character_number;
 
-	u32 character_in_context;
+	u32 context_begin;
 
-	char8 context[120];
+	u32 context_end;
+
+	char8 context[160];
 };
 
 bool read_config_from_file(const char8* config_filepath, ConfigParseError* out_error, Config* out) noexcept;
