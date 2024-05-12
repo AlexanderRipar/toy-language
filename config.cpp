@@ -7,7 +7,7 @@
 
 
 
-enum class ConfigType : u8
+enum class ConfigEntryType : u8
 {
 	NONE = 0,
 	Container,
@@ -18,7 +18,7 @@ enum class ConfigType : u8
 
 struct ConfigEntry
 {
-	ConfigType type;
+	ConfigEntryType type;
 
 	bool seen;
 
@@ -30,27 +30,27 @@ struct ConfigEntry
 
 	ConfigEntry() noexcept = default;
 
-	constexpr ConfigEntry(ConfigType type, u32 offset, const char8* name, u16 container_child_count)
+	constexpr ConfigEntry(ConfigEntryType type, u32 offset, const char8* name, u16 container_child_count)
 		: type{ type }, seen{ false }, offset{ offset }, name{ name }, container_child_count{ container_child_count } {}
 
-	constexpr ConfigEntry(ConfigType type, u32 offset, const char8* name)
+	constexpr ConfigEntry(ConfigEntryType type, u32 offset, const char8* name)
 		: type{ type }, seen{ false }, offset{ offset }, name{ name }, container_child_count{ 0 } {}
 };
 
 #define CONFIG_CONTAINER(name, member, parent_type, child_count) \
-	ConfigEntry{ ConfigType::Container, static_cast<u32>(offsetof(parent_type, member)), name, child_count }
+	ConfigEntry{ ConfigEntryType::Container, static_cast<u32>(offsetof(parent_type, member)), name, child_count }
 
 #define CONFIG_INTEGER(name, member, parent_type) \
-	ConfigEntry{ ConfigType::Integer, static_cast<u32>(offsetof(parent_type, member)), name }
+	ConfigEntry{ ConfigEntryType::Integer, static_cast<u32>(offsetof(parent_type, member)), name }
 
 #define CONFIG_BOOLEAN(name, member, parent_type) \
-	ConfigEntry{ ConfigType::Boolean, static_cast<u32>(offsetof(parent_type, member)), name }
+	ConfigEntry{ ConfigEntryType::Boolean, static_cast<u32>(offsetof(parent_type, member)), name }
 
 #define CONFIG_STRING(name, member, parent_type) \
-	ConfigEntry{ ConfigType::String, static_cast<u32>(offsetof(parent_type, member)), name }
+	ConfigEntry{ ConfigEntryType::String, static_cast<u32>(offsetof(parent_type, member)), name }
 
 static constexpr ConfigEntry config_template[] {
-	ConfigEntry{ ConfigType::Container, 0, nullptr, 18u },
+	ConfigEntry{ ConfigEntryType::Container, 0, nullptr, 18u },
 	CONFIG_CONTAINER("entrypoint", entrypoint, Config, 2u ),
 		CONFIG_STRING("filepath", entrypoint.filepath, Config),
 		CONFIG_STRING("symbol", entrypoint.symbol, Config),
@@ -70,8 +70,6 @@ static constexpr ConfigEntry config_template[] {
 				CONFIG_INTEGER("initial-commit", memory.files.lookup.initial_commit, Config),
 				CONFIG_INTEGER("commit-increment", memory.files.lookup.commit_increment, Config),
 };
-
-
 
 
 
@@ -746,7 +744,7 @@ static bool parse_name_element(const ConfigToken& token, ConfigParseState* s) no
 
 	ConfigEntry* const context = s->context_stack[s->context_stack_count - 1];
 
-	if (context->type != ConfigType::Container)
+	if (context->type != ConfigEntryType::Container)
 		return parse_error(s, token.content, "Tried assigning to a key that does not expect subkeys");
 
 	ConfigEntry* const children = context + 1;
@@ -937,7 +935,7 @@ static u32 parse_escape_sequence(Range<char8> text, ConfigParseState* s, Codepoi
 			return i;
 	}
 	
-	// @FALLTHROUGH
+	// FALLTHROUGH
 
 	default:
 		return static_cast<u32>(parse_error(s, Range{ text.begin(), 2 }, "Unexpected escape sequence")); 
@@ -948,7 +946,7 @@ static bool parse_literal_string_base(Range<char8> string, ConfigParseState* s) 
 {
 	ConfigEntry* const context = get_context(s);
 
-	if (context->type != ConfigType::String)
+	if (context->type != ConfigEntryType::String)
 		return parse_error(s, string, "Cannot assign string to key expecting different value");
 
 	if (string[0] == '\n')
@@ -974,7 +972,7 @@ static bool parse_escaped_string_base(Range<char8> string, ConfigParseState* s) 
 {
 	ConfigEntry* const context = get_context(s);
 
-	if (context->type != ConfigType::String)
+	if (context->type != ConfigEntryType::String)
 		return parse_error(s, string, "Cannot assign string to key expecting different value");
 
 	if (string[0] == '\n')
@@ -1090,7 +1088,7 @@ static bool parse_boolean(const ConfigToken& token, ConfigParseState* s) noexcep
 	else
 		return parse_error(s, token.content, "Expected a value");
 
-	if (context->type != ConfigType::Boolean)
+	if (context->type != ConfigEntryType::Boolean)
 		return parse_error(s, token.content, "Cannot assign boolean to key expecting different value");
 
 	*reinterpret_cast<bool*>(reinterpret_cast<byte*>(s->config) + context->offset) = value;
@@ -1104,7 +1102,7 @@ static bool parse_integer(const ConfigToken& token, ConfigParseState* s) noexcep
 
 	ConfigEntry* const context = get_context(s);
 
-	if (context->type != ConfigType::Integer)
+	if (context->type != ConfigEntryType::Integer)
 		return parse_error(s, token.content, "Cannot assign integer to key expecting different value");
 
 	u32 value = 0;
@@ -1275,7 +1273,6 @@ static void init_config_to_defaults(Config* out) noexcept
 	out->memory.files.lookup.initial_commit = 4096;
 	out->memory.files.lookup.commit_increment = 4096;
 }
-
 
 static bool parse_config(const char8* config_string, u32 config_string_chars, ConfigParseError* out_error, Config* out) noexcept
 {
