@@ -16,7 +16,7 @@ enum class ConfigEntryType : u8
 	String,
 };
 
-struct ConfigEntry
+struct ConfigEntryTemplate
 {
 	ConfigEntryType type;
 
@@ -28,29 +28,36 @@ struct ConfigEntry
 
 	const char8* name;
 
-	ConfigEntry() noexcept = default;
+	ConfigEntryTemplate() noexcept = default;
 
-	constexpr ConfigEntry(ConfigEntryType type, u32 offset, const char8* name, u16 container_child_count)
+	constexpr ConfigEntryTemplate(ConfigEntryType type, u32 offset, const char8* name, u16 container_child_count)
 		: type{ type }, seen{ false }, offset{ offset }, name{ name }, container_child_count{ container_child_count } {}
 
-	constexpr ConfigEntry(ConfigEntryType type, u32 offset, const char8* name)
+	constexpr ConfigEntryTemplate(ConfigEntryType type, u32 offset, const char8* name)
 		: type{ type }, seen{ false }, offset{ offset }, name{ name }, container_child_count{ 0 } {}
 };
 
+struct ConfigEntry
+{
+	ConfigEntryTemplate tpl;
+
+	Range<char8> source;
+};
+
 #define CONFIG_CONTAINER(name, member, parent_type, child_count) \
-	ConfigEntry{ ConfigEntryType::Container, static_cast<u32>(offsetof(parent_type, member)), name, child_count }
+	ConfigEntryTemplate{ ConfigEntryType::Container, static_cast<u32>(offsetof(parent_type, member)), name, child_count }
 
 #define CONFIG_INTEGER(name, member, parent_type) \
-	ConfigEntry{ ConfigEntryType::Integer, static_cast<u32>(offsetof(parent_type, member)), name }
+	ConfigEntryTemplate{ ConfigEntryType::Integer, static_cast<u32>(offsetof(parent_type, member)), name }
 
 #define CONFIG_BOOLEAN(name, member, parent_type) \
-	ConfigEntry{ ConfigEntryType::Boolean, static_cast<u32>(offsetof(parent_type, member)), name }
+	ConfigEntryTemplate{ ConfigEntryType::Boolean, static_cast<u32>(offsetof(parent_type, member)), name }
 
 #define CONFIG_STRING(name, member, parent_type) \
-	ConfigEntry{ ConfigEntryType::String, static_cast<u32>(offsetof(parent_type, member)), name }
+	ConfigEntryTemplate{ ConfigEntryType::String, static_cast<u32>(offsetof(parent_type, member)), name }
 
-static constexpr ConfigEntry config_template[] {
-	ConfigEntry{ ConfigEntryType::Container, 0, nullptr, 18u },
+static constexpr ConfigEntryTemplate config_template[] {
+	ConfigEntryTemplate{ ConfigEntryType::Container, 0, nullptr, 18u },
 	CONFIG_CONTAINER("entrypoint", entrypoint, Config, 2u ),
 		CONFIG_STRING("filepath", entrypoint.filepath, Config),
 		CONFIG_STRING("symbol", entrypoint.symbol, Config),
@@ -744,14 +751,14 @@ static bool parse_name_element(const ConfigToken& token, ConfigParseState* s) no
 
 	ConfigEntry* const context = s->context_stack[s->context_stack_count - 1];
 
-	if (context->type != ConfigEntryType::Container)
+	if (context->tpl.type != ConfigEntryType::Container)
 		return parse_error(s, token.content, "Tried assigning to a key that does not expect subkeys");
 
 	ConfigEntry* const children = context + 1;
 
-	for (u32 i = 0; i != context->container_child_count; ++i)
+	for (u32 i = 0; i != context->tpl.container_child_count; ++i)
 	{
-		if (name_equal(token.content, children[i].name))
+		if (name_equal(token.content, children[i].tpl.name))
 		{
 			s->context_stack[s->context_stack_count] = children + i;
 
@@ -935,7 +942,9 @@ static bool parse_literal_string_base(Range<char8> string, ConfigParseState* s) 
 {
 	ConfigEntry* const context = get_context(s);
 
-	if (context->type != ConfigEntryType::String)
+	context->source = string;
+
+	if (context->tpl.type != ConfigEntryType::String)
 		return parse_error(s, string, "Cannot assign string to key expecting different value");
 
 	if (string[0] == '\n')
@@ -952,7 +961,7 @@ static bool parse_literal_string_base(Range<char8> string, ConfigParseState* s) 
 
 	const Range<char8> value = Range{ static_cast<const char8*>(allocation), string.count() };
 
-	*reinterpret_cast<Range<char8>*>(reinterpret_cast<byte*>(s->config) + context->offset) = value;
+	*reinterpret_cast<Range<char8>*>(reinterpret_cast<byte*>(s->config) + context->tpl.offset) = value;
 
 	return true;
 }
@@ -961,7 +970,9 @@ static bool parse_escaped_string_base(Range<char8> string, ConfigParseState* s) 
 {
 	ConfigEntry* const context = get_context(s);
 
-	if (context->type != ConfigEntryType::String)
+	context->source = string;
+
+	if (context->tpl.type != ConfigEntryType::String)
 		return parse_error(s, string, "Cannot assign string to key expecting different value");
 
 	if (string[0] == '\n')
@@ -1021,7 +1032,7 @@ static bool parse_escaped_string_base(Range<char8> string, ConfigParseState* s) 
 
 	const Range<char8> value = Range{ static_cast<const char8*>(allocation_begin), static_cast<const char8*>(allocation) + uncopied_length };
 
-	*reinterpret_cast<Range<char8>*>(reinterpret_cast<byte*>(s->config) + context->offset) = value;
+	*reinterpret_cast<Range<char8>*>(reinterpret_cast<byte*>(s->config) + context->tpl.offset) = value;
 
 	return true;
 }
@@ -1070,6 +1081,8 @@ static bool parse_boolean(const ConfigToken& token, ConfigParseState* s) noexcep
 
 	bool value;
 
+	context->source = token.content;
+
 	if (name_equal(token.content, "true"))
 		value = true;
 	else if (name_equal(token.content, "false"))
@@ -1077,10 +1090,10 @@ static bool parse_boolean(const ConfigToken& token, ConfigParseState* s) noexcep
 	else
 		return parse_error(s, token.content, "Expected a value");
 
-	if (context->type != ConfigEntryType::Boolean)
+	if (context->tpl.type != ConfigEntryType::Boolean)
 		return parse_error(s, token.content, "Cannot assign boolean to key expecting different value");
 
-	*reinterpret_cast<bool*>(reinterpret_cast<byte*>(s->config) + context->offset) = value;
+	*reinterpret_cast<bool*>(reinterpret_cast<byte*>(s->config) + context->tpl.offset) = value;
 
 	return true;
 }
@@ -1091,7 +1104,9 @@ static bool parse_integer(const ConfigToken& token, ConfigParseState* s) noexcep
 
 	ConfigEntry* const context = get_context(s);
 
-	if (context->type != ConfigEntryType::Integer)
+	context->source = token.content;
+
+	if (context->tpl.type != ConfigEntryType::Integer)
 		return parse_error(s, token.content, "Cannot assign integer to key expecting different value");
 
 	u32 value = 0;
@@ -1157,7 +1172,7 @@ static bool parse_integer(const ConfigToken& token, ConfigParseState* s) noexcep
 		}
 	}
 
-	*reinterpret_cast<u32*>(reinterpret_cast<byte*>(s->config) + context->offset) = value;
+	*reinterpret_cast<u32*>(reinterpret_cast<byte*>(s->config) + context->tpl.offset) = value;
 
 	return true;
 }
@@ -1196,10 +1211,10 @@ static bool parse_value(ConfigParseState* s) noexcept
 
 	const ConfigToken token = consume_token(&s->tokens);
 
-	if (context->seen)
+	if (context->tpl.seen)
 		return parse_error(s, token.content, "Cannot assign to the same key more than once");
 
-	context->seen = true;
+	context->tpl.seen = true;
 
 	switch (token.type)
 	{
@@ -1279,7 +1294,8 @@ static bool parse_config(const char8* config_string, u32 config_string_chars, Co
 	state.context_stack[0] = state.config_entries;
 	state.error = out_error;
 
-	memcpy(state.config_entries, config_template, sizeof(config_template));
+	for (u32 i = 0; i != array_count(config_template); ++i)
+		state.config_entries[i] = ConfigEntry{ config_template[i], Range<char8>{} };
 	
 	if (!heap_init(&state.heap))
 		return alloc_error(&state);
