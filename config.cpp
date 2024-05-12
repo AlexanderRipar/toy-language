@@ -2,8 +2,8 @@
 
 #include "common.hpp"
 #include "minos.hpp"
-#include <cstddef>
 #include <type_traits>
+#include <cstddef>
 #include <cstring>
 
 
@@ -23,65 +23,53 @@ struct ConfigEntry
 
 	bool seen;
 
+	u16 container_child_count;
+
 	u32 offset;
 
 	const char8* name;
 
-	union
-	{
-		u32 container_child_count;
-
-		u32 integer_default;
-
-		bool boolean_default;
-
-		const char8* string_default;
-	};
-
 	ConfigEntry() noexcept = default;
 
-	constexpr ConfigEntry(ConfigType type, u32 offset, const char8* name, u32 default_value_or_child_count)
-		: type{ type }, seen{ false }, offset{ offset }, name{ name }, integer_default{ default_value_or_child_count } {}
+	constexpr ConfigEntry(ConfigType type, u32 offset, const char8* name, u16 container_child_count)
+		: type{ type }, seen{ false }, offset{ offset }, name{ name }, container_child_count{ container_child_count } {}
 
-	constexpr ConfigEntry(ConfigType type, u32 offset, const char8* name, bool default_value)
-		: type{ type }, seen{ false }, offset{ offset }, name{ name }, boolean_default{ default_value } {}
-
-	constexpr ConfigEntry(ConfigType type, u32 offset, const char8* name, const char8* default_value)
-		: type{ type }, seen{ false }, offset{ offset }, name{ name }, string_default{ default_value } {}
+	constexpr ConfigEntry(ConfigType type, u32 offset, const char8* name)
+		: type{ type }, seen{ false }, offset{ offset }, name{ name }, container_child_count{ 0 } {}
 };
 
 #define CONFIG_CONTAINER(name, member, parent_type, child_count) \
 	ConfigEntry{ ConfigType::Container, static_cast<u32>(offsetof(parent_type, member)), name, child_count }
 
-#define CONFIG_INTEGER(name, member, parent_type, default_value) \
-	ConfigEntry{ ConfigType::Integer, static_cast<u32>(offsetof(parent_type, member)), name, default_value }
+#define CONFIG_INTEGER(name, member, parent_type) \
+	ConfigEntry{ ConfigType::Integer, static_cast<u32>(offsetof(parent_type, member)), name }
 
-#define CONFIG_BOOLEAN(name, member, parent_type, default_value) \
-	ConfigEntry{ ConfigType::Boolean, static_cast<u32>(offsetof(parent_type, member)), name, default_value }
+#define CONFIG_BOOLEAN(name, member, parent_type) \
+	ConfigEntry{ ConfigType::Boolean, static_cast<u32>(offsetof(parent_type, member)), name }
 
-#define CONFIG_STRING(name, member, parent_type, default_value) \
-	ConfigEntry{ ConfigType::String, static_cast<u32>(offsetof(parent_type, member)), name, default_value }
+#define CONFIG_STRING(name, member, parent_type) \
+	ConfigEntry{ ConfigType::String, static_cast<u32>(offsetof(parent_type, member)), name }
 
 static constexpr ConfigEntry config_template[] {
 	ConfigEntry{ ConfigType::Container, 0, nullptr, 18u },
 	CONFIG_CONTAINER("entrypoint", entrypoint, Config, 2u ),
-		CONFIG_STRING("filepath", entrypoint.filepath, Config, nullptr),
-		CONFIG_STRING("symbol", entrypoint.symbol, Config, nullptr),
+		CONFIG_STRING("filepath", entrypoint.filepath, Config),
+		CONFIG_STRING("symbol", entrypoint.symbol, Config),
 	CONFIG_CONTAINER("input", input, Config, 5u),
-		CONFIG_INTEGER("bytes-per-read", input.bytes_per_read, Config, 65'536u),
-		CONFIG_INTEGER("max-concurrent-reads", input.max_concurrent_reads, Config, 16u),
-		CONFIG_INTEGER("max-concurrent-files", input.max_concurrent_files, Config, 8u),
-		CONFIG_INTEGER("max-concurrent-reads-per-file", input.max_concurrent_reads_per_file, Config, 2u),
-		CONFIG_INTEGER("max-pending-files", input.max_pending_files, Config, 4096u),
+		CONFIG_INTEGER("bytes-per-read", input.bytes_per_read, Config),
+		CONFIG_INTEGER("max-concurrent-reads", input.max_concurrent_reads, Config),
+		CONFIG_INTEGER("max-concurrent-files", input.max_concurrent_files, Config),
+		CONFIG_INTEGER("max-concurrent-reads-per-file", input.max_concurrent_reads_per_file, Config),
+		CONFIG_INTEGER("max-pending-files", input.max_pending_files, Config),
 	CONFIG_CONTAINER("memory", memory, Config, 8u),
 		CONFIG_CONTAINER("files", memory.files, Config, 7u),
-			CONFIG_INTEGER("reserve", memory.files.reserve, Config, 4096u),
-			CONFIG_INTEGER("initial-commit", memory.files.initial_commit, Config, 4096u),
-			CONFIG_INTEGER("commit-increment", memory.files.commit_increment, Config, 4096u),
+			CONFIG_INTEGER("reserve", memory.files.reserve, Config),
+			CONFIG_INTEGER("initial-commit", memory.files.initial_commit, Config),
+			CONFIG_INTEGER("commit-increment", memory.files.commit_increment, Config),
 			CONFIG_CONTAINER("lookup", memory.files.lookup, Config, 3u),
-				CONFIG_INTEGER("reserve", memory.files.lookup.reserve, Config, 4096u),
-				CONFIG_INTEGER("initial-commit", memory.files.lookup.initial_commit, Config, 4096u),
-				CONFIG_INTEGER("commit-increment", memory.files.lookup.commit_increment, Config, 4096u),
+				CONFIG_INTEGER("reserve", memory.files.lookup.reserve, Config),
+				CONFIG_INTEGER("initial-commit", memory.files.lookup.initial_commit, Config),
+				CONFIG_INTEGER("commit-increment", memory.files.lookup.commit_increment, Config),
 };
 
 
@@ -1260,38 +1248,6 @@ static bool parse_value(ConfigParseState* s) noexcept
 
 
 
-static void set_config_defaults(MutRange<ConfigEntry> entries, Config* out) noexcept
-{
-	for (ConfigEntry& entry : entries)
-	{
-		if (entry.seen)
-			continue;
-
-		void* const target = reinterpret_cast<byte*>(out) + entry.offset;
-
-		switch (entry.type)
-		{
-		case ConfigType::Container:
-			continue;
-
-		case ConfigType::Integer:
-			*static_cast<u32*>(target) = entry.integer_default;
-			break;
-
-		case ConfigType::Boolean:
-			*static_cast<bool*>(target) = entry.boolean_default;
-			break;
-
-		case ConfigType::String:
-			*static_cast<Range<char8>*>(target) = entry.string_default == nullptr ? Range<char8>{} : range_from_cstring(entry.string_default);
-			break;
-		
-		default:
-			ASSERT_UNREACHABLE;
-		}
-	}
-}
-
 static bool validate_config(const Config* config) noexcept
 {
 	// @TODO: Implement validation logic
@@ -1301,11 +1257,30 @@ static bool validate_config(const Config* config) noexcept
 	return true;
 }
 
+static void init_config_to_defaults(Config* out) noexcept
+{
+	out->entrypoint.filepath = {};
+	out->entrypoint.symbol = {};
+
+	out->input.bytes_per_read = 65536;
+	out->input.max_concurrent_reads = 16;
+	out->input.max_concurrent_files = 8;
+	out->input.max_concurrent_reads_per_file = 2;
+	out->input.max_pending_files = 4096;
+
+	out->memory.files.reserve = 4096;
+	out->memory.files.initial_commit = 4096;
+	out->memory.files.commit_increment = 4096;
+
+	out->memory.files.lookup.reserve = 4096;
+	out->memory.files.lookup.initial_commit = 4096;
+	out->memory.files.lookup.commit_increment = 4096;
+}
 
 
 static bool parse_config(const char8* config_string, u32 config_string_chars, ConfigParseError* out_error, Config* out) noexcept
 {
-	memset(out, 0, sizeof(*out));
+	init_config_to_defaults(out);
 
 	ConfigParseState state;
 	state.config = out;
@@ -1378,8 +1353,6 @@ static bool parse_config(const char8* config_string, u32 config_string_chars, Co
 
 		case ConfigTokenType::End:
 		{
-			set_config_defaults(MutRange{ state.config_entries }, out);
-
 			return validate_config(out);
 		}
 
