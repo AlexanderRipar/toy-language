@@ -138,11 +138,11 @@ static void heap_cleanup(ConfigHeap* heap)
 
 
 
-struct EscapeSequenceBuffer
+struct CodepointBuffer
 {
-	u8 length;
-
 	char8 buf[4];
+
+	u8 length;
 };
 
 enum class ConfigTokenType : u8
@@ -795,17 +795,6 @@ static void pop_names(ConfigParseState* s, u32 count) noexcept
 
 	s->context_stack_count -= count;
 }
-
-
-
-struct CodepointBuffer
-{
-	char8 buf[4];
-
-	u8 length;
-};
-
-
 
 static bool parse_unicode_escape_sequence(Range<char8> text, u32 escape_chars, ConfigParseState* s, CodepointBuffer* out) noexcept
 {
