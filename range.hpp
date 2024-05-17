@@ -70,6 +70,12 @@ static inline Range<char8> range_from_cstring(const char8* str) noexcept
 	return { str, len };
 }
 
+template<size_t N>
+static inline constexpr Range<char8> range_from_literal_string(const char8 (& arr)[N]) noexcept
+{
+	return { arr, N - 1 };
+}
+
 template<typename T>
 struct MutRange
 {
