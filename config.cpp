@@ -241,7 +241,7 @@ struct ConfigToken
 	const char8* tokenizer_error;
 };
 
-struct ConfigTokenState
+struct ConfigParseState
 {
 	const char8* curr;
 
@@ -250,6 +250,18 @@ struct ConfigTokenState
 	const char8* begin;
 
 	ConfigToken lookahead;
+
+	Config* config;
+
+	ConfigHeap heap;
+
+	u32 context_stack_count;
+
+	ConfigEntry* context_stack[8];
+
+	ConfigEntry config_entries[sizeof(config_template) / sizeof(ConfigEntryTemplate)];
+
+	ConfigParseError* error;
 };
 
 static bool is_valid_char_after_token_type(ConfigTokenType type, char8 c) noexcept
@@ -267,7 +279,7 @@ static bool is_valid_char_after_token_type(ConfigTokenType type, char8 c) noexce
 		&& type != ConfigTokenType::MultilineLiteralString;
 }
 
-static void skip_whitespace(ConfigTokenState* s) noexcept
+static void skip_whitespace(ConfigParseState* s) noexcept
 {
 	while (true)
 	{
@@ -289,7 +301,7 @@ static void skip_whitespace(ConfigTokenState* s) noexcept
 	}
 }
 
-static void advance(ConfigTokenState* s) noexcept
+static void advance(ConfigParseState* s) noexcept
 {
 	skip_whitespace(s);
 
@@ -603,7 +615,7 @@ static void advance(ConfigTokenState* s) noexcept
 		s->lookahead = ConfigToken{ token_type, Range<char8>{ token_beg, token_end }, token_error };
 }
 
-static ConfigToken peek_token(ConfigTokenState* s, ConfigTokenType expected = ConfigTokenType::NONE) noexcept
+static ConfigToken peek_token(ConfigParseState* s, ConfigTokenType expected = ConfigTokenType::NONE) noexcept
 {
 	const ConfigToken token = s->lookahead;
 
@@ -615,7 +627,7 @@ static ConfigToken peek_token(ConfigTokenState* s, ConfigTokenType expected = Co
 	return token;
 }
 
-static ConfigToken consume_token(ConfigTokenState* s, ConfigTokenType expected = ConfigTokenType::NONE) noexcept
+static ConfigToken consume_token(ConfigParseState* s, ConfigTokenType expected = ConfigTokenType::NONE) noexcept
 {
 	const ConfigToken token = s->lookahead;
 
@@ -630,23 +642,6 @@ static ConfigToken consume_token(ConfigTokenState* s, ConfigTokenType expected =
 }
 
 
-
-struct ConfigParseState
-{
-	Config* config;
-
-	ConfigHeap heap;
-
-	ConfigTokenState tokens;
-
-	u32 context_stack_count;
-
-	ConfigEntry* context_stack[8];
-
-	ConfigEntry config_entries[sizeof(config_template) / sizeof(ConfigEntryTemplate)];
-
-	ConfigParseError* error;
-};
 
 static bool parse_value(ConfigParseState* s) noexcept;
 
@@ -668,7 +663,7 @@ static LineInfo get_line_from_position(ConfigParseState* s, const char8* positio
 
 	u32 line_number = 1;
 
-	const char8* curr = s->tokens.begin;
+	const char8* curr = s->begin;
 
 	const char8* line_begin = curr;
 
@@ -821,7 +816,7 @@ static u32 parse_names(ConfigParseState* s) noexcept
 
 	while (true)
 	{
-		const ConfigToken identity = consume_token(&s->tokens, ConfigTokenType::Identity);
+		const ConfigToken identity = consume_token(s, ConfigTokenType::Identity);
 
 		if (identity.type == ConfigTokenType::INVALID)
 			return static_cast<u32>(parse_error(s, identity.content, "Expected key"));
@@ -829,14 +824,14 @@ static u32 parse_names(ConfigParseState* s) noexcept
 		if (!parse_name_element(identity, s))
 			return 0;
 
-		const ConfigToken next = peek_token(&s->tokens);
+		const ConfigToken next = peek_token(s);
 
 		if (next.type != ConfigTokenType::Dot)
 			return name_count;
 
 		name_count += 1;
 
-		advance(&s->tokens);
+		advance(s);
 	}
 }
 
@@ -1086,9 +1081,9 @@ static bool parse_inline_table(const ConfigToken& token, ConfigParseState* s) no
 	ASSERT_OR_IGNORE(token.type == ConfigTokenType::CurlyBeg);
 
 	// Empty inline table is a special case
-	if (peek_token(&s->tokens).type == ConfigTokenType::CurlyEnd)
+	if (peek_token(s).type == ConfigTokenType::CurlyEnd)
 	{
-		advance(&s->tokens);
+		advance(s);
 
 		return true;
 	}
@@ -1100,7 +1095,7 @@ static bool parse_inline_table(const ConfigToken& token, ConfigParseState* s) no
 		if (name_depth == 0)
 			return false;
 
-		const ConfigToken set = consume_token(&s->tokens, ConfigTokenType::Set);
+		const ConfigToken set = consume_token(s, ConfigTokenType::Set);
 
 		if (set.type != ConfigTokenType::Set)
 			return parse_error(s, set.content, "Expected '='");
@@ -1110,7 +1105,7 @@ static bool parse_inline_table(const ConfigToken& token, ConfigParseState* s) no
 
 		pop_names(s, name_depth);
 
-		const ConfigToken curly_end_or_comma = consume_token(&s->tokens);
+		const ConfigToken curly_end_or_comma = consume_token(s);
 
 		if (curly_end_or_comma.type == ConfigTokenType::CurlyEnd)
 			return true;
@@ -1265,7 +1260,7 @@ static bool parse_value(ConfigParseState* s) noexcept
 {
 	ConfigEntry* const context = get_context(s);
 
-	const ConfigToken token = consume_token(&s->tokens);
+	const ConfigToken token = consume_token(s);
 
 	if (context->seen)
 		return parse_error(s, token.content, "Cannot assign to the same key more than once");
@@ -1378,10 +1373,10 @@ static bool parse_config(const char8* config_string, u32 config_string_chars, Co
 
 	ConfigParseState state;
 	state.config = out;
-	state.tokens.curr = config_string;
-	state.tokens.end = config_string + config_string_chars;
-	state.tokens.begin = config_string;
-	state.tokens.lookahead.type = ConfigTokenType::NONE;
+	state.curr = config_string;
+	state.end = config_string + config_string_chars;
+	state.begin = config_string;
+	state.lookahead.type = ConfigTokenType::NONE;
 	state.context_stack_count = 1;
 	state.context_stack[0] = state.config_entries;
 	state.error = out_error;
@@ -1394,24 +1389,24 @@ static bool parse_config(const char8* config_string, u32 config_string_chars, Co
 
 	out->m_heap_ptr_ = state.heap.ptr;
 
-	advance(&state.tokens);
+	advance(&state);
 
 	while (true)
 	{
-		const ConfigToken token = peek_token(&state.tokens);
+		const ConfigToken token = peek_token(&state);
 
 		switch (token.type)
 		{
 		case ConfigTokenType::BracketBeg:
 		{
-			advance(&state.tokens);
+			advance(&state);
 
 			state.context_stack_count = 1;
 
 			if (parse_names(&state) == 0)
 				return false;
 
-			const ConfigToken bracket_end = consume_token(&state.tokens, ConfigTokenType::BracketEnd);
+			const ConfigToken bracket_end = consume_token(&state, ConfigTokenType::BracketEnd);
 
 			if (bracket_end.type == ConfigTokenType::INVALID)
 				return parse_error(&state, bracket_end.content, "Expected ']' or '.'");
@@ -1431,7 +1426,7 @@ static bool parse_config(const char8* config_string, u32 config_string_chars, Co
 			if (name_depth == 0)
 				return false;
 
-			const ConfigToken set = consume_token(&state.tokens, ConfigTokenType::Set);
+			const ConfigToken set = consume_token(&state, ConfigTokenType::Set);
 
 			if (set.type == ConfigTokenType::INVALID)
 				return parse_error(&state, set.content, "Expected '=' or '.'");
