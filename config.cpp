@@ -239,10 +239,6 @@ struct ConfigToken
 	Range<char8> content;
 
 	const char8* tokenizer_error;
-
-	u32 line_number;
-
-	const char* line_begin;
 };
 
 struct ConfigTokenState
@@ -252,10 +248,6 @@ struct ConfigTokenState
 	const char8* end;
 
 	const char8* begin;
-
-	const char8* line_begin;
-
-	u32 line_number;
 
 	ConfigToken lookahead;
 };
@@ -281,20 +273,14 @@ static void skip_whitespace(ConfigTokenState* s) noexcept
 	{
 		const char8 c = *s->curr;
 
-		if (c == '\n')
-		{
-			s->line_begin = s->curr + 1;
-
-			s->line_number += 1;
-		}
-		else if (*s->curr == '#')
+		if (c == '#')
 		{
 			s->curr += 1;
 
 			while (*s->curr != '\0' && *s->curr != '\n')
 				s->curr += 1;
 		}
-		else if (c != ' ' && c != '\t' && c != '\r')
+		else if (c != ' ' && c != '\t' && c != '\r' && c != '\n')
 		{
 			break;
 		}
@@ -310,10 +296,6 @@ static void advance(ConfigTokenState* s) noexcept
 	const char8 c = *s->curr;
 
 	const char8* const token_beg = s->curr;
-
-	const u32 token_line_number = s->line_number;
-
-	const char8* const token_line_begin = s->line_begin;
 
 	const char8* token_error = nullptr;
 
@@ -409,12 +391,6 @@ static void advance(ConfigTokenState* s) noexcept
 
 					break;
 				}
-				else if (c1 == '\n')
-				{
-					s->line_begin = s->curr + 1;
-
-					s->line_number += 1;
-				}
 
 				s->curr += 1;
 			}
@@ -476,12 +452,6 @@ static void advance(ConfigTokenState* s) noexcept
 					token_error = "String not ended properly";
 
 					break;
-				}
-				else if (c1 == '\n')
-				{
-					s->line_begin = s->curr + 1;
-
-					s->line_number += 1;
 				}
 				else if (c1 == '\\')
 				{
@@ -614,25 +584,8 @@ static void advance(ConfigTokenState* s) noexcept
 
 		token_error = "Unexpected character";
 
-		while (true)
-		{
-			const char8 c1 = *s->curr;
-
-			if (c1 == '\n')
-			{
-				s->line_begin = s->curr + 1;
-
-				s->line_number += 1;
-
-				break;
-			}
-			else if (c1 == ' ' || c1 == '\t' || c1 == '\r')
-			{
-				break;
-			}
-
+		while (*s->curr != ' ' && *s->curr != '\t' && *s->curr != '\n' && *s->curr != '\n' && *s->curr != '\0')
 			s->curr += 1;
-		}
 
 		break;
 	}
@@ -645,9 +598,9 @@ static void advance(ConfigTokenState* s) noexcept
 	const char8* const token_end = s->curr == token_beg ? s->curr + 1 : s->curr;
 
 	if (token_type != ConfigTokenType::INVALID && !is_valid_char_after_token_type(token_type, *s->curr))
-		s->lookahead = ConfigToken{ ConfigTokenType::INVALID, Range<char8>{ s->curr, s->curr + 1 }, "Unexpected character after token", s->line_number, s->line_begin };
+		s->lookahead = ConfigToken{ ConfigTokenType::INVALID, Range<char8>{ s->curr, s->curr + 1 }, "Unexpected character after token" };
 	else
-		s->lookahead = ConfigToken{ token_type, Range<char8>{ token_beg, token_end }, token_error, token_line_number, token_line_begin };
+		s->lookahead = ConfigToken{ token_type, Range<char8>{ token_beg, token_end }, token_error };
 }
 
 static ConfigToken peek_token(ConfigTokenState* s, ConfigTokenType expected = ConfigTokenType::NONE) noexcept
@@ -657,7 +610,7 @@ static ConfigToken peek_token(ConfigTokenState* s, ConfigTokenType expected = Co
 	ASSERT_OR_IGNORE(token.type != ConfigTokenType::NONE);
 
 	if (expected != ConfigTokenType::NONE && token.type != expected)
-		return ConfigToken{ ConfigTokenType::INVALID, token.content, "Unexpected token", token.line_number, token.line_begin };
+		return ConfigToken{ ConfigTokenType::INVALID, token.content, "Unexpected token" };
 
 	return token;
 }
@@ -669,7 +622,7 @@ static ConfigToken consume_token(ConfigTokenState* s, ConfigTokenType expected =
 	ASSERT_OR_IGNORE(token.type != ConfigTokenType::NONE);
 
 	if (expected != ConfigTokenType::NONE && token.type != expected)
-		return ConfigToken{ ConfigTokenType::INVALID, token.content, "Unexpected token", token.line_number, token.line_begin };
+		return ConfigToken{ ConfigTokenType::INVALID, token.content, "Unexpected token" };
 
 	advance(s);
 
@@ -697,31 +650,48 @@ struct ConfigParseState
 
 static bool parse_value(ConfigParseState* s) noexcept;
 
-static u32 get_line_from_position(ConfigParseState* s, const char8* position, const char8** out_line_begin, const char8** out_line_end) noexcept
+struct LineInfo
 {
-	u32 line_number = s->tokens.line_number;
+	const char8* line_begin;
 
-	for (const char8* curr = s->tokens.curr; curr > position; --curr)
+	const char8* line_end;
+
+	u32 line_number;
+
+	u32 character_number;
+};
+
+static LineInfo get_line_from_position(ConfigParseState* s, const char8* position) noexcept
+{
+	if (position == nullptr)
+		return LineInfo{ nullptr, nullptr, 0, 0 };
+
+	u32 line_number = 1;
+
+	const char8* curr = s->tokens.begin;
+
+	const char8* line_begin = curr;
+
+	while (curr != position)
 	{
-		if (*curr == '\n')
-			line_number -= 1;
+		if (const char8 c = *curr; c == '\0')
+		{
+			break;
+		}
+		else if (c == '\n')
+		{
+			line_begin = curr + 1;
+
+			line_number += 1;
+		}
+
+		curr += 1;
 	}
 
-	const char8* line_begin = position;
+	while (*curr != '\0' && *curr != '\n' && *curr != '\r')
+		curr += 1;
 
-	while (line_begin > s->tokens.begin && line_begin[-1] != '\n')
-		line_begin -= 1;
-
-	const char8* line_end = position;
-
-	while (*line_end != '\0' && *line_end != '\r' && *line_end != '\n')
-		line_end += 1;
-
-	*out_line_begin = line_begin;
-
-	*out_line_end = line_end;
-
-	return line_number;
+	return LineInfo{ line_begin, curr, line_number, static_cast<u32>(position - line_begin) + 1 };
 }
 
 static void set_error_impl(ConfigParseError* out, u32 line_number, u32 character_number, Range<char8> context, u32 begin_in_context, u32 end_in_context, const char8* format, va_list vargs) noexcept
@@ -759,9 +729,7 @@ static bool parse_error(ConfigParseState* s, Range<char8> issue, const char8* fo
 {
 	static constexpr u32 MAX_LOOKBACK = 80;
 
-	u32 line_number = 0;
-
-	u32 character_number = 0;
+	const LineInfo pos = get_line_from_position(s, issue.begin());
 
 	Range<char8> context = {};
 
@@ -769,31 +737,20 @@ static bool parse_error(ConfigParseState* s, Range<char8> issue, const char8* fo
 
 	u32 end_in_context = 0;
 
-	if (issue.begin() != nullptr)
-	{
-		const char8* line_begin;
+	const char8* const copy_begin = pos.line_begin > issue.begin() - MAX_LOOKBACK ? pos.line_begin : issue.begin() - MAX_LOOKBACK;
 
-		const char8* line_end;
+	const u32 copy_count = pos.line_end < copy_begin + sizeof(ConfigParseError::context) ? static_cast<u32>(pos.line_end - copy_begin) : sizeof(ConfigParseError::context);
 
-		line_number = get_line_from_position(s, issue.begin(), &line_begin, &line_end);
+	context = Range{ copy_begin, copy_count };
 
-		character_number = static_cast<u32>(issue.begin() - line_begin);
+	begin_in_context = static_cast<u32>(issue.begin() - copy_begin);
 
-		const char8* const copy_begin = line_begin > issue.begin() - MAX_LOOKBACK ? line_begin : issue.begin() - MAX_LOOKBACK;
-
-		const u32 copy_count = line_end - copy_begin < sizeof(ConfigParseError::context) ? static_cast<u32>(line_end - copy_begin) : sizeof(ConfigParseError);
-
-		context = Range{ copy_begin, copy_count };
-
-		begin_in_context = static_cast<u32>(issue.begin() - copy_begin);
-
-		end_in_context = static_cast<u32>(begin_in_context + issue.count()) < copy_count ? static_cast<u32>(begin_in_context + issue.count()) : copy_count;
-	}
+	end_in_context = static_cast<u32>(begin_in_context + issue.count()) < copy_count ? static_cast<u32>(begin_in_context + issue.count()) : copy_count;
 
 	va_list vargs;
 	va_start(vargs, format);
 
-	set_error_impl(s->error, line_number, character_number, context, begin_in_context, end_in_context, format, vargs);
+	set_error_impl(s->error, pos.line_number, pos.character_number, context, begin_in_context, end_in_context, format, vargs);
 
 	va_end(vargs);
 
@@ -1424,8 +1381,6 @@ static bool parse_config(const char8* config_string, u32 config_string_chars, Co
 	state.tokens.curr = config_string;
 	state.tokens.end = config_string + config_string_chars;
 	state.tokens.begin = config_string;
-	state.tokens.line_begin = config_string;
-	state.tokens.line_number = 0;
 	state.tokens.lookahead.type = ConfigTokenType::NONE;
 	state.context_stack_count = 1;
 	state.context_stack[0] = state.config_entries;
