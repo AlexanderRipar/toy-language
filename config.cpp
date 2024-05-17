@@ -229,6 +229,10 @@ struct LineInfo
 
 
 
+static bool parse_value(ConfigParseState* s) noexcept;
+
+
+
 static bool heap_init(ConfigHeap* out) noexcept
 {
 	memset(out, 0, sizeof(*out));
@@ -657,8 +661,6 @@ static ConfigToken consume_token(ConfigParseState* s, ConfigTokenType expected =
 }
 
 
-
-static bool parse_value(ConfigParseState* s) noexcept;
 
 static LineInfo get_line_from_position(ConfigParseState* s, const char8* position) noexcept
 {
