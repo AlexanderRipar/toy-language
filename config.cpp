@@ -9,6 +9,17 @@
 
 
 
+#define CONFIG_CONTAINER2(name, member, child_count, helptext) \
+	ConfigEntryTemplate{ ConfigEntryTemplate::ContainerData{ child_count }, static_cast<u32>(offsetof(Config, member)), name, helptext }
+
+#define CONFIG_INTEGER2(name, member, default_value, min, max, factor, helptext) \
+	ConfigEntryTemplate{ ConfigEntryTemplate::IntegerData{ default_value, min, max, factor }, static_cast<u32>(offsetof(Config, member)), name, helptext }
+
+#define CONFIG_STRING2(name, member, default_value, helptext) \
+	ConfigEntryTemplate{ ConfigEntryTemplate::StringData{ default_value }, static_cast<u32>(offsetof(Config, member)), name, helptext }
+
+
+
 enum class ConfigEntryType : u8
 {
 	NONE = 0,
@@ -78,40 +89,6 @@ struct ConfigEntryTemplate
 		: type{ ConfigEntryType::Boolean }, boolean{ boolean }, offset{ offset }, name{ name }, helptext{ helptext } {}
 };
 
-struct ConfigEntry
-{
-	ConfigEntryType type;
-
-	bool seen;
-
-	u16 container_child_count;
-
-	u32 offset;
-
-	const char8* name;
-
-	Range<char8> source;
-
-	ConfigEntry() noexcept = default;
-
-	constexpr ConfigEntry(const ConfigEntryTemplate& tpl) noexcept
-		: type{ tpl.type },
-		  seen{ false },
-		  container_child_count{ tpl.type == ConfigEntryType::Container ? tpl.container.child_count : 0ui16 },
-		  offset{ tpl.offset },
-		  name{ tpl.name },
-		  source{} {}
-};
-
-#define CONFIG_CONTAINER2(name, member, child_count, helptext) \
-	ConfigEntryTemplate{ ConfigEntryTemplate::ContainerData{ child_count }, static_cast<u32>(offsetof(Config, member)), name, helptext }
-
-#define CONFIG_INTEGER2(name, member, default_value, min, max, factor, helptext) \
-	ConfigEntryTemplate{ ConfigEntryTemplate::IntegerData{ default_value, min, max, factor }, static_cast<u32>(offsetof(Config, member)), name, helptext }
-
-#define CONFIG_STRING2(name, member, default_value, helptext) \
-	ConfigEntryTemplate{ ConfigEntryTemplate::StringData{ default_value }, static_cast<u32>(offsetof(Config, member)), name, helptext }
-
 static constexpr ConfigEntryTemplate config_template[] {
 	ConfigEntryTemplate{ ConfigEntryTemplate::ContainerData{ 20 }, 0, nullptr, nullptr },
 	CONFIG_CONTAINER2("parallel", parallel, 1, "Container for configuration of multithreading"),
@@ -138,6 +115,31 @@ static constexpr ConfigEntryTemplate config_template[] {
 
 
 
+struct ConfigEntry
+{
+	ConfigEntryType type;
+
+	bool seen;
+
+	u16 container_child_count;
+
+	u32 offset;
+
+	const char8* name;
+
+	Range<char8> source;
+
+	ConfigEntry() noexcept = default;
+
+	constexpr ConfigEntry(const ConfigEntryTemplate& tpl) noexcept
+		: type{ tpl.type },
+		  seen{ false },
+		  container_child_count{ tpl.type == ConfigEntryType::Container ? tpl.container.child_count : 0ui16 },
+		  offset{ tpl.offset },
+		  name{ tpl.name },
+		  source{} {}
+};
+
 struct ConfigHeap
 {
 	static constexpr u32 RESERVE = 262'144;
@@ -152,56 +154,6 @@ struct ConfigHeap
 
 	u32 used;
 };
-
-static bool heap_init(ConfigHeap* out) noexcept
-{
-	memset(out, 0, sizeof(*out));
-
-	void* ptr = minos::reserve(ConfigHeap::RESERVE);
-
-	if (ptr == nullptr)
-		return false;
-
-	if (!minos::commit(ptr, ConfigHeap::INITIAL_COMMIT))
-		return false;
-
-	out->ptr = ptr;
-
-	out->commit = ConfigHeap::INITIAL_COMMIT;
-
-	out->used = 0;
-
-	return true;
-}
-
-static bool heap_alloc(ConfigHeap* heap, u32 bytes, void** out) noexcept
-{
-	if (heap->commit < heap->used + bytes)
-	{
-		const u32 extra_commit = next_multiple(bytes - (heap->commit - heap->used), ConfigHeap::COMMIT_INCREMENT);
-
-		if (heap->commit + extra_commit > ConfigHeap::RESERVE)
-			return false;
-
-		if (!minos::commit(static_cast<byte*>(heap->ptr) + heap->commit, extra_commit))
-			return false;
-
-		heap->commit += extra_commit;
-	}
-
-	*out = static_cast<byte*>(heap->ptr) + heap->used;
-
-	heap->used += bytes;
-
-	return true;
-}
-
-static void heap_cleanup(ConfigHeap* heap)
-{
-	minos::unreserve(heap->ptr);
-}
-
-
 
 struct CodepointBuffer
 {
@@ -263,6 +215,69 @@ struct ConfigParseState
 
 	ConfigParseError* error;
 };
+
+struct LineInfo
+{
+	const char8* line_begin;
+
+	const char8* line_end;
+
+	u32 line_number;
+
+	u32 character_number;
+};
+
+
+
+static bool heap_init(ConfigHeap* out) noexcept
+{
+	memset(out, 0, sizeof(*out));
+
+	void* ptr = minos::reserve(ConfigHeap::RESERVE);
+
+	if (ptr == nullptr)
+		return false;
+
+	if (!minos::commit(ptr, ConfigHeap::INITIAL_COMMIT))
+		return false;
+
+	out->ptr = ptr;
+
+	out->commit = ConfigHeap::INITIAL_COMMIT;
+
+	out->used = 0;
+
+	return true;
+}
+
+static bool heap_alloc(ConfigHeap* heap, u32 bytes, void** out) noexcept
+{
+	if (heap->commit < heap->used + bytes)
+	{
+		const u32 extra_commit = next_multiple(bytes - (heap->commit - heap->used), ConfigHeap::COMMIT_INCREMENT);
+
+		if (heap->commit + extra_commit > ConfigHeap::RESERVE)
+			return false;
+
+		if (!minos::commit(static_cast<byte*>(heap->ptr) + heap->commit, extra_commit))
+			return false;
+
+		heap->commit += extra_commit;
+	}
+
+	*out = static_cast<byte*>(heap->ptr) + heap->used;
+
+	heap->used += bytes;
+
+	return true;
+}
+
+static void heap_cleanup(ConfigHeap* heap)
+{
+	minos::unreserve(heap->ptr);
+}
+
+
 
 static bool is_valid_char_after_token_type(ConfigTokenType type, char8 c) noexcept
 {
@@ -644,17 +659,6 @@ static ConfigToken consume_token(ConfigParseState* s, ConfigTokenType expected =
 
 
 static bool parse_value(ConfigParseState* s) noexcept;
-
-struct LineInfo
-{
-	const char8* line_begin;
-
-	const char8* line_end;
-
-	u32 line_number;
-
-	u32 character_number;
-};
 
 static LineInfo get_line_from_position(ConfigParseState* s, const char8* position) noexcept
 {
