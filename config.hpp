@@ -7,6 +7,11 @@ struct Config
 {
 	struct
 	{
+		u32 thread_count;
+	} parallel;
+
+	struct
+	{
 		Range<char8> filepath;
 
 		Range<char8> symbol;
@@ -51,8 +56,6 @@ struct Config
 
 struct ConfigParseError
 {
-	const char8* message;
-
 	u32 line_number;
 
 	u32 character_number;
@@ -61,7 +64,9 @@ struct ConfigParseError
 
 	u32 context_end;
 
-	char8 context[160];
+	char8 message[256];
+
+	char8 context[256];
 };
 
 bool read_config_from_file(const char8* config_filepath, ConfigParseError* out_error, Config* out) noexcept;

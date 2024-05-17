@@ -4,6 +4,8 @@
 #include "minos.hpp"
 #include <type_traits>
 #include <cstring>
+#include <cstdio>
+#include <cstdarg>
 
 
 
@@ -18,6 +20,66 @@ enum class ConfigEntryType : u8
 
 struct ConfigEntryTemplate
 {
+	struct ContainerData
+	{
+		u16 child_count;
+	};
+
+	struct IntegerData
+	{
+		u32 default_value;
+
+		u32 min;
+
+		u32 max;
+
+		u32 factor;
+	};
+
+	struct StringData
+	{
+		Range<char8> default_value;
+	};
+
+	struct BooleanData
+	{
+		bool default_value;
+	};
+
+	ConfigEntryType type;
+
+	u32 offset;
+
+	const char8* name;
+
+	const char8* helptext;
+
+	union
+	{
+		ContainerData container;
+
+		IntegerData integer;
+
+		StringData string;
+
+		BooleanData boolean;
+	};
+
+	constexpr ConfigEntryTemplate(ContainerData container, u32 offset, const char8* name, const char8* helptext) noexcept
+		: type{ ConfigEntryType::Container }, container{ container }, offset{ offset }, name{ name }, helptext{ helptext } {}
+
+	constexpr ConfigEntryTemplate(IntegerData integer, u32 offset, const char8* name, const char8* helptext) noexcept
+		: type{ ConfigEntryType::Integer }, integer{ integer }, offset{ offset }, name{ name }, helptext{ helptext } {}
+
+	constexpr ConfigEntryTemplate(StringData string, u32 offset, const char8* name, const char8* helptext) noexcept
+		: type{ ConfigEntryType::String }, string{ string }, offset{ offset }, name{ name }, helptext{ helptext } {}
+
+	constexpr ConfigEntryTemplate(BooleanData boolean, u32 offset, const char8* name, const char8* helptext) noexcept
+		: type{ ConfigEntryType::Boolean }, boolean{ boolean }, offset{ offset }, name{ name }, helptext{ helptext } {}
+};
+
+struct ConfigEntry
+{
 	ConfigEntryType type;
 
 	bool seen;
@@ -28,54 +90,50 @@ struct ConfigEntryTemplate
 
 	const char8* name;
 
-	ConfigEntryTemplate() noexcept = default;
-
-	constexpr ConfigEntryTemplate(ConfigEntryType type, u32 offset, const char8* name, u16 container_child_count)
-		: type{ type }, seen{ false }, offset{ offset }, name{ name }, container_child_count{ container_child_count } {}
-
-	constexpr ConfigEntryTemplate(ConfigEntryType type, u32 offset, const char8* name)
-		: type{ type }, seen{ false }, offset{ offset }, name{ name }, container_child_count{ 0 } {}
-};
-
-struct ConfigEntry
-{
-	ConfigEntryTemplate tpl;
-
 	Range<char8> source;
+
+	ConfigEntry() noexcept = default;
+
+	constexpr ConfigEntry(const ConfigEntryTemplate& tpl) noexcept
+		: type{ tpl.type },
+		  seen{ false },
+		  container_child_count{ tpl.type == ConfigEntryType::Container ? tpl.container.child_count : 0ui16 },
+		  offset{ tpl.offset },
+		  name{ tpl.name },
+		  source{} {}
 };
 
-#define CONFIG_CONTAINER(name, member, parent_type, child_count) \
-	ConfigEntryTemplate{ ConfigEntryType::Container, static_cast<u32>(offsetof(parent_type, member)), name, child_count }
+#define CONFIG_CONTAINER2(name, member, child_count, helptext) \
+	ConfigEntryTemplate{ ConfigEntryTemplate::ContainerData{ child_count }, static_cast<u32>(offsetof(Config, member)), name, helptext }
 
-#define CONFIG_INTEGER(name, member, parent_type) \
-	ConfigEntryTemplate{ ConfigEntryType::Integer, static_cast<u32>(offsetof(parent_type, member)), name }
+#define CONFIG_INTEGER2(name, member, default_value, min, max, factor, helptext) \
+	ConfigEntryTemplate{ ConfigEntryTemplate::IntegerData{ default_value, min, max, factor }, static_cast<u32>(offsetof(Config, member)), name, helptext }
 
-#define CONFIG_BOOLEAN(name, member, parent_type) \
-	ConfigEntryTemplate{ ConfigEntryType::Boolean, static_cast<u32>(offsetof(parent_type, member)), name }
-
-#define CONFIG_STRING(name, member, parent_type) \
-	ConfigEntryTemplate{ ConfigEntryType::String, static_cast<u32>(offsetof(parent_type, member)), name }
+#define CONFIG_STRING2(name, member, default_value, helptext) \
+	ConfigEntryTemplate{ ConfigEntryTemplate::StringData{ default_value }, static_cast<u32>(offsetof(Config, member)), name, helptext }
 
 static constexpr ConfigEntryTemplate config_template[] {
-	ConfigEntryTemplate{ ConfigEntryType::Container, 0, nullptr, 18u },
-	CONFIG_CONTAINER("entrypoint", entrypoint, Config, 2u ),
-		CONFIG_STRING("filepath", entrypoint.filepath, Config),
-		CONFIG_STRING("symbol", entrypoint.symbol, Config),
-	CONFIG_CONTAINER("input", input, Config, 5u),
-		CONFIG_INTEGER("bytes-per-read", input.bytes_per_read, Config),
-		CONFIG_INTEGER("max-concurrent-reads", input.max_concurrent_reads, Config),
-		CONFIG_INTEGER("max-concurrent-files", input.max_concurrent_files, Config),
-		CONFIG_INTEGER("max-concurrent-reads-per-file", input.max_concurrent_reads_per_file, Config),
-		CONFIG_INTEGER("max-pending-files", input.max_pending_files, Config),
-	CONFIG_CONTAINER("memory", memory, Config, 8u),
-		CONFIG_CONTAINER("files", memory.files, Config, 7u),
-			CONFIG_INTEGER("reserve", memory.files.reserve, Config),
-			CONFIG_INTEGER("initial-commit", memory.files.initial_commit, Config),
-			CONFIG_INTEGER("commit-increment", memory.files.commit_increment, Config),
-			CONFIG_CONTAINER("lookup", memory.files.lookup, Config, 3u),
-				CONFIG_INTEGER("reserve", memory.files.lookup.reserve, Config),
-				CONFIG_INTEGER("initial-commit", memory.files.lookup.initial_commit, Config),
-				CONFIG_INTEGER("commit-increment", memory.files.lookup.commit_increment, Config),
+	ConfigEntryTemplate{ ConfigEntryTemplate::ContainerData{ 20 }, 0, nullptr, nullptr },
+	CONFIG_CONTAINER2("parallel", parallel, 1, "Container for configuration of multithreading"),
+		CONFIG_INTEGER2("thread-count", parallel.thread_count, 1, 1, 4096, 0, "Number of created worker threads working"),
+	CONFIG_CONTAINER2("entrypoint", entrypoint, 2, "Container for configuring the program's entrypoint"),
+		CONFIG_STRING2("filepath", entrypoint.filepath, Range<char8>{}, "Path to the file in which the entrypoint is defined"),
+		CONFIG_STRING2("symbol", entrypoint.symbol, range_from_literal_string("main()"), "Call signature of the entry point procedure"),
+	CONFIG_CONTAINER2("input", input, 5, "Container for tuning parameters of source file input"),
+		CONFIG_INTEGER2("bytes-per-read", input.bytes_per_read, 65536, 4096, 1048576, 4096, "Size of the buffer passed to the OS's read procedure"),
+		CONFIG_INTEGER2("max-concurrent-reads", input.max_concurrent_reads, 16, 1, 32767, 0, "Number of OS reads that can be active simultaneously"),
+		CONFIG_INTEGER2("max-concurrent-files", input.max_concurrent_files, 8, 1, 4095, 0, "Number of files that can be have active read calls against them simultaneously"),
+		CONFIG_INTEGER2("max-concurrent-reads-per-file", input.max_concurrent_reads_per_file, 2, 1, 127, 0, "Number of OS reads that can be active simultaneously for a given file"),
+		CONFIG_INTEGER2("max-pending-files", input.max_pending_files, 4096, 64, 1048576, 0, "Upper limit on the number of files that have been discovered but have not been yet read"),
+	CONFIG_CONTAINER2("memory", memory, 8, "Container for parameters related to memory usage"),
+		CONFIG_CONTAINER2("files", memory.files, 7, "Container for allocation parameters of the hash sets allocated for tracking discovered files"),
+			CONFIG_INTEGER2("reserve", memory.files.reserve, 4096, 256, 1048576, 0, "Maximum capacity of the hash set. The actual number of files that can be read may actually be lower because of memory partitioning details due to multithreading"),
+			CONFIG_INTEGER2("initial-commit", memory.files.initial_commit, 4096, 256, 1048576, 0, "Initial size of the hash"),
+			CONFIG_INTEGER2("commit-increment", memory.files.commit_increment, 4096, 256, 1048576, 0, "Number of entries by which the hash set is grown when it overflows"),
+			CONFIG_CONTAINER2("lookup", memory.files.lookup, 3, "Container for allocation parameters of hash set used to track discovered file names"),
+				CONFIG_INTEGER2("reserve", memory.files.lookup.reserve, 4096, 256, 1048576, 0, "Maximum capacity of the hash set"),
+				CONFIG_INTEGER2("initial-commit", memory.files.lookup.initial_commit, 4096, 256, 1048576, 0, "Initial size of the hash"),
+				CONFIG_INTEGER2("commit-increment", memory.files.lookup.commit_increment, 4096, 256, 1048576, 0, "Number of entries by which the hash set is grown when it overflows"),
 };
 
 
@@ -632,7 +690,7 @@ struct ConfigParseState
 
 	ConfigEntry* context_stack[8];
 
-	ConfigEntry config_entries[array_count(config_template)];
+	ConfigEntry config_entries[sizeof(config_template) / sizeof(ConfigEntryTemplate)];
 
 	ConfigParseError* error;
 };
@@ -666,63 +724,92 @@ static u32 get_line_from_position(ConfigParseState* s, const char8* position, co
 	return line_number;
 }
 
-static bool parse_error(ConfigParseState* s, Range<char8> issue, const char8* message) noexcept
+static void set_error_impl(ConfigParseError* out, u32 line_number, u32 character_number, Range<char8> context, u32 begin_in_context, u32 end_in_context, const char8* format, va_list vargs) noexcept
+{
+	out->line_number = line_number;
+
+	out->character_number = character_number;
+
+	ASSERT_OR_IGNORE(context.count() < sizeof(out->context));
+
+	memcpy(out->context, context.begin(), context.count());
+
+	out->context[context.count()] = '\0';
+
+	out->context_begin = begin_in_context;
+
+	out->context_end = end_in_context;
+
+	vsnprintf(out->message, sizeof(out->message), format, vargs);
+}
+
+static bool runtime_error(ConfigParseError* out, const char8* format, ...) noexcept
+{
+	va_list vargs;
+	va_start(vargs, format);
+
+	set_error_impl(out, 0, 0, Range<char8>{}, 0, 0, format, vargs);
+
+	va_end(vargs);
+
+	return false;
+}
+
+static bool parse_error(ConfigParseState* s, Range<char8> issue, const char8* format, ...) noexcept
 {
 	static constexpr u32 MAX_LOOKBACK = 80;
 
-	const char8* line_begin;
+	u32 line_number = 0;
 
-	const char8* line_end;
+	u32 character_number = 0;
 
-	const u32 line_number = get_line_from_position(s, issue.begin(), &line_begin, &line_end);
+	Range<char8> context = {};
 
-	const char8* const copy_begin = line_begin > issue.begin() - MAX_LOOKBACK ? line_begin : issue.begin() - MAX_LOOKBACK;
+	u32 begin_in_context = 0;
 
-	const u32 copy_count = line_end - copy_begin < sizeof(ConfigParseError::context) ? static_cast<u32>(line_end - copy_begin) : sizeof(ConfigParseError);
+	u32 end_in_context = 0;
 
-	const u32 context_begin = static_cast<u32>(issue.begin() - copy_begin);
+	if (issue.begin() != nullptr)
+	{
+		const char8* line_begin;
 
-	ConfigParseError* const error = s->error;
+		const char8* line_end;
 
-	error->message = message;
+		line_number = get_line_from_position(s, issue.begin(), &line_begin, &line_end);
 
-	error->line_number = line_number;
+		character_number = static_cast<u32>(issue.begin() - line_begin);
 
-	error->character_number = static_cast<u32>(issue.begin() - line_begin);
+		const char8* const copy_begin = line_begin > issue.begin() - MAX_LOOKBACK ? line_begin : issue.begin() - MAX_LOOKBACK;
 
-	error->context_begin = context_begin;
+		const u32 copy_count = line_end - copy_begin < sizeof(ConfigParseError::context) ? static_cast<u32>(line_end - copy_begin) : sizeof(ConfigParseError);
 
-	error->context_end = static_cast<u32>(context_begin + issue.count()) < copy_count ? static_cast<u32>(context_begin + issue.count()) : copy_count;
+		context = Range{ copy_begin, copy_count };
 
-	memcpy(error->context, copy_begin, copy_count);
+		begin_in_context = static_cast<u32>(issue.begin() - copy_begin);
 
-	error->context[copy_count] = '\0';
+		end_in_context = static_cast<u32>(begin_in_context + issue.count()) < copy_count ? static_cast<u32>(begin_in_context + issue.count()) : copy_count;
+	}
 
-	// Cleanup
+	va_list vargs;
+	va_start(vargs, format);
+
+	set_error_impl(s->error, line_number, character_number, context, begin_in_context, end_in_context, format, vargs);
+
+	va_end(vargs);
 
 	heap_cleanup(&s->heap);
-
-	memset(s->config, 0, sizeof(*s->config));
 
 	return false;
 }
 
 static bool alloc_error(ConfigParseState* s) noexcept
 {
-	ConfigParseError* const error = s->error;
+	heap_cleanup(&s->heap);
 
-	error->message = "Could not allocate memory";
-
-	error->line_number = 0;
-
-	error->character_number = 0;
-
-	error->context_begin = 0;
-
-	error->context[0] = '\0';
-
-	return false;
+	return runtime_error(s->error, "Could not allocate memory");
 }
+
+
 
 static bool name_equal(Range<char8> text, const char8* name) noexcept
 {
@@ -751,14 +838,14 @@ static bool parse_name_element(const ConfigToken& token, ConfigParseState* s) no
 
 	ConfigEntry* const context = s->context_stack[s->context_stack_count - 1];
 
-	if (context->tpl.type != ConfigEntryType::Container)
+	if (context->type != ConfigEntryType::Container)
 		return parse_error(s, token.content, "Tried assigning to a key that does not expect subkeys");
 
 	ConfigEntry* const children = context + 1;
 
-	for (u32 i = 0; i != context->tpl.container_child_count; ++i)
+	for (u32 i = 0; i != context->container_child_count; ++i)
 	{
-		if (name_equal(token.content, children[i].tpl.name))
+		if (name_equal(token.content, children[i].name))
 		{
 			s->context_stack[s->context_stack_count] = children + i;
 
@@ -771,7 +858,7 @@ static bool parse_name_element(const ConfigToken& token, ConfigParseState* s) no
 	return parse_error(s, token.content, "Key does not exist");
 }
 
-static bool parse_names(ConfigParseState* s) noexcept
+static u32 parse_names(ConfigParseState* s) noexcept
 {
 	u32 name_count = 1;
 
@@ -944,7 +1031,7 @@ static bool parse_literal_string_base(Range<char8> string, ConfigParseState* s) 
 
 	context->source = string;
 
-	if (context->tpl.type != ConfigEntryType::String)
+	if (context->type != ConfigEntryType::String)
 		return parse_error(s, string, "Cannot assign string to key expecting different value");
 
 	if (string[0] == '\n')
@@ -961,7 +1048,7 @@ static bool parse_literal_string_base(Range<char8> string, ConfigParseState* s) 
 
 	const Range<char8> value = Range{ static_cast<const char8*>(allocation), string.count() };
 
-	*reinterpret_cast<Range<char8>*>(reinterpret_cast<byte*>(s->config) + context->tpl.offset) = value;
+	*reinterpret_cast<Range<char8>*>(reinterpret_cast<byte*>(s->config) + context->offset) = value;
 
 	return true;
 }
@@ -972,7 +1059,7 @@ static bool parse_escaped_string_base(Range<char8> string, ConfigParseState* s) 
 
 	context->source = string;
 
-	if (context->tpl.type != ConfigEntryType::String)
+	if (context->type != ConfigEntryType::String)
 		return parse_error(s, string, "Cannot assign string to key expecting different value");
 
 	if (string[0] == '\n')
@@ -1032,7 +1119,7 @@ static bool parse_escaped_string_base(Range<char8> string, ConfigParseState* s) 
 
 	const Range<char8> value = Range{ static_cast<const char8*>(allocation_begin), static_cast<const char8*>(allocation) + uncopied_length };
 
-	*reinterpret_cast<Range<char8>*>(reinterpret_cast<byte*>(s->config) + context->tpl.offset) = value;
+	*reinterpret_cast<Range<char8>*>(reinterpret_cast<byte*>(s->config) + context->offset) = value;
 
 	return true;
 }
@@ -1079,9 +1166,9 @@ static bool parse_boolean(const ConfigToken& token, ConfigParseState* s) noexcep
 {
 	ConfigEntry* const context = get_context(s);
 
-	bool value;
-
 	context->source = token.content;
+
+	bool value;
 
 	if (name_equal(token.content, "true"))
 		value = true;
@@ -1090,26 +1177,26 @@ static bool parse_boolean(const ConfigToken& token, ConfigParseState* s) noexcep
 	else
 		return parse_error(s, token.content, "Expected a value");
 
-	if (context->tpl.type != ConfigEntryType::Boolean)
+	if (context->type != ConfigEntryType::Boolean)
 		return parse_error(s, token.content, "Cannot assign boolean to key expecting different value");
 
-	*reinterpret_cast<bool*>(reinterpret_cast<byte*>(s->config) + context->tpl.offset) = value;
+	*reinterpret_cast<bool*>(reinterpret_cast<byte*>(s->config) + context->offset) = value;
 
 	return true;
 }
 
 static bool parse_integer(const ConfigToken& token, ConfigParseState* s) noexcept
 {
-	const Range<char8> text = token.content;
-
 	ConfigEntry* const context = get_context(s);
 
 	context->source = token.content;
 
-	if (context->tpl.type != ConfigEntryType::Integer)
+	if (context->type != ConfigEntryType::Integer)
 		return parse_error(s, token.content, "Cannot assign integer to key expecting different value");
 
-	u32 value = 0;
+	const Range<char8> text = token.content;
+
+	u64 value = 0;
 
 	ASSERT_OR_IGNORE(text.count() != 0);
 
@@ -1135,6 +1222,9 @@ static bool parse_integer(const ConfigToken& token, ConfigParseState* s) noexcep
 					value = value * 16 + c - 'A' + 10;
 				else
 					ASSERT_UNREACHABLE;
+
+				if (value != static_cast<u32>(value))
+					return parse_error(s, text, "The given integer exeeds the allowed maximum of 2^32 -1");
 			}
 		}
 		else if (text[1] == 'o')
@@ -1146,6 +1236,9 @@ static bool parse_integer(const ConfigToken& token, ConfigParseState* s) noexcep
 				ASSERT_OR_IGNORE(c >= '0' && c <= '7');
 
 				value = value * 8 + c - '0';
+
+				if (value != static_cast<u32>(value))
+					return parse_error(s, text, "The given integer exeeds the allowed maximum of 2^32 -1");
 			}
 		}
 		else // if (text[1] == 'b')
@@ -1159,6 +1252,9 @@ static bool parse_integer(const ConfigToken& token, ConfigParseState* s) noexcep
 				ASSERT_OR_IGNORE(c == '0' || c == '1');
 
 				value = value * 2 + c - '0';
+
+				if (value != static_cast<u32>(value))
+					return parse_error(s, text, "The given integer exeeds the allowed maximum of 2^32 -1");
 			}
 		}
 	}
@@ -1169,10 +1265,13 @@ static bool parse_integer(const ConfigToken& token, ConfigParseState* s) noexcep
 			ASSERT_OR_IGNORE(c >= '0' && c <= '9');
 
 			value = value * 10 + c - '0';
+
+			if (value != static_cast<u32>(value))
+				return parse_error(s, text, "The given integer exeeds the allowed maximum of 2^32 -1");
 		}
 	}
 
-	*reinterpret_cast<u32*>(reinterpret_cast<byte*>(s->config) + context->tpl.offset) = value;
+	*reinterpret_cast<u32*>(reinterpret_cast<byte*>(s->config) + context->offset) = static_cast<u32>(value);
 
 	return true;
 }
@@ -1211,10 +1310,10 @@ static bool parse_value(ConfigParseState* s) noexcept
 
 	const ConfigToken token = consume_token(&s->tokens);
 
-	if (context->tpl.seen)
+	if (context->seen)
 		return parse_error(s, token.content, "Cannot assign to the same key more than once");
 
-	context->tpl.seen = true;
+	context->seen = true;
 
 	switch (token.type)
 	{
@@ -1249,33 +1348,71 @@ static bool parse_value(ConfigParseState* s) noexcept
 
 
 
-static bool validate_config(const Config* config) noexcept
+static bool validate_config(ConfigParseState* s) noexcept
 {
-	// @TODO: Implement validation logic
+	for (u32 i = 0; i != array_count(config_template); ++i)
+	{
+		const ConfigEntry& e = s->config_entries[i];
 
-	config;
+		if (!e.seen || e.type != ConfigEntryType::Integer)
+			continue;
+
+		const ConfigEntryTemplate& tpl = config_template[i];
+
+		const u32 value = *reinterpret_cast<const u32*>(reinterpret_cast<const byte*>(s->config) + tpl.offset);
+
+		if (const u32 min = tpl.integer.min, max = tpl.integer.max; min == 0 && value > max)
+		{
+			return parse_error(s, e.source, "The value of %s (%u) is  greater than the allowed maximum of %u",
+				tpl.name, value, max);
+		}
+		else if (max == ~0u && value < min)
+		{
+			return parse_error(s, e.source, "The value of %s (%u) is less than the allowed minimum of %u",
+				tpl.name, value, min);
+		}
+		else if (value < min || value > max)
+		{
+			return parse_error(s, e.source, "The value of %s (%u) is outside the expected range of %u to %u",
+				tpl.name, value, min, max);
+		}
+		else if (const u32 factor = tpl.integer.factor; factor != 0 && value % factor != 0)
+		{
+			return parse_error(s, e.source, "The value of %s (%u) is not a multiple of %u",
+				tpl.name, value, factor);
+		}
+	}
 
 	return true;
 }
 
 static void init_config_to_defaults(Config* out) noexcept
 {
-	out->entrypoint.filepath = {};
-	out->entrypoint.symbol = {};
+	for (const ConfigEntryTemplate& tpl : config_template)
+	{
+		void* const target = reinterpret_cast<byte*>(out) + tpl.offset;
 
-	out->input.bytes_per_read = 65536;
-	out->input.max_concurrent_reads = 16;
-	out->input.max_concurrent_files = 8;
-	out->input.max_concurrent_reads_per_file = 2;
-	out->input.max_pending_files = 4096;
+		switch (tpl.type)
+		{
+		case ConfigEntryType::Container:
+			break;
 
-	out->memory.files.reserve = 4096;
-	out->memory.files.initial_commit = 4096;
-	out->memory.files.commit_increment = 4096;
+		case ConfigEntryType::Integer:
+			*static_cast<u32*>(target) = tpl.integer.default_value;
+			break;
 
-	out->memory.files.lookup.reserve = 4096;
-	out->memory.files.lookup.initial_commit = 4096;
-	out->memory.files.lookup.commit_increment = 4096;
+		case ConfigEntryType::Boolean:
+			*static_cast<bool*>(target) = tpl.boolean.default_value;
+			break;
+
+		case ConfigEntryType::String:
+			*static_cast<Range<char8>*>(target) = tpl.string.default_value;
+			break;
+
+		default:
+			ASSERT_UNREACHABLE;
+		}
+	}
 }
 
 static bool parse_config(const char8* config_string, u32 config_string_chars, ConfigParseError* out_error, Config* out) noexcept
@@ -1294,9 +1431,9 @@ static bool parse_config(const char8* config_string, u32 config_string_chars, Co
 	state.context_stack[0] = state.config_entries;
 	state.error = out_error;
 
-	for (u32 i = 0; i != array_count(config_template); ++i)
-		state.config_entries[i] = ConfigEntry{ config_template[i], Range<char8>{} };
-	
+	for (u32 i = 0; i != sizeof(config_template) / sizeof(ConfigEntryTemplate); ++i)
+		state.config_entries[i] = ConfigEntry{ config_template[i] };
+
 	if (!heap_init(&state.heap))
 		return alloc_error(&state);
 
@@ -1354,7 +1491,7 @@ static bool parse_config(const char8* config_string, u32 config_string_chars, Co
 
 		case ConfigTokenType::End:
 		{
-			return validate_config(out);
+			return validate_config(&state);
 		}
 
 		default:
@@ -1372,27 +1509,15 @@ bool read_config_from_file(const char8* config_filepath, ConfigParseError* out_e
 	minos::FileHandle filehandle;
 
 	if (!minos::file_create(range_from_cstring(config_filepath), minos::Access::Read, minos::CreateMode::Open, minos::AccessPattern::Sequential, minos::SyncMode::Synchronous, &filehandle))
-	{
-		*out_error = { "Could not open file", 0, 0 };
-
-		return false;
-	}
+		return runtime_error(out_error, "Could not open file");
 
 	minos::FileInfo fileinfo;
 
 	if (!minos::file_get_info(filehandle, &fileinfo))
-	{
-		*out_error = { "Could not determine file length", 0, 0 };
-
-		return false;
-	}
+		return runtime_error(out_error, "Could not determine file length");
 
 	if (fileinfo.file_bytes > UINT32_MAX)
-	{
-		*out_error = { "Config file exceeds the maximum size of 4GB", 0, 0 };
-
-		return false;
-	}
+		return runtime_error(out_error, "Config file exceeds the maximum size of 4GB");
 
 	char8 stack_buffer[8192];
 
@@ -1403,19 +1528,13 @@ bool read_config_from_file(const char8* config_filepath, ConfigParseError* out_e
 		buffer = static_cast<char8*>(minos::reserve(fileinfo.file_bytes));
 
 		if (buffer == nullptr)
-		{
-			*out_error = { "Failed to allocate buffer", 0, 0 };
-
-			return false;
-		}
+			return runtime_error(out_error, "Failed to allocate buffer");
 
 		if (!minos::commit(buffer, fileinfo.file_bytes))
 		{
 			minos::unreserve(buffer);
 
-			*out_error = { "Failed to allocate buffer", 0, 0 };
-
-			return false;
+			return runtime_error(out_error, "Failed to allocate buffer");
 		}
 	}
 	else
@@ -1426,11 +1545,7 @@ bool read_config_from_file(const char8* config_filepath, ConfigParseError* out_e
 	minos::Overlapped overlapped{};
 
 	if (!minos::file_read(filehandle, buffer, static_cast<u32>(fileinfo.file_bytes), &overlapped))
-	{
-		*out_error = { "Could not read config file", 0, 0 };
-
-		return false;
-	}
+			return runtime_error(out_error, "Could not read config file");
 
 	minos::file_close(filehandle);
 
