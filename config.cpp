@@ -1519,3 +1519,93 @@ void deinit_config(Config* config) noexcept
 {
 	minos::unreserve(config->m_heap_ptr_);
 }
+
+void print_config_help(u32 depth) noexcept
+{
+	printf("config parameters:\n");
+
+	ASSERT_OR_IGNORE(config_template[0].type == ConfigEntryType::Container);
+
+	u32 indent_stack[8];
+	indent_stack[0] = config_template[0].container.child_count;
+
+	u32 indent_count = 1;
+
+	u32 indent = 0;
+
+	for (u32 i = 1; i != array_count(config_template); ++i)
+	{
+		const ConfigEntryTemplate& tpl = config_template[i];
+
+		printf("\n");
+
+		switch (tpl.type)
+		{
+		case ConfigEntryType::Container:
+		{
+			printf("%*s[%s]\n%*s  %s\n", indent, "", tpl.name, indent, "", tpl.helptext);
+
+			indent_stack[indent_count - 1] -= tpl.container.child_count;
+
+			if (indent_count < depth || depth == 0)
+			{
+				ASSERT_OR_IGNORE(indent_count + 1 < array_count(indent_stack));
+
+				indent_stack[indent_count] = tpl.container.child_count;
+
+				indent_count += 1;
+
+				indent += 4;
+			}
+			else
+			{
+				i += tpl.container.child_count;
+			}
+
+			break;
+		}
+
+		case ConfigEntryType::Integer:
+		{
+			printf("%*s[%s] - Integer (default: %u | range: %u - %u", indent, "", tpl.name, tpl.integer.default_value, tpl.integer.min, tpl.integer.max);
+
+			if (tpl.integer.factor != 0)
+				printf(" | factor: %u", tpl.integer.factor);
+
+			printf(")\n%*s  %s\n", indent, "", tpl.helptext);
+
+			break;
+		}
+
+		case ConfigEntryType::Boolean:
+		{
+			printf("%*s[%s] - Boolean (default: %s)\n%*s  %s\n", indent, "", tpl.name, tpl.boolean.default_value ? "true" : "false", indent, "", tpl.helptext);
+
+			break;
+		}
+
+		case ConfigEntryType::String:
+		{
+			printf("%*s[%s] - String (default: %.*s)\n%*s  %s\n", indent, "", tpl.name, static_cast<s32>(tpl.string.default_value.count()), tpl.string.default_value.begin(), indent, "", tpl.helptext);
+
+			break;
+		}
+
+		default:
+			ASSERT_UNREACHABLE;
+		}
+
+		ASSERT_OR_IGNORE(indent_count != 0);
+
+		if (indent_stack[indent_count - 1] == 0)
+		{
+			indent_count -= 1;
+
+			indent -= 4;
+		}
+		else
+		{
+			indent_stack[indent_count - 1] -= 1;
+		}
+	}
+}

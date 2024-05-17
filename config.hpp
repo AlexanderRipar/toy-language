@@ -73,4 +73,6 @@ bool read_config_from_file(const char8* config_filepath, ConfigParseError* out_e
 
 void deinit_config(Config* config) noexcept;
 
+void print_config_help(u32 depth = 0) noexcept;
+
 #endif // CONFIG_INCLUDE_GUARD
