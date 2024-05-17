@@ -9,13 +9,13 @@
 
 
 
-#define CONFIG_CONTAINER2(name, member, child_count, helptext) \
+#define CONFIG_CONTAINER(name, member, child_count, helptext) \
 	ConfigEntryTemplate{ ConfigEntryTemplate::ContainerData{ child_count }, static_cast<u32>(offsetof(Config, member)), name, helptext }
 
-#define CONFIG_INTEGER2(name, member, default_value, min, max, factor, helptext) \
+#define CONFIG_INTEGER(name, member, default_value, min, max, factor, helptext) \
 	ConfigEntryTemplate{ ConfigEntryTemplate::IntegerData{ default_value, min, max, factor }, static_cast<u32>(offsetof(Config, member)), name, helptext }
 
-#define CONFIG_STRING2(name, member, default_value, helptext) \
+#define CONFIG_STRING(name, member, default_value, helptext) \
 	ConfigEntryTemplate{ ConfigEntryTemplate::StringData{ default_value }, static_cast<u32>(offsetof(Config, member)), name, helptext }
 
 
@@ -91,26 +91,26 @@ struct ConfigEntryTemplate
 
 static constexpr ConfigEntryTemplate config_template[] {
 	ConfigEntryTemplate{ ConfigEntryTemplate::ContainerData{ 20 }, 0, nullptr, nullptr },
-	CONFIG_CONTAINER2("parallel", parallel, 1, "Container for configuration of multithreading"),
-		CONFIG_INTEGER2("thread-count", parallel.thread_count, 1, 1, 4096, 0, "Number of created worker threads working"),
-	CONFIG_CONTAINER2("entrypoint", entrypoint, 2, "Container for configuring the program's entrypoint"),
-		CONFIG_STRING2("filepath", entrypoint.filepath, Range<char8>{}, "Path to the file in which the entrypoint is defined"),
-		CONFIG_STRING2("symbol", entrypoint.symbol, range_from_literal_string("main()"), "Call signature of the entry point procedure"),
-	CONFIG_CONTAINER2("input", input, 5, "Container for tuning parameters of source file input"),
-		CONFIG_INTEGER2("bytes-per-read", input.bytes_per_read, 65536, 4096, 1048576, 4096, "Size of the buffer passed to the OS's read procedure"),
-		CONFIG_INTEGER2("max-concurrent-reads", input.max_concurrent_reads, 16, 1, 32767, 0, "Number of OS reads that can be active simultaneously"),
-		CONFIG_INTEGER2("max-concurrent-files", input.max_concurrent_files, 8, 1, 4095, 0, "Number of files that can be have active read calls against them simultaneously"),
-		CONFIG_INTEGER2("max-concurrent-reads-per-file", input.max_concurrent_reads_per_file, 2, 1, 127, 0, "Number of OS reads that can be active simultaneously for a given file"),
-		CONFIG_INTEGER2("max-pending-files", input.max_pending_files, 4096, 64, 1048576, 0, "Upper limit on the number of files that have been discovered but have not been yet read"),
-	CONFIG_CONTAINER2("memory", memory, 8, "Container for parameters related to memory usage"),
-		CONFIG_CONTAINER2("files", memory.files, 7, "Container for allocation parameters of the hash sets allocated for tracking discovered files"),
-			CONFIG_INTEGER2("reserve", memory.files.reserve, 4096, 256, 1048576, 0, "Maximum capacity of the hash set. The actual number of files that can be read may actually be lower because of memory partitioning details due to multithreading"),
-			CONFIG_INTEGER2("initial-commit", memory.files.initial_commit, 4096, 256, 1048576, 0, "Initial size of the hash"),
-			CONFIG_INTEGER2("commit-increment", memory.files.commit_increment, 4096, 256, 1048576, 0, "Number of entries by which the hash set is grown when it overflows"),
-			CONFIG_CONTAINER2("lookup", memory.files.lookup, 3, "Container for allocation parameters of hash set used to track discovered file names"),
-				CONFIG_INTEGER2("reserve", memory.files.lookup.reserve, 4096, 256, 1048576, 0, "Maximum capacity of the hash set"),
-				CONFIG_INTEGER2("initial-commit", memory.files.lookup.initial_commit, 4096, 256, 1048576, 0, "Initial size of the hash"),
-				CONFIG_INTEGER2("commit-increment", memory.files.lookup.commit_increment, 4096, 256, 1048576, 0, "Number of entries by which the hash set is grown when it overflows"),
+	CONFIG_CONTAINER("parallel", parallel, 1, "Container for configuration of multithreading"),
+		CONFIG_INTEGER("thread-count", parallel.thread_count, 1, 1, 4096, 0, "Number of created worker threads working"),
+	CONFIG_CONTAINER("entrypoint", entrypoint, 2, "Container for configuring the program's entrypoint"),
+		CONFIG_STRING("filepath", entrypoint.filepath, Range<char8>{}, "Path to the file in which the entrypoint is defined"),
+		CONFIG_STRING("symbol", entrypoint.symbol, range_from_literal_string("main()"), "Call signature of the entry point procedure"),
+	CONFIG_CONTAINER("input", input, 5, "Container for tuning parameters of source file input"),
+		CONFIG_INTEGER("bytes-per-read", input.bytes_per_read, 65536, 4096, 1048576, 4096, "Size of the buffer passed to the OS's read procedure"),
+		CONFIG_INTEGER("max-concurrent-reads", input.max_concurrent_reads, 16, 1, 32767, 0, "Number of OS reads that can be active simultaneously"),
+		CONFIG_INTEGER("max-concurrent-files", input.max_concurrent_files, 8, 1, 4095, 0, "Number of files that can be have active read calls against them simultaneously"),
+		CONFIG_INTEGER("max-concurrent-reads-per-file", input.max_concurrent_reads_per_file, 2, 1, 127, 0, "Number of OS reads that can be active simultaneously for a given file"),
+		CONFIG_INTEGER("max-pending-files", input.max_pending_files, 4096, 64, 1048576, 0, "Upper limit on the number of files that have been discovered but have not been yet read"),
+	CONFIG_CONTAINER("memory", memory, 8, "Container for parameters related to memory usage"),
+		CONFIG_CONTAINER("files", memory.files, 7, "Container for allocation parameters of the hash sets allocated for tracking discovered files"),
+			CONFIG_INTEGER("reserve", memory.files.reserve, 4096, 256, 1048576, 0, "Maximum capacity of the hash set. The actual number of files that can be read may actually be lower because of memory partitioning details due to multithreading"),
+			CONFIG_INTEGER("initial-commit", memory.files.initial_commit, 4096, 256, 1048576, 0, "Initial size of the hash"),
+			CONFIG_INTEGER("commit-increment", memory.files.commit_increment, 4096, 256, 1048576, 0, "Number of entries by which the hash set is grown when it overflows"),
+			CONFIG_CONTAINER("lookup", memory.files.lookup, 3, "Container for allocation parameters of hash set used to track discovered file names"),
+				CONFIG_INTEGER("reserve", memory.files.lookup.reserve, 4096, 256, 1048576, 0, "Maximum capacity of the hash set"),
+				CONFIG_INTEGER("initial-commit", memory.files.lookup.initial_commit, 4096, 256, 1048576, 0, "Initial size of the hash"),
+				CONFIG_INTEGER("commit-increment", memory.files.lookup.commit_increment, 4096, 256, 1048576, 0, "Number of entries by which the hash set is grown when it overflows"),
 };
 
 
