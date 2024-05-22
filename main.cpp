@@ -13,13 +13,13 @@ s32 main(s32 argc, const char8** argv)
 
 		return EXIT_FAILURE;
 	}
-	else if (argc == 2 && strcmp(argv[1], "--help") == 0)
+	else if (argc == 2 && strcmp(argv[1], "-help") == 0)
 	{
 		print_config_help();
 
 		return EXIT_SUCCESS;
 	}
-	else if (argc == 3 && strcmp(argv[1] , "--config") == 0)
+	else if (argc == 3 && strcmp(argv[1] , "-config") == 0)
 	{
 		Config config;
 
@@ -44,46 +44,7 @@ s32 main(s32 argc, const char8** argv)
 			return EXIT_FAILURE;
 		}
 
-		fprintf(stdout,
-			"entrypoint = {\n"
-			"    filepath = %.*s\n"
-			"    symbol = %.*s\n"
-			"}\n"
-			"\n"
-			"input = {\n"
-			"    bytes-per-read = %u\n"
-			"    max-concurrent-reads = %u\n"
-			"    max-concurrent-files = %u\n"
-			"    max-concurrent-reads-per-file = %u\n"
-			"    max-pending-reads = %u\n"
-			"}\n"
-			"\n"
-			"memory = {\n"
-			"    files = {\n"
-			"        reserve = %u\n"
-			"        initial-commit = %u\n"
-			"        commit-increment = %u\n"
-			"        lookup = {\n"
-			"            reserve = %u\n"
-			"            initial-commit = %u\n"
-			"            commit-increment = %u\n"
-			"        }\n"
-			"    }\n"
-			"}\n",
-			static_cast<s32>(config.entrypoint.filepath.count()), config.entrypoint.filepath.begin(),
-			static_cast<s32>(config.entrypoint.symbol.count()), config.entrypoint.symbol.begin(),
-			config.input.bytes_per_read,
-			config.input.max_concurrent_reads,
-			config.input.max_concurrent_files,
-			config.input.max_concurrent_reads_per_file,
-			config.input.max_pending_files,
-			config.memory.files.reserve,
-			config.memory.files.initial_commit,
-			config.memory.files.commit_increment,
-			config.memory.files.lookup.reserve,
-			config.memory.files.lookup.initial_commit,
-			config.memory.files.lookup.commit_increment
-		);
+		print_config(&config);
 
 		deinit_config(&config);
 
@@ -91,7 +52,7 @@ s32 main(s32 argc, const char8** argv)
 	}
 	else
 	{
-		fprintf(stderr, "Usage: %s ( --help | --config <filepath> )\n", argv[0]);
+		fprintf(stderr, "Usage: %s ( -help | -config <filepath> )\n", argv[0]);
 
 		return EXIT_FAILURE;
 	}

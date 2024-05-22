@@ -90,27 +90,38 @@ struct ConfigEntryTemplate
 };
 
 static constexpr ConfigEntryTemplate config_template[] {
-	ConfigEntryTemplate{ ConfigEntryTemplate::ContainerData{ 20 }, 0, nullptr, nullptr },
+	ConfigEntryTemplate{ ConfigEntryTemplate::ContainerData{ 31 }, 0, nullptr, nullptr },
 	CONFIG_CONTAINER("parallel", parallel, 1, "Container for configuration of multithreading"),
 		CONFIG_INTEGER("thread-count", parallel.thread_count, 1, 1, 4096, 0, "Number of created worker threads working"),
 	CONFIG_CONTAINER("entrypoint", entrypoint, 2, "Container for configuring the program's entrypoint"),
 		CONFIG_STRING("filepath", entrypoint.filepath, Range<char8>{}, "Path to the file in which the entrypoint is defined"),
 		CONFIG_STRING("symbol", entrypoint.symbol, range_from_literal_string("main()"), "Call signature of the entry point procedure"),
-	CONFIG_CONTAINER("input", input, 5, "Container for tuning parameters of source file input"),
+	CONFIG_CONTAINER("input", input, 4, "Container for tuning parameters of source file input"),
 		CONFIG_INTEGER("bytes-per-read", input.bytes_per_read, 65536, 4096, 1048576, 4096, "Size of the buffer passed to the OS's read procedure"),
 		CONFIG_INTEGER("max-concurrent-reads", input.max_concurrent_reads, 16, 1, 32767, 0, "Number of OS reads that can be active simultaneously"),
 		CONFIG_INTEGER("max-concurrent-files", input.max_concurrent_files, 8, 1, 4095, 0, "Number of files that can be have active read calls against them simultaneously"),
 		CONFIG_INTEGER("max-concurrent-reads-per-file", input.max_concurrent_reads_per_file, 2, 1, 127, 0, "Number of OS reads that can be active simultaneously for a given file"),
-		CONFIG_INTEGER("max-pending-files", input.max_pending_files, 4096, 64, 1048576, 0, "Upper limit on the number of files that have been discovered but have not been yet read"),
-	CONFIG_CONTAINER("memory", memory, 8, "Container for parameters related to memory usage"),
-		CONFIG_CONTAINER("files", memory.files, 7, "Container for allocation parameters of the hash sets allocated for tracking discovered files"),
-			CONFIG_INTEGER("reserve", memory.files.reserve, 4096, 256, 1048576, 0, "Maximum capacity of the hash set. The actual number of files that can be read may actually be lower because of memory partitioning details due to multithreading"),
-			CONFIG_INTEGER("initial-commit", memory.files.initial_commit, 4096, 256, 1048576, 0, "Initial size of the hash"),
-			CONFIG_INTEGER("commit-increment", memory.files.commit_increment, 4096, 256, 1048576, 0, "Number of entries by which the hash set is grown when it overflows"),
-			CONFIG_CONTAINER("lookup", memory.files.lookup, 3, "Container for allocation parameters of hash set used to track discovered file names"),
-				CONFIG_INTEGER("reserve", memory.files.lookup.reserve, 4096, 256, 1048576, 0, "Maximum capacity of the hash set"),
-				CONFIG_INTEGER("initial-commit", memory.files.lookup.initial_commit, 4096, 256, 1048576, 0, "Initial size of the hash"),
-				CONFIG_INTEGER("commit-increment", memory.files.lookup.commit_increment, 4096, 256, 1048576, 0, "Number of entries by which the hash set is grown when it overflows"),
+	CONFIG_CONTAINER("detail", detail, 20, "Container for configurable implementation details"),
+		CONFIG_CONTAINER("input", detail.input, 19, "Container for source file input configuration"),
+			CONFIG_CONTAINER("files", detail.input.files, 8, "Container for configuration of set of distinct discovered source files, irrespective of the filepath they were specified under"),
+				CONFIG_CONTAINER("map", detail.input.files.map, 3, "Container for configuration of hash map"),
+					CONFIG_INTEGER("reserve", detail.input.files.map.reserve, 4096, 2048, 1048576, 2048, "Maximum size of the array backing the open hash set can grow to"),
+					CONFIG_INTEGER("initial-commit", detail.input.files.map.initial_commit, 4096, 2048, 1048576, 2048, "Initial size of the array backing the open hash set can grow to"),
+					CONFIG_INTEGER("max-insertion-distance", detail.input.files.map.max_insertion_distance, 128, 64, 4096, 64, "Maximum number of map entries which can be locked by an insert before a rehash is triggered"),
+				CONFIG_CONTAINER("store", detail.input.files.store, 3, "Container for configuration of the set's entry storage"),
+					CONFIG_INTEGER("reserve", detail.input.files.store.reserve, 4096, 256, 1048576, 2048, "Maximum number of entries that can be inserted into the set"),
+					CONFIG_INTEGER("commit-increment", detail.input.files.store.commit_increment, 256, 256, 1048576, 256, "Amount by which a thread grows its store when its allocated storage is exhausted"),
+					CONFIG_INTEGER("initial-commit-per-thread", detail.input.files.store.initial_commit_per_thread, 256, 256, 32768, 256, "Size of storage initially allocated for each thread"),
+			CONFIG_CONTAINER("filenames", detail.input.filenames, 8, "Container for configuration of set of discovered source file names"),
+				CONFIG_CONTAINER("map", detail.input.filenames.map, 3, "Container for configuration of hash map"),
+					CONFIG_INTEGER("reserve", detail.input.filenames.map.reserve, 4096, 2048, 1048576, 2048, "Maximum size of the array backing the open hash set can grow to"),
+					CONFIG_INTEGER("initial-commit", detail.input.filenames.map.initial_commit, 4096, 2048, 1048576, 2048, "Initial size of the array backing the open hash set can grow to"),
+					CONFIG_INTEGER("max-insertion-distance", detail.input.filenames.map.max_insertion_distance, 128, 64, 4096, 64, "Maximum number of map entries which can be locked by an insert before a rehash is triggered"),
+				CONFIG_CONTAINER("store", detail.input.filenames.store, 3, "Container for configuration of the set's entry storage"),
+					CONFIG_INTEGER("reserve", detail.input.filenames.store.reserve, 4096, 256, 1048576, 2048, "Maximum number of entries that can be inserted into the set"),
+					CONFIG_INTEGER("commit-increment", detail.input.filenames.store.commit_increment, 256, 256, 1048576, 256, "Amount by which a thread grows its store when its allocated storage is exhausted"),
+					CONFIG_INTEGER("initial-commit-per-thread", detail.input.filenames.store.initial_commit_per_thread, 256, 256, 32768, 256, "Size of storage initially allocated for each thread"),
+			CONFIG_INTEGER("max-pending-files", detail.input.max_pending_files, 4096, 64, 1048576, 0, "Upper limit on the number of files that have been discovered but have not been yet read"),
 };
 
 
@@ -1520,6 +1531,85 @@ void deinit_config(Config* config) noexcept
 	minos::unreserve(config->m_heap_ptr_);
 }
 
+void print_config(const Config* config) noexcept
+{
+	u32 indent_stack[8];
+	indent_stack[0] = config_template[0].container.child_count;
+
+	u32 indent_count = 1;
+
+	u32 indent = 0;
+
+	for (u32 i = 1; i != array_count(config_template); ++i)
+	{
+		const ConfigEntryTemplate& tpl = config_template[i];
+
+		switch (tpl.type)
+		{
+		case ConfigEntryType::Container:
+		{
+			printf("%*s%s = {\n", indent, "", tpl.name);
+
+			indent_stack[indent_count - 1] -= tpl.container.child_count;
+
+			ASSERT_OR_IGNORE(indent_count + 1 < array_count(indent_stack));
+
+			indent_stack[indent_count] = tpl.container.child_count;
+
+			indent_count += 1;
+
+			indent += 4;
+
+			break;
+		}
+
+		case ConfigEntryType::Integer:
+		{
+			const u32 value = *reinterpret_cast<const u32*>(reinterpret_cast<const byte*>(config) + tpl.offset);
+
+			printf("%*s%s = %u\n", indent, "", tpl.name, value);
+
+			break;
+		}
+
+		case ConfigEntryType::Boolean:
+		{
+			const bool value = *reinterpret_cast<const bool*>(reinterpret_cast<const byte*>(config) + tpl.offset);
+
+			printf("%*s%s = %s\n", indent, "", tpl.name, value ? "true" : "false");
+
+			break;
+		}
+
+		case ConfigEntryType::String:
+		{
+			const Range<char8> value = *reinterpret_cast<const Range<char8>*>(reinterpret_cast<const byte*>(config) + tpl.offset);
+
+			printf("%*s%s = '%.*s'\n", indent, "", tpl.name, static_cast<u32>(value.count()), value.begin());
+
+			break;
+		}
+
+		default: ASSERT_UNREACHABLE;
+		}
+
+		ASSERT_OR_IGNORE(indent_count != 0);
+
+		while (indent_count > 0 && indent_stack[indent_count - 1] == 0)
+		{
+			indent_count -= 1;
+
+			indent -= 4;
+
+			printf("%*s}\n", indent, "");
+		}
+
+		indent_stack[indent_count - 1] -= 1;
+	}
+
+	ASSERT_OR_IGNORE(indent_count == 1 && indent_stack[0] == 0);
+}
+
 void print_config_help(u32 depth) noexcept
 {
 	printf("config parameters:\n");
@@ -1586,26 +1676,25 @@ void print_config_help(u32 depth) noexcept
 
 		case ConfigEntryType::String:
 		{
-			printf("%*s[%s] - String (default: %.*s)\n%*s  %s\n", indent, "", tpl.name, static_cast<s32>(tpl.string.default_value.count()), tpl.string.default_value.begin(), indent, "", tpl.helptext);
+			printf("%*s[%s] - String (default: '%.*s')\n%*s  %s\n", indent, "", tpl.name, static_cast<s32>(tpl.string.default_value.count()), tpl.string.default_value.begin(), indent, "", tpl.helptext);
 
 			break;
 		}
 
-		default:
-			ASSERT_UNREACHABLE;
+		default: ASSERT_UNREACHABLE;
 		}
 
 		ASSERT_OR_IGNORE(indent_count != 0);
 
-		if (indent_stack[indent_count - 1] == 0)
+		while (indent_count > 0 && indent_stack[indent_count - 1] == 0)
 		{
 			indent_count -= 1;
 
 			indent -= 4;
 		}
-		else
-		{
-			indent_stack[indent_count - 1] -= 1;
-		}
+
+		indent_stack[indent_count - 1] -= 1;
 	}
+
+	ASSERT_OR_IGNORE(indent_count == 1 && indent_stack[0] == 0);
 }

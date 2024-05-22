@@ -5,6 +5,27 @@
 
 struct Config
 {
+	struct ThreadsafeMapConfig
+	{
+		struct
+		{
+			u32 reserve;
+
+			u32 initial_commit;
+
+			u32 max_insertion_distance;
+		} map;
+
+		struct
+		{
+			u32 reserve;
+
+			u32 commit_increment;
+
+			u32 initial_commit_per_thread;
+		} store;
+	};
+
 	struct
 	{
 		u32 thread_count;
@@ -26,30 +47,19 @@ struct Config
 		u32 max_concurrent_files;
 
 		u32 max_concurrent_reads_per_file;
-
-		u32 max_pending_files;
 	} input;
 
 	struct
 	{
 		struct
 		{
-			u32 reserve;
+			ThreadsafeMapConfig files;
 
-			u32 initial_commit;
+			ThreadsafeMapConfig filenames;
 
-			u32 commit_increment;
-
-			struct
-			{
-				u32 reserve;
-
-				u32 initial_commit;
-
-				u32 commit_increment;
-			} lookup;
-		} files;
-	} memory;
+			u32 max_pending_files;
+		}input;
+	} detail;
 
 	void* m_heap_ptr_;
 };
@@ -72,6 +82,8 @@ struct ConfigParseError
 bool read_config_from_file(const char8* config_filepath, ConfigParseError* out_error, Config* out) noexcept;
 
 void deinit_config(Config* config) noexcept;
+
+void print_config(const Config* config) noexcept;
 
 void print_config_help(u32 depth = 0) noexcept;
 
