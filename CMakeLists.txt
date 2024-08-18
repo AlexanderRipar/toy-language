@@ -14,6 +14,7 @@ add_executable(
 	minos.hpp minos.cpp
 	config.hpp config.cpp
 	task_manag0r.hpp task_manag0r.cpp
+	parse.hpp parse.cpp
 )
 
 target_link_libraries(compil0r PRIVATE synchronization)

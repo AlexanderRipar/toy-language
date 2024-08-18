@@ -4,6 +4,10 @@
 #include "hash.hpp"
 #include "minos.hpp"
 #include "syntax_tree.hpp"
+#include "tagged_ptr.hpp"
+#include "parse.hpp"
+
+#include <cstdio>
 
 #pragma warning(push)
 #pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
@@ -20,6 +24,8 @@ static constexpr u32 BLOCKREAD_COUNT_BITS = 16;
 static constexpr u32 MAX_BLOCKREAD_COUNT = (1 << BLOCKREAD_COUNT_BITS) - 1;
 
 static constexpr u32 MAX_CONCURRENT_BLOCKREADS_PER_FILEREAD = 254;
+
+
 
 // 'Key' for looking up the FileData corresponding to an os file.
 // The info's FileIdentity is the only part that is used for the lookup. The
@@ -39,6 +45,12 @@ struct FileKey
 	minos::FileHandle handle;
 };
 
+enum class FileType : u8
+{
+	INVALID = 0,
+	Source,
+};
+
 struct FileData
 {
 	struct
@@ -50,13 +62,15 @@ struct FileData
 		u64 index;
 	} identity;
 
+	FileType type;
+
+	bool is_scanned;
+
 	u32 next;
 
 	std::atomic<minos::FileHandle> filehandle;
 
 	u64 file_bytes;
-
-	bool is_scanned;
 
 	void init(FileKey key, u32 key_hash) noexcept
 	{
@@ -139,12 +153,12 @@ struct FileProxy
 
 	static u32 get_required_strides(Range<char8> key) noexcept
 	{
-		return static_cast<u32>((offsetof(FileProxy, filepath) + key.count()) / stride());
+		return static_cast<u32>((offsetof(FileProxy, filepath) + key.count() + stride() - 1) / stride());
 	}
 
 	u32 get_used_strides() const noexcept
 	{
-		return static_cast<u32>((offsetof(FileProxy, filepath) + filepath_chars) / stride());
+		return static_cast<u32>((offsetof(FileProxy, filepath) + filepath_chars + stride() - 1) / stride());
 	}
 
 	u32 get_hash() const noexcept
@@ -168,53 +182,40 @@ struct FileProxy
 	}
 };
 
-union FileRead
+struct FileRead
 {
-	struct alignas(4) Position
-	{
-		u16 issued_blockread_count;
+	minos::FileHandle filehandle;
 
-		u16 last_issued_blockread_index;
-	};
+	u32 file_index;
 
-	struct
-	{
-		minos::FileHandle filehandle;
+	u32 bytes_in_final_blockread;
 
-		u32 file_index;
+	u16 issued_blockread_count;
 
-		u32 bytes_in_final_blockread;
+	u16 required_blockread_count;
 
-		std::atomic<Position> position;
+	u16 last_issued_blockread_index;
 
-		u16 required_blockread_count;
+	u16 index_in_heap;
 
-		u16 index_in_heap;
-
-		TaskType content_type;
-	};
+	Mutex mutex;
 
 	u32 freelist_next;
+
+	ParseState parse_state;
 };
 
 struct alignas(64) BlockRead
 {
-	struct alignas(8) Position
-	{
-		u16 fileread_index;
-
-		u16 index_in_fileread;
-
-		u16 next_blockread_index;
-
-		u16 zero_padding;
-	};
-
 	minos::Overlapped overlapped;
 
 	byte* buffer;
 
-	std::atomic<Position> position;
+	u16 fileread_index;
+
+	u16 index_in_fileread;
+
+	u16 next_blockread_index;
 
 	std::atomic<u16> completion_state;
 
@@ -223,11 +224,11 @@ struct alignas(64) BlockRead
 
 struct RemainderBuffer
 {
-	u16 valid_buffer_bytes;
+	u16 used_bytes;
 
-	byte buffer[8189];
+	char8 buffer[8189];
 
-	byte reserved_terminator;
+	char8 reserved_terminator;
 };
 
 
@@ -244,16 +245,28 @@ public:
 
 	struct InitInfo
 	{
-		decltype(m_filenames)::InitInfo filenames;
+		u32 thread_count;
 
-		decltype(m_files)::InitInfo files;
+		struct
+		{
+			decltype(m_filenames)::InitInfo::MapInitInfo map;
+
+			decltype(m_filenames)::InitInfo::StoreInitInfo store;
+		} filenames;
+
+		struct
+		{
+			decltype(m_files)::InitInfo::MapInitInfo map;
+
+			decltype(m_files)::InitInfo::StoreInitInfo store;
+		} files;
 	};
 
 	static MemoryRequirements get_memory_requirements(const InitInfo& info) noexcept
 	{
-		const MemoryRequirements filenames_req = decltype(m_filenames)::get_memory_requirements(info.filenames);
+		const MemoryRequirements filenames_req = decltype(m_filenames)::get_memory_requirements({ info.thread_count, info.filenames.map, info.filenames.store });
 
-		const MemoryRequirements files_req = decltype(m_files)::get_memory_requirements(info.files);
+		const MemoryRequirements files_req = decltype(m_files)::get_memory_requirements({ info.thread_count, info.files.map, info.files.store });
 
 		const u64 files_alignment_mask = files_req.alignment - 1;
 
@@ -268,18 +281,18 @@ public:
 
 	bool init(const InitInfo& info, byte* memory) noexcept
 	{
-		const MemoryRequirements filenames_req = m_filenames.get_memory_requirements(info.filenames);
+		const MemoryRequirements filenames_req = m_filenames.get_memory_requirements({ info.thread_count, info.filenames.map, info.filenames.store });
 
-		const MemoryRequirements files_req = m_files.get_memory_requirements(info.files);
+		const MemoryRequirements files_req = m_files.get_memory_requirements({ info.thread_count, info.files.map, info.files.store });
 
 		const u64 files_alignment_mask = files_req.alignment - 1;
 
 		const u64 files_offset = (filenames_req.bytes + files_alignment_mask) & ~files_alignment_mask;
 
-		if (!m_filenames.init(info.filenames, memory))
+		if (!m_filenames.init({ info.thread_count, info.filenames.map, info.filenames.store }, memory))
 			return false;
 
-		return m_files.init(info.files, memory + files_offset);
+		return m_files.init({ info.thread_count, info.files.map, info.files.store }, memory + files_offset);
 	}
 
 	FileData* get_filedata(u32 thread_id, Range<char8> filepath, bool& out_is_new) noexcept
@@ -381,13 +394,13 @@ private:
 		{
 			const u32 child_index = (parent_index + 1) << HEAP_SHIFT;
 
-			u32 swap_index;
+			u32 swap_index = 0;
 
 			u32 min_priority = parent_priority;
 
 			const u32 end_index = child_index + HEAP_N < m_active_fileread_count ? child_index + HEAP_N : m_active_fileread_count;
 
-			for (u32 i = child_index; i != end_index; ++i)
+			for (u32 i = child_index; i < end_index; ++i)
 			{
 				if (const u32 priority = m_priorities[i].priority; priority < min_priority)
 				{
@@ -497,11 +510,11 @@ public:
 	{
 		m_mutex.acquire();
 
-		u32 min_index;
+		u32 min_index = 0;
 
 		u32 min_priority = LEAST_PRIORITY;
 
-		for (u16 i = 0; i != HEAP_N; ++i)
+		for (u16 i = 0; i != HEAP_N && i < m_active_fileread_count; ++i)
 		{
 			if (const u32 priority = m_priorities[i].priority; priority < min_priority)
 			{
@@ -550,7 +563,7 @@ public:
 
 		ASSERT_OR_IGNORE(to_insert->required_blockread_count <= MAX_REMAINING_BLOCKREAD_COUNT);
 
-		m_priorities[m_active_fileread_count] = { fileread_index, to_insert->required_blockread_count, 0 };
+		m_priorities[m_active_fileread_count] = { 0, fileread_index, to_insert->required_blockread_count };
 
 		to_insert->index_in_heap = static_cast<u16>(m_active_fileread_count);
 
@@ -562,20 +575,13 @@ public:
 	}
 };
 
-static void scan_buffer(byte* buffer, u32 bytes, RemainderBuffer* rem, FileData* filedata) noexcept
-{
-	// @TODO
-	buffer;
-	bytes;
-	rem;
-	filedata;
-}
-
 struct FileFilet
 {
 	struct InitInfo
 	{
 		FileMap::InitInfo filemap;
+
+		IdentifierMap::InitInfo identifers;
 
 		// Upper bound on the number of file requests which can be queued in
 		// case no FileRead is available at the time.
@@ -595,6 +601,8 @@ struct FileFilet
 		// Number of bytes that are read with every BlockRead.
 		// This must be a nonzero multiple of the system's page size.
 		u32 bytes_per_blockread;
+
+		Range<Range<char8>> initial_filepaths;
 	};
 
 private:
@@ -608,6 +616,10 @@ private:
 		u64 filemap_offset;
 
 		u64 filemap_bytes;
+
+		u64 identifiers_offset;
+
+		u64 identifiers_bytes;
 
 		u64 pqueue_offset;
 
@@ -629,12 +641,14 @@ private:
 
 		u64 pending_filedata_bytes;
 
+		u64 worker_thread_offset;
+
+		u64 worker_thread_bytes;
+
 		u64 bytes;
 
 		u32 alignment;
 	};
-
-
 
 	FileMap m_filemap;
 
@@ -650,11 +664,17 @@ private:
 
 	u32* m_pending_filedata_index_buffer;
 
+	minos::ThreadHandle* m_worker_threads;
+
 	u32 m_max_pending_filedata_count;
 
 	u32 m_bytes_per_buffer;
 
+	u32 m_buffer_stride;
+
 	u32 m_max_blockreads_per_fileread;
+
+	u32 m_worker_thread_count;
 
 	minos::CompletionHandle m_completion;
 
@@ -666,11 +686,19 @@ private:
 
 	ThreadsafeRingBufferHeader<u32> m_pending_filedata_queue;
 
+	ThreadsafeIndexStackListHeader<BlockRead, offsetof(BlockRead, freelist_next)> m_processable_blockreads;
+
+	std::atomic<u32> m_processable_blockread_count;
+
+	ThreadsafeMap2<Range<char8>, IdentifierMapEntry> m_identifier_map;
+
 
 
 	static MemoryDetails get_memory_details(const InitInfo& info) noexcept
 	{
 		const MemoryRequirements filemap_req = FileMap::get_memory_requirements(info.filemap);
+
+		const MemoryRequirements identifiers_req = IdentifierMap::get_memory_requirements(info.identifers);
 
 		FileReadPriorityQueue::InitInfo pqueue_info;
 		pqueue_info.max_active_fileread_count = info.max_fileread_count;
@@ -681,12 +709,15 @@ private:
 		MemoryDetails off;
 
 		off.read_buffer_offset = 0;
-		off.read_buffer_bytes = info.bytes_per_blockread * info.max_blockread_count;
+		off.read_buffer_bytes = (info.bytes_per_blockread + minos::page_bytes()) * info.max_blockread_count;
 
 		off.filemap_offset = align_to(off.read_buffer_offset + off.read_buffer_bytes, filemap_req.alignment);
 		off.filemap_bytes = filemap_req.bytes;
 
-		off.pqueue_offset = align_to(off.filemap_offset + filemap_req.bytes, pqueue_req.alignment);
+		off.identifiers_offset = align_to(off.filemap_offset + off.filemap_bytes, identifiers_req.alignment);
+		off.identifiers_bytes = identifiers_req.bytes;
+
+		off.pqueue_offset = align_to(off.identifiers_offset + off.identifiers_bytes, pqueue_req.alignment);
 		off.pqueue_bytes = pqueue_req.bytes;
 
 		off.fileread_offset = align_to(off.pqueue_offset + off.pqueue_bytes, alignof(FileRead));
@@ -701,7 +732,10 @@ private:
 		off.pending_filedata_offset = align_to(off.remainder_offset + off.remainder_bytes, alignof(u32));
 		off.pending_filedata_bytes = info.max_pending_fileread_count * sizeof(u32);
 
-		off.bytes = off.pending_filedata_offset + off.pending_filedata_bytes;
+		off.worker_thread_offset = align_to(off.pending_filedata_offset + off.pending_filedata_bytes, alignof(minos::ThreadHandle));
+		off.worker_thread_bytes = info.filemap.thread_count * sizeof(minos::ThreadHandle);
+
+		off.bytes = off.worker_thread_offset + off.worker_thread_bytes;
 
 		// Minimum recommended alignment for read buffers to be used with
 		// FILE_FLAG_UNBUFFERED, since it is larger than or equal to realistic
@@ -717,70 +751,46 @@ private:
 		return off;
 	}
 
-	FileRead::Position claim_next_blockread_for_fileread(FileRead* fileread, BlockRead* blockread) noexcept
-	{
-		const u16 fileread_index = static_cast<u16>(fileread - m_filereads);
-
-		const u16 blockread_index = static_cast<u16>(blockread - m_blockreads);
-
-		FileRead::Position position = fileread->position.load(std::memory_order_seq_cst);
-
-		while (true)
-		{
-			blockread->position.store({ fileread_index, position.issued_blockread_count, 0xFFFF, 0 }, std::memory_order_seq_cst);
-
-			const FileRead::Position new_position = { static_cast<u16>(position.issued_blockread_count + 1), blockread_index };
-
-			if (fileread->position.compare_exchange_strong(position, new_position, std::memory_order_seq_cst))
-				return position;
-		}
-	}
-
-	// @TODO: This should be a slow path; The usual case, when the FileRead
-	// only requires a single BlockRead, can be done with way fewer atomics
 	void issue_blockread_for_fileread(FileRead* fileread, BlockRead* blockread) noexcept
 	{
-		blockread->completion_state.store(0, std::memory_order_relaxed);
+		fileread->mutex.acquire();
 
-		const u16 fileread_index = static_cast<u16>(fileread - m_filereads);
+		const u16 index_in_fileread = fileread->issued_blockread_count;
 
-		const u16 blockread_index = static_cast<u16>(blockread - m_blockreads);
-
-		const FileRead::Position fileread_pos = claim_next_blockread_for_fileread(fileread, blockread);
-
-		const u16 prev_blockread_index = fileread_pos.last_issued_blockread_index;
-
-		const u16 index_in_fileread = fileread_pos.issued_blockread_count;
-
-		if (prev_blockread_index == 0xFFFF)
+		if (fileread->last_issued_blockread_index == 0xFFFF)
 		{
 			blockread->completion_state.store(1, std::memory_order_relaxed);
 		}
 		else
 		{
-			BlockRead* const prev_blockread = m_blockreads + prev_blockread_index;
+			blockread->completion_state.store(0, std::memory_order_relaxed);
 
-			BlockRead::Position prev_position = prev_blockread->position.load(std::memory_order_seq_cst);
+			BlockRead* const prev_blockread = m_blockreads + fileread->last_issued_blockread_index;
 
-			if (prev_position.fileread_index != fileread_index || prev_position.index_in_fileread + 1 != index_in_fileread)
-			{
-				blockread->completion_state.store(1, std::memory_order_relaxed);
-			}
-			else
-			{
-				const BlockRead::Position new_position = { fileread_index, static_cast<u16>(index_in_fileread - 1), blockread_index, 0 };
-
-				if (!prev_blockread->position.compare_exchange_strong(prev_position, new_position, std::memory_order_seq_cst))
-					blockread->completion_state.store(1, std::memory_order_relaxed);
-			}
+			prev_blockread->next_blockread_index = static_cast<u16>(blockread - m_blockreads);
 		}
 
-		blockread->overlapped.offset = static_cast<u64>(index_in_fileread) * m_bytes_per_buffer;
+		blockread->next_blockread_index = 0xFFFF;
 
+		fileread->last_issued_blockread_index = static_cast<u16>(blockread - m_blockreads);
+
+		fileread->issued_blockread_count += 1;
+
+		fileread->mutex.release();
+
+		const u16 fileread_index = static_cast<u16>(fileread - m_filereads);
+
+		blockread->overlapped.offset = static_cast<u64>(index_in_fileread) * m_bytes_per_buffer;
 		blockread->overlapped.unused_0 = 0;
 		blockread->overlapped.unused_1 = 0;
 
-		blockread->buffer = m_buffers + static_cast<u64>(blockread_index) * m_bytes_per_buffer;
+		blockread->buffer = m_buffers + (blockread - m_blockreads) * m_buffer_stride;
+
+		blockread->fileread_index = fileread_index;
+
+		blockread->index_in_fileread = index_in_fileread;
+
+		fprintf(stderr, "Issued %u\n", blockread->index_in_fileread);
 
 		ASSERT_OR_EXIT(minos::file_read(
 				fileread->filehandle,
@@ -792,6 +802,8 @@ private:
 
 	void pump_reads() noexcept
 	{
+		fprintf(stderr, "pump_reads\n");
+
 		while (true)
 		{
 			BlockRead* const blockread = m_blockread_freelist.pop(m_blockreads);
@@ -812,76 +824,50 @@ private:
 		}
 	}
 
-	void dispatch_completed_blockread(FileData* filedata, FileRead* fileread, BlockRead* blockread, RemainderBuffer* remainder) noexcept
+	void initiate_fileread_for_filedata(FileData* filedata, u32 filedata_index, FileRead* fileread) noexcept
 	{
-		// @TODO: Implement
-		switch (fileread->content_type)
-		{
-		case TaskType::Scan:
-			scan_buffer(blockread->buffer, blockread->position.load(std::memory_order_relaxed).index_in_fileread == fileread->required_blockread_count - 1 ? fileread->bytes_in_final_blockread : m_bytes_per_buffer, remainder, filedata);
-			break;
+		const u16 required_blockread_count = static_cast<u16>((filedata->file_bytes + m_bytes_per_buffer - 1) / m_bytes_per_buffer);
 
-		default:
-			ASSERT_UNREACHABLE;
-		}
+		fileread->filehandle = filedata->filehandle;
+		fileread->file_index = filedata_index;
+		fileread->bytes_in_final_blockread = static_cast<u32>(filedata->file_bytes - (required_blockread_count - 1) * m_bytes_per_buffer);
+		fileread->issued_blockread_count = 0;
+		fileread->required_blockread_count = required_blockread_count;
+		fileread->last_issued_blockread_index = 0xFFFF;
+		fileread->mutex.init();
+
+		RemainderBuffer* remainder = m_remainders + (fileread - m_filereads);
+		remainder->used_bytes = 0;
+		remainder->buffer[0] = '\0';
+
+		fileread->parse_state.comment_nesting = 0;
+		fileread->parse_state.is_line_comment = 0;
+		fileread->parse_state.is_last = 0;
+		fileread->parse_state.prefix_used = 0;
+		fileread->parse_state.prefix_capacity = sizeof(RemainderBuffer::buffer);
+		fileread->parse_state.prefix = remainder->buffer;
+		fileread->parse_state.identifiers = &m_identifier_map;
+		fileread->parse_state.frame_count = 0;
+
+		m_pqueue.insert_at_min_read_count(m_filereads, fileread);
+
+		pump_reads();
 	}
 
-	// @TODO: This should be a slow path; The usual case, when the FileRead
-	// only requires a single BlockRead, can be done with way fewer atomics
-	bool process_completed_blockread(BlockRead* blockread) noexcept
+	static u32 worker_thread_proc(void* raw_param) noexcept
 	{
-		const u16 fileread_index = blockread->position.load(std::memory_order_relaxed).fileread_index;
+		TaggedPtr<FileFilet> param = TaggedPtr<FileFilet>::from_raw_value(raw_param);
 
-		FileRead* const fileread = m_filereads + fileread_index;
+		FileFilet* const filet = param.ptr();
 
-		RemainderBuffer* const remainder = m_remainders + fileread_index;
-
-		FileData* const filedata = m_filemap.filedata_from(fileread->file_index);
-
-		if (blockread->completion_state.exchange(1, std::memory_order_relaxed) == 0)
-			return false;
+		const u32 thread_id = param.tag();
 
 		while (true)
 		{
-			// @TODO: Process data in blockread
-			dispatch_completed_blockread(filedata, fileread, blockread, remainder);
-
-			const BlockRead::Position position = blockread->position.exchange({ 0xFFFF, 0xFFFF, 0, 0 }, std::memory_order_seq_cst);
-
-			m_blockread_freelist.push(m_blockreads, static_cast<u32>(blockread - m_blockreads));
-
-			// Check if we have reached the last currently active (and linked)
-			// BlockReads in the FileRead
-			if (position.next_blockread_index != 0xFFFF)
-			{
-				blockread = m_blockreads + position.next_blockread_index;
-
-				if (blockread->completion_state.exchange(1, std::memory_order_relaxed) == 0)
-					return true;
-
-				continue;
-			}
-
-			// Check if we just processed the last BlockRead of the FileRead,
-			// thus completing the FileRead
-			if (position.index_in_fileread != fileread->required_blockread_count)
-				return true;
-
-			// If there are pending files, directly issue a new read.
-			// Otherwise, add the FileRead to the list freelist.
-			u32 new_filedata_index;
-
-			if (m_pending_filedata_queue.dequeue(m_pending_filedata_index_buffer, m_max_pending_filedata_count, &new_filedata_index))
-				initiate_fileread_for_filedata(m_filemap.filedata_from(new_filedata_index), new_filedata_index, fileread);
-			else
-				m_fileread_freelist.push(m_filereads, static_cast<u32>(fileread - m_filereads));
-
-			// @TODO: Notify filedata that we're done
-
-			return true;
+			filet->process(thread_id);
 		}
 
-		ASSERT_UNREACHABLE;
+		return 0;
 	}
 
 	static u32 completion_thread_proc(void* param) noexcept
@@ -899,30 +885,115 @@ private:
 
 			ASSERT_OR_IGNORE(result.key == 1);
 
-			if (filet->process_completed_blockread(reinterpret_cast<BlockRead*>(result.overlapped)))
-				filet->pump_reads();
-		}
+			BlockRead* const blockread = reinterpret_cast<BlockRead*>(result.overlapped);
 
-		ASSERT_UNREACHABLE;
+			if (blockread->completion_state.exchange(1, std::memory_order_relaxed) == 1)
+			{
+				filet->m_processable_blockreads.push(filet->m_blockreads, static_cast<u32>(blockread - filet->m_blockreads));
+
+				filet->m_processable_blockread_count.fetch_add(1, std::memory_order_relaxed);
+			}
+		}
 	}
 
-	void initiate_fileread_for_filedata(FileData* filedata, u32 filedata_index, FileRead* fileread) noexcept
+	void process_blockread(u32 thread_id, BlockRead* blockread) noexcept
 	{
-		const u16 required_blockread_count = static_cast<u16>((filedata->file_bytes + m_bytes_per_buffer - 1) / m_bytes_per_buffer);
+		fprintf(stderr, "process_blockread\n");
 
-		fileread->filehandle = filedata->filehandle;
-		fileread->file_index = filedata_index;
-		fileread->bytes_in_final_blockread = static_cast<u32>(filedata->file_bytes - (required_blockread_count - 1) * m_bytes_per_buffer);
-		fileread->position.store({ 0, 0xFFFF }, std::memory_order_relaxed);
-		fileread->required_blockread_count = required_blockread_count;
-		fileread->content_type = TaskType::Scan;
+		FileRead* const fileread = m_filereads + blockread->fileread_index;
 
-		RemainderBuffer* remainder = m_remainders + (fileread - m_filereads);
-		remainder->valid_buffer_bytes = 0;
+		RemainderBuffer* const remainder = m_remainders + blockread->fileread_index;
 
-		m_pqueue.insert_at_min_read_count(m_filereads, fileread);
+		FileData* const filedata = m_filemap.filedata_from(fileread->file_index);
 
-		pump_reads();
+		while (true)
+		{
+			fprintf(stderr, "Got %u / %u on %u\n", blockread->index_in_fileread, fileread->required_blockread_count, thread_id);
+
+			const bool is_last_blockread_in_fileread = blockread->index_in_fileread == fileread->required_blockread_count - 1;
+
+			const u32 blockread_bytes = is_last_blockread_in_fileread ? fileread->bytes_in_final_blockread : m_bytes_per_buffer;
+
+			blockread->buffer[blockread_bytes] = '\0';
+
+			u32 remaining_bytes = 0;
+
+			switch (filedata->type)
+			{
+			case FileType::Source:
+				fileread->parse_state.begin = reinterpret_cast<const char8*>(blockread->buffer);
+				fileread->parse_state.end = reinterpret_cast<const char8*>(blockread->buffer + blockread_bytes);
+				fileread->parse_state.thread_id = thread_id;
+				fileread->parse_state.prefix_used = remainder->used_bytes;
+
+				remaining_bytes = parse(&fileread->parse_state);
+
+				break;
+
+			default: ASSERT_UNREACHABLE;
+			}
+
+			ASSERT_OR_EXIT(remaining_bytes <= sizeof(remainder->buffer));
+
+			memcpy(remainder->buffer, blockread->buffer + blockread_bytes - remaining_bytes, remaining_bytes);
+
+			remainder->buffer[remaining_bytes] = '\0';
+
+			fileread->mutex.acquire();
+
+			if (blockread->next_blockread_index == 0xFFFF)
+			{
+				if (fileread->last_issued_blockread_index == m_blockreads - blockread)
+					fileread->last_issued_blockread_index = 0xFFFF;
+
+				fileread->mutex.release();
+
+				m_blockread_freelist.push(m_blockreads, static_cast<u32>(blockread - m_blockreads));
+
+				m_pqueue.decrease_read_count(m_filereads, fileread);
+
+				if (is_last_blockread_in_fileread)
+				{
+					ASSERT_OR_EXIT(remaining_bytes == 0);
+
+					m_fileread_freelist.push(m_filereads, static_cast<u32>(fileread - m_filereads));
+
+					minos::exit_process(0);
+				}
+
+				pump_reads();
+
+				return;
+			}
+
+			fileread->mutex.release();
+
+			const u16 next_blockread_index = blockread->next_blockread_index;
+
+			m_blockread_freelist.push(m_blockreads, static_cast<u32>(blockread - m_blockreads));
+
+			m_pqueue.decrease_read_count(m_filereads, fileread);
+
+			pump_reads();
+
+			blockread = m_blockreads + next_blockread_index;
+
+			if (blockread->completion_state.exchange(1, std::memory_order_relaxed) == 0)
+				return;
+		}
+	}
+
+	void process(u32 thread_id) noexcept
+	{
+		for (u32 processable_blockread_count = m_processable_blockread_count.load(std::memory_order_relaxed); processable_blockread_count != 0;)
+		{
+			if (m_processable_blockread_count.compare_exchange_weak(processable_blockread_count, processable_blockread_count - 1, std::memory_order_relaxed))
+			{
+				process_blockread(thread_id, m_processable_blockreads.pop(m_blockreads));
+
+				return;
+			}
+		}
 	}
 
 public:
@@ -953,7 +1024,13 @@ public:
 		if (!minos::commit(memory + details.pending_filedata_offset, details.pending_filedata_bytes))
 			return false;
 
+		if (!minos::commit(memory + details.worker_thread_offset, details.worker_thread_bytes))
+			return false;
+
 		if (!m_filemap.init(info.filemap, memory + details.filemap_offset))
+			return false;
+
+		if (!m_identifier_map.init(info.identifers, memory + details.identifiers_offset))
 			return false;
 
 		FileReadPriorityQueue::InitInfo pqueue_info;
@@ -966,7 +1043,7 @@ public:
 		if (!minos::completion_create(&m_completion))
 			return false;
 
-		if (!minos::thread_create(completion_thread_proc, this, range_from_cstring("completion worker"), &m_completion_thread))
+		if (!minos::thread_create(completion_thread_proc, this, range_from_literal_string("completion worker"), &m_completion_thread))
 			return false;
 
 		m_buffers = memory + details.read_buffer_offset;
@@ -979,11 +1056,17 @@ public:
 
 		m_pending_filedata_index_buffer = reinterpret_cast<u32*>(memory + details.pending_filedata_offset);
 
+		m_worker_threads = reinterpret_cast<minos::ThreadHandle*>(memory + details.worker_thread_offset) + 2;
+
 		m_bytes_per_buffer = info.bytes_per_blockread;
+
+		m_buffer_stride = info.bytes_per_blockread + minos::page_bytes();
 
 		m_max_blockreads_per_fileread = info.max_concurrent_blockread_count_per_fileread;
 
 		m_max_pending_filedata_count = info.max_pending_fileread_count;
+
+		m_worker_thread_count = info.filemap.thread_count;
 
 		m_blockread_freelist.init(m_blockreads, info.max_blockread_count);
 
@@ -991,22 +1074,58 @@ public:
 
 		m_pending_filedata_queue.init();
 
+		m_processable_blockreads.init();
+
+		m_processable_blockread_count.store(0, std::memory_order_relaxed);
+
 		for (u32 i = 0; i != info.max_blockread_count; ++i)
-			ASSERT_OR_EXIT(minos::event_create(&m_blockreads[i].overlapped.event));
+		{
+			if (!minos::event_create(&m_blockreads[i].overlapped.event))
+				return false;
+		}
+
+		// Issue requests for initially specified files.
+		// This is done before creating worker threads so that we can piggyback
+		// off thread_id 0 without any races.
+		for (const Range<char8> filepath : info.initial_filepaths)
+			(void) request_ast(0, filepath);
+
+		m_worker_threads[-1] = {};
+
+		reinterpret_cast<FileFilet**>(m_worker_threads)[-2] = this;
+
+		char8 worker_thread_name[]{ "generic worker 000" };
+
+		for (u32 i = 0; i != info.filemap.thread_count; ++i)
+		{
+			worker_thread_name[sizeof(worker_thread_name) - 4] = '0' + static_cast<char8>(i / 100);
+
+			worker_thread_name[sizeof(worker_thread_name) - 3] = '0' + static_cast<char8>((i % 100) / 10);
+
+			worker_thread_name[sizeof(worker_thread_name) - 2] = '0' + static_cast<char8>(i % 10);
+
+			if (!minos::thread_create(worker_thread_proc, TaggedPtr<FileFilet>{ this, static_cast<u16>(i) }.raw_value(), Range{ worker_thread_name, sizeof(worker_thread_name) - 1 }, &m_worker_threads[i]))
+				return false;
+		}
 
 		return true;
 	}
 
-	FileData* request_filedata(u32 thread_id, Range<char8> filepath) noexcept
+	FileData* request_filedata(u32 thread_id, Range<char8> filepath, FileType type) noexcept
 	{
 		bool is_new;
 
 		FileData* const filedata = m_filemap.get_filedata(thread_id, filepath, is_new);
 
+		// @TODO: This is just a temporary hack; Should actually be deduced based on cache state
+		filedata->type = type;
+
 		const u32 filedata_index = m_filemap.index_from(filedata);
 
 		if (!is_new)
 			return filedata;
+
+		minos::completion_associate_file(m_completion, filedata->filehandle, 1);
 
 		FileRead* const fileread = m_fileread_freelist.pop(m_filereads);
 
@@ -1017,6 +1136,80 @@ public:
 
 		return filedata;
 	}
+
+	FileData* request_ast(u32 thread_id, Range<char8> filepath) noexcept
+	{
+		return request_filedata(thread_id, filepath, FileType::Source);
+	}
+
+	FileData* reqest_resource(u32 thread_id, Range<char8> filepath) noexcept
+	{
+		// @TODO: Implement
+
+		return nullptr;
+	}
 };
+
+static FileFilet s_filet;
+
+
+
+bool init_task_manag0r(const Config* config) noexcept
+{
+	FileFilet::InitInfo info;
+	info.filemap.thread_count = config->parallel.thread_count;
+
+
+	info.filemap.filenames.map.reserve_count = config->detail.input.filenames.map.reserve;
+	info.filemap.filenames.map.initial_commit_count = config->detail.input.filenames.map.initial_commit;
+	info.filemap.filenames.map.max_insertion_distance = config->detail.input.filenames.map.max_insertion_distance;
+
+	info.filemap.filenames.store.reserve_strides = config->detail.input.filenames.store.reserve;
+	info.filemap.filenames.store.per_thread_initial_commit_strides = config->detail.input.filenames.store.initial_commit_per_thread;
+	info.filemap.filenames.store.per_thread_commit_increment_strides = config->detail.input.filenames.store.commit_increment;
+
+
+	info.filemap.files.map.reserve_count = config->detail.input.files.map.reserve;
+	info.filemap.files.map.initial_commit_count = config->detail.input.files.map.initial_commit;
+	info.filemap.files.map.max_insertion_distance = config->detail.input.files.map.max_insertion_distance;
+
+	info.filemap.files.store.reserve_strides = config->detail.input.files.store.reserve;
+	info.filemap.files.store.per_thread_initial_commit_strides = config->detail.input.files.store.initial_commit_per_thread;
+	info.filemap.files.store.per_thread_commit_increment_strides = config->detail.input.files.store.commit_increment;
+
+
+
+	info.identifers.thread_count = config->parallel.thread_count;
+
+
+	info.identifers.map.reserve_count = config->detail.identifiers.map.reserve;
+	info.identifers.map.initial_commit_count = config->detail.identifiers.map.initial_commit;
+	info.identifers.map.max_insertion_distance = config->detail.identifiers.map.max_insertion_distance;
+
+	info.identifers.store.reserve_strides = config->detail.identifiers.store.reserve;
+	info.identifers.store.per_thread_initial_commit_strides = config->detail.identifiers.store.initial_commit_per_thread;
+	info.identifers.store.per_thread_commit_increment_strides = config->detail.identifiers.store.commit_increment;
+
+
+
+	info.max_pending_fileread_count = config->detail.input.max_pending_files;
+	info.max_fileread_count = config->input.max_concurrent_files;
+	info.max_blockread_count = config->input.max_concurrent_reads;
+	info.max_concurrent_blockread_count_per_fileread = config->input.max_concurrent_reads_per_file;
+	info.bytes_per_blockread = config->input.bytes_per_read;
+	info.initial_filepaths = Range{ &config->entrypoint.filepath, 1 };
+
+	MemoryRequirements req = FileFilet::get_memory_requirements(info);
+
+	byte* const memory = static_cast<byte*>(minos::reserve(req.bytes));
+
+	if (memory == nullptr)
+		return false;
+
+	if (!s_filet.init(info, memory))
+		return false;
+
+	return true;
+}
 
 #pragma warning(pop)

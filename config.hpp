@@ -59,6 +59,9 @@ struct Config
 
 			u32 max_pending_files;
 		}input;
+
+		ThreadsafeMapConfig identifiers;
+		
 	} detail;
 
 	void* m_heap_ptr_;

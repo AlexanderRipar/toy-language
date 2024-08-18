@@ -461,7 +461,7 @@ public:
 		// map. thread_count may not be 0.
 		u32 thread_count;
 
-		struct
+		struct MapInitInfo
 		{
 			// Maximum size of the map's lookup array.
 			// This must be a power of two that is greater than or equal to
@@ -486,7 +486,7 @@ public:
 			u32 max_insertion_distance;
 		} map;
 
-		struct
+		struct StoreInitInfo
 		{
 			// Maximum number of strides that can be held by the map's backing
 			// store.

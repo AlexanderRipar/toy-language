@@ -1,0 +1,7 @@
+parallel.thread-count = 2
+
+entrypoint.filepath = 'test.evl'
+
+input.bytes-per-read = 4096
+
+input.max-concurrent-reads-per-file = 127

@@ -2,35 +2,8 @@
 #define TASK_MANAG0R_INCLUDE_GUARD
 
 #include "common.hpp"
-#include "range.hpp"
+#include "config.hpp"
 
-enum class TaskType : u8
-{
-	NONE = 0,
-	Scan,
-	Parse,
-};
-
-struct ScanTask
-{
-
-};
-
-struct ParseTask
-{
-
-};
-
-struct Task
-{
-	TaskType type;
-
-	union
-	{
-		ScanTask scan;
-
-		ParseTask parse;
-	};
-};
+bool init_task_manag0r(const Config* config) noexcept;
 
 #endif // TASK_MANAG0R_INCLUDE_GUARD

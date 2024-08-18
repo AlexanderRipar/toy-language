@@ -272,7 +272,7 @@ bool minos::file_read(FileHandle handle, void* buffer, u32 bytes_to_read, Overla
 {
 	if (ReadFile(handle.m_rep, buffer, bytes_to_read, nullptr, reinterpret_cast<OVERLAPPED*>(overlapped)))
 		return true;
-		
+
 	return GetLastError() == ERROR_IO_PENDING;
 }
 
@@ -328,7 +328,7 @@ void minos::event_wait(EventHandle handle) noexcept
 
 bool minos::completion_create(CompletionHandle* out) noexcept
 {
-	HANDLE handle = CreateIoCompletionPort(nullptr, nullptr, 0, 1);
+	HANDLE handle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1);
 
 	if (handle == nullptr)
 		return false;
@@ -350,12 +350,15 @@ void minos::completion_associate_file(CompletionHandle completion, FileHandle fi
 
 bool minos::completion_wait(CompletionHandle completion, CompletionResult* out) noexcept
 {
-	return GetQueuedCompletionStatus(
+	if (GetQueuedCompletionStatus(
 			completion.m_rep,
 			reinterpret_cast<DWORD*>(&out->bytes),
 			reinterpret_cast<ULONG_PTR*>(&out->key),
 			reinterpret_cast<OVERLAPPED**>(&out->overlapped), INFINITE
-	);
+	))
+		return true;
+
+	return GetLastError() == ERROR_HANDLE_EOF;
 }
 
 void minos::sleep(u32 milliseconds) noexcept

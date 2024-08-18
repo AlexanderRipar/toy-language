@@ -90,7 +90,7 @@ struct ConfigEntryTemplate
 };
 
 static constexpr ConfigEntryTemplate config_template[] {
-	ConfigEntryTemplate{ ConfigEntryTemplate::ContainerData{ 31 }, 0, nullptr, nullptr },
+	ConfigEntryTemplate{ ConfigEntryTemplate::ContainerData{ 40 }, 0, nullptr, nullptr },
 	CONFIG_CONTAINER("parallel", parallel, 1, "Container for configuration of multithreading"),
 		CONFIG_INTEGER("thread-count", parallel.thread_count, 1, 1, 4096, 0, "Number of created worker threads working"),
 	CONFIG_CONTAINER("entrypoint", entrypoint, 2, "Container for configuring the program's entrypoint"),
@@ -101,12 +101,12 @@ static constexpr ConfigEntryTemplate config_template[] {
 		CONFIG_INTEGER("max-concurrent-reads", input.max_concurrent_reads, 16, 1, 32767, 0, "Number of OS reads that can be active simultaneously"),
 		CONFIG_INTEGER("max-concurrent-files", input.max_concurrent_files, 8, 1, 4095, 0, "Number of files that can be have active read calls against them simultaneously"),
 		CONFIG_INTEGER("max-concurrent-reads-per-file", input.max_concurrent_reads_per_file, 2, 1, 127, 0, "Number of OS reads that can be active simultaneously for a given file"),
-	CONFIG_CONTAINER("detail", detail, 20, "Container for configurable implementation details"),
+	CONFIG_CONTAINER("detail", detail, 29, "Container for configurable implementation details"),
 		CONFIG_CONTAINER("input", detail.input, 19, "Container for source file input configuration"),
 			CONFIG_CONTAINER("files", detail.input.files, 8, "Container for configuration of set of distinct discovered source files, irrespective of the filepath they were specified under"),
 				CONFIG_CONTAINER("map", detail.input.files.map, 3, "Container for configuration of hash map"),
 					CONFIG_INTEGER("reserve", detail.input.files.map.reserve, 4096, 2048, 1048576, 2048, "Maximum size of the array backing the open hash set can grow to"),
-					CONFIG_INTEGER("initial-commit", detail.input.files.map.initial_commit, 4096, 2048, 1048576, 2048, "Initial size of the array backing the open hash set can grow to"),
+					CONFIG_INTEGER("initial-commit", detail.input.files.map.initial_commit, 4096, 2048, 1048576, 2048, "Initial size that the array backing the open hash set can grow to"),
 					CONFIG_INTEGER("max-insertion-distance", detail.input.files.map.max_insertion_distance, 128, 64, 4096, 64, "Maximum number of map entries which can be locked by an insert before a rehash is triggered"),
 				CONFIG_CONTAINER("store", detail.input.files.store, 3, "Container for configuration of the set's entry storage"),
 					CONFIG_INTEGER("reserve", detail.input.files.store.reserve, 4096, 256, 1048576, 2048, "Maximum number of entries that can be inserted into the set"),
@@ -115,13 +115,22 @@ static constexpr ConfigEntryTemplate config_template[] {
 			CONFIG_CONTAINER("filenames", detail.input.filenames, 8, "Container for configuration of set of discovered source file names"),
 				CONFIG_CONTAINER("map", detail.input.filenames.map, 3, "Container for configuration of hash map"),
 					CONFIG_INTEGER("reserve", detail.input.filenames.map.reserve, 4096, 2048, 1048576, 2048, "Maximum size of the array backing the open hash set can grow to"),
-					CONFIG_INTEGER("initial-commit", detail.input.filenames.map.initial_commit, 4096, 2048, 1048576, 2048, "Initial size of the array backing the open hash set can grow to"),
+					CONFIG_INTEGER("initial-commit", detail.input.filenames.map.initial_commit, 4096, 2048, 1048576, 2048, "Initial size that the array backing the open hash set can grow to"),
 					CONFIG_INTEGER("max-insertion-distance", detail.input.filenames.map.max_insertion_distance, 128, 64, 4096, 64, "Maximum number of map entries which can be locked by an insert before a rehash is triggered"),
 				CONFIG_CONTAINER("store", detail.input.filenames.store, 3, "Container for configuration of the set's entry storage"),
 					CONFIG_INTEGER("reserve", detail.input.filenames.store.reserve, 4096, 256, 1048576, 2048, "Maximum number of entries that can be inserted into the set"),
 					CONFIG_INTEGER("commit-increment", detail.input.filenames.store.commit_increment, 256, 256, 1048576, 256, "Amount by which a thread grows its store when its allocated storage is exhausted"),
 					CONFIG_INTEGER("initial-commit-per-thread", detail.input.filenames.store.initial_commit_per_thread, 256, 256, 32768, 256, "Size of storage initially allocated for each thread"),
 			CONFIG_INTEGER("max-pending-files", detail.input.max_pending_files, 4096, 64, 1048576, 0, "Upper limit on the number of files that have been discovered but have not been yet read"),
+		CONFIG_CONTAINER("identifiers", detail.identifiers, 8, "Container for configuration of set of discovered identifiers"),
+			CONFIG_CONTAINER("map", detail.identifiers.map, 3, "Container for configuration of hash map"),
+				CONFIG_INTEGER("reserve", detail.identifiers.map.reserve, 1048576, 65536, 33554432, 2048, "Maximum size that the array backing the open hash set can grow to"),
+				CONFIG_INTEGER("initial-commit", detail.identifiers.map.initial_commit, 16384, 2048, 33554432, 2048, "Initial size that the array backing the open hash set can grow to"),
+				CONFIG_INTEGER("max-insertion-distance", detail.identifiers.map.max_insertion_distance, 128, 64, 4096, 64, "Maximum number of map entries which can be locked by an insert before a rehash is triggered"),
+			CONFIG_CONTAINER("store", detail.identifiers.store, 3, "Container for configuration of the set's entry storage"),
+				CONFIG_INTEGER("reserve", detail.identifiers.store.reserve, 2097152, 512, 134217728, 512, "Maximum number of entries that can be inserted into the set"),
+				CONFIG_INTEGER("commit-increment", detail.identifiers.store.commit_increment, 65536, 512, 134217728, 512, "Amount by which a thread grows its store when its allocated storage is exhausted"),
+				CONFIG_INTEGER("initial-commit-per-thread", detail.identifiers.store.initial_commit_per_thread, 65536, 512, 134217728, 512, "Size of storage initially allocated for each thread"),
 };
 
 
