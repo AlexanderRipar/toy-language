@@ -64,6 +64,78 @@ public:
 	}
 };
 
+struct Semaphore
+{
+private:
+
+	static constexpr u32 AVAILABLE_MASK = 0x0000'FFFF;
+
+	static constexpr u32 PENDING_MASK = 0xFFFF'0000;
+
+	static constexpr u32 AVAILABLE_ONE = 0x0000'0001;
+
+	static constexpr u32 PENDING_ONE = 0x0001'0000;
+
+	std::atomic<u32> m_rep;
+
+public:
+
+	Semaphore() noexcept = default;
+
+	void init() 
+	{
+		m_rep = 0;
+	}
+
+	void init(u32 initial_tokens) noexcept
+	{
+		m_rep = initial_tokens;
+	}
+
+	void post()
+	{
+		const u32 prev = m_rep.fetch_add(AVAILABLE_ONE, std::memory_order_release);
+
+		ASSERT_OR_EXIT((prev & AVAILABLE_MASK) != AVAILABLE_MASK);
+
+		if ((prev & PENDING_MASK) != 0)
+			minos::address_wake_single(&m_rep);
+	}
+
+	void await()
+	{
+		u32 prev = m_rep.load(std::memory_order_relaxed);
+
+		u32 delta = AVAILABLE_ONE;
+
+		while (true)
+		{
+			if ((prev & AVAILABLE_MASK) == 0)
+			{
+				if ((delta & PENDING_ONE) == 0)
+				{
+					delta += PENDING_ONE;
+
+					prev = m_rep.fetch_add(PENDING_ONE, std::memory_order_relaxed) + PENDING_ONE;
+
+					ASSERT_OR_EXIT((prev & PENDING_MASK) != 0);
+				}
+
+				do
+				{
+					minos::address_wait(&m_rep, &prev, sizeof(m_rep));
+
+					prev = m_rep.load(std::memory_order_relaxed);
+				}
+				while ((prev & AVAILABLE_MASK) == 0);
+			}
+
+			if (m_rep.compare_exchange_strong(prev, prev - delta, std::memory_order_acquire))
+				return;
+		}
+	}
+};
+
 template<typename T, u32 MEMBER_ALIGNMENT = minos::CACHELINE_BYTES>
 struct alignas(MEMBER_ALIGNMENT) ThreadsafeRingBufferHeader
 {
