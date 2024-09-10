@@ -1518,7 +1518,7 @@ static Status parse_definition(ParseState* state, LexResult& next) noexcept
 			if (next.lexeme == Lexeme::END)
 				return push_parse_frame(state, ParseFrame::Definition_AfterLet);
 
-	case ParseFrame::Definition_AfterLet:
+	case ParseFrame::Definition_AfterLet:;
 		}
 		else
 		{
@@ -1531,7 +1531,7 @@ static Status parse_definition(ParseState* state, LexResult& next) noexcept
 				if (next.lexeme == Lexeme::END)
 					return push_parse_frame(state, ParseFrame::Definition_AfterPub);
 
-	case ParseFrame::Definition_AfterPub:
+	case ParseFrame::Definition_AfterPub:;
 			}
 
 			if (next.lexeme == Lexeme::Global)
@@ -1543,7 +1543,7 @@ static Status parse_definition(ParseState* state, LexResult& next) noexcept
 				if (next.lexeme == Lexeme::END)
 					return push_parse_frame(state, ParseFrame::Definition_AfterGlobal);
 
-	case ParseFrame::Definition_AfterGlobal:
+	case ParseFrame::Definition_AfterGlobal:;
 			}
 
 			if (next.lexeme == Lexeme::Mut)
@@ -1555,7 +1555,7 @@ static Status parse_definition(ParseState* state, LexResult& next) noexcept
 				if (next.lexeme == Lexeme::END)
 					return push_parse_frame(state, ParseFrame::Definition_AfterMut);
 
-	case ParseFrame::Definition_AfterMut:
+	case ParseFrame::Definition_AfterMut:;
 			}
 
 			if ((header->flags & (AstHeaderFlags::DEFINITION_IS_PUB | AstHeaderFlags::DEFINITION_IS_GLOBAL | AstHeaderFlags::DEFINITION_IS_MUT)) == 0)
