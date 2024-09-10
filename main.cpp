@@ -1,6 +1,5 @@
 #include "common.hpp"
 #include "config.hpp"
-#include "task_manag0r.hpp"
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
@@ -45,11 +44,6 @@ s32 main(s32 argc, const char8** argv)
 		}
 
 		print_config(&config);
-
-		if (!init_task_manag0r(&config))
-			return EXIT_FAILURE;
-
-		minos::sleep(60 * 60 * 1000);
 
 		deinit_config(&config);
 

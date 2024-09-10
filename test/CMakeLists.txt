@@ -10,8 +10,7 @@ add_executable(test
 	../threading.hpp
 	../token.hpp
 	../minos.hpp ../minos.cpp
-#	../config.hpp ../config.cpp
-#	../task_manag0r.hpp ../task_manag0r.cpp
+	../config.hpp ../config.cpp
 )
 
 target_link_libraries(test PRIVATE synchronization)

@@ -67,18 +67,6 @@ static constexpr inline T next_multiple(T n, T factor) noexcept
 	return ((n + factor - 1) / factor) * factor;
 }
 
-template<typename T>
-static constexpr inline T maximum(T a, T b) noexcept
-{
-	return a > b ? a : b;
-}
-
-template<typename T>
-static constexpr inline T minimum(T a, T b) noexcept
-{
-	return a < b ? a : b;
-}
-
 template<typename T, uint COUNT>
 inline constexpr uint array_count([[maybe_unused]] const T(&arr)[COUNT]) noexcept
 {
