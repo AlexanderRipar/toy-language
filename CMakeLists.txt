@@ -15,6 +15,11 @@ add_executable(
 	config.hpp config.cpp
 	task_manag0r.hpp task_manag0r.cpp
 	parse.hpp parse.cpp
+	worker_pool.hpp worker_pool.cpp
+	ast_server.hpp ast_server.cpp
+	job_server.hpp job_server.cpp
+	append_buffer.hpp
+	lex_and_parse.cpp
 )
 
 target_link_libraries(compil0r PRIVATE synchronization)

@@ -1249,6 +1249,53 @@ public:
 	}
 };
 
+template<typename T, u32 MEMBER_ALIGNMENT = minos::CACHELINE_BYTES>
+struct ThreadsafeAwaitableRingBufferHeader
+{
+private:
+
+	static_assert(MEMBER_ALIGNMENT >= sizeof(u32) && is_pow2(MEMBER_ALIGNMENT));
+
+
+
+	std::atomic<u64> alignas(MEMBER_ALIGNMENT) m_enqueue;
+
+	std::atomic<u64> alignas(MEMBER_ALIGNMENT) m_dequeue;
+
+public:
+
+	void init() noexcept
+	{
+		// TODO: Implement
+	}
+
+	bool enqueue(T* queue, u32 capacity, u32 priority_level, T entry) noexcept
+	{
+		// TODO: Implement
+
+		return false;
+	}
+
+	bool dequeue(T* queue, u32 capacity, u32 priority_level_count, T* out) noexcept
+	{
+		// TODO: Implement
+
+		return false;
+	}
+
+	bool dequeue_await(T* queue, u32 capacity, u32 priority_level_count, T* out) noexcept
+	{
+		// TODO: Implement
+
+		return false;
+	}
+
+	void terminate() noexcept
+	{
+		// TODO: Implement
+	}
+};
+
 #pragma warning(pop)
 
 #endif // THREADING_INCLUDE_GUARD
