@@ -43,6 +43,11 @@
 
 #include <Windows.h>
 
+u32 minos::last_error() noexcept
+{
+	return GetLastError();
+}
+
 void* minos::reserve(u64 bytes) noexcept
 {
 	return VirtualAlloc(nullptr, bytes, MEM_RESERVE, PAGE_READWRITE);

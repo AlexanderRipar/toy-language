@@ -93,6 +93,8 @@ namespace minos
 
 	static constexpr u32 CACHELINE_BYTES = 64;
 
+	u32 last_error() noexcept;
+
 	void* reserve(u64 bytes) noexcept;
 
 	bool commit(void* ptr, u64 bytes) noexcept;
