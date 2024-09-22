@@ -1,5 +1,7 @@
 #include "common.hpp"
 #include "config.hpp"
+#include "parser.hpp"
+#include "reader.hpp"
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
@@ -44,6 +46,21 @@ s32 main(s32 argc, const char8** argv)
 		}
 
 		print_config(&config);
+
+		Reader reader;
+
+		reader.init();
+
+		reader.read(config.entrypoint.filepath);
+
+		Parser parser{1u << 31, 1 << 17 /* 1mb of qwords */};
+
+		Range<char8> file;
+
+		while (reader.await_completed_read(&file))
+		{
+			parser.parse(file);
+		}
 
 		deinit_config(&config);
 

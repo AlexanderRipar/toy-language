@@ -82,7 +82,7 @@ public:
 
 	Semaphore() noexcept = default;
 
-	void init() 
+	void init() noexcept
 	{
 		m_rep = 0;
 	}
@@ -92,7 +92,7 @@ public:
 		m_rep = initial_tokens;
 	}
 
-	void post()
+	void post() noexcept
 	{
 		const u32 prev = m_rep.fetch_add(AVAILABLE_ONE, std::memory_order_release);
 
@@ -102,7 +102,7 @@ public:
 			minos::address_wake_single(&m_rep);
 	}
 
-	void await()
+	void await() noexcept
 	{
 		u32 prev = m_rep.load(std::memory_order_relaxed);
 
@@ -132,6 +132,20 @@ public:
 
 			if (m_rep.compare_exchange_strong(prev, prev - delta, std::memory_order_acquire))
 				return;
+		}
+	}
+
+	[[nodiscard]] bool try_claim() noexcept
+	{
+		u32 prev = m_rep.load(std::memory_order_acquire);
+
+		while (true)
+		{
+			if ((prev & AVAILABLE_MASK) == 0)
+				return false;
+
+			if (m_rep.compare_exchange_strong(prev, prev - AVAILABLE_ONE))
+				return true;
 		}
 	}
 };

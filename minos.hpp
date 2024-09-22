@@ -101,6 +101,8 @@ namespace minos
 
 	void unreserve(void* ptr) noexcept;
 
+	void decommit(void* ptr, u64 bytes) noexcept;
+
 	u32 page_bytes() noexcept;
 
 	void address_wait(void* address, void* undesired, u32 bytes) noexcept;

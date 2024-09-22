@@ -1,6 +1,6 @@
 parallel.thread-count = 2
 
-entrypoint.filepath = 'test.evl'
+entrypoint.filepath = 'source.txt'
 
 input.bytes-per-read = 4096
 

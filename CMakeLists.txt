@@ -6,10 +6,11 @@ project(compil0r)
 
 add_executable(
 	compil0r main.cpp
-	common.hpp
 	range.hpp
 	memory.hpp
 	token.hpp
+	reader.hpp
+	common.hpp common.cpp
 	minos.hpp minos.cpp
 	config.hpp config.cpp
 )

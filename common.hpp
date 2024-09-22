@@ -1,6 +1,7 @@
 #ifndef COMMON_INCLUDE_GUARD
 #define COMMON_INCLUDE_GUARD
 
+#include <cstdarg>
 #include <cassert>
 #include <cstdint>
 
@@ -21,6 +22,9 @@ using char16 = wchar_t;
 
 using uint = u64;
 using sint = s64;
+
+using f32 = float;
+using f64 = double;
 
 template<typename T>
 inline T assert_value_helper(T t) noexcept
@@ -45,6 +49,18 @@ inline T assert_value_helper(T t) noexcept
 #else
 	#error Could not properly define ASSERT_*
 #endif
+
+template<typename T, typename U>
+struct Pair
+{
+	T first;
+
+	U second;
+
+	constexpr Pair() noexcept = default;
+
+	constexpr Pair(T first, U second) noexcept : first{ first }, second{ second } {}
+};
 
 template<typename T>
 static constexpr inline bool is_pow2(T n) noexcept
@@ -79,5 +95,9 @@ inline u64 align_to(u64 n, u64 alignment) noexcept
 
 	return (n + alignment - 1) & ~(alignment - 1);
 }
+
+__declspec(noreturn) void panic(const char8* format, ...) noexcept;
+
+__declspec(noreturn) void vpanic(const char8* format, va_list args) noexcept;
 
 #endif // COMMON_INCLUDE_GUARD

@@ -63,6 +63,11 @@ void minos::unreserve(void* ptr) noexcept
 	ASSERT_OR_EXIT(VirtualFree(ptr, 0, MEM_RELEASE) != 0);
 }
 
+void minos::decommit(void* ptr, u64 bytes) noexcept
+{
+	ASSERT_OR_EXIT(VirtualFree(ptr, bytes, MEM_DECOMMIT) != 0);
+}
+
 u32 minos::page_bytes() noexcept
 {
 	SYSTEM_INFO sysinfo;
