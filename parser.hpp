@@ -973,6 +973,12 @@ private:
 
 				return { Token::OpLe };
 			}
+			else if (second == '-')
+			{
+				m_curr += 1;
+
+				return { Token::ThinArrowL };
+			}
 			else
 			{
 				return { Token::OpLt };
@@ -1024,12 +1030,12 @@ private:
 			else if (second == '[')
 			{
 				m_curr += 1;
-				return { Token::LitArray };
+				return { Token::ArrayInitializer };
 			}
 			else if (second == '{')
 			{
 				m_curr += 1;
-				return { Token::LitComposite };
+				return { Token::CompositeInitializer };
 			}
 			else
 			{
@@ -1174,6 +1180,28 @@ public:
 		return m_peek;
 	}
 
+	Lexeme peek_n(u32 n) noexcept
+	{
+		ASSERT_OR_IGNORE(n != 0);
+
+		const Lexeme remembered_peek = peek();
+
+		const char8* const remembered_curr = m_curr;
+
+		m_peek.token = Token::EMPTY;
+
+		Lexeme result = remembered_peek;
+
+		for (u32 i = 0; i != n; ++i)
+			result = next();
+
+		m_curr = remembered_curr;
+
+		m_peek = remembered_peek;
+
+		return result;
+	}
+
 	void skip() noexcept
 	{
 		(void) next();
@@ -1201,58 +1229,13 @@ private:
 	{
 	private:
 
-		struct NestingContextTemplate
-		{
-			Token closing_token;
-
-			u8 allow_multiple : 1;
-
-			u8 allow_comma : 1;
-
-			// Used for array type '[count]Type', so that the operator for '['
-			// is re-pushed (without context flag) once ']' is reached
-			u8 delay_node : 1;
-			
-			u8 allow_empty : 1;
-		};
-
-		struct NestingContext
-		{
-			Token token; 
-
-			Token closing_token;
-
-			u8 allow_multiple : 1;
-
-			u8 allow_comma : 1;
-
-			u8 delay_node : 1;
-
-			u8 allow_empty : 1;
-
-			u8 child_count;
-
-			u32 token_offset;
-		};
-
-		static constexpr NestingContextTemplate CONTEXT_TEMPLATES[] = {
-			{ Token::ParenR,   false, false, false, false }, // ( - Opening Parenthesis
-			{ Token::ParenR,   true,  true,  false,  true }, // ( - Call
-			{ Token::BracketR, false, false, true,  false }, // [ - Array Type
-			{ Token::BracketR, false, false, false, false }, // [ - Array Index
-			{ Token::CurlyR,   true,  true,  false,  true }, // .{
-			{ Token::BracketR, true,  true,  false,  true }, // .[
-		};
-
 		u32 m_free_operand_count;
 
 		u32 m_operator_top;
 
-		u32 m_context_top;
-
 		OperatorDesc m_operators[64];
 
-		NestingContext m_contexts[64];
+		u32 m_operator_token_offsets[64];
 
 		u32 m_expression_offset;
 
@@ -1268,14 +1251,8 @@ private:
 		
 			m_operator_top -= 1;
 
-			if (top.precedence == 0)
-			{
-				ASSERT_OR_IGNORE(m_context_top != 0);
-
-				const NestingContext context = m_contexts[m_context_top - 1];
-
-				m_error->log(context.token_offset, "'%s' missing matching '%s'", token_name(context.token), token_name(context.closing_token));
-			}
+			if (top.node_type == ast::NodeType::INVALID)
+				return;
 
 			if (m_free_operand_count <= top.is_binary)
 				m_error->log(m_expression_offset, "Missing operand(s) for operator %u\n", top.node_type);
@@ -1285,26 +1262,11 @@ private:
 			m_builder->append(top.node_type, 1 + top.is_binary);
 		}
 
-		void pop_to_context() noexcept
-		{
-			while (true)
-			{
-				if (m_operator_top == 0)
-					m_error->log(m_expression_offset, "Ran out of operators while trying to find innermost context\n");
-
-				if (m_operators[m_operator_top - 1].precedence == 0)
-					return;
-
-				pop_operator();
-			}
-		}
-
 	public:
 
 		OperatorStack(u32 expression_offset, const ErrorHandler* error, ast::raw::TreeBuilder* builder) noexcept :
 			m_free_operand_count{ 0 },
 			m_operator_top{ 0 },
-			m_context_top{ 0 },
 			m_expression_offset{ expression_offset },
 			m_error{ error },
 			m_builder{ builder }
@@ -1312,75 +1274,24 @@ private:
 
 		void push_operand() noexcept
 		{
-			if (m_context_top != 0 && m_contexts[m_context_top - 1].child_count == 0)
-				m_contexts[m_context_top - 1].child_count = 1;
-
 			m_free_operand_count += 1;
 		}
 
-		[[nodiscard]] bool push_operator(OperatorDesc op, Lexeme lexeme) noexcept
+		void push_operator(OperatorDesc op, Lexeme lexeme) noexcept
 		{
-			while (m_operator_top != 0)
+			if (op.precedence != 0)
 			{
-				const OperatorDesc top = m_operators[m_operator_top - 1];
-
-				if (top.precedence < op.precedence)
-					break;
-
-				if (top.precedence == op.precedence && !op.is_left_to_right)
-					break;
-
-				pop_operator();
-			}
-
-			if (op.precedence == 0)
-			{
-				if (op.is_context_end)
+				while (m_operator_top != 0)
 				{
-					const NestingContext context = m_contexts[m_context_top - 1];
+					const OperatorDesc top = m_operators[m_operator_top - 1];
 
-					if (context.closing_token != lexeme.token)
-						m_error->log(context.token_offset, "'%s' missing matching '%s'", token_name(context.token), token_name(context.closing_token));
+					if (top.precedence < op.precedence)
+						break;
 
-					m_context_top -= 1;
+					if (top.precedence == op.precedence && !op.is_left_to_right)
+						break;
 
-					ASSERT_OR_IGNORE(m_operator_top != 0 && m_operators[m_operator_top - 1].precedence == 0 && !m_operators[m_operator_top - 1].is_context_end);
-
-					ASSERT_OR_IGNORE(!context.delay_node || context.child_count == 0);
-
-					if (context.delay_node)
-					{
-						m_operators[m_operator_top - 1].precedence = 1;
-					}
-					else
-					{
-						if (context.child_count == 0 && !context.allow_empty)
-							m_error->log(context.token_offset, "Missing expression between '%s' and '%s'\n", token_name(context.token), token_name(context.closing_token));
-
-						m_builder->append(m_operators[m_operator_top - 1].node_type, context.child_count + 1);
-
-						m_free_operand_count -= context.child_count;
-
-						m_operator_top -= 1;
-					}
-
-					return context.delay_node;
-				}
-				else
-				{
-					if (m_context_top == array_count(m_contexts))
-						m_error->log(m_expression_offset, "Context nesting exceeds maximum depth of %u\n", array_count(m_contexts));
-
-					const u8 ordinal = static_cast<u8>(op.node_type);
-
-					if (ordinal > static_cast<u8>(ast::NodeType::ArrayInitializer))
-						m_error->log(m_expression_offset, "Unexpected context node type %u\n", ordinal);
-
-					const NestingContextTemplate tpl = CONTEXT_TEMPLATES[ordinal];
-
-					m_contexts[m_context_top] = { lexeme.token, tpl.closing_token, tpl.allow_multiple, tpl.allow_comma, tpl.delay_node, tpl.allow_empty, 0, lexeme.offset };
-
-					m_context_top += 1;
+					pop_operator();
 				}
 			}
 
@@ -1389,9 +1300,29 @@ private:
 
 			m_operators[m_operator_top] = op;
 
-			m_operator_top += 1;
+			m_operator_token_offsets[m_operator_top] = lexeme.offset;
 
-			return op.is_binary;
+			m_operator_top += 1;
+		}
+
+		bool pop_to_lparen() noexcept
+		{
+			while (m_operator_top != 0)
+			{
+				if (m_operators[m_operator_top - 1].precedence == 0)
+					return true;
+
+				pop_operator();
+			}
+
+			return false;
+		}
+
+		void remove_lparen() noexcept
+		{
+			ASSERT_OR_IGNORE(m_operator_top != 0 && m_operators[m_operator_top - 1].precedence == 0);
+
+			m_operator_top -= 1;
 		}
 
 		void pop_remaining() noexcept
@@ -1402,27 +1333,12 @@ private:
 			if (m_free_operand_count != 1)
 				m_error->log(m_expression_offset, "Mismatched operand / operator count (%u operands remaining)", m_free_operand_count);
 		}
-
-		[[nodiscard]] bool push_comma() noexcept
-		{
-			if (m_context_top == 0 || !m_contexts[m_context_top - 1].allow_comma)
-				return false;
-
-			pop_to_context();
-
-			m_contexts[m_context_top - 1].child_count += 1;
-
-			return true;
-		}
 	};
 
-	static constexpr OperatorDesc TYPE_ARRAY_OPERATOR_DESC      = { ast::NodeType::OpTypeArray, 2, false, false };
-
 	static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
+		{ ast::NodeType::INVALID,              0, false, true  }, // ( - Opening Parenthesis
 		{ ast::NodeType::UOpTry,               8, false, false }, // try
 		{ ast::NodeType::UOpDefer,             8, false, false }, // defer
-		{ ast::NodeType::ArrayInitializer,     0, false, false }, // .[
-		{ ast::NodeType::CompositeInitializer, 0, false, false }, // .{
 		{ ast::NodeType::UOpAddr,              2, false, false }, // $
 		{ ast::NodeType::UOpDeref,             1, false, false }, // .*
 		{ ast::NodeType::UOpBitNot,            2, false, false }, // ~
@@ -1433,10 +1349,6 @@ private:
 		{ ast::NodeType::UOpTypeMultiPtr,      2, false, false }, // [*]
 		{ ast::NodeType::UOpTypeSlice,         2, false, false }, // []
 		{ ast::NodeType::OpImpliedMember,      1, false, false }, // .
-		{ ast::NodeType::INVALID,              0, false, true  }, // ( - Opening Parenthesis
-		{ ast::NodeType::INVALID,              0, false, false, true }, // )
-		{ ast::NodeType::OpTypeArray,          0, false, true  }, // [ - Array Index
-		{ ast::NodeType::INVALID,              0, false, false, true }, // ]
 		{ ast::NodeType::UOpTypPtr,            2, false, false }, // *
 		{ ast::NodeType::UOpNegate,            2, false, false }, // -
 		{ ast::NodeType::UOpPos,               2, false, false }, // +
@@ -1444,10 +1356,6 @@ private:
 
 	static constexpr OperatorDesc BINARY_OPERATOR_DESCS[] = {
 		{ ast::NodeType::OpMember,     1, true,  true  }, // .
-		{ ast::NodeType::Call,         0, false, true  }, // ( - Call
-		{ ast::NodeType::INVALID,      0, false, false, true }, // )
-		{ ast::NodeType::OpArrayIndex, 0, true,  true  }, // [ - Array Index
-		{ ast::NodeType::INVALID,      0, false, false, true }, // ]
 		{ ast::NodeType::OpMul,        2, true,  true  }, // *
 		{ ast::NodeType::OpSub,        3, true,  true  }, // -
 		{ ast::NodeType::OpAdd,        3, true,  true  }, // +
@@ -1483,31 +1391,31 @@ private:
 		{ ast::NodeType::OpSetBitXor,  9, false, true  }, // ^=
 		{ ast::NodeType::OpSetShiftL,  9, false, true  }, // <<=
 		{ ast::NodeType::OpSetShiftR,  9, false, true  }, // >>=
-		{ ast::NodeType::OpCatch,      8, true,  true  }, // catch
 	};
 
 	static constexpr AttachmentRange<char8, Token> KEYWORDS[] = {
-		range::from_literal_string("if", Token::KwdIf),
-		range::from_literal_string("then", Token::KwdThen),
-		range::from_literal_string("else", Token::KwdElse),
-		range::from_literal_string("for", Token::KwdFor),
-		range::from_literal_string("do", Token::KwdDo),
+		range::from_literal_string("if",      Token::KwdIf),
+		range::from_literal_string("then",    Token::KwdThen),
+		range::from_literal_string("else",    Token::KwdElse),
+		range::from_literal_string("for",     Token::KwdFor),
+		range::from_literal_string("do",      Token::KwdDo),
 		range::from_literal_string("finally", Token::KwdFinally),
-		range::from_literal_string("switch", Token::KwdSwitch),
-		range::from_literal_string("case", Token::KwdCase),
-		range::from_literal_string("try", Token::KwdTry),
-		range::from_literal_string("catch", Token::KwdCatch),
-		range::from_literal_string("defer", Token::KwdDefer),
-		range::from_literal_string("func", Token::KwdFunc),
-		range::from_literal_string("proc", Token::KwdProc),
-		range::from_literal_string("trait", Token::KwdTrait),
-		range::from_literal_string("impl", Token::KwdImpl),
-		range::from_literal_string("where", Token::KwdWhere),
-		range::from_literal_string("let", Token::KwdLet),
-		range::from_literal_string("mut", Token::KwdMut),
-		range::from_literal_string("auto", Token::KwdAuto),
-		range::from_literal_string("pub", Token::KwdPub),
-		range::from_literal_string("global", Token::KwdGlobal),
+		range::from_literal_string("switch",  Token::KwdSwitch),
+		range::from_literal_string("case",    Token::KwdCase),
+		range::from_literal_string("try",     Token::KwdTry),
+		range::from_literal_string("catch",   Token::KwdCatch),
+		range::from_literal_string("defer",   Token::KwdDefer),
+		range::from_literal_string("func",    Token::KwdFunc),
+		range::from_literal_string("proc",    Token::KwdProc),
+		range::from_literal_string("trait",   Token::KwdTrait),
+		range::from_literal_string("impl",    Token::KwdImpl),
+		range::from_literal_string("where",   Token::KwdWhere),
+		range::from_literal_string("pub",     Token::KwdPub),
+		range::from_literal_string("mut",     Token::KwdMut),
+		range::from_literal_string("let",     Token::KwdLet),
+		range::from_literal_string("auto",    Token::KwdAuto),
+		range::from_literal_string("use",     Token::KwdUse),
+		range::from_literal_string("global",  Token::KwdGlobal),
 	};
 
 	IdentifierMap m_identifiers;
@@ -1526,9 +1434,17 @@ private:
 
 	ErrorHandler m_error;
 
+	static bool is_definition_start(Token token) noexcept
+	{
+		return token == Token::KwdLet
+		    || token == Token::KwdPub
+			|| token == Token::KwdMut
+			|| token == Token::KwdGlobal
+			|| token == Token::KwdAuto
+			|| token == Token::KwdUse;
+	}
 
-
-	void parse_expr(bool include_set) noexcept
+	void parse_expr(bool allow_complex) noexcept
 	{
 		Lexeme lexeme = m_scanner.peek();
 
@@ -1600,11 +1516,179 @@ private:
 
 					stack.push_operand();
 				}
+				else if (lexeme.token == Token::CompositeInitializer)
+				{
+					expecting_operand = false;
+
+					m_scanner.skip();
+
+					lexeme = m_scanner.peek();
+
+					u16 child_count = 0;
+
+					while (lexeme.token != Token::CurlyR)
+					{
+						if (child_count == UINT16_MAX)
+							m_error.log(m_scanner.peek().offset, "Number of top-level expressions in composite initializer exceeds the supported maximum of %u\n", UINT16_MAX);
+
+						child_count += 1;
+
+						parse_expr(true);
+
+						lexeme = m_scanner.peek();
+
+						if (lexeme.token == Token::Comma)
+						{
+							m_scanner.skip();
+
+							lexeme = m_scanner.next();
+						}
+						else if (lexeme.token != Token::CurlyR)
+						{
+							m_error.log(lexeme.offset, "Expected '}' or ',' after composite initializer argument expression but got '%s'\n", token_name(lexeme.token));
+						}
+					}
+
+					m_builder.append(ast::NodeType::CompositeInitializer, child_count);
+
+					stack.push_operand();
+				}
+				else if (lexeme.token == Token::ArrayInitializer)
+				{
+					expecting_operand = false;
+
+					m_scanner.skip();
+
+					lexeme = m_scanner.peek();
+
+					u16 child_count = 0;
+
+					while (lexeme.token != Token::BracketR)
+					{
+						if (child_count == UINT16_MAX)
+							m_error.log(m_scanner.peek().offset, "Number of top-level expressions in array initializer exceeds the supported maximum of %u\n", UINT16_MAX);
+
+						child_count += 1;
+
+						parse_expr(true);
+
+						lexeme = m_scanner.peek();
+
+						if (lexeme.token == Token::Comma)
+						{
+							m_scanner.skip();
+
+							lexeme = m_scanner.next();
+						}
+						else if (lexeme.token != Token::BracketR)
+						{
+							m_error.log(lexeme.offset, "Expected ']' or ',' after array initializer argument expression but got '%s'\n", token_name(lexeme.token));
+						}
+					}
+
+					m_builder.append(ast::NodeType::ArrayInitializer, child_count);
+
+					stack.push_operand();
+				}
+				else if (lexeme.token == Token::BracketL) // Array Type
+				{
+					const Lexeme opening_lexeme = lexeme;
+
+					m_scanner.skip();
+
+					parse_expr(false);
+
+					lexeme = m_scanner.peek();
+
+					if (lexeme.token != Token::BracketR)
+						m_error.log(lexeme.offset, "Expected ']' after array type's size expression, but got '%s'\n", token_name(lexeme.token));
+
+					stack.push_operand();
+
+					stack.push_operator({ ast::NodeType::OpTypeArray, 2, false, true }, opening_lexeme);
+				}
+				else if (lexeme.token == Token::CurlyL) // Block
+				{
+					expecting_operand = false;
+
+					m_scanner.skip();
+
+					lexeme = m_scanner.peek();
+
+					u16 child_count = 0;
+
+					while (lexeme.token != Token::CurlyR)
+					{
+						if (child_count == UINT16_MAX)
+							m_error.log(m_scanner.peek().offset, "Number of top-level expressions in block exceeds the supported maximum of %u\n", UINT16_MAX);
+
+						child_count += 1;
+
+						parse_top_level_expr();
+
+						lexeme = m_scanner.peek();
+
+						if (lexeme.token == Token::CurlyR)
+							break;
+					}
+
+					m_builder.append(ast::NodeType::Block, child_count);
+
+					stack.push_operand();
+				}
+				else if (lexeme.token == Token::KwdIf)
+				{
+					expecting_operand = false;
+
+					parse_if();
+
+					stack.push_operand();
+
+					lexeme = m_scanner.peek();
+
+					continue;
+				}
+				else if (lexeme.token == Token::KwdFor)
+				{
+					expecting_operand = false;
+
+					parse_for();
+
+					stack.push_operand();
+
+					lexeme = m_scanner.peek();
+
+					continue;
+				}
+				else if (lexeme.token == Token::KwdSwitch)
+				{
+					expecting_operand = false;
+
+					parse_switch();
+
+					stack.push_operand();
+
+					lexeme = m_scanner.peek();
+
+					continue;
+				}
+				else if (lexeme.token == Token::KwdFunc || lexeme.token == Token::KwdProc)
+				{
+					expecting_operand = false;
+
+					parse_func();
+
+					stack.push_operand();
+
+					lexeme = m_scanner.peek();
+
+					continue;
+				}
 				else // Unary operator
 				{
 					const u8 token_ordinal = static_cast<u8>(lexeme.token);
 
-					const u8 lo_ordinal = static_cast<u8>(Token::KwdTry);
+					const u8 lo_ordinal = static_cast<u8>(Token::ParenL);
 
 					const u8 hi_ordinal = static_cast<u8>(Token::OpAdd);
 
@@ -1613,70 +1697,117 @@ private:
 
 					const OperatorDesc op = UNARY_OPERATOR_DESCS[token_ordinal - lo_ordinal];
 
-					expecting_operand = stack.push_operator(op, lexeme);
+					stack.push_operator(op, lexeme);
 				}
 			}
 			else
 			{
-				/*
 				if (lexeme.token == Token::ParenL) // Function call
 				{
-					m_scanner.skip();
+					// FIXME: Pop only to certain priority
+					stack.pop_to_lparen();
 
-					u32 argument_count = 0;
+					m_scanner.skip();
 
 					lexeme = m_scanner.peek();
 
-					if (lexeme.token != Token::ParenR)
+					u16 child_count = 1;
+
+					while (lexeme.token != Token::ParenR)
 					{
-						while (true)
+						if (child_count == UINT16_MAX)
+							m_error.log(m_scanner.peek().offset, "Number of arguments to function call exceeds the supported maximum of %u\n", UINT16_MAX - 1);
+
+						child_count += 1;
+
+						parse_expr(true);
+
+						lexeme = m_scanner.peek();
+
+						if (lexeme.token == Token::Comma)
 						{
-							argument_count += 1;
-
-							if (argument_count == 255)
-							{
-								lexeme = m_scanner.peek();
-
-								m_error.log(lexeme.offset, "Number of arguments to function call exceeds the supported maximum of 254\n");
-							}
-
-							parse_expr(true);
+							m_scanner.skip();
 
 							lexeme = m_scanner.peek();
-
-							if (lexeme.token == Token::ParenR)
-								break;
-							else if (lexeme.token != Token::Comma)
-								m_error.log(lexeme.offset, "Expected ')' or ',' after function argument expression but got '%s'\n", token_name(lexeme.token));
-
-							m_scanner.skip();
+						}
+						else if (lexeme.token != Token::ParenR)
+						{
+							m_error.log(lexeme.offset, "Expected ')' or ',' after function argument expression but got '%s'\n", token_name(lexeme.token));
 						}
 					}
 
-					m_builder.append(ast::NodeType::Call, static_cast<u8>(argument_count + 1));
+					m_builder.append(ast::NodeType::Call, child_count);
 				}
-				*/
-				if (lexeme.token == Token::Comma)
+				else if (lexeme.token == Token::ParenR) // Closing parenthesis
 				{
-					expecting_operand = true;
+					if (!stack.pop_to_lparen())
+						return; // No need for stack.pop_remaining; pop_to_lparen already popped everything
 
-					if (!stack.push_comma())
-						break;
+					stack.remove_lparen();
+				}
+				else if (lexeme.token == Token::BracketL) // Array Index
+				{
+					// FIXME: Pop only to certain priority
+					stack.pop_to_lparen();
+
+					m_scanner.skip();
+
+					parse_expr(false);
+
+					lexeme = m_scanner.peek();
+
+					if (lexeme.token != Token::BracketR)
+						m_error.log(lexeme.offset, "Expected ']' after array index expression, but got '%s'\n", token_name(lexeme.token));
+
+					m_builder.append(ast::NodeType::OpArrayIndex, 2);
+				}
+				else if (lexeme.token == Token::KwdCatch)
+				{
+					u16 child_count = 2;
+
+					ast::raw::Flag flags = ast::raw::Flag::EMPTY;
+
+					// FIXME: Pop only to certain priority
+					stack.pop_to_lparen();
+
+					m_scanner.skip();
+
+					lexeme = m_scanner.peek();
+
+					if (is_definition_start(lexeme.token) || m_scanner.peek_n(1).token == Token::ThinArrowL)
+					{
+						child_count += 1;
+
+						flags |= ast::raw::Flag::Catch_HasDefinition;
+
+						parse_definition(true, true);
+
+						lexeme = m_scanner.next();
+
+						if (lexeme.token != Token::ThinArrowL)
+							m_error.log(lexeme.offset, "Expected '%s' after inbound definition in catch, but got '%s'\n", token_name(Token::ThinArrowL), token_name(lexeme.token));
+					}
+
+					parse_expr(false);
+
+					m_builder.append(ast::NodeType::Catch, child_count, flags);
 				}
 				else // Binary operator
 				{
+					expecting_operand = true;
+
 					const u8 token_ordinal = static_cast<u8>(lexeme.token);
 
 					const u8 lo_ordinal = static_cast<u8>(Token::OpMemberOrRef);
 
-					const u8 hi_ordinal = static_cast<u8>(Token::BracketR);
+					const u8 hi_ordinal = static_cast<u8>(Token::OpSetShr);
 
-					if (token_ordinal < lo_ordinal || token_ordinal > hi_ordinal || (!include_set && lexeme.token == Token::OpSet))
+					if (token_ordinal < lo_ordinal || token_ordinal > hi_ordinal || (!allow_complex && lexeme.token == Token::OpSet))
 						break;
 
 					const OperatorDesc op = BINARY_OPERATOR_DESCS[token_ordinal - lo_ordinal];
 
-					expecting_operand = stack.push_operator(op, lexeme);
+					stack.push_operator(op, lexeme);
 				}
 			}
 
@@ -1688,7 +1819,366 @@ private:
 		stack.pop_remaining();
 	}
 
-	void parse_definition() noexcept
+	void parse_top_level_expr() noexcept
+	{
+		const Lexeme lexeme = m_scanner.peek();
+
+		if (lexeme.token == Token::KwdLet || lexeme.token == Token::KwdPub || lexeme.token == Token::KwdMut || lexeme.token == Token::KwdGlobal)
+			parse_definition(false, false);
+		else
+			parse_expr(true);
+	}
+
+	void parse_if() noexcept
+	{
+		ASSERT_OR_IGNORE(m_scanner.peek().token == Token::KwdIf);
+
+		u16 child_count = 2;
+
+		ast::raw::Flag flags = ast::raw::Flag::EMPTY;
+
+		m_scanner.skip();
+
+		parse_expr(false);
+
+		Lexeme lexeme = m_scanner.peek();
+
+		if (lexeme.token == Token::KwdWhere)
+		{
+			child_count += 1;
+
+			flags |= ast::raw::Flag::If_HasWhere;
+
+			parse_where();
+
+			lexeme = m_scanner.peek();
+		}
+
+		if (lexeme.token == Token::KwdThen)
+			m_scanner.skip();
+
+		parse_expr(true);
+
+		lexeme = m_scanner.peek();
+
+		if (lexeme.token == Token::KwdElse)
+		{
+			child_count += 1;
+
+			flags |= ast::raw::Flag::If_HasElse;
+
+			m_scanner.skip();
+
+			parse_expr(true);
+		}
+
+		m_builder.append(ast::NodeType::If, child_count, flags);
+	}
+
+	void parse_for() noexcept
+	{
+		ASSERT_OR_IGNORE(m_scanner.peek().token == Token::KwdFor);
+
+		u16 child_count = 2;
+
+		ast::raw::Flag flags = ast::raw::Flag::EMPTY;
+
+		m_scanner.skip();
+
+		if (try_parse_foreach())
+			return;
+
+		parse_expr(false);
+
+		Lexeme lexeme = m_scanner.peek();
+
+		if (lexeme.token == Token::Comma)
+		{
+			child_count += 1;
+
+			flags |= ast::raw::Flag::For_HasStep;
+
+			m_scanner.skip();
+
+			parse_expr(true);
+
+			lexeme = m_scanner.peek();
+		}
+
+		if (lexeme.token == Token::KwdWhere)
+		{
+			child_count += 1;
+
+			flags |= ast::raw::Flag::For_HasWhere;
+
+			parse_where();
+
+			lexeme = m_scanner.peek();
+		}
+
+		if (lexeme.token == Token::KwdDo)
+			m_scanner.skip();
+
+		parse_expr(true);
+
+		lexeme = m_scanner.peek();
+
+		if (lexeme.token == Token::KwdFinally)
+		{
+			child_count += 1;
+			
+			flags |= ast::raw::Flag::For_HasFinally;
+
+			parse_expr(true);
+		}
+
+		m_builder.append(ast::NodeType::For, child_count, flags);
+	}
+
+	[[nodiscard]] bool try_parse_foreach() noexcept
+	{
+		bool is_foreach = false;
+
+		if (is_definition_start(m_scanner.peek().token))
+		{
+			is_foreach = true;
+		}
+		else if (const Lexeme lookahead_1 = m_scanner.peek_n(1); lookahead_1.token == Token::ThinArrowL)
+		{
+			is_foreach = true;
+		}
+		else if (lookahead_1.token == Token::Comma)
+		{
+			if (const Lexeme lookahead_2 = m_scanner.peek_n(2); is_definition_start(lookahead_2.token))
+				is_foreach = true;
+			if (const Lexeme lookahead_3 = m_scanner.peek_n(3); lookahead_3.token == Token::ThinArrowL)
+				is_foreach = true;
+		}
+
+		if (!is_foreach)
+			return false;
+
+		u16 child_count = 3;
+
+		ast::raw::Flag flags = ast::raw::Flag::EMPTY;
+
+		parse_definition(true, true);
+
+		Lexeme lexeme = m_scanner.peek();
+
+		if (lexeme.token == Token::Comma)
+		{
+			child_count += 1;
+
+			flags |= ast::raw::Flag::ForEach_HasIndex;
+
+			m_scanner.skip();
+
+			parse_definition(true, true);
+
+			lexeme = m_scanner.peek();
+		}
+
+		if (lexeme.token != Token::ThinArrowL)
+			m_error.log(lexeme.offset, "Expected '%s' after for-each loop variables but got '%s'\n", token_name(Token::ThinArrowL), token_name(lexeme.token));
+
+		m_scanner.skip();
+
+		parse_expr(false);
+
+		lexeme = m_scanner.peek();
+
+		if (lexeme.token == Token::KwdWhere)
+		{
+			child_count += 1;
+
+			flags |= ast::raw::Flag::ForEach_HasWhere;
+
+			parse_where();
+
+			lexeme = m_scanner.peek();
+		}
+
+		if (lexeme.token == Token::KwdDo)
+			m_scanner.skip();
+
+		parse_expr(true);
+
+		lexeme = m_scanner.peek();
+
+		if (lexeme.token == Token::KwdFinally)
+		{
+			child_count += 1;
+			
+			flags |= ast::raw::Flag::ForEach_HasFinally;
+
+			parse_expr(true);
+		}
+
+		m_builder.append(ast::NodeType::ForEach, child_count, flags);
+
+		return true;
+	}
+
+	void parse_switch() noexcept
+	{
+		ASSERT_OR_IGNORE(m_scanner.peek().token == Token::KwdSwitch);
+
+		u16 child_count = 1;
+
+		ast::raw::Flag flags = ast::raw::Flag::EMPTY;
+
+		m_scanner.skip();
+
+		parse_expr(false);
+
+		Lexeme lexeme = m_scanner.peek();
+
+		if (lexeme.token == Token::KwdWhere)
+		{
+			child_count += 1;
+
+			flags |= ast::raw::Flag::Switch_HasWhere;
+
+			parse_where();
+
+			lexeme = m_scanner.peek();
+		}
+
+		if (lexeme.token != Token::KwdCase)
+			m_error.log(lexeme.offset, "Expected at least one '%s' after switch expression but got '%s'\n", token_name(Token::KwdCase), token_name(lexeme.token));
+
+		while (true)
+		{
+			if (child_count == UINT16_MAX)
+				m_error.log(m_scanner.peek().offset, "Combined number of cases, where-clause and switch expression in switch exceeds the supported maximum of %u\n", UINT16_MAX);
+
+			child_count += 1;
+
+			parse_case();
+
+			lexeme = m_scanner.peek();
+
+			if (lexeme.token != Token::KwdCase)
+				break;
+		}
+
+		m_builder.append(ast::NodeType::Switch, child_count, flags);
+	}
+
+	void parse_case() noexcept
+	{
+		ASSERT_OR_IGNORE(m_scanner.peek().token == Token::KwdCase);
+
+		m_scanner.skip();
+
+		parse_expr(false);
+
+		Lexeme lexeme = m_scanner.next();
+
+		if (lexeme.token != Token::ThinArrowR)
+			m_error.log(lexeme.offset, "Expected '%s' after case label expression but got '%s'\n", token_name(Token::ThinArrowR), token_name(lexeme.token));
+
+		parse_expr(true);
+
+		m_builder.append(ast::NodeType::Case, 2);
+	}
+
+	void parse_where() noexcept
+	{
+		ASSERT_OR_IGNORE(m_scanner.peek().token == Token::KwdWhere);
+
+		m_scanner.skip();
+
+		u16 child_count = 0;
+
+		while (true)
+		{
+			if (child_count == UINT16_MAX)
+				m_error.log(m_scanner.peek().offset, "Number of definitions in where clause exceeds the supported maximum of %u\n", UINT16_MAX);
+
+			child_count += 1;
+
+			parse_definition(true, false);
+
+			const Lexeme lexeme = m_scanner.peek();
+
+			if (lexeme.token != Token::Comma)
+				break;
+
+			m_scanner.skip();
+		}
+
+		m_builder.append(ast::NodeType::Where, child_count);
+	}
+
+	void parse_func() noexcept
+	{
+		u16 child_count = 0;
+
+		ast::raw::Flag flags = ast::raw::Flag::EMPTY;
+
+		Lexeme lexeme = m_scanner.next();
+
+		if (lexeme.token == Token::KwdProc)
+			flags |= ast::raw::Flag::Func_IsProc;
+		else if (lexeme.token != Token::KwdFunc)
+			m_error.log(lexeme.offset, "Expected '%s' or '%s' but got '%s'\n", token_name(Token::KwdFunc), token_name(Token::KwdProc), token_name(lexeme.token));
+
+		lexeme = m_scanner.next();
+
+		if (lexeme.token != Token::ParenL)
+			m_error.log(lexeme.offset, "Expected '%s' after '%s' but got '%s'\n", token_name(Token::ParenL), token_name(flags == ast::raw::Flag::Func_IsProc ? Token::KwdProc : Token::KwdFunc), token_name(lexeme.token));
+
+		lexeme = m_scanner.peek();
+
+		while (lexeme.token != Token::ParenR)
+		{
+			if (child_count == UINT16_MAX)
+				m_error.log(lexeme.offset, "Number of parameters in function parameter list exceeds the supported maximum of %u\n", UINT16_MAX);
+			
+			child_count += 1;
+
+			parse_definition(true, true);
+
+			lexeme = m_scanner.next();
+
+			if (lexeme.token == Token::Comma)
+				lexeme = m_scanner.next();
+			else if (lexeme.token != Token::ParenR)
+				m_error.log(lexeme.offset, "Expected '%s' or '%s' after function parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
+		}
+
+		lexeme = m_scanner.peek();
+
+		if (lexeme.token == Token::ThinArrowR)
+		{
+			child_count += 1;
+
+			flags |= ast::raw::Flag::Func_HasReturnType;
+
+			m_scanner.skip();
+
+			parse_expr(false);
+
+			lexeme = m_scanner.peek();
+		}
+
+		if (lexeme.token == Token::OpSet)
+		{
+			child_count += 1;
+
+			flags |= ast::raw::Flag::Func_HasBody;
+
+			m_scanner.skip();
+
+			parse_expr(true);
+		}
+
+		m_builder.append(ast::NodeType::Func, child_count, flags);
+	}
+
+	void parse_definition(bool is_implicit, bool is_optional_value) noexcept
 	{
 		ast::raw::Flag flags = ast::raw::Flag::EMPTY;
 
@@ -1723,6 +2213,20 @@ private:
 
 					flags |= ast::raw::Flag::Definition_IsGlobal;
 				}
+				else if (lexeme.token == Token::KwdAuto)
+				{
+					if ((flags & ast::raw::Flag::Definition_IsAuto) != ast::raw::Flag::EMPTY)
+						m_error.log(lexeme.offset, "Definition modifier 'auto' encountered more than once\n");
+
+					flags |= ast::raw::Flag::Definition_IsAuto;
+				}
+				else if (lexeme.token == Token::KwdUse)
+				{
+					if ((flags & ast::raw::Flag::Definition_IsUse) != ast::raw::Flag::EMPTY)
+						m_error.log(lexeme.offset, "Definition modifier 'use' encountered more than once\n");
+
+					flags |= ast::raw::Flag::Definition_IsUse;
+				}
 				else
 				{
 					break;
@@ -1731,7 +2235,7 @@ private:
 				lexeme = m_scanner.next();
 			}
 
-			if (flags == ast::raw::Flag::EMPTY)
+			if (flags == ast::raw::Flag::EMPTY && !is_implicit)
 				m_error.log(lexeme.offset, "Missing 'let' or at least one of 'pub', 'mut' or 'global' at start of definition\n");
 		}
 
@@ -1750,13 +2254,16 @@ private:
 
 			parse_expr(false);
 
-			flags |= ast::raw::Flag::Definition_HasType;
-
 			lexeme = m_scanner.peek();
 		}
 		
 		if (lexeme.token != Token::OpSet)
+		{
+			if (is_optional_value)
+				return;
+
 			m_error.log(lexeme.offset, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
+		}
 
 		m_scanner.skip();
 
@@ -1803,13 +2310,8 @@ public:
 
 			if (lexeme.token == Token::END_OF_SOURCE)
 				break;
-			else if (lexeme.token != Token::KwdLet
-			      && lexeme.token != Token::KwdPub
-				  && lexeme.token != Token::KwdMut
-				  && lexeme.token != Token::KwdGlobal)
-				m_error.log(lexeme.offset, "Expected 'let', 'pub', 'mut' or 'global', but got '%s'\n", token_name(lexeme.token));
-
-			parse_definition();
+			
+			parse_top_level_expr();
 		};
 
 		return m_builder.build();

@@ -13,7 +13,27 @@ namespace ast::raw
 		Definition_IsPub     = 0x01,
 		Definition_IsMut     = 0x02,
 		Definition_IsGlobal  = 0x04,
-		Definition_HasType   = 0x08,
+		Definition_IsAuto    = 0x08,
+		Definition_IsUse     = 0x10,
+
+		If_HasWhere          = 0x01,
+		If_HasElse           = 0x02,
+
+		For_HasWhere         = 0x01,
+		For_HasStep          = 0x02,
+		For_HasFinally       = 0x04,
+
+		ForEach_HasWhere     = 0x01,
+		ForEach_HasIndex     = 0x02,
+		ForEach_HasFinally   = 0x04,
+
+		Switch_HasWhere      = 0x01,
+
+		Func_IsProc          = 0x01,
+		Func_HasReturnType   = 0x02,
+		Func_HasBody         = 0x04,
+
+		Catch_HasDefinition  = 0x01,
 	};
 
 	Flag operator|(Flag lhs, Flag rhs) noexcept
@@ -44,11 +64,11 @@ namespace ast::raw
 	{
 		NodeType type;
 
-		u8 child_count;
+		u8 data_dwords : 3;
 
-		u8 data_dwords;
-
-		Flag flags;
+		u8 flags : 5;
+		
+		u16 child_count;
 	};
 
 	static_assert(sizeof(NodeHeader) == 4 && alignof(NodeHeader) == 4);
@@ -165,19 +185,25 @@ namespace ast::raw
 			TreeBuilderBase{ memory, reserve, commit_increment }
 		{}
 
-		NodeHeader* append(NodeType type, u8 child_count, Flag flags = Flag::EMPTY, u8 data_dwords = 0) noexcept
+		NodeHeader* append(NodeType type, u16 child_count, Flag flags = Flag::EMPTY, u8 data_dwords = 0) noexcept
 		{
+			ASSERT_OR_IGNORE(static_cast<u8>(type) < 128);
+
+			ASSERT_OR_IGNORE(static_cast<u8>(flags) < 32);
+
+			ASSERT_OR_IGNORE(data_dwords < 8);
+
 			ensure_capacity(1 + data_dwords);
 
 			NodeHeader* const node = m_memory + m_used;
 
 			node->type = type;
 
-			node->child_count = child_count;
-
 			node->data_dwords = data_dwords;
 
-			node->flags = flags;
+			node->flags = static_cast<u8>(flags);
+
+			node->child_count = child_count;
 
 			m_used += 1 + data_dwords;
 
@@ -185,7 +211,7 @@ namespace ast::raw
 		}
 
 		template<typename T>
-		NodeHeader* append(T** out_data, u8 child_count, Flag flags = Flag::EMPTY) noexcept
+		NodeHeader* append(T** out_data, u16 child_count, Flag flags = Flag::EMPTY) noexcept
 		{
 			static_assert(alignof(T) <= alignof(NodeHeader));
 

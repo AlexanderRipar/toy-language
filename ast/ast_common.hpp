@@ -14,7 +14,16 @@ namespace ast
 		CompositeInitializer,
 		ArrayInitializer,
 
+		Where,
 		Definition,
+		Block,
+		If,
+		For,
+		ForEach,
+		Switch,
+		Case,
+		Func,
+		Catch,
 
 		ValIdentifer,
 		ValInteger,
@@ -74,7 +83,6 @@ namespace ast
 		OpSetBitXor,
 		OpSetShiftL,
 		OpSetShiftR,
-		OpCatch,
 	};
 
 	/*

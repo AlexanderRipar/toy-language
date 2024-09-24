@@ -1,8 +1,8 @@
-/*
+let x = [n]T
+
 let x = [...](y[0 + [T.x]s] + 1)
 
 let y = f(.x = x, y = y + 3)
-*/
 
 // let parens = ((1 + 1) * 2 + x)
 
@@ -16,6 +16,32 @@ let y = f(.x = x, y = y + 3)
 
 // let single_arg_call = f(1)
 
+let x = (1 + 2) * 3
+
 let two_arg_call = f(1, 2, 3)
 
 let x = f(1)
+
+let f = switch x where let x = 1
+    case 1 -> { "x" }
+    case 2 -> "y"
+
+for x < 10, x += 1 where mut x = 0, let y : u32 = 3 do
+    bla()
+
+let f = func(let x : u32, let y : u32) -> u32 = x + y
+
+let g = func(x : u32) = x * 2
+
+for x, y <- v where
+    v = get_vs()
+do
+    f(x, x * 2)
+
+let y = try f()
+
+let z = f() catch v -> {
+    log(v)
+
+    0
+}
