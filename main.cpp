@@ -53,13 +53,13 @@ s32 main(s32 argc, const char8** argv)
 
 		reader.read(config.entrypoint.filepath);
 
-		Parser parser{1u << 31, 1 << 17 /* 1mb of qwords */};
+		Parser parser{};
 
 		Range<char8> file;
 
 		while (reader.await_completed_read(&file))
 		{
-			parser.parse(file);
+			ast::raw::Tree tree = parser.parse(file);
 		}
 
 		deinit_config(&config);

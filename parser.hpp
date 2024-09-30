@@ -782,7 +782,7 @@ private:
 				return scan_number_token_with_base(second);
 
 		// fallthrough
-		
+	
 		case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8':
 		case '9':
 			return scan_number_token(first);
@@ -820,7 +820,8 @@ private:
 				return { Token::OpAdd };
 			}
 
-		case '-':if (second == '>')
+		case '-':
+			if (second == '>')
 			{
 				m_curr += 1;
 
@@ -1126,7 +1127,7 @@ private:
 			return { Token::END_OF_SOURCE };				
 
 		default:
-			m_error->log(m_peek.offset, "Unexpected character '%c' in source file\n", *m_curr);
+			m_error->log(m_peek.offset, "Unexpected character '%c' in source file\n", first);
 		}
 	}
 
@@ -1255,7 +1256,7 @@ private:
 				return;
 
 			if (m_free_operand_count <= top.is_binary)
-				m_error->log(m_expression_offset, "Missing operand(s) for operator %u\n", top.node_type);
+				m_error->log(m_expression_offset, "Missing operand(s) for operator '%s'\n", ast::node_type_name(top.node_type));
 
 			m_free_operand_count -= top.is_binary;
 
@@ -1280,20 +1281,7 @@ private:
 		void push_operator(OperatorDesc op, Lexeme lexeme) noexcept
 		{
 			if (op.precedence != 0)
-			{
-				while (m_operator_top != 0)
-				{
-					const OperatorDesc top = m_operators[m_operator_top - 1];
-
-					if (top.precedence < op.precedence)
-						break;
-
-					if (top.precedence == op.precedence && !op.is_left_to_right)
-						break;
-
-					pop_operator();
-				}
-			}
+				pop_to_precedence(op.precedence, !op.is_left_to_right);
 
 			if (m_operator_top == array_count(m_operators))
 				m_error->log(m_expression_offset, "Operator nesting exceeds maximum depth of %u\n", array_count(m_operators));
@@ -1305,11 +1293,13 @@ private:
 			m_operator_top += 1;
 		}
 
-		bool pop_to_lparen() noexcept
+		bool pop_to_precedence(u8 precedence, bool pop_equal) noexcept
 		{
 			while (m_operator_top != 0)
 			{
-				if (m_operators[m_operator_top - 1].precedence == 0)
+				const OperatorDesc top = m_operators[m_operator_top - 1];
+
+				if (top.precedence < precedence || (top.precedence == precedence && !pop_equal))
 					return true;
 
 				pop_operator();
@@ -1343,13 +1333,13 @@ private:
 		{ ast::NodeType::UOpDeref,             1, false, false }, // .*
 		{ ast::NodeType::UOpBitNot,            2, false, false }, // ~
 		{ ast::NodeType::UOpLogNot,            2, false, false }, // !
-		{ ast::NodeType::UOpTypOptPtr,         2, false, false }, // ?
-		{ ast::NodeType::UOpTypVar,            2, false, false }, // ...
-		{ ast::NodeType::UOpTypTailArray,      2, false, false }, // [...]
+		{ ast::NodeType::UOpTypeOptPtr,         2, false, false }, // ?
+		{ ast::NodeType::UOpTypeVar,            2, false, false }, // ...
+		{ ast::NodeType::UOpTypeTailArray,      2, false, false }, // [...]
 		{ ast::NodeType::UOpTypeMultiPtr,      2, false, false }, // [*]
 		{ ast::NodeType::UOpTypeSlice,         2, false, false }, // []
 		{ ast::NodeType::OpImpliedMember,      1, false, false }, // .
-		{ ast::NodeType::UOpTypPtr,            2, false, false }, // *
+		{ ast::NodeType::UOpTypePtr,            2, false, false }, // *
 		{ ast::NodeType::UOpNegate,            2, false, false }, // -
 		{ ast::NodeType::UOpPos,               2, false, false }, // +
 	};
@@ -1424,13 +1414,9 @@ private:
 
 	ast::raw::TreeBuilder m_builder;
 
-	u64* const m_ast_memory;
+	ReservedByteBuffer m_asts;
 
-	u32 m_ast_used;
-
-	const u32 m_ast_commit_increment;
-
-	const u32 m_ast_reserve;
+	ReservedByteBuffer m_scratch;
 
 	ErrorHandler m_error;
 
@@ -1624,7 +1610,7 @@ private:
 
 						child_count += 1;
 
-						parse_top_level_expr();
+						parse_top_level_expr(false);
 
 						lexeme = m_scanner.peek();
 
@@ -1705,7 +1691,7 @@ private:
 				if (lexeme.token == Token::ParenL) // Function call
 				{
 					// FIXME: Pop only to certain priority
-					stack.pop_to_lparen();
+					stack.pop_to_precedence(0, false);
 
 					m_scanner.skip();
 
@@ -1720,7 +1706,7 @@ private:
 
 						child_count += 1;
 
-						parse_expr(true);
+						parse_top_level_expr(true);
 
 						lexeme = m_scanner.peek();
 
@@ -1740,7 +1726,7 @@ private:
 				}
 				else if (lexeme.token == Token::ParenR) // Closing parenthesis
 				{
-					if (!stack.pop_to_lparen())
+					if (!stack.pop_to_precedence(0, false))
 						return; // No need for stack.pop_remaining; pop_to_lparen already popped everything
 
 					stack.remove_lparen();
@@ -1748,7 +1734,7 @@ private:
 				else if (lexeme.token == Token::BracketL) // Array Index
 				{
 					// FIXME: Pop only to certain priority
-					stack.pop_to_lparen();
+					stack.pop_to_precedence(1, true);
 
 					m_scanner.skip();
 
@@ -1768,7 +1754,7 @@ private:
 					ast::raw::Flag flags = ast::raw::Flag::EMPTY;
 
 					// FIXME: Pop only to certain priority
-					stack.pop_to_lparen();
+					stack.pop_to_precedence(0, false);
 
 					m_scanner.skip();
 
@@ -1819,12 +1805,12 @@ private:
 		stack.pop_remaining();
 	}
 
-	void parse_top_level_expr() noexcept
+	void parse_top_level_expr(bool is_definition_optional_value) noexcept
 	{
 		const Lexeme lexeme = m_scanner.peek();
 
-		if (lexeme.token == Token::KwdLet || lexeme.token == Token::KwdPub || lexeme.token == Token::KwdMut || lexeme.token == Token::KwdGlobal)
-			parse_definition(false, false);
+		if (is_definition_start(lexeme.token))
+			parse_definition(false, is_definition_optional_value);
 		else
 			parse_expr(true);
 	}
@@ -2144,7 +2130,7 @@ private:
 			lexeme = m_scanner.next();
 
 			if (lexeme.token == Token::Comma)
-				lexeme = m_scanner.next();
+				lexeme = m_scanner.peek();
 			else if (lexeme.token != Token::ParenR)
 				m_error.log(lexeme.offset, "Expected '%s' or '%s' after function parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
 		}
@@ -2160,6 +2146,17 @@ private:
 			m_scanner.skip();
 
 			parse_expr(false);
+
+			lexeme = m_scanner.peek();
+		}
+
+		if (lexeme.token == Token::KwdWhere)
+		{
+			child_count += 1;
+
+			flags |= ast::raw::Flag::Func_HasWhere;
+
+			parse_where();
 
 			lexeme = m_scanner.peek();
 		}
@@ -2180,6 +2177,8 @@ private:
 
 	void parse_definition(bool is_implicit, bool is_optional_value) noexcept
 	{
+		u16 child_count = 0;
+
 		ast::raw::Flag flags = ast::raw::Flag::EMPTY;
 
 		Lexeme lexeme = m_scanner.next();
@@ -2231,7 +2230,7 @@ private:
 				{
 					break;
 				}
-			
+
 				lexeme = m_scanner.next();
 			}
 
@@ -2246,10 +2245,12 @@ private:
 
 		lexeme = m_scanner.peek();
 
-		const bool has_type = lexeme.token == Token::Colon; 
-
-		if (has_type)
+		if (lexeme.token == Token::Colon)
 		{
+			child_count += 1;
+
+			flags |= ast::raw::Flag::Definition_HasType;
+
 			m_scanner.skip();
 
 			parse_expr(false);
@@ -2257,48 +2258,42 @@ private:
 			lexeme = m_scanner.peek();
 		}
 		
-		if (lexeme.token != Token::OpSet)
+		if (lexeme.token == Token::OpSet)
 		{
-			if (is_optional_value)
-				return;
+			child_count += 1;
 
+			m_scanner.skip();
+
+			parse_expr(true);
+		}
+		else if (!is_optional_value)
+		{
 			m_error.log(lexeme.offset, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 		}
 
-		m_scanner.skip();
-
-		parse_expr(false);
-
 		ast::raw::attach::DefinitionData* data;
 
-		m_builder.append(&data, has_type ? 2 : 1, flags);
+		m_builder.append(&data, child_count, flags);
 
 		data->identifier_id = identifier_id;
-
-		return;
 	}
 
 public:
 
-	Parser(u32 ast_reserve, u32 ast_commit_increment) noexcept :
+	Parser() noexcept :
 		m_identifiers{ 1 << 24, 1 << 14, 1 << 28, 1 << 16, 1 << 16 },
 		m_scanner{ &m_identifiers, &m_error },
 		m_builder{},
-		m_ast_memory{ static_cast<u64*>(minos::reserve(static_cast<u64>(ast_reserve) * 8)) },
-		m_ast_used{ 0 },
-		m_ast_commit_increment{ ast_commit_increment },
-		m_ast_reserve{ ast_reserve }
+		m_asts{ 1ui64 << 31, 1ui64 << 17 },
+		m_scratch{ 1ui64 << 31, 1ui64 << 17 }
 	{
 		for (u32 i = 0; i != array_count(KEYWORDS); ++i)
 			m_identifiers.value_from(KEYWORDS[i].range(), fnv1a(KEYWORDS[i].as_byte_range()))->set_token(KEYWORDS[i].attachment());
-
-		if (m_ast_memory == nullptr)
-			panic("Could not reserve memory for ASTs (0x%X)\n", minos::last_error());
 	}
 
 	ast::raw::Tree parse(Range<char8> source) noexcept
 	{
-		m_builder = { reinterpret_cast<ast::raw::NodeHeader*>(m_ast_memory + m_ast_used), m_ast_reserve - m_ast_used, m_ast_commit_increment };
+		m_builder = { &m_scratch };
 
 		m_error.prime(source);
 
@@ -2311,10 +2306,14 @@ public:
 			if (lexeme.token == Token::END_OF_SOURCE)
 				break;
 			
-			parse_top_level_expr();
+			parse_top_level_expr(false);
 		};
 
-		return m_builder.build();
+		const ast::raw::Tree tree = m_builder.build(&m_asts);
+
+		m_scratch.reset();
+
+		return tree;
 	}
 };
 

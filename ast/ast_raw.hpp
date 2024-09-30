@@ -15,6 +15,7 @@ namespace ast::raw
 		Definition_IsGlobal  = 0x04,
 		Definition_IsAuto    = 0x08,
 		Definition_IsUse     = 0x10,
+		Definition_HasType   = 0x20,
 
 		If_HasWhere          = 0x01,
 		If_HasElse           = 0x02,
@@ -31,7 +32,8 @@ namespace ast::raw
 
 		Func_IsProc          = 0x01,
 		Func_HasReturnType   = 0x02,
-		Func_HasBody         = 0x04,
+		Func_HasWhere        = 0x04,
+		Func_HasBody         = 0x08,
 
 		Catch_HasDefinition  = 0x01,
 	};
@@ -64,11 +66,13 @@ namespace ast::raw
 	{
 		NodeType type;
 
-		u8 data_dwords : 3;
+		u8 data_dwords : 2;
 
-		u8 flags : 5;
+		u8 flags : 6;
 		
-		u16 child_count;
+		u16 child_count : 15;
+
+		u16 is_root : 1;
 	};
 
 	static_assert(sizeof(NodeHeader) == 4 && alignof(NodeHeader) == 4);
@@ -175,27 +179,41 @@ namespace ast::raw
 		{
 			minos::decommit(m_begin, m_commit * 8);
 		}
+
+		Range<NodeHeader> raw_nodes() const noexcept
+		{
+			return Range{ m_begin, m_length };
+		}
 	};
 
-	struct TreeBuilder : public TreeBuilderBase<NodeHeader>
+	struct TreeBuilder
 	{
+		ReservedByteBuffer* m_buffer;
+
+		const NodeHeader* m_begin;
+
+	public:
+
 		TreeBuilder() noexcept = default;
 
-		TreeBuilder(NodeHeader* memory, u32 reserve, u32 commit_increment) noexcept :
-			TreeBuilderBase{ memory, reserve, commit_increment }
-		{}
+		TreeBuilder(ReservedByteBuffer* buffer) noexcept :
+			m_buffer{ buffer },
+			m_begin{ static_cast<NodeHeader*>(m_buffer->end()) } {}
+
+		void set_root() noexcept
+		{
+			(static_cast<NodeHeader*>(m_buffer->end()) - 1)->is_root = true;
+		}
 
 		NodeHeader* append(NodeType type, u16 child_count, Flag flags = Flag::EMPTY, u8 data_dwords = 0) noexcept
 		{
-			ASSERT_OR_IGNORE(static_cast<u8>(type) < 128);
+			ASSERT_OR_IGNORE(static_cast<u8>(flags) < 64);
 
-			ASSERT_OR_IGNORE(static_cast<u8>(flags) < 32);
+			ASSERT_OR_IGNORE(data_dwords < 4);
 
 			ASSERT_OR_IGNORE(data_dwords < 8);
 
-			ensure_capacity(1 + data_dwords);
-
-			NodeHeader* const node = m_memory + m_used;
+			NodeHeader* const node = static_cast<NodeHeader*>(m_buffer->reserve(sizeof(NodeHeader) + data_dwords * sizeof(u32)));
 
 			node->type = type;
 
@@ -204,8 +222,6 @@ namespace ast::raw
 			node->flags = static_cast<u8>(flags);
 
 			node->child_count = child_count;
-
-			m_used += 1 + data_dwords;
 
 			return node;
 		}
@@ -222,9 +238,9 @@ namespace ast::raw
 			return node;
 		}
 
-		Tree build() noexcept
+		Tree build(ReservedByteBuffer* target) noexcept
 		{
-			return Tree{ m_memory, m_used, m_commit };
+			return Tree{ static_cast<NodeHeader*>(m_buffer->begin()), static_cast<u32>(m_buffer->used()), static_cast<u32>(m_buffer->committed()) };
 		}
 	};
 }

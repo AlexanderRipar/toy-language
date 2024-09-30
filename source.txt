@@ -1,3 +1,8 @@
+y[3]
+
+/*
+let add = func(x: uint, y: uint) -> uint = x + y
+
 let x = [n]T
 
 let x = [...](y[0 + [T.x]s] + 1)
@@ -45,3 +50,62 @@ let z = f() catch v -> {
 
     0
 }
+
+for i < 10, i += 1 where mut i = 0
+{
+
+}
+
+
+
+
+if x.y where
+    x = get_something(),
+    y = 3
+then
+    bla(x)
+
+
+for i < 100 {
+
+}
+
+use pub mut global my_string_variable = "hello world"
+
+my_string_variable = "Another string :o" // does not compile
+
+let Vector2 = Struct(
+    let x: u32,
+
+    let y: u32
+)
+
+let Vector3 = Struct(
+    use v2: Vector2,
+
+    let z: u32
+)
+
+let TU = Struct(
+
+    let tag: u32,
+
+    use u: Union(
+        let a: u32,
+
+        let b: *byte
+    )
+)
+
+let v : Vector3 = .{ .x = 1, .y = 2, .z = 3 }
+
+v.x
+
+use code = import("path/to/file")
+
+x = 3
+
+// in other file:
+
+pub mut x = 5
+*/
