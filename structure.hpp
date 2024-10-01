@@ -6,7 +6,7 @@
 #include "common.hpp"
 #include "minos.hpp"
 
-struct ReservedByteBuffer
+struct ByteStack
 {
 private:
 
@@ -40,9 +40,9 @@ private:
 
 public:
 
-	ReservedByteBuffer() noexcept = default;
+	ByteStack() noexcept = default;
 
-	ReservedByteBuffer(u64 reserve, u64 commit_increment) noexcept :
+	ByteStack(u64 reserve, u64 commit_increment) noexcept :
 		m_memory{ static_cast<byte*>(minos::reserve(reserve)) },
 		m_used{ 0 },
 		m_committed{ commit_increment },
@@ -157,6 +157,192 @@ public:
 	}
 
 	u64 reserved() const noexcept
+	{
+		return m_reserved;
+	}
+};
+
+template<typename T, typename Index = u32>
+struct ReservedVec
+{
+private:
+
+	T* m_memory;
+
+	Index m_used;
+
+	Index m_committed;
+
+	Index m_commit_increment;
+
+	Index m_reserved;
+
+	void ensure_capacity(Index extra_used) noexcept
+	{
+		const u64 required_commit = m_used + extra_used;
+
+		if (required_commit <= m_committed)
+			return;
+
+		if (required_commit > m_reserved)
+			panic("Could not allocate additional memory, as the required memory (%llu bytes) exceeds the reserve of %llu bytes\n", required_commit * sizeof(T), m_reserved * sizeof(T));
+
+		const Index new_commit = next_multiple(static_cast<Index>(required_commit), m_commit_increment);
+
+		if (!minos::commit(m_memory + m_committed, (new_commit - m_committed) * sizeof(T)))
+			panic("Could not allocate additional memory (%llu bytes - error 0x%X)\n", (new_commit - m_committed) * sizeof(T), minos::last_error());
+
+		m_committed = new_commit;
+	}
+
+public:
+
+	ReservedVec(Index reserve, Index commit_increment) noexcept :
+		m_memory{ static_cast<T*>(minos::reserve(reserve * sizeof(T))) },
+		m_used{ 0 },
+		m_committed{ commit_increment },
+		m_commit_increment{ commit_increment },
+		m_reserved{ reserve }
+	{
+		ASSERT_OR_IGNORE(reserve >= commit_increment);
+
+		if (m_memory == nullptr)
+			panic("Could not reserve memory (%llu bytes - error 0x%X)\n", reserve * sizeof(T), minos::last_error());
+
+		if (!minos::commit(m_memory, m_committed * sizeof(T)))
+			panic("Could not commit initial memory (%llu bytes - error 0x%X)\n", m_committed * sizeof(T), minos::last_error());
+	}
+
+	void append(const T& data) noexcept
+	{
+		append(&data, 1);
+	}
+
+	void append(const T* data, Index count) noexcept
+	{
+		ensure_capacity(count);
+
+		memcpy(m_memory + m_used, data, count * sizeof(T));
+
+		m_used += count;
+	}
+
+	void append_exact(const void* data, Index bytes) noexcept
+	{
+		ASSERT_OR_IGNORE(bytes % sizeof(T) == 0)
+
+		const u32 count = bytes / sizeof(T);
+
+		ensure_capacity(count);
+
+		memcpy(m_memory + m_used, data, count * sizeof(T));
+
+		m_used += count;
+	}
+
+	void append_padded(const void* data, Index bytes) noexcept
+	{
+		const u32 count = (bytes + sizeof(T) - 1) / sizeof(T);
+
+		ensure_capacity(count);
+
+		memcpy(m_memory + m_used, data, count * sizeof(T));
+
+		m_used += count;
+	}
+
+	void* reserve_exact(Index bytes) noexcept
+	{
+		ASSERT_OR_IGNORE(bytes % sizeof(T) == 0);
+
+		const Index count = bytes / sizeof(T);
+
+		ensure_capacity(count);
+
+		void* const result = m_memory + m_used;
+
+		m_used += count;
+
+		return result;
+	}
+
+	void* reserve_padded(Index bytes) noexcept
+	{
+		const u32 count = (bytes + sizeof(T) - 1) / sizeof(T);
+
+		ensure_capacity(count);
+
+		void* const result = m_memory + m_used;
+
+		m_used += count;
+
+		return result;
+	}
+
+	void reset() noexcept
+	{
+		m_used = 0;
+	}
+
+	void pop(Index count) noexcept
+	{
+		ASSERT_OR_IGNORE(count <= m_used);
+
+		m_used -= count;
+	}
+
+	void release() noexcept
+	{
+		ASSERT_OR_IGNORE(m_memory != nullptr);
+
+		minos::unreserve(m_memory);
+
+		m_memory = nullptr;
+	}
+
+	void free_region(void* begin, Index count) noexcept
+	{
+		ASSERT_OR_IGNORE(begin >= m_memory && static_cast<byte*>(begin) + count < m_memory + m_committed);
+
+		minos::decommit(begin, count);
+	}
+
+	void free_region(void* begin, void* end) noexcept
+	{
+		free_region(begin, static_cast<Index>(static_cast<byte*>(end) - static_cast<byte*>(begin)));
+	}
+
+	T* begin() noexcept
+	{
+		return m_memory;
+	}
+
+	const T* begin() const noexcept
+	{
+		return m_memory;
+	}
+
+	T* end() noexcept
+	{
+		return m_memory + m_used;
+	}
+
+	const T* end() const noexcept
+	{
+		return m_memory + m_used;
+	}
+
+	Index used() const noexcept
+	{
+		return m_used;
+	}
+
+	Index committed() const noexcept
+	{
+		return m_committed;
+	}
+
+	Index reserved() const noexcept
 	{
 		return m_reserved;
 	}

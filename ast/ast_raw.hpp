@@ -62,20 +62,18 @@ namespace ast::raw
 		return lhs;
 	}
 
-	struct alignas(4) NodeHeader
+	struct NodeHeader
 	{
 		NodeType type;
 
 		u8 data_dwords : 2;
 
 		u8 flags : 6;
-		
-		u16 child_count : 15;
 
-		u16 is_root : 1;
+		u16 child_count;
+
+		u32 next_sibling_offset;
 	};
-
-	static_assert(sizeof(NodeHeader) == 4 && alignof(NodeHeader) == 4);
 
 	namespace attach
 	{
@@ -166,54 +164,37 @@ namespace ast::raw
 
 		const u32 m_length;
 
-		const u32 m_commit;
-
 	public:
 
-		Tree(NodeHeader* begin, u32 length, u32 commit) noexcept :
+		Tree(NodeHeader* begin, u32 length) noexcept :
 			m_begin{ begin },
-			m_length{ length },
-			m_commit{ commit } {}
-
-		void release() noexcept
-		{
-			minos::decommit(m_begin, m_commit * 8);
-		}
+			m_length{ length }
+		{}
 
 		Range<NodeHeader> raw_nodes() const noexcept
 		{
 			return Range{ m_begin, m_length };
 		}
+
+		const NodeHeader* root() const noexcept
+		{
+			return m_begin;
+		}
 	};
 
 	struct TreeBuilder
 	{
-		ReservedByteBuffer* m_buffer;
+		ReservedVec<u32>* m_buffer;
 
-		const NodeHeader* m_begin;
+		ReservedVec<u32>* m_stack;
 
-	public:
-
-		TreeBuilder() noexcept = default;
-
-		TreeBuilder(ReservedByteBuffer* buffer) noexcept :
-			m_buffer{ buffer },
-			m_begin{ static_cast<NodeHeader*>(m_buffer->end()) } {}
-
-		void set_root() noexcept
-		{
-			(static_cast<NodeHeader*>(m_buffer->end()) - 1)->is_root = true;
-		}
-
-		NodeHeader* append(NodeType type, u16 child_count, Flag flags = Flag::EMPTY, u8 data_dwords = 0) noexcept
+		NodeHeader* append(NodeType type, u16 child_count, Flag flags, u8 data_dwords) noexcept
 		{
 			ASSERT_OR_IGNORE(static_cast<u8>(flags) < 64);
 
-			ASSERT_OR_IGNORE(data_dwords < 4);
+			ASSERT_OR_IGNORE(data_dwords < 3 || (child_count == 0 && data_dwords < 4));
 
-			ASSERT_OR_IGNORE(data_dwords < 8);
-
-			NodeHeader* const node = static_cast<NodeHeader*>(m_buffer->reserve(sizeof(NodeHeader) + data_dwords * sizeof(u32)));
+			NodeHeader* const node = static_cast<NodeHeader*>(m_buffer->reserve_exact(sizeof(NodeHeader) + (data_dwords + static_cast<u8>(child_count != 0)) * sizeof(u32)));
 
 			node->type = type;
 
@@ -223,7 +204,60 @@ namespace ast::raw
 
 			node->child_count = child_count;
 
+			if (child_count != 0)
+			{
+				u32 child_index = m_stack->begin()[m_stack->used() - child_count];
+
+				reinterpret_cast<u32*>(node)[2 + data_dwords] = static_cast<u32>(reinterpret_cast<u32*>(node) - (m_buffer->begin() + child_index));
+
+				for (u16 i = 1; i != child_count; ++i)
+				{
+					NodeHeader* const child = reinterpret_cast<NodeHeader*>(m_buffer->begin() + child_index);
+
+					const u32 next_child_index = m_stack->begin()[m_stack->used() - child_count + i];
+
+					child->next_sibling_offset = next_child_index - child_index;
+
+					child_index = next_child_index;
+				}
+
+				m_stack->pop(child_count);
+			}
+
+			m_stack->append(static_cast<u32>(reinterpret_cast<u32*>(node) - m_buffer->begin()));
+
 			return node;
+		}
+
+		static void reverse_node(ReservedVec<u32>* target, const NodeHeader* src) noexcept
+		{
+			NodeHeader* const dst = reinterpret_cast<NodeHeader*>(target->reserve_exact(sizeof(NodeHeader) + src->data_dwords * sizeof(u32)));
+
+			memcpy(dst, src, sizeof(NodeHeader) + src->data_dwords * sizeof(u32));
+
+			if (src->child_count != 0)
+			{
+				const u32 offset = reinterpret_cast<const u32*>(src)[2 + src->data_dwords];
+
+				reverse_node(target, reinterpret_cast<const NodeHeader*>(reinterpret_cast<const u32*>(src) - offset));
+			}
+
+			if (src->next_sibling_offset != 0)
+				reverse_node(target, reinterpret_cast<const NodeHeader*>(reinterpret_cast<const u32*>(src) + src->next_sibling_offset));
+		}
+
+	public:
+
+		TreeBuilder() noexcept = default;
+
+		TreeBuilder(ReservedVec<u32>* buffer, ReservedVec<u32>* stack) noexcept :
+			m_buffer{ buffer },
+			m_stack{ stack }
+		{}
+
+		NodeHeader* append(NodeType type, u16 child_count, Flag flags = Flag::EMPTY) noexcept
+		{
+			return append(type, child_count, flags, 0);
 		}
 
 		template<typename T>
@@ -231,16 +265,25 @@ namespace ast::raw
 		{
 			static_assert(alignof(T) <= alignof(NodeHeader));
 
-			NodeHeader* const node = append(T::TYPE, child_count, flags, (sizeof(T) + sizeof(NodeHeader) - 1) / sizeof(NodeHeader));
+			NodeHeader* const node = append(T::TYPE, child_count, flags, (sizeof(T) + sizeof(u32) - 1) / sizeof(u32));
 
 			*out_data = reinterpret_cast<T*>(node + 1);
 
 			return node;
 		}
 
-		Tree build(ReservedByteBuffer* target) noexcept
+		Tree build(ReservedVec<u32>* target) noexcept
 		{
-			return Tree{ static_cast<NodeHeader*>(m_buffer->begin()), static_cast<u32>(m_buffer->used()), static_cast<u32>(m_buffer->committed()) };
+			ASSERT_OR_IGNORE(m_stack->used() == 1);
+
+			const u32 begin = target->used();
+
+			const NodeHeader* const header = reinterpret_cast<NodeHeader*>(m_buffer->begin() + *m_stack->begin());
+
+			reverse_node(target, header);
+
+			return Tree{ reinterpret_cast<NodeHeader*>(target->begin() + begin), target->used() - begin };
+
 		}
 	};
 }

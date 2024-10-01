@@ -2,6 +2,7 @@
 #include "config.hpp"
 #include "parser.hpp"
 #include "reader.hpp"
+#include "ast/ast_fmt.hpp"
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
@@ -60,6 +61,8 @@ s32 main(s32 argc, const char8** argv)
 		while (reader.await_completed_read(&file))
 		{
 			ast::raw::Tree tree = parser.parse(file);
+
+			ast::raw::format(stderr, &tree, parser.identifiers());
 		}
 
 		deinit_config(&config);

@@ -38,7 +38,6 @@ enum class Token : u8
 		KwdTry,               // try
 		KwdDefer,             // defer
 		UOpAddr,              // $
-		UOpDeref,             // .*
 		UOpNot,               // ~
 		UOpLogNot,            // !
 		TypOptPtr,            // ?
@@ -55,6 +54,7 @@ enum class Token : u8
 		OpSubTC,              // -:
 		OpMulTC,              // *:
 		OpMod,                // %
+		UOpDeref,             // .*
 		OpAnd,                // &
 		OpOr,                 // |
 		OpXor,                // ^
@@ -130,7 +130,6 @@ static constexpr const char8* const TOKEN_NAMES[] = {
 	"try",
 	"defer",
 	"$",
-	".*",
 	"~",
 	"!",
 	"?",
@@ -147,6 +146,7 @@ static constexpr const char8* const TOKEN_NAMES[] = {
 	"-:",
 	"*:",
 	"%",
+	".*",
 	"&",
 	"|",
 	"^",

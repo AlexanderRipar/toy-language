@@ -1,6 +1,19 @@
-y[3]
+y = 2 - 3
 
-/*
+1 * 2 + 3
+
+1 - 2 + 3
+
+for i < 5, i += 1 where i = 0 do {}
+
+1 catch e -> 2
+
+1 + (2 * 3)
+
+5 + (x.*.y.z catch e -> 3 * 4)
+
+5 + (x.*.y.z(1, 2, 3,)(w()) catch e -> 3 * 4)
+
 let add = func(x: uint, y: uint) -> uint = x + y
 
 let x = [n]T
@@ -9,17 +22,17 @@ let x = [...](y[0 + [T.x]s] + 1)
 
 let y = f(.x = x, y = y + 3)
 
-// let parens = ((1 + 1) * 2 + x)
+let parens = ((1 + 1) * 2 + x)
 
-// let array_index = x[0]
+let array_index = x[0]
 
-// let complex_array_index = ((x[(0 + 1)]) + (3)) * 4
+let complex_array_index = ((x[(0 + 1)]) + (3)) * 4
 
-// let array_type = [5]T
+let array_type = [5]T
 
-// let empty_call = f()
+let empty_call = f()
 
-// let single_arg_call = f(1)
+let single_arg_call = f(1)
 
 let x = (1 + 2) * 3
 
@@ -55,9 +68,6 @@ for i < 10, i += 1 where mut i = 0
 {
 
 }
-
-
-
 
 if x.y where
     x = get_something(),
@@ -108,4 +118,3 @@ x = 3
 // in other file:
 
 pub mut x = 5
-*/

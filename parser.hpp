@@ -1217,13 +1217,11 @@ private:
 	{
 		ast::NodeType node_type;
 
-		u8 precedence : 5;
+		u8 precedence : 6;
 
-		u8 is_left_to_right: 1;
+		u8 is_right_to_left: 1;
 		
 		u8 is_binary : 1;
-
-		u8 is_context_end : 1;
 	};
 
 	struct OperatorStack
@@ -1235,8 +1233,6 @@ private:
 		u32 m_operator_top;
 
 		OperatorDesc m_operators[64];
-
-		u32 m_operator_token_offsets[64];
 
 		u32 m_expression_offset;
 
@@ -1278,17 +1274,15 @@ private:
 			m_free_operand_count += 1;
 		}
 
-		void push_operator(OperatorDesc op, Lexeme lexeme) noexcept
+		void push_operator(OperatorDesc op) noexcept
 		{
-			if (op.precedence != 0)
-				pop_to_precedence(op.precedence, !op.is_left_to_right);
+			if (op.node_type != ast::NodeType::INVALID)
+				pop_to_precedence(op.precedence, op.is_right_to_left);
 
 			if (m_operator_top == array_count(m_operators))
 				m_error->log(m_expression_offset, "Operator nesting exceeds maximum depth of %u\n", array_count(m_operators));
 
 			m_operators[m_operator_top] = op;
-
-			m_operator_token_offsets[m_operator_top] = lexeme.offset;
 
 			m_operator_top += 1;
 		}
@@ -1299,7 +1293,7 @@ private:
 			{
 				const OperatorDesc top = m_operators[m_operator_top - 1];
 
-				if (top.precedence < precedence || (top.precedence == precedence && !pop_equal))
+				if (top.precedence > precedence || (top.precedence == precedence && !pop_equal))
 					return true;
 
 				pop_operator();
@@ -1310,7 +1304,7 @@ private:
 
 		void remove_lparen() noexcept
 		{
-			ASSERT_OR_IGNORE(m_operator_top != 0 && m_operators[m_operator_top - 1].precedence == 0);
+			ASSERT_OR_IGNORE(m_operator_top != 0 && m_operators[m_operator_top - 1].node_type == ast::NodeType::INVALID);
 
 			m_operator_top -= 1;
 		}
@@ -1326,22 +1320,21 @@ private:
 	};
 
 	static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
-		{ ast::NodeType::INVALID,              0, false, true  }, // ( - Opening Parenthesis
-		{ ast::NodeType::UOpTry,               8, false, false }, // try
-		{ ast::NodeType::UOpDefer,             8, false, false }, // defer
-		{ ast::NodeType::UOpAddr,              2, false, false }, // $
-		{ ast::NodeType::UOpDeref,             1, false, false }, // .*
-		{ ast::NodeType::UOpBitNot,            2, false, false }, // ~
-		{ ast::NodeType::UOpLogNot,            2, false, false }, // !
-		{ ast::NodeType::UOpTypeOptPtr,         2, false, false }, // ?
-		{ ast::NodeType::UOpTypeVar,            2, false, false }, // ...
-		{ ast::NodeType::UOpTypeTailArray,      2, false, false }, // [...]
-		{ ast::NodeType::UOpTypeMultiPtr,      2, false, false }, // [*]
-		{ ast::NodeType::UOpTypeSlice,         2, false, false }, // []
-		{ ast::NodeType::OpImpliedMember,      1, false, false }, // .
-		{ ast::NodeType::UOpTypePtr,            2, false, false }, // *
-		{ ast::NodeType::UOpNegate,            2, false, false }, // -
-		{ ast::NodeType::UOpPos,               2, false, false }, // +
+		{ ast::NodeType::INVALID,         10, false, true  }, // ( - Opening Parenthesis
+		{ ast::NodeType::UOpTry,           8, false, false }, // try
+		{ ast::NodeType::UOpDefer,         8, false, false }, // defer
+		{ ast::NodeType::UOpAddr,          2, false, false }, // $
+		{ ast::NodeType::UOpBitNot,        2, false, false }, // ~
+		{ ast::NodeType::UOpLogNot,        2, false, false }, // !
+		{ ast::NodeType::UOpTypeOptPtr,    2, false, false }, // ?
+		{ ast::NodeType::UOpTypeVar,       2, false, false }, // ...
+		{ ast::NodeType::UOpTypeTailArray, 2, false, false }, // [...]
+		{ ast::NodeType::UOpTypeMultiPtr,  2, false, false }, // [*]
+		{ ast::NodeType::UOpTypeSlice,     2, false, false }, // []
+		{ ast::NodeType::OpImpliedMember,  1, false, false }, // .
+		{ ast::NodeType::UOpTypePtr,       2, false, false }, // *
+		{ ast::NodeType::UOpNegate,        2, false, false }, // -
+		{ ast::NodeType::UOpPos,           2, false, false }, // +
 	};
 
 	static constexpr OperatorDesc BINARY_OPERATOR_DESCS[] = {
@@ -1354,6 +1347,7 @@ private:
 		{ ast::NodeType::OpSubTC,      3, true,  true  }, // -:
 		{ ast::NodeType::OpMulTC,      2, true,  true  }, // *:
 		{ ast::NodeType::OpMod,        2, true,  true  }, // %
+		{ ast::NodeType::UOpDeref,     1, false, false }, // .*
 		{ ast::NodeType::OpBitAnd,     6, true,  true  }, // &
 		{ ast::NodeType::OpBitOr,      6, true,  true  }, // |
 		{ ast::NodeType::OpBitXor,     6, true,  true  }, // ^
@@ -1414,9 +1408,11 @@ private:
 
 	ast::raw::TreeBuilder m_builder;
 
-	ReservedByteBuffer m_asts;
+	ReservedVec<u32> m_asts;
 
-	ReservedByteBuffer m_scratch;
+	ReservedVec<u32> m_ast_scratch;
+
+	ReservedVec<u32> m_stack_scratch;
 
 	ErrorHandler m_error;
 
@@ -1578,8 +1574,6 @@ private:
 				}
 				else if (lexeme.token == Token::BracketL) // Array Type
 				{
-					const Lexeme opening_lexeme = lexeme;
-
 					m_scanner.skip();
 
 					parse_expr(false);
@@ -1591,7 +1585,7 @@ private:
 
 					stack.push_operand();
 
-					stack.push_operator({ ast::NodeType::OpTypeArray, 2, false, true }, opening_lexeme);
+					stack.push_operator({ ast::NodeType::OpTypeArray, 2, false, true });
 				}
 				else if (lexeme.token == Token::CurlyL) // Block
 				{
@@ -1683,15 +1677,14 @@ private:
 
 					const OperatorDesc op = UNARY_OPERATOR_DESCS[token_ordinal - lo_ordinal];
 
-					stack.push_operator(op, lexeme);
+					stack.push_operator(op);
 				}
 			}
 			else
 			{
 				if (lexeme.token == Token::ParenL) // Function call
 				{
-					// FIXME: Pop only to certain priority
-					stack.pop_to_precedence(0, false);
+					stack.pop_to_precedence(1, true);
 
 					m_scanner.skip();
 
@@ -1726,14 +1719,13 @@ private:
 				}
 				else if (lexeme.token == Token::ParenR) // Closing parenthesis
 				{
-					if (!stack.pop_to_precedence(0, false))
+					if (!stack.pop_to_precedence(10, false))
 						return; // No need for stack.pop_remaining; pop_to_lparen already popped everything
 
 					stack.remove_lparen();
 				}
 				else if (lexeme.token == Token::BracketL) // Array Index
 				{
-					// FIXME: Pop only to certain priority
 					stack.pop_to_precedence(1, true);
 
 					m_scanner.skip();
@@ -1753,14 +1745,13 @@ private:
 
 					ast::raw::Flag flags = ast::raw::Flag::EMPTY;
 
-					// FIXME: Pop only to certain priority
-					stack.pop_to_precedence(0, false);
+					stack.pop_to_precedence(1, true);
 
 					m_scanner.skip();
 
 					lexeme = m_scanner.peek();
 
-					if (is_definition_start(lexeme.token) || m_scanner.peek_n(1).token == Token::ThinArrowL)
+					if (is_definition_start(lexeme.token) || m_scanner.peek_n(1).token == Token::ThinArrowR)
 					{
 						child_count += 1;
 
@@ -1770,18 +1761,20 @@ private:
 
 						lexeme = m_scanner.next();
 
-						if (lexeme.token != Token::ThinArrowL)
-							m_error.log(lexeme.offset, "Expected '%s' after inbound definition in catch, but got '%s'\n", token_name(Token::ThinArrowL), token_name(lexeme.token));
+						if (lexeme.token != Token::ThinArrowR)
+							m_error.log(lexeme.offset, "Expected '%s' after inbound definition in catch, but got '%s'\n", token_name(Token::ThinArrowR), token_name(lexeme.token));
 					}
 
 					parse_expr(false);
 
 					m_builder.append(ast::NodeType::Catch, child_count, flags);
+
+					lexeme = m_scanner.peek();
+
+					continue;
 				}
 				else // Binary operator
 				{
-					expecting_operand = true;
-
 					const u8 token_ordinal = static_cast<u8>(lexeme.token);
 
 					const u8 lo_ordinal = static_cast<u8>(Token::OpMemberOrRef);
@@ -1793,7 +1786,9 @@ private:
 
 					const OperatorDesc op = BINARY_OPERATOR_DESCS[token_ordinal - lo_ordinal];
 
-					stack.push_operator(op, lexeme);
+					stack.push_operator(op);
+					
+					expecting_operand = op.is_binary;
 				}
 			}
 
@@ -2285,7 +2280,8 @@ public:
 		m_scanner{ &m_identifiers, &m_error },
 		m_builder{},
 		m_asts{ 1ui64 << 31, 1ui64 << 17 },
-		m_scratch{ 1ui64 << 31, 1ui64 << 17 }
+		m_ast_scratch{ 1ui64 << 31, 1ui64 << 17 },
+		m_stack_scratch{ 1ui64 << 31, 1ui64 << 17 }
 	{
 		for (u32 i = 0; i != array_count(KEYWORDS); ++i)
 			m_identifiers.value_from(KEYWORDS[i].range(), fnv1a(KEYWORDS[i].as_byte_range()))->set_token(KEYWORDS[i].attachment());
@@ -2293,11 +2289,13 @@ public:
 
 	ast::raw::Tree parse(Range<char8> source) noexcept
 	{
-		m_builder = { &m_scratch };
+		m_builder = { &m_ast_scratch, &m_stack_scratch };
 
 		m_error.prime(source);
 
 		m_scanner.prime(source);
+
+		u16 child_count = 0;
 
 		while (true)
 		{
@@ -2305,15 +2303,29 @@ public:
 
 			if (lexeme.token == Token::END_OF_SOURCE)
 				break;
+
+			if (child_count == UINT16_MAX)
+				m_error.log(m_scanner.peek().offset, "Number of top-level definitions exceeds the supported maximum of %u\n", UINT16_MAX);
+
+			child_count += 1;
 			
 			parse_top_level_expr(false);
 		};
 
+		m_builder.append(ast::NodeType::Program, child_count);
+
 		const ast::raw::Tree tree = m_builder.build(&m_asts);
 
-		m_scratch.reset();
+		m_ast_scratch.reset();
+
+		m_stack_scratch.reset();
 
 		return tree;
+	}
+
+	const IdentifierMap* identifiers() const noexcept
+	{
+		return &m_identifiers;
 	}
 };
 

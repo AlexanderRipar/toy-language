@@ -8,6 +8,7 @@ namespace ast
 	enum class NodeType : u8
 	{
 		INVALID = 0,
+		Program,
 		CompositeInitializer,
 		ArrayInitializer,
 		Where,
@@ -83,6 +84,7 @@ namespace ast
 
 	static constexpr const char8* const NODE_TYPE_NAMES[] = {
 		"[unknown]",
+		"Program",
 		"CompositeInitializer",
 		"ArrayInitializer",
 		"Where",
