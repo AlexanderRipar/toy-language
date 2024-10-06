@@ -2,6 +2,7 @@
 #define CONFIG_INCLUDE_GUARD
 
 #include "common.hpp"
+#include "range.hpp"
 
 struct Config
 {

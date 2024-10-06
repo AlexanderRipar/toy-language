@@ -35,15 +35,11 @@ inline T assert_value_helper(T t) noexcept
 }
 
 #ifdef NDEBUG
-	#include "minos.hpp"
 	#define ASSERT_OR_IGNORE(x)
-	#define ASSERT_OR_EXIT(x) do { if (!(x)) { __debugbreak(); minos::exit_process(1); } } while (false)
 	#define ASSERT_UNREACHABLE do { 1 / 0; } while (false)
 	#define ASSERT_OR_EXECUTE(x) (x)
 #else
-	#include "minos.hpp"
 	#define ASSERT_OR_IGNORE(x) assert(x)
-	#define ASSERT_OR_EXIT(x) assert(x)
 	#define ASSERT_UNREACHABLE do { __debugbreak(); minos::exit_process(1); } while (false)
 	#define ASSERT_OR_EXECUTE(x) assert_value_helper(x)
 #endif
