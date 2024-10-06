@@ -120,3 +120,9 @@ x = 3
 pub mut x = 5
 
 let y: [?]u32 = nil
+
+let printable_ascii = 'h' // U+68
+
+let control_ascii = '\r' // U+0D (carriage return)
+
+let unicode = 'Ü' // U+DC

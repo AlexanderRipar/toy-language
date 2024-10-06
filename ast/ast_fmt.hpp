@@ -25,6 +25,21 @@ namespace ast::raw
 				
 				fprintf(out, " [%.*s]", entry->m_length, entry->m_chars);
 			}
+			else if (node->type == ast::NodeType::ValString)
+			{
+				const IdentifierMapEntry* entry = identifiers->value_from(*reinterpret_cast<const u32*>(node + 1));
+
+				fprintf(out, " [\"%.*s\"]", entry->m_length, entry->m_chars);
+			}
+			else if (node->type == ast::NodeType::ValChar)
+			{
+				u32 value = *reinterpret_cast<const u32*>(node + 1);
+
+				if (value > 31 && value < 127)
+					fprintf(out, " ['%c']", value);
+				else
+					fprintf(out, " [U+%06X]", value);
+			}
 			else if (node->type == ast::NodeType::ValInteger)
 			{
 				u64 value;
