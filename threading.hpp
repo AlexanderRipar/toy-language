@@ -39,7 +39,8 @@ namespace thd
 		{
 			const u32 prev = m_rep.fetch_add(AVAILABLE_ONE, std::memory_order_release);
 
-			ASSERT_OR_EXIT((prev & AVAILABLE_MASK) != AVAILABLE_MASK);
+			if ((prev & AVAILABLE_MASK) == AVAILABLE_MASK)
+				panic("Too many tokens available in Semaphore (65536)\n");
 
 			if ((prev & PENDING_MASK) != 0)
 				minos::address_wake_single(&m_rep);
@@ -61,7 +62,8 @@ namespace thd
 
 						prev = m_rep.fetch_add(PENDING_ONE, std::memory_order_relaxed) + PENDING_ONE;
 
-						ASSERT_OR_EXIT((prev & PENDING_MASK) != 0);
+						if ((prev & PENDING_MASK) == 0)
+							panic("Too many waiters on Semaphore (65536)\n");
 					}
 
 					do

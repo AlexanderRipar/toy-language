@@ -60,12 +60,14 @@ bool minos::commit(void* ptr, u64 bytes) noexcept
 
 void minos::unreserve(void* ptr) noexcept
 {
-	ASSERT_OR_EXIT(VirtualFree(ptr, 0, MEM_RELEASE) != 0);
+	if (VirtualFree(ptr, 0, MEM_RELEASE) == 0)
+		panic("VirtualFree(MEM_RELEASE) failed (0x%X)\n", last_error());
 }
 
 void minos::decommit(void* ptr, u64 bytes) noexcept
 {
-	ASSERT_OR_EXIT(VirtualFree(ptr, bytes, MEM_DECOMMIT) != 0);
+	if (VirtualFree(ptr, bytes, MEM_DECOMMIT) == 0)
+		panic("VirtualFree(MEM_DECOMMIT) failed (0x%X)\n", last_error());
 }
 
 u32 minos::page_bytes() noexcept
@@ -79,7 +81,8 @@ u32 minos::page_bytes() noexcept
 
 void minos::address_wait(void* address, void* undesired, u32 bytes) noexcept
 {
-	ASSERT_OR_EXIT(WaitOnAddress(address, undesired, bytes, INFINITE));
+	if (!WaitOnAddress(address, undesired, bytes, INFINITE))
+		panic("WaitOnAddress failed (0x%X)\n", last_error());
 }
 
 bool minos::address_wait_timeout(void* address, void* undesired, u32 bytes, u32 milliseconds) noexcept
@@ -87,7 +90,8 @@ bool minos::address_wait_timeout(void* address, void* undesired, u32 bytes, u32 
 	if (WaitOnAddress(address, undesired, bytes, milliseconds))
 		return true;
 
-	ASSERT_OR_EXIT(GetLastError() == ERROR_TIMEOUT);
+	if (GetLastError() != ERROR_TIMEOUT)
+		panic("WaitOnAddress failed (0x%X)\n", last_error());
 
 	return false;
 }
@@ -128,7 +132,8 @@ bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_nam
 	if (opt_out != nullptr)
 		opt_out->m_rep = nullptr;
 
-	ASSERT_OR_EXIT(thread_name.count() <= MAX_THREAD_NAME_CHARS);
+	if (thread_name.count() <= MAX_THREAD_NAME_CHARS)
+		panic("Thread name with length %llu bytes exceeds maximum supported length of %u bytes: %.*s\n", thread_name.count(), MAX_THREAD_NAME_CHARS, static_cast<u32>(thread_name.count()), thread_name.begin());
 
 	ThreadHandle handle = { CreateThread(nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(proc), param, 0, nullptr) };
 
@@ -168,7 +173,8 @@ bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_nam
 
 void minos::thread_close(ThreadHandle handle) noexcept
 {
-	ASSERT_OR_EXIT(CloseHandle(handle.m_rep));
+	if (!CloseHandle(handle.m_rep))
+		panic("CloseHandle(ThreadHandle) failed (0x%X)\n", last_error());
 }
 
 bool minos::file_create(Range<char8> filepath, Access access, CreateMode createmode, AccessPattern pattern, SyncMode syncmode, FileHandle* out) noexcept
@@ -275,7 +281,8 @@ bool minos::file_create(Range<char8> filepath, Access access, CreateMode createm
 
 void minos::file_close(FileHandle handle) noexcept
 {
-	ASSERT_OR_EXIT(CloseHandle(handle.m_rep));
+	if (!CloseHandle(handle.m_rep))
+		panic("CloseHandle(FileHandle) failed (0x%X)\n", last_error());
 }
 
 bool minos::file_read(FileHandle handle, void* buffer, u32 bytes_to_read, Overlapped* overlapped) noexcept
@@ -323,17 +330,20 @@ bool minos::event_create(EventHandle* out) noexcept
 
 void minos::event_close(EventHandle handle) noexcept
 {
-	ASSERT_OR_EXIT(CloseHandle(handle.m_rep));
+	if (!CloseHandle(handle.m_rep))
+		panic("CloseHandle(EventHandle) failed (0x%X)\n", last_error());
 }
 
 void minos::event_wake(EventHandle handle) noexcept
 {
-	ASSERT_OR_EXIT(SetEvent(handle.m_rep));
+	if (!SetEvent(handle.m_rep))
+		panic("SetEvent failed (0x%X)\n", last_error());
 }
 
 void minos::event_wait(EventHandle handle) noexcept
 {
-	ASSERT_OR_EXIT(WaitForSingleObject(handle.m_rep, INFINITE) == 0);
+	if (WaitForSingleObject(handle.m_rep, INFINITE) != 0)
+		panic("WaitForSingleObject failed (0x%X)\n", last_error());
 }
 
 bool minos::completion_create(CompletionHandle* out) noexcept
@@ -350,12 +360,14 @@ bool minos::completion_create(CompletionHandle* out) noexcept
 
 void minos::completion_close(CompletionHandle handle) noexcept
 {
-	ASSERT_OR_EXIT(CloseHandle(handle.m_rep));
+	if (!CloseHandle(handle.m_rep))
+		panic("CloseHandle(CompletionHandle) failed (0x%X)\n", last_error());
 }
 
 void minos::completion_associate_file(CompletionHandle completion, FileHandle file, u64 key) noexcept
 {
-	ASSERT_OR_EXIT(CreateIoCompletionPort(file.m_rep, completion.m_rep, key, 0) != nullptr);
+	if (CreateIoCompletionPort(file.m_rep, completion.m_rep, key, 0) == nullptr)
+		panic("CreateIoCompletionPort failed to associate file (0x%X)\n", last_error());
 }
 
 bool minos::completion_wait(CompletionHandle completion, CompletionResult* out) noexcept
