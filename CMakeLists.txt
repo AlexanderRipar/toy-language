@@ -39,5 +39,3 @@ else()
 		-g
 	)
 endif()
-
-add_subdirectory(test)

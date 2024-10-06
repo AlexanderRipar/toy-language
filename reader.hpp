@@ -25,11 +25,11 @@ private:
 		u32 next;
 	};
 
-	ThreadsafeIndexStackListHeader<Read, offsetof(Read, next)> m_completed_reads;
+	thd::IndexStackListHeader<Read, offsetof(Read, next)> m_completed_reads;
 
-	ThreadsafeIndexStackListHeader<Read, offsetof(Read, next)> m_unused_reads;
+	thd::IndexStackListHeader<Read, offsetof(Read, next)> m_unused_reads;
 
-	Semaphore m_available_read_count;
+	thd::Semaphore m_available_read_count;
 
 	std::atomic<u32> m_pending_read_count;
 

@@ -683,4 +683,16 @@ struct IndexMapStringKey
 	}
 };
 
+template<typename T>
+struct ThreadsafeStackList
+{
+private:
+
+	
+
+public:
+
+
+};
+
 #endif // STRUCTURE_INCLUDE_GUARD

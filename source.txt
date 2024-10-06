@@ -118,3 +118,5 @@ x = 3
 // in other file:
 
 pub mut x = 5
+
+let y: [?]u32 = nil
