@@ -37,11 +37,9 @@ inline T assert_value_helper(T t) noexcept
 #ifdef NDEBUG
 	#define ASSERT_OR_IGNORE(x)
 	#define ASSERT_UNREACHABLE do { 1 / 0; } while (false)
-	#define ASSERT_OR_EXECUTE(x) (x)
 #else
 	#define ASSERT_OR_IGNORE(x) assert(x)
 	#define ASSERT_UNREACHABLE do { __debugbreak(); minos::exit_process(1); } while (false)
-	#define ASSERT_OR_EXECUTE(x) assert_value_helper(x)
 #endif
 
 template<typename T, typename U>

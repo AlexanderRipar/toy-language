@@ -1047,7 +1047,8 @@ static bool parse_escaped_string_base(Range<char8> string, ConfigParseState* s) 
 
 	void* allocation_begin;
 
-	ASSERT_OR_EXECUTE(heap_alloc(&s->heap, 0, &allocation_begin));
+	if (!heap_alloc(&s->heap, 0, &allocation_begin))
+		panic("config parsing ran out of heap space\n");
 
 	u32 uncopied_begin = 0;
 
@@ -1091,7 +1092,8 @@ static bool parse_escaped_string_base(Range<char8> string, ConfigParseState* s) 
 
 	void* allocation;
 
-	ASSERT_OR_EXECUTE(heap_alloc(&s->heap, uncopied_length, &allocation));
+	if (!heap_alloc(&s->heap, uncopied_length, &allocation))
+		panic("config parsing ran out of heap space\n");
 
 	memcpy(allocation, string.begin() + uncopied_begin, uncopied_length);
 
