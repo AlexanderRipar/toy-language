@@ -44,6 +44,7 @@ enum class Token : u8
 		TypVar,               // ...
 		TypTailArray,         // [...]
 		TypMultiPtr,          // [*]
+		TypOptMultiPtr,       // [?]
 		TypSlice,             // []
 		OpMemberOrRef,        // .
 		OpMulOrTypPtr,        // *
@@ -136,6 +137,7 @@ static constexpr const char8* const TOKEN_NAMES[] = {
 	"...",
 	"[...]",
 	"[*]",
+	"[?]",
 	"[]",
 	".",
 	"*",

@@ -1098,6 +1098,18 @@ private:
 
 				return { Token::TypTailArray };
 			}
+			else if (second == '*' && m_curr[1] == ']')
+			{
+				m_curr += 2;
+
+				return { Token::TypMultiPtr };
+			}
+			else if (second == '?' && m_curr[1] == ']')
+			{
+				m_curr += 2;
+
+				return { Token::TypOptMultiPtr };
+			}
 			else
 			{
 				return { Token::BracketL };
@@ -1320,21 +1332,22 @@ private:
 	};
 
 	static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
-		{ ast::NodeType::INVALID,         10, false, true  }, // ( - Opening Parenthesis
-		{ ast::NodeType::UOpTry,           8, false, false }, // try
-		{ ast::NodeType::UOpDefer,         8, false, false }, // defer
-		{ ast::NodeType::UOpAddr,          2, false, false }, // $
-		{ ast::NodeType::UOpBitNot,        2, false, false }, // ~
-		{ ast::NodeType::UOpLogNot,        2, false, false }, // !
-		{ ast::NodeType::UOpTypeOptPtr,    2, false, false }, // ?
-		{ ast::NodeType::UOpTypeVar,       2, false, false }, // ...
-		{ ast::NodeType::UOpTypeTailArray, 2, false, false }, // [...]
-		{ ast::NodeType::UOpTypeMultiPtr,  2, false, false }, // [*]
-		{ ast::NodeType::UOpTypeSlice,     2, false, false }, // []
-		{ ast::NodeType::OpImpliedMember,  1, false, false }, // .
-		{ ast::NodeType::UOpTypePtr,       2, false, false }, // *
-		{ ast::NodeType::UOpNegate,        2, false, false }, // -
-		{ ast::NodeType::UOpPos,           2, false, false }, // +
+		{ ast::NodeType::INVALID,           10, false, true  }, // ( - Opening Parenthesis
+		{ ast::NodeType::UOpTry,             8, false, false }, // try
+		{ ast::NodeType::UOpDefer,           8, false, false }, // defer
+		{ ast::NodeType::UOpAddr,            2, false, false }, // $
+		{ ast::NodeType::UOpBitNot,          2, false, false }, // ~
+		{ ast::NodeType::UOpLogNot,          2, false, false }, // !
+		{ ast::NodeType::UOpTypeOptPtr,      2, false, false }, // ?
+		{ ast::NodeType::UOpTypeVar,         2, false, false }, // ...
+		{ ast::NodeType::UOpTypeTailArray,   2, false, false }, // [...]
+		{ ast::NodeType::UOpTypeMultiPtr,    2, false, false }, // [*]
+		{ ast::NodeType::UOpTypeOptMultiPtr, 2, false, false }, // [?]
+		{ ast::NodeType::UOpTypeSlice,       2, false, false }, // []
+		{ ast::NodeType::OpImpliedMember,    1, false, false }, // .
+		{ ast::NodeType::UOpTypePtr,         2, false, false }, // *
+		{ ast::NodeType::UOpNegate,          2, false, false }, // -
+		{ ast::NodeType::UOpPos,             2, false, false }, // +
 	};
 
 	static constexpr OperatorDesc BINARY_OPERATOR_DESCS[] = {
