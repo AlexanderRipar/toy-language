@@ -1244,13 +1244,11 @@ private:
 
 		u32 m_operator_top;
 
-		OperatorDesc m_operators[64];
-
 		u32 m_expression_offset;
 
-		const ErrorHandler* const m_error;
+		Parser* m_parser;
 
-		ast::raw::TreeBuilder* const m_builder;
+		OperatorDesc m_operators[64];
 
 		void pop_operator() noexcept
 		{
@@ -1264,21 +1262,20 @@ private:
 				return;
 
 			if (m_free_operand_count <= top.is_binary)
-				m_error->log(m_expression_offset, "Missing operand(s) for operator '%s'\n", ast::node_type_name(top.node_type));
+				m_parser->m_error.log(m_expression_offset, "Missing operand(s) for operator '%s'\n", ast::node_type_name(top.node_type));
 
 			m_free_operand_count -= top.is_binary;
 
-			m_builder->append(top.node_type, 1 + top.is_binary);
+			m_parser->append_node(top.node_type, 1 + top.is_binary);
 		}
 
 	public:
 
-		OperatorStack(u32 expression_offset, const ErrorHandler* error, ast::raw::TreeBuilder* builder) noexcept :
+		OperatorStack(u32 expression_offset, Parser* parser) noexcept :
 			m_free_operand_count{ 0 },
 			m_operator_top{ 0 },
 			m_expression_offset{ expression_offset },
-			m_error{ error },
-			m_builder{ builder }
+			m_parser{ parser }
 		{}
 
 		void push_operand() noexcept
@@ -1292,7 +1289,7 @@ private:
 				pop_to_precedence(op.precedence, op.is_right_to_left);
 
 			if (m_operator_top == array_count(m_operators))
-				m_error->log(m_expression_offset, "Operator nesting exceeds maximum depth of %u\n", array_count(m_operators));
+				m_parser->m_error.log(m_expression_offset, "Operator nesting exceeds maximum depth of %u\n", array_count(m_operators));
 
 			m_operators[m_operator_top] = op;
 
@@ -1327,7 +1324,7 @@ private:
 				pop_operator();
 
 			if (m_free_operand_count != 1)
-				m_error->log(m_expression_offset, "Mismatched operand / operator count (%u operands remaining)", m_free_operand_count);
+				m_parser->m_error.log(m_expression_offset, "Mismatched operand / operator count (%u operands remaining)", m_free_operand_count);
 		}
 	};
 
@@ -1419,8 +1416,6 @@ private:
 
 	Scanner m_scanner;
 
-	ast::raw::TreeBuilder m_builder;
-
 	ReservedVec<u32> m_asts;
 
 	ReservedVec<u32> m_ast_scratch;
@@ -1439,11 +1434,69 @@ private:
 			|| token == Token::KwdUse;
 	}
 
+	static void reverse_node(ReservedVec<u32>* target, const ast::raw::NodeHeader* src) noexcept
+	{
+		ast::raw::NodeHeader* const dst = reinterpret_cast<ast::raw::NodeHeader*>(target->reserve_exact(sizeof(ast::raw::NodeHeader) + src->data_dwords * sizeof(u32)));
+
+		memcpy(dst, src, sizeof(ast::raw::NodeHeader) + src->data_dwords * sizeof(u32));
+
+		if (src->child_count != 0)
+		{
+			const u32 offset = reinterpret_cast<const u32*>(src)[2 + src->data_dwords];
+
+			reverse_node(target, reinterpret_cast<const ast::raw::NodeHeader*>(reinterpret_cast<const u32*>(src) - offset));
+		}
+
+		if (src->next_sibling_offset != 0)
+			reverse_node(target, reinterpret_cast<const ast::raw::NodeHeader*>(reinterpret_cast<const u32*>(src) + src->next_sibling_offset));
+	}
+
+	ast::raw::NodeHeader* append_node(ast::NodeType type, u16 child_count, ast::raw::Flag flags = ast::raw::Flag::EMPTY, u8 data_dwords = 0) noexcept
+	{
+		ASSERT_OR_IGNORE(static_cast<u8>(flags) < 64);
+
+		ASSERT_OR_IGNORE(data_dwords < 3 || (child_count == 0 && data_dwords < 4));
+
+		ast::raw::NodeHeader* const node = static_cast<ast::raw::NodeHeader*>(m_ast_scratch.reserve_exact(sizeof(ast::raw::NodeHeader) + (data_dwords + static_cast<u8>(child_count != 0)) * sizeof(u32)));
+
+		node->type = type;
+
+		node->data_dwords = data_dwords;
+
+		node->flags = static_cast<u8>(flags);
+
+		node->child_count = child_count;
+
+		if (child_count != 0)
+		{
+			u32 child_index = m_stack_scratch.begin()[m_stack_scratch.used() - child_count];
+
+			reinterpret_cast<u32*>(node)[2 + data_dwords] = static_cast<u32>(reinterpret_cast<u32*>(node) - (m_ast_scratch.begin() + child_index));
+
+			for (u16 i = 1; i != child_count; ++i)
+			{
+				ast::raw::NodeHeader* const child = reinterpret_cast<ast::raw::NodeHeader*>(m_ast_scratch.begin() + child_index);
+
+				const u32 next_child_index = m_stack_scratch.begin()[m_stack_scratch.used() - child_count + i];
+
+				child->next_sibling_offset = next_child_index - child_index;
+
+				child_index = next_child_index;
+			}
+
+			m_stack_scratch.pop(child_count);
+		}
+
+		m_stack_scratch.append(static_cast<u32>(reinterpret_cast<u32*>(node) - m_ast_scratch.begin()));
+
+		return node;
+	}
+
 	void parse_expr(bool allow_complex) noexcept
 	{
 		Lexeme lexeme = m_scanner.peek();
 
-		OperatorStack stack{ lexeme.offset, &m_error, &m_builder };
+		OperatorStack stack{ lexeme.offset, this };
 
 		bool expecting_operand = true;
 
@@ -1455,7 +1508,7 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::NodeHeader* const header = m_builder.append(ast::NodeType::ValIdentifer, 0, ast::raw::Flag::EMPTY, 1);
+					ast::raw::NodeHeader* const header = append_node(ast::NodeType::ValIdentifer, 0, ast::raw::Flag::EMPTY, 1);
 
 					*reinterpret_cast<u32*>(header + 1) = static_cast<u32>(lexeme.integer_value);
 
@@ -1465,7 +1518,7 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::NodeHeader* const header = m_builder.append(ast::NodeType::ValString, 0, ast::raw::Flag::EMPTY, 1);
+					ast::raw::NodeHeader* const header = append_node(ast::NodeType::ValString, 0, ast::raw::Flag::EMPTY, 1);
 
 					*reinterpret_cast<u32*>(header + 1) = static_cast<u32>(lexeme.integer_value);
 
@@ -1475,7 +1528,7 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::NodeHeader* const header = m_builder.append(ast::NodeType::ValFloat, 0, ast::raw::Flag::EMPTY, 2);
+					ast::raw::NodeHeader* const header = append_node(ast::NodeType::ValFloat, 0, ast::raw::Flag::EMPTY, 2);
 
 					*reinterpret_cast<f64*>(header + 1) = lexeme.float_value;
 
@@ -1487,7 +1540,7 @@ private:
 
 					const u8 data_dwords = lexeme.integer_value < 64 ? 0 : lexeme.integer_value <= UINT32_MAX ? 1 : 2;
 
-					ast::raw::NodeHeader* const header = m_builder.append(ast::NodeType::ValInteger, 0, ast::raw::Flag::EMPTY, data_dwords);
+					ast::raw::NodeHeader* const header = append_node(ast::NodeType::ValInteger, 0, ast::raw::Flag::EMPTY, data_dwords);
 
 					if (data_dwords == 0)
 						header->flags = static_cast<u8>(lexeme.integer_value);
@@ -1502,7 +1555,7 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::NodeHeader* const header = m_builder.append(ast::NodeType::ValChar, 0, ast::raw::Flag::EMPTY, 1);
+					ast::raw::NodeHeader* const header = append_node(ast::NodeType::ValChar, 0, ast::raw::Flag::EMPTY, 1);
 
 					*reinterpret_cast<u32*>(header + 1) = static_cast<u32>(lexeme.integer_value);
 
@@ -1541,7 +1594,7 @@ private:
 						}
 					}
 
-					m_builder.append(ast::NodeType::CompositeInitializer, child_count);
+					append_node(ast::NodeType::CompositeInitializer, child_count);
 
 					stack.push_operand();
 				}
@@ -1578,7 +1631,7 @@ private:
 						}
 					}
 
-					m_builder.append(ast::NodeType::ArrayInitializer, child_count);
+					append_node(ast::NodeType::ArrayInitializer, child_count);
 
 					stack.push_operand();
 				}
@@ -1622,7 +1675,7 @@ private:
 							break;
 					}
 
-					m_builder.append(ast::NodeType::Block, child_count);
+					append_node(ast::NodeType::Block, child_count);
 
 					stack.push_operand();
 				}
@@ -1725,7 +1778,7 @@ private:
 						}
 					}
 
-					m_builder.append(ast::NodeType::Call, child_count);
+					append_node(ast::NodeType::Call, child_count);
 				}
 				else if (lexeme.token == Token::ParenR) // Closing parenthesis
 				{
@@ -1747,7 +1800,7 @@ private:
 					if (lexeme.token != Token::BracketR)
 						m_error.log(lexeme.offset, "Expected ']' after array index expression, but got '%s'\n", token_name(lexeme.token));
 
-					m_builder.append(ast::NodeType::OpArrayIndex, 2);
+					append_node(ast::NodeType::OpArrayIndex, 2);
 				}
 				else if (lexeme.token == Token::KwdCatch)
 				{
@@ -1777,7 +1830,7 @@ private:
 
 					parse_expr(false);
 
-					m_builder.append(ast::NodeType::Catch, child_count, flags);
+					append_node(ast::NodeType::Catch, child_count, flags);
 
 					lexeme = m_scanner.peek();
 
@@ -1863,7 +1916,7 @@ private:
 			parse_expr(true);
 		}
 
-		m_builder.append(ast::NodeType::If, child_count, flags);
+		append_node(ast::NodeType::If, child_count, flags);
 	}
 
 	void parse_for() noexcept
@@ -1923,7 +1976,7 @@ private:
 			parse_expr(true);
 		}
 
-		m_builder.append(ast::NodeType::For, child_count, flags);
+		append_node(ast::NodeType::For, child_count, flags);
 	}
 
 	[[nodiscard]] bool try_parse_foreach() noexcept
@@ -2006,7 +2059,7 @@ private:
 			parse_expr(true);
 		}
 
-		m_builder.append(ast::NodeType::ForEach, child_count, flags);
+		append_node(ast::NodeType::ForEach, child_count, flags);
 
 		return true;
 	}
@@ -2054,7 +2107,7 @@ private:
 				break;
 		}
 
-		m_builder.append(ast::NodeType::Switch, child_count, flags);
+		append_node(ast::NodeType::Switch, child_count, flags);
 	}
 
 	void parse_case() noexcept
@@ -2072,7 +2125,7 @@ private:
 
 		parse_expr(true);
 
-		m_builder.append(ast::NodeType::Case, 2);
+		append_node(ast::NodeType::Case, 2);
 	}
 
 	void parse_where() noexcept
@@ -2100,7 +2153,7 @@ private:
 			m_scanner.skip();
 		}
 
-		m_builder.append(ast::NodeType::Where, child_count);
+		append_node(ast::NodeType::Where, child_count);
 	}
 
 	void parse_func() noexcept
@@ -2177,7 +2230,7 @@ private:
 			parse_expr(true);
 		}
 
-		m_builder.append(ast::NodeType::Func, child_count, flags);
+		append_node(ast::NodeType::Func, child_count, flags);
 	}
 
 	void parse_definition(bool is_implicit, bool is_optional_value) noexcept
@@ -2276,7 +2329,7 @@ private:
 			m_error.log(lexeme.offset, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 		}
 
-		ast::raw::NodeHeader* const header = m_builder.append(ast::NodeType::Definition, child_count, flags, 1);
+		ast::raw::NodeHeader* const header = append_node(ast::NodeType::Definition, child_count, flags, 1);
 
 		*reinterpret_cast<u32*>(header + 1) = identifier_id;
 	}
@@ -2286,7 +2339,6 @@ public:
 	Parser() noexcept :
 		m_identifiers{ 1 << 24, 1 << 14, 1 << 28, 1 << 16, 1 << 16 },
 		m_scanner{ &m_identifiers, &m_error },
-		m_builder{},
 		m_asts{ 1ui64 << 31, 1ui64 << 17 },
 		m_ast_scratch{ 1ui64 << 31, 1ui64 << 17 },
 		m_stack_scratch{ 1ui64 << 31, 1ui64 << 17 }
@@ -2297,8 +2349,6 @@ public:
 
 	ast::raw::Tree parse(Range<char8> source) noexcept
 	{
-		m_builder = { &m_ast_scratch, &m_stack_scratch };
-
 		m_error.prime(source);
 
 		m_scanner.prime(source);
@@ -2320,15 +2370,19 @@ public:
 			parse_top_level_expr(false);
 		};
 
-		m_builder.append(ast::NodeType::Program, child_count);
+		append_node(ast::NodeType::Program, child_count);
 
-		const ast::raw::Tree tree = m_builder.build(&m_asts);
+		ASSERT_OR_IGNORE(m_stack_scratch.used() == 1);
+
+		const u32 tree_offset = m_asts.used();
+
+		reverse_node(&m_asts, reinterpret_cast<ast::raw::NodeHeader*>(m_ast_scratch.begin() + *m_stack_scratch.begin()));
 
 		m_ast_scratch.reset();
 
 		m_stack_scratch.reset();
 
-		return tree;
+		return ast::raw::Tree{ reinterpret_cast<ast::raw::NodeHeader*>(m_asts.begin() + tree_offset), m_asts.used() - tree_offset };
 	}
 
 	const IdentifierMap* identifiers() const noexcept
