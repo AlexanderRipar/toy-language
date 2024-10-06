@@ -151,7 +151,9 @@ public:
 		m_begin{ begin },
 		m_count{ end - begin },
 		m_attachment{}
-	{}
+	{
+		ASSERT_OR_IGNORE(end - begin <= UINT32_MAX);
+	}
 
 	constexpr AttachmentRange(const T* begin, u32 count) noexcept :
 		m_begin{ begin },
@@ -177,7 +179,9 @@ public:
 		m_begin{ begin },
 		m_count{ end - begin },
 		m_attachment{ attachment }
-	{}
+	{
+		ASSERT_OR_IGNORE(end - begin <= UINT32_MAX);
+	}
 
 	constexpr AttachmentRange(const T* begin, u32 count, Attach attachment) noexcept :
 		m_begin{ begin },
@@ -262,9 +266,11 @@ public:
 
 	constexpr MutAttachmentRange(T* begin, T* end) noexcept :
 		m_begin{ begin },
-		m_count{ end - begin },
+		m_count{ static_cast<u32>(end - begin) },
 		m_attachment{}
-	{}
+	{
+		ASSERT_OR_IGNORE(end - begin <= UINT32_MAX);
+	}
 
 	constexpr MutAttachmentRange(T* begin, u32 count) noexcept :
 		m_begin{ begin },
@@ -281,9 +287,11 @@ public:
 
 	constexpr MutAttachmentRange(T* begin, T* end, Attach attachment) noexcept :
 		m_begin{ begin },
-		m_count{ end - begin },
+		m_count{ static_cast<u32>(end - begin) },
 		m_attachment{ attachment }
-	{}
+	{
+		ASSERT_OR_IGNORE(end - begin <= UINT32_MAX);
+	}
 
 	constexpr MutAttachmentRange(T* begin, u32 count, Attach attachment) noexcept :
 		m_begin{ begin },
