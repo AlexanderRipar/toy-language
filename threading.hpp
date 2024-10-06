@@ -23,17 +23,7 @@ namespace thd
 
 	public:
 
-		Semaphore() noexcept : m_rep{ 0 } {}
-
-		void init() noexcept
-		{
-			m_rep = 0;
-		}
-
-		void init(u32 initial_tokens) noexcept
-		{
-			m_rep = initial_tokens;
-		}
+		Semaphore(u32 initial_tokens) noexcept : m_rep{ initial_tokens } {}
 
 		void post() noexcept
 		{
@@ -104,18 +94,13 @@ namespace thd
 
 	public:
 
-	IndexStackListHeader() noexcept : m_all{ 0x0000'0000'FFFF'FFFF } {}
+		IndexStackListHeader() noexcept : m_all{ 0x0000'0000'FFFF'FFFF } {}
 
-		void init() noexcept
-		{
-			m_all.store(0x0000'0000'FFFF'FFFF, std::memory_order_relaxed);
-		}
-
-		void init(T* begin, u32 count) noexcept
+		IndexStackListHeader(T* begin, u32 count) noexcept
 		{
 			if (count == 0)
 			{
-				init();
+				m_all = 0x0000'0000'FFFF'FFFF;
 
 				return;
 			}
