@@ -159,12 +159,10 @@ public:
 		return true;
 	}
 
-	void release_read(Range<char8>* file) noexcept
+	void release_read(Range<char8> file) noexcept
 	{
-		free(const_cast<char8*>(file->begin()));
-
-		memset(file, 0, sizeof(*file));
+		free(const_cast<char8*>(file.begin()));
 	}
 };
 
-# endif // READER_INCLUDE_GUARD
+#endif // READER_INCLUDE_GUARD

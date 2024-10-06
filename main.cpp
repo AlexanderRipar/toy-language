@@ -62,6 +62,8 @@ s32 main(s32 argc, const char8** argv)
 		{
 			ast::raw::Tree tree = parser.parse(file);
 
+			reader.release_read(file);
+
 			ast::raw::format(stderr, &tree, parser.identifiers());
 		}
 
