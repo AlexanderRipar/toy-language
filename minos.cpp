@@ -132,7 +132,7 @@ bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_nam
 	if (opt_out != nullptr)
 		opt_out->m_rep = nullptr;
 
-	if (thread_name.count() <= MAX_THREAD_NAME_CHARS)
+	if (thread_name.count() > MAX_THREAD_NAME_CHARS)
 		panic("Thread name with length %llu bytes exceeds maximum supported length of %u bytes: %.*s\n", thread_name.count(), MAX_THREAD_NAME_CHARS, static_cast<u32>(thread_name.count()), thread_name.begin());
 
 	ThreadHandle handle = { CreateThread(nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(proc), param, 0, nullptr) };
