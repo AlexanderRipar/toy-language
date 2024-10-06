@@ -2,6 +2,7 @@
 #define PARSER_INCLUDE_GUARD
 
 #include "common.hpp"
+#include "reader.hpp"
 #include "token.hpp"
 #include "structure.hpp"
 #include "hash.hpp"
@@ -104,6 +105,8 @@ struct Lexeme
 
 struct SourceLocation
 {
+	Range<char8> filepath;
+
 	u32 line;
 
 	u32 character;
@@ -113,18 +116,24 @@ struct ErrorHandler
 {
 private:
 
-	Range<char8> m_source;
+	SourceFile m_source;
+
+	const IdentifierMap* const m_identifiers;
 
 public:
 
-	void prime(Range<char8> source) noexcept
+	ErrorHandler(const IdentifierMap* identifiers) noexcept : m_identifiers{ identifiers } {}
+
+	void prime(SourceFile source) noexcept
 	{
 		m_source = source;
 	}
 
 	SourceLocation source_location_from(u32 offset) const noexcept
 	{
-		ASSERT_OR_IGNORE(offset < m_source.count());
+		const Range<char8> content = m_source.content();
+
+		ASSERT_OR_IGNORE(offset < content.count());
 
 		u32 line = 1;
 
@@ -132,7 +141,7 @@ public:
 
 		for (u32 i = 0; i != offset; ++i)
 		{
-			if (m_source[i] == '\n')
+			if (content[i] == '\n')
 			{
 				line += 1;
 
@@ -140,7 +149,9 @@ public:
 			}
 		}
 
-		return { line, offset - line_begin + 1 };
+		const IdentifierMapEntry* const filepath = m_identifiers->value_from(m_source.filepath_id());
+
+		return { Range<char8>{ filepath->m_chars, filepath->m_length }, line, offset - line_begin + 1 };
 	}
 
 	__declspec(noreturn) void log(u32 offset, const char8* format, ...) const noexcept
@@ -156,7 +167,7 @@ public:
 	{
 		const SourceLocation location = source_location_from(offset);
 
-		fprintf(stderr, "%u:%u: ", location.line, location.character);
+		fprintf(stderr, "%.*s:%u:%u: ", static_cast<u32>(location.filepath.count()), location.filepath.begin(), location.line, location.character);
 
 		vpanic(format, args);
 	}
@@ -1150,15 +1161,17 @@ public:
 		m_error{ error }
 	{}
 
-	void prime(Range<char8> source) noexcept
+	void prime(SourceFile source) noexcept
 	{
-		ASSERT_OR_IGNORE(source.count() != 0 && source.end()[-1] == '\0');
+		const Range<char8> content = source.content();
 
-		m_begin = source.begin();
+		ASSERT_OR_IGNORE(content.count() != 0 && content.end()[-1] == '\0');
 
-		m_curr = source.begin();
+		m_begin = content.begin();
 
-		m_end = source.end() - 1;
+		m_curr = content.begin();
+
+		m_end = content.end() - 1;
 
 		m_peek.token = Token::EMPTY;
 	}
@@ -2341,13 +2354,19 @@ public:
 		m_scanner{ &m_identifiers, &m_error },
 		m_asts{ 1ui64 << 31, 1ui64 << 17 },
 		m_ast_scratch{ 1ui64 << 31, 1ui64 << 17 },
-		m_stack_scratch{ 1ui64 << 31, 1ui64 << 17 }
+		m_stack_scratch{ 1ui64 << 31, 1ui64 << 17 },
+		m_error{ &m_identifiers }
 	{
 		for (u32 i = 0; i != array_count(KEYWORDS); ++i)
 			m_identifiers.value_from(KEYWORDS[i].range(), fnv1a(KEYWORDS[i].as_byte_range()))->set_token(KEYWORDS[i].attachment());
 	}
 
-	ast::raw::Tree parse(Range<char8> source) noexcept
+	u32 index_from_string(Range<char8> string) noexcept
+	{
+		return m_identifiers.index_from(string, fnv1a(string.as_byte_range()));
+	}
+
+	ast::raw::Tree parse(SourceFile source) noexcept
 	{
 		m_error.prime(source);
 

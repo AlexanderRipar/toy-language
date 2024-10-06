@@ -7,6 +7,33 @@
 #include <cstdlib>
 #include <atomic>
 
+struct SourceFile
+{
+private:
+
+	MutAttachmentRange<char8, u32> m_content_and_filepath;
+
+public:
+
+	SourceFile() noexcept : m_content_and_filepath{ nullptr, nullptr } {}
+
+	SourceFile(char8* begin, u32 bytes, u32 filepath_id) noexcept : m_content_and_filepath{ begin, bytes, filepath_id } {}
+
+	Range<char8> content() const noexcept
+	{
+		return m_content_and_filepath.range();
+	}
+
+	char8* raw_begin() noexcept
+	{
+		return m_content_and_filepath.begin();
+	}
+
+	u32 filepath_id() const noexcept
+	{
+		return m_content_and_filepath.attachment();
+	}
+};
 
 struct Reader
 {
@@ -23,6 +50,8 @@ private:
 		u32 bytes;
 
 		u32 next;
+
+		u32 filepath_id;
 	};
 
 	thd::IndexStackListHeader<Read, offsetof(Read, next)> m_completed_reads;
@@ -77,7 +106,7 @@ public:
 			panic("Could not create read completion thread (0x%X)\n", minos::last_error());
 	}
 
-	void read(Range<char8> filepath) noexcept
+	void read(Range<char8> filepath, u32 filepath_id) noexcept
 	{
 		// TODO: filepath-based caching goes here
 
@@ -106,6 +135,8 @@ public:
 		read->filehandle = filehandle;
 
 		read->bytes = static_cast<u32>(fileinfo.file_bytes);
+
+		read->filepath_id = filepath_id;
 
 		read->content = static_cast<char8*>(malloc(fileinfo.file_bytes + 1));
 
@@ -140,7 +171,7 @@ public:
 		return true;
 	}
 
-	[[nodiscard]] bool await_completed_read(Range<char8>* out) noexcept
+	[[nodiscard]] bool await_completed_read(SourceFile* out) noexcept
 	{
 		if (m_pending_read_count.load(std::memory_order_relaxed) == 0)
 			return false;
@@ -154,14 +185,14 @@ public:
 		if (read == nullptr)
 			panic("Could not retrieve completed read when expecting there to be at least one\n");
 
-		*out = Range<char8>{ read->content, read->bytes + 1 };
+		*out = SourceFile{ read->content, read->bytes + 1, read->filepath_id };
 
 		return true;
 	}
 
-	void release_read(Range<char8> file) noexcept
+	void release_read(SourceFile file) noexcept
 	{
-		free(const_cast<char8*>(file.begin()));
+		free(file.raw_begin());
 	}
 };
 

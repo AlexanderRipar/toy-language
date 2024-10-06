@@ -52,11 +52,11 @@ s32 main(s32 argc, const char8** argv)
 
 		reader.init();
 
-		reader.read(config.entrypoint.filepath);
-
 		Parser parser{};
 
-		Range<char8> file;
+		reader.read(config.entrypoint.filepath, parser.index_from_string(config.entrypoint.filepath));
+
+		SourceFile file;
 
 		while (reader.await_completed_read(&file))
 		{
