@@ -48,9 +48,7 @@ s32 main(s32 argc, const char8** argv)
 
 		print_config(&config);
 
-		Reader reader;
-
-		reader.init();
+		Reader reader{};
 
 		Parser parser{};
 

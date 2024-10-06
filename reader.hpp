@@ -89,16 +89,12 @@ private:
 
 public:
 
-	void init() noexcept
+	Reader() noexcept :
+		m_completed_reads{},
+		m_unused_reads{ m_reads, static_cast<u32>(array_count(m_reads)) },
+		m_available_read_count{ 0 },
+		m_pending_read_count{ 0 }
 	{
-		m_completed_reads.init();
-
-		m_unused_reads.init(m_reads, static_cast<u32>(array_count(m_reads)));
-
-		m_available_read_count.init();
-
-		m_pending_read_count.store(0, std::memory_order_relaxed);
-
 		if (!minos::completion_create(&m_completion_handle))
 			panic("Could not create read completion handle (0x%X)\n", minos::last_error());
 
