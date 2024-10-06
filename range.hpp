@@ -55,28 +55,6 @@ public:
 };
 
 template<typename T>
-static inline Range<byte> byte_range_from(const T* t) noexcept
-{
-	return { reinterpret_cast<const byte*>(t), sizeof(T) };
-}
-
-static inline Range<char8> range_from_cstring(const char8* str) noexcept
-{
-	u64 len = 0;
-
-	while (str[len] != '\0')
-		++len;
-
-	return { str, len };
-}
-
-template<size_t N>
-static inline constexpr Range<char8> range_from_literal_string(const char8 (& arr)[N]) noexcept
-{
-	return { arr, N - 1 };
-}
-
-template<typename T>
 struct MutRange
 {
 private:
@@ -161,13 +139,21 @@ private:
 
 public:
 
-	constexpr AttachmentRange(T* begin, T* end) noexcept :
+	constexpr AttachmentRange(Range<T> range, Attach attachment) noexcept :
+		m_begin{ range.begin() },
+		m_count{ static_cast<u32>(range.count()) },
+		m_attachment{ attachment }
+	{
+		ASSERT_OR_IGNORE(range.count() <= UINT32_MAX);
+	}
+
+	constexpr AttachmentRange(const T* begin, const T* end) noexcept :
 		m_begin{ begin },
 		m_count{ end - begin },
 		m_attachment{}
 	{}
 
-	constexpr AttachmentRange(T* begin, u32 count) noexcept :
+	constexpr AttachmentRange(const T* begin, u32 count) noexcept :
 		m_begin{ begin },
 		m_count{ count },
 		m_attachment{}
@@ -198,7 +184,7 @@ public:
 		m_count{ count },
 		m_attachment{ attachment }
 	{}
-	
+
 	template<u32 COUNT>
 	explicit constexpr AttachmentRange(const T(&arr)[COUNT], Attach attachment) noexcept :
 		m_begin{ arr },
@@ -251,6 +237,125 @@ public:
 	}
 };
 
+template<typename T, typename Attach>
+struct MutAttachmentRange
+{
+private:
+
+	T* m_begin;
+
+	u32 m_count;
+
+	Attach m_attachment;
+
+	static_assert(sizeof(Attach) <= 4);
+
+public:
+
+	constexpr MutAttachmentRange(MutRange<T> range, Attach attachment) noexcept :
+		m_begin{ range.begin() },
+		m_count{ static_cast<u32>(range.count()) },
+		m_attachment{ attachment }
+	{
+		ASSERT_OR_IGNORE(range.count() <= UINT32_MAX);
+	}
+
+	constexpr MutAttachmentRange(T* begin, T* end) noexcept :
+		m_begin{ begin },
+		m_count{ end - begin },
+		m_attachment{}
+	{}
+
+	constexpr MutAttachmentRange(T* begin, u32 count) noexcept :
+		m_begin{ begin },
+		m_count{ count },
+		m_attachment{}
+	{}
+
+	template<u32 COUNT>
+	explicit constexpr MutAttachmentRange(T(&arr)[COUNT]) noexcept :
+		m_begin{ arr },
+		m_count{ COUNT },
+		m_attachment{}
+	{}
+
+	constexpr MutAttachmentRange(T* begin, T* end, Attach attachment) noexcept :
+		m_begin{ begin },
+		m_count{ end - begin },
+		m_attachment{ attachment }
+	{}
+
+	constexpr MutAttachmentRange(T* begin, u32 count, Attach attachment) noexcept :
+		m_begin{ begin },
+		m_count{ count },
+		m_attachment{ attachment }
+	{}
+	
+	const T& operator[](uint i) const noexcept
+	{
+		assert(i < count());
+
+		return m_begin[i];
+	}
+
+	T& operator[](uint i) noexcept
+	{
+		assert(i < count());
+
+		return m_begin[i];
+	}
+
+	const T* begin() const noexcept
+	{
+		return m_begin;
+	}
+
+	const T* end() const noexcept
+	{
+		return m_end;
+	}
+
+	T* begin() noexcept
+	{
+		return m_begin;
+	}
+
+	T* end() noexcept
+	{
+		return m_end;
+	}
+
+	uint count() const noexcept
+	{
+		return m_end - m_begin;
+	}
+
+	Attach attachment() const noexcept
+	{
+		return m_attachment;
+	}
+
+	Range<T> range() const noexcept
+	{
+		return { m_begin, m_count };
+	}
+
+	MutRange<T> mut_range() const noexcept
+	{
+		return { m_begin, m_count };
+	}
+
+	MutRange<byte> as_mut_byte_range() noexcept
+	{
+		return { reinterpret_cast<byte*>(m_begin), count() * sizeof(T) };
+	}
+
+	Range<byte> as_byte_range() const noexcept
+	{
+		return { reinterpret_cast<const byte*>(m_begin), count() * sizeof(T) };
+	}
+};
+
 namespace range
 {
 	template<typename T>
@@ -275,6 +380,12 @@ namespace range
 		return { arr, N - 1 };
 	}
 	
+	template<typename T, typename Attach>
+	inline AttachmentRange<byte, Attach> from_object_bytes(const T* t, Attach attachment) noexcept
+	{
+		return { reinterpret_cast<const byte*>(t), sizeof(T), attachment };
+	}
+
 	template<typename Attach>
 	inline AttachmentRange<char8, Attach> from_cstring(const char8* str, Attach attachment) noexcept
 	{

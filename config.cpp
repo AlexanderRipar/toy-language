@@ -95,7 +95,7 @@ static constexpr ConfigEntryTemplate config_template[] {
 		CONFIG_INTEGER("thread-count", parallel.thread_count, 1, 1, 4096, 0, "Number of created worker threads working"),
 	CONFIG_CONTAINER("entrypoint", entrypoint, 2, "Container for configuring the program's entrypoint"),
 		CONFIG_STRING("filepath", entrypoint.filepath, Range<char8>{}, "Path to the file in which the entrypoint is defined"),
-		CONFIG_STRING("symbol", entrypoint.symbol, range_from_literal_string("main()"), "Call signature of the entry point procedure"),
+		CONFIG_STRING("symbol", entrypoint.symbol, range::from_literal_string("main()"), "Call signature of the entry point procedure"),
 	CONFIG_CONTAINER("input", input, 4, "Container for tuning parameters of source file input"),
 		CONFIG_INTEGER("bytes-per-read", input.bytes_per_read, 65536, 4096, 1048576, 4096, "Size of the buffer passed to the OS's read procedure"),
 		CONFIG_INTEGER("max-concurrent-reads", input.max_concurrent_reads, 16, 1, 32767, 0, "Number of OS reads that can be active simultaneously"),
@@ -1486,7 +1486,7 @@ bool read_config_from_file(const char8* config_filepath, ConfigParseError* out_e
 {
 	minos::FileHandle filehandle;
 
-	if (!minos::file_create(range_from_cstring(config_filepath), minos::Access::Read, minos::CreateMode::Open, minos::AccessPattern::Sequential, minos::SyncMode::Synchronous, &filehandle))
+	if (!minos::file_create(range::from_cstring(config_filepath), minos::Access::Read, minos::CreateMode::Open, minos::AccessPattern::Sequential, minos::SyncMode::Synchronous, &filehandle))
 		return runtime_error(out_error, "Could not open file");
 
 	minos::FileInfo fileinfo;

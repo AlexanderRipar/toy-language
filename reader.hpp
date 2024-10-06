@@ -73,7 +73,7 @@ public:
 		if (!minos::completion_create(&m_completion_handle))
 			panic("Could not create read completion handle (0x%X)\n", minos::last_error());
 
-		if (!minos::thread_create(completion_thread_proc, this, range_from_literal_string("Read Completions"), &m_completion_thread))
+		if (!minos::thread_create(completion_thread_proc, this, range::from_literal_string("Read Completions"), &m_completion_thread))
 			panic("Could not create read completion thread (0x%X)\n", minos::last_error());
 	}
 
