@@ -1455,11 +1455,9 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::attach::ValIdentifierData* data;
+					ast::raw::NodeHeader* const header = m_builder.append(ast::NodeType::ValIdentifer, 0, ast::raw::Flag::EMPTY, 1);
 
-					m_builder.append(&data, 0);
-
-					data->identifier_id = static_cast<u32>(lexeme.integer_value);
+					*reinterpret_cast<u32*>(header + 1) = static_cast<u32>(lexeme.integer_value);
 
 					stack.push_operand();
 				}
@@ -1467,11 +1465,9 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::attach::ValStringData* data;
+					ast::raw::NodeHeader* const header = m_builder.append(ast::NodeType::ValString, 0, ast::raw::Flag::EMPTY, 1);
 
-					m_builder.append(&data, 0);
-
-					data->string_id = static_cast<u32>(lexeme.integer_value);
+					*reinterpret_cast<u32*>(header + 1) = static_cast<u32>(lexeme.integer_value);
 
 					stack.push_operand();
 				}
@@ -1479,11 +1475,9 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::attach::ValFloatData* data;
+					ast::raw::NodeHeader* const header = m_builder.append(ast::NodeType::ValFloat, 0, ast::raw::Flag::EMPTY, 2);
 
-					m_builder.append(&data, 0);
-
-					data->set(lexeme.float_value);
+					*reinterpret_cast<f64*>(header + 1) = lexeme.float_value;
 
 					stack.push_operand();
 				}
@@ -1491,11 +1485,16 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::attach::ValIntegerData* data;
+					const u8 data_dwords = lexeme.integer_value < 64 ? 0 : lexeme.integer_value <= UINT32_MAX ? 1 : 2;
 
-					m_builder.append(&data, 0);
+					ast::raw::NodeHeader* const header = m_builder.append(ast::NodeType::ValInteger, 0, ast::raw::Flag::EMPTY, data_dwords);
 
-					data->set(lexeme.integer_value);
+					if (data_dwords == 0)
+						header->flags = static_cast<u8>(lexeme.integer_value);
+					else if (data_dwords == 1)
+						*reinterpret_cast<u32*>(header + 1) = static_cast<u32>(lexeme.integer_value);
+					else
+						memcpy(header + 1, &lexeme.integer_value, sizeof(u64));
 
 					stack.push_operand();
 				}
@@ -1503,11 +1502,9 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::attach::ValCharData* data;
+					ast::raw::NodeHeader* const header = m_builder.append(ast::NodeType::ValChar, 0, ast::raw::Flag::EMPTY, 1);
 
-					m_builder.append(&data, 0);
-
-					data->codepoint = static_cast<u32>(lexeme.integer_value);
+					*reinterpret_cast<u32*>(header + 1) = static_cast<u32>(lexeme.integer_value);
 
 					stack.push_operand();
 				}
@@ -2279,11 +2276,9 @@ private:
 			m_error.log(lexeme.offset, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 		}
 
-		ast::raw::attach::DefinitionData* data;
+		ast::raw::NodeHeader* const header = m_builder.append(ast::NodeType::Definition, child_count, flags, 1);
 
-		m_builder.append(&data, child_count, flags);
-
-		data->identifier_id = identifier_id;
+		*reinterpret_cast<u32*>(header + 1) = identifier_id;
 	}
 
 public:

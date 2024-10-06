@@ -44,7 +44,12 @@ namespace ast::raw
 			{
 				u64 value;
 
-				memcpy(&value, node + 1, sizeof(value));
+				if (node->data_dwords == 0)
+					value = node->flags;
+				else if (node->data_dwords == 1)
+					value = *reinterpret_cast<const u32*>(node + 1);
+				else
+					memcpy(&value, node + 1, sizeof(value));
 
 				fprintf(out, " [%llu]", value);
 			}
