@@ -197,6 +197,14 @@ private:
 
 public:
 
+	ReservedVec() noexcept :
+		m_memory{ nullptr },
+		m_used{ 0 },
+		m_committed{ 0 },
+		m_commit_increment{ 0 },
+		m_reserved{ 0 }
+	{}
+
 	ReservedVec(Index reserve, Index commit_increment) noexcept :
 		m_memory{ static_cast<T*>(minos::reserve(reserve * sizeof(T))) },
 		m_used{ 0 },
@@ -229,9 +237,9 @@ public:
 
 	void append_exact(const void* data, Index bytes) noexcept
 	{
-		ASSERT_OR_IGNORE(bytes % sizeof(T) == 0)
+		ASSERT_OR_IGNORE(bytes % sizeof(T) == 0);
 
-		const u32 count = bytes / sizeof(T);
+		const Index count = bytes / sizeof(T);
 
 		ensure_capacity(count);
 
@@ -242,7 +250,7 @@ public:
 
 	void append_padded(const void* data, Index bytes) noexcept
 	{
-		const u32 count = (bytes + sizeof(T) - 1) / sizeof(T);
+		const Index count = (bytes + sizeof(T) - 1) / sizeof(T);
 
 		ensure_capacity(count);
 
@@ -268,7 +276,7 @@ public:
 
 	void* reserve_padded(Index bytes) noexcept
 	{
-		const u32 count = (bytes + sizeof(T) - 1) / sizeof(T);
+		const Index count = (bytes + sizeof(T) - 1) / sizeof(T);
 
 		ensure_capacity(count);
 
