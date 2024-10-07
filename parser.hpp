@@ -7,9 +7,8 @@
 #include "structure.hpp"
 #include "hash.hpp"
 #include "ast/ast_raw.hpp"
+#include "error.hpp"
 
-#include <cstdarg>
-#include <cstdio>
 #include <cstdlib>
 
 static constexpr u32 MAX_STRING_LITERAL_BYTES = 4096;
@@ -101,76 +100,6 @@ struct Lexeme
 		offset{ offset },
 		integer_value{ value_bits }
 	{}
-};
-
-struct SourceLocation
-{
-	Range<char8> filepath;
-
-	u32 line;
-
-	u32 character;
-};
-
-struct ErrorHandler
-{
-private:
-
-	SourceFile m_source;
-
-	const IdentifierMap* const m_identifiers;
-
-public:
-
-	ErrorHandler(const IdentifierMap* identifiers) noexcept : m_identifiers{ identifiers } {}
-
-	void prime(SourceFile source) noexcept
-	{
-		m_source = source;
-	}
-
-	SourceLocation source_location_from(u32 offset) const noexcept
-	{
-		const Range<char8> content = m_source.content();
-
-		ASSERT_OR_IGNORE(offset < content.count());
-
-		u32 line = 1;
-
-		u32 line_begin = 0;
-
-		for (u32 i = 0; i != offset; ++i)
-		{
-			if (content[i] == '\n')
-			{
-				line += 1;
-
-				line_begin = i + 1;
-			}
-		}
-
-		const IdentifierMapEntry* const filepath = m_identifiers->value_from(m_source.filepath_id());
-
-		return { Range<char8>{ filepath->m_chars, filepath->m_length }, line, offset - line_begin + 1 };
-	}
-
-	__declspec(noreturn) void log(u32 offset, const char8* format, ...) const noexcept
-	{
-		va_list args;
-
-		va_start(args, format);
-
-		vlog(offset, format, args);
-	}
-
-	__declspec(noreturn) void vlog(u32 offset, const char8* format, va_list args) const noexcept
-	{
-		const SourceLocation location = source_location_from(offset);
-
-		fprintf(stderr, "%.*s:%u:%u: ", static_cast<u32>(location.filepath.count()), location.filepath.begin(), location.line, location.character);
-
-		vpanic(format, args);
-	}
 };
 
 struct Scanner
@@ -2578,7 +2507,7 @@ public:
 		m_asts{ 1ui64 << 31, 1ui64 << 17 },
 		m_ast_scratch{ 1ui64 << 31, 1ui64 << 17 },
 		m_stack_scratch{ 1ui64 << 31, 1ui64 << 17 },
-		m_error{ &m_identifiers }
+		m_error{}
 	{
 		for (u32 i = 0; i != array_count(KEYWORDS); ++i)
 			m_identifiers.value_from(KEYWORDS[i].range(), fnv1a(KEYWORDS[i].as_byte_range()))->set_token(KEYWORDS[i].attachment());
@@ -2591,7 +2520,9 @@ public:
 
 	ast::raw::Tree parse(SourceFile source) noexcept
 	{
-		m_error.prime(source);
+		const IdentifierMapEntry* filepath = m_identifiers.value_from(source.filepath_id());
+
+		m_error.prime(Range<char8>{ filepath->m_chars, filepath->m_length }, source.content());
 
 		m_scanner.prime(source);
 
