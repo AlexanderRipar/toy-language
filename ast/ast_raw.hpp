@@ -30,10 +30,15 @@ namespace ast::raw
 
 		Switch_HasWhere      = 0x01,
 
-		Func_IsProc          = 0x01,
-		Func_HasReturnType   = 0x02,
-		Func_HasWhere        = 0x04,
-		Func_HasBody         = 0x08,
+		Func_HasExpects      = 0x01,
+		Func_HasEnsures      = 0x02,
+		Func_IsProc          = 0x04,
+		Func_HasReturnType   = 0x08,
+		Func_HasBody         = 0x10,
+
+		Trait_HasExpects     = 0x01,
+
+		Impl_HasExpects      = 0x01,
 
 		Catch_HasDefinition  = 0x01,
 	};

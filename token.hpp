@@ -20,6 +20,8 @@ enum class Token : u8
 		KwdTrait,             // trait
 		KwdImpl,              // impl
 		KwdWhere,             // where
+		KwdExpects,           // expects
+		KwdEnsures,           // ensures
 		KwdCatch,             // catch
 		KwdLet,               // let
 		KwdPub,               // pub
@@ -94,6 +96,7 @@ enum class Token : u8
 		LitChar,              // '\'' .* '\''
 		LitString,            // '"' .* '"'
 		Ident,                // ( 'a' - 'z' | 'A' - 'Z' ) ( 'a' - 'z' | 'A' - 'Z' | '0' - '9' | '_' )*
+		Wildcard,           // _
 		END_OF_SOURCE,
 		MAX,
 };
@@ -113,6 +116,8 @@ static constexpr const char8* const TOKEN_NAMES[] = {
 	"trait",
 	"impl",
 	"where",
+	"expects",
+	"ensures",
 	"catch",
 	"let",
 	"pub",
@@ -187,6 +192,7 @@ static constexpr const char8* const TOKEN_NAMES[] = {
 	"LiteralChar",
 	"LiteralString",
 	"Identifier",
+	"_",
 	"[END-OF-SOURCE]",
 };
 

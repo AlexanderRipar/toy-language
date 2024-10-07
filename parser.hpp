@@ -252,6 +252,8 @@ private:
 
 	void skip_comment() noexcept
 	{
+		const u32 comment_offset = static_cast<u32>(m_curr - m_begin);
+
 		m_curr += 2;
 
 		u32 comment_nesting = 1;
@@ -288,7 +290,7 @@ private:
 			}
 			else if (curr == '\0')
 			{
-				return;
+				m_error->log(comment_offset, "'/*' without matching '*/'\n");
 			}
 			else
 			{
@@ -804,6 +806,12 @@ private:
 		case '"':
 			return scan_string_token();
 
+		case '_':
+			if (is_identifier_continuation_char(second))
+				m_error->log(m_peek.offset, "Illegal identifier starting with '_'\n");
+
+			return { Token::Wildcard };
+
 		case '+':
 			if (second == '=')
 			{
@@ -885,6 +893,10 @@ private:
 
 					return { Token::OpMulTC };
 				}
+			}
+			else if (second == '/')
+			{
+				m_error->log(m_peek.offset, "'*/' without previous matching '/*'\n");
 			}
 			else
 			{
@@ -1417,6 +1429,8 @@ private:
 		range::from_literal_string("trait",   Token::KwdTrait),
 		range::from_literal_string("impl",    Token::KwdImpl),
 		range::from_literal_string("where",   Token::KwdWhere),
+		range::from_literal_string("expects", Token::KwdExpects),
+		range::from_literal_string("ensures", Token::KwdEnsures),
 		range::from_literal_string("pub",     Token::KwdPub),
 		range::from_literal_string("mut",     Token::KwdMut),
 		range::from_literal_string("let",     Token::KwdLet),
@@ -1574,6 +1588,14 @@ private:
 
 					stack.push_operand();
 				}
+				else if (lexeme.token == Token::Wildcard)
+				{
+					expecting_operand = false;
+
+					append_node(ast::NodeType::Wildcard, 0);
+
+					stack.push_operand();
+				}
 				else if (lexeme.token == Token::CompositeInitializer)
 				{
 					expecting_operand = false;
@@ -1599,7 +1621,7 @@ private:
 						{
 							m_scanner.skip();
 
-							lexeme = m_scanner.next();
+							lexeme = m_scanner.peek();
 						}
 						else if (lexeme.token != Token::CurlyR)
 						{
@@ -1636,7 +1658,7 @@ private:
 						{
 							m_scanner.skip();
 
-							lexeme = m_scanner.next();
+							lexeme = m_scanner.peek();
 						}
 						else if (lexeme.token != Token::BracketR)
 						{
@@ -1733,6 +1755,30 @@ private:
 					expecting_operand = false;
 
 					parse_func();
+
+					stack.push_operand();
+
+					lexeme = m_scanner.peek();
+
+					continue;
+				}
+				else if (lexeme.token == Token::KwdTrait)
+				{
+					expecting_operand = false;
+
+					parse_trait();
+
+					stack.push_operand();
+
+					lexeme = m_scanner.peek();
+
+					continue;
+				}
+				else if (lexeme.token == Token::KwdImpl)
+				{
+					expecting_operand = false;
+
+					parse_impl();
 
 					stack.push_operand();
 
@@ -2149,6 +2195,8 @@ private:
 
 		u16 child_count = 0;
 
+		Lexeme lexeme = m_scanner.peek();
+
 		while (true)
 		{
 			if (child_count == UINT16_MAX)
@@ -2158,7 +2206,7 @@ private:
 
 			parse_definition(true, false);
 
-			const Lexeme lexeme = m_scanner.peek();
+			lexeme = m_scanner.peek();
 
 			if (lexeme.token != Token::Comma)
 				break;
@@ -2167,6 +2215,66 @@ private:
 		}
 
 		append_node(ast::NodeType::Where, child_count);
+	}
+
+	void parse_expects() noexcept
+	{
+		ASSERT_OR_IGNORE(m_scanner.peek().token == Token::KwdExpects);
+
+		u16 child_count = 0;
+
+		m_scanner.skip();
+
+		Lexeme lexeme = m_scanner.peek();
+
+		while (true)
+		{
+			if (child_count == UINT16_MAX)
+				m_error.log(m_scanner.peek().offset, "Number of expressions in expects clause exceeds the supported maximum of %u\n", UINT16_MAX);
+
+			child_count += 1;
+
+			parse_expr(false);
+
+			lexeme = m_scanner.peek();
+
+			if (lexeme.token != Token::Comma)
+				break;
+
+			m_scanner.skip();
+		}
+
+		append_node(ast::NodeType::Expects, child_count);
+	}
+
+	void parse_ensures() noexcept
+	{
+		ASSERT_OR_IGNORE(m_scanner.peek().token == Token::KwdEnsures);
+
+		u16 child_count = 0;
+
+		m_scanner.skip();
+
+		Lexeme lexeme = m_scanner.peek();
+
+		while (true)
+		{
+			if (child_count == UINT16_MAX)
+				m_error.log(m_scanner.peek().offset, "Number of expressions in ensures clause exceeds the supported maximum of %u\n", UINT16_MAX);
+
+			child_count += 1;
+
+			parse_expr(false);
+
+			lexeme = m_scanner.peek();
+
+			if (lexeme.token != Token::Comma)
+				break;
+
+			m_scanner.skip();
+		}
+
+		append_node(ast::NodeType::Ensures, child_count);
 	}
 
 	void parse_func() noexcept
@@ -2198,13 +2306,15 @@ private:
 
 			parse_definition(true, true);
 
-			lexeme = m_scanner.next();
+			lexeme = m_scanner.peek();
 
 			if (lexeme.token == Token::Comma)
-				lexeme = m_scanner.peek();
+				m_scanner.skip();
 			else if (lexeme.token != Token::ParenR)
 				m_error.log(lexeme.offset, "Expected '%s' or '%s' after function parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
 		}
+
+		m_scanner.skip();
 
 		lexeme = m_scanner.peek();
 
@@ -2221,13 +2331,24 @@ private:
 			lexeme = m_scanner.peek();
 		}
 
-		if (lexeme.token == Token::KwdWhere)
+		if (lexeme.token == Token::KwdExpects)
 		{
 			child_count += 1;
 
-			flags |= ast::raw::Flag::Func_HasWhere;
+			flags |= ast::raw::Flag::Func_HasExpects;
 
-			parse_where();
+			parse_expects();
+
+			lexeme = m_scanner.peek();
+		}
+
+		if (lexeme.token == Token::KwdEnsures)
+		{
+			child_count += 1;
+
+			flags |= ast::raw::Flag::Func_HasEnsures;
+
+			parse_ensures();
 
 			lexeme = m_scanner.peek();
 		}
@@ -2244,6 +2365,108 @@ private:
 		}
 
 		append_node(ast::NodeType::Func, child_count, flags);
+	}
+
+	void parse_trait() noexcept
+	{
+		ASSERT_OR_IGNORE(m_scanner.peek().token == Token::KwdTrait);
+
+		u16 child_count = 1;
+
+		ast::raw::Flag flags = ast::raw::Flag::EMPTY;
+
+		m_scanner.skip();
+
+		Lexeme lexeme = m_scanner.next();
+
+		if (lexeme.token != Token::ParenL)
+			m_error.log(lexeme.offset, "Expected '%s' after '%s' but got '%s'\n", token_name(Token::ParenL), token_name(Token::KwdTrait), token_name(lexeme.token));
+
+		lexeme = m_scanner.peek();
+
+		while (lexeme.token != Token::ParenR)
+		{
+			if (child_count == UINT16_MAX)
+				m_error.log(lexeme.offset, "Number of parameters in trait parameter list exceeds the supported maximum of %u\n", UINT16_MAX);
+			
+			child_count += 1;
+
+			parse_definition(true, true);
+
+			lexeme = m_scanner.next();
+
+			if (lexeme.token == Token::Comma)
+				lexeme = m_scanner.peek();
+			else if (lexeme.token != Token::ParenR)
+				m_error.log(lexeme.offset, "Expected '%s' or '%s' after trait parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
+		}
+
+		lexeme = m_scanner.peek();
+
+		if (lexeme.token == Token::KwdExpects)
+		{
+			child_count += 1;
+
+			flags |= ast::raw::Flag::Trait_HasExpects;
+
+			parse_expects();
+
+			lexeme = m_scanner.peek();
+		}
+
+		if (lexeme.token != Token::OpSet)
+		{
+			if ((flags & ast::raw::Flag::Trait_HasExpects) == ast::raw::Flag::EMPTY)
+				m_error.log(lexeme.offset, "Expected '%s' or '%s' after trait parameter list but got '%s'\n", token_name(Token::OpSet), token_name(Token::KwdExpects), token_name(lexeme.token));
+			else
+				m_error.log(lexeme.offset, "Expected '%s' after trait expects clause but got '%s'\n", token_name(Token::OpSet), token_name(lexeme.token));
+		}
+
+		m_scanner.skip();
+
+		parse_expr(true);
+
+		append_node(ast::NodeType::Trait, child_count, flags);
+	}
+
+	void parse_impl() noexcept
+	{
+		ASSERT_OR_IGNORE(m_scanner.peek().token == Token::KwdImpl);
+
+		u16 child_count = 2;
+
+		ast::raw::Flag flags = ast::raw::Flag::EMPTY;
+
+		m_scanner.skip();
+
+		parse_expr(false);
+
+		Lexeme lexeme = m_scanner.peek();
+
+		if (lexeme.token == Token::KwdExpects)
+		{
+			child_count += 1;
+
+			flags |= ast::raw::Flag::Impl_HasExpects;
+
+			parse_expects();
+
+			lexeme = m_scanner.peek();
+		}
+
+		if (lexeme.token != Token::OpSet)
+		{
+			if ((flags & ast::raw::Flag::Trait_HasExpects) == ast::raw::Flag::EMPTY)
+				m_error.log(lexeme.offset, "Expected '%s' or '%s' after trait parameter list but got '%s'\n", token_name(Token::OpSet), token_name(Token::KwdExpects), token_name(lexeme.token));
+			else
+				m_error.log(lexeme.offset, "Expected '%s' after trait expects clause but got '%s'\n", token_name(Token::OpSet), token_name(lexeme.token));
+		}
+
+		m_scanner.skip();
+
+		parse_expr(true);
+
+		append_node(ast::NodeType::Impl, child_count, flags);
 	}
 
 	void parse_definition(bool is_implicit, bool is_optional_value) noexcept
