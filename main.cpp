@@ -23,28 +23,7 @@ s32 main(s32 argc, const char8** argv)
 	}
 	else if (argc == 3 && strcmp(argv[1] , "-config") == 0)
 	{
-		Config config;
-
-		ConfigParseError error;
-
-		if (!read_config_from_file(argv[2], &error, &config))
-		{
-			fprintf(stderr,
-				"[%s:%u:%u] %s:\n    %s\n    %*s",
-				argv[2],
-				error.line_number,
-				error.character_number,
-				error.message,
-				error.context,
-				error.context_begin, "");
-
-			for (u32 i = 0; i != error.context_end - error.context_begin; ++i)
-				fprintf(stderr, "^");
-
-			fprintf(stderr, "\n");
-
-			return EXIT_FAILURE;
-		}
+		Config config = read_config(range::from_cstring(argv[2]));
 
 		print_config(&config);
 

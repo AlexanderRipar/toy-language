@@ -1,7 +1,1 @@
-parallel.thread-count = 2
-
 entrypoint.filepath = 'source.txt'
-
-input.bytes-per-read = 4096
-
-input.max-concurrent-reads-per-file = 127
