@@ -2,7 +2,6 @@
 #define THREADING_INCLUDE_GUARD
 
 #include "minos.hpp"
-#include "memory.hpp"
 #include <atomic>
 
 namespace thd
@@ -188,4 +187,5 @@ namespace thd
 		}
 	};
 }
+
 #endif // THREADING_INCLUDE_GUARD
