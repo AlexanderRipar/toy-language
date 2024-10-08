@@ -2,7 +2,6 @@
 #define AST_RAW_INCLUDE_GUARD
 
 #include "../common.hpp"
-#include "ast_common.hpp"
 
 namespace ast::raw
 {
