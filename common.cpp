@@ -5,6 +5,15 @@
 #include <cstdarg>
 #include <intrin.h>
 
+#ifndef NDEBUG
+	__declspec(noreturn) void assert_unreachable_helper() noexcept
+	{
+		__debugbreak();
+
+		minos::exit_process(1);
+	}
+#endif // !NDEBUG
+
 __declspec(noreturn) void vpanic(const char8* format, va_list args) noexcept
 {
 	vfprintf(stderr, format, args);

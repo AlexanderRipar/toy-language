@@ -1,14 +1,11 @@
 #include "config.hpp"
 
-#include "common.hpp"
 #include "minos.hpp"
 #include "structure.hpp"
 #include "error.hpp"
 
 #include <type_traits>
-#include <cstring>
 #include <cstdio>
-#include <cstdarg>
 
 struct ConfigHeader;
 

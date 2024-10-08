@@ -1,7 +1,6 @@
 #ifndef COMMON_INCLUDE_GUARD
 #define COMMON_INCLUDE_GUARD
 
-#include <cstdarg>
 #include <cassert>
 #include <cstdint>
 
@@ -26,20 +25,14 @@ using sint = s64;
 using f32 = float;
 using f64 = double;
 
-template<typename T>
-inline T assert_value_helper(T t) noexcept
-{
-	assert(t);
-
-	return t;
-}
-
 #ifdef NDEBUG
 	#define ASSERT_OR_IGNORE(x)
 	#define ASSERT_UNREACHABLE do { 1 / 0; } while (false)
 #else
+	__declspec(noreturn) void assert_unreachable_helper() noexcept;
+
 	#define ASSERT_OR_IGNORE(x) assert(x)
-	#define ASSERT_UNREACHABLE do { __debugbreak(); minos::exit_process(1); } while (false)
+	#define ASSERT_UNREACHABLE assert_unreachable_helper()
 #endif
 
 template<typename T, typename U>
