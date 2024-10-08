@@ -5,7 +5,7 @@
 
 namespace ast::raw
 {
-	enum class NodeType : u8
+	enum class Type : u8
 	{
 		INVALID = 0,
 		Program,
@@ -151,7 +151,7 @@ namespace ast::raw
 
 	struct NodeHeader
 	{
-		NodeType type;
+		Type type;
 
 		u8 data_dwords : 2;
 
@@ -270,7 +270,7 @@ namespace ast::raw
 		"OpArrayIndex",
 	};
 
-	static constexpr inline const char8* node_type_name(NodeType type)
+	static constexpr inline const char8* type_name(Type type)
 	{
 		if (static_cast<u8>(type) < array_count(NODE_TYPE_NAMES))
 			return NODE_TYPE_NAMES[static_cast<u8>(type)];

@@ -1181,7 +1181,7 @@ private:
 
 	struct OperatorDesc
 	{
-		ast::raw::NodeType node_type;
+		ast::raw::Type node_type;
 
 		u8 precedence : 6;
 
@@ -1212,11 +1212,11 @@ private:
 		
 			m_operator_top -= 1;
 
-			if (top.node_type == ast::raw::NodeType::INVALID)
+			if (top.node_type == ast::raw::Type::INVALID)
 				return;
 
 			if (m_free_operand_count <= top.is_binary)
-				m_parser->m_error.log(m_expression_offset, "Missing operand(s) for operator '%s'\n", ast::raw::node_type_name(top.node_type));
+				m_parser->m_error.log(m_expression_offset, "Missing operand(s) for operator '%s'\n", ast::raw::type_name(top.node_type));
 
 			m_free_operand_count -= top.is_binary;
 
@@ -1239,7 +1239,7 @@ private:
 
 		void push_operator(OperatorDesc op) noexcept
 		{
-			if (op.node_type != ast::raw::NodeType::INVALID)
+			if (op.node_type != ast::raw::Type::INVALID)
 				pop_to_precedence(op.precedence, op.is_right_to_left);
 
 			if (m_operator_top == array_count(m_operators))
@@ -1267,7 +1267,7 @@ private:
 
 		void remove_lparen() noexcept
 		{
-			ASSERT_OR_IGNORE(m_operator_top != 0 && m_operators[m_operator_top - 1].node_type == ast::raw::NodeType::INVALID);
+			ASSERT_OR_IGNORE(m_operator_top != 0 && m_operators[m_operator_top - 1].node_type == ast::raw::Type::INVALID);
 
 			m_operator_top -= 1;
 		}
@@ -1283,62 +1283,62 @@ private:
 	};
 
 	static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
-		{ ast::raw::NodeType::INVALID,           10, false, true  }, // ( - Opening Parenthesis
-		{ ast::raw::NodeType::UOpTry,             8, false, false }, // try
-		{ ast::raw::NodeType::UOpDefer,           8, false, false }, // defer
-		{ ast::raw::NodeType::UOpAddr,            2, false, false }, // $
-		{ ast::raw::NodeType::UOpBitNot,          2, false, false }, // ~
-		{ ast::raw::NodeType::UOpLogNot,          2, false, false }, // !
-		{ ast::raw::NodeType::UOpTypeOptPtr,      2, false, false }, // ?
-		{ ast::raw::NodeType::UOpTypeVar,         2, false, false }, // ...
-		{ ast::raw::NodeType::UOpTypeTailArray,   2, false, false }, // [...]
-		{ ast::raw::NodeType::UOpTypeMultiPtr,    2, false, false }, // [*]
-		{ ast::raw::NodeType::UOpTypeOptMultiPtr, 2, false, false }, // [?]
-		{ ast::raw::NodeType::UOpTypeSlice,       2, false, false }, // []
-		{ ast::raw::NodeType::OpImpliedMember,    1, false, false }, // .
-		{ ast::raw::NodeType::UOpTypePtr,         2, false, false }, // *
-		{ ast::raw::NodeType::UOpNegate,          2, false, false }, // -
-		{ ast::raw::NodeType::UOpPos,             2, false, false }, // +
+		{ ast::raw::Type::INVALID,           10, false, true  }, // ( - Opening Parenthesis
+		{ ast::raw::Type::UOpTry,             8, false, false }, // try
+		{ ast::raw::Type::UOpDefer,           8, false, false }, // defer
+		{ ast::raw::Type::UOpAddr,            2, false, false }, // $
+		{ ast::raw::Type::UOpBitNot,          2, false, false }, // ~
+		{ ast::raw::Type::UOpLogNot,          2, false, false }, // !
+		{ ast::raw::Type::UOpTypeOptPtr,      2, false, false }, // ?
+		{ ast::raw::Type::UOpTypeVar,         2, false, false }, // ...
+		{ ast::raw::Type::UOpTypeTailArray,   2, false, false }, // [...]
+		{ ast::raw::Type::UOpTypeMultiPtr,    2, false, false }, // [*]
+		{ ast::raw::Type::UOpTypeOptMultiPtr, 2, false, false }, // [?]
+		{ ast::raw::Type::UOpTypeSlice,       2, false, false }, // []
+		{ ast::raw::Type::OpImpliedMember,    1, false, false }, // .
+		{ ast::raw::Type::UOpTypePtr,         2, false, false }, // *
+		{ ast::raw::Type::UOpNegate,          2, false, false }, // -
+		{ ast::raw::Type::UOpPos,             2, false, false }, // +
 	};
 
 	static constexpr OperatorDesc BINARY_OPERATOR_DESCS[] = {
-		{ ast::raw::NodeType::OpMember,     1, true,  true  }, // .
-		{ ast::raw::NodeType::OpMul,        2, true,  true  }, // *
-		{ ast::raw::NodeType::OpSub,        3, true,  true  }, // -
-		{ ast::raw::NodeType::OpAdd,        3, true,  true  }, // +
-		{ ast::raw::NodeType::OpDiv,        2, true,  true  }, // /
-		{ ast::raw::NodeType::OpAddTC,      3, true,  true  }, // +:
-		{ ast::raw::NodeType::OpSubTC,      3, true,  true  }, // -:
-		{ ast::raw::NodeType::OpMulTC,      2, true,  true  }, // *:
-		{ ast::raw::NodeType::OpMod,        2, true,  true  }, // %
-		{ ast::raw::NodeType::UOpDeref,     1, false, false }, // .*
-		{ ast::raw::NodeType::OpBitAnd,     6, true,  true  }, // &
-		{ ast::raw::NodeType::OpBitOr,      6, true,  true  }, // |
-		{ ast::raw::NodeType::OpBitXor,     6, true,  true  }, // ^
-		{ ast::raw::NodeType::OpShiftL,     4, true,  true  }, // <<
-		{ ast::raw::NodeType::OpShiftR,     4, true,  true  }, // >>
-		{ ast::raw::NodeType::OpLogAnd,     7, true,  true  }, // &&
-		{ ast::raw::NodeType::OpLogOr,      7, true,  true  }, // ||
-		{ ast::raw::NodeType::OpCmpLT,      5, true,  true  }, // <
-		{ ast::raw::NodeType::OpCmpGT,      5, true,  true  }, // >
-		{ ast::raw::NodeType::OpCmpLE,      5, true,  true  }, // <=
-		{ ast::raw::NodeType::OpCmpGE,      5, true,  true  }, // >=
-		{ ast::raw::NodeType::OpCmpNE,      5, true,  true  }, // !=
-		{ ast::raw::NodeType::OpCmpEQ,      5, true,  true  }, // ==
-		{ ast::raw::NodeType::OpSet,        9, false, true  }, // =
-		{ ast::raw::NodeType::OpSetAdd,     9, false, true  }, // +=
-		{ ast::raw::NodeType::OpSetSub,     9, false, true  }, // -=
-		{ ast::raw::NodeType::OpSetMul,     9, false, true  }, // *=
-		{ ast::raw::NodeType::OpSetDiv,     9, false, true  }, // /=
-		{ ast::raw::NodeType::OpSetAddTC,   9, false, true  }, // +:=
-		{ ast::raw::NodeType::OpSetSubTC,   9, false, true  }, // -:=
-		{ ast::raw::NodeType::OpSetMulTC,   9, false, true  }, // *:=
-		{ ast::raw::NodeType::OpSetMod,     9, false, true  }, // %=
-		{ ast::raw::NodeType::OpSetBitAnd,  9, false, true  }, // &=
-		{ ast::raw::NodeType::OpSetBitOr,   9, false, true  }, // |=
-		{ ast::raw::NodeType::OpSetBitXor,  9, false, true  }, // ^=
-		{ ast::raw::NodeType::OpSetShiftL,  9, false, true  }, // <<=
-		{ ast::raw::NodeType::OpSetShiftR,  9, false, true  }, // >>=
+		{ ast::raw::Type::OpMember,     1, true,  true  }, // .
+		{ ast::raw::Type::OpMul,        2, true,  true  }, // *
+		{ ast::raw::Type::OpSub,        3, true,  true  }, // -
+		{ ast::raw::Type::OpAdd,        3, true,  true  }, // +
+		{ ast::raw::Type::OpDiv,        2, true,  true  }, // /
+		{ ast::raw::Type::OpAddTC,      3, true,  true  }, // +:
+		{ ast::raw::Type::OpSubTC,      3, true,  true  }, // -:
+		{ ast::raw::Type::OpMulTC,      2, true,  true  }, // *:
+		{ ast::raw::Type::OpMod,        2, true,  true  }, // %
+		{ ast::raw::Type::UOpDeref,     1, false, false }, // .*
+		{ ast::raw::Type::OpBitAnd,     6, true,  true  }, // &
+		{ ast::raw::Type::OpBitOr,      6, true,  true  }, // |
+		{ ast::raw::Type::OpBitXor,     6, true,  true  }, // ^
+		{ ast::raw::Type::OpShiftL,     4, true,  true  }, // <<
+		{ ast::raw::Type::OpShiftR,     4, true,  true  }, // >>
+		{ ast::raw::Type::OpLogAnd,     7, true,  true  }, // &&
+		{ ast::raw::Type::OpLogOr,      7, true,  true  }, // ||
+		{ ast::raw::Type::OpCmpLT,      5, true,  true  }, // <
+		{ ast::raw::Type::OpCmpGT,      5, true,  true  }, // >
+		{ ast::raw::Type::OpCmpLE,      5, true,  true  }, // <=
+		{ ast::raw::Type::OpCmpGE,      5, true,  true  }, // >=
+		{ ast::raw::Type::OpCmpNE,      5, true,  true  }, // !=
+		{ ast::raw::Type::OpCmpEQ,      5, true,  true  }, // ==
+		{ ast::raw::Type::OpSet,        9, false, true  }, // =
+		{ ast::raw::Type::OpSetAdd,     9, false, true  }, // +=
+		{ ast::raw::Type::OpSetSub,     9, false, true  }, // -=
+		{ ast::raw::Type::OpSetMul,     9, false, true  }, // *=
+		{ ast::raw::Type::OpSetDiv,     9, false, true  }, // /=
+		{ ast::raw::Type::OpSetAddTC,   9, false, true  }, // +:=
+		{ ast::raw::Type::OpSetSubTC,   9, false, true  }, // -:=
+		{ ast::raw::Type::OpSetMulTC,   9, false, true  }, // *:=
+		{ ast::raw::Type::OpSetMod,     9, false, true  }, // %=
+		{ ast::raw::Type::OpSetBitAnd,  9, false, true  }, // &=
+		{ ast::raw::Type::OpSetBitOr,   9, false, true  }, // |=
+		{ ast::raw::Type::OpSetBitXor,  9, false, true  }, // ^=
+		{ ast::raw::Type::OpSetShiftL,  9, false, true  }, // <<=
+		{ ast::raw::Type::OpSetShiftR,  9, false, true  }, // >>=
 	};
 
 	static constexpr AttachmentRange<char8, Token> KEYWORDS[] = {
@@ -1407,7 +1407,7 @@ private:
 			reverse_node(target, reinterpret_cast<const ast::raw::NodeHeader*>(reinterpret_cast<const u32*>(src) + src->next_sibling_offset));
 	}
 
-	ast::raw::NodeHeader* append_node(ast::raw::NodeType type, u16 child_count, ast::raw::Flag flags = ast::raw::Flag::EMPTY, u8 data_dwords = 0) noexcept
+	ast::raw::NodeHeader* append_node(ast::raw::Type type, u16 child_count, ast::raw::Flag flags = ast::raw::Flag::EMPTY, u8 data_dwords = 0) noexcept
 	{
 		ASSERT_OR_IGNORE(static_cast<u8>(flags) < 64);
 
@@ -1464,7 +1464,7 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::NodeHeader* const header = append_node(ast::raw::NodeType::ValIdentifer, 0, ast::raw::Flag::EMPTY, 1);
+					ast::raw::NodeHeader* const header = append_node(ast::raw::Type::ValIdentifer, 0, ast::raw::Flag::EMPTY, 1);
 
 					*reinterpret_cast<u32*>(header + 1) = static_cast<u32>(lexeme.integer_value);
 
@@ -1474,7 +1474,7 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::NodeHeader* const header = append_node(ast::raw::NodeType::ValString, 0, ast::raw::Flag::EMPTY, 1);
+					ast::raw::NodeHeader* const header = append_node(ast::raw::Type::ValString, 0, ast::raw::Flag::EMPTY, 1);
 
 					*reinterpret_cast<u32*>(header + 1) = static_cast<u32>(lexeme.integer_value);
 
@@ -1484,7 +1484,7 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::NodeHeader* const header = append_node(ast::raw::NodeType::ValFloat, 0, ast::raw::Flag::EMPTY, 2);
+					ast::raw::NodeHeader* const header = append_node(ast::raw::Type::ValFloat, 0, ast::raw::Flag::EMPTY, 2);
 
 					*reinterpret_cast<f64*>(header + 1) = lexeme.float_value;
 
@@ -1496,7 +1496,7 @@ private:
 
 					const u8 data_dwords = lexeme.integer_value < 64 ? 0 : lexeme.integer_value <= UINT32_MAX ? 1 : 2;
 
-					ast::raw::NodeHeader* const header = append_node(ast::raw::NodeType::ValInteger, 0, ast::raw::Flag::EMPTY, data_dwords);
+					ast::raw::NodeHeader* const header = append_node(ast::raw::Type::ValInteger, 0, ast::raw::Flag::EMPTY, data_dwords);
 
 					if (data_dwords == 0)
 						header->flags = static_cast<u8>(lexeme.integer_value);
@@ -1511,7 +1511,7 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::NodeHeader* const header = append_node(ast::raw::NodeType::ValChar, 0, ast::raw::Flag::EMPTY, 1);
+					ast::raw::NodeHeader* const header = append_node(ast::raw::Type::ValChar, 0, ast::raw::Flag::EMPTY, 1);
 
 					*reinterpret_cast<u32*>(header + 1) = static_cast<u32>(lexeme.integer_value);
 
@@ -1521,7 +1521,7 @@ private:
 				{
 					expecting_operand = false;
 
-					append_node(ast::raw::NodeType::Wildcard, 0);
+					append_node(ast::raw::Type::Wildcard, 0);
 
 					stack.push_operand();
 				}
@@ -1558,7 +1558,7 @@ private:
 						}
 					}
 
-					append_node(ast::raw::NodeType::CompositeInitializer, child_count);
+					append_node(ast::raw::Type::CompositeInitializer, child_count);
 
 					stack.push_operand();
 				}
@@ -1595,7 +1595,7 @@ private:
 						}
 					}
 
-					append_node(ast::raw::NodeType::ArrayInitializer, child_count);
+					append_node(ast::raw::Type::ArrayInitializer, child_count);
 
 					stack.push_operand();
 				}
@@ -1612,7 +1612,7 @@ private:
 
 					stack.push_operand();
 
-					stack.push_operator({ ast::raw::NodeType::OpTypeArray, 2, false, true });
+					stack.push_operator({ ast::raw::Type::OpTypeArray, 2, false, true });
 				}
 				else if (lexeme.token == Token::CurlyL) // Block
 				{
@@ -1639,7 +1639,7 @@ private:
 							break;
 					}
 
-					append_node(ast::raw::NodeType::Block, child_count);
+					append_node(ast::raw::Type::Block, child_count);
 
 					stack.push_operand();
 				}
@@ -1766,7 +1766,7 @@ private:
 						}
 					}
 
-					append_node(ast::raw::NodeType::Call, child_count);
+					append_node(ast::raw::Type::Call, child_count);
 				}
 				else if (lexeme.token == Token::ParenR) // Closing parenthesis
 				{
@@ -1788,7 +1788,7 @@ private:
 					if (lexeme.token != Token::BracketR)
 						m_error.log(lexeme.offset, "Expected ']' after array index expression, but got '%s'\n", token_name(lexeme.token));
 
-					append_node(ast::raw::NodeType::OpArrayIndex, 2);
+					append_node(ast::raw::Type::OpArrayIndex, 2);
 				}
 				else if (lexeme.token == Token::KwdCatch)
 				{
@@ -1818,7 +1818,7 @@ private:
 
 					parse_expr(false);
 
-					append_node(ast::raw::NodeType::Catch, child_count, flags);
+					append_node(ast::raw::Type::Catch, child_count, flags);
 
 					lexeme = m_scanner.peek();
 
@@ -1904,7 +1904,7 @@ private:
 			parse_expr(true);
 		}
 
-		append_node(ast::raw::NodeType::If, child_count, flags);
+		append_node(ast::raw::Type::If, child_count, flags);
 	}
 
 	void parse_for() noexcept
@@ -1964,7 +1964,7 @@ private:
 			parse_expr(true);
 		}
 
-		append_node(ast::raw::NodeType::For, child_count, flags);
+		append_node(ast::raw::Type::For, child_count, flags);
 	}
 
 	[[nodiscard]] bool try_parse_foreach() noexcept
@@ -2047,7 +2047,7 @@ private:
 			parse_expr(true);
 		}
 
-		append_node(ast::raw::NodeType::ForEach, child_count, flags);
+		append_node(ast::raw::Type::ForEach, child_count, flags);
 
 		return true;
 	}
@@ -2095,7 +2095,7 @@ private:
 				break;
 		}
 
-		append_node(ast::raw::NodeType::Switch, child_count, flags);
+		append_node(ast::raw::Type::Switch, child_count, flags);
 	}
 
 	void parse_case() noexcept
@@ -2113,7 +2113,7 @@ private:
 
 		parse_expr(true);
 
-		append_node(ast::raw::NodeType::Case, 2);
+		append_node(ast::raw::Type::Case, 2);
 	}
 
 	void parse_where() noexcept
@@ -2143,7 +2143,7 @@ private:
 			m_scanner.skip();
 		}
 
-		append_node(ast::raw::NodeType::Where, child_count);
+		append_node(ast::raw::Type::Where, child_count);
 	}
 
 	void parse_expects() noexcept
@@ -2173,7 +2173,7 @@ private:
 			m_scanner.skip();
 		}
 
-		append_node(ast::raw::NodeType::Expects, child_count);
+		append_node(ast::raw::Type::Expects, child_count);
 	}
 
 	void parse_ensures() noexcept
@@ -2203,7 +2203,7 @@ private:
 			m_scanner.skip();
 		}
 
-		append_node(ast::raw::NodeType::Ensures, child_count);
+		append_node(ast::raw::Type::Ensures, child_count);
 	}
 
 	void parse_func() noexcept
@@ -2293,7 +2293,7 @@ private:
 			parse_expr(true);
 		}
 
-		append_node(ast::raw::NodeType::Func, child_count, flags);
+		append_node(ast::raw::Type::Func, child_count, flags);
 	}
 
 	void parse_trait() noexcept
@@ -2355,7 +2355,7 @@ private:
 
 		parse_expr(true);
 
-		append_node(ast::raw::NodeType::Trait, child_count, flags);
+		append_node(ast::raw::Type::Trait, child_count, flags);
 	}
 
 	void parse_impl() noexcept
@@ -2395,7 +2395,7 @@ private:
 
 		parse_expr(true);
 
-		append_node(ast::raw::NodeType::Impl, child_count, flags);
+		append_node(ast::raw::Type::Impl, child_count, flags);
 	}
 
 	void parse_definition(bool is_implicit, bool is_optional_value) noexcept
@@ -2494,7 +2494,7 @@ private:
 			m_error.log(lexeme.offset, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 		}
 
-		ast::raw::NodeHeader* const header = append_node(ast::raw::NodeType::Definition, child_count, flags, 1);
+		ast::raw::NodeHeader* const header = append_node(ast::raw::Type::Definition, child_count, flags, 1);
 
 		*reinterpret_cast<u32*>(header + 1) = identifier_id;
 	}
@@ -2543,7 +2543,7 @@ public:
 			parse_top_level_expr(false);
 		};
 
-		append_node(ast::raw::NodeType::Program, child_count);
+		append_node(ast::raw::Type::Program, child_count);
 
 		ASSERT_OR_IGNORE(m_stack_scratch.used() == 1);
 
