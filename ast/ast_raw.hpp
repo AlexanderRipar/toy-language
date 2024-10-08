@@ -149,7 +149,7 @@ namespace ast::raw
 		return lhs;
 	}
 
-	struct NodeHeader
+	struct Node
 	{
 		Type type;
 
@@ -166,23 +166,23 @@ namespace ast::raw
 	{
 	private:
 
-		NodeHeader* const m_begin;
+		Node* const m_begin;
 
 		const u32 m_length;
 
 	public:
 
-		Tree(NodeHeader* begin, u32 length) noexcept :
+		Tree(Node* begin, u32 length) noexcept :
 			m_begin{ begin },
 			m_length{ length }
 		{}
 
-		Range<NodeHeader> raw_nodes() const noexcept
+		Range<Node> raw_nodes() const noexcept
 		{
 			return Range{ m_begin, m_length };
 		}
 
-		const NodeHeader* root() const noexcept
+		const Node* root() const noexcept
 		{
 			return m_begin;
 		}

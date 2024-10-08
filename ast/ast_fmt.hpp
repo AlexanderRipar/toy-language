@@ -9,7 +9,7 @@ namespace ast::raw
 {
 	namespace _impl
 	{
-		const NodeHeader* format_node(FILE* out, const NodeHeader* node, const IdentifierMap* identifiers, u32 nesting) noexcept
+		const Node* format_node(FILE* out, const Node* node, const IdentifierMap* identifiers, u32 nesting) noexcept
 		{
 			fprintf(out, "%*s%s", nesting * 2, "", type_name(node->type));
 
@@ -67,7 +67,7 @@ namespace ast::raw
 			else
 				fprintf(stdout, "\n");
 
-			const NodeHeader* next = reinterpret_cast<const NodeHeader*>(reinterpret_cast<const u32*>(node) + 2 + node->data_dwords);
+			const Node* next = reinterpret_cast<const Node*>(reinterpret_cast<const u32*>(node) + 2 + node->data_dwords);
 
 			for (u16 i = 0; i != node->child_count; ++i)
 				next = format_node(out, next, identifiers, nesting + 1);

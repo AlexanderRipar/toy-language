@@ -1390,30 +1390,30 @@ private:
 			|| token == Token::KwdUse;
 	}
 
-	static void reverse_node(ReservedVec<u32>* target, const ast::raw::NodeHeader* src) noexcept
+	static void reverse_node(ReservedVec<u32>* target, const ast::raw::Node* src) noexcept
 	{
-		ast::raw::NodeHeader* const dst = reinterpret_cast<ast::raw::NodeHeader*>(target->reserve_exact(sizeof(ast::raw::NodeHeader) + src->data_dwords * sizeof(u32)));
+		ast::raw::Node* const dst = reinterpret_cast<ast::raw::Node*>(target->reserve_exact(sizeof(ast::raw::Node) + src->data_dwords * sizeof(u32)));
 
-		memcpy(dst, src, sizeof(ast::raw::NodeHeader) + src->data_dwords * sizeof(u32));
+		memcpy(dst, src, sizeof(ast::raw::Node) + src->data_dwords * sizeof(u32));
 
 		if (src->child_count != 0)
 		{
 			const u32 offset = reinterpret_cast<const u32*>(src)[2 + src->data_dwords];
 
-			reverse_node(target, reinterpret_cast<const ast::raw::NodeHeader*>(reinterpret_cast<const u32*>(src) - offset));
+			reverse_node(target, reinterpret_cast<const ast::raw::Node*>(reinterpret_cast<const u32*>(src) - offset));
 		}
 
 		if (src->next_sibling_offset != 0)
-			reverse_node(target, reinterpret_cast<const ast::raw::NodeHeader*>(reinterpret_cast<const u32*>(src) + src->next_sibling_offset));
+			reverse_node(target, reinterpret_cast<const ast::raw::Node*>(reinterpret_cast<const u32*>(src) + src->next_sibling_offset));
 	}
 
-	ast::raw::NodeHeader* append_node(ast::raw::Type type, u16 child_count, ast::raw::Flag flags = ast::raw::Flag::EMPTY, u8 data_dwords = 0) noexcept
+	ast::raw::Node* append_node(ast::raw::Type type, u16 child_count, ast::raw::Flag flags = ast::raw::Flag::EMPTY, u8 data_dwords = 0) noexcept
 	{
 		ASSERT_OR_IGNORE(static_cast<u8>(flags) < 64);
 
 		ASSERT_OR_IGNORE(data_dwords < 3 || (child_count == 0 && data_dwords < 4));
 
-		ast::raw::NodeHeader* const node = static_cast<ast::raw::NodeHeader*>(m_ast_scratch.reserve_exact(sizeof(ast::raw::NodeHeader) + (data_dwords + static_cast<u8>(child_count != 0)) * sizeof(u32)));
+		ast::raw::Node* const node = static_cast<ast::raw::Node*>(m_ast_scratch.reserve_exact(sizeof(ast::raw::Node) + (data_dwords + static_cast<u8>(child_count != 0)) * sizeof(u32)));
 
 		node->type = type;
 
@@ -1431,7 +1431,7 @@ private:
 
 			for (u16 i = 1; i != child_count; ++i)
 			{
-				ast::raw::NodeHeader* const child = reinterpret_cast<ast::raw::NodeHeader*>(m_ast_scratch.begin() + child_index);
+				ast::raw::Node* const child = reinterpret_cast<ast::raw::Node*>(m_ast_scratch.begin() + child_index);
 
 				const u32 next_child_index = m_stack_scratch.begin()[m_stack_scratch.used() - child_count + i];
 
@@ -1464,7 +1464,7 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::NodeHeader* const header = append_node(ast::raw::Type::ValIdentifer, 0, ast::raw::Flag::EMPTY, 1);
+					ast::raw::Node* const header = append_node(ast::raw::Type::ValIdentifer, 0, ast::raw::Flag::EMPTY, 1);
 
 					*reinterpret_cast<u32*>(header + 1) = static_cast<u32>(lexeme.integer_value);
 
@@ -1474,7 +1474,7 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::NodeHeader* const header = append_node(ast::raw::Type::ValString, 0, ast::raw::Flag::EMPTY, 1);
+					ast::raw::Node* const header = append_node(ast::raw::Type::ValString, 0, ast::raw::Flag::EMPTY, 1);
 
 					*reinterpret_cast<u32*>(header + 1) = static_cast<u32>(lexeme.integer_value);
 
@@ -1484,7 +1484,7 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::NodeHeader* const header = append_node(ast::raw::Type::ValFloat, 0, ast::raw::Flag::EMPTY, 2);
+					ast::raw::Node* const header = append_node(ast::raw::Type::ValFloat, 0, ast::raw::Flag::EMPTY, 2);
 
 					*reinterpret_cast<f64*>(header + 1) = lexeme.float_value;
 
@@ -1496,7 +1496,7 @@ private:
 
 					const u8 data_dwords = lexeme.integer_value < 64 ? 0 : lexeme.integer_value <= UINT32_MAX ? 1 : 2;
 
-					ast::raw::NodeHeader* const header = append_node(ast::raw::Type::ValInteger, 0, ast::raw::Flag::EMPTY, data_dwords);
+					ast::raw::Node* const header = append_node(ast::raw::Type::ValInteger, 0, ast::raw::Flag::EMPTY, data_dwords);
 
 					if (data_dwords == 0)
 						header->flags = static_cast<u8>(lexeme.integer_value);
@@ -1511,7 +1511,7 @@ private:
 				{
 					expecting_operand = false;
 
-					ast::raw::NodeHeader* const header = append_node(ast::raw::Type::ValChar, 0, ast::raw::Flag::EMPTY, 1);
+					ast::raw::Node* const header = append_node(ast::raw::Type::ValChar, 0, ast::raw::Flag::EMPTY, 1);
 
 					*reinterpret_cast<u32*>(header + 1) = static_cast<u32>(lexeme.integer_value);
 
@@ -2494,7 +2494,7 @@ private:
 			m_error.log(lexeme.offset, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 		}
 
-		ast::raw::NodeHeader* const header = append_node(ast::raw::Type::Definition, child_count, flags, 1);
+		ast::raw::Node* const header = append_node(ast::raw::Type::Definition, child_count, flags, 1);
 
 		*reinterpret_cast<u32*>(header + 1) = identifier_id;
 	}
@@ -2549,13 +2549,13 @@ public:
 
 		const u32 tree_offset = m_asts.used();
 
-		reverse_node(&m_asts, reinterpret_cast<ast::raw::NodeHeader*>(m_ast_scratch.begin() + *m_stack_scratch.begin()));
+		reverse_node(&m_asts, reinterpret_cast<ast::raw::Node*>(m_ast_scratch.begin() + *m_stack_scratch.begin()));
 
 		m_ast_scratch.reset();
 
 		m_stack_scratch.reset();
 
-		return ast::raw::Tree{ reinterpret_cast<ast::raw::NodeHeader*>(m_asts.begin() + tree_offset), m_asts.used() - tree_offset };
+		return ast::raw::Tree{ reinterpret_cast<ast::raw::Node*>(m_asts.begin() + tree_offset), m_asts.used() - tree_offset };
 	}
 
 	const IdentifierMap* identifiers() const noexcept
