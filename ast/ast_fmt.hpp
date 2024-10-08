@@ -13,25 +13,25 @@ namespace ast::raw
 		{
 			fprintf(out, "%*s%s", nesting * 2, "", node_type_name(node->type));
 
-			if (node->type == ast::NodeType::Definition)
+			if (node->type == ast::raw::NodeType::Definition)
 			{
 				const IdentifierMapEntry* entry = identifiers->value_from(*reinterpret_cast<const u32*>(node + 1));
 
 				fprintf(out, " [%.*s]", entry->m_length, entry->m_chars);
 			}
-			else if (node->type == ast::NodeType::ValIdentifer)
+			else if (node->type == ast::raw::NodeType::ValIdentifer)
 			{
 				const IdentifierMapEntry* entry = identifiers->value_from(*reinterpret_cast<const u32*>(node + 1));
 				
 				fprintf(out, " [%.*s]", entry->m_length, entry->m_chars);
 			}
-			else if (node->type == ast::NodeType::ValString)
+			else if (node->type == ast::raw::NodeType::ValString)
 			{
 				const IdentifierMapEntry* entry = identifiers->value_from(*reinterpret_cast<const u32*>(node + 1));
 
 				fprintf(out, " [\"%.*s\"]", entry->m_length, entry->m_chars);
 			}
-			else if (node->type == ast::NodeType::ValChar)
+			else if (node->type == ast::raw::NodeType::ValChar)
 			{
 				u32 value = *reinterpret_cast<const u32*>(node + 1);
 
@@ -40,7 +40,7 @@ namespace ast::raw
 				else
 					fprintf(out, " [U+%06X]", value);
 			}
-			else if (node->type == ast::NodeType::ValInteger)
+			else if (node->type == ast::raw::NodeType::ValInteger)
 			{
 				u64 value;
 
@@ -53,7 +53,7 @@ namespace ast::raw
 
 				fprintf(out, " [%llu]", value);
 			}
-			else if (node->type == ast::NodeType::ValFloat)
+			else if (node->type == ast::raw::NodeType::ValFloat)
 			{
 				f64 value;
 
