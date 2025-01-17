@@ -1,9 +1,10 @@
 #include "common.hpp"
 
-#include "minos.hpp"
 #include <cstdio>
 #include <cstdarg>
 #include <intrin.h>
+
+#include "minos.hpp"
 
 #ifndef NDEBUG
 	__declspec(noreturn) void assert_unreachable_helper() noexcept

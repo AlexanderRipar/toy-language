@@ -113,6 +113,34 @@ public:
 		return m_end - m_begin;
 	}
 
+	Range<T> subrange(uint begin) const noexcept
+	{
+		ASSERT_OR_IGNORE(begin <= count());
+
+		return { m_begin + begin, m_end };
+	}
+
+	Range<T> subrange(uint begin, uint count) const noexcept
+	{
+		ASSERT_OR_IGNORE(begin + count <= count());
+
+		return { m_begin + begin, count };
+	}
+
+	MutRange<T> mut_subrange(uint begin) noexcept
+	{
+		ASSERT_OR_IGNORE(begin <= count());
+
+		return { m_begin + begin, m_end };
+	}
+
+	MutRange<T> mut_subrange(uint begin, uint count) noexcept
+	{
+		ASSERT_OR_IGNORE(begin + count <= count());
+
+		return { m_begin + begin, count };
+	}
+
 	MutRange<byte> as_mut_byte_range() noexcept
 	{
 		return { reinterpret_cast<byte*>(m_begin), count() * sizeof(T) };
@@ -121,6 +149,13 @@ public:
 	Range<byte> as_byte_range() const noexcept
 	{
 		return { reinterpret_cast<const byte*>(m_begin), count() * sizeof(T) };
+	}
+
+	void fill(Range<T> src) noexcept
+	{
+		ASSERT_OR_IGNORE(count() >= src.count());
+
+		memcpy(m_begin, src.begin(), src.count() * sizeof(T));
 	}
 };
 

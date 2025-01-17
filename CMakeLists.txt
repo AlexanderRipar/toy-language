@@ -6,13 +6,24 @@ project(compil0r)
 
 add_executable(
 	compil0r main.cpp
-	range.hpp
-	memory.hpp
-	token.hpp
-	reader.hpp
-	common.hpp common.cpp
-	minos.hpp minos.cpp
+
+	infra/common.hpp infra/common.cpp
+	infra/hash.hpp
+	infra/minos.hpp infra/minos.cpp
+	infra/range.hpp
+	infra/container.hpp
+	infra/threading.hpp
+
+	error.hpp error.cpp
 	config.hpp config.cpp
+
+	pass/ast.hpp
+	pass/pass_data.hpp pass/pass_data.cpp
+	pass/read.cpp
+	pass/parse.cpp
+
+	diag/inc.hpp
+	diag/print_ast.cpp
 )
 
 target_link_libraries(compil0r PRIVATE synchronization)

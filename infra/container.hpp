@@ -1,7 +1,8 @@
-#ifndef STRUCTURE_INCLUDE_GUARD
-#define STRUCTURE_INCLUDE_GUARD
+#ifndef CONTAINER_INCLUDE_GUARD
+#define CONTAINER_INCLUDE_GUARD
 
 #include <cstring>
+#include <cstddef>
 
 #include "common.hpp"
 #include "minos.hpp"
@@ -33,7 +34,7 @@ private:
 
 		const Index new_commit = next_multiple(static_cast<Index>(required_commit), m_commit_increment);
 
-		if (!minos::commit(m_memory + m_committed, (new_commit - m_committed) * sizeof(T)))
+		if (!minos::mem_commit(m_memory + m_committed, (new_commit - m_committed) * sizeof(T)))
 			panic("Could not allocate additional memory (%llu bytes - error 0x%X)\n", (new_commit - m_committed) * sizeof(T), minos::last_error());
 
 		m_committed = new_commit;
@@ -41,16 +42,10 @@ private:
 
 public:
 
-	ReservedVec() noexcept :
-		m_memory{ nullptr },
-		m_used{ 0 },
-		m_committed{ 0 },
-		m_commit_increment{ 0 },
-		m_reserved{ 0 }
-	{}
+	ReservedVec(ReservedVec&) noexcept = delete;
 
 	ReservedVec(Index reserve, Index commit_increment) noexcept :
-		m_memory{ static_cast<T*>(minos::reserve(reserve * sizeof(T))) },
+		m_memory{ static_cast<T*>(minos::mem_reserve(reserve * sizeof(T))) },
 		m_used{ 0 },
 		m_committed{ commit_increment },
 		m_commit_increment{ commit_increment },
@@ -61,7 +56,7 @@ public:
 		if (m_memory == nullptr)
 			panic("Could not reserve memory (%llu bytes - error 0x%X)\n", reserve * sizeof(T), minos::last_error());
 
-		if (!minos::commit(m_memory, m_committed * sizeof(T)))
+		if (!minos::mem_commit(m_memory, m_committed * sizeof(T)))
 			panic("Could not commit initial memory (%llu bytes - error 0x%X)\n", m_committed * sizeof(T), minos::last_error());
 	}
 
@@ -147,7 +142,7 @@ public:
 	{
 		ASSERT_OR_IGNORE(m_memory != nullptr);
 
-		minos::unreserve(m_memory);
+		minos::mem_unreserve(m_memory);
 
 		m_memory = nullptr;
 	}
@@ -156,7 +151,7 @@ public:
 	{
 		ASSERT_OR_IGNORE(begin >= m_memory && static_cast<byte*>(begin) + count < m_memory + m_committed);
 
-		minos::decommit(begin, count);
+		minos::mem_decommit(begin, count);
 	}
 
 	void free_region(void* begin, void* end) noexcept
@@ -266,7 +261,7 @@ private:
 			if (new_commit > m_value_capacity)
 				new_commit = m_value_capacity;
 
-			if (!minos::commit(reinterpret_cast<byte*>(m_values) + m_value_commit * V::stride(), (new_commit - m_value_commit) * V::stride()))
+			if (!minos::mem_commit(reinterpret_cast<byte*>(m_values) + m_value_commit * V::stride(), (new_commit - m_value_commit) * V::stride()))
 				panic("Could not commit additional memory for IndexMap values (0x%X)\n", minos::last_error());
 
 			m_value_commit = new_commit;
@@ -290,7 +285,7 @@ private:
 
 		const u32 lookup_and_offset_bytes = m_lookup_commit * (sizeof(*m_lookups) + sizeof(*m_offsets));
 
-		if (!minos::commit(reinterpret_cast<byte*>(m_lookups) + lookup_and_offset_bytes, lookup_and_offset_bytes))
+		if (!minos::mem_commit(reinterpret_cast<byte*>(m_lookups) + lookup_and_offset_bytes, lookup_and_offset_bytes))
 			panic("Could not commit additional memory for IndexMap lookups and offsets (0x%X)\n", minos::last_error());
 
 		memset(m_lookups, 0, m_lookup_commit * (sizeof(*m_lookups) + sizeof(*m_offsets)));
@@ -355,7 +350,7 @@ private:
 public:
 
 	IndexMap(u32 lookup_capacity, u32 lookup_commit, u32 value_capacity, u32 value_commit, u32 value_commit_increment) noexcept :
-		m_lookups{ static_cast<u16*>(minos::reserve(lookup_capacity * (sizeof(*m_lookups) + sizeof(*m_offsets)) + value_capacity * V::stride())) },
+		m_lookups{ static_cast<u16*>(minos::mem_reserve(lookup_capacity * (sizeof(*m_lookups) + sizeof(*m_offsets)) + value_capacity * V::stride())) },
 		m_offsets{ reinterpret_cast<u32*>(m_lookups + lookup_commit) },
 		m_values{ reinterpret_cast<V*>(reinterpret_cast<byte*>(m_lookups) + lookup_capacity * (sizeof(*m_lookups) + sizeof(*m_offsets))) },
 		m_lookup_used{ 0 },
@@ -381,10 +376,10 @@ public:
 		if (m_lookups == nullptr)
 			panic("Could not reserve memory for IndexMap (0x%X)\n", minos::last_error());
 
-		if (!minos::commit(m_lookups, lookup_commit * (sizeof(*m_lookups) + sizeof(*m_offsets))))
+		if (!minos::mem_commit(m_lookups, lookup_commit * (sizeof(*m_lookups) + sizeof(*m_offsets))))
 			panic("Could not commit initial memory for IndexMap lookups and offsets (0x%X)\n", minos::last_error());
 
-		if (!minos::commit(m_values, value_commit * V::stride()))
+		if (!minos::mem_commit(m_values, value_commit * V::stride()))
 			panic("Could not commit initial memory for IndexMap offsets (0x%X)\n", minos::last_error());
 	}
 
@@ -488,51 +483,4 @@ public:
 	}
 };
 
-template<typename Length, u32 STRIDE>
-struct IndexMapStringKey
-{
-	u32 m_hash;
-
-	Length m_length;
-
-#pragma warning(push)
-#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
-	char8 m_chars[];
-#pragma warning(pop)
-
-	static constexpr u32 stride() noexcept
-	{
-		return STRIDE;
-	}
-
-	static u32 required_strides(Range<char8> key) noexcept
-	{
-		return static_cast<u32>((offsetof(IndexMapStringKey, m_chars) + key.count() + stride() - 1) / stride());
-	}
-
-	u32 used_strides() const noexcept
-	{
-		return static_cast<u32>((offsetof(IndexMapStringKey, m_chars) + m_length + stride() - 1) / stride());
-	}
-
-	bool equal_to_key(Range<char8> key, u32 key_hash) const noexcept
-	{
-		return m_hash == key_hash && key.count() == m_length && memcmp(key.begin(), m_chars, m_length) == 0;
-	}
-
-	void init(Range<char8> key, u32 key_hash) noexcept
-	{
-		m_hash = key_hash;
-
-		m_length = static_cast<Length>(key.count());
-
-		memcpy(m_chars, key.begin(), key.count());
-	}
-
-	Range<char8> range() const noexcept
-	{
-		return Range<char8>{ m_chars, m_length };
-	}
-};
-
-#endif // STRUCTURE_INCLUDE_GUARD
+#endif // CONTAINER_INCLUDE_GUARD

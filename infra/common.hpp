@@ -35,18 +35,6 @@ using f64 = double;
 	#define ASSERT_UNREACHABLE assert_unreachable_helper()
 #endif
 
-template<typename T, typename U>
-struct Pair
-{
-	T first;
-
-	U second;
-
-	constexpr Pair() noexcept = default;
-
-	constexpr Pair(T first, U second) noexcept : first{ first }, second{ second } {}
-};
-
 template<typename T>
 static constexpr inline bool is_pow2(T n) noexcept
 {

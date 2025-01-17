@@ -1,8 +1,8 @@
-#include "common.hpp"
 #include "config.hpp"
-#include "parser.hpp"
-#include "reader.hpp"
-#include "ast/ast_fmt.hpp"
+#include "pass/pass_data.hpp"
+#include "diag/inc.hpp"
+#include "infra/hash.hpp"
+
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
@@ -27,21 +27,19 @@ s32 main(s32 argc, const char8** argv)
 
 		print_config(&config);
 
-		Reader reader{};
+		Globals parse_data{};
 
-		Parser parser{};
-
-		reader.read(config.entrypoint.filepath, parser.index_from_string(config.entrypoint.filepath));
+		read::request_read(&parse_data, config.entrypoint.filepath, parse_data.identifiers.index_from(config.entrypoint.filepath, fnv1a(config.entrypoint.filepath.as_byte_range())));
 
 		SourceFile file;
 
-		while (reader.await_completed_read(&file))
+		while (read::await_completed_read(&parse_data, &file))
 		{
-			ast::raw::Tree tree = parser.parse(file);
+			ast::Tree tree = parse(&parse_data, file);
 
-			reader.release_read(file);
+			read::release_read(&parse_data, file);
 
-			ast::raw::format(stderr, &tree, parser.identifiers());
+			diag::print_ast(stderr, &tree, &parse_data);
 		}
 
 		deinit_config(&config);

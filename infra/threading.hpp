@@ -1,8 +1,9 @@
 #ifndef THREADING_INCLUDE_GUARD
 #define THREADING_INCLUDE_GUARD
 
-#include "minos.hpp"
 #include <atomic>
+
+#include "minos.hpp"
 
 namespace thd
 {

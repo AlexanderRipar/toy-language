@@ -1,11 +1,12 @@
 #include "config.hpp"
 
-#include "minos.hpp"
-#include "structure.hpp"
+#include "infra/minos.hpp"
+#include "infra/container.hpp"
 #include "error.hpp"
 
 #include <type_traits>
 #include <cstdio>
+#include <cstdarg>
 
 struct ConfigHeader;
 
@@ -139,11 +140,9 @@ struct ConfigParser
 {
 private:
 
-	ReservedVec<byte, u64> m_heap;
+	ReservedVec<byte> m_heap;
 
-	Range<char8> m_source;
-
-	ErrorHandler m_error;
+	Range<char8> m_content;
 
 	const char8* m_curr;
 
@@ -153,9 +152,20 @@ private:
 
 	u32 m_context_top;
 
-	const ConfigHeader* m_context_stack[8];
-	
+	const Range<char8> m_filepath;
 
+	const ConfigHeader* m_context_stack[8];
+
+
+
+	__declspec(noreturn) void error(u64 offset, const char8* format, ...) const noexcept
+	{
+		va_list args;
+
+		va_start(args, format);
+
+		vsource_error(offset, m_content, m_filepath, format, args);
+	}
 
 	static bool name_equal(Range<char8> text, const char8* name) noexcept
 	{
@@ -241,7 +251,7 @@ private:
 					m_curr += 1;
 
 				if (m_curr == token_beg + 2)
-					m_error.log(m_curr - m_source.begin(), "Expected at least one digit after hexadecimal prefix '0x'\n");
+					error(m_curr - m_content.begin(), "Expected at least one digit after hexadecimal prefix '0x'\n");
 			}
 			else if (*m_curr == 'o')
 			{
@@ -251,7 +261,7 @@ private:
 					m_curr += 1;
 
 				if (m_curr == token_beg + 2)
-					m_error.log(m_curr - m_source.begin(), "Expected at least one digit after octal prefix '0o'\n");
+					error(m_curr - m_content.begin(), "Expected at least one digit after octal prefix '0o'\n");
 			}
 			else if (*m_curr == 'b')
 			{
@@ -261,7 +271,7 @@ private:
 					m_curr += 1;
 
 				if (m_curr == token_beg + 2)
-					m_error.log(m_curr - m_source.begin(), "Expected at least one digit after binary prefix '0b'\n");
+					error(m_curr - m_content.begin(), "Expected at least one digit after binary prefix '0b'\n");
 			}
 			else
 			{
@@ -275,7 +285,7 @@ private:
 				m_curr += 1;
 
 			if (is_dec_digit(*m_curr) || is_alpha(*m_curr))
-				m_error.log(m_curr - m_source.begin(), "Unexpected character '%c' in number\n", *m_curr);
+				error(m_curr - m_content.begin(), "Unexpected character '%c' in number\n", *m_curr);
 
 			return { ConfigToken::Type::Integer, { token_beg, m_curr } };
 		}
@@ -290,8 +300,8 @@ private:
 		}
 		else if (first < ' ')
 		{
-			if (first != '\0' || m_curr != m_source.end())
-				m_error.log(m_curr - m_source.begin(), "Unexpected control character U+%02X in config file\n", first);
+			if (first != '\0' || m_curr != m_content.end())
+				error(m_curr - m_content.begin(), "Unexpected control character U+%02X in config file\n", first);
 
 			return { ConfigToken::Type::End };
 		}
@@ -312,7 +322,7 @@ private:
 					}
 					else if (*m_curr == '\0')
 					{
-						m_error.log(token_beg - m_source.begin(), "String not ended before end of file\n");
+						error(token_beg - m_content.begin(), "String not ended before end of file\n");
 					}
 
 					m_curr += 1;
@@ -332,7 +342,7 @@ private:
 					}
 					else if (*m_curr == '\0' || *m_curr == '\r' || *m_curr == '\n')
 					{
-						m_error.log(token_beg - m_source.begin(), "Single-line string not ended before end of line\n");
+						error(token_beg - m_content.begin(), "Single-line string not ended before end of line\n");
 					}
 
 					m_curr += 1;
@@ -356,7 +366,7 @@ private:
 					}
 					else if (*m_curr == '\0')
 					{
-						m_error.log(token_beg - m_source.begin(), "String not ended before end of file\n");
+						error(token_beg - m_content.begin(), "String not ended before end of file\n");
 					}
 					else if (*m_curr == '\\')
 					{
@@ -380,7 +390,7 @@ private:
 					}
 					else if (*m_curr == '\0' || *m_curr == '\r' || *m_curr == '\n')
 					{
-						m_error.log(token_beg - m_source.begin(), "Single-line string not ended before end of line\n");
+						error(token_beg - m_content.begin(), "Single-line string not ended before end of line\n");
 					}
 					else if (*m_curr == '\\')
 					{
@@ -433,7 +443,7 @@ private:
 			return { ConfigToken::Type::Comma, {token_beg, m_curr } };
 
 		default:
-			m_error.log(token_beg - m_source.begin(), "Unexpected character '%c' (U+%02X)\n", first, first);
+			error(token_beg - m_content.begin(), "Unexpected character '%c' (U+%02X)\n", first, first);
 		}
 
 		ASSERT_UNREACHABLE;
@@ -459,14 +469,14 @@ private:
 		ASSERT_OR_IGNORE(token.type == ConfigToken::Type::Identity);
 
 		if (m_context_top == array_count(m_context_stack))
-			m_error.log(token.content.begin() - m_source.begin(), "Key nesting limit exceeded\n");
+			error(token.content.begin() - m_content.begin(), "Key nesting limit exceeded\n");
 
 		ASSERT_OR_IGNORE(m_context_top != 0);
 
 		const ConfigHeader* const context = m_context_stack[m_context_top - 1];
 
 		if (context->type != ConfigHeader::Type::Container)
-			m_error.log(token.content.begin() - m_source.begin(), "Tried assigning to key '%.*s' that does not expect subkeys\n", static_cast<u32>(token.content.count()), token.content.begin());
+			error(token.content.begin() - m_content.begin(), "Tried assigning to key '%.*s' that does not expect subkeys\n", static_cast<u32>(token.content.count()), token.content.begin());
 
 		for (const ConfigHeader& child : context->container.children)
 		{
@@ -480,7 +490,7 @@ private:
 			}
 		}
 
-		m_error.log(token.content.begin() - m_source.begin(), "Key '%.*s' does not exist in '%s'\n", static_cast<u32>(token.content.count()), token.content.begin(), context->name);
+		error(token.content.begin() - m_content.begin(), "Key '%.*s' does not exist in '%s'\n", static_cast<u32>(token.content.count()), token.content.begin(), context->name);
 	}
 
 	void pop_names(u32 count) noexcept
@@ -499,7 +509,7 @@ private:
 			const ConfigToken identity = next();
 
 			if (identity.type != ConfigToken::Type::Identity)
-				m_error.log(identity.content.begin() - m_source.begin(), "Expcted key but got '%.*s'\n", static_cast<u32>(identity.content.count()), identity.content.begin());
+				error(identity.content.begin() - m_content.begin(), "Expcted key but got '%.*s'\n", static_cast<u32>(identity.content.count()), identity.content.begin());
 
 			parse_name_element(identity);
 
@@ -521,7 +531,7 @@ private:
 		switch (token.type)
 		{
 		case ConfigToken::Type::BracketBeg:
-			m_error.log(token.content.begin() - m_source.begin(), "Arrays are currently not supported");
+			error(token.content.begin() - m_content.begin(), "Arrays are currently not supported");
 
 		case ConfigToken::Type::CurlyBeg:
 			parse_inline_table();
@@ -545,7 +555,7 @@ private:
 			return parse_multiline_literal_string();
 
 		default:
-			m_error.log(token.content.begin() - m_source.begin(), "Expected a value but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
+			error(token.content.begin() - m_content.begin(), "Expected a value but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
 		}
 	}
 
@@ -572,7 +582,7 @@ private:
 			token = peek();
 
 			if (token.type != ConfigToken::Type::Set)
-				m_error.log(token.content.begin() - m_source.begin(), "Expected '=' but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
+				error(token.content.begin() - m_content.begin(), "Expected '=' but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
 
 			parse_value();
 
@@ -583,7 +593,7 @@ private:
 			if (token.type == ConfigToken::Type::CurlyEnd)
 				return;
 			else if (token.type != ConfigToken::Type::Comma)
-				m_error.log(token.content.begin() - m_source.begin(), "Expected '}' or ',' but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
+				error(token.content.begin() - m_content.begin(), "Expected '}' or ',' but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
 		}
 	}
 
@@ -602,10 +612,10 @@ private:
 		else if (name_equal(token.content, "false"))
 			value = false;
 		else
-			m_error.log(token.content.begin() - m_source.begin(), "Expected a value but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
+			error(token.content.begin() - m_content.begin(), "Expected a value but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
 
 		if (context->type != ConfigHeader::Type::Boolean)
-			m_error.log(token.content.begin() - m_source.begin(), "Cannot assign boolean to key '%s' expecting different value\n", context->name);
+			error(token.content.begin() - m_content.begin(), "Cannot assign boolean to key '%s' expecting different value\n", context->name);
 
 		*reinterpret_cast<bool*>(reinterpret_cast<byte*>(m_out) + context->target_offset) = value;
 	}
@@ -619,7 +629,7 @@ private:
 		const ConfigHeader* const context = m_context_stack[m_context_top - 1];
 
 		if (context->type != ConfigHeader::Type::Integer)
-			m_error.log(token.content.begin() - m_source.begin(), "Cannot assign integer to key '%s' expecting different value\n", context->name);
+			error(token.content.begin() - m_content.begin(), "Cannot assign integer to key '%s' expecting different value\n", context->name);
 
 		const Range<char8> text = token.content;
 
@@ -732,7 +742,7 @@ private:
 		const ConfigHeader* const context = m_context_stack[m_context_top - 1];
 
 		if (context->type != ConfigHeader::Type::String)
-			m_error.log(string.begin() - m_source.begin(), "Cannot assign string to key '%s' expecting different value\n", context->name);
+			error(string.begin() - m_content.begin(), "Cannot assign string to key '%s' expecting different value\n", context->name);
 
 		if (string[0] == '\n')
 			string = Range{ string.begin() + 1, string.end() };
@@ -787,7 +797,7 @@ private:
 		const ConfigHeader* const context = m_context_stack[m_context_top - 1];
 
 		if (context->type != ConfigHeader::Type::String)
-			m_error.log(string.begin() - m_source.begin(), "Cannot assign string to key '%s' expecting different value\n", context->name);
+			error(string.begin() - m_content.begin(), "Cannot assign string to key '%s' expecting different value\n", context->name);
 
 		if (string[0] == '\n')
 			string = Range{ string.begin() + 1, string.end() };
@@ -796,9 +806,9 @@ private:
 
 		void* const allocation_begin = m_heap.begin() + m_heap.used();
 		
-		m_heap.append_exact(string.begin(), string.count());
+		m_heap.append_exact(string.begin(), static_cast<u32>(string.count()));
 
-		const Range<char8> value = { static_cast<const char8*>(allocation_begin), string.count() };
+		const Range<char8> value = { static_cast<const char8*>(allocation_begin), static_cast<u32>(string.count()) };
 
 		*reinterpret_cast<Range<char8>*>(reinterpret_cast<byte*>(m_out) + context->target_offset) = value;
 	}
@@ -879,14 +889,14 @@ private:
 		// FALLTHROUGH
 
 		default:
-			m_error.log(text.begin() - m_source.begin(), "Unexpected escape sequence '\\%c'\n", text[1]); 
+			error(text.begin() - m_content.begin(), "Unexpected escape sequence '\\%c'\n", text[1]); 
 		}
 	}
 
 	void parse_unicode_escape_sequence(Range<char8> text, u32 escape_chars, CodepointBuffer* out) noexcept
 	{
 		if (text.count() < escape_chars)
-			m_error.log(text.begin() - m_source.begin(), escape_chars == 4 ? "\\u escape expects four hex digits but got %llu" : "\\U escape expects eight hex digits but got %llu\n", text.count());
+			error(text.begin() - m_content.begin(), escape_chars == 4 ? "\\u escape expects four hex digits but got %llu" : "\\U escape expects eight hex digits but got %llu\n", text.count());
 
 		u32 utf32 = 0;
 
@@ -901,7 +911,7 @@ private:
 			else if (c >= 'A' && c <= 'F')
 				utf32 = utf32 * 16 + c - 'A' + 10;
 			else
-				m_error.log(text.begin() + i - m_source.begin(), "Expected hexadecimal escape character but got '%c'\n", c);
+				error(text.begin() + i - m_content.begin(), "Expected hexadecimal escape character but got '%c'\n", c);
 		}
 
 		if (utf32 <= 0x7F)
@@ -936,24 +946,24 @@ private:
 		}
 		else
 		{
-			m_error.log(text.begin() - m_source.begin(), "Escaped codepoint is larger than the maximum unicode codepoint (0x10FFFF)");
+			error(text.begin() - m_content.begin(), "Escaped codepoint is larger than the maximum unicode codepoint (0x10FFFF)");
 		}
 	}
 
 public:
 
 	ConfigParser(Range<char8> filepath) noexcept :
-		m_heap{},
-		m_source{},
-		m_error{},
+		m_heap{ 262144, 16384 },
+		m_content{},
 		m_peek{},
 		m_out{},
 		m_context_top{ 1 },
-		m_context_stack{ &CONFIG }
+		m_context_stack{ &CONFIG },
+		m_filepath{ filepath }
 	{
 		minos::FileHandle filehandle;
 
-		if (!minos::file_create(filepath, minos::Access::Read, minos::CreateMode::Open, minos::AccessPattern::Sequential, minos::SyncMode::Synchronous, &filehandle))
+		if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, minos::SyncMode::Synchronous, false, &filehandle))
 			panic("Could not open config file '%.*s' (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
 
 		minos::FileInfo fileinfo;
@@ -961,24 +971,28 @@ public:
 		if (!minos::file_get_info(filehandle, &fileinfo))
 			panic("Could not determine length of config file '%.*s' (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
 
-		if (fileinfo.file_bytes > UINT32_MAX)
-			panic("Length of config file '%.*s' (%llu bytes) exceeds the maximum size of 4GB", static_cast<u32>(filepath.count()), filepath.begin(), fileinfo.file_bytes);
-	
-		m_heap = { fileinfo.file_bytes + 1 + 262144, 16384 };
+		if (fileinfo.bytes > UINT32_MAX)
+			panic("Length of config file '%.*s' (%llu bytes) exceeds the maximum size of 4GB", static_cast<u32>(filepath.count()), filepath.begin(), fileinfo.bytes);
 
-		m_heap.reserve_exact(fileinfo.file_bytes + 1);
+		m_heap.reserve_exact(static_cast<u32>(fileinfo.bytes + 1));
 
-		m_source = { reinterpret_cast<const char8*>(m_heap.begin()), fileinfo.file_bytes + 1 };
+		char8* buffer = static_cast<char8*>(minos::mem_reserve(fileinfo.bytes + 1));
 
-		m_heap.begin()[fileinfo.file_bytes] = '\0';
+		if (buffer == nullptr)
+			panic("Could not reserve buffer of %llu bytes for reading config file (0x%X)\n", fileinfo.bytes + 1, minos::last_error());
 
-		m_error.prime(filepath, m_source);
+		if (!minos::mem_commit(buffer, fileinfo.bytes + 1))
+			panic("Could not commit buffer of %llu bytes for reading config file (0x%X)\n", fileinfo.bytes + 1, minos::last_error());
 
-		m_curr = m_source.begin();
+		buffer[fileinfo.bytes] = '\0';
+
+		m_content = { buffer, fileinfo.bytes + 1 };
+
+		m_curr = m_content.begin();
 
 		minos::Overlapped overlapped{};
 
-		if (!minos::file_read(filehandle, m_heap.begin(), static_cast<u32>(fileinfo.file_bytes), &overlapped))
+		if (!minos::file_read(filehandle, buffer, static_cast<u32>(fileinfo.bytes), &overlapped))
 			panic("Could not read config file '%.*s' (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
 
 		minos::file_close(filehandle);
@@ -1009,7 +1023,7 @@ public:
 				token = next();
 
 				if (token.type != ConfigToken::Type::BracketEnd)
-					m_error.log(token.content.begin() - m_source.begin(), "Expected ']' but got %.*s\n", static_cast<u32>(token.content.count()), token.content.begin());
+					error(token.content.begin() - m_content.begin(), "Expected ']' but got %.*s\n", static_cast<u32>(token.content.count()), token.content.begin());
 
 				break;
 			}
@@ -1021,7 +1035,7 @@ public:
 				token = next();
 
 				if (token.type != ConfigToken::Type::Set)
-					m_error.log(token.content.begin() - m_source.begin(), "Expected '=' or '.' but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
+					error(token.content.begin() - m_content.begin(), "Expected '=' or '.' but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
 				
 				parse_value();
 
@@ -1038,12 +1052,14 @@ public:
 			}
 
 			case ConfigToken::Type::DoubleBracketBeg:
-				m_error.log(token.content.begin() - m_source.begin(), "Arrays of Tables are not currently supported\n");
+				error(token.content.begin() - m_content.begin(), "Arrays of Tables are not currently supported\n");
 
 			default:
 				ASSERT_UNREACHABLE;
 			}
 		}
+
+		minos::mem_unreserve(const_cast<char8*>(m_content.begin()));
 	}
 };
 
@@ -1060,7 +1076,7 @@ void deinit_config(Config* config) noexcept
 {
 	ASSERT_OR_IGNORE(config->m_heap_ptr != nullptr);
 
-	minos::unreserve(config->m_heap_ptr);
+	minos::mem_unreserve(config->m_heap_ptr);
 
 	config->m_heap_ptr = nullptr;
 }
