@@ -327,6 +327,10 @@ namespace minos
 
 	[[nodiscard]] u64 timestamp_ticks_per_second() noexcept;
 
+	[[nodiscard]] u64 exact_timestamp() noexcept;
+
+	[[nodiscard]] u64 exact_timestamp_ticks_per_second() noexcept;
+
 	Range<Range<char8>> command_line_get() noexcept;
 }
 
