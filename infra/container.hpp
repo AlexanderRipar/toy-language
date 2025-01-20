@@ -3,6 +3,7 @@
 
 #include <cstring>
 #include <cstddef>
+#include <limits>
 
 #include "common.hpp"
 #include "minos.hpp"
@@ -42,22 +43,25 @@ private:
 
 public:
 
-	ReservedVec(ReservedVec&) noexcept = delete;
-
-	ReservedVec(Index reserve, Index commit_increment) noexcept :
-		m_memory{ static_cast<T*>(minos::mem_reserve(reserve * sizeof(T))) },
-		m_used{ 0 },
-		m_committed{ commit_increment },
-		m_commit_increment{ commit_increment },
-		m_reserved{ reserve }
+	void init(Index reserve, Index commit_increment) noexcept
 	{
 		ASSERT_OR_IGNORE(reserve >= commit_increment);
+
+		m_memory = static_cast<T*>(minos::mem_reserve(reserve * sizeof(T)));
 
 		if (m_memory == nullptr)
 			panic("Could not reserve memory (%llu bytes - error 0x%X)\n", reserve * sizeof(T), minos::last_error());
 
-		if (!minos::mem_commit(m_memory, m_committed * sizeof(T)))
-			panic("Could not commit initial memory (%llu bytes - error 0x%X)\n", m_committed * sizeof(T), minos::last_error());
+		if (!minos::mem_commit(m_memory, commit_increment * sizeof(T)))
+			panic("Could not commit initial memory (%llu bytes - error 0x%X)\n", commit_increment * sizeof(T), minos::last_error());
+
+		m_used = 0;
+
+		m_committed = commit_increment;
+
+		m_commit_increment = commit_increment;
+
+		m_reserved = reserve;
 	}
 
 	void append(const T& data) noexcept
@@ -126,9 +130,20 @@ public:
 		return result;
 	}
 
-	void reset() noexcept
+	void reset(Index preserved_commit = std::numeric_limits<T>::max()) noexcept
 	{
 		m_used = 0;
+		
+		if (preserved_commit > m_committed)
+			return;
+
+		const u32 page_bytes = minos::page_bytes();
+
+		const u32 target_commit = (preserved_commit + page_bytes - 1) & ~(page_bytes - 1);
+
+		minos::mem_decommit(reinterpret_cast<byte*>(m_memory) + target_commit, m_committed - target_commit);
+
+		m_committed = target_commit;
 	}
 
 	void pop(Index count) noexcept

@@ -1,11 +1,15 @@
 cmake_minimum_required(VERSION 3.22)
 
+add_subdirectory(test)
+
 project(compil0r)
 
 
 
 add_executable(
 	compil0r main.cpp
+
+	ast2.hpp ast2.cpp
 
 	infra/common.hpp infra/common.cpp
 	infra/hash.hpp

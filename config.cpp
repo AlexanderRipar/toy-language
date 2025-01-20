@@ -953,7 +953,6 @@ private:
 public:
 
 	ConfigParser(Range<char8> filepath) noexcept :
-		m_heap{ 262144, 16384 },
 		m_content{},
 		m_peek{},
 		m_out{},
@@ -961,6 +960,8 @@ public:
 		m_context_stack{ &CONFIG },
 		m_filepath{ filepath }
 	{
+		m_heap.init(262144, 16384);
+
 		minos::FileHandle filehandle;
 
 		if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, minos::SyncMode::Synchronous, false, &filehandle))

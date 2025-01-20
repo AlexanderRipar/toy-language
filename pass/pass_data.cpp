@@ -51,12 +51,16 @@ static u32 read_completion_thread_proc(void* param) noexcept
 
 Globals::Globals() noexcept :
 	identifiers{ 1 << 24, 1 << 14, 1 << 28, 1 << 16, 1 << 16 },
-	asts{ 1ui64 << 31, 1ui64 << 17 },
-	values{ 1ui64 << 31, 1ui64 << 17 },
-	ast_scratch{ 1ui64 << 31, 1ui64 << 17 },
-	stack_scratch{ 1ui64 << 31, 1ui64 << 17 },
 	read{ {}, { read.reads, static_cast<u32>(array_count(read.reads)) }, { 0 }, { 0 } }
 {
+	asts.init(1ui64 << 31, 1ui64 << 17);
+
+	values.init(1ui64 << 31, 1ui64 << 17);
+
+	ast_scratch.init(1ui64 << 31, 1ui64 << 17);
+
+	stack_scratch.init(1ui64 << 31, 1ui64 << 17);
+
 	static constexpr u64 SHM_BYTES = 1ui64 << 31;
 
 	for (u32 i = 0; i != array_count(KEYWORDS); ++i)
