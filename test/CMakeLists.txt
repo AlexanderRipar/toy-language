@@ -2,8 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 project(test)
 
-add_executable(
-	test test_main.cpp
+add_executable(test test_main.cpp
 	test_helpers.hpp
 	ast2_tests.cpp
 
@@ -52,3 +51,7 @@ else()
 		-g
 	)
 endif()
+
+add_custom_target(run-tests COMMAND test)
+
+add_dependencies(run-tests test)

@@ -40,10 +40,10 @@ s32 main() noexcept
 
 	const u64 duration = minos::exact_timestamp() - start;
 
-	if (g_failure_count != 0)
-		fprintf(stderr, "%u tests failed. Rerun under a debugger to trigger the relevant breakpoints.\n", g_failure_count);
-
 	const TimeDesc rd = readable_time(duration, minos::exact_timestamp_ticks_per_second());
 
-	fprintf(stdout, "Done in %.1f %s\n", rd.count, rd.unit);
+	if (g_failure_count != 0)
+		fprintf(stderr, "%u out of %llu tests failed in %.1f %s. Rerun under a debugger to trigger the relevant breakpoints.\n", g_failure_count, g_test_times.size(), rd.count, rd.unit);
+	else
+		fprintf(stdout, "All %llu tests passed in %.1f %s\n", g_test_times.size(), rd.count, rd.unit);
 }
