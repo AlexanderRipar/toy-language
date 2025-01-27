@@ -27,19 +27,29 @@ s32 main(s32 argc, const char8** argv)
 
 		print_config(&config);
 
-		Globals parse_data{};
+		AllocPool* const pool = create_alloc_pool(1u << 24, 1u << 18);
 
-		read::request_read(&parse_data, config.entrypoint.filepath, parse_data.identifiers.index_from(config.entrypoint.filepath, fnv1a(config.entrypoint.filepath.as_byte_range())));
+		IdentifierPool* const identifiers = create_identifier_pool(pool);
+
+		Parser* const parser = create_parser(pool, identifiers);
+
+		SourceReader* const reader = create_source_reader(pool);
+
+		request_read(reader, config.entrypoint.filepath, id_from_identifier(identifiers, config.entrypoint.filepath));
 
 		SourceFile file;
 
-		while (read::await_completed_read(&parse_data, &file))
+		ReservedVec<u32> asts;
+
+		asts.init(1u << 31, 1u << 18);
+
+		while (await_completed_read(reader, &file))
 		{
-			ast::Tree tree = parse(&parse_data, file);
+			a2::Node* root = parse(parser, file, &asts);
 
-			read::release_read(&parse_data, file);
+			release_read(reader, file);
 
-			diag::print_ast(stderr, &tree, &parse_data);
+			diag::print_ast(stderr, root);
 		}
 
 		deinit_config(&config);

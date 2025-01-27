@@ -2,9 +2,11 @@
 #include <cstdlib>
 
 #include "../infra/common.hpp"
+#include "../infra/alloc_pool.hpp"
 #include "../infra/container.hpp"
 #include "../infra/hash.hpp"
 #include "../error.hpp"
+#include "../ast2.hpp"
 #include "pass_data.hpp"
 
 static constexpr u32 MAX_STRING_LITERAL_BYTES = 4096;
@@ -53,2563 +55,2318 @@ struct RawLexeme
 
 struct OperatorDesc
 {
-	ast::Tag node_type;
+	a2::Tag node_type;
 
 	u8 precedence : 6;
 
 	u8 is_right_to_left: 1;
-	
+
 	u8 is_binary : 1;
 };
 
+struct Lexer
+{
+	const char8* curr;
+
+	const char8* begin;
+
+	const char8* end;
+
+	Lexeme peek;
+
+	IdentifierPool* identifiers;
+
+	IdentifierId filepath_id;
+};
+
+struct OperatorStack
+{
+	u32 operand_count;
+
+	u32 operator_top;
+
+	u32 expression_offset;
+
+	OperatorDesc operators[64];
+
+	a2::BuilderToken operand_tokens[128];
+};
+
+struct Parser
+{
+	Lexer lexer;
+
+	a2::Builder builder;
+};
+
 static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
-	{ ast::Tag::INVALID,           10, false, true  }, // ( - Opening Parenthesis
-	{ ast::Tag::UOpEval,            8, false, false }, // eval
-	{ ast::Tag::UOpTry,             8, false, false }, // try
-	{ ast::Tag::UOpDefer,           8, false, false }, // defer
-	{ ast::Tag::UOpAddr,            2, false, false }, // $
-	{ ast::Tag::UOpBitNot,          2, false, false }, // ~
-	{ ast::Tag::UOpLogNot,          2, false, false }, // !
-	{ ast::Tag::UOpTypeOptPtr,      2, false, false }, // ?
-	{ ast::Tag::UOpTypeVar,         2, false, false }, // ...
-	{ ast::Tag::UOpTypeTailArray,   2, false, false }, // [...]
-	{ ast::Tag::UOpTypeMultiPtr,    2, false, false }, // [*]
-	{ ast::Tag::UOpTypeOptMultiPtr, 2, false, false }, // [?]
-	{ ast::Tag::UOpTypeSlice,       2, false, false }, // []
-	{ ast::Tag::UOpImpliedMember,    1, false, false }, // .
-	{ ast::Tag::UOpTypePtr,         2, false, false }, // *
-	{ ast::Tag::UOpNegate,          2, false, false }, // -
-	{ ast::Tag::UOpPos,             2, false, false }, // +
+	{ a2::Tag::INVALID,           10, false, true  }, // ( - Opening Parenthesis
+	{ a2::Tag::UOpEval,            8, false, false }, // eval
+	{ a2::Tag::UOpTry,             8, false, false }, // try
+	{ a2::Tag::UOpDefer,           8, false, false }, // defer
+	{ a2::Tag::UOpAddr,            2, false, false }, // $
+	{ a2::Tag::UOpBitNot,          2, false, false }, // ~
+	{ a2::Tag::UOpLogNot,          2, false, false }, // !
+	{ a2::Tag::UOpTypeOptPtr,      2, false, false }, // ?
+	{ a2::Tag::UOpTypeVar,         2, false, false }, // ...
+	{ a2::Tag::UOpTypeTailArray,   2, false, false }, // [...]
+	{ a2::Tag::UOpTypeMultiPtr,    2, false, false }, // [*]
+	{ a2::Tag::UOpTypeOptMultiPtr, 2, false, false }, // [?]
+	{ a2::Tag::UOpTypeSlice,       2, false, false }, // []
+	{ a2::Tag::UOpImpliedMember,    1, false, false }, // .
+	{ a2::Tag::UOpTypePtr,         2, false, false }, // *
+	{ a2::Tag::UOpNegate,          2, false, false }, // -
+	{ a2::Tag::UOpPos,             2, false, false }, // +
 };
 
 static constexpr OperatorDesc BINARY_OPERATOR_DESCS[] = {
-	{ ast::Tag::OpMember,     1, true,  true  }, // .
-	{ ast::Tag::OpMul,        2, true,  true  }, // *
-	{ ast::Tag::OpSub,        3, true,  true  }, // -
-	{ ast::Tag::OpAdd,        3, true,  true  }, // +
-	{ ast::Tag::OpDiv,        2, true,  true  }, // /
-	{ ast::Tag::OpAddTC,      3, true,  true  }, // +:
-	{ ast::Tag::OpSubTC,      3, true,  true  }, // -:
-	{ ast::Tag::OpMulTC,      2, true,  true  }, // *:
-	{ ast::Tag::OpMod,        2, true,  true  }, // %
-	{ ast::Tag::UOpDeref,     1, false, false }, // .*
-	{ ast::Tag::OpBitAnd,     6, true,  true  }, // &
-	{ ast::Tag::OpBitOr,      6, true,  true  }, // |
-	{ ast::Tag::OpBitXor,     6, true,  true  }, // ^
-	{ ast::Tag::OpShiftL,     4, true,  true  }, // <<
-	{ ast::Tag::OpShiftR,     4, true,  true  }, // >>
-	{ ast::Tag::OpLogAnd,     7, true,  true  }, // &&
-	{ ast::Tag::OpLogOr,      7, true,  true  }, // ||
-	{ ast::Tag::OpCmpLT,      5, true,  true  }, // <
-	{ ast::Tag::OpCmpGT,      5, true,  true  }, // >
-	{ ast::Tag::OpCmpLE,      5, true,  true  }, // <=
-	{ ast::Tag::OpCmpGE,      5, true,  true  }, // >=
-	{ ast::Tag::OpCmpNE,      5, true,  true  }, // !=
-	{ ast::Tag::OpCmpEQ,      5, true,  true  }, // ==
-	{ ast::Tag::OpSet,        9, false, true  }, // =
-	{ ast::Tag::OpSetAdd,     9, false, true  }, // +=
-	{ ast::Tag::OpSetSub,     9, false, true  }, // -=
-	{ ast::Tag::OpSetMul,     9, false, true  }, // *=
-	{ ast::Tag::OpSetDiv,     9, false, true  }, // /=
-	{ ast::Tag::OpSetAddTC,   9, false, true  }, // +:=
-	{ ast::Tag::OpSetSubTC,   9, false, true  }, // -:=
-	{ ast::Tag::OpSetMulTC,   9, false, true  }, // *:=
-	{ ast::Tag::OpSetMod,     9, false, true  }, // %=
-	{ ast::Tag::OpSetBitAnd,  9, false, true  }, // &=
-	{ ast::Tag::OpSetBitOr,   9, false, true  }, // |=
-	{ ast::Tag::OpSetBitXor,  9, false, true  }, // ^=
-	{ ast::Tag::OpSetShiftL,  9, false, true  }, // <<=
-	{ ast::Tag::OpSetShiftR,  9, false, true  }, // >>=
+	{ a2::Tag::OpMember,     1, true,  true  }, // .
+	{ a2::Tag::OpMul,        2, true,  true  }, // *
+	{ a2::Tag::OpSub,        3, true,  true  }, // -
+	{ a2::Tag::OpAdd,        3, true,  true  }, // +
+	{ a2::Tag::OpDiv,        2, true,  true  }, // /
+	{ a2::Tag::OpAddTC,      3, true,  true  }, // +:
+	{ a2::Tag::OpSubTC,      3, true,  true  }, // -:
+	{ a2::Tag::OpMulTC,      2, true,  true  }, // *:
+	{ a2::Tag::OpMod,        2, true,  true  }, // %
+	{ a2::Tag::UOpDeref,     1, false, false }, // .*
+	{ a2::Tag::OpBitAnd,     6, true,  true  }, // &
+	{ a2::Tag::OpBitOr,      6, true,  true  }, // |
+	{ a2::Tag::OpBitXor,     6, true,  true  }, // ^
+	{ a2::Tag::OpShiftL,     4, true,  true  }, // <<
+	{ a2::Tag::OpShiftR,     4, true,  true  }, // >>
+	{ a2::Tag::OpLogAnd,     7, true,  true  }, // &&
+	{ a2::Tag::OpLogOr,      7, true,  true  }, // ||
+	{ a2::Tag::OpCmpLT,      5, true,  true  }, // <
+	{ a2::Tag::OpCmpGT,      5, true,  true  }, // >
+	{ a2::Tag::OpCmpLE,      5, true,  true  }, // <=
+	{ a2::Tag::OpCmpGE,      5, true,  true  }, // >=
+	{ a2::Tag::OpCmpNE,      5, true,  true  }, // !=
+	{ a2::Tag::OpCmpEQ,      5, true,  true  }, // ==
+	{ a2::Tag::OpSet,        9, false, true  }, // =
+	{ a2::Tag::OpSetAdd,     9, false, true  }, // +=
+	{ a2::Tag::OpSetSub,     9, false, true  }, // -=
+	{ a2::Tag::OpSetMul,     9, false, true  }, // *=
+	{ a2::Tag::OpSetDiv,     9, false, true  }, // /=
+	{ a2::Tag::OpSetAddTC,   9, false, true  }, // +:=
+	{ a2::Tag::OpSetSubTC,   9, false, true  }, // -:=
+	{ a2::Tag::OpSetMulTC,   9, false, true  }, // *:=
+	{ a2::Tag::OpSetMod,     9, false, true  }, // %=
+	{ a2::Tag::OpSetBitAnd,  9, false, true  }, // &=
+	{ a2::Tag::OpSetBitOr,   9, false, true  }, // |=
+	{ a2::Tag::OpSetBitXor,  9, false, true  }, // ^=
+	{ a2::Tag::OpSetShiftL,  9, false, true  }, // <<=
+	{ a2::Tag::OpSetShiftR,  9, false, true  }, // >>=
 };
 
-struct FileParseData
+
+
+
+
+static constexpr const u8 INVALID_HEX_CHAR_VALUE = 255;
+
+static bool is_whitespace(char8 c) noexcept
 {
-private:
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
 
-	struct OperatorStack
+static bool is_alphabetic_char(char8 c) noexcept
+{
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+static bool is_numeric_char(char8 c) noexcept
+{
+	return c >= '0' && c <= '9';
+}
+
+static bool is_identifier_continuation_char(char8 c) noexcept
+{
+	return is_alphabetic_char(c) || is_numeric_char(c) || c == '_';
+}
+
+static u8 hex_char_value(char8 c) noexcept
+{
+	if (c >= 'a' && c <= 'f')
+		return 10 + c - 'a';
+	else if (c >= 'A' && c <= 'F')
+		return 10 + c - 'A';
+	else if (c >= '0' && c <= '9')
+		return c - '0';
+	else
+		return INVALID_HEX_CHAR_VALUE;
+}
+
+
+
+__declspec(noreturn) static void error(const Lexer* lexer, u64 offset, const char8* format, ...) noexcept
+{
+	va_list args;
+
+	va_start(args, format);
+
+	vsource_error(offset, { lexer->begin, lexer->end }, entry_from_id(lexer->identifiers, lexer->filepath_id)->range(), format, args);
+}
+
+static void skip_block_comment(Lexer* lexer) noexcept
+{
+	const char8* curr = lexer->curr;
+
+	const u32 comment_offset = static_cast<u32>(curr - lexer->begin);
+
+	curr += 2;
+
+	u32 comment_nesting = 1;
+
+	while (comment_nesting != 0)
 	{
-	private:
+		const char8 c = *curr;
 
-		u32 m_free_operand_count;
-
-		u32 m_operator_top;
-
-		u32 m_expression_offset;
-
-		FileParseData* const m_file;
-
-		OperatorDesc m_operators[64];
-
-		void pop_operator() noexcept
+		if (c == '/')
 		{
-			ASSERT_OR_IGNORE(m_operator_top != 0);
-
-			const OperatorDesc top = m_operators[m_operator_top - 1];
-		
-			m_operator_top -= 1;
-
-			if (top.node_type == ast::Tag::INVALID)
-				return;
-
-			if (m_free_operand_count <= top.is_binary)
-				m_file->error(m_expression_offset, "Missing operand(s) for operator '%s'\n", ast::tag_name(top.node_type));
-
-			m_free_operand_count -= top.is_binary;
-
-			m_file->append_node(top.node_type, 1 + top.is_binary);
-		}
-
-	public:
-
-		OperatorStack(u32 expression_offset, FileParseData* file) noexcept :
-			m_free_operand_count{ 0 },
-			m_operator_top{ 0 },
-			m_expression_offset{ expression_offset },
-			m_file{ file }
-		{}
-
-		void push_operand() noexcept
-		{
-			m_free_operand_count += 1;
-		}
-
-		void push_operator(OperatorDesc op) noexcept
-		{
-			if (op.node_type != ast::Tag::INVALID)
-				pop_to_precedence(op.precedence, op.is_right_to_left);
-
-			if (m_operator_top == array_count(m_operators))
-				m_file->error(m_expression_offset, "Operator nesting exceeds maximum depth of %u\n", array_count(m_operators));
-
-			m_operators[m_operator_top] = op;
-
-			m_operator_top += 1;
-		}
-
-		bool pop_to_precedence(u8 precedence, bool pop_equal) noexcept
-		{
-			while (m_operator_top != 0)
+			if (curr[1] == '*')
 			{
-				const OperatorDesc top = m_operators[m_operator_top - 1];
+				curr += 2;
 
-				if (top.precedence > precedence || (top.precedence == precedence && !pop_equal))
-					return true;
-
-				pop_operator();
-			}
-
-			return false;
-		}
-
-		void remove_lparen() noexcept
-		{
-			ASSERT_OR_IGNORE(m_operator_top != 0 && m_operators[m_operator_top - 1].node_type == ast::Tag::INVALID);
-
-			m_operator_top -= 1;
-		}
-
-		void pop_remaining() noexcept
-		{
-			while (m_operator_top != 0)
-				pop_operator();
-
-			if (m_free_operand_count != 1)
-				m_file->error(m_expression_offset, "Mismatched operand / operator count (%u operands remaining)", m_free_operand_count);
-		}
-	};
-
-	static constexpr const u8 INVALID_HEX_CHAR_VALUE = 255;
-
-	Lexeme m_peek;
-
-	const char8* m_curr;
-
-	Globals* const m_data;
-
-	const Range<char8> m_content;
-
-	const Range<char8> m_filepath;
-
-
-
-	static bool is_whitespace(char8 c) noexcept
-	{
-		return c == ' ' || c == '\t' || c == '\n' || c == '\r';
-	}
-
-	static bool is_alphabetic_char(char8 c) noexcept
-	{
-		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-	}
-
-	static bool is_numeric_char(char8 c) noexcept
-	{
-		return c >= '0' && c <= '9';
-	}
-
-	static bool is_identifier_start_char(char8 c) noexcept
-	{
-		return is_alphabetic_char(c);
-	}
-
-	static bool is_identifier_continuation_char(char8 c) noexcept
-	{
-		return is_alphabetic_char(c) || is_numeric_char(c) || c == '_';
-	}
-
-	static u8 hex_char_value(char8 c) noexcept
-	{
-		if (c >= 'a' && c <= 'f')
-			return 10 + c - 'a';
-		else if (c >= 'A' && c <= 'F')
-			return 10 + c - 'A';
-		else if (c >= '0' && c <= '9')
-			return c - '0';
-		else
-			return INVALID_HEX_CHAR_VALUE;
-	}
-
-	void skip_comment() noexcept
-	{
-		const u32 comment_offset = static_cast<u32>(m_curr - m_content.begin());
-
-		m_curr += 2;
-
-		u32 comment_nesting = 1;
-
-		while (comment_nesting != 0)
-		{
-			const char8 curr = *m_curr;
-
-			if (curr == '/')
-			{
-				if (m_curr[1] == '*')
-				{
-					m_curr += 2;
-
-					comment_nesting += 1;
-				}
-				else
-				{
-					m_curr += 1;
-				}
-			}
-			else if (curr == '*')
-			{
-				if (m_curr[1] == '/')
-				{
-					m_curr += 2;
-
-					comment_nesting -= 1;
-				}
-				else
-				{
-					m_curr += 1;
-				}
-			}
-			else if (curr == '\0')
-			{
-				error(comment_offset, "'/*' without matching '*/'\n");
+				comment_nesting += 1;
 			}
 			else
 			{
-				m_curr += 1;
+				curr += 1;
 			}
+		}
+		else if (c == '*')
+		{
+			if (curr[1] == '/')
+			{
+				curr += 2;
+
+				comment_nesting -= 1;
+			}
+			else
+			{
+				curr += 1;
+			}
+		}
+		else if (c == '\0')
+		{
+			error(lexer, comment_offset, "'/*' without matching '*/'\n");
+		}
+		else
+		{
+			curr += 1;
 		}
 	}
 
-	void skip_whitespace() noexcept
+	lexer->curr = curr;
+}
+
+static void skip_whitespace(Lexer* lexer) noexcept
+{
+	const char8* curr = lexer->curr;
+
+	while (true)
 	{
+		while (is_whitespace(*curr))
+			curr += 1;
+		
+		if (*curr == '/')
+		{
+			if (curr[1] == '/')
+			{
+				curr += 2;
+
+				while (*curr != '\n' && *curr != '\0')
+					curr += 1;
+			}
+			else if (curr[1] == '*')
+			{
+				lexer->curr = curr;
+
+				skip_block_comment(lexer);
+
+				curr = lexer->curr;
+			}
+			else
+			{
+				break;
+			}
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	lexer->curr = curr;
+}
+
+static RawLexeme scan_identifier_token(Lexer* lexer) noexcept
+{
+	const char8* curr = lexer->curr;
+
+	const char8* const token_begin = curr - 1;
+
+	while (is_identifier_continuation_char(*curr))
+		curr += 1;
+
+	lexer->curr = curr;
+
+	const Range<char8> identifier_bytes{ token_begin, curr };
+
+	const IdentifierId identifier_id = id_from_identifier(lexer->identifiers, identifier_bytes);
+
+	const IdentifierEntry* const identifier_value = entry_from_id(lexer->identifiers, identifier_id);
+
+	const Token identifier_token = identifier_value->token();
+
+	return { identifier_token, identifier_token == Token::Ident ? identifier_id.rep : 0 };
+}
+
+static RawLexeme scan_number_token_with_base(Lexer* lexer, char8 base) noexcept
+{
+	const char8* curr = lexer->curr;
+
+	const char8* const token_begin = curr;
+
+	curr += 1;
+
+	u64 value = 0;
+
+	if (base == 'b')
+	{
+		while (*curr == '0' || *curr == '1')
+		{
+			const u64 new_value = value * 2 + *curr - '0';
+
+			if (new_value < value)
+				error(lexer, lexer->peek.offset, "Binary integer literal exceeds maximum currently supported value of 2^64-1\n");
+
+			value = new_value;
+
+			curr += 1;
+		}
+	}
+	else if (base == 'o')
+	{
+		while (*curr >= '0' && *curr <= '7')
+		{
+			const u64 new_value = value * 8 + *curr - '0';
+
+			if (new_value < value)
+				error(lexer, lexer->peek.offset, "Octal integer literal exceeds maximum currently supported value of 2^64-1\n");
+
+			value = new_value;
+
+			curr += 1;
+		}
+	}
+	else
+	{
+		ASSERT_OR_IGNORE(base == 'x');
+		
 		while (true)
 		{
-			while (is_whitespace(*m_curr))
-				m_curr += 1;
-			
-			if (*m_curr == '/')
-			{
-				if (m_curr[1] == '/')
-				{
-					m_curr += 2;
+			const u8 digit_value = hex_char_value(*curr);
 
-					while (*m_curr != '\n' && *m_curr != '\0')
-						m_curr += 1;
-				}
-				else if (m_curr[1] == '*')
-				{
-					skip_comment();
-				}
-				else
-				{
-					return;
-				}
-			}
-			else
-			{
-				return;
-			}
+			if (digit_value == INVALID_HEX_CHAR_VALUE)
+				break;
+
+			const u64 new_value = value * 16 + digit_value;
+
+			if (new_value < value)
+				error(lexer, lexer->peek.offset, "Hexadecimal integer literal exceeds maximum currently supported value of 2^64-1\n");
+
+			value = new_value;
+
+			curr += 1;
 		}
 	}
 
-	RawLexeme scan_identifier_token() noexcept
-	{
-		const char8* token_begin = m_curr - 1;
+	if (curr == token_begin + 1)
+		error(lexer, lexer->peek.offset, "Expected at least one digit in integer literal\n");
 
-		while (is_identifier_continuation_char(*m_curr))
-			m_curr += 1;
+	if (is_identifier_continuation_char(*curr))
+		error(lexer, lexer->peek.offset, "Unexpected character '%c' after binary literal\n", *curr);
+
+	lexer->curr = curr;
+
+	return { Token::LitInteger, value };
+}
+
+static u32 scan_utf8_char_surrogates(Lexer* lexer, u32 leader_value, u32 surrogate_count) noexcept
+{
+	const char8* curr = lexer->curr;
+
+	u32 codepoint = leader_value;
+
+	for (u32 i = 0; i != surrogate_count; ++i)
+	{
+		const char8 surrogate = curr[i + 1];
+
+		if ((surrogate & 0xC0) != 0x80)
+			error(lexer, lexer->peek.offset, "Expected utf-8 surrogate code unit (0b10xx'xxxx) but got 0x%X\n", surrogate);
+
+		codepoint |= (surrogate & 0x3F) << (6 * (surrogate_count - i - 1));
+	}
+
+	lexer->curr += surrogate_count + 1;
+
+	return codepoint;
+}
+
+static u32 scan_utf8_char(Lexer* lexer) noexcept
+{
+	const char8 first = *lexer->curr;
+
+	if ((first & 0x80) == 0)
+	{
+		lexer->curr += 1;
+
+		return first;
+	}
+	else if ((first & 0xE0) == 0xC0)
+	{
+		return scan_utf8_char_surrogates(lexer, (first & 0x1F) << 6, 1);
+	}
+	else if ((first & 0xF0) == 0xE0)
+	{
+		return scan_utf8_char_surrogates(lexer, (first & 0x0F) << 12, 2);
+
+	}
+	else if ((first & 0xF8) == 0xF0)
+	{
+		return scan_utf8_char_surrogates(lexer, (first & 0x07) << 18, 3);
+	}
+	else
+	{
+		error(lexer, lexer->peek.offset, "Unexpected code unit 0x%X at start of character literal. This might be an encoding issue regarding the source file, as only utf-8 is supported.\n", first);
+	}
+}
+
+static u32 scan_escape_char(Lexer* lexer) noexcept
+{
+	const char8* curr = lexer->curr;
+
+	u32 codepoint = 0;
+
+	const char8 escapee = curr[1];
+
+	switch (escapee)
+	{
+	case 'x':
+	{
+		const u8 hi = hex_char_value(curr[2]);
+
+		if (hi == INVALID_HEX_CHAR_VALUE)
+			error(lexer, lexer->peek.offset, "Expected two hexadecimal digits after character literal escape '\\x' but got '%c' instead of first digit\n", curr[2]);
+
+		const u8 lo = hex_char_value(curr[3]);
 		
-		const Range<char8> identifier_bytes{ token_begin, m_curr };
+		if (lo == INVALID_HEX_CHAR_VALUE)
+			error(lexer, lexer->peek.offset, "Expected two hexadecimal digits after character literal escape '\\x' but got '%c' instead of second digit\n", curr[3]);
 
-		const u32 identifier_id = m_data->identifiers.index_from(identifier_bytes, fnv1a(identifier_bytes.as_byte_range()));
+		curr += 2;
 
-		const IdentifierMapEntry* const identifier_value = m_data->identifiers.value_from(identifier_id);
+		codepoint = lo + hi * 16;
 
-		const Token identifier_token = identifier_value->token();
+		break;
+	}
+		
+	case 'X':
+	{
+		codepoint = 0;
 
-		return { identifier_token, identifier_token == Token::Ident ? identifier_id : 0 };
+		for (u32 i = 0; i != 6; ++i)
+		{
+			const u8 char_value = hex_char_value(curr[i + 2]);
+
+			if (char_value == INVALID_HEX_CHAR_VALUE)
+				error(lexer, lexer->peek.offset, "Expected six hexadecimal digits after character literal escape '\\X' but got '%c' instead of digit %u\n", curr[i + 2], i + 1);
+
+			codepoint = codepoint * 16 + char_value;
+		}
+
+		if (codepoint > 0x10FFFF)
+			error(lexer, lexer->peek.offset, "Codepoint 0x%X indicated in character literal escape '\\X' is greater than the maximum unicode codepoint U+10FFFF", codepoint);
+
+		curr += 6;
+
+		break;
 	}
 
-	RawLexeme scan_number_token_with_base(char8 base) noexcept
+	case 'u':
 	{
-		const char8* const token_begin = m_curr;
-
-		m_curr += 1;
-
-		u64 value = 0;
-
-		if (base == 'b')
+		for (u32 i = 0; i != 4; ++i)
 		{
-			while (*m_curr == '0' || *m_curr == '1')
-			{
-				const u64 new_value = value * 2 + *m_curr - '0';
+			const char8 c = curr[i + 2];
 
-				if (new_value < value)
-					error(m_peek.offset, "Binary integer literal exceeds maximum currently supported value of 2^64-1\n");
+			if (c < '0' || c > '9')
+				error(lexer, lexer->peek.offset, "Expected four decimal digits after character literal escape '\\X' but got '%c' instead of digit %u\n", curr[i + 2], i + 1);
 
-				value = new_value;
-
-				m_curr += 1;
-			}
-		}
-		else if (base == 'o')
-		{
-			while (*m_curr >= '0' && *m_curr <= '7')
-			{
-				const u64 new_value = value * 8 + *m_curr - '0';
-
-				if (new_value < value)
-					error(m_peek.offset, "Octal integer literal exceeds maximum currently supported value of 2^64-1\n");
-
-				value = new_value;
-
-				m_curr += 1;
-			}
-		}
-		else
-		{
-			ASSERT_OR_IGNORE(base == 'x');
-			
-			while (true)
-			{
-				const u8 digit_value = hex_char_value(*m_curr);
-
-				if (digit_value == INVALID_HEX_CHAR_VALUE)
-					break;
-
-				const u64 new_value = value * 16 + digit_value;
-
-				if (new_value < value)
-					error(m_peek.offset, "Hexadecimal integer literal exceeds maximum currently supported value of 2^64-1\n");
-
-				value = new_value;
-
-				m_curr += 1;
-			}
+			codepoint = codepoint * 10 + c - '0';
 		}
 
-		if (m_curr == token_begin + 1)
-			error(m_peek.offset, "Expected at least one digit in integer literal\n");
+		curr += 4;
 
-		if (is_identifier_continuation_char(*m_curr))
-			error(m_peek.offset, "Unexpected character '%c' after binary literal\n", *m_curr);
-
-		return { Token::LitInteger, value };
+		break;
 	}
 
-	u32 scan_utf8_char_surrogates(u32 leader_value, u32 surrogate_count) noexcept
-	{
-		u32 codepoint = leader_value;
+	case '\\':
+	case '\'':
+	case '"':
+		codepoint = escapee;
+		break;
 
-		for (u32 i = 0; i != surrogate_count; ++i)
-		{
-			const char8 surrogate = m_curr[i + 1];
+	case '0':
+		codepoint = '\0';
+		break;
 
-			if ((surrogate & 0xC0) != 0x80)
-				error(m_peek.offset, "Expected utf-8 surrogate code unit (0b10xx'xxxx) but got 0x%X\n", surrogate);
+	case 'a':
+		codepoint = '\a';
+		break;
 
-			codepoint |= (surrogate & 0x3F) << (6 * (surrogate_count - i - 1));
-		}
+	case 'b':
+		codepoint = '\b';
+		break;
 
-		m_curr += surrogate_count + 1;
+	case 'f':
+		codepoint = '\f';
+		break;
 
-		return codepoint;
+	case 'n':
+		codepoint = '\n';
+		break;
+
+	case 'r':
+		codepoint = '\r';
+		break;
+
+	case 't':
+		codepoint = '\t';
+		break;
+
+	case 'v':
+		codepoint = '\v';
+		break;
+
+	default:
+		error(lexer, lexer->peek.offset, "Unknown character literal escape '%c'\n");
 	}
 
-	u32 scan_utf8_char() noexcept
+	lexer->curr = curr + 2;
+
+	return codepoint;
+}
+
+static RawLexeme scan_number_token(Lexer* lexer, char8 first) noexcept
+{
+	const char8* curr = lexer->curr;
+
+	const char8* const token_begin = curr - 1;
+
+	u64 integer_value = first - '0';
+
+	bool max_exceeded = false;
+
+	while (is_numeric_char(*curr))
 	{
-		const char8 first = *m_curr;
+		const u64 new_value = integer_value * 10 + *curr - '0';
 
-		if ((first & 0x80) == 0)
-		{
-			m_curr += 1;
+		if (new_value < integer_value)
+			max_exceeded = true;
 
-			return first;
-		}
-		else if ((first & 0xE0) == 0xC0)
-		{
-			return scan_utf8_char_surrogates((first & 0x1F) << 6, 1);
-		}
-		else if ((first & 0xF0) == 0xE0)
-		{
-			return scan_utf8_char_surrogates((first & 0x0F) << 12, 2);
+		integer_value = new_value;
 
-		}
-		else if ((first & 0xF8) == 0xF0)
+		curr += 1;
+	}
+
+	if (*curr == '.')
+	{
+		curr += 1;
+
+		if (!is_numeric_char(*curr))
+			error(lexer, lexer->peek.offset, "Expected at least one digit after decimal point in float literal\n");
+
+		while (is_numeric_char(*curr))
+			curr += 1;
+
+		if (*curr == 'e')
 		{
-			return scan_utf8_char_surrogates((first & 0x07) << 18, 3);
-		}
-		else
-		{
-			error(m_peek.offset, "Unexpected code unit 0x%X at start of character literal. This might be an encoding issue regarding the source file, as only utf-8 is supported.\n", first);
+			curr += 1;
+
+			if (*curr == '+' || *curr == '-')
+				curr += 1;
+
+			while (is_numeric_char(*curr))
+				curr += 1;
 		}
 		
+		if (is_alphabetic_char(*curr) || *curr == '_')
+			error(lexer, lexer->peek.offset, "Unexpected character '%c' after float literal\n", *curr);
+
+		char8* strtod_end;
+
+		errno = 0;
+
+		const f64 float_value = strtod(token_begin, &strtod_end);
+
+		if (strtod_end != curr)
+			error(lexer, lexer->peek.offset, "strtod disagrees with internal parsing about end of float literal\n");
+
+		if (errno == ERANGE)
+			error(lexer, lexer->peek.offset, "Float literal exceeds maximum IEEE-754 value\n");
+
+		lexer->curr = curr;
+
+		return { Token::LitFloat, float_value };
+	}
+	else
+	{
+		if (max_exceeded)
+			error(lexer, lexer->peek.offset, "Integer literal exceeds maximum currently supported value of 2^64-1\n");
+
+		if (is_alphabetic_char(*curr) || *curr == '_')
+			error(lexer, lexer->peek.offset, "Unexpected character '%c' after integer literal\n", *curr);
+
+		lexer->curr = curr;
+
+		return { Token::LitInteger, integer_value };
 	}
 
-	u32 scan_escape_char() noexcept
-	{
-		u32 codepoint = 0;
-
-		const char8 escapee = m_curr[1];
-
-		switch (escapee)
-		{
-		case 'x':
-		{
-			const u8 hi = hex_char_value(m_curr[2]);
-
-			if (hi == INVALID_HEX_CHAR_VALUE)
-				error(m_peek.offset, "Expected two hexadecimal digits after character literal escape '\\x' but got '%c' instead of first digit\n", m_curr[2]);
-
-			const u8 lo = hex_char_value(m_curr[3]);
-			
-			if (lo == INVALID_HEX_CHAR_VALUE)
-				error(m_peek.offset, "Expected two hexadecimal digits after character literal escape '\\x' but got '%c' instead of secod digit\n", m_curr[3]);
-
-			m_curr += 2;
-
-			codepoint = lo + hi * 16;
-
-			break;
-		}
-			
-		case 'X':
-		{
-			codepoint = 0;
-
-			for (u32 i = 0; i != 6; ++i)
-			{
-				const u8 char_value = hex_char_value(m_curr[i + 2]);
-
-				if (char_value == INVALID_HEX_CHAR_VALUE)
-					error(m_peek.offset, "Expected six hexadecimal digits after character literal escape '\\X' but got '%c' instead of digit %u\n", m_curr[i + 2], i + 1);
-
-				codepoint = codepoint * 16 + char_value;
-			}
-
-			if (codepoint > 0x10FFFF)
-				error(m_peek.offset, "Codepoint 0x%X indicated in character literal escape '\\X' is greater than the maximum unicode codepoint U+10FFFF", codepoint);
-
-			m_curr += 6;
-
-			break;
-		}
-
-		case 'u':
-		{
-			for (u32 i = 0; i != 4; ++i)
-			{
-				const char8 c = m_curr[i + 2];
-
-				if (c < '0' || c > '9')
-					error(m_peek.offset, "Expected four decimal digits after character literal escape '\\X' but got '%c' instead of digit %u\n", m_curr[i + 2], i + 1);
-
-				codepoint = codepoint * 10 + c - '0';
-			}
-
-			m_curr += 4;
-
-			break;
-		}
-
-		case '\\':
-		case '\'':
-		case '"':
-			codepoint = escapee;
-			break;
-
-		case '0':
-			codepoint = '\0';
-			break;
-
-		case 'a':
-			codepoint = '\a';
-			break;
-
-		case 'b':
-			codepoint = '\b';
-			break;
-
-		case 'f':
-			codepoint = '\f';
-			break;
-
-		case 'n':
-			codepoint = '\n';
-			break;
-
-		case 'r':
-			codepoint = '\r';
-			break;
-
-		case 't':
-			codepoint = '\t';
-			break;
-
-		case 'v':
-			codepoint = '\v';
-			break;
-
-		default:
-			error(m_peek.offset, "Unknown character literal escape '%c'\n");
-		}
-
-		m_curr += 2;
-
-		return codepoint;
-	}
-
-	RawLexeme scan_number_token(char8 first) noexcept
-	{
-		const char8* const token_begin = m_curr - 1;
-
-		u64 integer_value = first - '0';
-
-		bool max_exceeded = false;
-
-		while (is_numeric_char(*m_curr))
-		{
-			const u64 new_value = integer_value * 10 + *m_curr - '0';
-
-			if (new_value < integer_value)
-				max_exceeded = true;
-
-			integer_value = new_value;
-
-			m_curr += 1;
-		}
-
-		if (*m_curr == '.')
-		{
-			m_curr += 1;
-
-			if (!is_numeric_char(*m_curr))
-				error(m_peek.offset, "Expected at least one digit after decimal point in float literal\n");
-
-			while (is_numeric_char(*m_curr))
-				m_curr += 1;
-
-			if (*m_curr == 'e')
-			{
-				m_curr += 1;
-
-				if (*m_curr == '+' || *m_curr == '-')
-					m_curr += 1;
-
-				while (is_numeric_char(*m_curr))
-					m_curr += 1;
-			}
-			
-			if (is_alphabetic_char(*m_curr) || *m_curr == '_')
-				error(m_peek.offset, "Unexpected character '%c' after float literal\n", *m_curr);
-
-			char8* strtod_end;
-
-			errno = 0;
-
-			const f64 float_value = strtod(token_begin, &strtod_end);
-
-			if (strtod_end != m_curr)
-				error(m_peek.offset, "strtod disagrees with internal parsing about end of float literal\n");
-
-			if (errno == ERANGE)
-				error(m_peek.offset, "Float literal exceeds maximum IEEE-754 value\n");
-
-			return { Token::LitFloat, float_value };
-		}
-		else
-		{
-			if (max_exceeded)
-				error(m_peek.offset, "Integer literal exceeds maximum currently supported value of 2^64-1\n");
-
-			if (is_alphabetic_char(*m_curr) || *m_curr == '_')
-				error(m_peek.offset, "Unexpected character '%c' after integer literal\n", *m_curr);
-
-			return { Token::LitInteger, integer_value };
-		}
-
-	}
-
-	RawLexeme scan_char_token() noexcept
-	{
-		u32 codepoint;
-
-		if (*m_curr == '\\')
-			codepoint = scan_escape_char();
-		else
-			codepoint = scan_utf8_char();
-		
-		if (*m_curr != '\'')
-			error(m_peek.offset, "Expected end of character literal (') but got %c\n", *m_curr);
-
-		m_curr += 1;
-
-		return { Token::LitChar, codepoint };
-	}
-
-	RawLexeme scan_string_token() noexcept
-	{
-		char8 buffer[MAX_STRING_LITERAL_BYTES];
-
-		u32 buffer_index = 0;
-
-		const char8* copy_begin = m_curr;
-
-		while (*m_curr != '"')
-		{
-			if (*m_curr == '\\')
-			{
-				const u32 bytes_to_copy = static_cast<u32>(m_curr - copy_begin);
-
-				if (buffer_index + bytes_to_copy > sizeof(buffer))
-						error(m_peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
-
-				memcpy(buffer + buffer_index, copy_begin, bytes_to_copy);
-
-				buffer_index += bytes_to_copy;
-
-				const u32 codepoint = scan_escape_char();
-
-				if (codepoint <= 0x7F)
-				{
-					if (buffer_index + 1 > sizeof(buffer))
-						error(m_peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
-				
-					buffer[buffer_index] = static_cast<char8>(codepoint);
-
-					buffer_index += 1;
-				}
-				else if (codepoint <= 0x7FF)
-				{
-					if (buffer_index + 2 > sizeof(buffer))
-						error(m_peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
-
-					buffer[buffer_index] = static_cast<char8>((codepoint >> 6) | 0xC0);
-
-					buffer[buffer_index + 1] = static_cast<char8>((codepoint & 0x3F) | 0x80);
-
-					buffer_index += 2;
-				}
-				else if (codepoint == 0x10000)
-				{
-					if (buffer_index + 3 > sizeof(buffer))
-						error(m_peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
-
-					buffer[buffer_index] = static_cast<char8>((codepoint >> 12) | 0xE0);
-
-					buffer[buffer_index + 1] = static_cast<char8>(((codepoint >> 6) & 0x3F) | 0x80);
-
-					buffer[buffer_index + 2] = static_cast<char8>((codepoint & 0x3F) | 0x80);
-
-					buffer_index += 3;
-				}
-				else
-				{
-					ASSERT_OR_IGNORE(codepoint <= 0x10FFFF);
-
-					if (buffer_index + 4 > sizeof(buffer))
-						error(m_peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
-
-					buffer[buffer_index] = static_cast<char8>((codepoint >> 18) | 0xE0);
-
-					buffer[buffer_index + 1] = static_cast<char8>(((codepoint >> 12) & 0x3F) | 0x80);
-
-					buffer[buffer_index + 2] = static_cast<char8>(((codepoint >> 6) & 0x3F) | 0x80);
-
-					buffer[buffer_index + 3] = static_cast<char8>((codepoint & 0x3F) | 0x80);
-
-					buffer_index += 4;
-				}
-
-				copy_begin = buffer + buffer_index;
-			}
-			else if (*m_curr == '\n')
-			{
-				error(m_peek.offset, "String constant spans across newline\n");
-			}
-			else
-			{
-				m_curr += 1;
-			}
-		}
-
-		const u32 bytes_to_copy = static_cast<u32>(m_curr - copy_begin);
-
-		if (buffer_index + bytes_to_copy > sizeof(buffer))
-				error(m_peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
-
-		memcpy(buffer + buffer_index, copy_begin, bytes_to_copy);
-
-		buffer_index += bytes_to_copy;
-
-		const Range<char8> string_bytes{ buffer, buffer_index };
-
-		const u32 string_index = m_data->identifiers.index_from(string_bytes, fnv1a(string_bytes.as_byte_range()));
-
-		m_curr += 1;
-
-		return { Token::LitString, string_index };
-	}
-
-	RawLexeme raw_next() noexcept
-	{
-		const char8 first = *m_curr;
-
-		m_curr += 1;
-
-		const char8 second = first == '\0' ? '\0' : *m_curr;
-
-		switch (first)
-		{
-		case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h':
-		case 'i': case 'j': case 'k': case 'l': case 'm': case 'n': case 'o': case 'p':
-		case 'q': case 'r': case 's': case 't': case 'u': case 'v': case 'w': case 'x':
-		case 'y': case 'z':
-		case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G': case 'H':
-		case 'I': case 'J': case 'K': case 'L': case 'M': case 'N': case 'O': case 'P':
-		case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V': case 'W': case 'X':
-		case 'Y': case 'Z':
-			return scan_identifier_token();
-		
-		case '0':
-			if (second == 'b' || second == 'o' || second == 'x')
-				return scan_number_token_with_base(second);
-
-		// fallthrough
+}
+
+static RawLexeme scan_char_token(Lexer* lexer) noexcept
+{
+	u32 codepoint;
+
+	if (*lexer->curr == '\\')
+		codepoint = scan_escape_char(lexer);
+	else
+		codepoint = scan_utf8_char(lexer);
 	
-		case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8':
-		case '9':
-			return scan_number_token(first);
+	if (*lexer->curr != '\'')
+		error(lexer, lexer->peek.offset, "Expected end of character literal (') but got %c\n", *lexer->curr);
 
-		case '\'':
-			return scan_char_token();
+	lexer->curr += 1;
 
-		case '"':
-			return scan_string_token();
+	return { Token::LitChar, codepoint };
+}
 
-		case '_':
-			if (is_identifier_continuation_char(second))
-				error(m_peek.offset, "Illegal identifier starting with '_'\n");
+static RawLexeme scan_string_token(Lexer* lexer) noexcept
+{
+	char8 buffer[MAX_STRING_LITERAL_BYTES];
 
-			return { Token::Wildcard };
+	u32 buffer_index = 0;
 
-		case '+':
-			if (second == '=')
-			{
-				m_curr += 1;
+	const char8* curr = lexer->curr;
 
-				return { Token::OpSetAdd };
-			}
-			else if (second == ':')
-			{
-				if (m_curr[1] == '=')
-				{
-					m_curr += 2;
+	const char8* copy_begin = curr;
 
-					return { Token::OpSetAddTC };
-				}
-				else
-				{
-					m_curr += 1;
-
-					return { Token::OpAddTC };
-				}
-			}
-			else
-			{
-				return { Token::OpAdd };
-			}
-
-		case '-':
-			if (second == '>')
-			{
-				m_curr += 1;
-
-				return { Token::ThinArrowR };
-			}
-			else if (second == ':')
-			{
-				if (m_curr[1] == '=')
-				{
-					m_curr += 2;
-
-					return { Token::OpSetSubTC };
-				}
-				else
-				{
-					m_curr += 1;
-
-					return { Token::OpSubTC };
-				}
-			}
-			else if (second == '=')
-			{
-				m_curr += 1;
-
-				return { Token::OpSetSub };
-			}
-			else
-			{
-				return { Token::OpSub };
-			}
-
-		case '*':
-			if (second == '=')
-			{
-				m_curr += 1;
-
-				return { Token::OpSetMul };
-			}
-			else if (second == ':')
-			{
-				if (m_curr[1] == '=')
-				{
-					m_curr += 2;
-
-					return { Token::OpSetMulTC };
-				}
-				else
-				{
-					m_curr += 1;
-
-					return { Token::OpMulTC };
-				}
-			}
-			else if (second == '/')
-			{
-				error(m_peek.offset, "'*/' without previous matching '/*'\n");
-			}
-			else
-			{
-				return { Token::OpMulOrTypPtr };
-			}
-
-		case '/':
-			if (second == '=')
-			{
-				m_curr += 1;
-
-				return { Token::OpSetDiv };
-			}
-			else
-			{
-				return { Token::OpDiv };
-			}
-
-		case '%':
-			if (second == '=')
-			{
-				m_curr += 1;
-
-				return { Token::OpSetMod };
-			}
-			else
-			{
-				return { Token::OpMod };
-			}
-
-		case '&':
-			if (second == '&')
-			{
-				m_curr += 1;
-
-				return { Token::OpLogAnd };
-			}
-			else if (second == '=')
-			{
-				m_curr += 1;
-
-				return { Token::OpSetAnd };
-			}
-			else
-			{
-				return { Token::OpAnd };
-			}
-
-		case '|':
-			if (second == '|')
-			{
-				m_curr += 1;
-
-				return { Token::OpLogAnd };
-			}
-			else if (second == '=')
-			{
-				m_curr += 1;
-
-				return { Token::OpSetOr };
-			}
-			else
-			{
-				return { Token::OpOr };
-			}
-
-		case '^':
-			if (second == '=')
-			{
-				m_curr += 1;
-
-				return { Token::OpSetXor };
-			}
-			else
-			{
-				return { Token::OpXor };
-			}
-
-		case '<':
-			if (second == '<')
-			{
-				if (m_curr[1] == '=')
-				{
-					m_curr += 2;
-
-					return { Token::OpSetShl };
-				}
-				else
-				{
-					m_curr += 1;
-
-					return { Token::OpShl };
-				}
-			}
-			else if (second == '=')
-			{
-				m_curr += 1;
-
-				return { Token::OpLe };
-			}
-			else if (second == '-')
-			{
-				m_curr += 1;
-
-				return { Token::ThinArrowL };
-			}
-			else
-			{
-				return { Token::OpLt };
-			}
-
-		case '>':
-			if (second == '>')
-			{
-				if (m_curr[1] == '=')
-				{
-					m_curr += 2;
-
-					return { Token::OpSetShr };
-				}
-				else
-				{
-					m_curr += 1;
-
-					return { Token::OpShr };
-				}
-			}
-			else if (second == '=')
-			{
-				m_curr += 1;
-
-				return { Token::OpGe };
-			}
-			else
-			{
-				return { Token::OpGt };
-			}
-
-		case '.':
-			if (second == '.')
-			{
-				if (m_curr[1] != '.')
-					error(m_peek.offset, "Unexpected Token '..'\n");
-
-				m_curr += 2;
-
-				return { Token::TypVar };
-			}
-			else if (second == '*')
-			{
-				m_curr += 1;
-
-				return { Token::UOpDeref };
-			}
-			else if (second == '[')
-			{
-				m_curr += 1;
-				return { Token::ArrayInitializer };
-			}
-			else if (second == '{')
-			{
-				m_curr += 1;
-				return { Token::CompositeInitializer };
-			}
-			else
-			{
-				return { Token::OpMemberOrRef };
-			}
-
-		case '!':
-			if (second == '=')
-			{
-				m_curr += 1;
-
-				return { Token::OpNe };
-			}
-			else
-			{
-				return { Token::UOpLogNot };
-			}
-
-		case '=':
-			if (second == '=')
-			{
-				m_curr += 1;
-
-				return { Token::OpEq };
-			}
-			else if (second == '>')
-			{
-				m_curr += 1;
-
-				return { Token::WideArrowR };
-			}
-			else
-			{
-				return { Token::OpSet };
-			}
-
-		case '$':
-			return { Token::UOpAddr };
-
-		case '~':
-			return { Token::UOpNot };
-
-		case '?':
-			return { Token::TypOptPtr };
-
-		case ':':
-			return { Token::Colon };
-
-		case ',':
-			return { Token::Comma };
-
-		case '#':
-			return { Token::Pragma };
-
-		case '[':
-			if (second == '.' && m_curr[1] == '.' && m_curr[2] == '.' && m_curr[3] == ']')
-			{
-				m_curr += 4;
-
-				return { Token::TypTailArray };
-			}
-			else if (second == '*' && m_curr[1] == ']')
-			{
-				m_curr += 2;
-
-				return { Token::TypMultiPtr };
-			}
-			else if (second == '?' && m_curr[1] == ']')
-			{
-				m_curr += 2;
-
-				return { Token::TypOptMultiPtr };
-			}
-			else
-			{
-				return { Token::BracketL };
-			}
-
-		case ']':
-			return { Token::BracketR };
-
-		case '{':
-			return { Token::CurlyL };
-
-		case '}':
-			return { Token::CurlyR };
-
-		case '(':
-			return { Token::ParenL };
-
-		case ')':
-			return { Token::ParenR };
-
-		case '\0':
-			m_curr -= 1;
-
-			if (m_curr != m_content.end())
-				error(m_peek.offset, "Null character in source file\n");
-
-			return { Token::END_OF_SOURCE };				
-
-		default:
-			error(m_peek.offset, "Unexpected character '%c' in source file\n", first);
-		}
-	}
-
-
-
-	Lexeme next() noexcept
+	while (*curr != '"')
 	{
-		if (m_peek.token != Token::EMPTY)
+		if (*curr == '\\')
 		{
-			const Lexeme rst = m_peek;
+			const u32 bytes_to_copy = static_cast<u32>(curr - copy_begin);
 
-			m_peek.token = Token::EMPTY;
+			if (buffer_index + bytes_to_copy > sizeof(buffer))
+					error(lexer, lexer->peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
-			return rst;
-		}
+			memcpy(buffer + buffer_index, copy_begin, bytes_to_copy);
 
-		skip_whitespace();
+			buffer_index += bytes_to_copy;
 
-		m_peek.offset = static_cast<u32>(m_curr - m_content.begin());
+			lexer->curr = curr;
 
-		const RawLexeme raw = raw_next();
+			const u32 codepoint = scan_escape_char(lexer);
 
-		return { raw.token, m_peek.offset, raw.integer_value };
-	}
+			curr = lexer->curr;
 
-	Lexeme peek() noexcept
-	{
-		if (m_peek.token != Token::EMPTY)
-			return m_peek;
-
-		m_peek = next();
-
-		return m_peek;
-	}
-
-	Lexeme peek_n(u32 n) noexcept
-	{
-		ASSERT_OR_IGNORE(n != 0);
-
-		const Lexeme remembered_peek = peek();
-
-		const char8* const remembered_curr = m_curr;
-
-		m_peek.token = Token::EMPTY;
-
-		Lexeme result = remembered_peek;
-
-		for (u32 i = 0; i != n; ++i)
-			result = next();
-
-		m_curr = remembered_curr;
-
-		m_peek = remembered_peek;
-
-		return result;
-	}
-
-	void skip() noexcept
-	{
-		(void) next();
-	}
-
-
-
-	static const ast::Node* get_reverse_next_sibling(const ast::Node* node) noexcept
-	{
-		return reinterpret_cast<const ast::Node*>(reinterpret_cast<const u32*>(node) + node->next_sibling_offset);
-	}
-
-	static const ast::Node* get_reverse_first_child(const ast::Node* node) noexcept
-	{
-		return reinterpret_cast<const ast::Node*>(reinterpret_cast<const u32*>(node) - node->type_index);
-	}
-
-	static ast::Node* reverse_alloc(Globals* data, u32 data_dwords) noexcept
-	{
-		return static_cast<ast::Node*>(data->asts.reserve_exact(sizeof(ast::Node) + data_dwords * sizeof(u32)));
-	}
-
-	static void reverse_single_node(Globals* data, const ast::Node* src) noexcept
-	{
-		ast::Node* const dst = reverse_alloc(data, src->data_dwords);
-
-		memcpy(dst, src, sizeof(ast::Node) + src->data_dwords * sizeof(u32));
-
-		dst->type_index = 0;
-
-		if (src->child_count != 0)
-			reverse_node(data, get_reverse_first_child(src));
-	}
-
-	static const ast::Node* reverse_node(Globals* data, const ast::Node* src) noexcept
-	{
-		ast::Node* const dst = reverse_alloc(data, src->data_dwords);
-
-		if (src->tag == ast::Tag::For && ast::has_flag(src, ast::Flag::For_HasWhere))
-		{
-			ASSERT_OR_IGNORE(src->child_count > 2);
-
-			const ast::Node* const condition = get_reverse_first_child(src);
-
-			const ast::Node* step;
-			
-			const ast::Node* where;
-
-			if (ast::has_flag(src, ast::Flag::For_HasStep))
+			if (codepoint <= 0x7F)
 			{
-				step = get_reverse_next_sibling(condition);
+				if (buffer_index + 1 > sizeof(buffer))
+					error(lexer, lexer->peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
+			
+				buffer[buffer_index] = static_cast<char8>(codepoint);
 
-				where = get_reverse_next_sibling(step);
+				buffer_index += 1;
+			}
+			else if (codepoint <= 0x7FF)
+			{
+				if (buffer_index + 2 > sizeof(buffer))
+					error(lexer, lexer->peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
+
+				buffer[buffer_index] = static_cast<char8>((codepoint >> 6) | 0xC0);
+
+				buffer[buffer_index + 1] = static_cast<char8>((codepoint & 0x3F) | 0x80);
+
+				buffer_index += 2;
+			}
+			else if (codepoint == 0x10000)
+			{
+				if (buffer_index + 3 > sizeof(buffer))
+					error(lexer, lexer->peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
+
+				buffer[buffer_index] = static_cast<char8>((codepoint >> 12) | 0xE0);
+
+				buffer[buffer_index + 1] = static_cast<char8>(((codepoint >> 6) & 0x3F) | 0x80);
+
+				buffer[buffer_index + 2] = static_cast<char8>((codepoint & 0x3F) | 0x80);
+
+				buffer_index += 3;
 			}
 			else
 			{
-				step = nullptr;
+				ASSERT_OR_IGNORE(codepoint <= 0x10FFFF);
 
-				where = get_reverse_next_sibling(condition);
+				if (buffer_index + 4 > sizeof(buffer))
+					error(lexer, lexer->peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
+
+				buffer[buffer_index] = static_cast<char8>((codepoint >> 18) | 0xE0);
+
+				buffer[buffer_index + 1] = static_cast<char8>(((codepoint >> 12) & 0x3F) | 0x80);
+
+				buffer[buffer_index + 2] = static_cast<char8>(((codepoint >> 6) & 0x3F) | 0x80);
+
+				buffer[buffer_index + 3] = static_cast<char8>((codepoint & 0x3F) | 0x80);
+
+				buffer_index += 4;
 			}
 
-			ASSERT_OR_IGNORE(where->tag == ast::Tag::Where);
-
-			dst->tag = ast::Tag::Block;
-			dst->child_count = where->child_count + 1;
-
-			reverse_node(data, get_reverse_first_child(where));
-
-			ast::Node* const for_dst = reverse_alloc(data, src->data_dwords);
-			memcpy(for_dst, src, sizeof(ast::Node) + src->data_dwords * sizeof(u32));
-			for_dst->type_index = 0;
-			for_dst->child_count -= 1;
-			for_dst->flags &= ~static_cast<u8>(ast::Flag::For_HasWhere);
-			
-			reverse_single_node(data, condition);
-
-			if (ast::has_flag(src, ast::Flag::For_HasStep))
-				reverse_single_node(data, step);
-
-			reverse_node(data, get_reverse_next_sibling(where));
+			copy_begin = buffer + buffer_index;
 		}
-		else if (src->tag == ast::Tag::ForEach)
+		else if (*curr == '\n')
 		{
-			ASSERT_OR_IGNORE(src->child_count > 3);
-
-			const ast::Node* const element = get_reverse_first_child(src);
-
-			const ast::Node* index;
-			
-			const ast::Node* collection;
-			
-			if (ast::has_flag(src, ast::Flag::ForEach_HasIndex))
-			{
-				index = get_reverse_next_sibling(element);
-
-				collection = get_reverse_next_sibling(index);
-			}
-			else
-			{
-				index = nullptr;
-
-				collection = get_reverse_next_sibling(element);
-			}
-
-			const ast::Node* where;
-
-			const ast::Node* body;
-
-			if (ast::has_flag(src, ast::Flag::ForEach_HasWhere))
-			{
-				where = get_reverse_next_sibling(collection);
-
-				ASSERT_OR_IGNORE(where->tag == ast::Tag::Where);
-
-				body = get_reverse_next_sibling(where);
-			}
-			else
-			{
-				where = nullptr;
-
-				body = get_reverse_next_sibling(collection);
-			}
-
-			dst->tag = ast::Tag::Block;
-			dst->child_count = where == nullptr ? 1 : where->child_count + 1;
-
-			reverse_node(data, get_reverse_first_child(where));
-
-			ast::Node* const foreach_dst = reverse_alloc(data, src->data_dwords);
-			memcpy(foreach_dst, src, sizeof(ast::Node) + src->data_dwords * sizeof(u32));
-			foreach_dst->type_index = 0;
-			foreach_dst->child_count -= 1;
-			foreach_dst->flags &= ~static_cast<u8>(ast::Flag::ForEach_HasWhere);
-			
-			reverse_single_node(data, element);
-
-			if (ast::has_flag(src, ast::Flag::ForEach_HasIndex))
-				reverse_single_node(data, index);
-
-			reverse_single_node(data, collection);
-
-			reverse_node(data, get_reverse_next_sibling(where));
-		}
-		else if ((src->tag == ast::Tag::If && ast::has_flag(src, ast::Flag::If_HasWhere)) || (src->tag == ast::Tag::Switch && ast::has_flag(src, ast::Flag::Switch_HasWhere)))
-		{
-			ASSERT_OR_IGNORE(src->tag == ast::Tag::If || src->tag == ast::Tag::Switch);
-
-			ASSERT_OR_IGNORE(src->child_count > 2);
-
-			const ast::Node* const condition = get_reverse_first_child(src);
-
-			const ast::Node* const where = get_reverse_next_sibling(condition);
-
-			ASSERT_OR_IGNORE(where->tag == ast::Tag::Where);
-
-			dst->tag = ast::Tag::Block;
-			dst->child_count = where->child_count + 1;
-
-			reverse_node(data, get_reverse_first_child(where));
-
-			ast::Node* const if_dst = reverse_alloc(data, src->data_dwords);
-			memcpy(if_dst, src, sizeof(ast::Node) + src->data_dwords * sizeof(u32));
-			if_dst->type_index = 0;
-			if_dst->child_count -= 1;
-			if_dst->flags &= ~static_cast<u8>(src->tag == ast::Tag::If ? ast::Flag::If_HasWhere : ast::Flag::Switch_HasWhere);
-
-			reverse_single_node(data, condition);
-
-			reverse_node(data, get_reverse_next_sibling(where));
+			error(lexer, lexer->peek.offset, "String constant spans across newline\n");
 		}
 		else
 		{
-			memcpy(dst, src, sizeof(ast::Node) + src->data_dwords * sizeof(u32));
-			dst->type_index = 0;
-
-			if (src->child_count != 0)
-				reverse_node(data, get_reverse_first_child(src));
+			curr += 1;
 		}
-
-		if (src->next_sibling_offset != 0)
-			dst->next_sibling_offset = static_cast<u32>(dst - reverse_node(data, get_reverse_next_sibling(src)));
-
-		return dst;
 	}
 
-	ast::Node* append_node_base(ast::Tag tag, u16 child_count, ast::Flag flags, u8 data_dwords) noexcept
+	const u32 bytes_to_copy = static_cast<u32>(curr - copy_begin);
+
+	if (buffer_index + bytes_to_copy > sizeof(buffer))
+			error(lexer, lexer->peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
+
+	memcpy(buffer + buffer_index, copy_begin, bytes_to_copy);
+
+	buffer_index += bytes_to_copy;
+
+	const Range<char8> string_bytes{ buffer, buffer_index };
+
+	const IdentifierId string_index = id_from_identifier(lexer->identifiers, string_bytes);
+
+	lexer->curr = curr + 1;
+
+	return { Token::LitString, string_index.rep };
+}
+
+static RawLexeme raw_next(Lexer* lexer) noexcept
+{
+	const char8 first = *lexer->curr;
+
+	lexer->curr += 1;
+
+	const char8 second = first == '\0' ? '\0' : *lexer->curr;
+
+	switch (first)
 	{
-		ast::Node* const node = static_cast<ast::Node*>(m_data->ast_scratch.reserve_exact(sizeof(ast::Node) + data_dwords * sizeof(u32)));
+	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h':
+	case 'i': case 'j': case 'k': case 'l': case 'm': case 'n': case 'o': case 'p':
+	case 'q': case 'r': case 's': case 't': case 'u': case 'v': case 'w': case 'x':
+	case 'y': case 'z':
+	case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G': case 'H':
+	case 'I': case 'J': case 'K': case 'L': case 'M': case 'N': case 'O': case 'P':
+	case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V': case 'W': case 'X':
+	case 'Y': case 'Z':
+		return scan_identifier_token(lexer);
+	
+	case '0':
+		if (second == 'b' || second == 'o' || second == 'x')
+			return scan_number_token_with_base(lexer, second);
 
-		node->tag = tag;
+	// fallthrough
 
-		node->flags = static_cast<u8>(flags);
+	case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8':
+	case '9':
+		return scan_number_token(lexer, first);
 
-		node->data_dwords = data_dwords;
+	case '\'':
+		return scan_char_token(lexer);
 
-		node->child_count = child_count;
+	case '"':
+		return scan_string_token(lexer);
 
-		if (child_count != 0)
+	case '_':
+		if (is_identifier_continuation_char(second))
+			error(lexer, lexer->peek.offset, "Illegal identifier starting with '_'\n");
+
+		return { Token::Wildcard };
+
+	case '+':
+		if (second == '=')
 		{
-			u32 child_index = m_data->stack_scratch.begin()[m_data->stack_scratch.used() - child_count];
+			lexer->curr += 1;
 
-			node->type_index = static_cast<u32>(reinterpret_cast<u32*>(node) - (m_data->ast_scratch.begin() + child_index));
-
-			for (u16 i = 1; i != child_count; ++i)
-			{
-				ast::Node* const child = reinterpret_cast<ast::Node*>(m_data->ast_scratch.begin() + child_index);
-
-				const u32 next_child_index = m_data->stack_scratch.begin()[m_data->stack_scratch.used() - child_count + i];
-
-				const u32 next_sibling_offset = next_child_index - child_index;
-
-				child->next_sibling_offset = next_sibling_offset;
-
-				child_index = next_child_index;
-			}
-
-			m_data->stack_scratch.pop(child_count);
+			return { Token::OpSetAdd };
 		}
-
-		m_data->stack_scratch.append(static_cast<u32>(reinterpret_cast<u32*>(node) - m_data->ast_scratch.begin()));
-
-		return node;
-	}
-
-	ast::Node* append_node(ast::Tag tag, u16 child_count, ast::Flag flags = ast::Flag::EMPTY) noexcept
-	{
-		return append_node_base(tag, child_count, flags, 0);
-	}
-
-	template<typename T>
-	T* append_node(u16 child_count, ast::Flag flags = ast::Flag::EMPTY) noexcept
-	{
-		return append_node_base(T::TAG, child_count, flags, (sizeof(T) + sizeof(u32) - 1) / sizeof(u32))->data<T>();
-	}
-
-	__declspec(noreturn) void error(u64 offset, const char8* format, ...) const noexcept
-	{
-		va_list args;
-
-		va_start(args, format);
-
-		vsource_error(offset, m_content, m_filepath, format, args);
-	}
-
-
-
-	static bool is_definition_start(Token token) noexcept
-	{
-		return token == Token::KwdLet
-		    || token == Token::KwdPub
-			|| token == Token::KwdMut
-			|| token == Token::KwdGlobal
-			|| token == Token::KwdAuto
-			|| token == Token::KwdUse;
-	}
-
-	void parse_expr(bool allow_complex) noexcept
-	{
-		Lexeme lexeme = peek();
-
-		OperatorStack stack{ lexeme.offset, this };
-
-		bool expecting_operand = true;
-
-		while (true)
+		else if (second == ':')
 		{
-			if (expecting_operand)
+			if (lexer->curr[1] == '=')
 			{
-				if (lexeme.token == Token::Ident)
-				{
-					expecting_operand = false;
+				lexer->curr += 2;
 
-					ast::data::ValIdentifier* const data = append_node<ast::data::ValIdentifier>(0);
-
-					data->identifier_index = static_cast<u32>(lexeme.integer_value);
-
-					stack.push_operand();
-				}
-				else if (lexeme.token == Token::LitString)
-				{
-					expecting_operand = false;
-
-					ast::data::ValString* const data = append_node<ast::data::ValString>(0);
-
-					data->string_index = static_cast<u32>(lexeme.integer_value);
-
-					stack.push_operand();
-				}
-				else if (lexeme.token == Token::LitFloat)
-				{
-					expecting_operand = false;
-
-					ast::data::ValFloat* const data = append_node<ast::data::ValFloat>(0);
-
-					data->set(lexeme.float_value);
-
-					stack.push_operand();
-				}
-				else if (lexeme.token == Token::LitInteger)
-				{
-					expecting_operand = false;
-
-					ast::data::ValInteger* const data = append_node<ast::data::ValInteger>(0);
-
-					data->set(lexeme.integer_value);
-
-					stack.push_operand();
-				}
-				else if (lexeme.token == Token::LitChar)
-				{
-					expecting_operand = false;
-
-					ast::data::ValChar* const data = append_node<ast::data::ValChar>(0);
-
-					data->codepoint = static_cast<u32>(lexeme.integer_value);
-
-					stack.push_operand();
-				}
-				else if (lexeme.token == Token::Wildcard)
-				{
-					expecting_operand = false;
-
-					append_node(ast::Tag::Wildcard, 0);
-
-					stack.push_operand();
-				}
-				else if (lexeme.token == Token::CompositeInitializer)
-				{
-					expecting_operand = false;
-
-					skip();
-
-					lexeme = peek();
-
-					u16 child_count = 0;
-
-					while (lexeme.token != Token::CurlyR)
-					{
-						if (child_count == UINT16_MAX)
-							error(peek().offset, "Number of top-level expressions in composite initializer exceeds the supported maximum of %u\n", UINT16_MAX);
-
-						child_count += 1;
-
-						parse_expr(true);
-
-						lexeme = peek();
-
-						if (lexeme.token == Token::Comma)
-						{
-							skip();
-
-							lexeme = peek();
-						}
-						else if (lexeme.token != Token::CurlyR)
-						{
-							error(lexeme.offset, "Expected '}' or ',' after composite initializer argument expression but got '%s'\n", token_name(lexeme.token));
-						}
-					}
-
-					append_node(ast::Tag::CompositeInitializer, child_count);
-
-					stack.push_operand();
-				}
-				else if (lexeme.token == Token::ArrayInitializer)
-				{
-					expecting_operand = false;
-
-					skip();
-
-					lexeme = peek();
-
-					u16 child_count = 0;
-
-					while (lexeme.token != Token::BracketR)
-					{
-						if (child_count == UINT16_MAX)
-							error(peek().offset, "Number of top-level expressions in array initializer exceeds the supported maximum of %u\n", UINT16_MAX);
-
-						child_count += 1;
-
-						parse_expr(true);
-
-						lexeme = peek();
-
-						if (lexeme.token == Token::Comma)
-						{
-							skip();
-
-							lexeme = peek();
-						}
-						else if (lexeme.token != Token::BracketR)
-						{
-							error(lexeme.offset, "Expected ']' or ',' after array initializer argument expression but got '%s'\n", token_name(lexeme.token));
-						}
-					}
-
-					append_node(ast::Tag::ArrayInitializer, child_count);
-
-					stack.push_operand();
-				}
-				else if (lexeme.token == Token::BracketL) // Array Type
-				{
-					skip();
-
-					parse_expr(false);
-
-					lexeme = peek();
-
-					if (lexeme.token != Token::BracketR)
-						error(lexeme.offset, "Expected ']' after array type's size expression, but got '%s'\n", token_name(lexeme.token));
-
-					stack.push_operand();
-
-					stack.push_operator({ ast::Tag::OpTypeArray, 2, false, true });
-				}
-				else if (lexeme.token == Token::CurlyL) // Block
-				{
-					expecting_operand = false;
-
-					skip();
-
-					lexeme = peek();
-
-					u16 child_count = 0;
-
-					while (lexeme.token != Token::CurlyR)
-					{
-						if (child_count == UINT16_MAX)
-							error(peek().offset, "Number of top-level expressions in block exceeds the supported maximum of %u\n", UINT16_MAX);
-
-						child_count += 1;
-
-						parse_top_level_expr(false);
-
-						lexeme = peek();
-
-						if (lexeme.token == Token::CurlyR)
-							break;
-					}
-
-					append_node(ast::Tag::Block, child_count);
-
-					stack.push_operand();
-				}
-				else if (lexeme.token == Token::KwdIf)
-				{
-					expecting_operand = false;
-
-					parse_if();
-
-					stack.push_operand();
-
-					lexeme = peek();
-
-					continue;
-				}
-				else if (lexeme.token == Token::KwdFor)
-				{
-					expecting_operand = false;
-
-					parse_for();
-
-					stack.push_operand();
-
-					lexeme = peek();
-
-					continue;
-				}
-				else if (lexeme.token == Token::KwdSwitch)
-				{
-					expecting_operand = false;
-
-					parse_switch();
-
-					stack.push_operand();
-
-					lexeme = peek();
-
-					continue;
-				}
-				else if (lexeme.token == Token::KwdFunc || lexeme.token == Token::KwdProc)
-				{
-					expecting_operand = false;
-
-					parse_func();
-
-					stack.push_operand();
-
-					lexeme = peek();
-
-					continue;
-				}
-				else if (lexeme.token == Token::KwdTrait)
-				{
-					expecting_operand = false;
-
-					parse_trait();
-
-					stack.push_operand();
-
-					lexeme = peek();
-
-					continue;
-				}
-				else if (lexeme.token == Token::KwdImpl)
-				{
-					expecting_operand = false;
-
-					parse_impl();
-
-					stack.push_operand();
-
-					lexeme = peek();
-
-					continue;
-				}
-				else // Unary operator
-				{
-					const u8 token_ordinal = static_cast<u8>(lexeme.token);
-
-					const u8 lo_ordinal = static_cast<u8>(Token::ParenL);
-
-					const u8 hi_ordinal = static_cast<u8>(Token::OpAdd);
-
-					if (token_ordinal < lo_ordinal || token_ordinal > hi_ordinal)
-						error(lexeme.offset, "Expected operand or unary operator but got '%s'\n", token_name(lexeme.token));
-
-					const OperatorDesc op = UNARY_OPERATOR_DESCS[token_ordinal - lo_ordinal];
-
-					stack.push_operator(op);
-				}
+				return { Token::OpSetAddTC };
 			}
 			else
 			{
-				if (lexeme.token == Token::ParenL) // Function call
-				{
-					stack.pop_to_precedence(1, true);
+				lexer->curr += 1;
 
-					skip();
-
-					lexeme = peek();
-
-					u16 child_count = 1;
-
-					while (lexeme.token != Token::ParenR)
-					{
-						if (child_count == UINT16_MAX)
-							error(peek().offset, "Number of arguments to function call exceeds the supported maximum of %u\n", UINT16_MAX - 1);
-
-						child_count += 1;
-
-						parse_top_level_expr(true);
-
-						lexeme = peek();
-
-						if (lexeme.token == Token::Comma)
-						{
-							skip();
-
-							lexeme = peek();
-						}
-						else if (lexeme.token != Token::ParenR)
-						{
-							error(lexeme.offset, "Expected ')' or ',' after function argument expression but got '%s'\n", token_name(lexeme.token));
-						}
-					}
-
-					append_node(ast::Tag::Call, child_count);
-				}
-				else if (lexeme.token == Token::ParenR) // Closing parenthesis
-				{
-					if (!stack.pop_to_precedence(10, false))
-						return; // No need for stack.pop_remaining; pop_to_lparen already popped everything
-
-					stack.remove_lparen();
-				}
-				else if (lexeme.token == Token::BracketL) // Array Index
-				{
-					stack.pop_to_precedence(1, true);
-
-					skip();
-
-					parse_expr(false);
-
-					lexeme = peek();
-
-					if (lexeme.token != Token::BracketR)
-						error(lexeme.offset, "Expected ']' after array index expression, but got '%s'\n", token_name(lexeme.token));
-
-					append_node(ast::Tag::OpArrayIndex, 2);
-				}
-				else if (lexeme.token == Token::KwdCatch)
-				{
-					u16 child_count = 2;
-
-					ast::Flag flags = ast::Flag::EMPTY;
-
-					stack.pop_to_precedence(1, true);
-
-					skip();
-
-					lexeme = peek();
-
-					if (is_definition_start(lexeme.token) || peek_n(1).token == Token::ThinArrowR)
-					{
-						child_count += 1;
-
-						flags |= ast::Flag::Catch_HasDefinition;
-
-						parse_definition(true, true);
-
-						lexeme = next();
-
-						if (lexeme.token != Token::ThinArrowR)
-							error(lexeme.offset, "Expected '%s' after inbound definition in catch, but got '%s'\n", token_name(Token::ThinArrowR), token_name(lexeme.token));
-					}
-
-					parse_expr(false);
-
-					append_node(ast::Tag::Catch, child_count, flags);
-
-					lexeme = peek();
-
-					continue;
-				}
-				else // Binary operator
-				{
-					const u8 token_ordinal = static_cast<u8>(lexeme.token);
-
-					const u8 lo_ordinal = static_cast<u8>(Token::OpMemberOrRef);
-
-					const u8 hi_ordinal = static_cast<u8>(Token::OpSetShr);
-
-					if (token_ordinal < lo_ordinal || token_ordinal > hi_ordinal || (!allow_complex && lexeme.token == Token::OpSet))
-						break;
-
-					const OperatorDesc op = BINARY_OPERATOR_DESCS[token_ordinal - lo_ordinal];
-
-					stack.push_operator(op);
-					
-					expecting_operand = op.is_binary;
-				}
+				return { Token::OpAddTC };
 			}
-
-			skip();
-
-			lexeme = peek();
 		}
-
-		stack.pop_remaining();
-	}
-
-	void parse_top_level_expr(bool is_definition_optional_value) noexcept
-	{
-		const Lexeme lexeme = peek();
-
-		if (is_definition_start(lexeme.token))
-			parse_definition(false, is_definition_optional_value);
 		else
-			parse_expr(true);
+		{
+			return { Token::OpAdd };
+		}
+
+	case '-':
+		if (second == '>')
+		{
+			lexer->curr += 1;
+
+			return { Token::ThinArrowR };
+		}
+		else if (second == ':')
+		{
+			if (lexer->curr[1] == '=')
+			{
+				lexer->curr += 2;
+
+				return { Token::OpSetSubTC };
+			}
+			else
+			{
+				lexer->curr += 1;
+
+				return { Token::OpSubTC };
+			}
+		}
+		else if (second == '=')
+		{
+			lexer->curr += 1;
+
+			return { Token::OpSetSub };
+		}
+		else
+		{
+			return { Token::OpSub };
+		}
+
+	case '*':
+		if (second == '=')
+		{
+			lexer->curr += 1;
+
+			return { Token::OpSetMul };
+		}
+		else if (second == ':')
+		{
+			if (lexer->curr[1] == '=')
+			{
+				lexer->curr += 2;
+
+				return { Token::OpSetMulTC };
+			}
+			else
+			{
+				lexer->curr += 1;
+
+				return { Token::OpMulTC };
+			}
+		}
+		else if (second == '/')
+		{
+			error(lexer, lexer->peek.offset, "'*/' without previous matching '/*'\n");
+		}
+		else
+		{
+			return { Token::OpMulOrTypPtr };
+		}
+
+	case '/':
+		if (second == '=')
+		{
+			lexer->curr += 1;
+
+			return { Token::OpSetDiv };
+		}
+		else
+		{
+			return { Token::OpDiv };
+		}
+
+	case '%':
+		if (second == '=')
+		{
+			lexer->curr += 1;
+
+			return { Token::OpSetMod };
+		}
+		else
+		{
+			return { Token::OpMod };
+		}
+
+	case '&':
+		if (second == '&')
+		{
+			lexer->curr += 1;
+
+			return { Token::OpLogAnd };
+		}
+		else if (second == '=')
+		{
+			lexer->curr += 1;
+
+			return { Token::OpSetAnd };
+		}
+		else
+		{
+			return { Token::OpAnd };
+		}
+
+	case '|':
+		if (second == '|')
+		{
+			lexer->curr += 1;
+
+			return { Token::OpLogAnd };
+		}
+		else if (second == '=')
+		{
+			lexer->curr += 1;
+
+			return { Token::OpSetOr };
+		}
+		else
+		{
+			return { Token::OpOr };
+		}
+
+	case '^':
+		if (second == '=')
+		{
+			lexer->curr += 1;
+
+			return { Token::OpSetXor };
+		}
+		else
+		{
+			return { Token::OpXor };
+		}
+
+	case '<':
+		if (second == '<')
+		{
+			if (lexer->curr[1] == '=')
+			{
+				lexer->curr += 2;
+
+				return { Token::OpSetShl };
+			}
+			else
+			{
+				lexer->curr += 1;
+
+				return { Token::OpShl };
+			}
+		}
+		else if (second == '=')
+		{
+			lexer->curr += 1;
+
+			return { Token::OpLe };
+		}
+		else if (second == '-')
+		{
+			lexer->curr += 1;
+
+			return { Token::ThinArrowL };
+		}
+		else
+		{
+			return { Token::OpLt };
+		}
+
+	case '>':
+		if (second == '>')
+		{
+			if (lexer->curr[1] == '=')
+			{
+				lexer->curr += 2;
+
+				return { Token::OpSetShr };
+			}
+			else
+			{
+				lexer->curr += 1;
+
+				return { Token::OpShr };
+			}
+		}
+		else if (second == '=')
+		{
+			lexer->curr += 1;
+
+			return { Token::OpGe };
+		}
+		else
+		{
+			return { Token::OpGt };
+		}
+
+	case '.':
+		if (second == '.')
+		{
+			if (lexer->curr[1] != '.')
+				error(lexer, lexer->peek.offset, "Unexpected Token '..'\n");
+
+			lexer->curr += 2;
+
+			return { Token::TypVar };
+		}
+		else if (second == '*')
+		{
+			lexer->curr += 1;
+
+			return { Token::UOpDeref };
+		}
+		else if (second == '[')
+		{
+			lexer->curr += 1;
+
+			return { Token::ArrayInitializer };
+		}
+		else if (second == '{')
+		{
+			lexer->curr += 1;
+
+			return { Token::CompositeInitializer };
+		}
+		else
+		{
+			return { Token::OpMemberOrRef };
+		}
+
+	case '!':
+		if (second == '=')
+		{
+			lexer->curr += 1;
+
+			return { Token::OpNe };
+		}
+		else
+		{
+			return { Token::UOpLogNot };
+		}
+
+	case '=':
+		if (second == '=')
+		{
+			lexer->curr += 1;
+
+			return { Token::OpEq };
+		}
+		else if (second == '>')
+		{
+			lexer->curr += 1;
+
+			return { Token::WideArrowR };
+		}
+		else
+		{
+			return { Token::OpSet };
+		}
+
+	case '$':
+		return { Token::UOpAddr };
+
+	case '~':
+		return { Token::UOpNot };
+
+	case '?':
+		return { Token::TypOptPtr };
+
+	case ':':
+		return { Token::Colon };
+
+	case ',':
+		return { Token::Comma };
+
+	case '#':
+		return { Token::Pragma };
+
+	case '[':
+		if (second == '.' && lexer->curr[1] == '.' && lexer->curr[2] == '.' && lexer->curr[3] == ']')
+		{
+			lexer->curr += 4;
+
+			return { Token::TypTailArray };
+		}
+		else if (second == '*' && lexer->curr[1] == ']')
+		{
+			lexer->curr += 2;
+
+			return { Token::TypMultiPtr };
+		}
+		else if (second == '?' && lexer->curr[1] == ']')
+		{
+			lexer->curr += 2;
+
+			return { Token::TypOptMultiPtr };
+		}
+		else
+		{
+			return { Token::BracketL };
+		}
+
+	case ']':
+		return { Token::BracketR };
+
+	case '{':
+		return { Token::CurlyL };
+
+	case '}':
+		return { Token::CurlyR };
+
+	case '(':
+		return { Token::ParenL };
+
+	case ')':
+		return { Token::ParenR };
+
+	case '\0':
+		lexer->curr -= 1;
+
+		if (lexer->curr != lexer->end)
+			error(lexer, lexer->peek.offset, "Null character in source file\n");
+
+		return { Token::END_OF_SOURCE };				
+
+	default:
+		error(lexer, lexer->peek.offset, "Unexpected character '%c' in source file\n", first);
+	}
+}
+
+static Lexeme next(Lexer* lexer) noexcept
+{
+	if (lexer->peek.token != Token::EMPTY)
+	{
+		const Lexeme rst = lexer->peek;
+
+		lexer->peek.token = Token::EMPTY;
+
+		return rst;
 	}
 
-	void parse_if() noexcept
+	skip_whitespace(lexer);
+
+	lexer->peek.offset = static_cast<u32>(lexer->curr - lexer->begin);
+
+	const RawLexeme raw = raw_next(lexer);
+
+	return { raw.token, lexer->peek.offset, raw.integer_value };
+}
+
+static Lexeme peek(Lexer* lexer) noexcept
+{
+	if (lexer->peek.token == Token::EMPTY)
+		lexer->peek = next(lexer);
+
+	return lexer->peek;
+}
+
+static Lexeme peek_n(Lexer* lexer, u32 n) noexcept
+{
+	ASSERT_OR_IGNORE(n != 0);
+
+	const Lexeme remembered_peek = peek(lexer);
+
+	const char8* const remembered_curr = lexer->curr;
+
+	lexer->peek.token = Token::EMPTY;
+
+	Lexeme result = remembered_peek;
+
+	for (u32 i = 0; i != n; ++i)
+		result = next(lexer);
+
+	lexer->curr = remembered_curr;
+
+	lexer->peek = remembered_peek;
+
+	return result;
+}
+
+static void skip(Lexer* lexer) noexcept
+{
+	(void) next(lexer);
+}
+
+
+
+static void pop_operator(Parser* parser, OperatorStack* stack) noexcept
+{
+	ASSERT_OR_IGNORE(stack->operator_top != 0);
+
+	const OperatorDesc top = stack->operators[stack->operator_top - 1];
+
+	stack->operator_top -= 1;
+
+	if (top.node_type == a2::Tag::INVALID)
+		return;
+
+	if (stack->operand_count <= top.is_binary)
+		error(&parser->lexer, stack->expression_offset, "Missing operand(s) for operator '%s'\n", a2::tag_name(top.node_type));
+
+	if (top.is_binary)
+		stack->operand_count -= 1;
+
+	const a2::BuilderToken operator_token = a2::push_node(&parser->builder, stack->operand_tokens[stack->operand_count - 1], top.node_type, a2::Flag::EMPTY);
+
+	stack->operand_tokens[stack->operand_count - 1] = operator_token;
+}
+
+static bool pop_to_precedence(Parser* parser, OperatorStack* stack, u8 precedence, bool pop_equal) noexcept
+{
+	while (stack->operator_top != 0)
 	{
-		ASSERT_OR_IGNORE(peek().token == Token::KwdIf);
+		const OperatorDesc top = stack->operators[stack->operator_top - 1];
 
-		u16 child_count = 2;
+		if (top.precedence > precedence || (top.precedence == precedence && !pop_equal))
+			return true;
 
-		ast::Flag flags = ast::Flag::EMPTY;
-
-		skip();
-
-		parse_expr(false);
-
-		Lexeme lexeme = peek();
-
-		if (lexeme.token == Token::KwdWhere)
-		{
-			child_count += 1;
-
-			flags |= ast::Flag::If_HasWhere;
-
-			parse_where();
-
-			lexeme = peek();
-		}
-
-		if (lexeme.token == Token::KwdThen)
-			skip();
-
-		parse_expr(true);
-
-		lexeme = peek();
-
-		if (lexeme.token == Token::KwdElse)
-		{
-			child_count += 1;
-
-			flags |= ast::Flag::If_HasElse;
-
-			skip();
-
-			parse_expr(true);
-		}
-
-		append_node(ast::Tag::If, child_count, flags);
+		pop_operator(parser, stack);
 	}
 
-	void parse_for() noexcept
+	return false;
+}
+
+static void push_operand(Parser* parser, OperatorStack* stack, a2::BuilderToken operand_token) noexcept
+{
+	if (stack->operand_count == array_count(stack->operand_tokens) - 1)
+		error(&parser->lexer, stack->expression_offset, "Expression exceeds maximum open operands of %u\n");
+
+	stack->operand_tokens[stack->operand_count] = operand_token;
+
+	stack->operand_count += 1;
+}
+
+static void push_operator(Parser* parser, OperatorStack* stack, OperatorDesc op) noexcept
+{
+	if (op.node_type != a2::Tag::INVALID)
+		pop_to_precedence(parser, stack, op.precedence, op.is_right_to_left);
+
+	if (stack->operator_top == array_count(stack->operators))
+		error(&parser->lexer, stack->expression_offset, "Expression exceeds maximum depth of %u\n", array_count(stack->operators));
+
+	stack->operators[stack->operator_top] = op;
+
+	stack->operator_top += 1;
+}
+
+static void remove_lparen(OperatorStack* stack) noexcept
+{
+	ASSERT_OR_IGNORE(stack->operator_top != 0 && stack->operators[stack->operator_top - 1].node_type == a2::Tag::INVALID);
+
+	stack->operator_top -= 1;
+}
+
+static a2::BuilderToken pop_remaining(Parser* parser, OperatorStack* stack) noexcept
+{
+	while (stack->operator_top != 0)
+		pop_operator(parser, stack);
+
+	if (stack->operand_count != 1)
+		error(&parser->lexer, stack->expression_offset, "Mismatched operand / operator count (%u operands remaining)", stack->operand_count);
+
+	return stack->operand_tokens[0];
+}
+
+
+
+
+
+static bool is_definition_start(Token token) noexcept
+{
+	return token == Token::KwdLet
+		|| token == Token::KwdPub
+		|| token == Token::KwdMut
+		|| token == Token::KwdGlobal
+		|| token == Token::KwdAuto
+		|| token == Token::KwdUse;
+}
+
+static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept;
+
+static a2::BuilderToken parse_definition(Parser* parser, bool is_implicit, bool is_optional_value) noexcept;
+
+static a2::BuilderToken parse_top_level_expr(Parser* parser, bool is_definition_optional_value) noexcept
+{
+	const Lexeme lexeme = peek(&parser->lexer);
+
+	if (is_definition_start(lexeme.token))
+		return parse_definition(parser, false, is_definition_optional_value);
+	else
+		return parse_expr(parser, true);
+}
+
+static a2::BuilderToken parse_where(Parser* parser) noexcept
+{
+	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdWhere);
+
+	skip(&parser->lexer);
+
+	const a2::BuilderToken first_child_token = parse_definition(parser, true, false);
+
+	while (true)
 	{
-		ASSERT_OR_IGNORE(peek().token == Token::KwdFor);
+		if (peek(&parser->lexer).token != Token::Comma)
+			break;
 
-		u16 child_count = 2;
+		skip(&parser->lexer);
 
-		ast::Flag flags = ast::Flag::EMPTY;
-
-		skip();
-
-		if (try_parse_foreach())
-			return;
-
-		parse_expr(false);
-
-		Lexeme lexeme = peek();
-
-		if (lexeme.token == Token::Comma)
-		{
-			child_count += 1;
-
-			flags |= ast::Flag::For_HasStep;
-
-			skip();
-
-			parse_expr(true);
-
-			lexeme = peek();
-		}
-
-		if (lexeme.token == Token::KwdWhere)
-		{
-			child_count += 1;
-
-			flags |= ast::Flag::For_HasWhere;
-
-			parse_where();
-
-			lexeme = peek();
-		}
-
-		if (lexeme.token == Token::KwdDo)
-			skip();
-
-		parse_expr(true);
-
-		lexeme = peek();
-
-		if (lexeme.token == Token::KwdFinally)
-		{
-			child_count += 1;
-			
-			flags |= ast::Flag::For_HasFinally;
-
-			parse_expr(true);
-		}
-
-		append_node(ast::Tag::For, child_count, flags);
+		parse_definition(parser, true, false);
 	}
 
-	[[nodiscard]] bool try_parse_foreach() noexcept
-	{
-		bool is_foreach = false;
+	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Where, a2::Flag::EMPTY);
+}
 
-		if (is_definition_start(peek().token))
-		{
+static a2::BuilderToken parse_if(Parser* parser) noexcept
+{
+	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdIf);
+
+	a2::Flag flags = a2::Flag::EMPTY;
+
+	skip(&parser->lexer);
+
+	const a2::BuilderToken condition_token = parse_expr(parser, false);
+
+	Lexeme lexeme = peek(&parser->lexer);
+
+	if (lexeme.token == Token::KwdWhere)
+	{
+		flags |= a2::Flag::If_HasWhere;
+
+		parse_where(parser);
+
+		lexeme = peek(&parser->lexer);
+	}
+
+	if (lexeme.token == Token::KwdThen)
+		skip(&parser->lexer);
+
+	parse_expr(parser, true);
+
+	lexeme = peek(&parser->lexer);
+
+	if (lexeme.token == Token::KwdElse)
+	{
+		flags |= a2::Flag::If_HasElse;
+
+		skip(&parser->lexer);
+
+		parse_expr(parser, true);
+	}
+
+	return a2::push_node(&parser->builder, condition_token, a2::Tag::If, flags);
+}
+
+static a2::BuilderToken try_parse_foreach(Parser* parser) noexcept
+{
+	bool is_foreach = false;
+
+	if (is_definition_start(peek(&parser->lexer).token))
+	{
+		is_foreach = true;
+	}
+	else if (const Lexeme lookahead_1 = peek_n(&parser->lexer, 1); lookahead_1.token == Token::ThinArrowL)
+	{
+		is_foreach = true;
+	}
+	else if (lookahead_1.token == Token::Comma)
+	{
+		if (const Lexeme lookahead_2 = peek_n(&parser->lexer, 2); is_definition_start(lookahead_2.token))
 			is_foreach = true;
-		}
-		else if (const Lexeme lookahead_1 = peek_n(1); lookahead_1.token == Token::ThinArrowL)
-		{
+		if (const Lexeme lookahead_3 = peek_n(&parser->lexer, 3); lookahead_3.token == Token::ThinArrowL)
 			is_foreach = true;
-		}
-		else if (lookahead_1.token == Token::Comma)
-		{
-			if (const Lexeme lookahead_2 = peek_n(2); is_definition_start(lookahead_2.token))
-				is_foreach = true;
-			if (const Lexeme lookahead_3 = peek_n(3); lookahead_3.token == Token::ThinArrowL)
-				is_foreach = true;
-		}
-
-		if (!is_foreach)
-			return false;
-
-		u16 child_count = 3;
-
-		ast::Flag flags = ast::Flag::EMPTY;
-
-		parse_definition(true, true);
-
-		Lexeme lexeme = peek();
-
-		if (lexeme.token == Token::Comma)
-		{
-			child_count += 1;
-
-			flags |= ast::Flag::ForEach_HasIndex;
-
-			skip();
-
-			parse_definition(true, true);
-
-			lexeme = peek();
-		}
-
-		if (lexeme.token != Token::ThinArrowL)
-			error(lexeme.offset, "Expected '%s' after for-each loop variables but got '%s'\n", token_name(Token::ThinArrowL), token_name(lexeme.token));
-
-		skip();
-
-		parse_expr(false);
-
-		lexeme = peek();
-
-		if (lexeme.token == Token::KwdWhere)
-		{
-			child_count += 1;
-
-			flags |= ast::Flag::ForEach_HasWhere;
-
-			parse_where();
-
-			lexeme = peek();
-		}
-
-		if (lexeme.token == Token::KwdDo)
-			skip();
-
-		parse_expr(true);
-
-		lexeme = peek();
-
-		if (lexeme.token == Token::KwdFinally)
-		{
-			child_count += 1;
-			
-			flags |= ast::Flag::ForEach_HasFinally;
-
-			parse_expr(true);
-		}
-
-		append_node(ast::Tag::ForEach, child_count, flags);
-
-		return true;
 	}
 
-	void parse_switch() noexcept
+	if (!is_foreach)
+		return a2::Builder::NO_CHILDREN;
+
+	a2::Flag flags = a2::Flag::EMPTY;
+
+	const a2::BuilderToken first_child_token = parse_definition(parser, true, true);
+
+	Lexeme lexeme = peek(&parser->lexer);
+
+	if (lexeme.token == Token::Comma)
 	{
-		ASSERT_OR_IGNORE(peek().token == Token::KwdSwitch);
+		flags |= a2::Flag::ForEach_HasIndex;
 
-		u16 child_count = 1;
+		skip(&parser->lexer);
 
-		ast::Flag flags = ast::Flag::EMPTY;
+		parse_definition(parser, true, true);
 
-		skip();
+		lexeme = peek(&parser->lexer);
+	}
 
-		parse_expr(false);
+	if (lexeme.token != Token::ThinArrowL)
+		error(&parser->lexer, lexeme.offset, "Expected '%s' after for-each loop variables but got '%s'\n", token_name(Token::ThinArrowL), token_name(lexeme.token));
 
-		Lexeme lexeme = peek();
+	skip(&parser->lexer);
 
-		if (lexeme.token == Token::KwdWhere)
-		{
-			child_count += 1;
+	parse_expr(parser, false);
 
-			flags |= ast::Flag::Switch_HasWhere;
+	lexeme = peek(&parser->lexer);
 
-			parse_where();
+	if (lexeme.token == Token::KwdWhere)
+	{
+		flags |= a2::Flag::ForEach_HasWhere;
 
-			lexeme = peek();
-		}
+		parse_where(parser);
+
+		lexeme = peek(&parser->lexer);
+	}
+
+	if (lexeme.token == Token::KwdDo)
+		skip(&parser->lexer);
+
+	parse_expr(parser, true);
+
+	lexeme = peek(&parser->lexer);
+
+	if (lexeme.token == Token::KwdFinally)
+	{
+		flags |= a2::Flag::ForEach_HasFinally;
+
+		parse_expr(parser, true);
+	}
+
+	return a2::push_node(&parser->builder, first_child_token, a2::Tag::ForEach, flags);
+}
+
+static a2::BuilderToken parse_for(Parser* parser) noexcept
+{
+	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdFor);
+
+	a2::Flag flags = a2::Flag::EMPTY;
+
+	skip(&parser->lexer);
+
+	if (const a2::BuilderToken foreach_token = try_parse_foreach(parser); foreach_token.rep != a2::Builder::NO_CHILDREN.rep)
+		return foreach_token;
+
+	const a2::BuilderToken first_child_token = parse_expr(parser, false);
+
+	Lexeme lexeme = peek(&parser->lexer);
+
+	if (lexeme.token == Token::Comma)
+	{
+		flags |= a2::Flag::For_HasStep;
+
+		skip(&parser->lexer);
+
+		parse_expr(parser, true);
+
+		lexeme = peek(&parser->lexer);
+	}
+
+	if (lexeme.token == Token::KwdWhere)
+	{
+		flags |= a2::Flag::For_HasWhere;
+
+		parse_where(parser);
+
+		lexeme = peek(&parser->lexer);
+	}
+
+	if (lexeme.token == Token::KwdDo)
+		skip(&parser->lexer);
+
+	parse_expr(parser, true);
+
+	lexeme = peek(&parser->lexer);
+
+	if (lexeme.token == Token::KwdFinally)
+	{
+		flags |= a2::Flag::For_HasFinally;
+
+		parse_expr(parser, true);
+	}
+
+	return a2::push_node(&parser->builder, first_child_token, a2::Tag::For, flags);
+}
+
+static a2::BuilderToken parse_case(Parser* parser) noexcept
+{
+	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdCase);
+
+	skip(&parser->lexer);
+
+	const a2::BuilderToken first_child_token = parse_expr(parser, false);
+
+	Lexeme lexeme = next(&parser->lexer);
+
+	if (lexeme.token != Token::ThinArrowR)
+		error(&parser->lexer, lexeme.offset, "Expected '%s' after case label expression but got '%s'\n", token_name(Token::ThinArrowR), token_name(lexeme.token));
+
+	parse_expr(parser, true);
+
+	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Case, a2::Flag::EMPTY);
+}
+
+static a2::BuilderToken parse_switch(Parser* parser) noexcept
+{
+	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdSwitch);
+
+	u16 child_count = 1;
+
+	a2::Flag flags = a2::Flag::EMPTY;
+
+	skip(&parser->lexer);
+
+	const a2::BuilderToken first_child_token = parse_expr(parser, false);
+
+	Lexeme lexeme = peek(&parser->lexer);
+
+	if (lexeme.token == Token::KwdWhere)
+	{
+		child_count += 1;
+
+		flags |= a2::Flag::Switch_HasWhere;
+
+		parse_where(parser);
+
+		lexeme = peek(&parser->lexer);
+	}
+
+	if (lexeme.token != Token::KwdCase)
+		error(&parser->lexer, lexeme.offset, "Expected at least one '%s' after switch expression but got '%s'\n", token_name(Token::KwdCase), token_name(lexeme.token));
+
+	while (true)
+	{
+		if (child_count == UINT16_MAX)
+			error(&parser->lexer, peek(&parser->lexer).offset, "Combined number of cases, where-clause and switch expression in switch exceeds the supported maximum of %u\n", UINT16_MAX);
+
+		child_count += 1;
+
+		parse_case(parser);
+
+		lexeme = peek(&parser->lexer);
 
 		if (lexeme.token != Token::KwdCase)
-			error(lexeme.offset, "Expected at least one '%s' after switch expression but got '%s'\n", token_name(Token::KwdCase), token_name(lexeme.token));
-
-		while (true)
-		{
-			if (child_count == UINT16_MAX)
-				error(peek().offset, "Combined number of cases, where-clause and switch expression in switch exceeds the supported maximum of %u\n", UINT16_MAX);
-
-			child_count += 1;
-
-			parse_case();
-
-			lexeme = peek();
-
-			if (lexeme.token != Token::KwdCase)
-				break;
-		}
-
-		append_node(ast::Tag::Switch, child_count, flags);
+			break;
 	}
 
-	void parse_case() noexcept
+	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Switch, flags);
+}
+
+static a2::BuilderToken parse_expects(Parser* parser) noexcept
+{
+	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdExpects);
+
+	skip(&parser->lexer);
+
+	const a2::BuilderToken first_child_token = parse_expr(parser, false);
+
+	while (true)
 	{
-		ASSERT_OR_IGNORE(peek().token == Token::KwdCase);
+		if (peek(&parser->lexer).token != Token::Comma)
+			break;
 
-		skip();
+		skip(&parser->lexer);
 
-		parse_expr(false);
-
-		Lexeme lexeme = next();
-
-		if (lexeme.token != Token::ThinArrowR)
-			error(lexeme.offset, "Expected '%s' after case label expression but got '%s'\n", token_name(Token::ThinArrowR), token_name(lexeme.token));
-
-		parse_expr(true);
-
-		append_node(ast::Tag::Case, 2);
+		parse_expr(parser, false);
 	}
 
-	void parse_where() noexcept
+	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Expects, a2::Flag::EMPTY);
+}
+
+static a2::BuilderToken parse_ensures(Parser* parser) noexcept
+{
+	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdEnsures);
+
+	skip(&parser->lexer);
+
+	const a2::BuilderToken first_child_token = parse_expr(parser, false);
+
+	while (true)
 	{
-		ASSERT_OR_IGNORE(peek().token == Token::KwdWhere);
+		if (peek(&parser->lexer).token != Token::Comma)
+			break;
 
-		skip();
-
-		u16 child_count = 0;
-
-		Lexeme lexeme = peek();
-
-		while (true)
-		{
-			if (child_count == UINT16_MAX)
-				error(peek().offset, "Number of definitions in where clause exceeds the supported maximum of %u\n", UINT16_MAX);
-
-			child_count += 1;
-
-			parse_definition(true, false);
-
-			lexeme = peek();
-
-			if (lexeme.token != Token::Comma)
-				break;
-
-			skip();
-		}
-
-		append_node(ast::Tag::Where, child_count);
+		skip(&parser->lexer);
+		
+		parse_expr(parser, false);
 	}
 
-	void parse_expects() noexcept
+	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Ensures, a2::Flag::EMPTY);
+}
+
+static a2::BuilderToken parse_func(Parser* parser) noexcept
+{
+	a2::Flag flags = a2::Flag::EMPTY;
+
+	Lexeme lexeme = next(&parser->lexer);
+
+	if (lexeme.token == Token::KwdProc)
+		flags |= a2::Flag::Func_IsProc;
+	else if (lexeme.token != Token::KwdFunc)
+		error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' but got '%s'\n", token_name(Token::KwdFunc), token_name(Token::KwdProc), token_name(lexeme.token));
+
+	lexeme = next(&parser->lexer);
+
+	if (lexeme.token != Token::ParenL)
+		error(&parser->lexer, lexeme.offset, "Expected '%s' after '%s' but got '%s'\n", token_name(Token::ParenL), token_name(flags == a2::Flag::Func_IsProc ? Token::KwdProc : Token::KwdFunc), token_name(lexeme.token));
+
+	lexeme = peek(&parser->lexer);
+
+	a2::BuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+
+	while (lexeme.token != Token::ParenR)
 	{
-		ASSERT_OR_IGNORE(peek().token == Token::KwdExpects);
+		const a2::BuilderToken parameter_token = parse_definition(parser, true, true);
 
-		u16 child_count = 0;
+		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+			first_child_token = parameter_token;
 
-		skip();
+		lexeme = peek(&parser->lexer);
 
-		Lexeme lexeme = peek();
-
-		while (true)
-		{
-			if (child_count == UINT16_MAX)
-				error(peek().offset, "Number of expressions in expects clause exceeds the supported maximum of %u\n", UINT16_MAX);
-
-			child_count += 1;
-
-			parse_expr(false);
-
-			lexeme = peek();
-
-			if (lexeme.token != Token::Comma)
-				break;
-
-			skip();
-		}
-
-		append_node(ast::Tag::Expects, child_count);
+		if (lexeme.token == Token::Comma)
+			skip(&parser->lexer);
+		else if (lexeme.token != Token::ParenR)
+			error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' after function parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
 	}
 
-	void parse_ensures() noexcept
+	skip(&parser->lexer);
+
+	lexeme = peek(&parser->lexer);
+
+	if (lexeme.token == Token::ThinArrowR)
 	{
-		ASSERT_OR_IGNORE(peek().token == Token::KwdEnsures);
+		flags |= a2::Flag::Func_HasReturnType;
 
-		u16 child_count = 0;
+		skip(&parser->lexer);
 
-		skip();
+		const a2::BuilderToken return_type_token = parse_expr(parser, false);
 
-		Lexeme lexeme = peek();
+		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+			first_child_token = return_type_token;
 
-		while (true)
-		{
-			if (child_count == UINT16_MAX)
-				error(peek().offset, "Number of expressions in ensures clause exceeds the supported maximum of %u\n", UINT16_MAX);
-
-			child_count += 1;
-
-			parse_expr(false);
-
-			lexeme = peek();
-
-			if (lexeme.token != Token::Comma)
-				break;
-
-			skip();
-		}
-
-		append_node(ast::Tag::Ensures, child_count);
+		lexeme = peek(&parser->lexer);
 	}
 
-	void parse_func() noexcept
+	if (lexeme.token == Token::KwdExpects)
 	{
-		u16 child_count = 0;
+		flags |= a2::Flag::Func_HasExpects;
 
-		ast::Flag flags = ast::Flag::EMPTY;
+		const a2::BuilderToken expects_token = parse_expects(parser);
 
-		Lexeme lexeme = next();
+		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+			first_child_token = expects_token;
 
-		if (lexeme.token == Token::KwdProc)
-			flags |= ast::Flag::Func_IsProc;
-		else if (lexeme.token != Token::KwdFunc)
-			error(lexeme.offset, "Expected '%s' or '%s' but got '%s'\n", token_name(Token::KwdFunc), token_name(Token::KwdProc), token_name(lexeme.token));
-
-		lexeme = next();
-
-		if (lexeme.token != Token::ParenL)
-			error(lexeme.offset, "Expected '%s' after '%s' but got '%s'\n", token_name(Token::ParenL), token_name(flags == ast::Flag::Func_IsProc ? Token::KwdProc : Token::KwdFunc), token_name(lexeme.token));
-
-		lexeme = peek();
-
-		while (lexeme.token != Token::ParenR)
-		{
-			if (child_count == UINT16_MAX)
-				error(lexeme.offset, "Number of parameters in function parameter list exceeds the supported maximum of %u\n", UINT16_MAX);
-			
-			child_count += 1;
-
-			parse_definition(true, true);
-
-			lexeme = peek();
-
-			if (lexeme.token == Token::Comma)
-				skip();
-			else if (lexeme.token != Token::ParenR)
-				error(lexeme.offset, "Expected '%s' or '%s' after function parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
-		}
-
-		skip();
-
-		lexeme = peek();
-
-		if (lexeme.token == Token::ThinArrowR)
-		{
-			child_count += 1;
-
-			flags |= ast::Flag::Func_HasReturnType;
-
-			skip();
-
-			parse_expr(false);
-
-			lexeme = peek();
-		}
-
-		if (lexeme.token == Token::KwdExpects)
-		{
-			child_count += 1;
-
-			flags |= ast::Flag::Func_HasExpects;
-
-			parse_expects();
-
-			lexeme = peek();
-		}
-
-		if (lexeme.token == Token::KwdEnsures)
-		{
-			child_count += 1;
-
-			flags |= ast::Flag::Func_HasEnsures;
-
-			parse_ensures();
-
-			lexeme = peek();
-		}
-
-		if (lexeme.token == Token::OpSet)
-		{
-			child_count += 1;
-
-			flags |= ast::Flag::Func_HasBody;
-
-			skip();
-
-			parse_expr(true);
-		}
-
-		append_node(ast::Tag::Func, child_count, flags);
+		lexeme = peek(&parser->lexer);
 	}
 
-	void parse_trait() noexcept
+	if (lexeme.token == Token::KwdEnsures)
 	{
-		ASSERT_OR_IGNORE(peek().token == Token::KwdTrait);
+		flags |= a2::Flag::Func_HasEnsures;
 
-		u16 child_count = 1;
+		const a2::BuilderToken ensures_token = parse_ensures(parser);
 
-		ast::Flag flags = ast::Flag::EMPTY;
+		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+			first_child_token = ensures_token;
 
-		skip();
-
-		Lexeme lexeme = next();
-
-		if (lexeme.token != Token::ParenL)
-			error(lexeme.offset, "Expected '%s' after '%s' but got '%s'\n", token_name(Token::ParenL), token_name(Token::KwdTrait), token_name(lexeme.token));
-
-		lexeme = peek();
-
-		while (lexeme.token != Token::ParenR)
-		{
-			if (child_count == UINT16_MAX)
-				error(lexeme.offset, "Number of parameters in trait parameter list exceeds the supported maximum of %u\n", UINT16_MAX);
-			
-			child_count += 1;
-
-			parse_definition(true, true);
-
-			lexeme = next();
-
-			if (lexeme.token == Token::Comma)
-				lexeme = peek();
-			else if (lexeme.token != Token::ParenR)
-				error(lexeme.offset, "Expected '%s' or '%s' after trait parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
-		}
-
-		lexeme = peek();
-
-		if (lexeme.token == Token::KwdExpects)
-		{
-			child_count += 1;
-
-			flags |= ast::Flag::Trait_HasExpects;
-
-			parse_expects();
-
-			lexeme = peek();
-		}
-
-		if (lexeme.token != Token::OpSet)
-		{
-			if ((flags & ast::Flag::Trait_HasExpects) == ast::Flag::EMPTY)
-				error(lexeme.offset, "Expected '%s' or '%s' after trait parameter list but got '%s'\n", token_name(Token::OpSet), token_name(Token::KwdExpects), token_name(lexeme.token));
-			else
-				error(lexeme.offset, "Expected '%s' after trait expects clause but got '%s'\n", token_name(Token::OpSet), token_name(lexeme.token));
-		}
-
-		skip();
-
-		parse_expr(true);
-
-		append_node(ast::Tag::Trait, child_count, flags);
+		lexeme = peek(&parser->lexer);
 	}
 
-	void parse_impl() noexcept
+	if (lexeme.token == Token::OpSet)
 	{
-		ASSERT_OR_IGNORE(peek().token == Token::KwdImpl);
+		flags |= a2::Flag::Func_HasBody;
 
-		u16 child_count = 2;
+		skip(&parser->lexer);
 
-		ast::Flag flags = ast::Flag::EMPTY;
+		const a2::BuilderToken body_token = parse_expr(parser, true);
 
-		skip();
-
-		parse_expr(false);
-
-		Lexeme lexeme = peek();
-
-		if (lexeme.token == Token::KwdExpects)
-		{
-			child_count += 1;
-
-			flags |= ast::Flag::Impl_HasExpects;
-
-			parse_expects();
-
-			lexeme = peek();
-		}
-
-		if (lexeme.token != Token::OpSet)
-		{
-			if ((flags & ast::Flag::Trait_HasExpects) == ast::Flag::EMPTY)
-				error(lexeme.offset, "Expected '%s' or '%s' after trait parameter list but got '%s'\n", token_name(Token::OpSet), token_name(Token::KwdExpects), token_name(lexeme.token));
-			else
-				error(lexeme.offset, "Expected '%s' after trait expects clause but got '%s'\n", token_name(Token::OpSet), token_name(lexeme.token));
-		}
-
-		skip();
-
-		parse_expr(true);
-
-		append_node(ast::Tag::Impl, child_count, flags);
+		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+			first_child_token = body_token;
 	}
 
-	void parse_definition(bool is_implicit, bool is_optional_value) noexcept
+	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Func, flags);
+}
+
+static a2::BuilderToken parse_trait(Parser* parser) noexcept
+{
+	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdTrait);
+
+	a2::Flag flags = a2::Flag::EMPTY;
+
+	skip(&parser->lexer);
+
+	Lexeme lexeme = next(&parser->lexer);
+
+	if (lexeme.token != Token::ParenL)
+		error(&parser->lexer, lexeme.offset, "Expected '%s' after '%s' but got '%s'\n", token_name(Token::ParenL), token_name(Token::KwdTrait), token_name(lexeme.token));
+
+	lexeme = peek(&parser->lexer);
+
+	a2::BuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+
+	while (lexeme.token != Token::ParenR)
 	{
-		u16 child_count = 0;
+		const a2::BuilderToken parameter_token = parse_definition(parser, true, true);
 
-		ast::Flag flags = ast::Flag::EMPTY;
+		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+			first_child_token = parameter_token;
 
-		Lexeme lexeme = next();
+		lexeme = next(&parser->lexer);
 
-		if (lexeme.token == Token::KwdLet)
-		{
-			lexeme = next();
-		}
+		if (lexeme.token == Token::Comma)
+			lexeme = peek(&parser->lexer);
+		else if (lexeme.token != Token::ParenR)
+			error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' after trait parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
+	}
+
+	lexeme = peek(&parser->lexer);
+
+	if (lexeme.token == Token::KwdExpects)
+	{
+		flags |= a2::Flag::Trait_HasExpects;
+
+		const a2::BuilderToken expects_token = parse_expects(parser);
+
+		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+			first_child_token = expects_token;
+
+		lexeme = peek(&parser->lexer);
+	}
+
+	if (lexeme.token != Token::OpSet)
+	{
+		if ((flags & a2::Flag::Trait_HasExpects) == a2::Flag::EMPTY)
+			error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' after trait parameter list but got '%s'\n", token_name(Token::OpSet), token_name(Token::KwdExpects), token_name(lexeme.token));
 		else
+			error(&parser->lexer, lexeme.offset, "Expected '%s' after trait expects clause but got '%s'\n", token_name(Token::OpSet), token_name(lexeme.token));
+	}
+
+	skip(&parser->lexer);
+
+	const a2::BuilderToken body_token = parse_expr(parser, true);
+
+	if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+		first_child_token = body_token;
+
+	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Trait, flags);
+}
+
+static a2::BuilderToken parse_impl(Parser* parser) noexcept
+{
+	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdImpl);
+
+	u16 child_count = 2;
+
+	a2::Flag flags = a2::Flag::EMPTY;
+
+	skip(&parser->lexer);
+
+	const a2::BuilderToken first_child_token = parse_expr(parser, false);
+
+	Lexeme lexeme = peek(&parser->lexer);
+
+	if (lexeme.token == Token::KwdExpects)
+	{
+		child_count += 1;
+
+		flags |= a2::Flag::Impl_HasExpects;
+
+		parse_expects(parser);
+
+		lexeme = peek(&parser->lexer);
+	}
+
+	if (lexeme.token != Token::OpSet)
+	{
+		if ((flags & a2::Flag::Trait_HasExpects) == a2::Flag::EMPTY)
+			error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' after trait parameter list but got '%s'\n", token_name(Token::OpSet), token_name(Token::KwdExpects), token_name(lexeme.token));
+		else
+			error(&parser->lexer, lexeme.offset, "Expected '%s' after trait expects clause but got '%s'\n", token_name(Token::OpSet), token_name(lexeme.token));
+	}
+
+	skip(&parser->lexer);
+
+	parse_expr(parser, true);
+
+	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Impl, flags);
+}
+
+static a2::BuilderToken parse_definition(Parser* parser, bool is_implicit, bool is_optional_value) noexcept
+{
+	u16 child_count = 0;
+
+	a2::Flag flags = a2::Flag::EMPTY;
+
+	Lexeme lexeme = next(&parser->lexer);
+
+	if (lexeme.token == Token::KwdLet)
+	{
+		lexeme = next(&parser->lexer);
+	}
+	else
+	{
+		while (true)
 		{
-			while (true)
+			if (lexeme.token == Token::KwdPub)
 			{
-				if (lexeme.token == Token::KwdPub)
-				{
-					if ((flags & ast::Flag::Definition_IsPub) != ast::Flag::EMPTY)
-						error(lexeme.offset, "Definition modifier 'pub' encountered more than once\n");
+				if ((flags & a2::Flag::Definition_IsPub) != a2::Flag::EMPTY)
+					error(&parser->lexer, lexeme.offset, "Definition modifier 'pub' encountered more than once\n");
 
-					flags |= ast::Flag::Definition_IsPub;
-				}
-				else if (lexeme.token == Token::KwdMut)
-				{
-					if ((flags & ast::Flag::Definition_IsMut) != ast::Flag::EMPTY)
-						error(lexeme.offset, "Definition modifier 'mut' encountered more than once\n");
+				flags |= a2::Flag::Definition_IsPub;
+			}
+			else if (lexeme.token == Token::KwdMut)
+			{
+				if ((flags & a2::Flag::Definition_IsMut) != a2::Flag::EMPTY)
+					error(&parser->lexer, lexeme.offset, "Definition modifier 'mut' encountered more than once\n");
 
-					flags |= ast::Flag::Definition_IsMut;
-				}
-				else if (lexeme.token == Token::KwdGlobal)
-				{
-					if ((flags & ast::Flag::Definition_IsGlobal) != ast::Flag::EMPTY)
-						error(lexeme.offset, "Definition modifier 'global' encountered more than once\n");
+				flags |= a2::Flag::Definition_IsMut;
+			}
+			else if (lexeme.token == Token::KwdGlobal)
+			{
+				if ((flags & a2::Flag::Definition_IsGlobal) != a2::Flag::EMPTY)
+					error(&parser->lexer, lexeme.offset, "Definition modifier 'global' encountered more than once\n");
 
-					flags |= ast::Flag::Definition_IsGlobal;
-				}
-				else if (lexeme.token == Token::KwdAuto)
-				{
-					if ((flags & ast::Flag::Definition_IsAuto) != ast::Flag::EMPTY)
-						error(lexeme.offset, "Definition modifier 'auto' encountered more than once\n");
+				flags |= a2::Flag::Definition_IsGlobal;
+			}
+			else if (lexeme.token == Token::KwdAuto)
+			{
+				if ((flags & a2::Flag::Definition_IsAuto) != a2::Flag::EMPTY)
+					error(&parser->lexer, lexeme.offset, "Definition modifier 'auto' encountered more than once\n");
 
-					flags |= ast::Flag::Definition_IsAuto;
-				}
-				else if (lexeme.token == Token::KwdUse)
-				{
-					if ((flags & ast::Flag::Definition_IsUse) != ast::Flag::EMPTY)
-						error(lexeme.offset, "Definition modifier 'use' encountered more than once\n");
+				flags |= a2::Flag::Definition_IsAuto;
+			}
+			else if (lexeme.token == Token::KwdUse)
+			{
+				if ((flags & a2::Flag::Definition_IsUse) != a2::Flag::EMPTY)
+					error(&parser->lexer, lexeme.offset, "Definition modifier 'use' encountered more than once\n");
 
-					flags |= ast::Flag::Definition_IsUse;
-				}
-				else
-				{
-					break;
-				}
-
-				lexeme = next();
+				flags |= a2::Flag::Definition_IsUse;
+			}
+			else
+			{
+				break;
 			}
 
-			if (flags == ast::Flag::EMPTY && !is_implicit)
-				error(lexeme.offset, "Missing 'let' or at least one of 'pub', 'mut' or 'global' at start of definition\n");
+			lexeme = next(&parser->lexer);
 		}
 
-		if (lexeme.token != Token::Ident)
-			error(lexeme.offset, "Expected 'Identifier' after Definition modifiers but got '%s'\n", token_name(lexeme.token));
-
-		const u32 identifier_id = static_cast<u32>(lexeme.integer_value);
-
-		lexeme = peek();
-
-		if (lexeme.token == Token::Colon)
-		{
-			child_count += 1;
-
-			flags |= ast::Flag::Definition_HasType;
-
-			skip();
-
-			parse_expr(false);
-
-			lexeme = peek();
-		}
-		
-		if (lexeme.token == Token::OpSet)
-		{
-			child_count += 1;
-
-			skip();
-
-			parse_expr(true);
-		}
-		else if (!is_optional_value)
-		{
-			error(lexeme.offset, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
-		}
-
-		ast::data::Definition* const data = append_node<ast::data::Definition>(child_count);
-
-		data->identifier_index = identifier_id;
+		if (flags == a2::Flag::EMPTY && !is_implicit)
+			error(&parser->lexer, lexeme.offset, "Missing 'let' or at least one of 'pub', 'mut' or 'global' at start of definition\n");
 	}
 
-	bool parse_definition_or_impl() noexcept
+	if (lexeme.token != Token::Ident)
+		error(&parser->lexer, lexeme.offset, "Expected 'Identifier' after Definition modifiers but got '%s'\n", token_name(lexeme.token));
+
+	const u32 identifier_id = static_cast<u32>(lexeme.integer_value);
+
+	lexeme = peek(&parser->lexer);
+
+	a2::BuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+
+	if (lexeme.token == Token::Colon)
 	{
-		const Lexeme lexeme = peek();
+		child_count += 1;
 
-		bool is_definition = is_definition_start(lexeme.token);
+		flags |= a2::Flag::Definition_HasType;
 
-		if (is_definition)
-			parse_definition(false, false);
-		else if (lexeme.token == Token::KwdImpl)
-			parse_impl();
-		else
-			error(lexeme.offset, "Expected definition or impl but got %s\n", token_name(lexeme.token));
+		skip(&parser->lexer);
 
-		return is_definition;
+		first_child_token = parse_expr(parser, false);
+
+		lexeme = peek(&parser->lexer);
 	}
-
-public:
-
-	FileParseData(Globals* data, Range<char8> content, Range<char8> filepath) noexcept :
-		m_peek{ Token::EMPTY, 0, 0 },
-		m_curr{ content.begin() },
-		m_data{ data },
-		m_content{ content.begin(), content.end() - 1 },
-		m_filepath{ filepath }
+	
+	if (lexeme.token == Token::OpSet)
 	{
-		ASSERT_OR_IGNORE(content.count() != 0 && content.end()[-1] == '\0');
-	}
+		child_count += 1;
 
-	ast::Tree parse_program() noexcept
+		skip(&parser->lexer);
+
+		const a2::BuilderToken value_token = parse_expr(parser, true);
+
+		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+			first_child_token = value_token;
+	}
+	else if (!is_optional_value)
 	{
-		u16 child_count = 0;
-
-		u16 definition_count = 0;
-
-		while (true)
-		{
-			const Lexeme lexeme = peek();
-
-			if (lexeme.token == Token::END_OF_SOURCE)
-				break;
-
-			if (child_count == UINT16_MAX)
-				error(peek().offset, "Number of top-level definitions exceeds the supported maximum of %u\n", UINT16_MAX);
-
-			child_count += 1;
-
-			if (parse_definition_or_impl())
-				definition_count += 1;
-		};
-
-		append_node<ast::data::Program>(child_count);
-
-		ASSERT_OR_IGNORE(m_data->stack_scratch.used() == 1);
-
-		const u32 tree_offset = m_data->asts.used();
-
-		reverse_node(m_data, reinterpret_cast<ast::Node*>(m_data->ast_scratch.begin() + *m_data->stack_scratch.begin()));
-
-		m_data->ast_scratch.reset();
-
-		m_data->stack_scratch.reset();
-
-		ast::Tree tree{ reinterpret_cast<ast::Node*>(m_data->asts.begin() + tree_offset), m_data->asts.used() - tree_offset };
-
-		return tree;
+		error(&parser->lexer, lexeme.offset, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 	}
-};
 
-ast::Tree parse(Globals* data, SourceFile source) noexcept
+	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Definition, flags, sizeof(identifier_id) / sizeof(u32), &identifier_id);
+}
+
+static a2::BuilderToken parse_definition_or_impl(Parser* parser) noexcept
 {
-	FileParseData file{ data, source.content(), data->identifiers.value_from(source.filepath_id())->range() };
+	const Lexeme lexeme = peek(&parser->lexer);
 
-	return file.parse_program();
+	bool is_definition = is_definition_start(lexeme.token);
+
+	if (is_definition)
+		return parse_definition(parser, false, false);
+	else if (lexeme.token == Token::KwdImpl)
+		return parse_impl(parser);
+	else
+		error(&parser->lexer, lexeme.offset, "Expected definition or impl but got %s\n", token_name(lexeme.token));
+}
+
+static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
+{
+	Lexeme lexeme = peek(&parser->lexer);
+
+	OperatorStack stack;
+	stack.operator_top = 0;
+	stack.operand_count = 0;
+	stack.expression_offset = lexeme.offset;
+
+	bool expecting_operand = true;
+
+	while (true)
+	{
+		if (expecting_operand)
+		{
+			if (lexeme.token == Token::Ident)
+			{
+				expecting_operand = false;
+
+				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Tag::ValIdentifer, a2::Flag::EMPTY, sizeof(u32) / sizeof(u32), &lexeme.integer_value);
+
+				push_operand(parser, &stack, value_token);
+			}
+			else if (lexeme.token == Token::LitString)
+			{
+				expecting_operand = false;
+
+				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Tag::ValString, a2::Flag::EMPTY, sizeof(u32) / sizeof(u32), &lexeme.integer_value);
+
+				push_operand(parser, &stack, value_token);
+			}
+			else if (lexeme.token == Token::LitFloat)
+			{
+				expecting_operand = false;
+
+				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Tag::ValFloat, a2::Flag::EMPTY, sizeof(f64) / sizeof(u32), &lexeme.float_value);
+
+				push_operand(parser, &stack, value_token);
+			}
+			else if (lexeme.token == Token::LitInteger)
+			{
+				expecting_operand = false;
+
+				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Tag::ValInteger, a2::Flag::EMPTY, sizeof(u64) / sizeof(u32), &lexeme.integer_value);
+
+				push_operand(parser, &stack, value_token);
+			}
+			else if (lexeme.token == Token::LitChar)
+			{
+				expecting_operand = false;
+
+				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Tag::ValChar, a2::Flag::EMPTY, sizeof(u32) / sizeof(u32), &lexeme.integer_value);
+
+				push_operand(parser, &stack, value_token);
+			}
+			else if (lexeme.token == Token::Wildcard)
+			{
+				expecting_operand = false;
+
+				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Tag::Wildcard, a2::Flag::EMPTY);
+
+				push_operand(parser, &stack, value_token);
+			}
+			else if (lexeme.token == Token::CompositeInitializer)
+			{
+				expecting_operand = false;
+
+				skip(&parser->lexer);
+
+				lexeme = peek(&parser->lexer);
+
+				a2::BuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+
+				while (lexeme.token != Token::CurlyR)
+				{
+					const a2::BuilderToken curr_token = parse_expr(parser, true);
+
+					if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+						first_child_token = curr_token;
+
+					lexeme = peek(&parser->lexer);
+
+					if (lexeme.token == Token::Comma)
+					{
+						skip(&parser->lexer);
+
+						lexeme = peek(&parser->lexer);
+					}
+					else if (lexeme.token != Token::CurlyR)
+					{
+						error(&parser->lexer, lexeme.offset, "Expected '}' or ',' after composite initializer argument expression but got '%s'\n", token_name(lexeme.token));
+					}
+				}
+
+				const a2::BuilderToken composite_token = a2::push_node(&parser->builder, first_child_token, a2::Tag::CompositeInitializer, a2::Flag::EMPTY);
+
+				push_operand(parser, &stack, composite_token);
+			}
+			else if (lexeme.token == Token::ArrayInitializer)
+			{
+				expecting_operand = false;
+
+				skip(&parser->lexer);
+
+				lexeme = peek(&parser->lexer);
+
+				a2::BuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+
+				while (lexeme.token != Token::BracketR)
+				{
+					const a2::BuilderToken curr_token = parse_expr(parser, true);
+
+					if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+						first_child_token = curr_token;
+
+					lexeme = peek(&parser->lexer);
+
+					if (lexeme.token == Token::Comma)
+					{
+						skip(&parser->lexer);
+
+						lexeme = peek(&parser->lexer);
+					}
+					else if (lexeme.token != Token::BracketR)
+					{
+						error(&parser->lexer, lexeme.offset, "Expected ']' or ',' after array initializer argument expression but got '%s'\n", token_name(lexeme.token));
+					}
+				}
+
+				const a2::BuilderToken array_token = a2::push_node(&parser->builder, first_child_token, a2::Tag::ArrayInitializer, a2::Flag::EMPTY);
+				
+				push_operand(parser, &stack, array_token);
+			}
+			else if (lexeme.token == Token::BracketL) // Array Type
+			{
+				pop_to_precedence(parser, &stack, 2, false);
+
+				skip(&parser->lexer);
+
+				parse_expr(parser, false);
+
+				lexeme = peek(&parser->lexer);
+
+				if (lexeme.token != Token::BracketR)
+					error(&parser->lexer, lexeme.offset, "Expected ']' after array type's size expression, but got '%s'\n", token_name(lexeme.token));
+
+				// TODO: Work out how to make this into an infix operator or something
+				// Use pop_to_precedence and then manually replace top
+				const a2::BuilderToken array_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::Tag::OpTypeArray, a2::Flag::EMPTY);
+
+				stack.operand_tokens[stack.operand_count - 1] = array_token;
+			}
+			else if (lexeme.token == Token::CurlyL) // Block
+			{
+				expecting_operand = false;
+
+				skip(&parser->lexer);
+
+				lexeme = peek(&parser->lexer);
+
+				a2::BuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+
+				while (lexeme.token != Token::CurlyR)
+				{
+					const a2::BuilderToken curr_token = parse_top_level_expr(parser, false);
+
+					if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+						first_child_token = curr_token;
+
+					lexeme = peek(&parser->lexer);
+
+					if (lexeme.token == Token::CurlyR)
+						break;
+				}
+
+				const a2::BuilderToken block_token = a2::push_node(&parser->builder, first_child_token, a2::Tag::Block, a2::Flag::EMPTY);
+				
+				push_operand(parser, &stack, block_token);
+			}
+			else if (lexeme.token == Token::KwdIf)
+			{
+				expecting_operand = false;
+
+				const a2::BuilderToken if_token = parse_if(parser);
+
+				push_operand(parser, &stack, if_token);
+
+				lexeme = peek(&parser->lexer);
+
+				continue;
+			}
+			else if (lexeme.token == Token::KwdFor)
+			{
+				expecting_operand = false;
+
+				const a2::BuilderToken for_token = parse_for(parser);
+
+				push_operand(parser, &stack, for_token);
+
+				lexeme = peek(&parser->lexer);
+
+				continue;
+			}
+			else if (lexeme.token == Token::KwdSwitch)
+			{
+				expecting_operand = false;
+
+				const a2::BuilderToken switch_token = parse_switch(parser);
+
+				push_operand(parser, &stack, switch_token);
+
+				lexeme = peek(&parser->lexer);
+
+				continue;
+			}
+			else if (lexeme.token == Token::KwdFunc || lexeme.token == Token::KwdProc)
+			{
+				expecting_operand = false;
+
+				const a2::BuilderToken func_token = parse_func(parser);
+
+				push_operand(parser, &stack, func_token);
+
+				lexeme = peek(&parser->lexer);
+
+				continue;
+			}
+			else if (lexeme.token == Token::KwdTrait)
+			{
+				expecting_operand = false;
+
+				const a2::BuilderToken trait_token = parse_trait(parser);
+
+				push_operand(parser, &stack, trait_token);
+
+				lexeme = peek(&parser->lexer);
+
+				continue;
+			}
+			else if (lexeme.token == Token::KwdImpl)
+			{
+				expecting_operand = false;
+
+				const a2::BuilderToken impl_token = parse_impl(parser);
+
+				push_operand(parser, &stack, impl_token);
+
+				lexeme = peek(&parser->lexer);
+
+				continue;
+			}
+			else // Unary operator
+			{
+				const u8 token_ordinal = static_cast<u8>(lexeme.token);
+
+				const u8 lo_ordinal = static_cast<u8>(Token::ParenL);
+
+				const u8 hi_ordinal = static_cast<u8>(Token::OpAdd);
+
+				if (token_ordinal < lo_ordinal || token_ordinal > hi_ordinal)
+					error(&parser->lexer, lexeme.offset, "Expected operand or unary operator but got '%s'\n", token_name(lexeme.token));
+
+				const OperatorDesc op = UNARY_OPERATOR_DESCS[token_ordinal - lo_ordinal];
+
+				push_operator(parser, &stack, op);
+			}
+		}
+		else
+		{
+			if (lexeme.token == Token::ParenL) // Function call
+			{
+				ASSERT_OR_IGNORE(stack.operand_count != 0);
+
+				pop_to_precedence(parser, &stack, 1, true);
+
+				skip(&parser->lexer);
+
+				lexeme = peek(&parser->lexer);
+
+				while (lexeme.token != Token::ParenR)
+				{
+					const a2::BuilderToken curr_token = parse_top_level_expr(parser, true);
+
+					lexeme = peek(&parser->lexer);
+
+					if (lexeme.token == Token::Comma)
+					{
+						skip(&parser->lexer);
+
+						lexeme = peek(&parser->lexer);
+					}
+					else if (lexeme.token != Token::ParenR)
+					{
+						error(&parser->lexer, lexeme.offset, "Expected ')' or ',' after function argument expression but got '%s'\n", token_name(lexeme.token));
+					}
+				}
+
+				const a2::BuilderToken call_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operator_top - 1], a2::Tag::Call, a2::Flag::EMPTY);
+				
+				stack.operand_tokens[stack.operator_top - 1] = call_token;
+			}
+			else if (lexeme.token == Token::ParenR) // Closing parenthesis
+			{
+				if (!pop_to_precedence(parser, &stack, 10, false))
+				{
+					ASSERT_OR_IGNORE(stack.operand_count == 1);
+
+					return stack.operand_tokens[stack.operand_count - 1]; // No need for stack.pop_remaining; pop_to_lparen already popped everything
+				}
+
+				remove_lparen(&stack);
+			}
+			else if (lexeme.token == Token::BracketL) // Array Index
+			{
+				ASSERT_OR_IGNORE(stack.operand_count != 0);
+
+				pop_to_precedence(parser, &stack, 1, true);
+
+				skip(&parser->lexer);
+
+				parse_expr(parser, false);
+
+				lexeme = peek(&parser->lexer);
+
+				if (lexeme.token != Token::BracketR)
+					error(&parser->lexer, lexeme.offset, "Expected ']' after array index expression, but got '%s'\n", token_name(lexeme.token));
+
+				const a2::BuilderToken index_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::Tag::OpArrayIndex, a2::Flag::EMPTY);
+				
+				stack.operand_tokens[stack.operand_count - 1] = index_token;
+			}
+			else if (lexeme.token == Token::KwdCatch)
+			{
+				a2::Flag flags = a2::Flag::EMPTY;
+
+				pop_to_precedence(parser, &stack, 1, true);
+
+				skip(&parser->lexer);
+
+				lexeme = peek(&parser->lexer);
+
+				if (is_definition_start(lexeme.token) || peek_n(&parser->lexer, 1).token == Token::ThinArrowR)
+				{
+					flags |= a2::Flag::Catch_HasDefinition;
+
+					parse_definition(parser, true, true);
+
+					lexeme = next(&parser->lexer);
+
+					if (lexeme.token != Token::ThinArrowR)
+						error(&parser->lexer, lexeme.offset, "Expected '%s' after inbound definition in catch, but got '%s'\n", token_name(Token::ThinArrowR), token_name(lexeme.token));
+				}
+
+				parse_expr(parser, false);
+
+				const a2::BuilderToken catch_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::Tag::Catch, flags);
+
+				stack.operand_tokens[stack.operand_count - 1] = catch_token;
+
+				lexeme = peek(&parser->lexer);
+
+				continue;
+			}
+			else // Binary operator
+			{
+				const u8 token_ordinal = static_cast<u8>(lexeme.token);
+
+				const u8 lo_ordinal = static_cast<u8>(Token::OpMemberOrRef);
+
+				const u8 hi_ordinal = static_cast<u8>(Token::OpSetShr);
+
+				if (token_ordinal < lo_ordinal || token_ordinal > hi_ordinal || (!allow_complex && lexeme.token == Token::OpSet))
+					break;
+
+				const OperatorDesc op = BINARY_OPERATOR_DESCS[token_ordinal - lo_ordinal];
+
+				push_operator(parser, &stack, op);
+				
+				expecting_operand = op.is_binary;
+			}
+		}
+
+		skip(&parser->lexer);
+
+		lexeme = peek(&parser->lexer);
+	}
+
+	return pop_remaining(parser, &stack);
+}
+
+static void parse_file(Parser* parser) noexcept
+{
+	a2::BuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+
+	while (true)
+	{
+		const Lexeme lexeme = peek(&parser->lexer);
+
+		if (lexeme.token == Token::END_OF_SOURCE)
+			break;
+
+		const a2::BuilderToken curr_token = parse_definition_or_impl(parser);
+
+		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+			first_child_token = curr_token;
+	};
+
+	a2::push_node(&parser->builder, first_child_token, a2::Tag::Program, a2::Flag::EMPTY);
+}
+
+
+
+Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers) noexcept
+{
+	Parser* const parser = static_cast<Parser*>(alloc(pool, sizeof(Parser), alignof(Parser)));
+
+	parser->lexer.identifiers = identifiers;
+	parser->builder.scratch.init(1u << 31, 1u << 18);
+
+	return parser;
+}
+
+a2::Node* parse(Parser* parser, SourceFile source, ReservedVec<u32>* out) noexcept
+{
+	ASSERT_OR_IGNORE(source.content().count() != 0 && source.content().end()[-1] == '\0');
+
+	const Range<char8> content = source.content();
+
+	parser->lexer.begin = content.begin();
+	parser->lexer.end = content.end() - 1;
+	parser->lexer.curr = content.begin();
+	parser->lexer.filepath_id = source.filepath_id();
+	parser->lexer.peek.token = Token::EMPTY;
+
+	parse_file(parser);
+
+	return a2::complete_ast(&parser->builder, out);
 }

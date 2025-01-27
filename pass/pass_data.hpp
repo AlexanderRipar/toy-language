@@ -4,9 +4,11 @@
 #include "../infra/common.hpp"
 #include "../infra/container.hpp"
 #include "../infra/threading.hpp"
-#include "ast.hpp"
+#include "../infra/alloc_pool.hpp"
+#include "../ast2.hpp"
 
-// Lexer Tokens
+
+
 enum class Token : u8
 {
 		EMPTY = 0,
@@ -105,76 +107,11 @@ enum class Token : u8
 		MAX,
 };
 
-
-
-// Used to keep track of a single asynchronous file being read by
-// read::request_read.
-struct Read
-{
-	minos::Overlapped overlapped;
-
-	minos::FileHandle filehandle;
-
-	char8* content;
-
-	u32 bytes;
-
-	u32 next;
-
-	u32 filepath_id;
-};
-
-// Used by read::* to keep track of all resources required for reading files. 
-struct ReadData
-{
-	thd::IndexStackListHeader<Read, offsetof(Read, next)> completed_reads;
-
-	thd::IndexStackListHeader<Read, offsetof(Read, next)> unused_reads;
-
-	thd::Semaphore available_read_count;
-
-	std::atomic<u32> pending_read_count;
-
-	Read reads[512];
-
-	minos::CompletionHandle completion_handle;
-
-	minos::ThreadHandle completion_thread;
-};
-
-// Returned by read::poll_completed_read and read::await_completed_read to
-// return the read file's content.
-struct SourceFile
-{
-private:
-
-	MutAttachmentRange<char8, u32> m_content_and_filepath;
-
-public:
-
-	SourceFile() noexcept : m_content_and_filepath{ nullptr, nullptr } {}
-
-	SourceFile(char8* begin, u32 bytes, u32 filepath_id) noexcept : m_content_and_filepath{ begin, bytes, filepath_id } {}
-
-	Range<char8> content() const noexcept
-	{
-		return m_content_and_filepath.range();
-	}
-
-	char8* raw_begin() noexcept
-	{
-		return m_content_and_filepath.begin();
-	}
-
-	u32 filepath_id() const noexcept
-	{
-		return m_content_and_filepath.attachment();
-	}
-};
+const char8* token_name(Token token) noexcept;
 
 
 
-struct alignas(8) IdentifierMapEntry
+struct alignas(8) IdentifierEntry
 {
 	u32 m_hash;
 
@@ -194,12 +131,12 @@ struct alignas(8) IdentifierMapEntry
 
 	static u32 required_strides(Range<char8> key) noexcept
 	{
-		return static_cast<u32>((offsetof(IdentifierMapEntry, m_chars) + key.count() + stride() - 1) / stride());
+		return static_cast<u32>((offsetof(IdentifierEntry, m_chars) + key.count() + stride() - 1) / stride());
 	}
 
 	u32 used_strides() const noexcept
 	{
-		return static_cast<u32>((offsetof(IdentifierMapEntry, m_chars) + m_length + stride() - 1) / stride());
+		return static_cast<u32>((offsetof(IdentifierEntry, m_chars) + m_length + stride() - 1) / stride());
 	}
 
 	u32 hash() const noexcept
@@ -239,42 +176,69 @@ struct alignas(8) IdentifierMapEntry
 	}
 };
 
-using IdentifierMap = IndexMap<Range<char8>, IdentifierMapEntry>;
+struct IdentifierPool;
 
-
-
-struct Globals
+struct IdentifierId
 {
-	IdentifierMap identifiers;
-
-	ReservedVec<u32> asts;
-
-	ReservedVec<byte> values;
-
-	ReservedVec<u32> ast_scratch;
-
-	ReservedVec<u32> stack_scratch;
-
-	ReadData read;
-
-	Globals() noexcept;
+	u32 rep;
 };
 
+IdentifierPool* create_identifier_pool(AllocPool* pool) noexcept;
+
+IdentifierEntry* entry_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept;
+
+IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept;
+
+IdentifierEntry* entry_from_id(IdentifierPool* identifiers, IdentifierId id) noexcept;
 
 
-const char8* token_name(Token token) noexcept;
 
-namespace read
+struct SourceFile
 {
-	void request_read(Globals* data, Range<char8> filepath, u32 filepath_id) noexcept;
+private:
 
-	[[nodiscard]] bool poll_completed_read(Globals* data, Range<char8>* out) noexcept;
+	MutAttachmentRange<char8, IdentifierId> m_content_and_filepath;
 
-	[[nodiscard]] bool await_completed_read(Globals* data, SourceFile* out) noexcept;
+public:
 
-	void release_read(Globals* data, SourceFile file) noexcept;
-}
+	SourceFile() noexcept : m_content_and_filepath{ nullptr, nullptr } {}
 
-[[nodiscard]] ast::Tree parse(Globals* data, SourceFile source) noexcept;
+	SourceFile(char8* begin, u32 bytes, IdentifierId filepath_id) noexcept : m_content_and_filepath{ begin, bytes, filepath_id } {}
+
+	Range<char8> content() const noexcept
+	{
+		return m_content_and_filepath.range();
+	}
+
+	char8* raw_begin() noexcept
+	{
+		return m_content_and_filepath.begin();
+	}
+
+	IdentifierId filepath_id() const noexcept
+	{
+		return m_content_and_filepath.attachment();
+	}
+};
+
+struct SourceReader;
+
+SourceReader* create_source_reader(AllocPool* pool) noexcept;
+
+void request_read(SourceReader* reader, Range<char8> filepath, IdentifierId filepath_id) noexcept;
+
+[[nodiscard]] bool poll_completed_read(SourceReader* reader, SourceFile* out) noexcept;
+
+[[nodiscard]] bool await_completed_read(SourceReader* reader, SourceFile* out) noexcept;
+
+void release_read(SourceReader* reader, SourceFile file) noexcept;
+
+
+
+struct Parser;
+
+[[nodiscard]] Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers) noexcept;
+
+[[nodiscard]] a2::Node* parse(Parser* parser, SourceFile source, ReservedVec<u32>* out) noexcept;
 
 #endif // PARSEDATA_INCLUDE_GUARD

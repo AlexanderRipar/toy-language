@@ -131,6 +131,30 @@ namespace a2
 		Catch_HasDefinition  = 0x01,
 	};
 
+	inline Flag operator|(Flag lhs, Flag rhs) noexcept
+	{
+		return static_cast<Flag>(static_cast<u8>(lhs) | static_cast<u8>(rhs));
+	}
+
+	inline Flag operator&(Flag lhs, Flag rhs) noexcept
+	{
+		return static_cast<Flag>(static_cast<u8>(lhs) & static_cast<u8>(rhs));
+	}
+
+	inline Flag& operator|=(Flag& lhs, Flag rhs) noexcept
+	{
+		lhs = lhs | rhs;
+
+		return lhs;
+	}
+
+	inline Flag& operator&=(Flag& lhs, Flag rhs) noexcept
+	{
+		lhs = lhs & rhs;
+
+		return lhs;
+	}
+
 	struct Node
 	{
 		static constexpr u8 FLAG_LAST_SIBLING  = 0x01;
@@ -184,9 +208,18 @@ namespace a2
 		return apply_offset_(node, node->data_dwords);
 	}
 
-	static inline Tag tag_of(Node* node) noexcept
+
+
+	struct IterationResult
 	{
-		return static_cast<Tag>(node->tag);
+		Node* node;
+
+		u32 depth;
+	};
+
+	static inline bool is_valid(IterationResult result) noexcept
+	{
+		return result.node != nullptr;
 	}
 
 
@@ -224,35 +257,79 @@ namespace a2
 	{
 		Node* curr;
 
-		u32 depth;
+		u32 depth = 0;
+
+		s32 unfinished_top;
+
+		u8 unfinished_depths[MAX_TREE_DEPTH];
+
+		static_assert(MAX_TREE_DEPTH <= UINT8_MAX);
 	};
 
 	static inline NodePreorderIterator preorder_ancestors_of(Node* node) noexcept
 	{
-		return { has_children(node) ? first_child_of(node) : nullptr, 0 };
+		NodePreorderIterator iterator;
+
+		if (has_children(node))
+		{
+			iterator.curr = first_child_of(node);
+			iterator.depth = 0;
+			iterator.unfinished_top = -1;
+		}
+		else
+		{
+			iterator.curr = nullptr;
+			iterator.depth = 0;
+			iterator.unfinished_top = -1;
+		}
+
+		return iterator;
 	}
 
-	static inline OptPtr<Node> next(NodePreorderIterator* iterator) noexcept
+	static inline IterationResult next(NodePreorderIterator* iterator) noexcept
 	{
 		if (iterator->curr == nullptr)
-			return none<Node>();
+			return { nullptr, 0 };
 
-		Node* const curr = iterator->curr;
+		Node* const result = iterator->curr;
 
-		if ((curr->internal_flags & Node::FLAG_FIRST_SIBLING) != 0)
+		const u32 result_depth = iterator->depth;
+
+		if ((result->internal_flags & (Node::FLAG_FIRST_SIBLING | Node::FLAG_LAST_SIBLING | Node::FLAG_NO_CHILDREN)) == Node::FLAG_FIRST_SIBLING)
+		{
+			ASSERT_OR_IGNORE(iterator->unfinished_top + 1 < MAX_TREE_DEPTH);
+
+			iterator->unfinished_top += 1;
+
+			iterator->unfinished_depths[iterator->unfinished_top] = static_cast<u8>(iterator->depth);
+
 			iterator->depth += 1;
+		}
+		else if ((result->internal_flags & Node::FLAG_NO_CHILDREN) == 0)
+		{
+			iterator->depth += 1;
+		}
+		else if (iterator->unfinished_top >= 0 && (result->internal_flags & Node::FLAG_LAST_SIBLING) == Node::FLAG_LAST_SIBLING)
+		{
+			iterator->depth = iterator->unfinished_depths[iterator->unfinished_top];
 
-		if ((curr->internal_flags & Node::FLAG_LAST_SIBLING) != 0)
-			iterator->depth -= 1;
+			iterator->unfinished_top -= 1;
+		}
+		else if (iterator->unfinished_top == -1 && (result->internal_flags & (Node::FLAG_NO_CHILDREN | Node::FLAG_LAST_SIBLING)) == (Node::FLAG_NO_CHILDREN | Node::FLAG_LAST_SIBLING))
+		{
+			iterator->curr = nullptr;
 
-		iterator->curr = iterator->depth == 0 && (curr->internal_flags & Node::FLAG_NO_CHILDREN) != 0 ? nullptr : apply_offset_(curr, curr->data_dwords);
+			return { result, result_depth };
+		}
+		
+		iterator->curr = apply_offset_(result, result->data_dwords);
 
-		return some(curr);
+		return { result, result_depth };
 	}
 
-	static inline OptPtr<Node> peek(const NodePreorderIterator* iterator) noexcept
+	static inline IterationResult peek(const NodePreorderIterator* iterator) noexcept
 	{
-		return maybe(iterator->curr);
+		return { iterator->curr, iterator->depth };
 	}
 
 
@@ -271,7 +348,6 @@ namespace a2
 		NodePostorderIterator iterator;
 
 		iterator.base = node;
-
 		iterator.depth = -1;
 
 		while (has_children(node))
@@ -288,14 +364,16 @@ namespace a2
 		return iterator;
 	}
 
-	static inline OptPtr<Node> next(NodePostorderIterator* iterator) noexcept
+	static inline IterationResult next(NodePostorderIterator* iterator) noexcept
 	{
 		if (iterator->depth < 0)
-			return none<Node>();
+			return { nullptr, 0 };
 
-		Node* const ret = reinterpret_cast<Node*>(reinterpret_cast<u32*>(iterator->base) + iterator->offsets[iterator->depth]);
+		Node* const ret_node = reinterpret_cast<Node*>(reinterpret_cast<u32*>(iterator->base) + iterator->offsets[iterator->depth]);
 
-		Node* curr = ret;
+		const u32 ret_depth = static_cast<u32>(iterator->depth);
+
+		Node* curr = ret_node;
 
 		if (has_next_sibling(curr))
 		{
@@ -322,15 +400,15 @@ namespace a2
 				curr = reinterpret_cast<Node*>(reinterpret_cast<u32*>(iterator->base) + iterator->offsets[iterator->depth]);
 		}
 
-		return some(ret);
+		return { ret_node, ret_depth };
 	}
 
-	static inline OptPtr<Node> peek(const NodePostorderIterator* iterator) noexcept
+	static inline IterationResult peek(const NodePostorderIterator* iterator) noexcept
 	{
-		if (iterator->depth == ~0u)
-			return none<Node>();
+		if (iterator->depth == -1)
+			return { nullptr, 0 };
 
-		return some(apply_offset_(iterator->base, iterator->offsets[iterator->depth]));
+		return { apply_offset_(iterator->base, iterator->offsets[iterator->depth]), static_cast<u32>(iterator->depth) };
 	}
 
 
@@ -356,7 +434,7 @@ namespace a2
 		return builder;
 	}
 
-	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, Tag tag, Flag flags, u8 data_dwords = 0, void* data = nullptr) noexcept
+	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, Tag tag, Flag flags, u8 data_dwords = 0, const void* data = nullptr) noexcept
 	{
 		static_assert(sizeof(Node) % sizeof(u32) == 0);
 
@@ -376,6 +454,10 @@ namespace a2
 	}
 
 	Node* complete_ast(Builder* builder, ReservedVec<u32>* dst) noexcept;
+
+
+
+	const char8* tag_name(Tag tag) noexcept;
 }
 
 #endif // AST2_INCLUDE_GUARD

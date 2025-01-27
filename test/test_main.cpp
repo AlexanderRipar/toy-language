@@ -11,6 +11,8 @@ std::vector<TestTime> g_module_times;
 
 const char8* g_curr_module;
 
+bool g_ignore_debugbreaks;
+
 void ast2_tests() noexcept;
 
 struct TimeDesc
@@ -32,9 +34,25 @@ static TimeDesc readable_time(u64 duration, u64 ticks_per_second) noexcept
 		return { "microseconds", static_cast<f64>(duration * 1'000'000) / ticks_per_second };
 }
 
-s32 main() noexcept
+s32 main(s32 argc, const char8** argv) noexcept
 {
 	const u64 start = minos::exact_timestamp();
+
+	bool command_line_ok = argc == 1;
+
+	if (argc == 2 && strcmp(argv[1], "--ignore-debugbreaks") == 0)
+	{
+		g_ignore_debugbreaks = true;
+
+		command_line_ok = true;
+	}
+	
+	if (!command_line_ok)
+	{
+		fprintf(stderr, "Usage %s [--ignore-debugbreaks]\n", argv[0]);
+
+		return EXIT_FAILURE;
+	}
 
 	ast2_tests();
 

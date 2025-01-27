@@ -225,11 +225,11 @@ private:
 
 	static constexpr u16 LOOKUP_HASH_MASK = static_cast<u16>(~LOOKUP_DISTANCE_MASK);
 
-	u16* const m_lookups;
+	u16* m_lookups;
 
 	u32* m_offsets;
 
-	V* const m_values;
+	V* m_values;
 
 	u32 m_lookup_used;
 
@@ -239,11 +239,11 @@ private:
 
 	u32 m_value_commit;
 
-	const u32 m_lookup_capacity;
+	u32 m_lookup_capacity;
 
-	const u32 m_value_capacity;
+	u32 m_value_capacity;
 
-	const u32 m_value_commit_increment;
+	u32 m_value_commit_increment;
 
 	static bool is_empty_lookup(u16 lookup) noexcept
 	{
@@ -364,17 +364,7 @@ private:
 
 public:
 
-	IndexMap(u32 lookup_capacity, u32 lookup_commit, u32 value_capacity, u32 value_commit, u32 value_commit_increment) noexcept :
-		m_lookups{ static_cast<u16*>(minos::mem_reserve(lookup_capacity * (sizeof(*m_lookups) + sizeof(*m_offsets)) + value_capacity * V::stride())) },
-		m_offsets{ reinterpret_cast<u32*>(m_lookups + lookup_commit) },
-		m_values{ reinterpret_cast<V*>(reinterpret_cast<byte*>(m_lookups) + lookup_capacity * (sizeof(*m_lookups) + sizeof(*m_offsets))) },
-		m_lookup_used{ 0 },
-		m_value_used{ 0 },
-		m_lookup_commit{ lookup_commit },
-		m_value_commit{ value_commit },
-		m_lookup_capacity{ lookup_capacity },
-		m_value_capacity{ value_capacity },
-		m_value_commit_increment { value_commit_increment }
+	void init(u32 lookup_capacity, u32 lookup_commit, u32 value_capacity, u32 value_commit_increment) noexcept
 	{
 		if (!is_pow2(lookup_capacity))
 			panic("Could not create IndexMap with non-power-of-two lookup capacity %u\n", lookup_capacity);
@@ -385,17 +375,49 @@ public:
 		if (lookup_commit > lookup_capacity)
 			panic("Could not create IndexMap with initial lookup commit %u greater than lookup capacity %u\n", lookup_commit, lookup_capacity);
 
-		if (value_commit > value_capacity)
-			panic("Could not create IndexMap with initial value commit %u greater than value capacity %u\n", value_commit, value_capacity);
+		if (value_commit_increment > value_capacity)
+			panic("Could not create IndexMap with initial value commit %u greater than value capacity %u\n", value_commit_increment, value_capacity);
 
-		if (m_lookups == nullptr)
-			panic("Could not reserve memory for IndexMap (0x%X)\n", minos::last_error());
+		const u64 lookup_bytes = static_cast<u64>(lookup_capacity) * sizeof(*m_lookups);
 
-		if (!minos::mem_commit(m_lookups, lookup_commit * (sizeof(*m_lookups) + sizeof(*m_offsets))))
-			panic("Could not commit initial memory for IndexMap lookups and offsets (0x%X)\n", minos::last_error());
+		const u64 offset_bytes = static_cast<u64>(lookup_capacity) * sizeof(*m_offsets);
 
-		if (!minos::mem_commit(m_values, value_commit * V::stride()))
-			panic("Could not commit initial memory for IndexMap offsets (0x%X)\n", minos::last_error());
+		const u64 value_bytes = static_cast<u64>(value_capacity) * V::stride();
+
+		const u64 total_bytes = lookup_bytes + offset_bytes + value_bytes;
+
+		byte* const mem = static_cast<byte*>(minos::mem_reserve(total_bytes));
+
+		if (mem == nullptr)
+			panic("Could not reserve %llu bytes of memory for IndexMap (0x%X)\n", total_bytes, minos::last_error());
+
+		m_lookups = reinterpret_cast<u16*>(mem);
+
+		m_offsets = reinterpret_cast<u32*>(mem + static_cast<u64>(lookup_commit) * sizeof(*m_lookups));
+
+		m_values = reinterpret_cast<V*>(mem + lookup_bytes + offset_bytes);
+
+		const u64 lookup_commit_bytes = static_cast<u64>(lookup_commit) * (sizeof(*m_lookups) + sizeof(*m_offsets));
+
+		if (!minos::mem_commit(m_lookups, lookup_commit_bytes))
+			panic("Could not commit initial %llu bytes of memory for IndexMap lookups and offsets (0x%X)\n", lookup_commit_bytes, minos::last_error());
+
+		if (!minos::mem_commit(m_values, static_cast<u64>(value_commit_increment) * V::stride()))
+			panic("Could not commit initial %llu bytes of memory for IndexMap values (0x%X)\n", static_cast<u64>(value_commit_increment) * V::stride(), minos::last_error());
+
+		m_lookup_used = 0;
+
+		m_value_used = 0;
+
+		m_lookup_commit = lookup_commit;
+
+		m_value_commit = value_commit_increment;
+
+		m_lookup_capacity = lookup_capacity;
+
+		m_value_capacity = value_capacity;
+
+		m_value_commit_increment = value_commit_increment;
 	}
 
 	u32 index_from(K key, u32 key_hash) noexcept

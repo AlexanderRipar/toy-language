@@ -23,7 +23,10 @@ namespace thd
 
 	public:
 
-		Semaphore(u32 initial_tokens) noexcept : m_rep{ initial_tokens } {}
+		void init(u32 initial_tokens) noexcept
+		{
+			m_rep = initial_tokens;
+		}
 
 		void post() noexcept
 		{
@@ -94,9 +97,12 @@ namespace thd
 
 	public:
 
-		IndexStackListHeader() noexcept : m_all{ 0x0000'0000'FFFF'FFFF } {}
+		void init() noexcept
+		{
+			m_all = 0x0000'0000'FFFF'FFFF;
+		}
 
-		IndexStackListHeader(T* begin, u32 count) noexcept
+		void init(T* begin, u32 count) noexcept
 		{
 			if (count == 0)
 			{

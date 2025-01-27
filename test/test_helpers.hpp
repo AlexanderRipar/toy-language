@@ -25,6 +25,8 @@ extern std::vector<TestTime> g_test_times;
 
 extern std::vector<TestTime> g_module_times;
 
+extern bool g_ignore_debugbreaks;
+
 #define TEST_BEGIN \
 		const u64 test_start_ = minos::exact_timestamp()
 
@@ -44,18 +46,20 @@ extern std::vector<TestTime> g_module_times;
 #define TEST_RELATION_(a, b, relation) \
 		do { \
 			if (!((a) relation (b))) { \
-				fprintf(stderr, "%s: Assertion %s %s %s failed (%s:%u)\n", __FUNCTION__, #a, #relation, #b, __FILE__, __LINE__); \
+				fprintf(stderr, "%s:\n    Assertion %s %s %s failed\n    (%s:%u)\n", __FUNCTION__, #a, #relation, #b, __FILE__, __LINE__); \
 				g_failure_count += 1; \
-				__debugbreak(); \
+				if (!g_ignore_debugbreaks) \
+					__debugbreak(); \
 			} \
 		} while (false)
 
 #define TEST_FUNCTION_(a, b, c, function, relation, expected) \
 		do { \
-			if ((function((a), (b), (c))) relation (expected)) { \
-				fprintf(stderr, "%s: Assertion %s(%s, %s, %s) %s %s failed (%s:%u)\n", __FUNCTION__, #function, #a, #b, #c, #relation, #expected, __FILE__, __LINE__); \
+			if (!(function((a), (b), (c))) relation (expected)) { \
+				fprintf(stderr, "%s:\n    Assertion %s(%s, %s, %s) %s %s failed\n    (%s:%u)\n", __FUNCTION__, #function, #a, #b, #c, #relation, #expected, __FILE__, __LINE__); \
 				g_failure_count += 1; \
-				__debugbreak(); \
+				if (!g_ignore_debugbreaks) \
+					__debugbreak(); \
 			} \
 		} while (false)
 

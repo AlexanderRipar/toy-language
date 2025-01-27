@@ -3,10 +3,86 @@
 
 #include "../infra/common.hpp"
 #include "../infra/threading.hpp"
-#include "../infra/container.hpp"
+#include "../infra/minos.hpp"
 #include "pass_data.hpp"
 
-void read::request_read(Globals* data, Range<char8> filepath, u32 filepath_id) noexcept
+struct Read
+{
+	minos::Overlapped overlapped;
+
+	minos::FileHandle filehandle;
+
+	char8* content;
+
+	u32 bytes;
+
+	u32 next;
+
+	IdentifierId filepath_id;
+};
+
+struct SourceReader
+{
+	thd::IndexStackListHeader<Read, offsetof(Read, next)> completed_reads;
+
+	thd::IndexStackListHeader<Read, offsetof(Read, next)> unused_reads;
+
+	thd::Semaphore available_read_count;
+
+	std::atomic<u32> pending_read_count;
+
+	Read reads[512];
+
+	minos::CompletionHandle completion_handle;
+
+	minos::ThreadHandle completion_thread;
+};
+
+
+
+static u32 read_completion_thread_proc(void* param) noexcept
+{
+	SourceReader* const reader = static_cast<SourceReader*>(param);
+
+	while (true)
+	{
+		minos::CompletionResult result;
+
+		if (!minos::completion_wait(reader->completion_handle, &result))
+			panic("Could not wait for read completion (0x%X)\n", minos::last_error());
+
+		Read* const read = reinterpret_cast<Read*>(result.overlapped);
+
+		reader->completed_reads.push(reader->reads, static_cast<u32>(read - reader->reads));
+
+		reader->available_read_count.post();
+	}
+}
+
+
+
+SourceReader* create_source_reader(AllocPool* pool) noexcept
+{
+	SourceReader* const reader = static_cast<SourceReader*>(alloc(pool, sizeof(SourceReader), alignof(SourceReader)));
+
+	reader->completed_reads.init();
+
+	reader->unused_reads.init(reader->reads, static_cast<u32>(array_count(reader->reads)));
+
+	reader->available_read_count.init(0);
+
+	reader->pending_read_count.store(0, std::memory_order_relaxed);
+
+	if (!minos::completion_create(&reader->completion_handle))
+		panic("Could not create read completion handle (0x%X)\n", minos::last_error());
+
+	if (!minos::thread_create(read_completion_thread_proc, reader, range::from_literal_string("Read Completions"), &reader->completion_thread))
+		panic("Could not create read completion thread (0x%X)\n", minos::last_error());
+
+	return reader;
+}
+
+void request_read(SourceReader* reader, Range<char8> filepath, IdentifierId filepath_id) noexcept
 {
 	// TODO: filepath-based caching goes here
 
@@ -25,7 +101,7 @@ void read::request_read(Globals* data, Range<char8> filepath, u32 filepath_id) n
 	if (fileinfo.bytes > UINT32_MAX)
 		panic("Could not read source file %.*s as its size %llu exceeds the supported maximum of %u bytes (< 4gb)\n", static_cast<u32>(filepath.count()), filepath.begin(), fileinfo.bytes, UINT32_MAX);
 
-	Read* const read = data->read.unused_reads.pop(data->read.reads);
+	Read* const read = reader->unused_reads.pop(reader->reads);
 
 	if (read == nullptr)
 		panic("Could not allocate read metadata due to too many parallel reads\n");
@@ -45,42 +121,42 @@ void read::request_read(Globals* data, Range<char8> filepath, u32 filepath_id) n
 	if (read->content == nullptr)
 		panic("Could not allocate buffer of %llu bytes for reading source file %.*s into\n", fileinfo.bytes, static_cast<u32>(filepath.count()), filepath.begin());
 
-	minos::completion_associate_file(data->read.completion_handle, filehandle, 1);
+	minos::completion_associate_file(reader->completion_handle, filehandle, 1);
 
 	if (!minos::file_read(filehandle, read->content, read->bytes, &read->overlapped))
 		panic("Could not read source file %.*s (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
 
-	data->read.pending_read_count.fetch_add(1, std::memory_order_relaxed);
+	reader->pending_read_count.fetch_add(1, std::memory_order_relaxed);
 }
 
-[[nodiscard]] bool read::poll_completed_read(Globals* data, Range<char8>* out) noexcept
+[[nodiscard]] bool poll_completed_read(SourceReader* reader, SourceFile* out) noexcept
 {
-	Read* const read = data->read.completed_reads.pop(data->read.reads);
+	Read* const read = reader->completed_reads.pop(reader->reads);
 
 	if (read == nullptr)
 		return false;
 
-	if (!data->read.available_read_count.try_claim())
+	if (!reader->available_read_count.try_claim())
 		panic("Could not acquire token from completed read counter when knowing there is at least one completed read\n");
 
-	if (data->read.pending_read_count.fetch_sub(1, std::memory_order_relaxed) == 0)
+	if (reader->pending_read_count.fetch_sub(1, std::memory_order_relaxed) == 0)
 		panic("Could not decrement pending read counter when knowing there is at least one pending read\n");
 
-	*out = Range<char8>{ read->content, read->bytes + 1 };
+	*out = SourceFile{ read->content, read->bytes + 1, read->filepath_id };
 
 	return true;
 }
 
-[[nodiscard]] bool read::await_completed_read(Globals* data, SourceFile* out) noexcept
+[[nodiscard]] bool await_completed_read(SourceReader* reader, SourceFile* out) noexcept
 {
-	if (data->read.pending_read_count.load(std::memory_order_relaxed) == 0)
+	if (reader->pending_read_count.load(std::memory_order_relaxed) == 0)
 		return false;
 
-	data->read.pending_read_count.fetch_sub(1, std::memory_order_relaxed);
+	reader->pending_read_count.fetch_sub(1, std::memory_order_relaxed);
 
-	data->read.available_read_count.await();
+	reader->available_read_count.await();
 
-	Read* const read = data->read.completed_reads.pop(data->read.reads);
+	Read* const read = reader->completed_reads.pop(reader->reads);
 
 	if (read == nullptr)
 		panic("Could not retrieve completed read when expecting there to be at least one\n");
@@ -90,7 +166,7 @@ void read::request_read(Globals* data, Range<char8> filepath, u32 filepath_id) n
 	return true;
 }
 
-void read::release_read([[maybe_unused]] Globals* data, SourceFile file) noexcept
-	{
-		free(file.raw_begin());
-	}
+void release_read([[maybe_unused]] SourceReader* reader, SourceFile file) noexcept
+{
+	free(file.raw_begin());
+}

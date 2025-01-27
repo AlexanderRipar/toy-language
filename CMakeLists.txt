@@ -11,6 +11,7 @@ add_executable(
 
 	ast2.hpp ast2.cpp
 
+	infra/alloc_pool.hpp infra/alloc_pool.cpp
 	infra/common.hpp infra/common.cpp
 	infra/hash.hpp
 	infra/minos.hpp infra/minos.cpp
@@ -21,10 +22,11 @@ add_executable(
 	error.hpp error.cpp
 	config.hpp config.cpp
 
-	pass/ast.hpp
-	pass/pass_data.hpp pass/pass_data.cpp
-	pass/read.cpp
+	pass/identifier_pool.cpp
 	pass/parse.cpp
+	pass/pass_data.hpp
+	pass/read.cpp
+	pass/token.cpp
 
 	diag/inc.hpp
 	diag/print_ast.cpp
