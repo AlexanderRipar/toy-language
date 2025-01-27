@@ -25,7 +25,7 @@ add_executable(test test_main.cpp
 	../token.cpp
 	../ast2.hpp ../ast2.cpp
 
-	../diag/inc.hpp
+	../diag/diag.hpp
 	../diag/print_ast.cpp
 )
 

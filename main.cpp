@@ -1,6 +1,6 @@
 #include "config.hpp"
 #include "pass_data.hpp"
-#include "diag/inc.hpp"
+#include "diag/diag.hpp"
 #include "infra/hash.hpp"
 
 #include <cstdlib>

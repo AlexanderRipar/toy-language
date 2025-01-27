@@ -1,7 +1,7 @@
 #ifndef AST_FMT_INCLUDE_GUARD
 #define AST_FMT_INCLUDE_GUARD
 
-#include "inc.hpp"
+#include "diag.hpp"
 
 void diag::print_ast(FILE* out, a2::Node* root) noexcept
 {
