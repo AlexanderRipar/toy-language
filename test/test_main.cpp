@@ -3,11 +3,9 @@
 
 #include "test_helpers.hpp"
 
-u32 g_failure_count = 0;
+std::vector<TestResult> g_test_times;
 
-std::vector<TestTime> g_test_times;
-
-std::vector<TestTime> g_module_times;
+std::vector<TestResult> g_module_times;
 
 const char8* g_curr_module;
 
@@ -60,8 +58,22 @@ s32 main(s32 argc, const char8** argv) noexcept
 
 	const TimeDesc rd = readable_time(duration, minos::exact_timestamp_ticks_per_second());
 
-	if (g_failure_count != 0)
-		fprintf(stderr, "%u out of %llu tests failed in %.1f %s. Rerun under a debugger to trigger the relevant breakpoints.\n", g_failure_count, g_test_times.size(), rd.count, rd.unit);
+	u32 test_failure_count = 0;
+
+	u32 assertion_failure_count = 0;
+
+	for (const TestResult& result : g_test_times)
+	{
+		if (result.failure_count != 0)
+		{
+			test_failure_count += 1;
+
+			assertion_failure_count += result.failure_count;
+		}
+	}
+
+	if (test_failure_count != 0)
+		fprintf(stderr, "%u out of %llu tests (%u asserts in total) failed in %.1f %s. Rerun under a debugger to trigger the relevant breakpoints.\n", test_failure_count, g_test_times.size(), assertion_failure_count, rd.count, rd.unit);
 	else
-		fprintf(stdout, "All %llu tests passed in %.1f %s\n", g_test_times.size(), rd.count, rd.unit);
+		fprintf(stderr, "All %llu tests passed in %.1f %s\n", g_test_times.size(), rd.count, rd.unit);
 }

@@ -8,22 +8,22 @@
 #include "../infra/common.hpp"
 #include "../infra/minos.hpp"
 
-struct TestTime
+struct TestResult
 {
 	const char8* test;
 
 	const char8* module;
 
 	u64 duration;
-};
 
-extern u32 g_failure_count;
+	u32 failure_count;
+};
 
 extern const char8* g_curr_module;
 
-extern std::vector<TestTime> g_test_times;
+extern std::vector<TestResult> g_test_times;
 
-extern std::vector<TestTime> g_module_times;
+extern std::vector<TestResult> g_module_times;
 
 extern bool g_ignore_debugbreaks;
 
@@ -47,7 +47,7 @@ extern bool g_ignore_debugbreaks;
 		do { \
 			if (!((a) relation (b))) { \
 				fprintf(stderr, "%s:\n    Assertion %s %s %s failed\n    (%s:%u)\n", __FUNCTION__, #a, #relation, #b, __FILE__, __LINE__); \
-				g_failure_count += 1; \
+				g_test_times.back().failure_count += 1; \
 				if (!g_ignore_debugbreaks) \
 					__debugbreak(); \
 			} \
@@ -57,7 +57,7 @@ extern bool g_ignore_debugbreaks;
 		do { \
 			if (!(function((a), (b), (c))) relation (expected)) { \
 				fprintf(stderr, "%s:\n    Assertion %s(%s, %s, %s) %s %s failed\n    (%s:%u)\n", __FUNCTION__, #function, #a, #b, #c, #relation, #expected, __FILE__, __LINE__); \
-				g_failure_count += 1; \
+				g_test_times.back().failure_count += 1; \
 				if (!g_ignore_debugbreaks) \
 					__debugbreak(); \
 			} \
