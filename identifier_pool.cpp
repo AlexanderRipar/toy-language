@@ -1,8 +1,8 @@
 #include "pass_data.hpp"
 
-#include "../infra/container.hpp"
-#include "../infra/range.hpp"
-#include "../infra/hash.hpp"
+#include "infra/container.hpp"
+#include "infra/range.hpp"
+#include "infra/hash.hpp"
 
 static constexpr AttachmentRange<char8, Token> KEYWORDS[] = {
 	range::from_literal_string("if",      Token::KwdIf),

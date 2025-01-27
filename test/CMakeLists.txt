@@ -6,7 +6,6 @@ add_executable(test test_main.cpp
 	test_helpers.hpp
 	ast2_tests.cpp
 
-	../ast2.hpp ../ast2.cpp
 
 	../infra/alloc_pool.hpp ../infra/alloc_pool.cpp
 	../infra/common.hpp ../infra/common.cpp
@@ -19,11 +18,12 @@ add_executable(test test_main.cpp
 	../error.hpp ../error.cpp
 	../config.hpp ../config.cpp
 
-	../pass/identifier_pool.cpp
-	../pass/parse.cpp
-	../pass/pass_data.hpp
-	../pass/read.cpp
-	../pass/token.cpp
+	../identifier_pool.cpp
+	../parse.cpp
+	../pass_data.hpp
+	../read.cpp
+	../token.cpp
+	../ast2.hpp ../ast2.cpp
 
 	../diag/inc.hpp
 	../diag/print_ast.cpp

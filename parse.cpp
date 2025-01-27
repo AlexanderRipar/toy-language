@@ -1,12 +1,12 @@
 #include <cstdarg>
 #include <cstdlib>
 
-#include "../infra/common.hpp"
-#include "../infra/alloc_pool.hpp"
-#include "../infra/container.hpp"
-#include "../infra/hash.hpp"
-#include "../error.hpp"
-#include "../ast2.hpp"
+#include "infra/common.hpp"
+#include "infra/alloc_pool.hpp"
+#include "infra/container.hpp"
+#include "infra/hash.hpp"
+#include "error.hpp"
+#include "ast2.hpp"
 #include "pass_data.hpp"
 
 static constexpr u32 MAX_STRING_LITERAL_BYTES = 4096;

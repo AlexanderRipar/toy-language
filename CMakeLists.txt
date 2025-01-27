@@ -9,7 +9,6 @@ project(compil0r)
 add_executable(
 	compil0r main.cpp
 
-	ast2.hpp ast2.cpp
 
 	infra/alloc_pool.hpp infra/alloc_pool.cpp
 	infra/common.hpp infra/common.cpp
@@ -22,11 +21,12 @@ add_executable(
 	error.hpp error.cpp
 	config.hpp config.cpp
 
-	pass/identifier_pool.cpp
-	pass/parse.cpp
-	pass/pass_data.hpp
-	pass/read.cpp
-	pass/token.cpp
+	identifier_pool.cpp
+	parse.cpp
+	pass_data.hpp
+	read.cpp
+	token.cpp
+	ast2.hpp ast2.cpp
 
 	diag/inc.hpp
 	diag/print_ast.cpp

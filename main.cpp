@@ -1,5 +1,5 @@
 #include "config.hpp"
-#include "pass/pass_data.hpp"
+#include "pass_data.hpp"
 #include "diag/inc.hpp"
 #include "infra/hash.hpp"
 

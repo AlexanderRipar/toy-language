@@ -1,11 +1,11 @@
 #ifndef PARSEDATA_INCLUDE_GUARD
 #define PARSEDATA_INCLUDE_GUARD
 
-#include "../infra/common.hpp"
-#include "../infra/container.hpp"
-#include "../infra/threading.hpp"
-#include "../infra/alloc_pool.hpp"
-#include "../ast2.hpp"
+#include "infra/common.hpp"
+#include "infra/container.hpp"
+#include "infra/threading.hpp"
+#include "infra/alloc_pool.hpp"
+#include "ast2.hpp"
 
 
 

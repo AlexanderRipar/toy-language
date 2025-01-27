@@ -5,7 +5,7 @@
 
 #include "../infra/common.hpp"
 #include "../ast2.hpp"
-#include "../pass/pass_data.hpp"
+#include "../pass_data.hpp"
 
 namespace diag
 {
