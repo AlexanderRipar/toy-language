@@ -1,4 +1,16 @@
+let a: X = 1
+
+let b: Y = 2
+
+let c: Z = 3
+
 let x = 'c' + 1.0 * 2 - "s"
+
+let n = (a + b) * c
+
+let f = func(a: u32) -> u32 = {
+	a * 2
+} + 2
 
 /*
 1.2

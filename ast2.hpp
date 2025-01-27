@@ -257,11 +257,11 @@ namespace a2
 	{
 		Node* curr;
 
-		u32 depth = 0;
+		u8 depth;
 
-		s32 unfinished_top;
+		s32 top;
 
-		u8 unfinished_depths[MAX_TREE_DEPTH];
+		u8 prev_depths[MAX_TREE_DEPTH];
 
 		static_assert(MAX_TREE_DEPTH <= UINT8_MAX);
 	};
@@ -274,13 +274,13 @@ namespace a2
 		{
 			iterator.curr = first_child_of(node);
 			iterator.depth = 0;
-			iterator.unfinished_top = -1;
+			iterator.top = -1;
 		}
 		else
 		{
 			iterator.curr = nullptr;
 			iterator.depth = 0;
-			iterator.unfinished_top = -1;
+			iterator.top = -1;
 		}
 
 		return iterator;
@@ -291,40 +291,42 @@ namespace a2
 		if (iterator->curr == nullptr)
 			return { nullptr, 0 };
 
-		Node* const result = iterator->curr;
+		IterationResult result = { iterator->curr, iterator->depth };
 
-		const u32 result_depth = iterator->depth;
+		Node* const curr = iterator->curr;
 
-		if ((result->internal_flags & (Node::FLAG_FIRST_SIBLING | Node::FLAG_LAST_SIBLING | Node::FLAG_NO_CHILDREN)) == Node::FLAG_FIRST_SIBLING)
+		iterator->curr = apply_offset_(curr, curr->data_dwords);
+
+		if ((curr->internal_flags & Node::FLAG_NO_CHILDREN) == 0)
 		{
-			ASSERT_OR_IGNORE(iterator->unfinished_top + 1 < MAX_TREE_DEPTH);
+			if ((curr->internal_flags & Node::FLAG_LAST_SIBLING) == 0)
+			{
+				ASSERT_OR_IGNORE(iterator->top + 1 < MAX_TREE_DEPTH);
 
-			iterator->unfinished_top += 1;
+				iterator->top += 1;
 
-			iterator->unfinished_depths[iterator->unfinished_top] = static_cast<u8>(iterator->depth);
+				iterator->prev_depths[iterator->top] = iterator->depth;
+			}
+
+			ASSERT_OR_IGNORE(iterator->depth + 1 < MAX_TREE_DEPTH);
 
 			iterator->depth += 1;
 		}
-		else if ((result->internal_flags & Node::FLAG_NO_CHILDREN) == 0)
+		else if ((curr->internal_flags & Node::FLAG_LAST_SIBLING) == Node::FLAG_LAST_SIBLING)
 		{
-			iterator->depth += 1;
-		}
-		else if (iterator->unfinished_top >= 0 && (result->internal_flags & Node::FLAG_LAST_SIBLING) == Node::FLAG_LAST_SIBLING)
-		{
-			iterator->depth = iterator->unfinished_depths[iterator->unfinished_top];
+			if (iterator->top == -1)
+			{
+				iterator->curr = nullptr;
+			}
+			else
+			{
+				iterator->depth = iterator->prev_depths[iterator->top];
 
-			iterator->unfinished_top -= 1;
+				iterator->top -= 1;
+			}
 		}
-		else if (iterator->unfinished_top == -1 && (result->internal_flags & (Node::FLAG_NO_CHILDREN | Node::FLAG_LAST_SIBLING)) == (Node::FLAG_NO_CHILDREN | Node::FLAG_LAST_SIBLING))
-		{
-			iterator->curr = nullptr;
 
-			return { result, result_depth };
-		}
-		
-		iterator->curr = apply_offset_(result, result->data_dwords);
-
-		return { result, result_depth };
+		return result;
 	}
 
 	static inline IterationResult peek(const NodePreorderIterator* iterator) noexcept

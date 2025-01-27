@@ -128,6 +128,32 @@ static DummyTree double_binary_dummy_tree() noexcept
 	return tree;
 }
 
+static DummyTree flat_dummy_tree() noexcept
+{
+	DummyTree tree;
+	tree.index = 0;
+
+	push_node(&tree, { a2::Tag::Program, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 9 * NODE_DWORDS });
+
+	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS });
+
+	push_node(&tree, { a2::Tag::ValIdentifer, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+
+	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, 0, 2 * NODE_DWORDS });
+
+	push_node(&tree, { a2::Tag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+
+	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, 0, 2 * NODE_DWORDS });
+
+	push_node(&tree, { a2::Tag::ValFloat, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+
+	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
+
+	push_node(&tree, { a2::Tag::ValString, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+
+	return tree;
+}
+
 
 
 static void has_children_on_single_node_is_false() noexcept
@@ -295,6 +321,37 @@ static void preorder_iterator_with_grandchildren_iterates_grandchildren() noexce
 	a2::NodePreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
 
 	static constexpr u32 expected_depths[] = { 0, 1, 1, 0, 1, 2, 1, 2 };
+
+	for (u32 i = 0; i != 8; ++i)
+	{
+		const a2::IterationResult result = a2::next(&it);
+
+		TEST_EQUAL(a2::is_valid(result), true);
+
+		TEST_EQUAL(result.node, reinterpret_cast<a2::Node*>(tree.dwords) + i + 1);
+
+		TEST_EQUAL(result.depth, expected_depths[i]);
+	}
+
+	TEST_EQUAL(a2::is_valid(a2::next(&it)), false);
+
+	TEST_END;
+}
+
+static void preorder_iterator_with_flat_tree_iterates_subtrees() noexcept
+{
+	TEST_BEGIN;
+
+	DummyTree tree = flat_dummy_tree();
+
+	a2::NodePreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+
+	static constexpr u32 expected_depths[] = {
+		0, 1,
+		0, 1,
+		0, 1,
+		0, 1
+	};
 
 	for (u32 i = 0; i != 8; ++i)
 	{
@@ -598,6 +655,8 @@ void ast2_tests() noexcept
 	preorder_iterator_with_5_children_has_5_entries();
 
 	preorder_iterator_with_grandchildren_iterates_grandchildren();
+
+	preorder_iterator_with_flat_tree_iterates_subtrees();
 
 
 	postorder_iterator_with_0_children_has_0_entries();
