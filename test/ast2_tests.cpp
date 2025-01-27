@@ -30,7 +30,7 @@ static DummyTree single_node_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::Program, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, 0 });
+	push_node(&tree, { a2::Tag::Program, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -40,9 +40,9 @@ static DummyTree unary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::Program, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 0 });
+	push_node(&tree, { a2::Tag::Program, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::Block, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, 0 });
+	push_node(&tree, { a2::Tag::Block, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -52,11 +52,11 @@ static DummyTree binary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::OpBitAnd, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 0 });
+	push_node(&tree, { a2::Tag::OpBitAnd, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 3 * NODE_DWORDS });
 
 	push_node(&tree, { a2::Tag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValIdentifer, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, 0 });
+	push_node(&tree, { a2::Tag::ValIdentifer, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -68,13 +68,13 @@ static DummyTree nary_dummy_tree(u32 n) noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::Program, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 0 });
+	push_node(&tree, { a2::Tag::Program, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, NODE_DWORDS * (n + 1) });
 
 	for (u32 i = 0; i != n; ++i)
 	{
 		const u8 internal_flags = static_cast<u8>((i == 0 ? a2::Node::FLAG_FIRST_SIBLING : 0) | (i == n - 1 ? a2::Node::FLAG_LAST_SIBLING : 0) | a2::Node::FLAG_NO_CHILDREN);
 
-		push_node(&tree, { a2::Tag::Block, a2::Flag::EMPTY, NODE_DWORDS, internal_flags, static_cast<u8>(i == n - 1 ? 0 : NODE_DWORDS) });
+		push_node(&tree, { a2::Tag::Block, a2::Flag::EMPTY, NODE_DWORDS, internal_flags, NODE_DWORDS });
 	}
 
 	return tree;
@@ -85,23 +85,23 @@ static DummyTree complex_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { static_cast<a2::Tag>(1), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 0 });
+	push_node(&tree, { static_cast<a2::Tag>(1), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 9 * NODE_DWORDS });
 	
 	push_node(&tree, { static_cast<a2::Tag>(2), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING, 3 * NODE_DWORDS });
 
 	push_node(&tree, { static_cast<a2::Tag>(3), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(4), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, 0 });
+	push_node(&tree, { static_cast<a2::Tag>(4), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(5), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING, 0 });
+	push_node(&tree, { static_cast<a2::Tag>(5), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING, 5 * NODE_DWORDS });
 
 	push_node(&tree, { static_cast<a2::Tag>(6), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(7), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, 0 });
+	push_node(&tree, { static_cast<a2::Tag>(7), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(8), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING, 0 });
+	push_node(&tree, { static_cast<a2::Tag>(8), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(9), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, 0 });
+	push_node(&tree, { static_cast<a2::Tag>(9), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -111,19 +111,19 @@ static DummyTree double_binary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::OpSub, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING });
+	push_node(&tree, { a2::Tag::OpSub, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 7 * NODE_DWORDS });
 
 	push_node(&tree, { a2::Tag::OpAdd, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING, 5 * NODE_DWORDS });
 
 	push_node(&tree, { a2::Tag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::OpMul, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING, 0 });
+	push_node(&tree, { a2::Tag::OpMul, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING, 3 * NODE_DWORDS });
 
 	push_node(&tree, { a2::Tag::ValFloat, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValInteger, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, 0 });
+	push_node(&tree, { a2::Tag::ValInteger, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValString, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, 0 });
+	push_node(&tree, { a2::Tag::ValString, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }

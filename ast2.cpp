@@ -130,7 +130,7 @@ static void set_internal_flags(a2::Node* begin, a2::Node* end) noexcept
 // Create a linked list modelling a preorder traversal of all nodes.
 static a2::Node* build_traversal_list(a2::Node* begin, a2::Node* end) noexcept
 {
-	sreg prev_sibling_top = -1;
+	sreg depth = -1;
 
 	u32 recursively_last_child = a2::Builder::NO_CHILDREN.rep;
 
@@ -146,9 +146,9 @@ static a2::Node* build_traversal_list(a2::Node* begin, a2::Node* end) noexcept
 
 		if ((curr->internal_flags & a2::Node::FLAG_FIRST_SIBLING) == 0)
 		{
-			ASSERT_OR_IGNORE(prev_sibling_top >= 0);
+			ASSERT_OR_IGNORE(depth >= 0);
 
-			const u32 prev_sibling_ind = prev_sibling_inds[prev_sibling_top];
+			const u32 prev_sibling_ind = prev_sibling_inds[depth];
 
 			a2::Node* prev_sibling = reinterpret_cast<a2::Node*>(reinterpret_cast<u32*>(begin) + prev_sibling_ind);
 
@@ -161,32 +161,32 @@ static a2::Node* build_traversal_list(a2::Node* begin, a2::Node* end) noexcept
 		{
 			if ((curr->internal_flags & a2::Node::FLAG_FIRST_SIBLING) == a2::Node::FLAG_FIRST_SIBLING)
 			{
-				if (prev_sibling_top + 1 >= a2::MAX_TREE_DEPTH)
+				if (depth + 1 >= a2::MAX_TREE_DEPTH)
 					panic("Maximum parse tree depth of %u exceeded.\n", a2::MAX_TREE_DEPTH);
 
-				prev_sibling_top += 1;
+				depth += 1;
 			}
 
-			ASSERT_OR_IGNORE(prev_sibling_top >= 0);
+			ASSERT_OR_IGNORE(depth >= 0);
 
 			if ((curr->internal_flags & a2::Node::FLAG_NO_CHILDREN) == 0)
 			{
 				ASSERT_OR_IGNORE(recursively_last_child != a2::Builder::NO_CHILDREN.rep);
 
-				prev_sibling_inds[prev_sibling_top] = recursively_last_child;
+				prev_sibling_inds[depth] = recursively_last_child;
 			}
 			else
 			{
-				prev_sibling_inds[prev_sibling_top] = curr_ind;
+				prev_sibling_inds[depth] = curr_ind;
 			}
 		}
 		else // last sibling
 		{
 			if ((curr->internal_flags & a2::Node::FLAG_FIRST_SIBLING) == 0)
 			{
-				ASSERT_OR_IGNORE(prev_sibling_top >= 0);
+				ASSERT_OR_IGNORE(depth >= 0);
 
-				prev_sibling_top -= 1;
+				depth -= 1;
 			}
 
 			if ((curr->internal_flags & a2::Node::FLAG_NO_CHILDREN) == a2::Node::FLAG_NO_CHILDREN)
@@ -201,7 +201,7 @@ static a2::Node* build_traversal_list(a2::Node* begin, a2::Node* end) noexcept
 		curr = next;
 	}
 	
-	ASSERT_OR_IGNORE(prev_sibling_top == -1);
+	ASSERT_OR_IGNORE(depth == -1);
 
 	ASSERT_OR_IGNORE(reinterpret_cast<a2::Node*>(reinterpret_cast<u32*>(curr) + curr->data_dwords) == end);
 
@@ -228,49 +228,52 @@ static a2::Node* copy_postorder_to_preorder(const a2::Node* begin, const a2::Nod
 
 		memcpy(dst_node, curr, curr->data_dwords * sizeof(u32));
 
-		// Adjust next_sibling_offset; This is functionally similar to the code
-		// to create the linked list.
-
 		const u32 curr_ind = static_cast<u32>(reinterpret_cast<u32*>(dst_node) - reinterpret_cast<u32*>(dst_root));
 
-		if ((curr->internal_flags & (a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING)) == a2::Node::FLAG_FIRST_SIBLING)
+		if ((curr->internal_flags & a2::Node::FLAG_FIRST_SIBLING) == 0)
 		{
-			depth += 1;
-
-			ASSERT_OR_IGNORE(depth < a2::MAX_TREE_DEPTH);
-
-			prev_sibling_inds[depth] = curr_ind;
-		}
-		else if ((curr->internal_flags & (a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING)) != (a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING))
-		{
-			ASSERT_OR_IGNORE(depth >= 0);
-
-			const u32 prev_sibling_ind = prev_sibling_inds[depth];
-
-			a2::Node* const prev_sibling = reinterpret_cast<a2::Node*>(reinterpret_cast<u32*>(dst_root) + prev_sibling_ind);
-
-			prev_sibling->next_sibling_offset = curr_ind - prev_sibling_ind;
-
-			if ((curr->internal_flags & a2::Node::FLAG_LAST_SIBLING) == 0)
+			while (true)
 			{
-				prev_sibling_inds[depth] = curr_ind;
-			}
-			else
-			{
-				dst_node->next_sibling_offset = 0;
+				ASSERT_OR_IGNORE(depth > 0); // Actually greater than and *not* equal to 0; root node should never be popped here
+
+				const u32 prev_sibling_ind = prev_sibling_inds[depth];
 
 				depth -= 1;
+
+				a2::Node* const prev_sibling = reinterpret_cast<a2::Node*>(reinterpret_cast<u32*>(dst_root) + prev_sibling_ind);
+
+				prev_sibling->next_sibling_offset = curr_ind - prev_sibling_ind;
+
+				if ((prev_sibling->internal_flags & a2::Node::FLAG_LAST_SIBLING) == 0)
+					break;
 			}
 		}
-		else
-		{
-			dst_node->next_sibling_offset = 0;
-		}
+
+		ASSERT_OR_IGNORE(depth + 1 < a2::MAX_TREE_DEPTH);
+
+		depth += 1;
+
+		prev_sibling_inds[depth] = curr_ind;
 
 		if (curr->next_sibling_offset == a2::Builder::NO_CHILDREN.rep)
 			break;
 
 		curr = reinterpret_cast<const a2::Node*>(reinterpret_cast<const u32*>(begin) + curr->next_sibling_offset);
+	}
+
+	ASSERT_OR_IGNORE(depth != -1);
+
+	const u32 end_ind = static_cast<u32>(dst->end() - reinterpret_cast<u32*>(dst_root));
+
+	while (depth >= 0)
+	{
+		const u32 prev_sibling_ind = prev_sibling_inds[depth];
+
+		depth -= 1;
+
+		a2::Node* const prev_sibling = reinterpret_cast<a2::Node*>(reinterpret_cast<u32*>(dst_root) + prev_sibling_ind);
+
+		prev_sibling->next_sibling_offset = end_ind - prev_sibling_ind;
 	}
 
 	return dst_root;
