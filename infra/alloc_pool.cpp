@@ -46,7 +46,7 @@ void release_alloc_pool(AllocPool* pool) noexcept
 	minos::mem_unreserve(pool);
 }
 
-OptPtr<void> try_alloc(AllocPool* pool, u32 bytes, u32 alignment) noexcept
+void* alloc(AllocPool* pool, u32 bytes, u32 alignment) noexcept
 {
 	ASSERT_OR_IGNORE(is_pow2(alignment));
 
@@ -57,7 +57,7 @@ OptPtr<void> try_alloc(AllocPool* pool, u32 bytes, u32 alignment) noexcept
 	if (new_pool_used > pool->commit)
 	{
 		if (new_pool_used > pool->reserve)
-			return none<void>();
+		panic("Could not allocate %u bytes from AllocPool of size %u as it was already full\n", bytes, pool->reserve);
 
 		const u32 new_pool_commit = next_multiple(static_cast<u32>(new_pool_used), pool->commit_increment);
 
@@ -69,17 +69,7 @@ OptPtr<void> try_alloc(AllocPool* pool, u32 bytes, u32 alignment) noexcept
 
 	pool->used = static_cast<u32>(new_pool_used);
 
-	return some<void>(reinterpret_cast<byte*>(pool) + alloc_begin);
-}
-
-void* alloc(AllocPool* pool, u32 bytes, u32 alignment) noexcept
-{
-	const OptPtr<void> result = try_alloc(pool, bytes, alignment);
-
-	if (is_none(result))
-		panic("Could not allocate %u bytes from AllocPool of size %u as it was already full\n", bytes, pool->reserve);
-
-	return get_ptr(result);
+	return reinterpret_cast<byte*>(pool) + alloc_begin;
 }
 
 void clear(AllocPool* pool, u32 max_remaining_commit) noexcept
