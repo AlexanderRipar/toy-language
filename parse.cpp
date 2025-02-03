@@ -1322,7 +1322,103 @@ static bool is_definition_start(Token token) noexcept
 
 static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept;
 
-static a2::BuilderToken parse_definition(Parser* parser, bool is_implicit, bool is_optional_value) noexcept;
+static a2::BuilderToken parse_definition(Parser* parser, bool is_implicit, bool is_optional_value) noexcept
+{
+	a2::Flag flags = a2::Flag::EMPTY;
+
+	Lexeme lexeme = next(&parser->lexer);
+
+	if (lexeme.token == Token::KwdLet)
+	{
+		lexeme = next(&parser->lexer);
+	}
+	else
+	{
+		while (true)
+		{
+			if (lexeme.token == Token::KwdPub)
+			{
+				if ((flags & a2::Flag::Definition_IsPub) != a2::Flag::EMPTY)
+					error(&parser->lexer, lexeme.offset, "Definition modifier 'pub' encountered more than once\n");
+
+				flags |= a2::Flag::Definition_IsPub;
+			}
+			else if (lexeme.token == Token::KwdMut)
+			{
+				if ((flags & a2::Flag::Definition_IsMut) != a2::Flag::EMPTY)
+					error(&parser->lexer, lexeme.offset, "Definition modifier 'mut' encountered more than once\n");
+
+				flags |= a2::Flag::Definition_IsMut;
+			}
+			else if (lexeme.token == Token::KwdGlobal)
+			{
+				if ((flags & a2::Flag::Definition_IsGlobal) != a2::Flag::EMPTY)
+					error(&parser->lexer, lexeme.offset, "Definition modifier 'global' encountered more than once\n");
+
+				flags |= a2::Flag::Definition_IsGlobal;
+			}
+			else if (lexeme.token == Token::KwdAuto)
+			{
+				if ((flags & a2::Flag::Definition_IsAuto) != a2::Flag::EMPTY)
+					error(&parser->lexer, lexeme.offset, "Definition modifier 'auto' encountered more than once\n");
+
+				flags |= a2::Flag::Definition_IsAuto;
+			}
+			else if (lexeme.token == Token::KwdUse)
+			{
+				if ((flags & a2::Flag::Definition_IsUse) != a2::Flag::EMPTY)
+					error(&parser->lexer, lexeme.offset, "Definition modifier 'use' encountered more than once\n");
+
+				flags |= a2::Flag::Definition_IsUse;
+			}
+			else
+			{
+				break;
+			}
+
+			lexeme = next(&parser->lexer);
+		}
+
+		if (flags == a2::Flag::EMPTY && !is_implicit)
+			error(&parser->lexer, lexeme.offset, "Missing 'let' or at least one of 'pub', 'mut' or 'global' at start of definition\n");
+	}
+
+	if (lexeme.token != Token::Ident)
+		error(&parser->lexer, lexeme.offset, "Expected 'Identifier' after Definition modifiers but got '%s'\n", token_name(lexeme.token));
+
+	const IdentifierId identifier_id = lexeme.identifier_id;
+
+	lexeme = peek(&parser->lexer);
+
+	a2::BuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+
+	if (lexeme.token == Token::Colon)
+	{
+		flags |= a2::Flag::Definition_HasType;
+
+		skip(&parser->lexer);
+
+		first_child_token = parse_expr(parser, false);
+
+		lexeme = peek(&parser->lexer);
+	}
+
+	if (lexeme.token == Token::OpSet)
+	{
+		skip(&parser->lexer);
+
+		const a2::BuilderToken value_token = parse_expr(parser, true);
+
+		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+			first_child_token = value_token;
+	}
+	else if (!is_optional_value)
+	{
+		error(&parser->lexer, lexeme.offset, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
+	}
+
+	return a2::push_node(&parser->builder, first_child_token, flags, a2::DefinitionData{ identifier_id });
+}
 
 static a2::BuilderToken parse_return(Parser* parser) noexcept
 {
@@ -1846,104 +1942,6 @@ static a2::BuilderToken parse_impl(Parser* parser) noexcept
 	parse_expr(parser, true);
 
 	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Impl, flags);
-}
-
-static a2::BuilderToken parse_definition(Parser* parser, bool is_implicit, bool is_optional_value) noexcept
-{
-	a2::Flag flags = a2::Flag::EMPTY;
-
-	Lexeme lexeme = next(&parser->lexer);
-
-	if (lexeme.token == Token::KwdLet)
-	{
-		lexeme = next(&parser->lexer);
-	}
-	else
-	{
-		while (true)
-		{
-			if (lexeme.token == Token::KwdPub)
-			{
-				if ((flags & a2::Flag::Definition_IsPub) != a2::Flag::EMPTY)
-					error(&parser->lexer, lexeme.offset, "Definition modifier 'pub' encountered more than once\n");
-
-				flags |= a2::Flag::Definition_IsPub;
-			}
-			else if (lexeme.token == Token::KwdMut)
-			{
-				if ((flags & a2::Flag::Definition_IsMut) != a2::Flag::EMPTY)
-					error(&parser->lexer, lexeme.offset, "Definition modifier 'mut' encountered more than once\n");
-
-				flags |= a2::Flag::Definition_IsMut;
-			}
-			else if (lexeme.token == Token::KwdGlobal)
-			{
-				if ((flags & a2::Flag::Definition_IsGlobal) != a2::Flag::EMPTY)
-					error(&parser->lexer, lexeme.offset, "Definition modifier 'global' encountered more than once\n");
-
-				flags |= a2::Flag::Definition_IsGlobal;
-			}
-			else if (lexeme.token == Token::KwdAuto)
-			{
-				if ((flags & a2::Flag::Definition_IsAuto) != a2::Flag::EMPTY)
-					error(&parser->lexer, lexeme.offset, "Definition modifier 'auto' encountered more than once\n");
-
-				flags |= a2::Flag::Definition_IsAuto;
-			}
-			else if (lexeme.token == Token::KwdUse)
-			{
-				if ((flags & a2::Flag::Definition_IsUse) != a2::Flag::EMPTY)
-					error(&parser->lexer, lexeme.offset, "Definition modifier 'use' encountered more than once\n");
-
-				flags |= a2::Flag::Definition_IsUse;
-			}
-			else
-			{
-				break;
-			}
-
-			lexeme = next(&parser->lexer);
-		}
-
-		if (flags == a2::Flag::EMPTY && !is_implicit)
-			error(&parser->lexer, lexeme.offset, "Missing 'let' or at least one of 'pub', 'mut' or 'global' at start of definition\n");
-	}
-
-	if (lexeme.token != Token::Ident)
-		error(&parser->lexer, lexeme.offset, "Expected 'Identifier' after Definition modifiers but got '%s'\n", token_name(lexeme.token));
-
-	const IdentifierId identifier_id = lexeme.identifier_id;
-
-	lexeme = peek(&parser->lexer);
-
-	a2::BuilderToken first_child_token = a2::Builder::NO_CHILDREN;
-
-	if (lexeme.token == Token::Colon)
-	{
-		flags |= a2::Flag::Definition_HasType;
-
-		skip(&parser->lexer);
-
-		first_child_token = parse_expr(parser, false);
-
-		lexeme = peek(&parser->lexer);
-	}
-	
-	if (lexeme.token == Token::OpSet)
-	{
-		skip(&parser->lexer);
-
-		const a2::BuilderToken value_token = parse_expr(parser, true);
-
-		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
-			first_child_token = value_token;
-	}
-	else if (!is_optional_value)
-	{
-		error(&parser->lexer, lexeme.offset, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
-	}
-
-	return a2::push_node(&parser->builder, first_child_token, flags, a2::DefinitionData{ identifier_id });
 }
 
 static a2::BuilderToken parse_definition_or_impl(Parser* parser) noexcept
