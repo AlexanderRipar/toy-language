@@ -6,7 +6,7 @@ let main = proc(args: [][]char8) -> s32 = {
 
 }
 
-impl Stringy(u32) = {
+impl std.Stringy(u32) = {
 	let to_string_length = func(mut n: u32) -> ureg =
 	{
 		mut count = 0
@@ -18,16 +18,13 @@ impl Stringy(u32) = {
 			n /= 10
 		}
 
-		count
+		return count
 	}
 
-	let to_string = func(mut n: u32, buf: []mut char8) -> ureg =
+	let to_string = func(mut n: u32, buf: []mut char8) -> ureg
+		expects count(buf) >= to_string_length(n) =
 	{
-		let length = to_string_length(n)
-
-		assert(count(buf) >= length)
-
-		mut offset = length - 1
+		mut offset = to_string_length(n) - 1
 
 		for offset != 0 do
 		{
@@ -38,7 +35,7 @@ impl Stringy(u32) = {
 
 		buf[0] = '0' + n
 
-		count
+		return count
 	}
 }
 

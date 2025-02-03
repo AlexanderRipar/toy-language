@@ -33,6 +33,9 @@ enum class Token : u8
 		KwdGlobal,            // global
 		KwdAuto,              // auto
 		KwdUse,               // use
+		KwdReturn,            // return
+		KwdLeave,             // leave
+		KwdYield,             // yield
 		ArrayInitializer,     // .[
 		CompositeInitializer, // .{
 		BracketR,             // ]

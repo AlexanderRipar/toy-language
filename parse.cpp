@@ -1324,12 +1324,49 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept;
 
 static a2::BuilderToken parse_definition(Parser* parser, bool is_implicit, bool is_optional_value) noexcept;
 
+static a2::BuilderToken parse_return(Parser* parser) noexcept
+{
+	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdReturn);
+
+	skip(&parser->lexer);
+
+	const a2::BuilderToken value_token = parse_expr(parser, true);
+
+	return a2::push_node(&parser->builder, value_token, a2::Tag::Return, a2::Flag::EMPTY);
+}
+
+static a2::BuilderToken parse_leave(Parser* parser) noexcept
+{
+	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdLeave);
+
+	skip(&parser->lexer);
+
+	return a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Tag::Leave, a2::Flag::EMPTY);
+}
+
+static a2::BuilderToken parse_yield(Parser* parser) noexcept
+{
+	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdYield);
+
+	skip(&parser->lexer);
+
+	const a2::BuilderToken value_token = parse_expr(parser, true);
+
+	return a2::push_node(&parser->builder, value_token, a2::Tag::Yield, a2::Flag::EMPTY);
+}
+
 static a2::BuilderToken parse_top_level_expr(Parser* parser, bool is_definition_optional_value) noexcept
 {
 	const Lexeme lexeme = peek(&parser->lexer);
 
 	if (is_definition_start(lexeme.token))
 		return parse_definition(parser, false, is_definition_optional_value);
+	else if (lexeme.token == Token::KwdReturn)
+		return parse_return(parser);
+	else if (lexeme.token == Token::KwdLeave)
+		return parse_leave(parser);
+	else if (lexeme.token == Token::KwdYield)
+		return parse_yield(parser);
 	else
 		return parse_expr(parser, true);
 }
