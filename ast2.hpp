@@ -40,6 +40,7 @@ namespace a2
 		UOpTypeSlice,
 		UOpTypeMultiPtr,
 		UOpTypeOptMultiPtr,
+		UOpMut,
 		UOpEval,
 		UOpTry,
 		UOpDefer,

@@ -1,3 +1,7 @@
+let X = []mut char8
+
+let std = import("@std")
+
 let main = proc(args: [][]char8) -> s32 = {
 
 }

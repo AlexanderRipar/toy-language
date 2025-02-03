@@ -30,6 +30,7 @@ constexpr inline const char8* const NODE_TYPE_NAMES[] = {
 	"UOpTypeSlice",
 	"UOpTypeMultiPtr",
 	"UOpTypeOptMultiPtr",
+	"UOpMut",
 	"UOpEval",
 	"UOpTry",
 	"UOpDefer",

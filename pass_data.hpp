@@ -30,7 +30,6 @@ enum class Token : u8
 		KwdCatch,             // catch
 		KwdLet,               // let
 		KwdPub,               // pub
-		KwdMut,               // mut
 		KwdGlobal,            // global
 		KwdAuto,              // auto
 		KwdUse,               // use
@@ -42,6 +41,7 @@ enum class Token : u8
 		CurlyL,               // {
 		ParenR,               // )
 		ParenL,               // (
+		KwdMut,               // mut
 		KwdEval,              // eval
 		KwdTry,               // try
 		KwdDefer,             // defer

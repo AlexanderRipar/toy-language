@@ -104,6 +104,7 @@ struct Parser
 
 static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
 	{ a2::Tag::INVALID,           10, false, true  }, // ( - Opening Parenthesis
+	{ a2::Tag::UOpMut,             2, false, false }, // mut
 	{ a2::Tag::UOpEval,            8, false, false }, // eval
 	{ a2::Tag::UOpTry,             8, false, false }, // try
 	{ a2::Tag::UOpDefer,           8, false, false }, // defer
