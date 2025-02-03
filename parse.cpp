@@ -7,6 +7,7 @@
 #include "infra/hash.hpp"
 #include "error.hpp"
 #include "ast2.hpp"
+#include "ast2_attach.hpp"
 #include "pass_data.hpp"
 
 static constexpr u32 MAX_STRING_LITERAL_BYTES = 4096;
@@ -22,6 +23,8 @@ struct Lexeme
 		u64 integer_value;
 
 		f64 float_value; 
+
+		IdentifierId identifier_id;
 	};
 
 	Lexeme() noexcept = default;
@@ -1128,6 +1131,12 @@ static RawLexeme raw_next(Lexer* lexer) noexcept
 
 			return { Token::TypOptMultiPtr };
 		}
+		else if (second == ']')
+		{
+			lexer->curr += 1;
+
+			return { Token::TypSlice };
+		}
 		else
 		{
 			return { Token::BracketL };
@@ -1534,8 +1543,6 @@ static a2::BuilderToken parse_switch(Parser* parser) noexcept
 {
 	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdSwitch);
 
-	u16 child_count = 1;
-
 	a2::Flag flags = a2::Flag::EMPTY;
 
 	skip(&parser->lexer);
@@ -1546,8 +1553,6 @@ static a2::BuilderToken parse_switch(Parser* parser) noexcept
 
 	if (lexeme.token == Token::KwdWhere)
 	{
-		child_count += 1;
-
 		flags |= a2::Flag::Switch_HasWhere;
 
 		parse_where(parser);
@@ -1560,11 +1565,6 @@ static a2::BuilderToken parse_switch(Parser* parser) noexcept
 
 	while (true)
 	{
-		if (child_count == UINT16_MAX)
-			error(&parser->lexer, peek(&parser->lexer).offset, "Combined number of cases, where-clause and switch expression in switch exceeds the supported maximum of %u\n", UINT16_MAX);
-
-		child_count += 1;
-
 		parse_case(parser);
 
 		lexeme = peek(&parser->lexer);
@@ -1778,8 +1778,6 @@ static a2::BuilderToken parse_impl(Parser* parser) noexcept
 {
 	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdImpl);
 
-	u16 child_count = 2;
-
 	a2::Flag flags = a2::Flag::EMPTY;
 
 	skip(&parser->lexer);
@@ -1790,8 +1788,6 @@ static a2::BuilderToken parse_impl(Parser* parser) noexcept
 
 	if (lexeme.token == Token::KwdExpects)
 	{
-		child_count += 1;
-
 		flags |= a2::Flag::Impl_HasExpects;
 
 		parse_expects(parser);
@@ -1816,8 +1812,6 @@ static a2::BuilderToken parse_impl(Parser* parser) noexcept
 
 static a2::BuilderToken parse_definition(Parser* parser, bool is_implicit, bool is_optional_value) noexcept
 {
-	u16 child_count = 0;
-
 	a2::Flag flags = a2::Flag::EMPTY;
 
 	Lexeme lexeme = next(&parser->lexer);
@@ -1880,7 +1874,7 @@ static a2::BuilderToken parse_definition(Parser* parser, bool is_implicit, bool 
 	if (lexeme.token != Token::Ident)
 		error(&parser->lexer, lexeme.offset, "Expected 'Identifier' after Definition modifiers but got '%s'\n", token_name(lexeme.token));
 
-	const u32 identifier_id = static_cast<u32>(lexeme.integer_value);
+	const IdentifierId identifier_id = lexeme.identifier_id;
 
 	lexeme = peek(&parser->lexer);
 
@@ -1888,8 +1882,6 @@ static a2::BuilderToken parse_definition(Parser* parser, bool is_implicit, bool 
 
 	if (lexeme.token == Token::Colon)
 	{
-		child_count += 1;
-
 		flags |= a2::Flag::Definition_HasType;
 
 		skip(&parser->lexer);
@@ -1901,8 +1893,6 @@ static a2::BuilderToken parse_definition(Parser* parser, bool is_implicit, bool 
 	
 	if (lexeme.token == Token::OpSet)
 	{
-		child_count += 1;
-
 		skip(&parser->lexer);
 
 		const a2::BuilderToken value_token = parse_expr(parser, true);
@@ -1915,7 +1905,7 @@ static a2::BuilderToken parse_definition(Parser* parser, bool is_implicit, bool 
 		error(&parser->lexer, lexeme.offset, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Definition, flags, sizeof(identifier_id) / sizeof(u32), &identifier_id);
+	return a2::push_node(&parser->builder, first_child_token, flags, a2::DefinitionData{ identifier_id });
 }
 
 static a2::BuilderToken parse_definition_or_impl(Parser* parser) noexcept
@@ -1951,7 +1941,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Tag::ValIdentifer, a2::Flag::EMPTY, sizeof(u32) / sizeof(u32), &lexeme.integer_value);
+				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Flag::EMPTY, a2::ValIdentifierData{ lexeme.identifier_id });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -1959,7 +1949,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Tag::ValString, a2::Flag::EMPTY, sizeof(u32) / sizeof(u32), &lexeme.integer_value);
+				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Flag::EMPTY, a2::ValStringData{ lexeme.identifier_id });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -1967,7 +1957,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Tag::ValFloat, a2::Flag::EMPTY, sizeof(f64) / sizeof(u32), &lexeme.float_value);
+				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Flag::EMPTY, a2::ValFloatData{ lexeme.float_value });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -1975,7 +1965,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Tag::ValInteger, a2::Flag::EMPTY, sizeof(u64) / sizeof(u32), &lexeme.integer_value);
+				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Flag::EMPTY, a2::ValIntegerData{ lexeme.integer_value });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -1983,7 +1973,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Tag::ValChar, a2::Flag::EMPTY, sizeof(u32) / sizeof(u32), &lexeme.integer_value);
+				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Flag::EMPTY, a2::ValCharData{ static_cast<u32>(lexeme.integer_value) });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2107,7 +2097,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 						break;
 				}
 
-				const a2::BuilderToken block_token = a2::push_node(&parser->builder, first_child_token, a2::Tag::Block, a2::Flag::EMPTY);
+				const a2::BuilderToken block_token = a2::push_node(&parser->builder, first_child_token, a2::Flag::EMPTY, a2::BlockData{});
 				
 				push_operand(parser, &stack, block_token);
 			}
@@ -2229,9 +2219,9 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 					}
 				}
 
-				const a2::BuilderToken call_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operator_top - 1], a2::Tag::Call, a2::Flag::EMPTY);
+				const a2::BuilderToken call_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::Tag::Call, a2::Flag::EMPTY);
 				
-				stack.operand_tokens[stack.operator_top - 1] = call_token;
+				stack.operand_tokens[stack.operand_count - 1] = call_token;
 			}
 			else if (lexeme.token == Token::ParenR) // Closing parenthesis
 			{
@@ -2339,7 +2329,7 @@ static void parse_file(Parser* parser) noexcept
 			first_child_token = curr_token;
 	};
 
-	a2::push_node(&parser->builder, first_child_token, a2::Tag::Program, a2::Flag::EMPTY);
+	a2::push_node(&parser->builder, first_child_token, a2::Flag::EMPTY, a2::FileData{ 0, parser->lexer.filepath_id });
 }
 
 

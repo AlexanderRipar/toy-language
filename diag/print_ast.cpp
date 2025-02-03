@@ -5,7 +5,7 @@
 
 void diag::print_ast(FILE* out, a2::Node* root) noexcept
 {
-	a2::NodePreorderIterator it = a2::preorder_ancestors_of(root);
+	a2::PreorderIterator it = a2::preorder_ancestors_of(root);
 
 	s32 prev_depth = -1;
 

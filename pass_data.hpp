@@ -241,4 +241,43 @@ struct Parser;
 
 [[nodiscard]] a2::Node* parse(Parser* parser, SourceFile source, ReservedVec<u32>* out) noexcept;
 
+
+
+struct DefinitionDesc
+{
+	IdentifierId identifier_id;
+
+	u32 definition_offset;
+};
+
+struct Namespace
+{
+	u16 definition_count;
+
+	u16 use_count;
+
+	u32 block_index;
+
+	#pragma warning(push)
+	#pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
+	DefinitionDesc definitions[];
+	#pragma warning(pop)
+};
+
+static inline Range<DefinitionDesc> definitions(Namespace* ns) noexcept
+{
+	return { ns->definitions, ns->definition_count };
+}
+
+static inline Range<u16> use_indices(Namespace* ns) noexcept
+{
+	return { reinterpret_cast<u16*>(ns->definitions + ns->definition_count), ns->use_count };
+}
+
+struct NameResolver;
+
+[[nodiscard]] NameResolver* create_name_resolver(AllocPool* pool, IdentifierPool* identifiers) noexcept;
+
+[[nodiscard]] a2::Node* resolve_names(NameResolver* resolver, a2::Node* root, ReservedVec<u32>* out) noexcept;
+
 #endif // PARSEDATA_INCLUDE_GUARD

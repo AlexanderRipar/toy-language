@@ -12,7 +12,7 @@ namespace a2
 	enum class Tag : u8
 	{
 		INVALID = 0,
-		Program,
+		File,
 		CompositeInitializer,
 		ArrayInitializer,
 		Wildcard,
@@ -172,6 +172,8 @@ namespace a2
 		u32 next_sibling_offset;
 	};
 
+
+
 	static inline Node* apply_offset_(Node* node, ureg offset) noexcept
 	{
 		static_assert(sizeof(Node) % sizeof(u32) == 0 && alignof(Node) % sizeof(u32) == 0);
@@ -208,6 +210,16 @@ namespace a2
 		return apply_offset_(node, node->data_dwords);
 	}
 
+	template<typename T>
+	static inline T* attachment_of(Node* node) noexcept
+	{
+		ASSERT_OR_IGNORE(T::TAG == node->tag);
+
+		ASSERT_OR_IGNORE(sizeof(T) + sizeof(Node) == node->data_dwords * sizeof(u32));
+
+		return reinterpret_cast<T*>(node + 1);
+	}
+
 
 
 	struct IterationResult
@@ -224,17 +236,17 @@ namespace a2
 
 
 
-	struct NodeFlatIterator
+	struct DirectChildIterator
 	{
 		Node* curr;
 	};
 
-	static inline NodeFlatIterator direct_children_of(Node* node) noexcept
+	static inline DirectChildIterator direct_children_of(Node* node) noexcept
 	{
 		return { has_children(node) ? first_child_of(node) : nullptr };
 	}
 
-	static inline OptPtr<Node> next(NodeFlatIterator* iterator) noexcept
+	static inline OptPtr<Node> next(DirectChildIterator* iterator) noexcept
 	{
 		if (iterator->curr == nullptr)
 			return none<Node>();
@@ -246,14 +258,14 @@ namespace a2
 		return some(curr);
 	}
 
-	static inline OptPtr<Node> peek(const NodeFlatIterator* iterator) noexcept
+	static inline OptPtr<Node> peek(const DirectChildIterator* iterator) noexcept
 	{
 		return maybe(iterator->curr);
 	}
 
 
 
-	struct NodePreorderIterator
+	struct PreorderIterator
 	{
 		Node* curr;
 
@@ -266,9 +278,9 @@ namespace a2
 		static_assert(MAX_TREE_DEPTH <= UINT8_MAX);
 	};
 
-	static inline NodePreorderIterator preorder_ancestors_of(Node* node) noexcept
+	static inline PreorderIterator preorder_ancestors_of(Node* node) noexcept
 	{
-		NodePreorderIterator iterator;
+		PreorderIterator iterator;
 
 		if (has_children(node))
 		{
@@ -286,7 +298,7 @@ namespace a2
 		return iterator;
 	}
 
-	static inline IterationResult next(NodePreorderIterator* iterator) noexcept
+	static inline IterationResult next(PreorderIterator* iterator) noexcept
 	{
 		if (iterator->curr == nullptr)
 			return { nullptr, 0 };
@@ -329,14 +341,14 @@ namespace a2
 		return result;
 	}
 
-	static inline IterationResult peek(const NodePreorderIterator* iterator) noexcept
+	static inline IterationResult peek(const PreorderIterator* iterator) noexcept
 	{
 		return { iterator->curr, iterator->depth };
 	}
 
 
 
-	struct NodePostorderIterator
+	struct PostorderIterator
 	{
 		Node* base;
 
@@ -345,9 +357,9 @@ namespace a2
 		u32 offsets[MAX_TREE_DEPTH];
 	};
 
-	static inline NodePostorderIterator postorder_ancestors_of(Node* node) noexcept
+	static inline PostorderIterator postorder_ancestors_of(Node* node) noexcept
 	{
-		NodePostorderIterator iterator;
+		PostorderIterator iterator;
 
 		iterator.base = node;
 		iterator.depth = -1;
@@ -366,7 +378,7 @@ namespace a2
 		return iterator;
 	}
 
-	static inline IterationResult next(NodePostorderIterator* iterator) noexcept
+	static inline IterationResult next(PostorderIterator* iterator) noexcept
 	{
 		if (iterator->depth < 0)
 			return { nullptr, 0 };
@@ -405,7 +417,7 @@ namespace a2
 		return { ret_node, ret_depth };
 	}
 
-	static inline IterationResult peek(const NodePostorderIterator* iterator) noexcept
+	static inline IterationResult peek(const PostorderIterator* iterator) noexcept
 	{
 		if (iterator->depth == -1)
 			return { nullptr, 0 };
@@ -436,21 +448,39 @@ namespace a2
 		return builder;
 	}
 
-	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, Tag tag, Flag flags, u8 data_dwords = 0, const void* data = nullptr) noexcept
+	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, Tag tag, Flag flags) noexcept
 	{
 		static_assert(sizeof(Node) % sizeof(u32) == 0);
 
-		const u32 required_dwords = sizeof(Node) / sizeof(u32) + data_dwords;
-
-		Node* const node = reinterpret_cast<Node*>(builder->scratch.reserve_exact(required_dwords * sizeof(u32)));
+		Node* const node = reinterpret_cast<Node*>(builder->scratch.reserve_exact(sizeof(Node)));
 
 		node->next_sibling_offset = first_child.rep;
 		node->tag = tag;
 		node->flags = flags;
-		node->data_dwords = data_dwords + sizeof(Node) / sizeof(u32);
+		node->data_dwords = sizeof(Node) / sizeof(u32);
 		node->internal_flags = first_child.rep == Builder::NO_CHILDREN.rep ? Node::FLAG_NO_CHILDREN : 0;
 
-		memcpy(node + 1, data, data_dwords * sizeof(u32));
+		return { static_cast<u32>(reinterpret_cast<u32*>(node) - builder->scratch.begin()) };
+	}
+
+	template<typename T>
+	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, Flag flags, T attachment) noexcept
+	{
+		static_assert(sizeof(Node) % sizeof(u32) == 0);
+		
+		static_assert(sizeof(T) % sizeof(u32) == 0);
+
+		const u32 required_dwords = (sizeof(Node) + sizeof(T)) / sizeof(u32);
+
+		Node* const node = reinterpret_cast<Node*>(builder->scratch.reserve_exact(required_dwords * sizeof(u32)));
+
+		node->next_sibling_offset = first_child.rep;
+		node->tag = T::TAG;
+		node->flags = flags;
+		node->data_dwords = required_dwords;
+		node->internal_flags = first_child.rep == Builder::NO_CHILDREN.rep ? Node::FLAG_NO_CHILDREN : 0;
+
+		memcpy(node + 1, &attachment, sizeof(T));
 
 		return { static_cast<u32>(reinterpret_cast<u32*>(node) - builder->scratch.begin()) };
 	}

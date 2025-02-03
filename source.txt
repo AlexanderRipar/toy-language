@@ -1,16 +1,42 @@
-let a: X = 1
+let main = proc(args: [][]char8) -> s32 = {
 
-let b: Y = 2
+}
 
-let c: Z = 3
+impl Stringy(u32) = {
+	let to_string_length = func(mut n: u32) -> ureg =
+	{
+		mut count = 0
 
-let x = 'c' + 1.0 * 2 - "s"
+		for n != 0 do
+		{
+			count += 1
 
-let n = (a + b) * c
+			n /= 10
+		}
 
-let f = func(a: u32) -> u32 = {
-	a * 2
-} + 2
+		count
+	}
+
+	let to_string = func(mut n: u32, buf: []mut char8) -> ureg =
+	{
+		let length = to_string_length(n)
+
+		assert(count(buf) >= length)
+
+		mut offset = length - 1
+
+		for offset != 0 do
+		{
+			buf[offset] = '0' + n % 10
+
+			n /= 10
+		}
+
+		buf[0] = '0' + n
+
+		count
+	}
+}
 
 /*
 1.2

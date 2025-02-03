@@ -19,6 +19,7 @@ add_executable(test test_main.cpp
 	../config.hpp ../config.cpp
 
 	../identifier_pool.cpp
+	../name_resolver.cpp
 	../parse.cpp
 	../pass_data.hpp
 	../read.cpp

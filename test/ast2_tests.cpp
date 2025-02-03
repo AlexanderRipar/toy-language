@@ -30,7 +30,7 @@ static DummyTree single_node_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::Program, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -40,7 +40,7 @@ static DummyTree unary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::Program, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
+	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
 
 	push_node(&tree, { a2::Tag::Block, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
 
@@ -68,7 +68,7 @@ static DummyTree nary_dummy_tree(u32 n) noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::Program, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, NODE_DWORDS * (n + 1) });
+	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, NODE_DWORDS * (n + 1) });
 
 	for (u32 i = 0; i != n; ++i)
 	{
@@ -133,7 +133,7 @@ static DummyTree flat_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::Program, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 9 * NODE_DWORDS });
+	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 9 * NODE_DWORDS });
 
 	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS });
 
@@ -197,7 +197,7 @@ static void child_iterator_with_0_children_has_0_entries() noexcept
 
 	DummyTree tree = single_node_dummy_tree();
 
-	a2::NodeFlatIterator it = a2::direct_children_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::DirectChildIterator it = a2::direct_children_of(reinterpret_cast<a2::Node*>(tree.dwords));
 
 	TEST_EQUAL(a2::next(&it), none<a2::Node>());
 
@@ -210,7 +210,7 @@ static void child_iterator_with_1_child_has_1_entry() noexcept
 
 	DummyTree tree = unary_dummy_tree();
 
-	a2::NodeFlatIterator it = a2::direct_children_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::DirectChildIterator it = a2::direct_children_of(reinterpret_cast<a2::Node*>(tree.dwords));
 
 	TEST_EQUAL(a2::next(&it), some(reinterpret_cast<a2::Node*>(tree.dwords) + 1));
 
@@ -225,7 +225,7 @@ static void child_iterator_with_5_children_has_5_entries() noexcept
 
 	DummyTree tree = nary_dummy_tree(5);
 
-	a2::NodeFlatIterator it = a2::direct_children_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::DirectChildIterator it = a2::direct_children_of(reinterpret_cast<a2::Node*>(tree.dwords));
 
 	for (u32 i = 0; i != 5; ++i)
 		TEST_EQUAL(a2::next(&it), some(reinterpret_cast<a2::Node*>(tree.dwords) + i + 1));
@@ -241,7 +241,7 @@ static void child_iterator_with_grandchildren_only_iterates_direct_children() no
 
 	DummyTree tree = complex_dummy_tree();
 
-	a2::NodeFlatIterator it = a2::direct_children_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::DirectChildIterator it = a2::direct_children_of(reinterpret_cast<a2::Node*>(tree.dwords));
 
 	TEST_EQUAL(a2::next(&it), some(reinterpret_cast<a2::Node*>(tree.dwords) + 1));
 
@@ -260,7 +260,7 @@ static void preorder_iterator_with_0_children_has_0_entries() noexcept
 
 	DummyTree tree = single_node_dummy_tree();
 
-	a2::NodePreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
 
 	TEST_EQUAL(a2::is_valid(a2::next(&it)), false);
 
@@ -273,7 +273,7 @@ static void preorder_iterator_with_1_child_has_1_entry() noexcept
 
 	DummyTree tree = unary_dummy_tree();
 
-	a2::NodePreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
 
 	const a2::IterationResult result = a2::next(&it);
 
@@ -294,7 +294,7 @@ static void preorder_iterator_with_5_children_has_5_entries() noexcept
 
 	DummyTree tree = nary_dummy_tree(5);
 
-	a2::NodePreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
 
 	for (u32 i = 0; i != 5; ++i)
 	{
@@ -318,7 +318,7 @@ static void preorder_iterator_with_grandchildren_iterates_grandchildren() noexce
 
 	DummyTree tree = complex_dummy_tree();
 
-	a2::NodePreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
 
 	static constexpr u32 expected_depths[] = { 0, 1, 1, 0, 1, 2, 1, 2 };
 
@@ -344,7 +344,7 @@ static void preorder_iterator_with_flat_tree_iterates_subtrees() noexcept
 
 	DummyTree tree = flat_dummy_tree();
 
-	a2::NodePreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
 
 	static constexpr u32 expected_depths[] = {
 		0, 1,
@@ -377,7 +377,7 @@ static void postorder_iterator_with_0_children_has_0_entries() noexcept
 
 	DummyTree tree = single_node_dummy_tree();
 
-	a2::NodePostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
 
 	TEST_EQUAL(a2::is_valid(a2::next(&it)), false);
 
@@ -390,7 +390,7 @@ static void postorder_iterator_with_1_child_has_1_entry() noexcept
 
 	DummyTree tree = unary_dummy_tree();
 
-	a2::NodePostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
 
 	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::Node*>(tree.dwords) + 1);
 
@@ -405,7 +405,7 @@ static void postorder_iterator_with_5_children_has_5_entries() noexcept
 
 	DummyTree tree = nary_dummy_tree(5);
 
-	a2::NodePostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
 
 	for (u32 i = 0; i != 5; ++i)
 		TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::Node*>(tree.dwords) + i + 1);
@@ -421,7 +421,7 @@ static void postorder_iterator_with_grandchildren_iterates_grandchildren() noexc
 
 	DummyTree tree = complex_dummy_tree();
 
-	a2::NodePostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
 
 	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::Node*>(tree.dwords) + 2);
 
@@ -452,7 +452,7 @@ static void push_node_once_appends_node() noexcept
 
 	a2::Builder builder = a2::create_ast_builder();
 
-	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::Program, a2::Flag::EMPTY);
+	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::File, a2::Flag::EMPTY);
 
 	DummyTree expected_tree = single_node_dummy_tree();
 
@@ -479,7 +479,7 @@ static void push_node_once_and_complete_appends_node() noexcept
 
 	a2::Builder builder = a2::create_ast_builder();
 
-	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::Program, a2::Flag::EMPTY);
+	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::File, a2::Flag::EMPTY);
 
 	ReservedVec<u32> dst;
 	dst.init(4096, 4096);
@@ -505,7 +505,7 @@ static void push_node_with_unary_op_and_complete_reverses_tree() noexcept
 
 	const a2::BuilderToken token = a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::Block, a2::Flag::EMPTY);
 
-	a2::push_node(&builder, token, a2::Tag::Program, a2::Flag::EMPTY);
+	a2::push_node(&builder, token, a2::Tag::File, a2::Flag::EMPTY);
 
 	ReservedVec<u32> dst;
 	dst.init(4096, 4096);

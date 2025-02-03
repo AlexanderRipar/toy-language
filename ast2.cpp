@@ -2,7 +2,7 @@
 
 constexpr inline const char8* const NODE_TYPE_NAMES[] = {
 	"[unknown]",
-	"Program",
+	"File",
 	"CompositeInitializer",
 	"ArrayInitializer",
 	"Wildcard",
@@ -20,7 +20,7 @@ constexpr inline const char8* const NODE_TYPE_NAMES[] = {
 	"Trait",
 	"Impl",
 	"Catch",
-	"ValIdentifer",
+	"ValIdentifier",
 	"ValInteger",
 	"ValFloat",
 	"ValChar",
