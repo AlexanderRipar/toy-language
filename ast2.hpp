@@ -5,6 +5,8 @@
 #include "infra/container.hpp"
 #include "infra/optptr.hpp"
 
+struct AstPool;
+
 namespace a2
 {
 	static constexpr s32 MAX_TREE_DEPTH = 128;
@@ -12,6 +14,7 @@ namespace a2
 	enum class Tag : u8
 	{
 		INVALID = 0,
+		Builtin,
 		File,
 		CompositeInitializer,
 		ArrayInitializer,
@@ -38,12 +41,12 @@ namespace a2
 		Return,
 		Leave,
 		Yield,
+		ParameterList,
 		Call,
 		UOpTypeTailArray,
 		UOpTypeSlice,
 		UOpTypeMultiPtr,
 		UOpTypeOptMultiPtr,
-		UOpMut,
 		UOpEval,
 		UOpTry,
 		UOpDefer,
@@ -133,6 +136,8 @@ namespace a2
 		Impl_HasExpects      = 0x01,
 
 		Catch_HasDefinition  = 0x01,
+
+		Type_IsMut           = 0x02,
 	};
 
 	inline Flag operator|(Flag lhs, Flag rhs) noexcept
@@ -222,6 +227,16 @@ namespace a2
 		ASSERT_OR_IGNORE(sizeof(T) + sizeof(Node) == node->data_dwords * sizeof(u32));
 
 		return reinterpret_cast<T*>(node + 1);
+	}
+
+	template<typename T>
+	static inline const T* attachment_of(const Node* node) noexcept
+	{
+		ASSERT_OR_IGNORE(T::TAG == node->tag);
+
+		ASSERT_OR_IGNORE(sizeof(T) + sizeof(Node) == node->data_dwords * sizeof(u32));
+
+		return reinterpret_cast<const T*>(node + 1);
 	}
 
 
@@ -443,6 +458,16 @@ namespace a2
 		ReservedVec<u32> scratch;
 	};
 
+	static inline bool operator==(BuilderToken lhs, BuilderToken rhs) noexcept
+	{
+		return lhs.rep == rhs.rep;
+	}
+	
+	static inline bool operator!=(BuilderToken lhs, BuilderToken rhs) noexcept
+	{
+		return lhs.rep != rhs.rep;
+	}
+	
 	static inline Builder create_ast_builder() noexcept
 	{
 		Builder builder;
@@ -462,7 +487,7 @@ namespace a2
 		node->tag = tag;
 		node->flags = flags;
 		node->data_dwords = sizeof(Node) / sizeof(u32);
-		node->internal_flags = first_child.rep == Builder::NO_CHILDREN.rep ? Node::FLAG_NO_CHILDREN : 0;
+		node->internal_flags = first_child == Builder::NO_CHILDREN ? Node::FLAG_NO_CHILDREN : 0;
 
 		return { static_cast<u32>(reinterpret_cast<u32*>(node) - builder->scratch.begin()) };
 	}
@@ -482,14 +507,14 @@ namespace a2
 		node->tag = T::TAG;
 		node->flags = flags;
 		node->data_dwords = required_dwords;
-		node->internal_flags = first_child.rep == Builder::NO_CHILDREN.rep ? Node::FLAG_NO_CHILDREN : 0;
+		node->internal_flags = first_child == Builder::NO_CHILDREN ? Node::FLAG_NO_CHILDREN : 0;
 
 		memcpy(node + 1, &attachment, sizeof(T));
 
 		return { static_cast<u32>(reinterpret_cast<u32*>(node) - builder->scratch.begin()) };
 	}
 
-	Node* complete_ast(Builder* builder, ReservedVec<u32>* dst) noexcept;
+	Node* complete_ast(Builder* builder, AstPool* dst) noexcept;
 
 
 

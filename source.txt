@@ -2,9 +2,15 @@ let X = []mut char8
 
 let std = import("@std")
 
-let main = proc(args: [][]char8) -> s32 = {
+let ret: s32 = 1
 
-}
+let main = proc(argc : s32, argv: [*][*]u8) -> s32 = ret
+
+// proc() -> s32
+
+// proc(args: [][]char8) -> s32
+
+// proc(argc: s32, argv: [*][*]char8) -> s32
 
 impl std.Stringy(u32) = {
 	let to_string_length = func(mut n: u32) -> ureg =

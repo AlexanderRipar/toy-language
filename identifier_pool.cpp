@@ -42,7 +42,7 @@ struct IdentifierPool
 
 IdentifierPool* create_identifier_pool(AllocPool* pool) noexcept
 {
-	IdentifierPool* const identifiers = static_cast<IdentifierPool*>(alloc(pool, sizeof(IdentifierPool), alignof(IdentifierPool)));
+	IdentifierPool* const identifiers = static_cast<IdentifierPool*>(alloc_from_pool(pool, sizeof(IdentifierPool), alignof(IdentifierPool)));
 
 	identifiers->map.init(1u << 24, 1u << 15, 1u << 31, 1u << 18);
 
@@ -56,7 +56,7 @@ IdentifierPool* create_identifier_pool(AllocPool* pool) noexcept
 	return identifiers;
 }
 
-IdentifierEntry* entry_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept
+IdentifierEntry* identifier_entry_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept
 {
 	return identifiers->map.value_from(identifier, fnv1a(identifier.as_byte_range()));
 }
@@ -66,7 +66,7 @@ IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identi
 	return { identifiers->map.index_from(identifier, fnv1a(identifier.as_byte_range())) };
 }
 
-IdentifierEntry* entry_from_id(IdentifierPool* identifiers, IdentifierId id) noexcept
+IdentifierEntry* identifier_entry_from_id(IdentifierPool* identifiers, IdentifierId id) noexcept
 {
 	return { identifiers->map.value_from(id.rep) };
 }

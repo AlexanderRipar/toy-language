@@ -63,7 +63,7 @@ static u32 read_completion_thread_proc(void* param) noexcept
 
 SourceReader* create_source_reader(AllocPool* pool) noexcept
 {
-	SourceReader* const reader = static_cast<SourceReader*>(alloc(pool, sizeof(SourceReader), alignof(SourceReader)));
+	SourceReader* const reader = static_cast<SourceReader*>(alloc_from_pool(pool, sizeof(SourceReader), alignof(SourceReader)));
 
 	reader->completed_reads.init();
 

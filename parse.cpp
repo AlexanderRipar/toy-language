@@ -60,7 +60,9 @@ struct OperatorDesc
 {
 	a2::Tag node_type;
 
-	u8 precedence : 6;
+	a2::Flag node_flags;
+
+	u8 precedence;
 
 	u8 is_right_to_left: 1;
 
@@ -103,64 +105,63 @@ struct Parser
 };
 
 static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
-	{ a2::Tag::INVALID,           10, false, true  }, // ( - Opening Parenthesis
-	{ a2::Tag::UOpMut,             2, false, false }, // mut
-	{ a2::Tag::UOpEval,            8, false, false }, // eval
-	{ a2::Tag::UOpTry,             8, false, false }, // try
-	{ a2::Tag::UOpDefer,           8, false, false }, // defer
-	{ a2::Tag::UOpAddr,            2, false, false }, // $
-	{ a2::Tag::UOpBitNot,          2, false, false }, // ~
-	{ a2::Tag::UOpLogNot,          2, false, false }, // !
-	{ a2::Tag::UOpTypeOptPtr,      2, false, false }, // ?
-	{ a2::Tag::UOpTypeVar,         2, false, false }, // ...
-	{ a2::Tag::UOpTypeTailArray,   2, false, false }, // [...]
-	{ a2::Tag::UOpTypeMultiPtr,    2, false, false }, // [*]
-	{ a2::Tag::UOpTypeOptMultiPtr, 2, false, false }, // [?]
-	{ a2::Tag::UOpTypeSlice,       2, false, false }, // []
-	{ a2::Tag::UOpImpliedMember,    1, false, false }, // .
-	{ a2::Tag::UOpTypePtr,         2, false, false }, // *
-	{ a2::Tag::UOpNegate,          2, false, false }, // -
-	{ a2::Tag::UOpPos,             2, false, false }, // +
+	{ a2::Tag::INVALID,            a2::Flag::EMPTY,      10, false, true  }, // ( - Opening Parenthesis
+	{ a2::Tag::UOpEval,            a2::Flag::EMPTY,       8, false, false }, // eval
+	{ a2::Tag::UOpTry,             a2::Flag::EMPTY,       8, false, false }, // try
+	{ a2::Tag::UOpDefer,           a2::Flag::EMPTY,       8, false, false }, // defer
+	{ a2::Tag::UOpAddr,            a2::Flag::EMPTY,       2, false, false }, // $
+	{ a2::Tag::UOpBitNot,          a2::Flag::EMPTY,       2, false, false }, // ~
+	{ a2::Tag::UOpLogNot,          a2::Flag::EMPTY,       2, false, false }, // !
+	{ a2::Tag::UOpTypeOptPtr,      a2::Flag::Type_IsMut,  2, false, false }, // ?
+	{ a2::Tag::UOpTypeVar,         a2::Flag::EMPTY,       2, false, false }, // ...
+	{ a2::Tag::UOpTypeTailArray,   a2::Flag::EMPTY,       2, false, false }, // [...]
+	{ a2::Tag::UOpTypeMultiPtr,    a2::Flag::Type_IsMut,  2, false, false }, // [*]
+	{ a2::Tag::UOpTypeOptMultiPtr, a2::Flag::Type_IsMut,  2, false, false }, // [?]
+	{ a2::Tag::UOpTypeSlice,       a2::Flag::Type_IsMut,  2, false, false }, // []
+	{ a2::Tag::UOpImpliedMember,   a2::Flag::EMPTY,       1, false, false }, // .
+	{ a2::Tag::UOpTypePtr,         a2::Flag::Type_IsMut,  2, false, false }, // *
+	{ a2::Tag::UOpNegate,          a2::Flag::EMPTY,       2, false, false }, // -
+	{ a2::Tag::UOpPos,             a2::Flag::EMPTY,       2, false, false }, // +
 };
 
 static constexpr OperatorDesc BINARY_OPERATOR_DESCS[] = {
-	{ a2::Tag::OpMember,     1, true,  true  }, // .
-	{ a2::Tag::OpMul,        2, true,  true  }, // *
-	{ a2::Tag::OpSub,        3, true,  true  }, // -
-	{ a2::Tag::OpAdd,        3, true,  true  }, // +
-	{ a2::Tag::OpDiv,        2, true,  true  }, // /
-	{ a2::Tag::OpAddTC,      3, true,  true  }, // +:
-	{ a2::Tag::OpSubTC,      3, true,  true  }, // -:
-	{ a2::Tag::OpMulTC,      2, true,  true  }, // *:
-	{ a2::Tag::OpMod,        2, true,  true  }, // %
-	{ a2::Tag::UOpDeref,     1, false, false }, // .*
-	{ a2::Tag::OpBitAnd,     6, true,  true  }, // &
-	{ a2::Tag::OpBitOr,      6, true,  true  }, // |
-	{ a2::Tag::OpBitXor,     6, true,  true  }, // ^
-	{ a2::Tag::OpShiftL,     4, true,  true  }, // <<
-	{ a2::Tag::OpShiftR,     4, true,  true  }, // >>
-	{ a2::Tag::OpLogAnd,     7, true,  true  }, // &&
-	{ a2::Tag::OpLogOr,      7, true,  true  }, // ||
-	{ a2::Tag::OpCmpLT,      5, true,  true  }, // <
-	{ a2::Tag::OpCmpGT,      5, true,  true  }, // >
-	{ a2::Tag::OpCmpLE,      5, true,  true  }, // <=
-	{ a2::Tag::OpCmpGE,      5, true,  true  }, // >=
-	{ a2::Tag::OpCmpNE,      5, true,  true  }, // !=
-	{ a2::Tag::OpCmpEQ,      5, true,  true  }, // ==
-	{ a2::Tag::OpSet,        9, false, true  }, // =
-	{ a2::Tag::OpSetAdd,     9, false, true  }, // +=
-	{ a2::Tag::OpSetSub,     9, false, true  }, // -=
-	{ a2::Tag::OpSetMul,     9, false, true  }, // *=
-	{ a2::Tag::OpSetDiv,     9, false, true  }, // /=
-	{ a2::Tag::OpSetAddTC,   9, false, true  }, // +:=
-	{ a2::Tag::OpSetSubTC,   9, false, true  }, // -:=
-	{ a2::Tag::OpSetMulTC,   9, false, true  }, // *:=
-	{ a2::Tag::OpSetMod,     9, false, true  }, // %=
-	{ a2::Tag::OpSetBitAnd,  9, false, true  }, // &=
-	{ a2::Tag::OpSetBitOr,   9, false, true  }, // |=
-	{ a2::Tag::OpSetBitXor,  9, false, true  }, // ^=
-	{ a2::Tag::OpSetShiftL,  9, false, true  }, // <<=
-	{ a2::Tag::OpSetShiftR,  9, false, true  }, // >>=
+	{ a2::Tag::OpMember,    a2::Flag::EMPTY, 1, true,  true  }, // .
+	{ a2::Tag::OpMul,       a2::Flag::EMPTY, 2, true,  true  }, // *
+	{ a2::Tag::OpSub,       a2::Flag::EMPTY, 3, true,  true  }, // -
+	{ a2::Tag::OpAdd,       a2::Flag::EMPTY, 3, true,  true  }, // +
+	{ a2::Tag::OpDiv,       a2::Flag::EMPTY, 2, true,  true  }, // /
+	{ a2::Tag::OpAddTC,     a2::Flag::EMPTY, 3, true,  true  }, // +:
+	{ a2::Tag::OpSubTC,     a2::Flag::EMPTY, 3, true,  true  }, // -:
+	{ a2::Tag::OpMulTC,     a2::Flag::EMPTY, 2, true,  true  }, // *:
+	{ a2::Tag::OpMod,       a2::Flag::EMPTY, 2, true,  true  }, // %
+	{ a2::Tag::UOpDeref,    a2::Flag::EMPTY, 1, false, false }, // .*
+	{ a2::Tag::OpBitAnd,    a2::Flag::EMPTY, 6, true,  true  }, // &
+	{ a2::Tag::OpBitOr,     a2::Flag::EMPTY, 6, true,  true  }, // |
+	{ a2::Tag::OpBitXor,    a2::Flag::EMPTY, 6, true,  true  }, // ^
+	{ a2::Tag::OpShiftL,    a2::Flag::EMPTY, 4, true,  true  }, // <<
+	{ a2::Tag::OpShiftR,    a2::Flag::EMPTY, 4, true,  true  }, // >>
+	{ a2::Tag::OpLogAnd,    a2::Flag::EMPTY, 7, true,  true  }, // &&
+	{ a2::Tag::OpLogOr,     a2::Flag::EMPTY, 7, true,  true  }, // ||
+	{ a2::Tag::OpCmpLT,     a2::Flag::EMPTY, 5, true,  true  }, // <
+	{ a2::Tag::OpCmpGT,     a2::Flag::EMPTY, 5, true,  true  }, // >
+	{ a2::Tag::OpCmpLE,     a2::Flag::EMPTY, 5, true,  true  }, // <=
+	{ a2::Tag::OpCmpGE,     a2::Flag::EMPTY, 5, true,  true  }, // >=
+	{ a2::Tag::OpCmpNE,     a2::Flag::EMPTY, 5, true,  true  }, // !=
+	{ a2::Tag::OpCmpEQ,     a2::Flag::EMPTY, 5, true,  true  }, // ==
+	{ a2::Tag::OpSet,       a2::Flag::EMPTY, 9, false, true  }, // =
+	{ a2::Tag::OpSetAdd,    a2::Flag::EMPTY, 9, false, true  }, // +=
+	{ a2::Tag::OpSetSub,    a2::Flag::EMPTY, 9, false, true  }, // -=
+	{ a2::Tag::OpSetMul,    a2::Flag::EMPTY, 9, false, true  }, // *=
+	{ a2::Tag::OpSetDiv,    a2::Flag::EMPTY, 9, false, true  }, // /=
+	{ a2::Tag::OpSetAddTC,  a2::Flag::EMPTY, 9, false, true  }, // +:=
+	{ a2::Tag::OpSetSubTC,  a2::Flag::EMPTY, 9, false, true  }, // -:=
+	{ a2::Tag::OpSetMulTC,  a2::Flag::EMPTY, 9, false, true  }, // *:=
+	{ a2::Tag::OpSetMod,    a2::Flag::EMPTY, 9, false, true  }, // %=
+	{ a2::Tag::OpSetBitAnd, a2::Flag::EMPTY, 9, false, true  }, // &=
+	{ a2::Tag::OpSetBitOr,  a2::Flag::EMPTY, 9, false, true  }, // |=
+	{ a2::Tag::OpSetBitXor, a2::Flag::EMPTY, 9, false, true  }, // ^=
+	{ a2::Tag::OpSetShiftL, a2::Flag::EMPTY, 9, false, true  }, // <<=
+	{ a2::Tag::OpSetShiftR, a2::Flag::EMPTY, 9, false, true  }, // >>=
 };
 
 
@@ -209,7 +210,7 @@ __declspec(noreturn) static void error(const Lexer* lexer, u64 offset, const cha
 
 	va_start(args, format);
 
-	vsource_error(offset, { lexer->begin, lexer->end }, entry_from_id(lexer->identifiers, lexer->filepath_id)->range(), format, args);
+	vsource_error(offset, { lexer->begin, lexer->end }, identifier_entry_from_id(lexer->identifiers, lexer->filepath_id)->range(), format, args);
 }
 
 static void skip_block_comment(Lexer* lexer) noexcept
@@ -320,7 +321,7 @@ static RawLexeme scan_identifier_token(Lexer* lexer) noexcept
 
 	const IdentifierId identifier_id = id_from_identifier(lexer->identifiers, identifier_bytes);
 
-	const IdentifierEntry* const identifier_value = entry_from_id(lexer->identifiers, identifier_id);
+	const IdentifierEntry* const identifier_value = identifier_entry_from_id(lexer->identifiers, identifier_id);
 
 	const Token identifier_token = identifier_value->token();
 
@@ -1245,7 +1246,7 @@ static void pop_operator(Parser* parser, OperatorStack* stack) noexcept
 	if (top.is_binary)
 		stack->operand_count -= 1;
 
-	const a2::BuilderToken operator_token = a2::push_node(&parser->builder, stack->operand_tokens[stack->operand_count - 1], top.node_type, a2::Flag::EMPTY);
+	const a2::BuilderToken operator_token = a2::push_node(&parser->builder, stack->operand_tokens[stack->operand_count - 1], top.node_type, top.node_flags);
 
 	stack->operand_tokens[stack->operand_count - 1] = operator_token;
 }
@@ -1409,7 +1410,7 @@ static a2::BuilderToken parse_definition(Parser* parser, bool is_implicit, bool 
 
 		const a2::BuilderToken value_token = parse_expr(parser, true);
 
-		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+		if (first_child_token == a2::Builder::NO_CHILDREN)
 			first_child_token = value_token;
 	}
 	else if (!is_optional_value)
@@ -1451,11 +1452,15 @@ static a2::BuilderToken parse_yield(Parser* parser) noexcept
 	return a2::push_node(&parser->builder, value_token, a2::Tag::Yield, a2::Flag::EMPTY);
 }
 
-static a2::BuilderToken parse_top_level_expr(Parser* parser, bool is_definition_optional_value) noexcept
+static a2::BuilderToken parse_top_level_expr(Parser* parser, bool is_definition_optional_value, bool* out_is_definition) noexcept
 {
 	const Lexeme lexeme = peek(&parser->lexer);
 
-	if (is_definition_start(lexeme.token))
+	bool is_definition = is_definition_start(lexeme.token);
+
+	*out_is_definition = is_definition;
+
+	if (is_definition)
 		return parse_definition(parser, false, is_definition_optional_value);
 	else if (lexeme.token == Token::KwdReturn)
 		return parse_return(parser);
@@ -1611,7 +1616,7 @@ static a2::BuilderToken parse_for(Parser* parser) noexcept
 
 	skip(&parser->lexer);
 
-	if (const a2::BuilderToken foreach_token = try_parse_foreach(parser); foreach_token.rep != a2::Builder::NO_CHILDREN.rep)
+	if (const a2::BuilderToken foreach_token = try_parse_foreach(parser); foreach_token != a2::Builder::NO_CHILDREN)
 		return foreach_token;
 
 	const a2::BuilderToken first_child_token = parse_expr(parser, false);
@@ -1770,14 +1775,14 @@ static a2::BuilderToken parse_func(Parser* parser) noexcept
 
 	lexeme = peek(&parser->lexer);
 
-	a2::BuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+	a2::BuilderToken first_parameter_token = a2::Builder::NO_CHILDREN;
 
 	while (lexeme.token != Token::ParenR)
 	{
 		const a2::BuilderToken parameter_token = parse_definition(parser, true, true);
 
-		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
-			first_child_token = parameter_token;
+		if (first_parameter_token == a2::Builder::NO_CHILDREN)
+			first_parameter_token = parameter_token;
 
 		lexeme = peek(&parser->lexer);
 
@@ -1786,6 +1791,8 @@ static a2::BuilderToken parse_func(Parser* parser) noexcept
 		else if (lexeme.token != Token::ParenR)
 			error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' after function parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
 	}
+
+	const a2::BuilderToken first_child_token = a2::push_node(&parser->builder, first_parameter_token, a2::Tag::ParameterList, a2::Flag::EMPTY);
 
 	skip(&parser->lexer);
 
@@ -1799,9 +1806,6 @@ static a2::BuilderToken parse_func(Parser* parser) noexcept
 
 		const a2::BuilderToken return_type_token = parse_expr(parser, false);
 
-		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
-			first_child_token = return_type_token;
-
 		lexeme = peek(&parser->lexer);
 	}
 
@@ -1811,9 +1815,6 @@ static a2::BuilderToken parse_func(Parser* parser) noexcept
 
 		const a2::BuilderToken expects_token = parse_expects(parser);
 
-		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
-			first_child_token = expects_token;
-
 		lexeme = peek(&parser->lexer);
 	}
 
@@ -1822,9 +1823,6 @@ static a2::BuilderToken parse_func(Parser* parser) noexcept
 		flags |= a2::Flag::Func_HasEnsures;
 
 		const a2::BuilderToken ensures_token = parse_ensures(parser);
-
-		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
-			first_child_token = ensures_token;
 
 		lexeme = peek(&parser->lexer);
 	}
@@ -1836,12 +1834,9 @@ static a2::BuilderToken parse_func(Parser* parser) noexcept
 		skip(&parser->lexer);
 
 		const a2::BuilderToken body_token = parse_expr(parser, true);
-
-		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
-			first_child_token = body_token;
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Func, flags);
+	return a2::push_node(&parser->builder, first_child_token, flags, a2::FuncData{ INVALID_TYPE_ID, INVALID_TYPE_ID });
 }
 
 static a2::BuilderToken parse_trait(Parser* parser) noexcept
@@ -1865,7 +1860,7 @@ static a2::BuilderToken parse_trait(Parser* parser) noexcept
 	{
 		const a2::BuilderToken parameter_token = parse_definition(parser, true, true);
 
-		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+		if (first_child_token == a2::Builder::NO_CHILDREN)
 			first_child_token = parameter_token;
 
 		lexeme = next(&parser->lexer);
@@ -1884,7 +1879,7 @@ static a2::BuilderToken parse_trait(Parser* parser) noexcept
 
 		const a2::BuilderToken expects_token = parse_expects(parser);
 
-		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+		if (first_child_token == a2::Builder::NO_CHILDREN)
 			first_child_token = expects_token;
 
 		lexeme = peek(&parser->lexer);
@@ -1902,7 +1897,7 @@ static a2::BuilderToken parse_trait(Parser* parser) noexcept
 
 	const a2::BuilderToken body_token = parse_expr(parser, true);
 
-	if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+	if (first_child_token == a2::Builder::NO_CHILDREN)
 		first_child_token = body_token;
 
 	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Trait, flags);
@@ -1944,11 +1939,13 @@ static a2::BuilderToken parse_impl(Parser* parser) noexcept
 	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Impl, flags);
 }
 
-static a2::BuilderToken parse_definition_or_impl(Parser* parser) noexcept
+static a2::BuilderToken parse_definition_or_impl(Parser* parser, bool* out_is_definition) noexcept
 {
 	const Lexeme lexeme = peek(&parser->lexer);
 
 	bool is_definition = is_definition_start(lexeme.token);
+
+	*out_is_definition = is_definition;
 
 	if (is_definition)
 		return parse_definition(parser, false, false);
@@ -2035,7 +2032,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 				{
 					const a2::BuilderToken curr_token = parse_expr(parser, true);
 
-					if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+					if (first_child_token == a2::Builder::NO_CHILDREN)
 						first_child_token = curr_token;
 
 					lexeme = peek(&parser->lexer);
@@ -2070,7 +2067,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 				{
 					const a2::BuilderToken curr_token = parse_expr(parser, true);
 
-					if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+					if (first_child_token == a2::Builder::NO_CHILDREN)
 						first_child_token = curr_token;
 
 					lexeme = peek(&parser->lexer);
@@ -2120,11 +2117,18 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 
 				a2::BuilderToken first_child_token = a2::Builder::NO_CHILDREN;
 
+				u32 definition_count = 0;
+
 				while (lexeme.token != Token::CurlyR)
 				{
-					const a2::BuilderToken curr_token = parse_top_level_expr(parser, false);
+					bool is_definition;
 
-					if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+					const a2::BuilderToken curr_token = parse_top_level_expr(parser, false, &is_definition);
+
+					if (is_definition)
+						definition_count += 1;
+
+					if (first_child_token == a2::Builder::NO_CHILDREN)
 						first_child_token = curr_token;
 
 					lexeme = peek(&parser->lexer);
@@ -2133,7 +2137,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 						break;
 				}
 
-				const a2::BuilderToken block_token = a2::push_node(&parser->builder, first_child_token, a2::Flag::EMPTY, a2::BlockData{});
+				const a2::BuilderToken block_token = a2::push_node(&parser->builder, first_child_token, a2::Flag::EMPTY, a2::BlockData{ definition_count });
 				
 				push_operand(parser, &stack, block_token);
 			}
@@ -2220,9 +2224,29 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 				if (token_ordinal < lo_ordinal || token_ordinal > hi_ordinal)
 					error(&parser->lexer, lexeme.offset, "Expected operand or unary operator but got '%s'\n", token_name(lexeme.token));
 
-				const OperatorDesc op = UNARY_OPERATOR_DESCS[token_ordinal - lo_ordinal];
+				OperatorDesc op = UNARY_OPERATOR_DESCS[token_ordinal - lo_ordinal];
+
+				skip(&parser->lexer);
+
+				lexeme = peek(&parser->lexer);
+
+				if (op.node_flags == a2::Flag::Type_IsMut)
+				{
+					if (lexeme.token == Token::KwdMut)
+					{
+						skip(&parser->lexer);
+
+						lexeme = peek(&parser->lexer);
+					}
+					else
+					{
+						op.node_flags = a2::Flag::EMPTY;
+					}
+				}
 
 				push_operator(parser, &stack, op);
+
+				continue;
 			}
 		}
 		else
@@ -2239,7 +2263,9 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 
 				while (lexeme.token != Token::ParenR)
 				{
-					const a2::BuilderToken curr_token = parse_top_level_expr(parser, true);
+					bool unused;
+
+					const a2::BuilderToken curr_token = parse_top_level_expr(parser, true, &unused);
 
 					lexeme = peek(&parser->lexer);
 
@@ -2352,6 +2378,8 @@ static void parse_file(Parser* parser) noexcept
 {
 	a2::BuilderToken first_child_token = a2::Builder::NO_CHILDREN;
 
+	u32 definition_count = 0;
+
 	while (true)
 	{
 		const Lexeme lexeme = peek(&parser->lexer);
@@ -2359,20 +2387,25 @@ static void parse_file(Parser* parser) noexcept
 		if (lexeme.token == Token::END_OF_SOURCE)
 			break;
 
-		const a2::BuilderToken curr_token = parse_definition_or_impl(parser);
+		bool is_definition;
 
-		if (first_child_token.rep == a2::Builder::NO_CHILDREN.rep)
+		const a2::BuilderToken curr_token = parse_definition_or_impl(parser, &is_definition);
+
+		if (is_definition)
+			definition_count += 1;
+
+		if (first_child_token == a2::Builder::NO_CHILDREN)
 			first_child_token = curr_token;
 	};
 
-	a2::push_node(&parser->builder, first_child_token, a2::Flag::EMPTY, a2::FileData{ 0, parser->lexer.filepath_id });
+	a2::push_node(&parser->builder, first_child_token, a2::Flag::EMPTY, a2::FileData{ a2::BlockData{ definition_count }, parser->lexer.filepath_id });
 }
 
 
 
 Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers) noexcept
 {
-	Parser* const parser = static_cast<Parser*>(alloc(pool, sizeof(Parser), alignof(Parser)));
+	Parser* const parser = static_cast<Parser*>(alloc_from_pool(pool, sizeof(Parser), alignof(Parser)));
 
 	parser->lexer.identifiers = identifiers;
 	parser->builder.scratch.init(1u << 31, 1u << 18);
@@ -2380,7 +2413,7 @@ Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers) noexcept
 	return parser;
 }
 
-a2::Node* parse(Parser* parser, SourceFile source, ReservedVec<u32>* out) noexcept
+a2::Node* parse(Parser* parser, SourceFile source, AstPool* out) noexcept
 {
 	ASSERT_OR_IGNORE(source.content().count() != 0 && source.content().end()[-1] == '\0');
 
@@ -2395,4 +2428,9 @@ a2::Node* parse(Parser* parser, SourceFile source, ReservedVec<u32>* out) noexce
 	parse_file(parser);
 
 	return a2::complete_ast(&parser->builder, out);
+}
+
+a2::Builder* get_ast_builder(Parser* parser) noexcept
+{
+	return &parser->builder;
 }

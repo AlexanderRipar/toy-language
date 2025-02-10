@@ -1,5 +1,6 @@
 #include "test_helpers.hpp"
 #include "../ast2.hpp"
+#include "../pass_data.hpp"
 
 struct DummyTree
 {
@@ -153,6 +154,32 @@ static DummyTree flat_dummy_tree() noexcept
 
 	return tree;
 }
+
+
+
+struct MockedPools
+{
+	AstPool* asts;
+
+	AllocPool* alloc;
+};
+
+static MockedPools create_mocked_pools() noexcept
+{
+	AllocPool* const alloc = create_alloc_pool(4096, 4096);
+
+	AstPool* const asts = create_ast_pool(alloc);
+
+	return { asts, alloc };
+}
+
+static void release_mocked_pools(MockedPools mock) noexcept
+{
+	release_ast_pool(mock.asts);
+	
+	release_alloc_pool(mock.alloc);
+}
+
 
 
 
@@ -481,10 +508,9 @@ static void push_node_once_and_complete_appends_node() noexcept
 
 	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::File, a2::Flag::EMPTY);
 
-	ReservedVec<u32> dst;
-	dst.init(4096, 4096);
+	MockedPools pools = create_mocked_pools();
 
-	a2::Node* const root = a2::complete_ast(&builder, &dst);
+	a2::Node* const root = a2::complete_ast(&builder, pools.asts);
 
 	DummyTree expected = single_node_dummy_tree();
 
@@ -492,7 +518,7 @@ static void push_node_once_and_complete_appends_node() noexcept
 
 	builder.scratch.release();
 
-	dst.release();
+	release_mocked_pools(pools);
 
 	TEST_END;
 }
@@ -507,10 +533,9 @@ static void push_node_with_unary_op_and_complete_reverses_tree() noexcept
 
 	a2::push_node(&builder, token, a2::Tag::File, a2::Flag::EMPTY);
 
-	ReservedVec<u32> dst;
-	dst.init(4096, 4096);
+	MockedPools pools = create_mocked_pools();
 
-	a2::Node* const root = a2::complete_ast(&builder, &dst);
+	a2::Node* const root = a2::complete_ast(&builder, pools.asts);
 
 	DummyTree expected = unary_dummy_tree();
 
@@ -518,7 +543,7 @@ static void push_node_with_unary_op_and_complete_reverses_tree() noexcept
 
 	builder.scratch.release();
 
-	dst.release();
+	release_mocked_pools(pools);
 
 	TEST_END;
 }
@@ -535,10 +560,9 @@ static void push_node_with_binary_op_and_complete_reverses_tree() noexcept
 
 	a2::push_node(&builder, token, a2::Tag::OpBitAnd, a2::Flag::EMPTY);
 
-	ReservedVec<u32> dst;
-	dst.init(4096, 4096);
+	MockedPools pools = create_mocked_pools();
 
-	a2::Node* const root = a2::complete_ast(&builder, &dst);
+	a2::Node* const root = a2::complete_ast(&builder, pools.asts);
 
 	DummyTree expected = binary_dummy_tree();
 
@@ -546,7 +570,7 @@ static void push_node_with_binary_op_and_complete_reverses_tree() noexcept
 
 	builder.scratch.release();
 
-	dst.release();
+	release_mocked_pools(pools);
 
 	TEST_END;
 }
@@ -575,10 +599,9 @@ static void push_node_with_complex_tree_and_complete_reverses_tree() noexcept
 
 	a2::push_node(&builder, t2, static_cast<a2::Tag>(1), a2::Flag::EMPTY);
 
-	ReservedVec<u32> dst;
-	dst.init(4096, 4096);
+	MockedPools pools = create_mocked_pools();
 
-	a2::Node* const root = a2::complete_ast(&builder, &dst);
+	a2::Node* const root = a2::complete_ast(&builder, pools.asts);
 
 	DummyTree expected = complex_dummy_tree();
 
@@ -586,7 +609,7 @@ static void push_node_with_complex_tree_and_complete_reverses_tree() noexcept
 
 	builder.scratch.release();
 
-	dst.release();
+	release_mocked_pools(pools);
 
 	TEST_END;
 }
@@ -611,10 +634,9 @@ static void push_node_with_double_binary_tree_and_complete_reverses_tree() noexc
 
 	a2::push_node(&builder, sub, a2::Tag::OpSub, a2::Flag::EMPTY);
 
-	ReservedVec<u32> dst;
-	dst.init(4096, 4096);
+	MockedPools pools = create_mocked_pools();
 
-	a2::Node* const root = a2::complete_ast(&builder, &dst);
+	a2::Node* const root = a2::complete_ast(&builder, pools.asts);
 
 	DummyTree expected = double_binary_dummy_tree();
 
@@ -622,7 +644,7 @@ static void push_node_with_double_binary_tree_and_complete_reverses_tree() noexc
 
 	builder.scratch.release();
 
-	dst.release();
+	release_mocked_pools(pools);
 
 	TEST_END;
 }

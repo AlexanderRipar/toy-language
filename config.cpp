@@ -96,8 +96,13 @@ static constexpr ConfigHeader CONFIG_ENTRYPOINT[] = {
 	ConfigHeader::make_string(offsetof(Config, entrypoint.symbol), "symbol", "Symbol name of the program's entrypoint function"),
 };
 
+static constexpr ConfigHeader CONFIG_STD[] = {
+	ConfigHeader::make_string(offsetof(Config, std.folderpath), "folderpath", "Path to the folder containing standard library source"),
+};
+
 static constexpr ConfigHeader CONFIG_ROOTS[] = {
 	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_ENTRYPOINT }, "entrypoint", "Entrypoint information"),
+	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_STD }, "std", "Standard library configuration"),
 };
 
 static constexpr ConfigHeader CONFIG = ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_ROOTS }, "config", "");

@@ -1,7 +1,10 @@
 #include "ast2.hpp"
 
+#include "pass_data.hpp"
+
 constexpr inline const char8* const NODE_TYPE_NAMES[] = {
 	"[unknown]",
+	"Builtin",
 	"File",
 	"CompositeInitializer",
 	"ArrayInitializer",
@@ -28,12 +31,12 @@ constexpr inline const char8* const NODE_TYPE_NAMES[] = {
 	"Return",
 	"Leave",
 	"Yield",
+	"ParameterList",
 	"Call",
 	"UOpTypeTailArray",
 	"UOpTypeSlice",
 	"UOpTypeMultiPtr",
 	"UOpTypeOptMultiPtr",
-	"UOpMut",
 	"UOpEval",
 	"UOpTry",
 	"UOpDefer",
@@ -214,27 +217,33 @@ static a2::Node* build_traversal_list(a2::Node* begin, a2::Node* end) noexcept
 
 // Traverse the linked list created by build_traversal_list, pushing nodes into
 // dst.
-static a2::Node* copy_postorder_to_preorder(const a2::Node* begin, const a2::Node* src_root, ReservedVec<u32>* dst) noexcept
+static a2::Node* copy_postorder_to_preorder(const a2::Node* begin, const a2::Node* end, const a2::Node* src_root, AstPool* dst) noexcept
 {
 	u32 prev_sibling_inds[a2::MAX_TREE_DEPTH];
 
 	s32 depth = -1;
 
-	a2::Node* const dst_root = reinterpret_cast<a2::Node*>(dst->end());
+	const u32 end_ind = static_cast<u32>(reinterpret_cast<const u32*>(end) - reinterpret_cast<const u32*>(begin));
 
-	const a2::Node* curr = src_root;
+	a2::Node* const dst_root = alloc_ast(dst, end_ind);
+
+	a2::Node* dst_curr = dst_root;
+
+	const a2::Node* src_curr = src_root;
 
 	while (true)
 	{
 		// Copy node
 
-		a2::Node* const dst_node = static_cast<a2::Node*>(dst->reserve_exact(curr->data_dwords * sizeof(u32)));
+		a2::Node* const dst_node = dst_curr;
+		
+		dst_curr = a2::apply_offset_(dst_curr, src_curr->data_dwords);
 
-		memcpy(dst_node, curr, curr->data_dwords * sizeof(u32));
+		memcpy(dst_node, src_curr, src_curr->data_dwords * sizeof(u32));
 
 		const u32 curr_ind = static_cast<u32>(reinterpret_cast<u32*>(dst_node) - reinterpret_cast<u32*>(dst_root));
 
-		if ((curr->internal_flags & a2::Node::FLAG_FIRST_SIBLING) == 0)
+		if ((src_curr->internal_flags & a2::Node::FLAG_FIRST_SIBLING) == 0)
 		{
 			while (true)
 			{
@@ -259,15 +268,13 @@ static a2::Node* copy_postorder_to_preorder(const a2::Node* begin, const a2::Nod
 
 		prev_sibling_inds[depth] = curr_ind;
 
-		if (curr->next_sibling_offset == a2::Builder::NO_CHILDREN.rep)
+		if (src_curr->next_sibling_offset == a2::Builder::NO_CHILDREN.rep)
 			break;
 
-		curr = reinterpret_cast<const a2::Node*>(reinterpret_cast<const u32*>(begin) + curr->next_sibling_offset);
+		src_curr = reinterpret_cast<const a2::Node*>(reinterpret_cast<const u32*>(begin) + src_curr->next_sibling_offset);
 	}
 
 	ASSERT_OR_IGNORE(depth != -1);
-
-	const u32 end_ind = static_cast<u32>(dst->end() - reinterpret_cast<u32*>(dst_root));
 
 	while (depth >= 0)
 	{
@@ -283,7 +290,7 @@ static a2::Node* copy_postorder_to_preorder(const a2::Node* begin, const a2::Nod
 	return dst_root;
 }
 
-a2::Node* a2::complete_ast(Builder* builder, ReservedVec<u32>* dst) noexcept
+a2::Node* a2::complete_ast(Builder* builder, AstPool* dst) noexcept
 {
 	Node* const begin = reinterpret_cast<Node*>(builder->scratch.begin());
 
@@ -293,7 +300,7 @@ a2::Node* a2::complete_ast(Builder* builder, ReservedVec<u32>* dst) noexcept
 
 	Node* const src_root = build_traversal_list(begin, end);
 
-	Node* const dst_root = copy_postorder_to_preorder(begin, src_root, dst);
+	Node* const dst_root = copy_postorder_to_preorder(begin, end, src_root, dst);
 
 	builder->scratch.reset(1 << 20);
 

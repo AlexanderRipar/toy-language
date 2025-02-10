@@ -9,6 +9,8 @@
 #ifndef NDEBUG
 	__declspec(noreturn) void assert_unreachable_helper() noexcept
 	{
+		fprintf(stderr, "Reached unreachable code\n");
+	
 		__debugbreak();
 
 		minos::exit_process(1);

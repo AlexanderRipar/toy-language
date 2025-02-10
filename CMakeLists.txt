@@ -21,16 +21,20 @@ add_executable(
 	error.hpp error.cpp
 	config.hpp config.cpp
 
+	ast_pool.cpp
 	identifier_pool.cpp
-	name_resolver.cpp
 	parse.cpp
 	pass_data.hpp
 	read.cpp
+	resolver.cpp
 	token.cpp
+	type_pool.cpp
+	value_pool.cpp
 	ast2.hpp ast2.cpp
 
 	diag/diag.hpp
 	diag/print_ast.cpp
+	diag/print_type.cpp
 )
 
 target_link_libraries(compil0r PRIVATE synchronization)

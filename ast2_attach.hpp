@@ -11,14 +11,20 @@ namespace a2
 	{
 		static constexpr Tag TAG = Tag::ValInteger;
 
+		#pragma pack(push)
+		#pragma pack(4)
 		u64 value;
+		#pragma pack(pop)
 	};
 
 	struct ValFloatData
 	{
 		static constexpr Tag TAG = Tag::ValFloat;
 
+		#pragma pack(push)
+		#pragma pack(4)
 		f64 value;
+		#pragma pack(pop)
 	};
 
 	struct ValCharData
@@ -47,13 +53,17 @@ namespace a2
 		static constexpr Tag TAG = Tag::Definition;
 
 		IdentifierId identifier_id;
+
+		TypeId type_id;
+
+		ValueId value_id;
 	};
 
 	struct BlockData
 	{
 		static constexpr Tag TAG = Tag::Block;
 
-		u32 namespace_index;
+		u32 definition_count;
 	};
 
 	struct FileData
@@ -63,6 +73,27 @@ namespace a2
 		BlockData root_block;
 
 		IdentifierId filename_id;
+	};
+
+	struct BuiltinData
+	{
+		static constexpr Tag TAG = Tag::Builtin;
+
+		using BuiltinSignature = void (*) (Resolver*);
+
+		#pragma pack(push)
+		#pragma pack(4)
+		BuiltinSignature function;
+		#pragma pack(pop)
+	};
+
+	struct FuncData
+	{
+		static constexpr Tag TAG = Tag::Func;
+
+		TypeId signature_type_id;
+
+		TypeId return_type_id;
 	};
 }
 

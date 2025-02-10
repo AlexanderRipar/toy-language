@@ -28,7 +28,7 @@ using f32 = float;
 using f64 = double;
 
 #ifdef NDEBUG
-	#define ASSERT_OR_IGNORE(x)
+	#define ASSERT_OR_IGNORE(x) do {} while (false)
 	#define ASSERT_UNREACHABLE do { 1 / 0; } while (false)
 #else
 	__declspec(noreturn) void assert_unreachable_helper() noexcept;

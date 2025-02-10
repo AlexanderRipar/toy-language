@@ -16,7 +16,7 @@ namespace a2
 		{
 			Node* const curr = get_ptr(rst);
 
-			if (curr->tag == Tag::Definition && attachment_of<DefinitionData>(curr)->identifier_id.rep == id.rep)
+			if (curr->tag == Tag::Definition && attachment_of<DefinitionData>(curr)->identifier_id == id)
 				return some(curr);
 		}
 
@@ -31,6 +31,33 @@ namespace a2
 			return get_ptr(definition);
 
 		panic("Could not find definition\n");
+	}
+
+	static inline Node* last_child_of(Node* node) noexcept
+	{
+		ASSERT_OR_IGNORE(has_children(node));
+
+		Node* curr = first_child_of(node);
+		
+		while (has_next_sibling(curr))
+			curr = next_sibling_of(curr);
+
+		return curr;
+	}
+
+	static inline OptPtr<Node> get_definition_body(Node* definition) noexcept
+	{
+		ASSERT_OR_IGNORE(definition->tag == Tag::Definition);
+
+		if (!has_children(definition))
+			return none<Node>();
+
+		Node* const curr = first_child_of(definition);
+
+		if (!has_flag(definition, Flag::Definition_HasType))
+			return some(curr);
+
+		return has_next_sibling(curr) ? some(next_sibling_of(curr)) : none<Node>();
 	}
 }
 

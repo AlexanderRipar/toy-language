@@ -130,6 +130,22 @@ public:
 		return result;
 	}
 
+	void pad_to_alignment(u32 alignment) noexcept
+	{
+		static_assert(is_pow2(sizeof(T)));
+
+		ASSERT_OR_IGNORE(is_pow2(alignment));
+
+		if (alignment < sizeof(T))
+			return;
+
+		const u32 new_used = next_multiple(m_used, static_cast<Index>(alignment / sizeof(T)));
+
+		ensure_capacity(new_used - m_used);
+
+		m_used = new_used;
+	}
+
 	void reset(Index preserved_commit = std::numeric_limits<T>::max()) noexcept
 	{
 		m_used = 0;
@@ -517,6 +533,11 @@ public:
 	const V* value_from(u32 index) const noexcept
 	{
 		return reinterpret_cast<const V*>(reinterpret_cast<const byte*>(m_values) + index * V::stride());
+	}
+
+	void release() noexcept
+	{
+		minos::mem_unreserve(m_lookups);
 	}
 };
 

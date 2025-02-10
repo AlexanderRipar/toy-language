@@ -13,6 +13,12 @@ struct Config
 		Range<char8> symbol = range::from_literal_string("main");
 	} entrypoint;
 
+	struct
+	{
+		Range<char8> folderpath;
+	} std;
+	
+
 	void* m_heap_ptr;
 };
 
