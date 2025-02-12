@@ -57,6 +57,8 @@ namespace a2
 		TypeId type_id;
 
 		ValueId value_id;
+
+		ScopeId enclosing_scope_id;
 	};
 
 	struct BlockData
@@ -64,6 +66,8 @@ namespace a2
 		static constexpr Tag TAG = Tag::Block;
 
 		u32 definition_count;
+
+		ScopeId scope_id;
 	};
 
 	struct FileData
@@ -79,7 +83,7 @@ namespace a2
 	{
 		static constexpr Tag TAG = Tag::Builtin;
 
-		using BuiltinSignature = void (*) (Resolver*);
+		using BuiltinSignature = void (*) (Interpreter*);
 
 		#pragma pack(push)
 		#pragma pack(4)

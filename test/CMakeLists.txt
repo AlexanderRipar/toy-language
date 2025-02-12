@@ -20,12 +20,14 @@ add_executable(test test_main.cpp
 
 	../ast_pool.cpp
 	../identifier_pool.cpp
+	../interpreter.cpp
 	../parse.cpp
 	../pass_data.hpp
 	../read.cpp
-	../resolver.cpp
+	../scope_pool.cpp
 	../token.cpp
 	../type_pool.cpp
+	../typechecker.cpp
 	../value_pool.cpp
 	../ast2.hpp ../ast2.cpp
 

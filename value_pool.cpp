@@ -25,17 +25,9 @@ void release_value_pool(ValuePool* values) noexcept
 	values->pool.release();
 }
 
-ValueLocation alloc_value(ValuePool* values, u32 bytes, u32 alignment) noexcept
+ValueLocation alloc_value(ValuePool* values, u32 bytes) noexcept
 {
 	ASSERT_OR_IGNORE(bytes < 1u << 30);
-
-	ASSERT_OR_IGNORE(is_pow2(alignment));
-
-	if (alignment > 4096)
-		panic("Could not allocate interpreter value, as requested alignment %u exceeds maximum supported alignment of 4096\n", alignment);
-
-	if (alignment > alignof(Value))
-		values->pool.pad_to_alignment(alignment);
 
 	Value* const value = static_cast<Value*>(values->pool.reserve_padded(sizeof(Value) + bytes));
 

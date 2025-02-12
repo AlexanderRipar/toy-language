@@ -2,9 +2,17 @@ let X = []mut char8
 
 let std = import("@std")
 
-let ret: s32 = 1
+let TheType = s32
 
-let main = proc(argc : s32, argv: [*][*]u8) -> s32 = ret
+let ReturnType = TheType
+
+let the_value = 1
+
+let return_value = the_value
+
+let TypeIdentity = func(t : type) -> type = t
+
+let main = proc() -> TypeIdentity(ReturnType) = return_value
 
 // proc() -> s32
 

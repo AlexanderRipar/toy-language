@@ -8,9 +8,11 @@
 #include <cstring>
 #include <cstdio>
 
-static TypeId resolve_main(Config* config, Resolver* resolver, IdentifierPool* identifiers, a2::Node* root) noexcept
+static TypeId resolve_main(Config* config, Typechecker* typechecker, IdentifierPool* identifiers, ScopePool* scopes, a2::Node* root) noexcept
 {
-	const OptPtr<a2::Node> opt_main_def = a2::try_find_definition(root, id_from_identifier(identifiers, config->entrypoint.symbol));
+	Scope* const file_scope = alloc_top_level_scope(scopes, root).ptr;
+
+	const OptPtr<a2::Node> opt_main_def = lookup_identifier_local(file_scope, id_from_identifier(identifiers, config->entrypoint.symbol));
 
 	if (is_none(opt_main_def))
 		panic("Could not find definition for entrypoint symbol \"%.*s\" at top level of source file \"%.*s\"\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin(), static_cast<s32>(config->entrypoint.filepath.count()), config->entrypoint.filepath.begin());
@@ -22,12 +24,12 @@ static TypeId resolve_main(Config* config, Resolver* resolver, IdentifierPool* i
 	if (!a2::has_children(main_def))
 		panic("Expected definition of entrypoint symbol \"%.*s\" to have a value\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());
 
-	const OptPtr<a2::Node> opt_main_func = a2::get_definition_body(main_def);
+	const a2::DefinitionInfo main_info = a2::definition_info(main_def);
 
-	if (is_none(opt_main_func))
+	if (is_none(main_info.value))
 		panic("Expected definition of entrypoint symbol \"%.*s\" to have a value\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());
 
-	a2::Node* const main_func = get_ptr(opt_main_func);
+	a2::Node* const main_func = get_ptr(main_info.value);
 
 	if (!a2::has_flag(main_func, a2::Flag::Func_HasBody))
 		panic("Expected entrypoint \"%.*s\" to have a body", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());
@@ -36,9 +38,7 @@ static TypeId resolve_main(Config* config, Resolver* resolver, IdentifierPool* i
 
 	diag::print_ast(stderr, identifiers, main_func);
 
-	set_file_scope(resolver, root);
-
-	resolve_definition(resolver, main_def);
+	typecheck_definition(typechecker, main_def);
 
 	return a2::attachment_of<a2::DefinitionData>(main_def)->type_id;
 }
@@ -79,8 +79,14 @@ s32 main(s32 argc, const char8** argv)
 
 		a2::Node* const builtins = create_builtin_definitions(asts, identifiers, types, values, get_ast_builder(parser));
 
-		Resolver* const resolver = create_resolver(alloc, identifiers, types, values, builtins);
+		ScopePool* const scopes = create_scope_pool(alloc, builtins);
 
+		Interpreter* const interpreter = create_interpreter(alloc, scopes, types, values, identifiers);
+
+		Typechecker* const typechecker = create_typechecker(alloc, interpreter, scopes, types, identifiers);
+
+		set_interpreter_typechecker(interpreter, typechecker);
+		
 		request_read(reader, config.entrypoint.filepath, id_from_identifier(identifiers, config.entrypoint.filepath));
 
 		SourceFile file;
@@ -96,7 +102,7 @@ s32 main(s32 argc, const char8** argv)
 
 		diag::print_ast(stderr, identifiers, root);
 
-		const TypeId main_type_id = resolve_main(&config, resolver, identifiers, root);
+		const TypeId main_type_id = resolve_main(&config, typechecker, identifiers, scopes, root);
 
 		fprintf(stderr, "\n------------ %.*s TYPE ------------\n\n", static_cast<s32>(config.entrypoint.symbol.count()), config.entrypoint.symbol.begin());
 

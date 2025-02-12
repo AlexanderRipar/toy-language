@@ -162,6 +162,20 @@ public:
 		m_committed = target_commit;
 	}
 
+	T& top() noexcept
+	{
+		ASSERT_OR_IGNORE(m_used != 0);
+
+		return m_memory[m_used - 1];
+	}
+
+	const T& top() const noexcept
+	{
+		ASSERT_OR_IGNORE(m_used != 0);
+
+		return m_memory[m_used - 1];
+	}
+
 	void pop(Index count) noexcept
 	{
 		ASSERT_OR_IGNORE(count <= m_used);
@@ -517,7 +531,7 @@ public:
 
 	u32 index_from(const V* value) const noexcept
 	{
-		return (reinterpret_cast<const byte*>(value) - reinterpret_cast<const byte*>(m_values)) / V::stride();
+		return static_cast<u32>((reinterpret_cast<const byte*>(value) - reinterpret_cast<const byte*>(m_values)) / V::stride());
 	}
 
 	V* value_from(K key, u32 key_hash) noexcept

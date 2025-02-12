@@ -8,31 +8,6 @@
 
 namespace a2
 {
-	static inline OptPtr<Node> try_find_definition(a2::Node* node, IdentifierId id) noexcept
-	{
-		DirectChildIterator it = direct_children_of(node);
-
-		for (OptPtr<Node> rst = next(&it); is_some(rst); rst = next(&it))
-		{
-			Node* const curr = get_ptr(rst);
-
-			if (curr->tag == Tag::Definition && attachment_of<DefinitionData>(curr)->identifier_id == id)
-				return some(curr);
-		}
-
-		return none<Node>();
-	}
-
-	static inline Node* find_definition(a2::Node* node, IdentifierId id) noexcept
-	{
-		const OptPtr<Node> definition = try_find_definition(node, id);
-
-		if (is_some(definition))
-			return get_ptr(definition);
-
-		panic("Could not find definition\n");
-	}
-
 	static inline Node* last_child_of(Node* node) noexcept
 	{
 		ASSERT_OR_IGNORE(has_children(node));
@@ -45,19 +20,138 @@ namespace a2
 		return curr;
 	}
 
-	static inline OptPtr<Node> get_definition_body(Node* definition) noexcept
+
+
+	struct FuncInfo
+	{
+		a2::Node* parameters;
+
+		OptPtr<a2::Node> return_type;
+
+		OptPtr<a2::Node> expects;
+
+		OptPtr<a2::Node> ensures;
+
+		OptPtr<a2::Node> body;
+	};
+
+	inline FuncInfo func_info(Node* func) noexcept
+	{
+		ASSERT_OR_IGNORE(func->tag == Tag::Func);
+
+		ASSERT_OR_IGNORE(has_children(func));
+
+		Node* curr = first_child_of(func);
+
+		ASSERT_OR_IGNORE(curr->tag == Tag::ParameterList);
+
+		FuncInfo desc{};
+
+		desc.parameters = curr;
+
+		if (has_flag(func, Flag::Func_HasReturnType))
+		{
+			curr = next_sibling_of(curr);
+
+			desc.return_type = some(curr);
+		}
+
+		if (has_flag(func, Flag::Func_HasExpects))
+		{
+			curr = next_sibling_of(curr);
+
+			ASSERT_OR_IGNORE(curr->tag == Tag::Expects);
+
+			desc.expects = some(curr);
+		}
+
+		if (has_flag(func, Flag::Func_HasEnsures))
+		{
+			curr = next_sibling_of(curr);
+
+			ASSERT_OR_IGNORE(curr->tag == Tag::Ensures);
+
+			desc.ensures = some(curr);
+		}
+
+		if (has_flag(func, Flag::Func_HasBody))
+		{
+			curr = next_sibling_of(curr);
+
+			desc.body = some(curr);
+		}
+
+		return desc;
+	}
+
+
+
+	struct DefinitionInfo
+	{
+		OptPtr<a2::Node> type;
+
+		OptPtr<a2::Node> value;
+	};
+
+	inline DefinitionInfo definition_info(Node* definition) noexcept
 	{
 		ASSERT_OR_IGNORE(definition->tag == Tag::Definition);
 
 		if (!has_children(definition))
-			return none<Node>();
+			return {};
 
-		Node* const curr = first_child_of(definition);
+		if (has_flag(definition, Flag::Definition_HasType))
+		{
+			Node* const type = first_child_of(definition);
 
-		if (!has_flag(definition, Flag::Definition_HasType))
-			return some(curr);
+			return { some(type), has_next_sibling(type) ? some(next_sibling_of(type)) : none<Node>() };
+		}
 
-		return has_next_sibling(curr) ? some(next_sibling_of(curr)) : none<Node>();
+		return { none<Node>(), some(first_child_of(definition)) };
+	}
+
+	struct IfInfo
+	{
+		Node* condition;
+
+		Node* consequent;
+
+		OptPtr<Node> alternative;
+
+		OptPtr<Node> where;
+	};
+
+	inline IfInfo if_info(Node* if_node) noexcept
+	{
+		ASSERT_OR_IGNORE(if_node->tag == Tag::If);
+
+		Node* curr = first_child_of(if_node);
+
+		IfInfo info{};
+
+		info.condition = curr;
+
+		if (has_flag(if_node, Flag::If_HasWhere))
+		{
+			curr = next_sibling_of(curr);
+
+			info.where = some(curr);
+		}
+
+		curr = next_sibling_of(curr);
+
+		info.consequent = curr;
+
+		if (has_flag(if_node, Flag::If_HasElse))
+		{
+			curr = next_sibling_of(curr);
+
+			info.alternative = some(curr);
+		}
+
+		ASSERT_OR_IGNORE(!has_next_sibling(curr));
+
+		return info;
 	}
 }
 

@@ -116,6 +116,28 @@ const char8* token_name(Token token) noexcept;
 
 
 
+struct CompIntegerValue
+{
+	s64 value;
+};
+
+inline CompIntegerValue create_comp_integer(s64 value) noexcept
+{
+	return CompIntegerValue{ value };
+}
+
+inline bool comp_integer_as_u64(CompIntegerValue* comp_integer, u64* out) noexcept
+{
+	if (comp_integer->value < 0)
+		return false;
+
+	*out = static_cast<u64>(comp_integer->value);
+
+	return true;
+}
+
+
+
 struct IdentifierPool;
 
 struct IdentifierId
@@ -188,6 +210,8 @@ struct alignas(8) IdentifierEntry
 	}
 };
 
+static constexpr IdentifierId INVALID_IDENTIFIER_ID = { 0 };
+
 static inline bool operator==(IdentifierId lhs, IdentifierId rhs) noexcept
 {
 	return lhs.rep == rhs.rep;
@@ -226,6 +250,8 @@ struct BuiltinTypeIds
 	TypeId type_type_id;
 
 	TypeId void_type_id;
+
+	TypeId bool_type_id;
 };
 
 enum class TypeTag : u8
@@ -317,7 +343,7 @@ struct ArrayType
 
 struct FuncTypeHeader
 {
-	TypeId return_type;
+	TypeId return_type_id;
 
 	u32 parameter_count;
 };
@@ -442,6 +468,12 @@ struct alignas(8) TypeEntry
 	{
 		return reinterpret_cast<T*>(m_value);
 	}
+
+	template<typename T>
+	const T* data() const noexcept
+	{
+		return reinterpret_cast<const T*>(m_value);
+	}
 };
 
 static constexpr TypeId INVALID_TYPE_ID = { 0 };
@@ -464,7 +496,21 @@ TypeId id_from_type(TypePool* types, TypeTag tag, TypeFlag flags, Range<byte> by
 
 TypeEntry* type_entry_from_id(TypePool* types, TypeId id) noexcept;
 
+TypeId id_from_type_entry(TypePool* types, TypeEntry* entry) noexcept;
+
 const BuiltinTypeIds* get_builtin_type_ids(const TypePool* types) noexcept;
+
+TypeId dealias_type_id(TypePool* types, TypeEntry* entry) noexcept;
+
+TypeId dealias_type_id(TypePool* types, TypeId id) noexcept;
+
+TypeEntry* dealias_type_entry(TypePool* types, TypeEntry* entry) noexcept;
+
+TypeEntry* dealias_type_entry(TypePool* types, TypeId id) noexcept;
+
+bool can_implicity_convert_from_to(TypePool* types, TypeId from, TypeId to) noexcept;
+
+OptPtr<TypeEntry> find_common_type_entry(TypePool* types, TypeEntry* a, TypeEntry* b) noexcept;
 
 
 
@@ -477,14 +523,13 @@ struct ValueId
 
 struct alignas(u64) ValueHeader
 {
-	TypeId type;
+	TypeId type_id;
 
 	u32 prev_offset : 30; // Only valid for values kept in a stack; 0 when created using alloc_value
 
 	u32 is_ref : 1;
 
 	u32 is_undefined : 1;
-
 };
 
 struct Value
@@ -534,7 +579,7 @@ ValuePool* create_value_pool(AllocPool* alloc) noexcept;
 
 void release_value_pool(ValuePool* values) noexcept;
 
-ValueLocation alloc_value(ValuePool* values, u32 bytes, u32 alignment) noexcept;
+ValueLocation alloc_value(ValuePool* values, u32 bytes) noexcept;
 
 Value* value_from_id(ValuePool* values, ValueId id) noexcept;
 
@@ -604,12 +649,102 @@ struct Parser;
 
 
 
-struct Resolver;
+struct ScopePool;
 
-Resolver* create_resolver(AllocPool* pool, IdentifierPool* identifiers, TypePool* types, ValuePool* values, a2::Node* builtin_definitions) noexcept;
+struct Scope;
 
-void set_file_scope(Resolver* resolver, a2::Node* file_root) noexcept;
+struct ScopeHeader
+{
+	a2::Node* root;
 
-void resolve_definition(Resolver* resolver, a2::Node* node) noexcept;
+	Scope* parent_scope;
+
+	u32 capacity;
+
+	u32 used;
+};
+
+struct ScopeEntry
+{
+	IdentifierId identifier_id;
+
+	u32 node_offset;
+};
+
+struct Scope
+{
+	ScopeHeader header;
+
+	#pragma warning(push)
+	#pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
+	ScopeEntry definitions[];
+	#pragma warning(pop)
+};
+
+struct ScopeId
+{
+	u32 rep;
+};
+
+struct ScopeLocation
+{
+	Scope* ptr;
+
+	ScopeId id;
+};
+
+static constexpr ScopeId INVALID_SCOPE_ID = { 0 };
+
+static inline bool operator==(ScopeId lhs, ScopeId rhs) noexcept
+{
+	return lhs.rep == rhs.rep;
+}
+
+static inline bool operator!=(ScopeId lhs, ScopeId rhs) noexcept
+{
+	return lhs.rep != rhs.rep;
+}
+
+ScopePool* create_scope_pool(AllocPool* alloc, a2::Node* builtins) noexcept;
+
+void release_scope_pool(ScopePool* scopes) noexcept;
+
+ScopeLocation alloc_static_scope(ScopePool* scopes, Scope* parent_scope, a2::Node* root, u32 capacity) noexcept;
+
+ScopeLocation alloc_top_level_scope(ScopePool* scopes, a2::Node* root) noexcept;
+
+ScopeId id_from_scope(ScopePool* scopes, Scope* scope) noexcept;
+
+Scope* scope_from_id(ScopePool* scopes, ScopeId id) noexcept;
+
+void add_definition_to_scope(Scope* scope, a2::Node* definition) noexcept;
+
+OptPtr<a2::Node> lookup_identifier_recursive(Scope* scope, IdentifierId identifier_id) noexcept;
+
+OptPtr<a2::Node> lookup_identifier_local(Scope* scope, IdentifierId identifier_id) noexcept;
+
+
+
+struct Interpreter;
+
+struct Typechecker;
+
+Interpreter* create_interpreter(AllocPool* alloc, ScopePool* scopes, TypePool* types, ValuePool* values, IdentifierPool* identifiers) noexcept;
+
+Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::Node* expr) noexcept;
+
+void release_interpretation_result(Interpreter* interpreter, Value* result) noexcept;
+
+void set_interpreter_typechecker(Interpreter* interpreter, Typechecker* typechecker) noexcept;
+
+
+
+Typechecker* create_typechecker(AllocPool* alloc, Interpreter* Interpreter, ScopePool* scopes, TypePool* types, IdentifierPool* identifiers) noexcept;
+
+void release_typechecker(Typechecker* typechecker) noexcept;
+
+TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* expr) noexcept;
+
+TypeId typecheck_definition(Typechecker* typechecker, a2::Node* definition) noexcept;
 
 #endif // PARSEDATA_INCLUDE_GUARD

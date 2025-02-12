@@ -10,17 +10,17 @@ struct AstPool
 };
 
 // let typeinfo = eval func(t : type) -> TypeInfo
-static void builtin_typeinfo(Resolver* resolver) noexcept
+static void builtin_typeinfo(Interpreter* interpreter) noexcept
 {
-	resolver;
+	interpreter;
 
 	// TODO
 }
 
 // let import = eval func(pathspec: []u8) -> type
-static void builtin_import(Resolver* resolver) noexcept
+static void builtin_import(Interpreter* interpreter) noexcept
 {
-	resolver;
+	interpreter;
 
 	// TODO
 }
@@ -39,13 +39,13 @@ static TypeId push_type_def(a2::Builder* builder, IdentifierPool* identifiers, R
 
 	const TypeId type_id = id_from_type(types, tag, flags, range::from_object_bytes(&type));
 
-	const ValueLocation value = alloc_value(values, sizeof(TypeId), alignof(TypeId));
+	const ValueLocation value = alloc_value(values, sizeof(TypeId));
 
-	value.ptr->header.type = type_type_id == INVALID_TYPE_ID ? type_id : type_type_id;
+	value.ptr->header.type_id = type_type_id == INVALID_TYPE_ID ? type_id : type_type_id;
 
 	*access_value<TypeId>(value.ptr) = type_id;
 
-	a2::push_node(builder, a2::Builder::NO_CHILDREN, a2::Flag::EMPTY, a2::DefinitionData{ identifier_id, type_id, value.id });
+	a2::push_node(builder, a2::Builder::NO_CHILDREN, a2::Flag::EMPTY, a2::DefinitionData{ identifier_id, type_type_id == INVALID_TYPE_ID ? type_id : type_type_id, value.id });
 
 	return type_id;
 }
@@ -56,13 +56,13 @@ static TypeId push_type_def(a2::Builder* builder, IdentifierPool* identifiers, R
 
 	const TypeId type_id = id_from_type(types, tag, flags, Range<byte>{});
 
-	const ValueLocation value = alloc_value(values, sizeof(TypeId), alignof(TypeId));
+	const ValueLocation value = alloc_value(values, sizeof(TypeId));
 
-	value.ptr->header.type = type_type_id == INVALID_TYPE_ID ? type_id : type_type_id;
+	value.ptr->header.type_id = type_type_id == INVALID_TYPE_ID ? type_id : type_type_id;
 
 	*access_value<TypeId>(value.ptr) = type_id;
 
-	a2::push_node(builder, a2::Builder::NO_CHILDREN, a2::Flag::EMPTY, a2::DefinitionData{ identifier_id, type_id });
+	a2::push_node(builder, a2::Builder::NO_CHILDREN, a2::Flag::EMPTY, a2::DefinitionData{ identifier_id, type_type_id == INVALID_TYPE_ID ? type_id : type_type_id, value.id });
 
 	return type_id;
 }

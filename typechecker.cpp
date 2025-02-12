@@ -1,0 +1,540 @@
+#include "pass_data.hpp"
+
+#include "ast2_attach.hpp"
+#include "ast2_helper.hpp"
+
+struct Typechecker
+{
+	Interpreter* interpreter;
+
+	ScopePool* scopes;
+
+	TypePool* types;
+
+	IdentifierPool* identifiers;
+};
+
+static TypeId typecheck_parameter(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* const parameter) noexcept
+{
+	ASSERT_OR_IGNORE(parameter->tag == a2::Tag::Definition);
+
+	a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(parameter);
+
+	const a2::DefinitionInfo definition_info = a2::definition_info(parameter);
+
+	if (is_none(definition_info.type))
+		panic("Untyped parameter definitions are not currently supported\n");
+
+	Value* const type_value = interpret_expr(typechecker->interpreter, enclosing_scope, a2::first_child_of(parameter));
+
+	if (dealias_type_entry(typechecker->types, type_value->header.type_id)->tag != TypeTag::Type)
+		panic("Expected type expression after ':'\n");
+
+	const TypeId type_id = *access_value<TypeId>(type_value);
+
+	release_interpretation_result(typechecker->interpreter, type_value);
+
+	definition_data->type_id = type_id;
+
+	return type_id;
+}
+
+Typechecker* create_typechecker(AllocPool* alloc, Interpreter* Interpreter, ScopePool* scopes, TypePool* types, IdentifierPool* identifiers) noexcept
+{
+	Typechecker* const typechecker = static_cast<Typechecker*>(alloc_from_pool(alloc, sizeof(Typechecker), alignof(Typechecker)));
+
+	typechecker->interpreter = Interpreter;
+	typechecker->scopes = scopes;
+	typechecker->types = types;
+	typechecker->identifiers = identifiers;
+
+	return typechecker;
+}
+
+void release_typechecker([[maybe_unused]] Typechecker* typechecker) noexcept { /* No-Op */ }
+
+TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* expr) noexcept
+{
+	switch (expr->tag)
+	{
+	case a2::Tag::ValInteger:
+	{
+		return get_builtin_type_ids(typechecker->types)->comp_integer_type_id;
+	}
+
+	case a2::Tag::ValFloat:
+	{
+		return get_builtin_type_ids(typechecker->types)->comp_float_type_id;
+	}
+
+	case a2::Tag::ValChar:
+	{
+		return get_builtin_type_ids(typechecker->types)->comp_integer_type_id;
+	}
+
+	case a2::Tag::ValString:
+	{
+		return get_builtin_type_ids(typechecker->types)->comp_string_type_id;
+	}
+
+	case a2::Tag::ValIdentifer:
+	{
+		a2::ValIdentifierData* const identifier_data = a2::attachment_of<a2::ValIdentifierData>(expr);
+
+		OptPtr<a2::Node> opt_definition = lookup_identifier_recursive(enclosing_scope, identifier_data->identifier_id);
+
+		if (is_none(opt_definition))
+		{
+			const Range<char8> name = identifier_entry_from_id(typechecker->identifiers, identifier_data->identifier_id)->range();
+
+			panic("Could not find definition for identifier '%.*s'\n", static_cast<s32>(name.count()), name.begin());
+		}
+
+		a2::Node* const definition = get_ptr(opt_definition);
+
+		a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(definition);
+
+		if (definition_data->type_id == INVALID_TYPE_ID)
+			return typecheck_definition(typechecker, definition);
+
+		return definition_data->type_id;
+	}
+
+	case a2::Tag::OpLogAnd:
+	case a2::Tag::OpLogOr:
+	{
+		a2::Node* const lhs = a2::first_child_of(expr);
+
+		a2::Node* const rhs = a2::next_sibling_of(lhs);
+
+		const TypeId lhs_type_id = typecheck_expr(typechecker, enclosing_scope, lhs);
+
+		const TypeId rhs_type_id = typecheck_expr(typechecker, enclosing_scope, rhs);
+
+		if (dealias_type_entry(typechecker->types, lhs_type_id)->tag != TypeTag::Boolean)
+			panic("Left-hand-side of '%s' must be of type bool\n", a2::tag_name(expr->tag));
+
+		if (dealias_type_entry(typechecker->types, rhs_type_id)->tag != TypeTag::Boolean)
+			panic("Right-hand-side of '%s' must be of type bool\n", a2::tag_name(expr->tag));
+
+		return get_builtin_type_ids(typechecker->types)->bool_type_id;
+	}
+
+	case a2::Tag::OpTypeArray:
+	{
+		a2::Node* const count = a2::first_child_of(expr);
+
+		Value* const count_value = interpret_expr(typechecker->interpreter, enclosing_scope, count);
+
+		TypeEntry* const count_type = dealias_type_entry(typechecker->types, count_value->header.type_id);
+
+		u64 the_count;
+
+		if (count_type->tag == TypeTag::CompInteger)
+		{
+			if (!comp_integer_as_u64(access_value<CompIntegerValue>(count_value), &the_count))
+				panic("Array count expression value out of range [0, 2^64-1]\n");
+		}
+		else if (count_type->tag == TypeTag::Integer)
+		{
+			IntegerType* const integer_type = count_type->data<IntegerType>();
+
+			if (integer_type->bits == 8)
+				the_count = *access_value<u8>(count_value);
+			else if (integer_type->bits == 16)
+				the_count = *access_value<u16>(count_value);
+			else if (integer_type->bits == 32)
+				the_count = *access_value<u32>(count_value);
+			else if (integer_type->bits == 64)
+				the_count = *access_value<u64>(count_value);
+			else
+				panic("Integer bit width of %u in array count expression is not currently supported\n", integer_type->bits);
+
+			if ((count_type->flags & TypeFlag::Integer_IsSigned) == TypeFlag::Integer_IsSigned && (the_count & (1ui64 << (integer_type->bits - 1))) != 0)
+				panic("Array count expression value negative\n");
+		}
+		else
+		{
+			panic("Unexpected non-integer type in array count expression\n");
+		}
+
+		release_interpretation_result(typechecker->interpreter, count_value);
+
+		a2::Node* const element_type = a2::next_sibling_of(count);
+
+		Value* const element_type_value = interpret_expr(typechecker->interpreter, enclosing_scope, element_type);
+
+		if (dealias_type_entry(typechecker->types, element_type_value->header.type_id)->tag != TypeTag::Type)
+			panic("Expected type expression as array's element type\n");
+
+		const TypeId element_type_id = *access_value<TypeId>(element_type_value);
+
+		release_interpretation_result(typechecker->interpreter, element_type_value);
+
+		ArrayType array_type{};
+		array_type.count = the_count;
+		array_type.element_id = element_type_id;
+
+		const TypeId array_type_id = id_from_type(typechecker->types, TypeTag::Array, TypeFlag::EMPTY, range::from_object_bytes(&array_type));
+
+		return id_from_type(typechecker->types, TypeTag::Type, TypeFlag::EMPTY, range::from_object_bytes(&array_type_id));
+	}
+
+	case a2::Tag::UOpTypeSlice:
+	case a2::Tag::UOpTypeMultiPtr:
+	case a2::Tag::UOpTypeOptMultiPtr:
+	case a2::Tag::UOpTypeOptPtr:
+	case a2::Tag::UOpTypePtr:
+	{
+		Value* const pointer_type_value = interpret_expr(typechecker->interpreter, enclosing_scope, expr);
+
+		ASSERT_OR_IGNORE(dealias_type_entry(typechecker->types, pointer_type_value->header.type_id)->tag == TypeTag::Type);
+
+		const TypeId pointer_type_id = *access_value<TypeId>(pointer_type_value);
+
+		release_interpretation_result(typechecker->interpreter, pointer_type_value);
+
+		return id_from_type(typechecker->types, TypeTag::Type, TypeFlag::EMPTY, range::from_object_bytes(&pointer_type_id));
+	}
+
+	case a2::Tag::OpArrayIndex:
+	{
+		a2::Node* const array = a2::first_child_of(expr);
+
+		const TypeId array_type_id = typecheck_expr(typechecker, enclosing_scope, array);
+
+		TypeEntry* const entry = dealias_type_entry(typechecker->types, array_type_id);
+
+		TypeId element_type_id;
+
+		if (entry->tag == TypeTag::Array)
+		{
+			element_type_id = entry->data<ArrayType>()->element_id;
+		}
+		else if (entry->tag == TypeTag::Slice)
+		{
+			element_type_id = entry->data<SliceType>()->element_id;
+		}
+		else if (entry->tag == TypeTag::Ptr && (entry->flags & TypeFlag::Ptr_IsMulti) == TypeFlag::Ptr_IsMulti)
+		{
+			element_type_id = entry->data<PtrType>()->pointee_id;
+		}
+		else
+		{
+			panic("Expected first operand of array index operation to be of array, slice or multi-pointer type\n");
+		}
+
+		a2::Node* const index = a2::next_sibling_of(array);
+
+		const TypeId index_type_id = typecheck_expr(typechecker, enclosing_scope, index);
+
+		TypeEntry* const index_type_entry = dealias_type_entry(typechecker->types, index_type_id);
+
+		if (index_type_entry->tag != TypeTag::Integer && index_type_entry->tag != TypeTag::CompInteger)
+			panic("Expected index operand of array index operation to be of integer type\n");
+
+		return element_type_id;
+	}
+
+	case a2::Tag::Block:
+	{
+		if (!a2::has_children(expr))
+			return get_builtin_type_ids(typechecker->types)->void_type_id;
+
+		a2::DirectChildIterator it = a2::direct_children_of(expr);
+
+		for (OptPtr<a2::Node> rst = a2::next(&it); is_some(rst); rst = a2::next(&it))
+		{
+			a2::Node* const child = get_ptr(rst);
+
+			const TypeId child_type_id = typecheck_expr(typechecker, enclosing_scope, child);
+
+			if (!a2::has_next_sibling(child))
+				return child_type_id;
+
+			TypeEntry* const child_type_entry = dealias_type_entry(typechecker->types, child_type_id);
+
+			if (child_type_entry->tag != TypeTag::Void)
+				panic("Non-void expression at non-terminal position inside block\n");
+		}
+
+		ASSERT_UNREACHABLE;
+	}
+
+	case a2::Tag::If:
+	{
+		const a2::IfInfo if_info = a2::if_info(expr);
+
+		const TypeId condition_type_id = typecheck_expr(typechecker, enclosing_scope, if_info.condition);
+
+		TypeEntry* const condition_type_entry = dealias_type_entry(typechecker->types, condition_type_id);
+
+		if (condition_type_entry->tag != TypeTag::Boolean)
+			panic("Expected if condition to be of bool type\n");
+
+		// TODO: Typecheck where
+		if (is_some(if_info.where))
+			panic("Where clause not supported yet\n");
+
+		const TypeId consequent_type_id = typecheck_expr(typechecker, enclosing_scope, if_info.consequent);
+
+		TypeEntry* const consequent_type_entry = dealias_type_entry(typechecker->types, consequent_type_id);
+
+		if (is_some(if_info.alternative))
+		{
+			const TypeId alternative_type_id = typecheck_expr(typechecker, enclosing_scope, get_ptr(if_info.alternative));
+
+			TypeEntry* const alternative_type_entry = dealias_type_entry(typechecker->types, alternative_type_id);
+
+			// TODO: Support non-exact matches, especially in case of chained if-elseif-...-else
+
+			const OptPtr<TypeEntry> common_type_entry = find_common_type_entry(typechecker->types, consequent_type_entry, alternative_type_entry);
+
+			if (is_none(common_type_entry))
+				panic("Incompatible types between if branches\n");
+
+			return id_from_type_entry(typechecker->types, get_ptr(common_type_entry));
+		}
+		else if (consequent_type_entry->tag == TypeTag::Void)
+		{
+			return get_builtin_type_ids(typechecker->types)->void_type_id;
+		}
+		else
+		{
+			panic("Body of if without else must be of type void\n");
+		}
+	}
+
+	case a2::Tag::Func:
+	{
+		const a2::FuncInfo func_info = a2::func_info(expr);
+
+		a2::FuncData* const func_data = a2::attachment_of<a2::FuncData>(expr);
+
+		if (is_some(func_info.return_type))
+		{
+			Value* const return_type_value = interpret_expr(typechecker->interpreter, enclosing_scope, get_ptr(func_info.return_type));
+
+			TypeEntry* return_type_entry = dealias_type_entry(typechecker->types, return_type_value->header.type_id);
+
+			if (return_type_entry->tag != TypeTag::Type)
+				panic("Expected type expression as %s's return type\n", a2::has_flag(expr, a2::Flag::Func_IsProc) ? "proc" : "func");
+
+			const TypeId return_type_id = *access_value<TypeId>(return_type_value);
+
+			release_interpretation_result(typechecker->interpreter, return_type_value);
+
+			func_data->return_type_id = return_type_id;
+		}
+		else
+		{
+			func_data->return_type_id = get_builtin_type_ids(typechecker->types)->void_type_id;
+		}
+
+		a2::DirectChildIterator it = a2::direct_children_of(func_info.parameters);
+
+		FuncTypeBuffer type_buf{};
+
+		type_buf.header.return_type_id = func_data->return_type_id;
+		type_buf.header.parameter_count = 0;
+
+		for (OptPtr<a2::Node> parameter = a2::next(&it); is_some(parameter); parameter = a2::next(&it))
+		{
+			ASSERT_OR_IGNORE(type_buf.header.parameter_count + 1 < array_count(type_buf.parameter_type_ids));
+
+			type_buf.parameter_type_ids[type_buf.header.parameter_count] = typecheck_parameter(typechecker, enclosing_scope, get_ptr(parameter));
+
+			type_buf.header.parameter_count += 1;
+		}
+
+		const TypeFlag flags = a2::has_flag(expr, a2::Flag::Func_IsProc) ? TypeFlag::Func_IsProc : TypeFlag::EMPTY;
+
+		const Range<byte> type = Range<byte>{ reinterpret_cast<const byte*>(&type_buf), sizeof(type_buf.header) + type_buf.header.parameter_count * sizeof(type_buf.parameter_type_ids[0]) };
+
+		func_data->signature_type_id = id_from_type(typechecker->types, TypeTag::Func, flags, type);
+
+		if (is_some(func_info.body))
+		{
+			TypeId const returned_type_id = typecheck_expr(typechecker, enclosing_scope, get_ptr(func_info.body));
+
+			if (!can_implicity_convert_from_to(typechecker->types, returned_type_id, func_data->return_type_id))
+				panic("Mismatch between declared and actual return type\n");
+		}
+
+		return func_data->signature_type_id;
+	}
+
+	case a2::Tag::File:
+	case a2::Tag::ParameterList:
+	case a2::Tag::Case:
+	{
+		panic("Unexpected AST node type '%s' passed to typecheck_expr\n", a2::tag_name(expr->tag));
+	}
+
+	case a2::Tag::Call:
+	{
+		a2::Node* const callee = a2::first_child_of(expr);
+
+		const TypeId callee_type_id = typecheck_expr(typechecker, enclosing_scope, callee);
+
+		TypeEntry* const entry = dealias_type_entry(typechecker->types, callee_type_id);
+
+		if (entry->tag != TypeTag::Func)
+			panic("Expected func or proc before call\n");
+
+		FuncType* const func_type = entry->data<FuncType>();
+
+		a2::Node* curr = callee;
+
+		for (u32 i = 0; i != func_type->header.parameter_count; ++i)
+		{
+			if (!a2::has_next_sibling(curr))
+				panic("Too few parameters in call (expected %u but got %u)\n", func_type->header.parameter_count, i);
+
+			curr = a2::next_sibling_of(curr);
+
+			const TypeId parameter_type_id = typecheck_expr(typechecker, enclosing_scope, curr);
+
+			TypeEntry* const parameter_type_entry = dealias_type_entry(typechecker->types, parameter_type_id);
+
+			TypeEntry* const expected_parameter_type_entry = dealias_type_entry(typechecker->types, func_type->parameter_type_ids[i]);
+
+			if (parameter_type_entry != expected_parameter_type_entry)
+				panic("Mismatch between expected and actual call parameter type\n");
+		}
+
+		if (a2::has_next_sibling(curr))
+		{
+			u32 actual_parameter_count = func_type->header.parameter_count;
+
+			do
+			{
+				curr = a2::next_sibling_of(curr);
+
+				actual_parameter_count += 1;
+			}
+			while (a2::has_next_sibling(curr));
+
+			panic("Too many parameters in call (expected %u but got %u)\n", func_type->header.parameter_count, actual_parameter_count);
+		}
+
+		return func_type->header.return_type_id;
+	}
+
+	case a2::Tag::OpAdd:
+	case a2::Tag::OpSub:
+	case a2::Tag::OpMul:
+	case a2::Tag::OpDiv:
+	{
+		// TODO
+		panic("TODO: typecheck_expr(%u)\n", expr->tag);
+	}
+
+	case a2::Tag::Builtin:
+	case a2::Tag::CompositeInitializer:
+	case a2::Tag::ArrayInitializer:
+	case a2::Tag::Wildcard:
+	case a2::Tag::Where:
+	case a2::Tag::Expects:
+	case a2::Tag::Ensures:
+	case a2::Tag::Definition:
+	case a2::Tag::For:
+	case a2::Tag::ForEach:
+	case a2::Tag::Switch:
+	case a2::Tag::Trait:
+	case a2::Tag::Impl:
+	case a2::Tag::Catch:
+	case a2::Tag::Return:
+	case a2::Tag::Leave:
+	case a2::Tag::Yield:
+	case a2::Tag::UOpTypeTailArray:
+	case a2::Tag::UOpEval:
+	case a2::Tag::UOpTry:
+	case a2::Tag::UOpDefer:
+	case a2::Tag::UOpAddr:
+	case a2::Tag::UOpDeref:
+	case a2::Tag::UOpBitNot:
+	case a2::Tag::UOpLogNot:
+	case a2::Tag::UOpTypeVar:
+	case a2::Tag::UOpImpliedMember:
+	case a2::Tag::UOpNegate:
+	case a2::Tag::UOpPos:
+	case a2::Tag::OpAddTC:
+	case a2::Tag::OpSubTC:
+	case a2::Tag::OpMulTC:
+	case a2::Tag::OpMod:
+	case a2::Tag::OpBitAnd:
+	case a2::Tag::OpBitOr:
+	case a2::Tag::OpBitXor:
+	case a2::Tag::OpShiftL:
+	case a2::Tag::OpShiftR:
+	case a2::Tag::OpMember:
+	case a2::Tag::OpCmpLT:
+	case a2::Tag::OpCmpGT:
+	case a2::Tag::OpCmpLE:
+	case a2::Tag::OpCmpGE:
+	case a2::Tag::OpCmpNE:
+	case a2::Tag::OpCmpEQ:
+	case a2::Tag::OpSet:
+	case a2::Tag::OpSetAdd:
+	case a2::Tag::OpSetSub:
+	case a2::Tag::OpSetMul:
+	case a2::Tag::OpSetDiv:
+	case a2::Tag::OpSetAddTC:
+	case a2::Tag::OpSetSubTC:
+	case a2::Tag::OpSetMulTC:
+	case a2::Tag::OpSetMod:
+	case a2::Tag::OpSetBitAnd:
+	case a2::Tag::OpSetBitOr:
+	case a2::Tag::OpSetBitXor:
+	case a2::Tag::OpSetShiftL:
+	case a2::Tag::OpSetShiftR:
+		panic("Unimplemented AST node tag '%s' in typecheck_expr\n", a2::tag_name(expr->tag));
+
+	default:
+		ASSERT_UNREACHABLE;
+	}
+}
+
+TypeId typecheck_definition(Typechecker* typechecker, a2::Node* definition) noexcept
+{
+	ASSERT_OR_IGNORE(definition->tag == a2::Tag::Definition);
+
+	ASSERT_OR_IGNORE(a2::has_children(definition));
+
+	ASSERT_OR_IGNORE(a2::attachment_of<a2::DefinitionData>(definition)->enclosing_scope_id != INVALID_SCOPE_ID);
+
+	const a2::DefinitionInfo info = a2::definition_info(definition);
+
+	a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(definition);
+
+	Scope* const enclosing_scope = scope_from_id(typechecker->scopes, definition_data->enclosing_scope_id);
+
+	TypeId definition_type_id = INVALID_TYPE_ID;
+
+	if (is_some(info.type))
+	{
+		Value* const explicit_type_value = interpret_expr(typechecker->interpreter, enclosing_scope, get_ptr(info.type));
+
+		if (dealias_type_entry(typechecker->types, explicit_type_value->header.type_id)->tag != TypeTag::Type)
+			panic("Expected type expression following ':'\n");
+
+		definition_type_id = *access_value<TypeId>(explicit_type_value);
+
+		release_interpretation_result(typechecker->interpreter, explicit_type_value);
+	}
+
+	if (is_some(info.value))
+	{
+		const TypeId inferred_type_id = typecheck_expr(typechecker, enclosing_scope, get_ptr(info.value));
+
+		if (definition_type_id == INVALID_TYPE_ID)
+			definition_type_id = inferred_type_id;
+		else if (!can_implicity_convert_from_to(typechecker->types, inferred_type_id, definition_type_id))
+			panic("Incompatible types\n");
+	}
+
+	definition_data->type_id = definition_type_id;
+
+	return definition_type_id;
+}

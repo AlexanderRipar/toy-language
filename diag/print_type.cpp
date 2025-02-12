@@ -139,7 +139,7 @@ static void print_type(FILE* out, IdentifierPool* identifiers, TypePool* types, 
 
 			fprintf(out, "%*s) -> ", depth * 2, "");
 
-			print_type(out, identifiers, types, func_type->header.return_type, depth, true);
+			print_type(out, identifiers, types, func_type->header.return_type_id, depth, true);
 
 			break;
 		}

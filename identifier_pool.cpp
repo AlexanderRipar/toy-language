@@ -46,6 +46,9 @@ IdentifierPool* create_identifier_pool(AllocPool* pool) noexcept
 
 	identifiers->map.init(1u << 24, 1u << 15, 1u << 31, 1u << 18);
 
+	// Occupy index 0 with a nonsense value so it can be used as INVALID_IDENTIFIER_ID
+	(void) identifiers->map.value_from(Range<char8>{ nullptr, nullptr }, fnv1a(Range<byte>{ nullptr, nullptr }));
+
 	for (const AttachmentRange keyword : KEYWORDS)
 	{
 		IdentifierEntry* const entry = identifiers->map.value_from(keyword.range(), fnv1a(keyword.range().as_byte_range()));
