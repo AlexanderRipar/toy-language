@@ -191,21 +191,21 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::Node
 
 		const IdentifierId identifier_id = a2::attachment_of<a2::ValIdentifierData>(expr)->identifier_id;
 
-		const OptPtr<a2::Node> opt_definition = lookup_identifier_recursive(enclosing_scope, identifier_id);
+		const ScopeLookupResult lookup = lookup_identifier_recursive(enclosing_scope, identifier_id);
 
-		if (is_none(opt_definition))
+		if (!is_valid(lookup))
 		{
 			const Range<char8> name = identifier_entry_from_id(interpreter->identifiers, identifier_id)->range();
 
 			panic("Could not find definition for identifier '%.*s'\n", static_cast<s32>(name.count()), name.begin());
 		}
 
-		a2::Node* const definition = get_ptr(opt_definition);
+		a2::Node* const definition = lookup.definition;
 
 		a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(definition);
 
 		if (definition_data->type_id == INVALID_TYPE_ID)
-			typecheck_definition(interpreter->typechecker, definition);
+			typecheck_definition(interpreter->typechecker, lookup.enclosing_scope, definition);
 
 		Value* definition_value = nullptr;
 
@@ -227,7 +227,7 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::Node
 			if (is_none(definition_info.value))
 				panic("Attempted to evaluate definition without value\n");
 
-			Value* const evaluated_definition_value = interpret_expr(interpreter, enclosing_scope, get_ptr(definition_info.value));
+			Value* const evaluated_definition_value = interpret_expr(interpreter, lookup.enclosing_scope, get_ptr(definition_info.value));
 
 			Value* const new_definition_value = evaluated_definition_value->header.is_ref ? reinterpret_cast<ReferenceValue*>(evaluated_definition_value->value)->referenced : evaluated_definition_value;
 

@@ -10,9 +10,9 @@
 
 static TypeId resolve_main(Config* config, Typechecker* typechecker, IdentifierPool* identifiers, ScopePool* scopes, a2::Node* root) noexcept
 {
-	Scope* const file_scope = alloc_top_level_scope(scopes, root).ptr;
+	Scope* const main_file_scope = alloc_file_scope(scopes, root);
 
-	const OptPtr<a2::Node> opt_main_def = lookup_identifier_local(file_scope, id_from_identifier(identifiers, config->entrypoint.symbol));
+	const OptPtr<a2::Node> opt_main_def = lookup_identifier_local(main_file_scope, id_from_identifier(identifiers, config->entrypoint.symbol));
 
 	if (is_none(opt_main_def))
 		panic("Could not find definition for entrypoint symbol \"%.*s\" at top level of source file \"%.*s\"\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin(), static_cast<s32>(config->entrypoint.filepath.count()), config->entrypoint.filepath.begin());
@@ -38,7 +38,7 @@ static TypeId resolve_main(Config* config, Typechecker* typechecker, IdentifierP
 
 	diag::print_ast(stderr, identifiers, main_func);
 
-	typecheck_definition(typechecker, main_def);
+	typecheck_definition(typechecker, main_file_scope, main_def);
 
 	return a2::attachment_of<a2::DefinitionData>(main_def)->type_id;
 }

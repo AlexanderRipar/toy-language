@@ -12,7 +12,7 @@ let return_value = the_value
 
 let TypeIdentity = func(t : type) -> type = t
 
-let main = proc() -> TypeIdentity(ReturnType) = return_value
+let main = proc() -> s32 = return_value
 
 // proc() -> s32
 

@@ -81,21 +81,21 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node
 	{
 		a2::ValIdentifierData* const identifier_data = a2::attachment_of<a2::ValIdentifierData>(expr);
 
-		OptPtr<a2::Node> opt_definition = lookup_identifier_recursive(enclosing_scope, identifier_data->identifier_id);
+		const ScopeLookupResult lookup = lookup_identifier_recursive(enclosing_scope, identifier_data->identifier_id);
 
-		if (is_none(opt_definition))
+		if (!is_valid(lookup))
 		{
 			const Range<char8> name = identifier_entry_from_id(typechecker->identifiers, identifier_data->identifier_id)->range();
 
 			panic("Could not find definition for identifier '%.*s'\n", static_cast<s32>(name.count()), name.begin());
 		}
 
-		a2::Node* const definition = get_ptr(opt_definition);
+		a2::Node* const definition = lookup.definition;
 
 		a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(definition);
 
 		if (definition_data->type_id == INVALID_TYPE_ID)
-			return typecheck_definition(typechecker, definition);
+			return typecheck_definition(typechecker, lookup.enclosing_scope, definition);
 
 		return definition_data->type_id;
 	}
@@ -496,19 +496,15 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node
 	}
 }
 
-TypeId typecheck_definition(Typechecker* typechecker, a2::Node* definition) noexcept
+TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* definition) noexcept
 {
 	ASSERT_OR_IGNORE(definition->tag == a2::Tag::Definition);
 
 	ASSERT_OR_IGNORE(a2::has_children(definition));
 
-	ASSERT_OR_IGNORE(a2::attachment_of<a2::DefinitionData>(definition)->enclosing_scope_id != INVALID_SCOPE_ID);
-
 	const a2::DefinitionInfo info = a2::definition_info(definition);
 
 	a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(definition);
-
-	Scope* const enclosing_scope = scope_from_id(typechecker->scopes, definition_data->enclosing_scope_id);
 
 	TypeId definition_type_id = INVALID_TYPE_ID;
 

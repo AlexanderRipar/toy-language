@@ -693,6 +693,13 @@ struct ScopeLocation
 	ScopeId id;
 };
 
+struct ScopeLookupResult
+{
+	a2::Node* definition;
+
+	Scope* enclosing_scope;
+};
+
 static constexpr ScopeId INVALID_SCOPE_ID = { 0 };
 
 static inline bool operator==(ScopeId lhs, ScopeId rhs) noexcept
@@ -705,21 +712,30 @@ static inline bool operator!=(ScopeId lhs, ScopeId rhs) noexcept
 	return lhs.rep != rhs.rep;
 }
 
+static inline bool is_valid(ScopeLookupResult result) noexcept
+{
+	return result.definition != nullptr;
+}
+
 ScopePool* create_scope_pool(AllocPool* alloc, a2::Node* builtins) noexcept;
 
 void release_scope_pool(ScopePool* scopes) noexcept;
 
-ScopeLocation alloc_static_scope(ScopePool* scopes, Scope* parent_scope, a2::Node* root, u32 capacity) noexcept;
+Scope* alloc_file_scope(ScopePool* scopes, a2::Node* root) noexcept;
 
-ScopeLocation alloc_top_level_scope(ScopePool* scopes, a2::Node* root) noexcept;
+Scope* alloc_static_scope(ScopePool* scopes, Scope* parent_scope, a2::Node* root, u32 capacity) noexcept;
 
-ScopeId id_from_scope(ScopePool* scopes, Scope* scope) noexcept;
+Scope* alloc_dynamic_scope(ScopePool* scopes, Scope* parent_scope, a2::Node* root, u32 capacity) noexcept;
+
+void release_dynamic_scope(ScopePool* scopes, Scope* scope) noexcept;
+
+ScopeId id_from_static_scope(ScopePool* scopes, Scope* scope) noexcept;
 
 Scope* scope_from_id(ScopePool* scopes, ScopeId id) noexcept;
 
 void add_definition_to_scope(Scope* scope, a2::Node* definition) noexcept;
 
-OptPtr<a2::Node> lookup_identifier_recursive(Scope* scope, IdentifierId identifier_id) noexcept;
+ScopeLookupResult lookup_identifier_recursive(Scope* scope, IdentifierId identifier_id) noexcept;
 
 OptPtr<a2::Node> lookup_identifier_local(Scope* scope, IdentifierId identifier_id) noexcept;
 
@@ -745,6 +761,6 @@ void release_typechecker(Typechecker* typechecker) noexcept;
 
 TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* expr) noexcept;
 
-TypeId typecheck_definition(Typechecker* typechecker, a2::Node* definition) noexcept;
+TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* definition) noexcept;
 
 #endif // PARSEDATA_INCLUDE_GUARD

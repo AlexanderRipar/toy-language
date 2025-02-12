@@ -57,8 +57,6 @@ namespace a2
 		TypeId type_id;
 
 		ValueId value_id;
-
-		ScopeId enclosing_scope_id;
 	};
 
 	struct BlockData
