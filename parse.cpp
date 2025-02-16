@@ -101,7 +101,7 @@ struct Parser
 {
 	Lexer lexer;
 
-	a2::Builder builder;
+	a2::AstBuilder builder;
 };
 
 static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
@@ -1391,7 +1391,7 @@ static a2::AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bo
 
 	lexeme = peek(&parser->lexer);
 
-	a2::AstBuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+	a2::AstBuilderToken first_child_token = a2::AstBuilder::NO_CHILDREN;
 
 	if (lexeme.token == Token::Colon)
 	{
@@ -1410,7 +1410,7 @@ static a2::AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bo
 
 		const a2::AstBuilderToken value_token = parse_expr(parser, true);
 
-		if (first_child_token == a2::Builder::NO_CHILDREN)
+		if (first_child_token == a2::AstBuilder::NO_CHILDREN)
 			first_child_token = value_token;
 	}
 	else if (!is_optional_value)
@@ -1438,7 +1438,7 @@ static a2::AstBuilderToken parse_leave(Parser* parser) noexcept
 
 	skip(&parser->lexer);
 
-	return a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::AstTag::Leave, a2::AstFlag::EMPTY);
+	return a2::push_node(&parser->builder, a2::AstBuilder::NO_CHILDREN, a2::AstTag::Leave, a2::AstFlag::EMPTY);
 }
 
 static a2::AstBuilderToken parse_yield(Parser* parser) noexcept
@@ -1554,7 +1554,7 @@ static a2::AstBuilderToken try_parse_foreach(Parser* parser) noexcept
 	}
 
 	if (!is_foreach)
-		return a2::Builder::NO_CHILDREN;
+		return a2::AstBuilder::NO_CHILDREN;
 
 	a2::AstFlag flags = a2::AstFlag::EMPTY;
 
@@ -1616,7 +1616,7 @@ static a2::AstBuilderToken parse_for(Parser* parser) noexcept
 
 	skip(&parser->lexer);
 
-	if (const a2::AstBuilderToken foreach_token = try_parse_foreach(parser); foreach_token != a2::Builder::NO_CHILDREN)
+	if (const a2::AstBuilderToken foreach_token = try_parse_foreach(parser); foreach_token != a2::AstBuilder::NO_CHILDREN)
 		return foreach_token;
 
 	const a2::AstBuilderToken first_child_token = parse_expr(parser, false);
@@ -1775,13 +1775,13 @@ static a2::AstBuilderToken parse_func(Parser* parser) noexcept
 
 	lexeme = peek(&parser->lexer);
 
-	a2::AstBuilderToken first_parameter_token = a2::Builder::NO_CHILDREN;
+	a2::AstBuilderToken first_parameter_token = a2::AstBuilder::NO_CHILDREN;
 
 	while (lexeme.token != Token::ParenR)
 	{
 		const a2::AstBuilderToken parameter_token = parse_definition(parser, true, true);
 
-		if (first_parameter_token == a2::Builder::NO_CHILDREN)
+		if (first_parameter_token == a2::AstBuilder::NO_CHILDREN)
 			first_parameter_token = parameter_token;
 
 		lexeme = peek(&parser->lexer);
@@ -1854,13 +1854,13 @@ static a2::AstBuilderToken parse_trait(Parser* parser) noexcept
 
 	lexeme = peek(&parser->lexer);
 
-	a2::AstBuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+	a2::AstBuilderToken first_child_token = a2::AstBuilder::NO_CHILDREN;
 
 	while (lexeme.token != Token::ParenR)
 	{
 		const a2::AstBuilderToken parameter_token = parse_definition(parser, true, true);
 
-		if (first_child_token == a2::Builder::NO_CHILDREN)
+		if (first_child_token == a2::AstBuilder::NO_CHILDREN)
 			first_child_token = parameter_token;
 
 		lexeme = next(&parser->lexer);
@@ -1879,7 +1879,7 @@ static a2::AstBuilderToken parse_trait(Parser* parser) noexcept
 
 		const a2::AstBuilderToken expects_token = parse_expects(parser);
 
-		if (first_child_token == a2::Builder::NO_CHILDREN)
+		if (first_child_token == a2::AstBuilder::NO_CHILDREN)
 			first_child_token = expects_token;
 
 		lexeme = peek(&parser->lexer);
@@ -1897,7 +1897,7 @@ static a2::AstBuilderToken parse_trait(Parser* parser) noexcept
 
 	const a2::AstBuilderToken body_token = parse_expr(parser, true);
 
-	if (first_child_token == a2::Builder::NO_CHILDREN)
+	if (first_child_token == a2::AstBuilder::NO_CHILDREN)
 		first_child_token = body_token;
 
 	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Trait, flags);
@@ -1974,7 +1974,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValIdentifierData{ lexeme.identifier_id });
+				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValIdentifierData{ lexeme.identifier_id });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -1982,7 +1982,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValStringData{ lexeme.identifier_id });
+				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValStringData{ lexeme.identifier_id });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -1990,7 +1990,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValFloatData{ lexeme.float_value });
+				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValFloatData{ lexeme.float_value });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -1998,7 +1998,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValIntegerData{ lexeme.integer_value });
+				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValIntegerData{ lexeme.integer_value });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2006,7 +2006,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValCharData{ static_cast<u32>(lexeme.integer_value) });
+				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValCharData{ static_cast<u32>(lexeme.integer_value) });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2014,7 +2014,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::AstTag::Wildcard, a2::AstFlag::EMPTY);
+				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::AstBuilder::NO_CHILDREN, a2::AstTag::Wildcard, a2::AstFlag::EMPTY);
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2026,13 +2026,13 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 
 				lexeme = peek(&parser->lexer);
 
-				a2::AstBuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+				a2::AstBuilderToken first_child_token = a2::AstBuilder::NO_CHILDREN;
 
 				while (lexeme.token != Token::CurlyR)
 				{
 					const a2::AstBuilderToken curr_token = parse_expr(parser, true);
 
-					if (first_child_token == a2::Builder::NO_CHILDREN)
+					if (first_child_token == a2::AstBuilder::NO_CHILDREN)
 						first_child_token = curr_token;
 
 					lexeme = peek(&parser->lexer);
@@ -2061,13 +2061,13 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 
 				lexeme = peek(&parser->lexer);
 
-				a2::AstBuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+				a2::AstBuilderToken first_child_token = a2::AstBuilder::NO_CHILDREN;
 
 				while (lexeme.token != Token::BracketR)
 				{
 					const a2::AstBuilderToken curr_token = parse_expr(parser, true);
 
-					if (first_child_token == a2::Builder::NO_CHILDREN)
+					if (first_child_token == a2::AstBuilder::NO_CHILDREN)
 						first_child_token = curr_token;
 
 					lexeme = peek(&parser->lexer);
@@ -2115,7 +2115,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 
 				lexeme = peek(&parser->lexer);
 
-				a2::AstBuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+				a2::AstBuilderToken first_child_token = a2::AstBuilder::NO_CHILDREN;
 
 				u32 definition_count = 0;
 
@@ -2128,7 +2128,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 					if (is_definition)
 						definition_count += 1;
 
-					if (first_child_token == a2::Builder::NO_CHILDREN)
+					if (first_child_token == a2::AstBuilder::NO_CHILDREN)
 						first_child_token = curr_token;
 
 					lexeme = peek(&parser->lexer);
@@ -2376,7 +2376,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 
 static void parse_file(Parser* parser) noexcept
 {
-	a2::AstBuilderToken first_child_token = a2::Builder::NO_CHILDREN;
+	a2::AstBuilderToken first_child_token = a2::AstBuilder::NO_CHILDREN;
 
 	u32 definition_count = 0;
 
@@ -2394,7 +2394,7 @@ static void parse_file(Parser* parser) noexcept
 		if (is_definition)
 			definition_count += 1;
 
-		if (first_child_token == a2::Builder::NO_CHILDREN)
+		if (first_child_token == a2::AstBuilder::NO_CHILDREN)
 			first_child_token = curr_token;
 	};
 
@@ -2430,7 +2430,7 @@ a2::AstNode* parse(Parser* parser, SourceFile source, AstPool* out) noexcept
 	return a2::complete_ast(&parser->builder, out);
 }
 
-a2::Builder* get_ast_builder(Parser* parser) noexcept
+a2::AstBuilder* get_ast_builder(Parser* parser) noexcept
 {
 	return &parser->builder;
 }

@@ -109,7 +109,7 @@ static void set_internal_flags(a2::AstNode* begin, a2::AstNode* end) noexcept
 	{
 		a2::AstNode* const next = apply_offset_(curr, curr->data_dwords);
 
-		if (curr->next_sibling_offset != a2::Builder::NO_CHILDREN.rep)
+		if (curr->next_sibling_offset != a2::AstBuilder::NO_CHILDREN.rep)
 		{
 			ASSERT_OR_IGNORE(prev != nullptr);
 
@@ -139,7 +139,7 @@ static a2::AstNode* build_traversal_list(a2::AstNode* begin, a2::AstNode* end) n
 {
 	sreg depth = -1;
 
-	u32 recursively_last_child = a2::Builder::NO_CHILDREN.rep;
+	u32 recursively_last_child = a2::AstBuilder::NO_CHILDREN.rep;
 
 	u32 prev_sibling_inds[a2::MAX_TREE_DEPTH];
 
@@ -178,7 +178,7 @@ static a2::AstNode* build_traversal_list(a2::AstNode* begin, a2::AstNode* end) n
 
 			if ((curr->internal_flags & a2::AstNode::FLAG_NO_CHILDREN) == 0)
 			{
-				ASSERT_OR_IGNORE(recursively_last_child != a2::Builder::NO_CHILDREN.rep);
+				ASSERT_OR_IGNORE(recursively_last_child != a2::AstBuilder::NO_CHILDREN.rep);
 
 				prev_sibling_inds[depth] = recursively_last_child;
 			}
@@ -268,7 +268,7 @@ static a2::AstNode* copy_postorder_to_preorder(const a2::AstNode* begin, const a
 
 		prev_sibling_inds[depth] = curr_ind;
 
-		if (src_curr->next_sibling_offset == a2::Builder::NO_CHILDREN.rep)
+		if (src_curr->next_sibling_offset == a2::AstBuilder::NO_CHILDREN.rep)
 			break;
 
 		src_curr = reinterpret_cast<const a2::AstNode*>(reinterpret_cast<const u32*>(begin) + src_curr->next_sibling_offset);
@@ -290,7 +290,7 @@ static a2::AstNode* copy_postorder_to_preorder(const a2::AstNode* begin, const a
 	return dst_root;
 }
 
-a2::AstNode* a2::complete_ast(Builder* builder, AstPool* dst) noexcept
+a2::AstNode* a2::complete_ast(AstBuilder* builder, AstPool* dst) noexcept
 {
 	AstNode* const begin = reinterpret_cast<AstNode*>(builder->scratch.begin());
 

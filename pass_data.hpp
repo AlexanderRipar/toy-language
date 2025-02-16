@@ -599,7 +599,7 @@ void release_ast_pool(AstPool* asts) noexcept;
 
 a2::AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept;
 
-a2::AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, TypePool* types, ValuePool* values, a2::Builder* builder) noexcept;
+a2::AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, TypePool* types, ValuePool* values, a2::AstBuilder* builder) noexcept;
 
 
 
@@ -651,7 +651,7 @@ struct Parser;
 
 [[nodiscard]] a2::AstNode* parse(Parser* parser, SourceFile source, AstPool* out) noexcept;
 
-[[nodiscard]] a2::Builder* get_ast_builder(Parser* parser) noexcept;
+[[nodiscard]] a2::AstBuilder* get_ast_builder(Parser* parser) noexcept;
 
 
 

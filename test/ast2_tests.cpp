@@ -477,9 +477,9 @@ static void push_node_once_appends_node() noexcept
 {
 	TEST_BEGIN;
 
-	a2::Builder builder = a2::create_ast_builder();
+	a2::AstBuilder builder = a2::create_ast_builder();
 
-	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::File, a2::AstFlag::EMPTY);
+	a2::push_node(&builder, a2::AstBuilder::NO_CHILDREN, a2::AstTag::File, a2::AstFlag::EMPTY);
 
 	DummyTree expected_tree = single_node_dummy_tree();
 
@@ -504,9 +504,9 @@ static void push_node_once_and_complete_appends_node() noexcept
 {
 	TEST_BEGIN;
 
-	a2::Builder builder = a2::create_ast_builder();
+	a2::AstBuilder builder = a2::create_ast_builder();
 
-	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::File, a2::AstFlag::EMPTY);
+	a2::push_node(&builder, a2::AstBuilder::NO_CHILDREN, a2::AstTag::File, a2::AstFlag::EMPTY);
 
 	MockedPools pools = create_mocked_pools();
 
@@ -527,9 +527,9 @@ static void push_node_with_unary_op_and_complete_reverses_tree() noexcept
 {
 	TEST_BEGIN;
 
-	a2::Builder builder = a2::create_ast_builder();
+	a2::AstBuilder builder = a2::create_ast_builder();
 
-	const a2::AstBuilderToken token = a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::Block, a2::AstFlag::EMPTY);
+	const a2::AstBuilderToken token = a2::push_node(&builder, a2::AstBuilder::NO_CHILDREN, a2::AstTag::Block, a2::AstFlag::EMPTY);
 
 	a2::push_node(&builder, token, a2::AstTag::File, a2::AstFlag::EMPTY);
 
@@ -552,11 +552,11 @@ static void push_node_with_binary_op_and_complete_reverses_tree() noexcept
 {
 	TEST_BEGIN;
 
-	a2::Builder builder = a2::create_ast_builder();
+	a2::AstBuilder builder = a2::create_ast_builder();
 
-	const a2::AstBuilderToken token = a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::ValChar, a2::AstFlag::EMPTY);
+	const a2::AstBuilderToken token = a2::push_node(&builder, a2::AstBuilder::NO_CHILDREN, a2::AstTag::ValChar, a2::AstFlag::EMPTY);
 
-	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::ValIdentifer, a2::AstFlag::EMPTY);
+	a2::push_node(&builder, a2::AstBuilder::NO_CHILDREN, a2::AstTag::ValIdentifer, a2::AstFlag::EMPTY);
 
 	a2::push_node(&builder, token, a2::AstTag::OpBitAnd, a2::AstFlag::EMPTY);
 
@@ -579,19 +579,19 @@ static void push_node_with_complex_tree_and_complete_reverses_tree() noexcept
 {
 	TEST_BEGIN;
 
-	a2::Builder builder = a2::create_ast_builder();
+	a2::AstBuilder builder = a2::create_ast_builder();
 
-	const a2::AstBuilderToken t3 = a2::push_node(&builder, a2::Builder::NO_CHILDREN, static_cast<a2::AstTag>(3), a2::AstFlag::EMPTY);
+	const a2::AstBuilderToken t3 = a2::push_node(&builder, a2::AstBuilder::NO_CHILDREN, static_cast<a2::AstTag>(3), a2::AstFlag::EMPTY);
 
-	a2::push_node(&builder, a2::Builder::NO_CHILDREN, static_cast<a2::AstTag>(4), a2::AstFlag::EMPTY);
+	a2::push_node(&builder, a2::AstBuilder::NO_CHILDREN, static_cast<a2::AstTag>(4), a2::AstFlag::EMPTY);
 
 	const a2::AstBuilderToken t2 = a2::push_node(&builder, t3, static_cast<a2::AstTag>(2), a2::AstFlag::EMPTY);
 
-	const a2::AstBuilderToken t7 = a2::push_node(&builder, a2::Builder::NO_CHILDREN, static_cast<a2::AstTag>(7), a2::AstFlag::EMPTY);
+	const a2::AstBuilderToken t7 = a2::push_node(&builder, a2::AstBuilder::NO_CHILDREN, static_cast<a2::AstTag>(7), a2::AstFlag::EMPTY);
 
 	const a2::AstBuilderToken t6 = a2::push_node(&builder, t7, static_cast<a2::AstTag>(6), a2::AstFlag::EMPTY);
 
-	const a2::AstBuilderToken t9 = a2::push_node(&builder, a2::Builder::NO_CHILDREN, static_cast<a2::AstTag>(9), a2::AstFlag::EMPTY);
+	const a2::AstBuilderToken t9 = a2::push_node(&builder, a2::AstBuilder::NO_CHILDREN, static_cast<a2::AstTag>(9), a2::AstFlag::EMPTY);
 
 	a2::push_node(&builder, t9, static_cast<a2::AstTag>(8), a2::AstFlag::EMPTY);
 
@@ -618,19 +618,19 @@ static void push_node_with_double_binary_tree_and_complete_reverses_tree() noexc
 {
 	TEST_BEGIN;
 
-	a2::Builder builder = a2::create_ast_builder();
+	a2::AstBuilder builder = a2::create_ast_builder();
 
-	const a2::AstBuilderToken add = a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::ValChar, a2::AstFlag::EMPTY);
+	const a2::AstBuilderToken add = a2::push_node(&builder, a2::AstBuilder::NO_CHILDREN, a2::AstTag::ValChar, a2::AstFlag::EMPTY);
 
-	const a2::AstBuilderToken mul = a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::ValFloat, a2::AstFlag::EMPTY);
+	const a2::AstBuilderToken mul = a2::push_node(&builder, a2::AstBuilder::NO_CHILDREN, a2::AstTag::ValFloat, a2::AstFlag::EMPTY);
 
-	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::ValInteger, a2::AstFlag::EMPTY);
+	a2::push_node(&builder, a2::AstBuilder::NO_CHILDREN, a2::AstTag::ValInteger, a2::AstFlag::EMPTY);
 
 	a2::push_node(&builder, mul, a2::AstTag::OpMul, a2::AstFlag::EMPTY);
 
 	const a2::AstBuilderToken sub = a2::push_node(&builder, add, a2::AstTag::OpAdd, a2::AstFlag::EMPTY);
 
-	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::ValString, a2::AstFlag::EMPTY);
+	a2::push_node(&builder, a2::AstBuilder::NO_CHILDREN, a2::AstTag::ValString, a2::AstFlag::EMPTY);
 
 	a2::push_node(&builder, sub, a2::AstTag::OpSub, a2::AstFlag::EMPTY);
 

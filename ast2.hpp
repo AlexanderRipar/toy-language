@@ -451,7 +451,7 @@ namespace a2
 		u32 rep;
 	};
 
-	struct Builder
+	struct AstBuilder
 	{
 		static constexpr AstBuilderToken NO_CHILDREN = { ~0u };
 
@@ -468,16 +468,16 @@ namespace a2
 		return lhs.rep != rhs.rep;
 	}
 	
-	static inline Builder create_ast_builder() noexcept
+	static inline AstBuilder create_ast_builder() noexcept
 	{
-		Builder builder;
+		AstBuilder builder;
 
 		builder.scratch.init(1u << 31, 1u << 18);
 
 		return builder;
 	}
 
-	static inline AstBuilderToken push_node(Builder* builder, AstBuilderToken first_child, AstTag tag, AstFlag flags) noexcept
+	static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken first_child, AstTag tag, AstFlag flags) noexcept
 	{
 		static_assert(sizeof(AstNode) % sizeof(u32) == 0);
 
@@ -487,13 +487,13 @@ namespace a2
 		node->tag = tag;
 		node->flags = flags;
 		node->data_dwords = sizeof(AstNode) / sizeof(u32);
-		node->internal_flags = first_child == Builder::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
+		node->internal_flags = first_child == AstBuilder::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
 
 		return { static_cast<u32>(reinterpret_cast<u32*>(node) - builder->scratch.begin()) };
 	}
 
 	template<typename T>
-	static inline AstBuilderToken push_node(Builder* builder, AstBuilderToken first_child, AstFlag flags, T attachment) noexcept
+	static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken first_child, AstFlag flags, T attachment) noexcept
 	{
 		static_assert(sizeof(AstNode) % sizeof(u32) == 0);
 		
@@ -507,14 +507,14 @@ namespace a2
 		node->tag = T::TAG;
 		node->flags = flags;
 		node->data_dwords = required_dwords;
-		node->internal_flags = first_child == Builder::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
+		node->internal_flags = first_child == AstBuilder::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
 
 		memcpy(node + 1, &attachment, sizeof(T));
 
 		return { static_cast<u32>(reinterpret_cast<u32*>(node) - builder->scratch.begin()) };
 	}
 
-	AstNode* complete_ast(Builder* builder, AstPool* dst) noexcept;
+	AstNode* complete_ast(AstBuilder* builder, AstPool* dst) noexcept;
 
 
 
