@@ -164,7 +164,7 @@ namespace a2
 		return lhs;
 	}
 
-	struct Node
+	struct AstNode
 	{
 		static constexpr u8 FLAG_LAST_SIBLING  = 0x01;
 		static constexpr u8 FLAG_FIRST_SIBLING = 0x02;
@@ -183,36 +183,36 @@ namespace a2
 
 
 
-	static inline Node* apply_offset_(Node* node, ureg offset) noexcept
+	static inline AstNode* apply_offset_(AstNode* node, ureg offset) noexcept
 	{
-		static_assert(sizeof(Node) % sizeof(u32) == 0 && alignof(Node) % sizeof(u32) == 0);
+		static_assert(sizeof(AstNode) % sizeof(u32) == 0 && alignof(AstNode) % sizeof(u32) == 0);
 
-		return reinterpret_cast<Node*>(reinterpret_cast<u32*>(node) + offset);
+		return reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(node) + offset);
 	}
 
-	static inline bool has_children(const Node* node) noexcept
+	static inline bool has_children(const AstNode* node) noexcept
 	{
-		return (node->internal_flags & Node::FLAG_NO_CHILDREN) == 0;
+		return (node->internal_flags & AstNode::FLAG_NO_CHILDREN) == 0;
 	}
 
-	static inline bool has_next_sibling(const Node* node) noexcept
+	static inline bool has_next_sibling(const AstNode* node) noexcept
 	{
-		return (node->internal_flags & Node::FLAG_LAST_SIBLING) == 0;
+		return (node->internal_flags & AstNode::FLAG_LAST_SIBLING) == 0;
 	}
 
-	static inline bool has_flag(Node* node, Flag flag) noexcept
+	static inline bool has_flag(AstNode* node, Flag flag) noexcept
 	{
 		return (static_cast<u8>(node->flags) & static_cast<u8>(flag)) != 0;
 	}
 
-	static inline Node* next_sibling_of(Node* node) noexcept
+	static inline AstNode* next_sibling_of(AstNode* node) noexcept
 	{
 		ASSERT_OR_IGNORE(has_next_sibling(node));
 
 		return apply_offset_(node, node->next_sibling_offset);
 	}
 
-	static inline Node* first_child_of(Node* node) noexcept
+	static inline AstNode* first_child_of(AstNode* node) noexcept
 	{
 		ASSERT_OR_IGNORE(has_children(node));
 
@@ -220,21 +220,21 @@ namespace a2
 	}
 
 	template<typename T>
-	static inline T* attachment_of(Node* node) noexcept
+	static inline T* attachment_of(AstNode* node) noexcept
 	{
 		ASSERT_OR_IGNORE(T::TAG == node->tag);
 
-		ASSERT_OR_IGNORE(sizeof(T) + sizeof(Node) == node->data_dwords * sizeof(u32));
+		ASSERT_OR_IGNORE(sizeof(T) + sizeof(AstNode) == node->data_dwords * sizeof(u32));
 
 		return reinterpret_cast<T*>(node + 1);
 	}
 
 	template<typename T>
-	static inline const T* attachment_of(const Node* node) noexcept
+	static inline const T* attachment_of(const AstNode* node) noexcept
 	{
 		ASSERT_OR_IGNORE(T::TAG == node->tag);
 
-		ASSERT_OR_IGNORE(sizeof(T) + sizeof(Node) == node->data_dwords * sizeof(u32));
+		ASSERT_OR_IGNORE(sizeof(T) + sizeof(AstNode) == node->data_dwords * sizeof(u32));
 
 		return reinterpret_cast<const T*>(node + 1);
 	}
@@ -243,7 +243,7 @@ namespace a2
 
 	struct IterationResult
 	{
-		Node* node;
+		AstNode* node;
 
 		u32 depth;
 	};
@@ -257,27 +257,27 @@ namespace a2
 
 	struct DirectChildIterator
 	{
-		Node* curr;
+		AstNode* curr;
 	};
 
-	static inline DirectChildIterator direct_children_of(Node* node) noexcept
+	static inline DirectChildIterator direct_children_of(AstNode* node) noexcept
 	{
 		return { has_children(node) ? first_child_of(node) : nullptr };
 	}
 
-	static inline OptPtr<Node> next(DirectChildIterator* iterator) noexcept
+	static inline OptPtr<AstNode> next(DirectChildIterator* iterator) noexcept
 	{
 		if (iterator->curr == nullptr)
-			return none<Node>();
+			return none<AstNode>();
 
-		Node* const curr = iterator->curr;
+		AstNode* const curr = iterator->curr;
 
 		iterator->curr = has_next_sibling(curr) ? next_sibling_of(curr) : nullptr;
 
 		return some(curr);
 	}
 
-	static inline OptPtr<Node> peek(const DirectChildIterator* iterator) noexcept
+	static inline OptPtr<AstNode> peek(const DirectChildIterator* iterator) noexcept
 	{
 		return maybe(iterator->curr);
 	}
@@ -286,7 +286,7 @@ namespace a2
 
 	struct PreorderIterator
 	{
-		Node* curr;
+		AstNode* curr;
 
 		u8 depth;
 
@@ -297,7 +297,7 @@ namespace a2
 		static_assert(MAX_TREE_DEPTH <= UINT8_MAX);
 	};
 
-	static inline PreorderIterator preorder_ancestors_of(Node* node) noexcept
+	static inline PreorderIterator preorder_ancestors_of(AstNode* node) noexcept
 	{
 		PreorderIterator iterator;
 
@@ -324,13 +324,13 @@ namespace a2
 
 		IterationResult result = { iterator->curr, iterator->depth };
 
-		Node* const curr = iterator->curr;
+		AstNode* const curr = iterator->curr;
 
 		iterator->curr = apply_offset_(curr, curr->data_dwords);
 
-		if ((curr->internal_flags & Node::FLAG_NO_CHILDREN) == 0)
+		if ((curr->internal_flags & AstNode::FLAG_NO_CHILDREN) == 0)
 		{
-			if ((curr->internal_flags & Node::FLAG_LAST_SIBLING) == 0)
+			if ((curr->internal_flags & AstNode::FLAG_LAST_SIBLING) == 0)
 			{
 				ASSERT_OR_IGNORE(iterator->top + 1 < MAX_TREE_DEPTH);
 
@@ -343,7 +343,7 @@ namespace a2
 
 			iterator->depth += 1;
 		}
-		else if ((curr->internal_flags & Node::FLAG_LAST_SIBLING) == Node::FLAG_LAST_SIBLING)
+		else if ((curr->internal_flags & AstNode::FLAG_LAST_SIBLING) == AstNode::FLAG_LAST_SIBLING)
 		{
 			if (iterator->top == -1)
 			{
@@ -369,14 +369,14 @@ namespace a2
 
 	struct PostorderIterator
 	{
-		Node* base;
+		AstNode* base;
 
 		s32 depth;
 
 		u32 offsets[MAX_TREE_DEPTH];
 	};
 
-	static inline PostorderIterator postorder_ancestors_of(Node* node) noexcept
+	static inline PostorderIterator postorder_ancestors_of(AstNode* node) noexcept
 	{
 		PostorderIterator iterator;
 
@@ -402,11 +402,11 @@ namespace a2
 		if (iterator->depth < 0)
 			return { nullptr, 0 };
 
-		Node* const ret_node = reinterpret_cast<Node*>(reinterpret_cast<u32*>(iterator->base) + iterator->offsets[iterator->depth]);
+		AstNode* const ret_node = reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(iterator->base) + iterator->offsets[iterator->depth]);
 
 		const u32 ret_depth = static_cast<u32>(iterator->depth);
 
-		Node* curr = ret_node;
+		AstNode* curr = ret_node;
 
 		if (has_next_sibling(curr))
 		{
@@ -430,7 +430,7 @@ namespace a2
 			iterator->depth -= 1;
 
 			if (iterator->depth >= 0)
-				curr = reinterpret_cast<Node*>(reinterpret_cast<u32*>(iterator->base) + iterator->offsets[iterator->depth]);
+				curr = reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(iterator->base) + iterator->offsets[iterator->depth]);
 		}
 
 		return { ret_node, ret_depth };
@@ -479,15 +479,15 @@ namespace a2
 
 	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, Tag tag, Flag flags) noexcept
 	{
-		static_assert(sizeof(Node) % sizeof(u32) == 0);
+		static_assert(sizeof(AstNode) % sizeof(u32) == 0);
 
-		Node* const node = reinterpret_cast<Node*>(builder->scratch.reserve_exact(sizeof(Node)));
+		AstNode* const node = reinterpret_cast<AstNode*>(builder->scratch.reserve_exact(sizeof(AstNode)));
 
 		node->next_sibling_offset = first_child.rep;
 		node->tag = tag;
 		node->flags = flags;
-		node->data_dwords = sizeof(Node) / sizeof(u32);
-		node->internal_flags = first_child == Builder::NO_CHILDREN ? Node::FLAG_NO_CHILDREN : 0;
+		node->data_dwords = sizeof(AstNode) / sizeof(u32);
+		node->internal_flags = first_child == Builder::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
 
 		return { static_cast<u32>(reinterpret_cast<u32*>(node) - builder->scratch.begin()) };
 	}
@@ -495,26 +495,26 @@ namespace a2
 	template<typename T>
 	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, Flag flags, T attachment) noexcept
 	{
-		static_assert(sizeof(Node) % sizeof(u32) == 0);
+		static_assert(sizeof(AstNode) % sizeof(u32) == 0);
 		
 		static_assert(sizeof(T) % sizeof(u32) == 0);
 
-		const u32 required_dwords = (sizeof(Node) + sizeof(T)) / sizeof(u32);
+		const u32 required_dwords = (sizeof(AstNode) + sizeof(T)) / sizeof(u32);
 
-		Node* const node = reinterpret_cast<Node*>(builder->scratch.reserve_exact(required_dwords * sizeof(u32)));
+		AstNode* const node = reinterpret_cast<AstNode*>(builder->scratch.reserve_exact(required_dwords * sizeof(u32)));
 
 		node->next_sibling_offset = first_child.rep;
 		node->tag = T::TAG;
 		node->flags = flags;
 		node->data_dwords = required_dwords;
-		node->internal_flags = first_child == Builder::NO_CHILDREN ? Node::FLAG_NO_CHILDREN : 0;
+		node->internal_flags = first_child == Builder::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
 
 		memcpy(node + 1, &attachment, sizeof(T));
 
 		return { static_cast<u32>(reinterpret_cast<u32*>(node) - builder->scratch.begin()) };
 	}
 
-	Node* complete_ast(Builder* builder, AstPool* dst) noexcept;
+	AstNode* complete_ast(Builder* builder, AstPool* dst) noexcept;
 
 
 

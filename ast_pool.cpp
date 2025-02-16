@@ -119,12 +119,12 @@ void release_ast_pool(AstPool* asts) noexcept
 	asts->pool.release();
 }
 
-a2::Node* alloc_ast(AstPool* asts, u32 dwords) noexcept
+a2::AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept
 {
-	return static_cast<a2::Node*>(asts->pool.reserve_exact(dwords * sizeof(u32)));
+	return static_cast<a2::AstNode*>(asts->pool.reserve_exact(dwords * sizeof(u32)));
 }
 
-a2::Node* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, TypePool* types, ValuePool* values, a2::Builder* builder) noexcept
+a2::AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, TypePool* types, ValuePool* values, a2::Builder* builder) noexcept
 {
 	const a2::BuilderToken first_child_token = push_builtin_def(builder, identifiers, range::from_literal_string("typeinfo"), &builtin_typeinfo);
 

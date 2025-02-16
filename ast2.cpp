@@ -97,31 +97,31 @@ constexpr inline const char8* const NODE_TYPE_NAMES[] = {
 //     if next_sibling_offset != NO_CHILDREN then
 //         direct predecessor gets FLAG_LAST_SIBLING
 //         predecessor at next_sibling_offset gets FLAG_FIRST_SIBLING
-static void set_internal_flags(a2::Node* begin, a2::Node* end) noexcept
+static void set_internal_flags(a2::AstNode* begin, a2::AstNode* end) noexcept
 {
 	ASSERT_OR_IGNORE(begin != end);
 
-	a2::Node* prev = nullptr;
+	a2::AstNode* prev = nullptr;
 
-	a2::Node* curr = begin;
+	a2::AstNode* curr = begin;
 
 	while (curr != end)
 	{
-		a2::Node* const next = apply_offset_(curr, curr->data_dwords);
+		a2::AstNode* const next = apply_offset_(curr, curr->data_dwords);
 
 		if (curr->next_sibling_offset != a2::Builder::NO_CHILDREN.rep)
 		{
 			ASSERT_OR_IGNORE(prev != nullptr);
 
-			a2::Node* const first_child = reinterpret_cast<a2::Node*>(reinterpret_cast<u32*>(begin) + curr->next_sibling_offset);
+			a2::AstNode* const first_child = reinterpret_cast<a2::AstNode*>(reinterpret_cast<u32*>(begin) + curr->next_sibling_offset);
 
-			ASSERT_OR_IGNORE((first_child->internal_flags & a2::Node::FLAG_FIRST_SIBLING) == 0);
+			ASSERT_OR_IGNORE((first_child->internal_flags & a2::AstNode::FLAG_FIRST_SIBLING) == 0);
 
-			first_child->internal_flags |= a2::Node::FLAG_FIRST_SIBLING;
+			first_child->internal_flags |= a2::AstNode::FLAG_FIRST_SIBLING;
 
-			ASSERT_OR_IGNORE((prev->internal_flags & a2::Node::FLAG_LAST_SIBLING) == 0);
+			ASSERT_OR_IGNORE((prev->internal_flags & a2::AstNode::FLAG_LAST_SIBLING) == 0);
 
-			prev->internal_flags |= a2::Node::FLAG_LAST_SIBLING;
+			prev->internal_flags |= a2::AstNode::FLAG_LAST_SIBLING;
 		}
 
 		prev = curr;
@@ -129,13 +129,13 @@ static void set_internal_flags(a2::Node* begin, a2::Node* end) noexcept
 		curr = next;
 	}
 
-	ASSERT_OR_IGNORE((prev->internal_flags & (a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING)) == 0);
+	ASSERT_OR_IGNORE((prev->internal_flags & (a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING)) == 0);
 
-	prev->internal_flags |= a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING;
+	prev->internal_flags |= a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING;
 }
 
 // Create a linked list modelling a preorder traversal of all nodes.
-static a2::Node* build_traversal_list(a2::Node* begin, a2::Node* end) noexcept
+static a2::AstNode* build_traversal_list(a2::AstNode* begin, a2::AstNode* end) noexcept
 {
 	sreg depth = -1;
 
@@ -143,7 +143,7 @@ static a2::Node* build_traversal_list(a2::Node* begin, a2::Node* end) noexcept
 
 	u32 prev_sibling_inds[a2::MAX_TREE_DEPTH];
 
-	a2::Node* curr = begin;
+	a2::AstNode* curr = begin;
 
 	while (true)
 	{
@@ -151,22 +151,22 @@ static a2::Node* build_traversal_list(a2::Node* begin, a2::Node* end) noexcept
 
 		// Connect predecessor
 
-		if ((curr->internal_flags & a2::Node::FLAG_FIRST_SIBLING) == 0)
+		if ((curr->internal_flags & a2::AstNode::FLAG_FIRST_SIBLING) == 0)
 		{
 			ASSERT_OR_IGNORE(depth >= 0);
 
 			const u32 prev_sibling_ind = prev_sibling_inds[depth];
 
-			a2::Node* prev_sibling = reinterpret_cast<a2::Node*>(reinterpret_cast<u32*>(begin) + prev_sibling_ind);
+			a2::AstNode* prev_sibling = reinterpret_cast<a2::AstNode*>(reinterpret_cast<u32*>(begin) + prev_sibling_ind);
 
 			prev_sibling->next_sibling_offset = curr_ind;
 		}
 
 		// Push something
 
-		if ((curr->internal_flags & a2::Node::FLAG_LAST_SIBLING) == 0)
+		if ((curr->internal_flags & a2::AstNode::FLAG_LAST_SIBLING) == 0)
 		{
-			if ((curr->internal_flags & a2::Node::FLAG_FIRST_SIBLING) == a2::Node::FLAG_FIRST_SIBLING)
+			if ((curr->internal_flags & a2::AstNode::FLAG_FIRST_SIBLING) == a2::AstNode::FLAG_FIRST_SIBLING)
 			{
 				if (depth + 1 >= a2::MAX_TREE_DEPTH)
 					panic("Maximum parse tree depth of %u exceeded.\n", a2::MAX_TREE_DEPTH);
@@ -176,7 +176,7 @@ static a2::Node* build_traversal_list(a2::Node* begin, a2::Node* end) noexcept
 
 			ASSERT_OR_IGNORE(depth >= 0);
 
-			if ((curr->internal_flags & a2::Node::FLAG_NO_CHILDREN) == 0)
+			if ((curr->internal_flags & a2::AstNode::FLAG_NO_CHILDREN) == 0)
 			{
 				ASSERT_OR_IGNORE(recursively_last_child != a2::Builder::NO_CHILDREN.rep);
 
@@ -189,18 +189,18 @@ static a2::Node* build_traversal_list(a2::Node* begin, a2::Node* end) noexcept
 		}
 		else // last sibling
 		{
-			if ((curr->internal_flags & a2::Node::FLAG_FIRST_SIBLING) == 0)
+			if ((curr->internal_flags & a2::AstNode::FLAG_FIRST_SIBLING) == 0)
 			{
 				ASSERT_OR_IGNORE(depth >= 0);
 
 				depth -= 1;
 			}
 
-			if ((curr->internal_flags & a2::Node::FLAG_NO_CHILDREN) == a2::Node::FLAG_NO_CHILDREN)
+			if ((curr->internal_flags & a2::AstNode::FLAG_NO_CHILDREN) == a2::AstNode::FLAG_NO_CHILDREN)
 				recursively_last_child = curr_ind;
 		}
 
-		a2::Node* const next = apply_offset_(curr, curr->data_dwords);
+		a2::AstNode* const next = apply_offset_(curr, curr->data_dwords);
 
 		if (next == end)
 			break;
@@ -210,14 +210,14 @@ static a2::Node* build_traversal_list(a2::Node* begin, a2::Node* end) noexcept
 	
 	ASSERT_OR_IGNORE(depth == -1);
 
-	ASSERT_OR_IGNORE(reinterpret_cast<a2::Node*>(reinterpret_cast<u32*>(curr) + curr->data_dwords) == end);
+	ASSERT_OR_IGNORE(reinterpret_cast<a2::AstNode*>(reinterpret_cast<u32*>(curr) + curr->data_dwords) == end);
 
 	return curr;
 }
 
 // Traverse the linked list created by build_traversal_list, pushing nodes into
 // dst.
-static a2::Node* copy_postorder_to_preorder(const a2::Node* begin, const a2::Node* end, const a2::Node* src_root, AstPool* dst) noexcept
+static a2::AstNode* copy_postorder_to_preorder(const a2::AstNode* begin, const a2::AstNode* end, const a2::AstNode* src_root, AstPool* dst) noexcept
 {
 	u32 prev_sibling_inds[a2::MAX_TREE_DEPTH];
 
@@ -225,17 +225,17 @@ static a2::Node* copy_postorder_to_preorder(const a2::Node* begin, const a2::Nod
 
 	const u32 end_ind = static_cast<u32>(reinterpret_cast<const u32*>(end) - reinterpret_cast<const u32*>(begin));
 
-	a2::Node* const dst_root = alloc_ast(dst, end_ind);
+	a2::AstNode* const dst_root = alloc_ast(dst, end_ind);
 
-	a2::Node* dst_curr = dst_root;
+	a2::AstNode* dst_curr = dst_root;
 
-	const a2::Node* src_curr = src_root;
+	const a2::AstNode* src_curr = src_root;
 
 	while (true)
 	{
 		// Copy node
 
-		a2::Node* const dst_node = dst_curr;
+		a2::AstNode* const dst_node = dst_curr;
 		
 		dst_curr = a2::apply_offset_(dst_curr, src_curr->data_dwords);
 
@@ -243,7 +243,7 @@ static a2::Node* copy_postorder_to_preorder(const a2::Node* begin, const a2::Nod
 
 		const u32 curr_ind = static_cast<u32>(reinterpret_cast<u32*>(dst_node) - reinterpret_cast<u32*>(dst_root));
 
-		if ((src_curr->internal_flags & a2::Node::FLAG_FIRST_SIBLING) == 0)
+		if ((src_curr->internal_flags & a2::AstNode::FLAG_FIRST_SIBLING) == 0)
 		{
 			while (true)
 			{
@@ -253,11 +253,11 @@ static a2::Node* copy_postorder_to_preorder(const a2::Node* begin, const a2::Nod
 
 				depth -= 1;
 
-				a2::Node* const prev_sibling = reinterpret_cast<a2::Node*>(reinterpret_cast<u32*>(dst_root) + prev_sibling_ind);
+				a2::AstNode* const prev_sibling = reinterpret_cast<a2::AstNode*>(reinterpret_cast<u32*>(dst_root) + prev_sibling_ind);
 
 				prev_sibling->next_sibling_offset = curr_ind - prev_sibling_ind;
 
-				if ((prev_sibling->internal_flags & a2::Node::FLAG_LAST_SIBLING) == 0)
+				if ((prev_sibling->internal_flags & a2::AstNode::FLAG_LAST_SIBLING) == 0)
 					break;
 			}
 		}
@@ -271,7 +271,7 @@ static a2::Node* copy_postorder_to_preorder(const a2::Node* begin, const a2::Nod
 		if (src_curr->next_sibling_offset == a2::Builder::NO_CHILDREN.rep)
 			break;
 
-		src_curr = reinterpret_cast<const a2::Node*>(reinterpret_cast<const u32*>(begin) + src_curr->next_sibling_offset);
+		src_curr = reinterpret_cast<const a2::AstNode*>(reinterpret_cast<const u32*>(begin) + src_curr->next_sibling_offset);
 	}
 
 	ASSERT_OR_IGNORE(depth != -1);
@@ -282,7 +282,7 @@ static a2::Node* copy_postorder_to_preorder(const a2::Node* begin, const a2::Nod
 
 		depth -= 1;
 
-		a2::Node* const prev_sibling = reinterpret_cast<a2::Node*>(reinterpret_cast<u32*>(dst_root) + prev_sibling_ind);
+		a2::AstNode* const prev_sibling = reinterpret_cast<a2::AstNode*>(reinterpret_cast<u32*>(dst_root) + prev_sibling_ind);
 
 		prev_sibling->next_sibling_offset = end_ind - prev_sibling_ind;
 	}
@@ -290,17 +290,17 @@ static a2::Node* copy_postorder_to_preorder(const a2::Node* begin, const a2::Nod
 	return dst_root;
 }
 
-a2::Node* a2::complete_ast(Builder* builder, AstPool* dst) noexcept
+a2::AstNode* a2::complete_ast(Builder* builder, AstPool* dst) noexcept
 {
-	Node* const begin = reinterpret_cast<Node*>(builder->scratch.begin());
+	AstNode* const begin = reinterpret_cast<AstNode*>(builder->scratch.begin());
 
-	Node* const end = reinterpret_cast<Node*>(builder->scratch.end());
+	AstNode* const end = reinterpret_cast<AstNode*>(builder->scratch.end());
 
 	set_internal_flags(begin, end);
 
-	Node* const src_root = build_traversal_list(begin, end);
+	AstNode* const src_root = build_traversal_list(begin, end);
 
-	Node* const dst_root = copy_postorder_to_preorder(begin, end, src_root, dst);
+	AstNode* const dst_root = copy_postorder_to_preorder(begin, end, src_root, dst);
 
 	builder->scratch.reset(1 << 20);
 

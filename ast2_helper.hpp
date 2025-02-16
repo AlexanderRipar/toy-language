@@ -8,11 +8,11 @@
 
 namespace a2
 {
-	static inline Node* last_child_of(Node* node) noexcept
+	static inline AstNode* last_child_of(AstNode* node) noexcept
 	{
 		ASSERT_OR_IGNORE(has_children(node));
 
-		Node* curr = first_child_of(node);
+		AstNode* curr = first_child_of(node);
 		
 		while (has_next_sibling(curr))
 			curr = next_sibling_of(curr);
@@ -24,24 +24,24 @@ namespace a2
 
 	struct FuncInfo
 	{
-		a2::Node* parameters;
+		a2::AstNode* parameters;
 
-		OptPtr<a2::Node> return_type;
+		OptPtr<a2::AstNode> return_type;
 
-		OptPtr<a2::Node> expects;
+		OptPtr<a2::AstNode> expects;
 
-		OptPtr<a2::Node> ensures;
+		OptPtr<a2::AstNode> ensures;
 
-		OptPtr<a2::Node> body;
+		OptPtr<a2::AstNode> body;
 	};
 
-	inline FuncInfo func_info(Node* func) noexcept
+	inline FuncInfo func_info(AstNode* func) noexcept
 	{
 		ASSERT_OR_IGNORE(func->tag == Tag::Func);
 
 		ASSERT_OR_IGNORE(has_children(func));
 
-		Node* curr = first_child_of(func);
+		AstNode* curr = first_child_of(func);
 
 		ASSERT_OR_IGNORE(curr->tag == Tag::ParameterList);
 
@@ -88,12 +88,12 @@ namespace a2
 
 	struct DefinitionInfo
 	{
-		OptPtr<a2::Node> type;
+		OptPtr<a2::AstNode> type;
 
-		OptPtr<a2::Node> value;
+		OptPtr<a2::AstNode> value;
 	};
 
-	inline DefinitionInfo definition_info(Node* definition) noexcept
+	inline DefinitionInfo definition_info(AstNode* definition) noexcept
 	{
 		ASSERT_OR_IGNORE(definition->tag == Tag::Definition);
 
@@ -102,30 +102,30 @@ namespace a2
 
 		if (has_flag(definition, Flag::Definition_HasType))
 		{
-			Node* const type = first_child_of(definition);
+			AstNode* const type = first_child_of(definition);
 
-			return { some(type), has_next_sibling(type) ? some(next_sibling_of(type)) : none<Node>() };
+			return { some(type), has_next_sibling(type) ? some(next_sibling_of(type)) : none<AstNode>() };
 		}
 
-		return { none<Node>(), some(first_child_of(definition)) };
+		return { none<AstNode>(), some(first_child_of(definition)) };
 	}
 
 	struct IfInfo
 	{
-		Node* condition;
+		AstNode* condition;
 
-		Node* consequent;
+		AstNode* consequent;
 
-		OptPtr<Node> alternative;
+		OptPtr<AstNode> alternative;
 
-		OptPtr<Node> where;
+		OptPtr<AstNode> where;
 	};
 
-	inline IfInfo if_info(Node* if_node) noexcept
+	inline IfInfo if_info(AstNode* if_node) noexcept
 	{
 		ASSERT_OR_IGNORE(if_node->tag == Tag::If);
 
-		Node* curr = first_child_of(if_node);
+		AstNode* curr = first_child_of(if_node);
 
 		IfInfo info{};
 

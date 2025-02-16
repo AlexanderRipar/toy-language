@@ -9,7 +9,7 @@
 
 namespace diag
 {
-	void print_ast(FILE* out, IdentifierPool* identifiers, a2::Node* root) noexcept;	
+	void print_ast(FILE* out, IdentifierPool* identifiers, a2::AstNode* root) noexcept;	
 
 	void print_type(FILE* out, IdentifierPool* identifiers, TypePool* types, TypeId type_id) noexcept;
 }

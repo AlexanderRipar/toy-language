@@ -2413,7 +2413,7 @@ Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers) noexcept
 	return parser;
 }
 
-a2::Node* parse(Parser* parser, SourceFile source, AstPool* out) noexcept
+a2::AstNode* parse(Parser* parser, SourceFile source, AstPool* out) noexcept
 {
 	ASSERT_OR_IGNORE(source.content().count() != 0 && source.content().end()[-1] == '\0');
 

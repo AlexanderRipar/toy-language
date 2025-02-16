@@ -3,7 +3,7 @@
 #include "../pass_data.hpp"
 #include "../ast2_attach.hpp"
 
-static void print_node_header(FILE* out, IdentifierPool* identifiers, const a2::Node* node, s32 depth) noexcept
+static void print_node_header(FILE* out, IdentifierPool* identifiers, const a2::AstNode* node, s32 depth) noexcept
 {
 	if (node->tag == a2::Tag::ValIdentifer)
 	{
@@ -21,7 +21,7 @@ static void print_node_header(FILE* out, IdentifierPool* identifiers, const a2::
 	}
 }
 
-void diag::print_ast(FILE* out, IdentifierPool* identifiers, a2::Node* root) noexcept
+void diag::print_ast(FILE* out, IdentifierPool* identifiers, a2::AstNode* root) noexcept
 {
 	a2::PreorderIterator it = a2::preorder_ancestors_of(root);
 

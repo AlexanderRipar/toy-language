@@ -9,9 +9,9 @@ struct TypeBuilderMember
 
 	u32 unused_;
 
-	OptPtr<a2::Node> type_expr;
+	OptPtr<a2::AstNode> type_expr;
 
-	OptPtr<a2::Node> value_expr;
+	OptPtr<a2::AstNode> value_expr;
 
 	u64 offset : 60; // when is_global: offset into global data segment; otherwise offset inside instances of type.
 
@@ -66,7 +66,7 @@ static void release_type_builder(Typechecker* typechecker, TypeBuilder* builder)
 		typechecker->first_free_builder_index = static_cast<s32>(builder - typechecker->builders.begin());
 }
 
-static TypeId typecheck_parameter(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* parameter) noexcept
+static TypeId typecheck_parameter(Typechecker* typechecker, Scope* enclosing_scope, a2::AstNode* parameter) noexcept
 {
 	ASSERT_OR_IGNORE(parameter->tag == a2::Tag::Definition);
 
@@ -91,7 +91,7 @@ static TypeId typecheck_parameter(Typechecker* typechecker, Scope* enclosing_sco
 	return type_id;
 }
 
-static TypeId interpret_type_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* expr) noexcept
+static TypeId interpret_type_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstNode* expr) noexcept
 {
 	Value* const type_value = interpret_expr(typechecker->interpreter, enclosing_scope, expr);
 
@@ -125,7 +125,7 @@ void release_typechecker(Typechecker* typechecker) noexcept
 	typechecker->builders.release();
 }
 
-TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* expr) noexcept
+TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstNode* expr) noexcept
 {
 	switch (expr->tag)
 	{
@@ -162,7 +162,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node
 			panic("Could not find definition for identifier '%.*s'\n", static_cast<s32>(name.count()), name.begin());
 		}
 
-		a2::Node* const definition = lookup.definition;
+		a2::AstNode* const definition = lookup.definition;
 
 		a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(definition);
 
@@ -175,9 +175,9 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node
 	case a2::Tag::OpLogAnd:
 	case a2::Tag::OpLogOr:
 	{
-		a2::Node* const lhs = a2::first_child_of(expr);
+		a2::AstNode* const lhs = a2::first_child_of(expr);
 
-		a2::Node* const rhs = a2::next_sibling_of(lhs);
+		a2::AstNode* const rhs = a2::next_sibling_of(lhs);
 
 		const TypeId lhs_type_id = typecheck_expr(typechecker, enclosing_scope, lhs);
 
@@ -194,7 +194,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node
 
 	case a2::Tag::OpTypeArray:
 	{
-		a2::Node* const count = a2::first_child_of(expr);
+		a2::AstNode* const count = a2::first_child_of(expr);
 
 		Value* const count_value = interpret_expr(typechecker->interpreter, enclosing_scope, count);
 
@@ -232,7 +232,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node
 
 		release_interpretation_result(typechecker->interpreter, count_value);
 
-		a2::Node* const element_type = a2::next_sibling_of(count);
+		a2::AstNode* const element_type = a2::next_sibling_of(count);
 
 		Value* const element_type_value = interpret_expr(typechecker->interpreter, enclosing_scope, element_type);
 
@@ -271,7 +271,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node
 
 	case a2::Tag::OpArrayIndex:
 	{
-		a2::Node* const array = a2::first_child_of(expr);
+		a2::AstNode* const array = a2::first_child_of(expr);
 
 		const TypeId array_type_id = typecheck_expr(typechecker, enclosing_scope, array);
 
@@ -296,7 +296,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node
 			panic("Expected first operand of array index operation to be of array, slice or multi-pointer type\n");
 		}
 
-		a2::Node* const index = a2::next_sibling_of(array);
+		a2::AstNode* const index = a2::next_sibling_of(array);
 
 		const TypeId index_type_id = typecheck_expr(typechecker, enclosing_scope, index);
 
@@ -315,9 +315,9 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node
 
 		a2::DirectChildIterator it = a2::direct_children_of(expr);
 
-		for (OptPtr<a2::Node> rst = a2::next(&it); is_some(rst); rst = a2::next(&it))
+		for (OptPtr<a2::AstNode> rst = a2::next(&it); is_some(rst); rst = a2::next(&it))
 		{
-			a2::Node* const child = get_ptr(rst);
+			a2::AstNode* const child = get_ptr(rst);
 
 			const TypeId child_type_id = typecheck_expr(typechecker, enclosing_scope, child);
 
@@ -410,7 +410,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node
 		type_buf.header.return_type_id = func_data->return_type_id;
 		type_buf.header.parameter_count = 0;
 
-		for (OptPtr<a2::Node> parameter = a2::next(&it); is_some(parameter); parameter = a2::next(&it))
+		for (OptPtr<a2::AstNode> parameter = a2::next(&it); is_some(parameter); parameter = a2::next(&it))
 		{
 			ASSERT_OR_IGNORE(type_buf.header.parameter_count + 1 < array_count(type_buf.parameter_type_ids));
 
@@ -445,7 +445,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node
 
 	case a2::Tag::Call:
 	{
-		a2::Node* const callee = a2::first_child_of(expr);
+		a2::AstNode* const callee = a2::first_child_of(expr);
 
 		const TypeId callee_type_id = typecheck_expr(typechecker, enclosing_scope, callee);
 
@@ -456,7 +456,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node
 
 		FuncType* const func_type = entry->data<FuncType>();
 
-		a2::Node* curr = callee;
+		a2::AstNode* curr = callee;
 
 		for (u32 i = 0; i != func_type->header.parameter_count; ++i)
 		{
@@ -568,7 +568,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node
 	}
 }
 
-TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* definition) noexcept
+TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, a2::AstNode* definition) noexcept
 {
 	ASSERT_OR_IGNORE(definition->tag == a2::Tag::Definition);
 
@@ -634,7 +634,7 @@ TypeBuilder* alloc_type_builder(Typechecker* typechecker) noexcept
 	return builder;
 }
 
-void add_type_member(Typechecker* typechecker, TypeBuilder* builder, IdentifierId identifier_id, OptPtr<a2::Node> const type_expr, OptPtr<a2::Node> const value_expr, u64 offset, bool is_mut, bool is_pub, bool is_global, bool is_use) noexcept
+void add_type_member(Typechecker* typechecker, TypeBuilder* builder, IdentifierId identifier_id, OptPtr<a2::AstNode> const type_expr, OptPtr<a2::AstNode> const value_expr, u64 offset, bool is_mut, bool is_pub, bool is_global, bool is_use) noexcept
 {
 	ASSERT_OR_IGNORE(is_some(type_expr) || is_some(value_expr));
 
@@ -744,7 +744,7 @@ TypeId complete_type_builder(Typechecker* typechecker, TypeBuilder* builder, u32
 
 
 
-TypeId typecheck_file(Typechecker* typechecker, a2::Node* root) noexcept
+TypeId typecheck_file(Typechecker* typechecker, a2::AstNode* root) noexcept
 {
 	ASSERT_OR_IGNORE(root->tag == a2::Tag::File);
 
@@ -752,9 +752,9 @@ TypeId typecheck_file(Typechecker* typechecker, a2::Node* root) noexcept
 
 	a2::DirectChildIterator it = a2::direct_children_of(root);
 
-	for (OptPtr<a2::Node> rst = a2::next(&it); is_some(rst); rst = a2::next(&it))
+	for (OptPtr<a2::AstNode> rst = a2::next(&it); is_some(rst); rst = a2::next(&it))
 	{
-		a2::Node* const definition = get_ptr(rst);
+		a2::AstNode* const definition = get_ptr(rst);
 
 		if (definition->tag != a2::Tag::Definition)
 			continue;

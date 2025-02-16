@@ -10,16 +10,16 @@ struct DummyTree
 
 };
 
-static constexpr u8 NODE_DWORDS = sizeof(a2::Node) / sizeof(u32);
+static constexpr u8 NODE_DWORDS = sizeof(a2::AstNode) / sizeof(u32);
 
-static void push_node(DummyTree* tree, a2::Node node, u8 data_dwords = 0, const void* data = nullptr) noexcept
+static void push_node(DummyTree* tree, a2::AstNode node, u8 data_dwords = 0, const void* data = nullptr) noexcept
 {
 	const u32 required_dwords = NODE_DWORDS + data_dwords;
 
 	if (tree->index + required_dwords > array_count(tree->dwords))
 		panic("Testing dummy tree too large");
 
-	memcpy(tree->dwords + tree->index, &node, sizeof(a2::Node));
+	memcpy(tree->dwords + tree->index, &node, sizeof(a2::AstNode));
 
 	memcpy(tree->dwords + tree->index + NODE_DWORDS, data, data_dwords * sizeof(u32));
 
@@ -31,7 +31,7 @@ static DummyTree single_node_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -41,9 +41,9 @@ static DummyTree unary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
+	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::Block, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::Tag::Block, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -53,11 +53,11 @@ static DummyTree binary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::OpBitAnd, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 3 * NODE_DWORDS });
+	push_node(&tree, { a2::Tag::OpBitAnd, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 3 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::Tag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValIdentifer, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::Tag::ValIdentifer, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -69,11 +69,11 @@ static DummyTree nary_dummy_tree(u32 n) noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, NODE_DWORDS * (n + 1) });
+	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, NODE_DWORDS * (n + 1) });
 
 	for (u32 i = 0; i != n; ++i)
 	{
-		const u8 internal_flags = static_cast<u8>((i == 0 ? a2::Node::FLAG_FIRST_SIBLING : 0) | (i == n - 1 ? a2::Node::FLAG_LAST_SIBLING : 0) | a2::Node::FLAG_NO_CHILDREN);
+		const u8 internal_flags = static_cast<u8>((i == 0 ? a2::AstNode::FLAG_FIRST_SIBLING : 0) | (i == n - 1 ? a2::AstNode::FLAG_LAST_SIBLING : 0) | a2::AstNode::FLAG_NO_CHILDREN);
 
 		push_node(&tree, { a2::Tag::Block, a2::Flag::EMPTY, NODE_DWORDS, internal_flags, NODE_DWORDS });
 	}
@@ -86,23 +86,23 @@ static DummyTree complex_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { static_cast<a2::Tag>(1), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 9 * NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::Tag>(1), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 9 * NODE_DWORDS });
 	
-	push_node(&tree, { static_cast<a2::Tag>(2), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING, 3 * NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::Tag>(2), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING, 3 * NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(3), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::Tag>(3), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(4), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::Tag>(4), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(5), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING, 5 * NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::Tag>(5), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING, 5 * NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(6), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::Tag>(6), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(7), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::Tag>(7), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(8), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::Tag>(8), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(9), a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::Tag>(9), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -112,19 +112,19 @@ static DummyTree double_binary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::OpSub, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 7 * NODE_DWORDS });
+	push_node(&tree, { a2::Tag::OpSub, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 7 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::OpAdd, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING, 5 * NODE_DWORDS });
+	push_node(&tree, { a2::Tag::OpAdd, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING, 5 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::Tag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::OpMul, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING, 3 * NODE_DWORDS });
+	push_node(&tree, { a2::Tag::OpMul, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING, 3 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValFloat, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::Tag::ValFloat, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValInteger, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::Tag::ValInteger, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValString, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::Tag::ValString, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -134,23 +134,23 @@ static DummyTree flat_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING, 9 * NODE_DWORDS });
+	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 9 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS });
+	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValIdentifer, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
-
-	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, 0, 2 * NODE_DWORDS });
-
-	push_node(&tree, { a2::Tag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::Tag::ValIdentifer, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, 0, 2 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValFloat, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::Tag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
+	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, 0, 2 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValString, a2::Flag::EMPTY, NODE_DWORDS, a2::Node::FLAG_FIRST_SIBLING | a2::Node::FLAG_LAST_SIBLING | a2::Node::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::Tag::ValFloat, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+
+	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
+
+	push_node(&tree, { a2::Tag::ValString, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -189,7 +189,7 @@ static void has_children_on_single_node_is_false() noexcept
 
 	DummyTree tree = single_node_dummy_tree();
 
-	TEST_EQUAL(a2::has_children(reinterpret_cast<a2::Node*>(&tree.dwords)), false);
+	TEST_EQUAL(a2::has_children(reinterpret_cast<a2::AstNode*>(&tree.dwords)), false);
 
 	TEST_END;
 }
@@ -200,7 +200,7 @@ static void has_children_with_single_child_is_true() noexcept
 
 	DummyTree tree = unary_dummy_tree();
 
-	TEST_EQUAL(a2::has_children(reinterpret_cast<a2::Node*>(tree.dwords)), true);
+	TEST_EQUAL(a2::has_children(reinterpret_cast<a2::AstNode*>(tree.dwords)), true);
 
 	TEST_END;
 }
@@ -211,7 +211,7 @@ static void has_children_with_two_children_is_true() noexcept
 
 	DummyTree tree = binary_dummy_tree();
 
-	TEST_EQUAL(a2::has_children(reinterpret_cast<a2::Node*>(tree.dwords)), true);
+	TEST_EQUAL(a2::has_children(reinterpret_cast<a2::AstNode*>(tree.dwords)), true);
 
 	TEST_END;
 }
@@ -224,9 +224,9 @@ static void child_iterator_with_0_children_has_0_entries() noexcept
 
 	DummyTree tree = single_node_dummy_tree();
 
-	a2::DirectChildIterator it = a2::direct_children_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::DirectChildIterator it = a2::direct_children_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
-	TEST_EQUAL(a2::next(&it), none<a2::Node>());
+	TEST_EQUAL(a2::next(&it), none<a2::AstNode>());
 
 	TEST_END;
 }
@@ -237,11 +237,11 @@ static void child_iterator_with_1_child_has_1_entry() noexcept
 
 	DummyTree tree = unary_dummy_tree();
 
-	a2::DirectChildIterator it = a2::direct_children_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::DirectChildIterator it = a2::direct_children_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
-	TEST_EQUAL(a2::next(&it), some(reinterpret_cast<a2::Node*>(tree.dwords) + 1));
+	TEST_EQUAL(a2::next(&it), some(reinterpret_cast<a2::AstNode*>(tree.dwords) + 1));
 
-	TEST_EQUAL(a2::next(&it), none<a2::Node>());
+	TEST_EQUAL(a2::next(&it), none<a2::AstNode>());
 
 	TEST_END;
 }
@@ -252,12 +252,12 @@ static void child_iterator_with_5_children_has_5_entries() noexcept
 
 	DummyTree tree = nary_dummy_tree(5);
 
-	a2::DirectChildIterator it = a2::direct_children_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::DirectChildIterator it = a2::direct_children_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
 	for (u32 i = 0; i != 5; ++i)
-		TEST_EQUAL(a2::next(&it), some(reinterpret_cast<a2::Node*>(tree.dwords) + i + 1));
+		TEST_EQUAL(a2::next(&it), some(reinterpret_cast<a2::AstNode*>(tree.dwords) + i + 1));
 
-	TEST_EQUAL(a2::next(&it), none<a2::Node>());
+	TEST_EQUAL(a2::next(&it), none<a2::AstNode>());
 
 	TEST_END;
 }
@@ -268,13 +268,13 @@ static void child_iterator_with_grandchildren_only_iterates_direct_children() no
 
 	DummyTree tree = complex_dummy_tree();
 
-	a2::DirectChildIterator it = a2::direct_children_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::DirectChildIterator it = a2::direct_children_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
-	TEST_EQUAL(a2::next(&it), some(reinterpret_cast<a2::Node*>(tree.dwords) + 1));
+	TEST_EQUAL(a2::next(&it), some(reinterpret_cast<a2::AstNode*>(tree.dwords) + 1));
 
-	TEST_EQUAL(a2::next(&it), some(reinterpret_cast<a2::Node*>(tree.dwords) + 4));
+	TEST_EQUAL(a2::next(&it), some(reinterpret_cast<a2::AstNode*>(tree.dwords) + 4));
 
-	TEST_EQUAL(a2::next(&it), none<a2::Node>());
+	TEST_EQUAL(a2::next(&it), none<a2::AstNode>());
 
 	TEST_END;
 }
@@ -287,7 +287,7 @@ static void preorder_iterator_with_0_children_has_0_entries() noexcept
 
 	DummyTree tree = single_node_dummy_tree();
 
-	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
 	TEST_EQUAL(a2::is_valid(a2::next(&it)), false);
 
@@ -300,13 +300,13 @@ static void preorder_iterator_with_1_child_has_1_entry() noexcept
 
 	DummyTree tree = unary_dummy_tree();
 
-	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
 	const a2::IterationResult result = a2::next(&it);
 
 	TEST_EQUAL(a2::is_valid(result), true);
 
-	TEST_EQUAL(result.node, reinterpret_cast<a2::Node*>(tree.dwords) + 1);
+	TEST_EQUAL(result.node, reinterpret_cast<a2::AstNode*>(tree.dwords) + 1);
 
 	TEST_EQUAL(result.depth, 0);
 
@@ -321,7 +321,7 @@ static void preorder_iterator_with_5_children_has_5_entries() noexcept
 
 	DummyTree tree = nary_dummy_tree(5);
 
-	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
 	for (u32 i = 0; i != 5; ++i)
 	{
@@ -329,7 +329,7 @@ static void preorder_iterator_with_5_children_has_5_entries() noexcept
 
 		TEST_EQUAL(a2::is_valid(result), true);
 
-		TEST_EQUAL(result.node, reinterpret_cast<a2::Node*>(tree.dwords) + i + 1);
+		TEST_EQUAL(result.node, reinterpret_cast<a2::AstNode*>(tree.dwords) + i + 1);
 
 		TEST_EQUAL(result.depth, 0);
 	}
@@ -345,7 +345,7 @@ static void preorder_iterator_with_grandchildren_iterates_grandchildren() noexce
 
 	DummyTree tree = complex_dummy_tree();
 
-	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
 	static constexpr u32 expected_depths[] = { 0, 1, 1, 0, 1, 2, 1, 2 };
 
@@ -355,7 +355,7 @@ static void preorder_iterator_with_grandchildren_iterates_grandchildren() noexce
 
 		TEST_EQUAL(a2::is_valid(result), true);
 
-		TEST_EQUAL(result.node, reinterpret_cast<a2::Node*>(tree.dwords) + i + 1);
+		TEST_EQUAL(result.node, reinterpret_cast<a2::AstNode*>(tree.dwords) + i + 1);
 
 		TEST_EQUAL(result.depth, expected_depths[i]);
 	}
@@ -371,7 +371,7 @@ static void preorder_iterator_with_flat_tree_iterates_subtrees() noexcept
 
 	DummyTree tree = flat_dummy_tree();
 
-	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
 	static constexpr u32 expected_depths[] = {
 		0, 1,
@@ -386,7 +386,7 @@ static void preorder_iterator_with_flat_tree_iterates_subtrees() noexcept
 
 		TEST_EQUAL(a2::is_valid(result), true);
 
-		TEST_EQUAL(result.node, reinterpret_cast<a2::Node*>(tree.dwords) + i + 1);
+		TEST_EQUAL(result.node, reinterpret_cast<a2::AstNode*>(tree.dwords) + i + 1);
 
 		TEST_EQUAL(result.depth, expected_depths[i]);
 	}
@@ -404,7 +404,7 @@ static void postorder_iterator_with_0_children_has_0_entries() noexcept
 
 	DummyTree tree = single_node_dummy_tree();
 
-	a2::PostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
 	TEST_EQUAL(a2::is_valid(a2::next(&it)), false);
 
@@ -417,9 +417,9 @@ static void postorder_iterator_with_1_child_has_1_entry() noexcept
 
 	DummyTree tree = unary_dummy_tree();
 
-	a2::PostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
-	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::Node*>(tree.dwords) + 1);
+	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::AstNode*>(tree.dwords) + 1);
 
 	TEST_EQUAL(a2::is_valid(a2::next(&it)), false);
 
@@ -432,10 +432,10 @@ static void postorder_iterator_with_5_children_has_5_entries() noexcept
 
 	DummyTree tree = nary_dummy_tree(5);
 
-	a2::PostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
 	for (u32 i = 0; i != 5; ++i)
-		TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::Node*>(tree.dwords) + i + 1);
+		TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::AstNode*>(tree.dwords) + i + 1);
 
 	TEST_EQUAL(a2::is_valid(a2::next(&it)), false);
 
@@ -448,23 +448,23 @@ static void postorder_iterator_with_grandchildren_iterates_grandchildren() noexc
 
 	DummyTree tree = complex_dummy_tree();
 
-	a2::PostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::Node*>(tree.dwords));
+	a2::PostorderIterator it = a2::postorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
-	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::Node*>(tree.dwords) + 2);
+	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::AstNode*>(tree.dwords) + 2);
 
-	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::Node*>(tree.dwords) + 3);
+	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::AstNode*>(tree.dwords) + 3);
 
-	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::Node*>(tree.dwords) + 1);
+	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::AstNode*>(tree.dwords) + 1);
 
-	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::Node*>(tree.dwords) + 6);
+	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::AstNode*>(tree.dwords) + 6);
 
-	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::Node*>(tree.dwords) + 5);
+	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::AstNode*>(tree.dwords) + 5);
 
-	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::Node*>(tree.dwords) + 8);
+	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::AstNode*>(tree.dwords) + 8);
 
-	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::Node*>(tree.dwords) + 7);
+	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::AstNode*>(tree.dwords) + 7);
 
-	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::Node*>(tree.dwords) + 4);
+	TEST_EQUAL(a2::next(&it).node, reinterpret_cast<a2::AstNode*>(tree.dwords) + 4);
 
 	TEST_EQUAL(a2::is_valid(a2::next(&it)), false);
 
@@ -483,9 +483,9 @@ static void push_node_once_appends_node() noexcept
 
 	DummyTree expected_tree = single_node_dummy_tree();
 
-	a2::Node* const actual = reinterpret_cast<a2::Node*>(builder.scratch.begin());
+	a2::AstNode* const actual = reinterpret_cast<a2::AstNode*>(builder.scratch.begin());
 
-	a2::Node* const expected = reinterpret_cast<a2::Node*>(expected_tree.dwords);
+	a2::AstNode* const expected = reinterpret_cast<a2::AstNode*>(expected_tree.dwords);
 
 	TEST_EQUAL(actual->tag, expected->tag);
 
@@ -493,7 +493,7 @@ static void push_node_once_appends_node() noexcept
 
 	TEST_EQUAL(actual->data_dwords, expected->data_dwords);
 
-	TEST_MEM_EQUAL(actual + 1, expected + 1, actual->data_dwords * sizeof(u32) - sizeof(a2::Node));
+	TEST_MEM_EQUAL(actual + 1, expected + 1, actual->data_dwords * sizeof(u32) - sizeof(a2::AstNode));
 
 	builder.scratch.release();
 
@@ -510,11 +510,11 @@ static void push_node_once_and_complete_appends_node() noexcept
 
 	MockedPools pools = create_mocked_pools();
 
-	a2::Node* const root = a2::complete_ast(&builder, pools.asts);
+	a2::AstNode* const root = a2::complete_ast(&builder, pools.asts);
 
 	DummyTree expected = single_node_dummy_tree();
 
-	TEST_MEM_EQUAL(root, expected.dwords, sizeof(a2::Node));
+	TEST_MEM_EQUAL(root, expected.dwords, sizeof(a2::AstNode));
 
 	builder.scratch.release();
 
@@ -535,11 +535,11 @@ static void push_node_with_unary_op_and_complete_reverses_tree() noexcept
 
 	MockedPools pools = create_mocked_pools();
 
-	a2::Node* const root = a2::complete_ast(&builder, pools.asts);
+	a2::AstNode* const root = a2::complete_ast(&builder, pools.asts);
 
 	DummyTree expected = unary_dummy_tree();
 
-	TEST_MEM_EQUAL(root, expected.dwords, 2 * sizeof(a2::Node));
+	TEST_MEM_EQUAL(root, expected.dwords, 2 * sizeof(a2::AstNode));
 
 	builder.scratch.release();
 
@@ -562,11 +562,11 @@ static void push_node_with_binary_op_and_complete_reverses_tree() noexcept
 
 	MockedPools pools = create_mocked_pools();
 
-	a2::Node* const root = a2::complete_ast(&builder, pools.asts);
+	a2::AstNode* const root = a2::complete_ast(&builder, pools.asts);
 
 	DummyTree expected = binary_dummy_tree();
 
-	TEST_MEM_EQUAL(root, expected.dwords, 3 * sizeof(a2::Node));
+	TEST_MEM_EQUAL(root, expected.dwords, 3 * sizeof(a2::AstNode));
 
 	builder.scratch.release();
 
@@ -601,11 +601,11 @@ static void push_node_with_complex_tree_and_complete_reverses_tree() noexcept
 
 	MockedPools pools = create_mocked_pools();
 
-	a2::Node* const root = a2::complete_ast(&builder, pools.asts);
+	a2::AstNode* const root = a2::complete_ast(&builder, pools.asts);
 
 	DummyTree expected = complex_dummy_tree();
 
-	TEST_MEM_EQUAL(root, expected.dwords, 9 * sizeof(a2::Node));
+	TEST_MEM_EQUAL(root, expected.dwords, 9 * sizeof(a2::AstNode));
 
 	builder.scratch.release();
 
@@ -636,11 +636,11 @@ static void push_node_with_double_binary_tree_and_complete_reverses_tree() noexc
 
 	MockedPools pools = create_mocked_pools();
 
-	a2::Node* const root = a2::complete_ast(&builder, pools.asts);
+	a2::AstNode* const root = a2::complete_ast(&builder, pools.asts);
 
 	DummyTree expected = double_binary_dummy_tree();
 
-	TEST_MEM_EQUAL(root, expected.dwords, 7 * sizeof(a2::Node));
+	TEST_MEM_EQUAL(root, expected.dwords, 7 * sizeof(a2::AstNode));
 
 	builder.scratch.release();
 

@@ -181,7 +181,7 @@ void set_interpreter_typechecker(Interpreter* interpreter, Typechecker* typechec
 	interpreter->typechecker = typechecker;
 }
 
-Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::Node* expr) noexcept
+Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstNode* expr) noexcept
 {
 	switch (expr->tag)
 	{
@@ -200,7 +200,7 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::Node
 			panic("Could not find definition for identifier '%.*s'\n", static_cast<s32>(name.count()), name.begin());
 		}
 
-		a2::Node* const definition = lookup.definition;
+		a2::AstNode* const definition = lookup.definition;
 
 		a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(definition);
 
@@ -261,7 +261,7 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::Node
 	{
 		ASSERT_OR_IGNORE(a2::has_children(expr));
 
-		a2::Node* const element_type_node = a2::first_child_of(expr);
+		a2::AstNode* const element_type_node = a2::first_child_of(expr);
 
 		ASSERT_OR_IGNORE(!a2::has_next_sibling(element_type_node));
 
@@ -330,7 +330,7 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::Node
 
 	case a2::Tag::Call:
 	{
-		a2::Node* const callee = a2::first_child_of(expr);
+		a2::AstNode* const callee = a2::first_child_of(expr);
 
 		Value* const callee_value = interpret_expr(interpreter, enclosing_scope, callee);
 
