@@ -29,7 +29,8 @@ add_executable(test test_main.cpp
 	../type_pool.cpp
 	../typechecker.cpp
 	../value_pool.cpp
-	../ast.hpp ../ast.cpp
+	../ast.cpp
+
 	../ast_attach.hpp ../ast_helper.hpp
 
 	../diag/diag.hpp

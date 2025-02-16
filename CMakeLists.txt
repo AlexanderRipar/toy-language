@@ -32,7 +32,8 @@ add_executable(
 	type_pool.cpp
 	typechecker.cpp
 	value_pool.cpp
-	ast.hpp ast.cpp
+	ast.cpp
+
 	ast_attach.hpp ast_helper.hpp
 
 	diag/diag.hpp

@@ -1,5 +1,4 @@
 #include "test_helpers.hpp"
-#include "../ast.hpp"
 #include "../pass_data.hpp"
 
 struct DummyTree

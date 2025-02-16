@@ -1,5 +1,3 @@
-#include "ast.hpp"
-
 #include "pass_data.hpp"
 
 constexpr inline const char8* const NODE_TYPE_NAMES[] = {
