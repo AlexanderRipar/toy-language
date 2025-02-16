@@ -101,7 +101,7 @@ namespace a2
 		MAX,
 	};
 
-	enum class Flag : u8
+	enum class AstFlag : u8
 	{
 		EMPTY                = 0,
 
@@ -140,24 +140,24 @@ namespace a2
 		Type_IsMut           = 0x02,
 	};
 
-	inline Flag operator|(Flag lhs, Flag rhs) noexcept
+	inline AstFlag operator|(AstFlag lhs, AstFlag rhs) noexcept
 	{
-		return static_cast<Flag>(static_cast<u8>(lhs) | static_cast<u8>(rhs));
+		return static_cast<AstFlag>(static_cast<u8>(lhs) | static_cast<u8>(rhs));
 	}
 
-	inline Flag operator&(Flag lhs, Flag rhs) noexcept
+	inline AstFlag operator&(AstFlag lhs, AstFlag rhs) noexcept
 	{
-		return static_cast<Flag>(static_cast<u8>(lhs) & static_cast<u8>(rhs));
+		return static_cast<AstFlag>(static_cast<u8>(lhs) & static_cast<u8>(rhs));
 	}
 
-	inline Flag& operator|=(Flag& lhs, Flag rhs) noexcept
+	inline AstFlag& operator|=(AstFlag& lhs, AstFlag rhs) noexcept
 	{
 		lhs = lhs | rhs;
 
 		return lhs;
 	}
 
-	inline Flag& operator&=(Flag& lhs, Flag rhs) noexcept
+	inline AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
 	{
 		lhs = lhs & rhs;
 
@@ -172,7 +172,7 @@ namespace a2
 
 		AstTag tag;
 
-		Flag flags;
+		AstFlag flags;
 
 		u8 data_dwords;
 
@@ -200,7 +200,7 @@ namespace a2
 		return (node->internal_flags & AstNode::FLAG_LAST_SIBLING) == 0;
 	}
 
-	static inline bool has_flag(AstNode* node, Flag flag) noexcept
+	static inline bool has_flag(AstNode* node, AstFlag flag) noexcept
 	{
 		return (static_cast<u8>(node->flags) & static_cast<u8>(flag)) != 0;
 	}
@@ -477,7 +477,7 @@ namespace a2
 		return builder;
 	}
 
-	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, AstTag tag, Flag flags) noexcept
+	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, AstTag tag, AstFlag flags) noexcept
 	{
 		static_assert(sizeof(AstNode) % sizeof(u32) == 0);
 
@@ -493,7 +493,7 @@ namespace a2
 	}
 
 	template<typename T>
-	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, Flag flags, T attachment) noexcept
+	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, AstFlag flags, T attachment) noexcept
 	{
 		static_assert(sizeof(AstNode) % sizeof(u32) == 0);
 		

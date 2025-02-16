@@ -320,7 +320,7 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 			type_bytes = range::from_object_bytes(&ptr_type);
 		}
 
-		if (a2::has_flag(expr, a2::Flag::Type_IsMut))
+		if (a2::has_flag(expr, a2::AstFlag::Type_IsMut))
 			flags |= TypeFlag::SliceOrPtr_IsMut;
 
 		*reinterpret_cast<TypeId*>(stack_value->value) = id_from_type(interpreter->types, tag, flags, type_bytes);

@@ -49,14 +49,14 @@ namespace a2
 
 		desc.parameters = curr;
 
-		if (has_flag(func, Flag::Func_HasReturnType))
+		if (has_flag(func, AstFlag::Func_HasReturnType))
 		{
 			curr = next_sibling_of(curr);
 
 			desc.return_type = some(curr);
 		}
 
-		if (has_flag(func, Flag::Func_HasExpects))
+		if (has_flag(func, AstFlag::Func_HasExpects))
 		{
 			curr = next_sibling_of(curr);
 
@@ -65,7 +65,7 @@ namespace a2
 			desc.expects = some(curr);
 		}
 
-		if (has_flag(func, Flag::Func_HasEnsures))
+		if (has_flag(func, AstFlag::Func_HasEnsures))
 		{
 			curr = next_sibling_of(curr);
 
@@ -74,7 +74,7 @@ namespace a2
 			desc.ensures = some(curr);
 		}
 
-		if (has_flag(func, Flag::Func_HasBody))
+		if (has_flag(func, AstFlag::Func_HasBody))
 		{
 			curr = next_sibling_of(curr);
 
@@ -100,7 +100,7 @@ namespace a2
 		if (!has_children(definition))
 			return {};
 
-		if (has_flag(definition, Flag::Definition_HasType))
+		if (has_flag(definition, AstFlag::Definition_HasType))
 		{
 			AstNode* const type = first_child_of(definition);
 
@@ -131,7 +131,7 @@ namespace a2
 
 		info.condition = curr;
 
-		if (has_flag(if_node, Flag::If_HasWhere))
+		if (has_flag(if_node, AstFlag::If_HasWhere))
 		{
 			curr = next_sibling_of(curr);
 
@@ -142,7 +142,7 @@ namespace a2
 
 		info.consequent = curr;
 
-		if (has_flag(if_node, Flag::If_HasElse))
+		if (has_flag(if_node, AstFlag::If_HasElse))
 		{
 			curr = next_sibling_of(curr);
 

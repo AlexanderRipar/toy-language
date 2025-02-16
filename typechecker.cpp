@@ -390,7 +390,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 			TypeEntry* return_type_entry = dealias_type_entry(typechecker->types, return_type_value->header.type_id);
 
 			if (return_type_entry->tag != TypeTag::Type)
-				panic("Expected type expression as %s's return type\n", a2::has_flag(expr, a2::Flag::Func_IsProc) ? "proc" : "func");
+				panic("Expected type expression as %s's return type\n", a2::has_flag(expr, a2::AstFlag::Func_IsProc) ? "proc" : "func");
 
 			const TypeId return_type_id = *access_value<TypeId>(return_type_value);
 
@@ -419,7 +419,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 			type_buf.header.parameter_count += 1;
 		}
 
-		const TypeFlag flags = a2::has_flag(expr, a2::Flag::Func_IsProc) ? TypeFlag::Func_IsProc : TypeFlag::EMPTY;
+		const TypeFlag flags = a2::has_flag(expr, a2::AstFlag::Func_IsProc) ? TypeFlag::Func_IsProc : TypeFlag::EMPTY;
 
 		const Range<byte> type = Range<byte>{ reinterpret_cast<const byte*>(&type_buf), sizeof(type_buf.header) + type_buf.header.parameter_count * sizeof(type_buf.parameter_type_ids[0]) };
 
@@ -759,14 +759,14 @@ TypeId typecheck_file(Typechecker* typechecker, a2::AstNode* root) noexcept
 		if (definition->tag != a2::AstTag::Definition)
 			continue;
 
-		if (a2::has_flag(definition, a2::Flag::Definition_IsGlobal))
+		if (a2::has_flag(definition, a2::AstFlag::Definition_IsGlobal))
 			fprintf(stderr, "WARN: Redundant 'global' definition modifier, as top level definitions are implicitly global\n");
 
 		a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(definition);
 
 		const a2::DefinitionInfo definition_info = a2::definition_info(definition);
 
-		add_type_member(typechecker, builder, definition_data->identifier_id, definition_info.type, definition_info.value, 0, a2::has_flag(definition, a2::Flag::Definition_IsMut), a2::has_flag(definition, a2::Flag::Definition_IsPub), true, a2::has_flag(definition, a2::Flag::Definition_IsUse));
+		add_type_member(typechecker, builder, definition_data->identifier_id, definition_info.type, definition_info.value, 0, a2::has_flag(definition, a2::AstFlag::Definition_IsMut), a2::has_flag(definition, a2::AstFlag::Definition_IsPub), true, a2::has_flag(definition, a2::AstFlag::Definition_IsUse));
 	}
 
 	return complete_type(typechecker, builder, 0, 1, 0);

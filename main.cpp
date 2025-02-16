@@ -31,7 +31,7 @@ static TypeId resolve_main(Config* config, Typechecker* typechecker, IdentifierP
 
 	a2::AstNode* const main_func = get_ptr(main_info.value);
 
-	if (!a2::has_flag(main_func, a2::Flag::Func_HasBody))
+	if (!a2::has_flag(main_func, a2::AstFlag::Func_HasBody))
 		panic("Expected entrypoint \"%.*s\" to have a body", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());
 
 	fprintf(stderr, "\n------------ %.*s AST ------------\n\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());
