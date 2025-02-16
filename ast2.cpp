@@ -141,7 +141,7 @@ static a2::AstNode* build_traversal_list(a2::AstNode* begin, a2::AstNode* end) n
 
 	u32 recursively_last_child = a2::AstBuilder::NO_CHILDREN.rep;
 
-	u32 prev_sibling_inds[a2::MAX_TREE_DEPTH];
+	u32 prev_sibling_inds[a2::MAX_AST_DEPTH];
 
 	a2::AstNode* curr = begin;
 
@@ -168,8 +168,8 @@ static a2::AstNode* build_traversal_list(a2::AstNode* begin, a2::AstNode* end) n
 		{
 			if ((curr->internal_flags & a2::AstNode::FLAG_FIRST_SIBLING) == a2::AstNode::FLAG_FIRST_SIBLING)
 			{
-				if (depth + 1 >= a2::MAX_TREE_DEPTH)
-					panic("Maximum parse tree depth of %u exceeded.\n", a2::MAX_TREE_DEPTH);
+				if (depth + 1 >= a2::MAX_AST_DEPTH)
+					panic("Maximum parse tree depth of %u exceeded.\n", a2::MAX_AST_DEPTH);
 
 				depth += 1;
 			}
@@ -219,7 +219,7 @@ static a2::AstNode* build_traversal_list(a2::AstNode* begin, a2::AstNode* end) n
 // dst.
 static a2::AstNode* copy_postorder_to_preorder(const a2::AstNode* begin, const a2::AstNode* end, const a2::AstNode* src_root, AstPool* dst) noexcept
 {
-	u32 prev_sibling_inds[a2::MAX_TREE_DEPTH];
+	u32 prev_sibling_inds[a2::MAX_AST_DEPTH];
 
 	s32 depth = -1;
 
@@ -262,7 +262,7 @@ static a2::AstNode* copy_postorder_to_preorder(const a2::AstNode* begin, const a
 			}
 		}
 
-		ASSERT_OR_IGNORE(depth + 1 < a2::MAX_TREE_DEPTH);
+		ASSERT_OR_IGNORE(depth + 1 < a2::MAX_AST_DEPTH);
 
 		depth += 1;
 

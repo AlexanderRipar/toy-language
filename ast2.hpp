@@ -9,7 +9,7 @@ struct AstPool;
 
 namespace a2
 {
-	static constexpr s32 MAX_TREE_DEPTH = 128;
+	static constexpr s32 MAX_AST_DEPTH = 128;
 
 	enum class AstTag : u8
 	{
@@ -292,9 +292,9 @@ namespace a2
 
 		s32 top;
 
-		u8 prev_depths[MAX_TREE_DEPTH];
+		u8 prev_depths[MAX_AST_DEPTH];
 
-		static_assert(MAX_TREE_DEPTH <= UINT8_MAX);
+		static_assert(MAX_AST_DEPTH <= UINT8_MAX);
 	};
 
 	static inline PreorderIterator preorder_ancestors_of(AstNode* node) noexcept
@@ -332,14 +332,14 @@ namespace a2
 		{
 			if ((curr->internal_flags & AstNode::FLAG_LAST_SIBLING) == 0)
 			{
-				ASSERT_OR_IGNORE(iterator->top + 1 < MAX_TREE_DEPTH);
+				ASSERT_OR_IGNORE(iterator->top + 1 < MAX_AST_DEPTH);
 
 				iterator->top += 1;
 
 				iterator->prev_depths[iterator->top] = iterator->depth;
 			}
 
-			ASSERT_OR_IGNORE(iterator->depth + 1 < MAX_TREE_DEPTH);
+			ASSERT_OR_IGNORE(iterator->depth + 1 < MAX_AST_DEPTH);
 
 			iterator->depth += 1;
 		}
@@ -373,7 +373,7 @@ namespace a2
 
 		s32 depth;
 
-		u32 offsets[MAX_TREE_DEPTH];
+		u32 offsets[MAX_AST_DEPTH];
 	};
 
 	static inline PostorderIterator postorder_ancestors_of(AstNode* node) noexcept
@@ -385,7 +385,7 @@ namespace a2
 
 		while (has_children(node))
 		{
-			ASSERT_OR_IGNORE(iterator.depth < MAX_TREE_DEPTH);
+			ASSERT_OR_IGNORE(iterator.depth < MAX_AST_DEPTH);
 
 			node = first_child_of(node);
 
@@ -420,7 +420,7 @@ namespace a2
 
 				iterator->depth += 1;
 
-				ASSERT_OR_IGNORE(iterator->depth < MAX_TREE_DEPTH);
+				ASSERT_OR_IGNORE(iterator->depth < MAX_AST_DEPTH);
 
 				iterator->offsets[iterator->depth] = static_cast<u32>(reinterpret_cast<u32*>(curr) - reinterpret_cast<u32*>(iterator->base));
 			}
