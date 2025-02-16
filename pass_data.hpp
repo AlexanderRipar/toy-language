@@ -7,8 +7,6 @@
 #include "infra/alloc_pool.hpp"
 #include "infra/optptr.hpp"
 
-struct AstPool;
-
 static constexpr u32 MAX_FUNC_PARAMETER_COUNT = 255;
 
 
@@ -118,7 +116,103 @@ const char8* token_name(Token token) noexcept;
 
 
 
+struct IdentifierPool;
+
+struct IdentifierId
+{
+	u32 rep;
+};
+
+struct alignas(8) IdentifierEntry
+{
+	u32 m_hash;
+
+	u16 m_length;
+
+	Token m_token;
+
+	#pragma warning(push)
+	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
+	char8 m_chars[];
+	#pragma warning(pop)
+
+	static constexpr u32 stride() noexcept
+	{
+		return 8;
+	}
+
+	static u32 required_strides(Range<char8> key) noexcept
+	{
+		return static_cast<u32>((offsetof(IdentifierEntry, m_chars) + key.count() + stride() - 1) / stride());
+	}
+
+	u32 used_strides() const noexcept
+	{
+		return static_cast<u32>((offsetof(IdentifierEntry, m_chars) + m_length + stride() - 1) / stride());
+	}
+
+	u32 hash() const noexcept
+	{
+		return m_hash;
+	}
+
+	bool equal_to_key(Range<char8> key, u32 key_hash) const noexcept
+	{
+		return m_hash == key_hash && key.count() == m_length && memcmp(key.begin(), m_chars, m_length) == 0;
+	}
+
+	void init(Range<char8> key, u32 key_hash) noexcept
+	{
+		m_hash = key_hash;
+
+		m_length = static_cast<u16>(key.count());
+
+		m_token = Token::Ident;
+
+		memcpy(m_chars, key.begin(), key.count());
+	}
+
+	Range<char8> range() const noexcept
+	{
+		return Range<char8>{ m_chars, m_length };
+	}
+
+	Token token() const noexcept
+	{
+		return m_token;
+	}
+
+	void set_token(Token token) noexcept
+	{
+		m_token = token;
+	}
+};
+
+static constexpr IdentifierId INVALID_IDENTIFIER_ID = { 0 };
+
+static inline bool operator==(IdentifierId lhs, IdentifierId rhs) noexcept
+{
+	return lhs.rep == rhs.rep;
+}
+
+static inline bool operator!=(IdentifierId lhs, IdentifierId rhs) noexcept
+{
+	return lhs.rep != rhs.rep;
+}
+
+IdentifierPool* create_identifier_pool(AllocPool* pool) noexcept;
+
+IdentifierEntry* identifier_entry_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept;
+
+IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept;
+
+IdentifierEntry* identifier_entry_from_id(IdentifierPool* identifiers, IdentifierId id) noexcept;
+
+
+
 static constexpr s32 MAX_AST_DEPTH = 128;
+
+struct AstPool;
 
 enum class AstTag : u8
 {
@@ -249,6 +343,69 @@ enum class AstFlag : u8
 	Type_IsMut           = 0x02,
 };
 
+struct AstNode
+{
+	static constexpr u8 FLAG_LAST_SIBLING  = 0x01;
+	static constexpr u8 FLAG_FIRST_SIBLING = 0x02;
+	static constexpr u8 FLAG_NO_CHILDREN   = 0x04;
+
+	AstTag tag;
+
+	AstFlag flags;
+
+	u8 data_dwords;
+
+	u8 internal_flags;
+
+	u32 next_sibling_offset;
+};
+
+struct AstBuilderToken
+{
+	u32 rep;
+};
+
+struct AstBuilder
+{
+	static constexpr AstBuilderToken NO_CHILDREN = { ~0u };
+
+	ReservedVec<u32> scratch;
+};
+
+struct AstIterationResult
+{
+	AstNode* node;
+
+	u32 depth;
+};
+
+struct AstDirectChildIterator
+{
+	AstNode* curr;
+};
+
+struct AstPreorderIterator
+{
+	AstNode* curr;
+
+	u8 depth;
+
+	s32 top;
+
+	u8 prev_depths[MAX_AST_DEPTH];
+
+	static_assert(MAX_AST_DEPTH <= UINT8_MAX);
+};
+
+struct AstPostorderIterator
+{
+	AstNode* base;
+
+	s32 depth;
+
+	u32 offsets[MAX_AST_DEPTH];
+};
+
 inline AstFlag operator|(AstFlag lhs, AstFlag rhs) noexcept
 {
 	return static_cast<AstFlag>(static_cast<u8>(lhs) | static_cast<u8>(rhs));
@@ -273,23 +430,11 @@ inline AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
 	return lhs;
 }
 
-struct AstNode
-{
-	static constexpr u8 FLAG_LAST_SIBLING  = 0x01;
-	static constexpr u8 FLAG_FIRST_SIBLING = 0x02;
-	static constexpr u8 FLAG_NO_CHILDREN   = 0x04;
+AstPool* create_ast_pool(AllocPool* pool) noexcept;
 
-	AstTag tag;
+void release_ast_pool(AstPool* asts) noexcept;
 
-	AstFlag flags;
-
-	u8 data_dwords;
-
-	u8 internal_flags;
-
-	u32 next_sibling_offset;
-};
-
+AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept;
 
 static inline AstNode* apply_offset_(AstNode* node, ureg offset) noexcept
 {
@@ -347,24 +492,10 @@ static inline const T* attachment_of(const AstNode* node) noexcept
 	return reinterpret_cast<const T*>(node + 1);
 }
 
-
-struct AstIterationResult
-{
-	AstNode* node;
-
-	u32 depth;
-};
-
 static inline bool is_valid(AstIterationResult result) noexcept
 {
 	return result.node != nullptr;
 }
-
-
-struct AstDirectChildIterator
-{
-	AstNode* curr;
-};
 
 static inline AstDirectChildIterator direct_children_of(AstNode* node) noexcept
 {
@@ -387,20 +518,6 @@ static inline OptPtr<AstNode> peek(const AstDirectChildIterator* iterator) noexc
 {
 	return maybe(iterator->curr);
 }
-
-
-struct AstPreorderIterator
-{
-	AstNode* curr;
-
-	u8 depth;
-
-	s32 top;
-
-	u8 prev_depths[MAX_AST_DEPTH];
-
-	static_assert(MAX_AST_DEPTH <= UINT8_MAX);
-};
 
 static inline AstPreorderIterator preorder_ancestors_of(AstNode* node) noexcept
 {
@@ -470,16 +587,6 @@ static inline AstIterationResult peek(const AstPreorderIterator* iterator) noexc
 	return { iterator->curr, iterator->depth };
 }
 
-
-struct AstPostorderIterator
-{
-	AstNode* base;
-
-	s32 depth;
-
-	u32 offsets[MAX_AST_DEPTH];
-};
-
 static inline AstPostorderIterator postorder_ancestors_of(AstNode* node) noexcept
 {
 	AstPostorderIterator iterator;
@@ -548,19 +655,6 @@ static inline AstIterationResult peek(const AstPostorderIterator* iterator) noex
 	return { apply_offset_(iterator->base, iterator->offsets[iterator->depth]), static_cast<u32>(iterator->depth) };
 }
 
-
-struct AstBuilderToken
-{
-	u32 rep;
-};
-
-struct AstBuilder
-{
-	static constexpr AstBuilderToken NO_CHILDREN = { ~0u };
-
-	ReservedVec<u32> scratch;
-};
-
 static inline bool operator==(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
 {
 	return lhs.rep == rhs.rep;
@@ -619,7 +713,6 @@ static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken fir
 
 AstNode* complete_ast(AstBuilder* builder, AstPool* dst) noexcept;
 
-
 const char8* ast_tag_name(AstTag tag) noexcept;
 
 
@@ -643,100 +736,6 @@ inline bool comp_integer_as_u64(CompIntegerValue* comp_integer, u64* out) noexce
 
 	return true;
 }
-
-
-
-struct IdentifierPool;
-
-struct IdentifierId
-{
-	u32 rep;
-};
-
-struct alignas(8) IdentifierEntry
-{
-	u32 m_hash;
-
-	u16 m_length;
-
-	Token m_token;
-
-	#pragma warning(push)
-	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
-	char8 m_chars[];
-	#pragma warning(pop)
-
-	static constexpr u32 stride() noexcept
-	{
-		return 8;
-	}
-
-	static u32 required_strides(Range<char8> key) noexcept
-	{
-		return static_cast<u32>((offsetof(IdentifierEntry, m_chars) + key.count() + stride() - 1) / stride());
-	}
-
-	u32 used_strides() const noexcept
-	{
-		return static_cast<u32>((offsetof(IdentifierEntry, m_chars) + m_length + stride() - 1) / stride());
-	}
-
-	u32 hash() const noexcept
-	{
-		return m_hash;
-	}
-
-	bool equal_to_key(Range<char8> key, u32 key_hash) const noexcept
-	{
-		return m_hash == key_hash && key.count() == m_length && memcmp(key.begin(), m_chars, m_length) == 0;
-	}
-
-	void init(Range<char8> key, u32 key_hash) noexcept
-	{
-		m_hash = key_hash;
-
-		m_length = static_cast<u16>(key.count());
-
-		m_token = Token::Ident;
-
-		memcpy(m_chars, key.begin(), key.count());
-	}
-
-	Range<char8> range() const noexcept
-	{
-		return Range<char8>{ m_chars, m_length };
-	}
-
-	Token token() const noexcept
-	{
-		return m_token;
-	}
-
-	void set_token(Token token) noexcept
-	{
-		m_token = token;
-	}
-};
-
-static constexpr IdentifierId INVALID_IDENTIFIER_ID = { 0 };
-
-static inline bool operator==(IdentifierId lhs, IdentifierId rhs) noexcept
-{
-	return lhs.rep == rhs.rep;
-}
-
-static inline bool operator!=(IdentifierId lhs, IdentifierId rhs) noexcept
-{
-	return lhs.rep != rhs.rep;
-}
-
-IdentifierPool* create_identifier_pool(AllocPool* pool) noexcept;
-
-IdentifierEntry* identifier_entry_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept;
-
-IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept;
-
-IdentifierEntry* identifier_entry_from_id(IdentifierPool* identifiers, IdentifierId id) noexcept;
 
 
 
@@ -1099,16 +1098,6 @@ Value* value_from_id(ValuePool* values, ValueId id) noexcept;
 
 
 
-struct AstPool;
-
-AstPool* create_ast_pool(AllocPool* pool) noexcept;
-
-void release_ast_pool(AstPool* asts) noexcept;
-
-AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept;
-
-AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, TypePool* types, ValuePool* values, AstBuilder* builder) noexcept;
-
 
 
 struct SourceFile
@@ -1280,5 +1269,9 @@ TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, As
 void add_type_member(Typechecker* typechecker, TypeBuilder* builder, IdentifierId identifier_id, AstNode* const type_expr, AstNode* const value_expr, u64 offset, bool is_mut, bool is_pub, bool is_global, bool is_use) noexcept;
 
 TypeId complete_type(Typechecker* types, TypeBuilder* builder, u32 size, u32 alignment, u32 stride) noexcept;
+
+
+
+AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, TypePool* types, ValuePool* values, AstBuilder* builder) noexcept;
 
 #endif // PARSEDATA_INCLUDE_GUARD
