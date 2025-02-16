@@ -25,7 +25,7 @@ ScopePool* create_scope_pool(AllocPool* alloc, a2::AstNode* builtins) noexcept
 
 	Scope* const builtins_scope = alloc_static_scope(scopes, nullptr, builtins, builtins_block->definition_count);
 
-	a2::DirectChildIterator it = a2::direct_children_of(builtins);
+	a2::AstDirectChildIterator it = a2::direct_children_of(builtins);
 
 	for (OptPtr<a2::AstNode> rst = a2::next(&it); is_some(rst); rst = a2::next(&it))
 	{
@@ -63,7 +63,7 @@ Scope* alloc_file_scope(ScopePool* scopes, a2::AstNode* root) noexcept
 
 	const ScopeId scope_id = id_from_static_scope(scopes, scope);
 
-	a2::DirectChildIterator it = a2::direct_children_of(root);
+	a2::AstDirectChildIterator it = a2::direct_children_of(root);
 
 	for (OptPtr<a2::AstNode> rst = a2::next(&it); is_some(rst); rst = a2::next(&it))
 	{

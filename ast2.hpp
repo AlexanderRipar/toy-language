@@ -255,17 +255,17 @@ namespace a2
 
 
 
-	struct DirectChildIterator
+	struct AstDirectChildIterator
 	{
 		AstNode* curr;
 	};
 
-	static inline DirectChildIterator direct_children_of(AstNode* node) noexcept
+	static inline AstDirectChildIterator direct_children_of(AstNode* node) noexcept
 	{
 		return { has_children(node) ? first_child_of(node) : nullptr };
 	}
 
-	static inline OptPtr<AstNode> next(DirectChildIterator* iterator) noexcept
+	static inline OptPtr<AstNode> next(AstDirectChildIterator* iterator) noexcept
 	{
 		if (iterator->curr == nullptr)
 			return none<AstNode>();
@@ -277,7 +277,7 @@ namespace a2
 		return some(curr);
 	}
 
-	static inline OptPtr<AstNode> peek(const DirectChildIterator* iterator) noexcept
+	static inline OptPtr<AstNode> peek(const AstDirectChildIterator* iterator) noexcept
 	{
 		return maybe(iterator->curr);
 	}

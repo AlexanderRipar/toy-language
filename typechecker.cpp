@@ -313,7 +313,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		if (!a2::has_children(expr))
 			return get_builtin_type_ids(typechecker->types)->void_type_id;
 
-		a2::DirectChildIterator it = a2::direct_children_of(expr);
+		a2::AstDirectChildIterator it = a2::direct_children_of(expr);
 
 		for (OptPtr<a2::AstNode> rst = a2::next(&it); is_some(rst); rst = a2::next(&it))
 		{
@@ -403,7 +403,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 			func_data->return_type_id = get_builtin_type_ids(typechecker->types)->void_type_id;
 		}
 
-		a2::DirectChildIterator it = a2::direct_children_of(func_info.parameters);
+		a2::AstDirectChildIterator it = a2::direct_children_of(func_info.parameters);
 
 		FuncTypeBuffer type_buf{};
 
@@ -750,7 +750,7 @@ TypeId typecheck_file(Typechecker* typechecker, a2::AstNode* root) noexcept
 
 	TypeBuilder* const builder = alloc_type_builder(typechecker);
 
-	a2::DirectChildIterator it = a2::direct_children_of(root);
+	a2::AstDirectChildIterator it = a2::direct_children_of(root);
 
 	for (OptPtr<a2::AstNode> rst = a2::next(&it); is_some(rst); rst = a2::next(&it))
 	{
