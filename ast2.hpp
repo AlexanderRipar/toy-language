@@ -11,7 +11,7 @@ namespace a2
 {
 	static constexpr s32 MAX_TREE_DEPTH = 128;
 
-	enum class Tag : u8
+	enum class AstTag : u8
 	{
 		INVALID = 0,
 		Builtin,
@@ -170,7 +170,7 @@ namespace a2
 		static constexpr u8 FLAG_FIRST_SIBLING = 0x02;
 		static constexpr u8 FLAG_NO_CHILDREN   = 0x04;
 
-		Tag tag;
+		AstTag tag;
 
 		Flag flags;
 
@@ -477,7 +477,7 @@ namespace a2
 		return builder;
 	}
 
-	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, Tag tag, Flag flags) noexcept
+	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, AstTag tag, Flag flags) noexcept
 	{
 		static_assert(sizeof(AstNode) % sizeof(u32) == 0);
 
@@ -518,7 +518,7 @@ namespace a2
 
 
 
-	const char8* tag_name(Tag tag) noexcept;
+	const char8* tag_name(AstTag tag) noexcept;
 }
 
 #endif // AST2_INCLUDE_GUARD

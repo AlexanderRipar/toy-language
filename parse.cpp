@@ -58,7 +58,7 @@ struct RawLexeme
 
 struct OperatorDesc
 {
-	a2::Tag node_type;
+	a2::AstTag node_type;
 
 	a2::Flag node_flags;
 
@@ -105,63 +105,63 @@ struct Parser
 };
 
 static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
-	{ a2::Tag::INVALID,            a2::Flag::EMPTY,      10, false, true  }, // ( - Opening Parenthesis
-	{ a2::Tag::UOpEval,            a2::Flag::EMPTY,       8, false, false }, // eval
-	{ a2::Tag::UOpTry,             a2::Flag::EMPTY,       8, false, false }, // try
-	{ a2::Tag::UOpDefer,           a2::Flag::EMPTY,       8, false, false }, // defer
-	{ a2::Tag::UOpAddr,            a2::Flag::EMPTY,       2, false, false }, // $
-	{ a2::Tag::UOpBitNot,          a2::Flag::EMPTY,       2, false, false }, // ~
-	{ a2::Tag::UOpLogNot,          a2::Flag::EMPTY,       2, false, false }, // !
-	{ a2::Tag::UOpTypeOptPtr,      a2::Flag::Type_IsMut,  2, false, false }, // ?
-	{ a2::Tag::UOpTypeVar,         a2::Flag::EMPTY,       2, false, false }, // ...
-	{ a2::Tag::UOpTypeTailArray,   a2::Flag::EMPTY,       2, false, false }, // [...]
-	{ a2::Tag::UOpTypeMultiPtr,    a2::Flag::Type_IsMut,  2, false, false }, // [*]
-	{ a2::Tag::UOpTypeOptMultiPtr, a2::Flag::Type_IsMut,  2, false, false }, // [?]
-	{ a2::Tag::UOpTypeSlice,       a2::Flag::Type_IsMut,  2, false, false }, // []
-	{ a2::Tag::UOpImpliedMember,   a2::Flag::EMPTY,       1, false, false }, // .
-	{ a2::Tag::UOpTypePtr,         a2::Flag::Type_IsMut,  2, false, false }, // *
-	{ a2::Tag::UOpNegate,          a2::Flag::EMPTY,       2, false, false }, // -
-	{ a2::Tag::UOpPos,             a2::Flag::EMPTY,       2, false, false }, // +
+	{ a2::AstTag::INVALID,            a2::Flag::EMPTY,      10, false, true  }, // ( - Opening Parenthesis
+	{ a2::AstTag::UOpEval,            a2::Flag::EMPTY,       8, false, false }, // eval
+	{ a2::AstTag::UOpTry,             a2::Flag::EMPTY,       8, false, false }, // try
+	{ a2::AstTag::UOpDefer,           a2::Flag::EMPTY,       8, false, false }, // defer
+	{ a2::AstTag::UOpAddr,            a2::Flag::EMPTY,       2, false, false }, // $
+	{ a2::AstTag::UOpBitNot,          a2::Flag::EMPTY,       2, false, false }, // ~
+	{ a2::AstTag::UOpLogNot,          a2::Flag::EMPTY,       2, false, false }, // !
+	{ a2::AstTag::UOpTypeOptPtr,      a2::Flag::Type_IsMut,  2, false, false }, // ?
+	{ a2::AstTag::UOpTypeVar,         a2::Flag::EMPTY,       2, false, false }, // ...
+	{ a2::AstTag::UOpTypeTailArray,   a2::Flag::EMPTY,       2, false, false }, // [...]
+	{ a2::AstTag::UOpTypeMultiPtr,    a2::Flag::Type_IsMut,  2, false, false }, // [*]
+	{ a2::AstTag::UOpTypeOptMultiPtr, a2::Flag::Type_IsMut,  2, false, false }, // [?]
+	{ a2::AstTag::UOpTypeSlice,       a2::Flag::Type_IsMut,  2, false, false }, // []
+	{ a2::AstTag::UOpImpliedMember,   a2::Flag::EMPTY,       1, false, false }, // .
+	{ a2::AstTag::UOpTypePtr,         a2::Flag::Type_IsMut,  2, false, false }, // *
+	{ a2::AstTag::UOpNegate,          a2::Flag::EMPTY,       2, false, false }, // -
+	{ a2::AstTag::UOpPos,             a2::Flag::EMPTY,       2, false, false }, // +
 };
 
 static constexpr OperatorDesc BINARY_OPERATOR_DESCS[] = {
-	{ a2::Tag::OpMember,    a2::Flag::EMPTY, 1, true,  true  }, // .
-	{ a2::Tag::OpMul,       a2::Flag::EMPTY, 2, true,  true  }, // *
-	{ a2::Tag::OpSub,       a2::Flag::EMPTY, 3, true,  true  }, // -
-	{ a2::Tag::OpAdd,       a2::Flag::EMPTY, 3, true,  true  }, // +
-	{ a2::Tag::OpDiv,       a2::Flag::EMPTY, 2, true,  true  }, // /
-	{ a2::Tag::OpAddTC,     a2::Flag::EMPTY, 3, true,  true  }, // +:
-	{ a2::Tag::OpSubTC,     a2::Flag::EMPTY, 3, true,  true  }, // -:
-	{ a2::Tag::OpMulTC,     a2::Flag::EMPTY, 2, true,  true  }, // *:
-	{ a2::Tag::OpMod,       a2::Flag::EMPTY, 2, true,  true  }, // %
-	{ a2::Tag::UOpDeref,    a2::Flag::EMPTY, 1, false, false }, // .*
-	{ a2::Tag::OpBitAnd,    a2::Flag::EMPTY, 6, true,  true  }, // &
-	{ a2::Tag::OpBitOr,     a2::Flag::EMPTY, 6, true,  true  }, // |
-	{ a2::Tag::OpBitXor,    a2::Flag::EMPTY, 6, true,  true  }, // ^
-	{ a2::Tag::OpShiftL,    a2::Flag::EMPTY, 4, true,  true  }, // <<
-	{ a2::Tag::OpShiftR,    a2::Flag::EMPTY, 4, true,  true  }, // >>
-	{ a2::Tag::OpLogAnd,    a2::Flag::EMPTY, 7, true,  true  }, // &&
-	{ a2::Tag::OpLogOr,     a2::Flag::EMPTY, 7, true,  true  }, // ||
-	{ a2::Tag::OpCmpLT,     a2::Flag::EMPTY, 5, true,  true  }, // <
-	{ a2::Tag::OpCmpGT,     a2::Flag::EMPTY, 5, true,  true  }, // >
-	{ a2::Tag::OpCmpLE,     a2::Flag::EMPTY, 5, true,  true  }, // <=
-	{ a2::Tag::OpCmpGE,     a2::Flag::EMPTY, 5, true,  true  }, // >=
-	{ a2::Tag::OpCmpNE,     a2::Flag::EMPTY, 5, true,  true  }, // !=
-	{ a2::Tag::OpCmpEQ,     a2::Flag::EMPTY, 5, true,  true  }, // ==
-	{ a2::Tag::OpSet,       a2::Flag::EMPTY, 9, false, true  }, // =
-	{ a2::Tag::OpSetAdd,    a2::Flag::EMPTY, 9, false, true  }, // +=
-	{ a2::Tag::OpSetSub,    a2::Flag::EMPTY, 9, false, true  }, // -=
-	{ a2::Tag::OpSetMul,    a2::Flag::EMPTY, 9, false, true  }, // *=
-	{ a2::Tag::OpSetDiv,    a2::Flag::EMPTY, 9, false, true  }, // /=
-	{ a2::Tag::OpSetAddTC,  a2::Flag::EMPTY, 9, false, true  }, // +:=
-	{ a2::Tag::OpSetSubTC,  a2::Flag::EMPTY, 9, false, true  }, // -:=
-	{ a2::Tag::OpSetMulTC,  a2::Flag::EMPTY, 9, false, true  }, // *:=
-	{ a2::Tag::OpSetMod,    a2::Flag::EMPTY, 9, false, true  }, // %=
-	{ a2::Tag::OpSetBitAnd, a2::Flag::EMPTY, 9, false, true  }, // &=
-	{ a2::Tag::OpSetBitOr,  a2::Flag::EMPTY, 9, false, true  }, // |=
-	{ a2::Tag::OpSetBitXor, a2::Flag::EMPTY, 9, false, true  }, // ^=
-	{ a2::Tag::OpSetShiftL, a2::Flag::EMPTY, 9, false, true  }, // <<=
-	{ a2::Tag::OpSetShiftR, a2::Flag::EMPTY, 9, false, true  }, // >>=
+	{ a2::AstTag::OpMember,    a2::Flag::EMPTY, 1, true,  true  }, // .
+	{ a2::AstTag::OpMul,       a2::Flag::EMPTY, 2, true,  true  }, // *
+	{ a2::AstTag::OpSub,       a2::Flag::EMPTY, 3, true,  true  }, // -
+	{ a2::AstTag::OpAdd,       a2::Flag::EMPTY, 3, true,  true  }, // +
+	{ a2::AstTag::OpDiv,       a2::Flag::EMPTY, 2, true,  true  }, // /
+	{ a2::AstTag::OpAddTC,     a2::Flag::EMPTY, 3, true,  true  }, // +:
+	{ a2::AstTag::OpSubTC,     a2::Flag::EMPTY, 3, true,  true  }, // -:
+	{ a2::AstTag::OpMulTC,     a2::Flag::EMPTY, 2, true,  true  }, // *:
+	{ a2::AstTag::OpMod,       a2::Flag::EMPTY, 2, true,  true  }, // %
+	{ a2::AstTag::UOpDeref,    a2::Flag::EMPTY, 1, false, false }, // .*
+	{ a2::AstTag::OpBitAnd,    a2::Flag::EMPTY, 6, true,  true  }, // &
+	{ a2::AstTag::OpBitOr,     a2::Flag::EMPTY, 6, true,  true  }, // |
+	{ a2::AstTag::OpBitXor,    a2::Flag::EMPTY, 6, true,  true  }, // ^
+	{ a2::AstTag::OpShiftL,    a2::Flag::EMPTY, 4, true,  true  }, // <<
+	{ a2::AstTag::OpShiftR,    a2::Flag::EMPTY, 4, true,  true  }, // >>
+	{ a2::AstTag::OpLogAnd,    a2::Flag::EMPTY, 7, true,  true  }, // &&
+	{ a2::AstTag::OpLogOr,     a2::Flag::EMPTY, 7, true,  true  }, // ||
+	{ a2::AstTag::OpCmpLT,     a2::Flag::EMPTY, 5, true,  true  }, // <
+	{ a2::AstTag::OpCmpGT,     a2::Flag::EMPTY, 5, true,  true  }, // >
+	{ a2::AstTag::OpCmpLE,     a2::Flag::EMPTY, 5, true,  true  }, // <=
+	{ a2::AstTag::OpCmpGE,     a2::Flag::EMPTY, 5, true,  true  }, // >=
+	{ a2::AstTag::OpCmpNE,     a2::Flag::EMPTY, 5, true,  true  }, // !=
+	{ a2::AstTag::OpCmpEQ,     a2::Flag::EMPTY, 5, true,  true  }, // ==
+	{ a2::AstTag::OpSet,       a2::Flag::EMPTY, 9, false, true  }, // =
+	{ a2::AstTag::OpSetAdd,    a2::Flag::EMPTY, 9, false, true  }, // +=
+	{ a2::AstTag::OpSetSub,    a2::Flag::EMPTY, 9, false, true  }, // -=
+	{ a2::AstTag::OpSetMul,    a2::Flag::EMPTY, 9, false, true  }, // *=
+	{ a2::AstTag::OpSetDiv,    a2::Flag::EMPTY, 9, false, true  }, // /=
+	{ a2::AstTag::OpSetAddTC,  a2::Flag::EMPTY, 9, false, true  }, // +:=
+	{ a2::AstTag::OpSetSubTC,  a2::Flag::EMPTY, 9, false, true  }, // -:=
+	{ a2::AstTag::OpSetMulTC,  a2::Flag::EMPTY, 9, false, true  }, // *:=
+	{ a2::AstTag::OpSetMod,    a2::Flag::EMPTY, 9, false, true  }, // %=
+	{ a2::AstTag::OpSetBitAnd, a2::Flag::EMPTY, 9, false, true  }, // &=
+	{ a2::AstTag::OpSetBitOr,  a2::Flag::EMPTY, 9, false, true  }, // |=
+	{ a2::AstTag::OpSetBitXor, a2::Flag::EMPTY, 9, false, true  }, // ^=
+	{ a2::AstTag::OpSetShiftL, a2::Flag::EMPTY, 9, false, true  }, // <<=
+	{ a2::AstTag::OpSetShiftR, a2::Flag::EMPTY, 9, false, true  }, // >>=
 };
 
 
@@ -1237,7 +1237,7 @@ static void pop_operator(Parser* parser, OperatorStack* stack) noexcept
 
 	stack->operator_top -= 1;
 
-	if (top.node_type == a2::Tag::INVALID)
+	if (top.node_type == a2::AstTag::INVALID)
 		return;
 
 	if (stack->operand_count <= top.is_binary)
@@ -1278,7 +1278,7 @@ static void push_operand(Parser* parser, OperatorStack* stack, a2::BuilderToken 
 
 static void push_operator(Parser* parser, OperatorStack* stack, OperatorDesc op) noexcept
 {
-	if (op.node_type != a2::Tag::INVALID)
+	if (op.node_type != a2::AstTag::INVALID)
 		pop_to_precedence(parser, stack, op.precedence, op.is_right_to_left);
 
 	if (stack->operator_top == array_count(stack->operators))
@@ -1291,7 +1291,7 @@ static void push_operator(Parser* parser, OperatorStack* stack, OperatorDesc op)
 
 static void remove_lparen(OperatorStack* stack) noexcept
 {
-	ASSERT_OR_IGNORE(stack->operator_top != 0 && stack->operators[stack->operator_top - 1].node_type == a2::Tag::INVALID);
+	ASSERT_OR_IGNORE(stack->operator_top != 0 && stack->operators[stack->operator_top - 1].node_type == a2::AstTag::INVALID);
 
 	stack->operator_top -= 1;
 }
@@ -1429,7 +1429,7 @@ static a2::BuilderToken parse_return(Parser* parser) noexcept
 
 	const a2::BuilderToken value_token = parse_expr(parser, true);
 
-	return a2::push_node(&parser->builder, value_token, a2::Tag::Return, a2::Flag::EMPTY);
+	return a2::push_node(&parser->builder, value_token, a2::AstTag::Return, a2::Flag::EMPTY);
 }
 
 static a2::BuilderToken parse_leave(Parser* parser) noexcept
@@ -1438,7 +1438,7 @@ static a2::BuilderToken parse_leave(Parser* parser) noexcept
 
 	skip(&parser->lexer);
 
-	return a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Tag::Leave, a2::Flag::EMPTY);
+	return a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::AstTag::Leave, a2::Flag::EMPTY);
 }
 
 static a2::BuilderToken parse_yield(Parser* parser) noexcept
@@ -1449,7 +1449,7 @@ static a2::BuilderToken parse_yield(Parser* parser) noexcept
 
 	const a2::BuilderToken value_token = parse_expr(parser, true);
 
-	return a2::push_node(&parser->builder, value_token, a2::Tag::Yield, a2::Flag::EMPTY);
+	return a2::push_node(&parser->builder, value_token, a2::AstTag::Yield, a2::Flag::EMPTY);
 }
 
 static a2::BuilderToken parse_top_level_expr(Parser* parser, bool is_definition_optional_value, bool* out_is_definition) noexcept
@@ -1490,7 +1490,7 @@ static a2::BuilderToken parse_where(Parser* parser) noexcept
 		parse_definition(parser, true, false);
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Where, a2::Flag::EMPTY);
+	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Where, a2::Flag::EMPTY);
 }
 
 static a2::BuilderToken parse_if(Parser* parser) noexcept
@@ -1530,7 +1530,7 @@ static a2::BuilderToken parse_if(Parser* parser) noexcept
 		parse_expr(parser, true);
 	}
 
-	return a2::push_node(&parser->builder, condition_token, a2::Tag::If, flags);
+	return a2::push_node(&parser->builder, condition_token, a2::AstTag::If, flags);
 }
 
 static a2::BuilderToken try_parse_foreach(Parser* parser) noexcept
@@ -1605,7 +1605,7 @@ static a2::BuilderToken try_parse_foreach(Parser* parser) noexcept
 		parse_expr(parser, true);
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, a2::Tag::ForEach, flags);
+	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::ForEach, flags);
 }
 
 static a2::BuilderToken parse_for(Parser* parser) noexcept
@@ -1657,7 +1657,7 @@ static a2::BuilderToken parse_for(Parser* parser) noexcept
 		parse_expr(parser, true);
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, a2::Tag::For, flags);
+	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::For, flags);
 }
 
 static a2::BuilderToken parse_case(Parser* parser) noexcept
@@ -1675,7 +1675,7 @@ static a2::BuilderToken parse_case(Parser* parser) noexcept
 
 	parse_expr(parser, true);
 
-	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Case, a2::Flag::EMPTY);
+	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Case, a2::Flag::EMPTY);
 }
 
 static a2::BuilderToken parse_switch(Parser* parser) noexcept
@@ -1712,7 +1712,7 @@ static a2::BuilderToken parse_switch(Parser* parser) noexcept
 			break;
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Switch, flags);
+	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Switch, flags);
 }
 
 static a2::BuilderToken parse_expects(Parser* parser) noexcept
@@ -1733,7 +1733,7 @@ static a2::BuilderToken parse_expects(Parser* parser) noexcept
 		parse_expr(parser, false);
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Expects, a2::Flag::EMPTY);
+	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Expects, a2::Flag::EMPTY);
 }
 
 static a2::BuilderToken parse_ensures(Parser* parser) noexcept
@@ -1754,7 +1754,7 @@ static a2::BuilderToken parse_ensures(Parser* parser) noexcept
 		parse_expr(parser, false);
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Ensures, a2::Flag::EMPTY);
+	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Ensures, a2::Flag::EMPTY);
 }
 
 static a2::BuilderToken parse_func(Parser* parser) noexcept
@@ -1792,7 +1792,7 @@ static a2::BuilderToken parse_func(Parser* parser) noexcept
 			error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' after function parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
 	}
 
-	const a2::BuilderToken first_child_token = a2::push_node(&parser->builder, first_parameter_token, a2::Tag::ParameterList, a2::Flag::EMPTY);
+	const a2::BuilderToken first_child_token = a2::push_node(&parser->builder, first_parameter_token, a2::AstTag::ParameterList, a2::Flag::EMPTY);
 
 	skip(&parser->lexer);
 
@@ -1900,7 +1900,7 @@ static a2::BuilderToken parse_trait(Parser* parser) noexcept
 	if (first_child_token == a2::Builder::NO_CHILDREN)
 		first_child_token = body_token;
 
-	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Trait, flags);
+	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Trait, flags);
 }
 
 static a2::BuilderToken parse_impl(Parser* parser) noexcept
@@ -1936,7 +1936,7 @@ static a2::BuilderToken parse_impl(Parser* parser) noexcept
 
 	parse_expr(parser, true);
 
-	return a2::push_node(&parser->builder, first_child_token, a2::Tag::Impl, flags);
+	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Impl, flags);
 }
 
 static a2::BuilderToken parse_definition_or_impl(Parser* parser, bool* out_is_definition) noexcept
@@ -2014,7 +2014,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::Tag::Wildcard, a2::Flag::EMPTY);
+				const a2::BuilderToken value_token = a2::push_node(&parser->builder, a2::Builder::NO_CHILDREN, a2::AstTag::Wildcard, a2::Flag::EMPTY);
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2049,7 +2049,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 					}
 				}
 
-				const a2::BuilderToken composite_token = a2::push_node(&parser->builder, first_child_token, a2::Tag::CompositeInitializer, a2::Flag::EMPTY);
+				const a2::BuilderToken composite_token = a2::push_node(&parser->builder, first_child_token, a2::AstTag::CompositeInitializer, a2::Flag::EMPTY);
 
 				push_operand(parser, &stack, composite_token);
 			}
@@ -2084,7 +2084,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 					}
 				}
 
-				const a2::BuilderToken array_token = a2::push_node(&parser->builder, first_child_token, a2::Tag::ArrayInitializer, a2::Flag::EMPTY);
+				const a2::BuilderToken array_token = a2::push_node(&parser->builder, first_child_token, a2::AstTag::ArrayInitializer, a2::Flag::EMPTY);
 				
 				push_operand(parser, &stack, array_token);
 			}
@@ -2103,7 +2103,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 
 				// TODO: Work out how to make this into an infix operator or something
 				// Use pop_to_precedence and then manually replace top
-				const a2::BuilderToken array_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::Tag::OpTypeArray, a2::Flag::EMPTY);
+				const a2::BuilderToken array_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::AstTag::OpTypeArray, a2::Flag::EMPTY);
 
 				stack.operand_tokens[stack.operand_count - 1] = array_token;
 			}
@@ -2281,7 +2281,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 					}
 				}
 
-				const a2::BuilderToken call_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::Tag::Call, a2::Flag::EMPTY);
+				const a2::BuilderToken call_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::AstTag::Call, a2::Flag::EMPTY);
 				
 				stack.operand_tokens[stack.operand_count - 1] = call_token;
 			}
@@ -2311,7 +2311,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 				if (lexeme.token != Token::BracketR)
 					error(&parser->lexer, lexeme.offset, "Expected ']' after array index expression, but got '%s'\n", token_name(lexeme.token));
 
-				const a2::BuilderToken index_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::Tag::OpArrayIndex, a2::Flag::EMPTY);
+				const a2::BuilderToken index_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::AstTag::OpArrayIndex, a2::Flag::EMPTY);
 				
 				stack.operand_tokens[stack.operand_count - 1] = index_token;
 			}
@@ -2339,7 +2339,7 @@ static a2::BuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 
 				parse_expr(parser, false);
 
-				const a2::BuilderToken catch_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::Tag::Catch, flags);
+				const a2::BuilderToken catch_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::AstTag::Catch, flags);
 
 				stack.operand_tokens[stack.operand_count - 1] = catch_token;
 

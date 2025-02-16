@@ -37,13 +37,13 @@ namespace a2
 
 	inline FuncInfo func_info(AstNode* func) noexcept
 	{
-		ASSERT_OR_IGNORE(func->tag == Tag::Func);
+		ASSERT_OR_IGNORE(func->tag == AstTag::Func);
 
 		ASSERT_OR_IGNORE(has_children(func));
 
 		AstNode* curr = first_child_of(func);
 
-		ASSERT_OR_IGNORE(curr->tag == Tag::ParameterList);
+		ASSERT_OR_IGNORE(curr->tag == AstTag::ParameterList);
 
 		FuncInfo desc{};
 
@@ -60,7 +60,7 @@ namespace a2
 		{
 			curr = next_sibling_of(curr);
 
-			ASSERT_OR_IGNORE(curr->tag == Tag::Expects);
+			ASSERT_OR_IGNORE(curr->tag == AstTag::Expects);
 
 			desc.expects = some(curr);
 		}
@@ -69,7 +69,7 @@ namespace a2
 		{
 			curr = next_sibling_of(curr);
 
-			ASSERT_OR_IGNORE(curr->tag == Tag::Ensures);
+			ASSERT_OR_IGNORE(curr->tag == AstTag::Ensures);
 
 			desc.ensures = some(curr);
 		}
@@ -95,7 +95,7 @@ namespace a2
 
 	inline DefinitionInfo definition_info(AstNode* definition) noexcept
 	{
-		ASSERT_OR_IGNORE(definition->tag == Tag::Definition);
+		ASSERT_OR_IGNORE(definition->tag == AstTag::Definition);
 
 		if (!has_children(definition))
 			return {};
@@ -123,7 +123,7 @@ namespace a2
 
 	inline IfInfo if_info(AstNode* if_node) noexcept
 	{
-		ASSERT_OR_IGNORE(if_node->tag == Tag::If);
+		ASSERT_OR_IGNORE(if_node->tag == AstTag::If);
 
 		AstNode* curr = first_child_of(if_node);
 

@@ -185,7 +185,7 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 {
 	switch (expr->tag)
 	{
-	case a2::Tag::ValIdentifer:
+	case a2::AstTag::ValIdentifer:
 	{
 		ASSERT_OR_IGNORE(!a2::has_children(expr));
 
@@ -253,11 +253,11 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 		return stack_value;
 	}
 
-	case a2::Tag::UOpTypeMultiPtr:
-	case a2::Tag::UOpTypeOptMultiPtr:
-	case a2::Tag::UOpTypeSlice:
-	case a2::Tag::UOpTypeOptPtr:
-	case a2::Tag::UOpTypePtr:
+	case a2::AstTag::UOpTypeMultiPtr:
+	case a2::AstTag::UOpTypeOptMultiPtr:
+	case a2::AstTag::UOpTypeSlice:
+	case a2::AstTag::UOpTypeOptPtr:
+	case a2::AstTag::UOpTypePtr:
 	{
 		ASSERT_OR_IGNORE(a2::has_children(expr));
 
@@ -288,7 +288,7 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 
 		Range<byte> type_bytes;
 
-		if (expr->tag == a2::Tag::UOpTypeSlice)
+		if (expr->tag == a2::AstTag::UOpTypeSlice)
 		{
 			tag = TypeTag::Slice;
 
@@ -302,15 +302,15 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 		{
 			tag = TypeTag::Ptr;
 
-			if (expr->tag == a2::Tag::UOpTypeMultiPtr)
+			if (expr->tag == a2::AstTag::UOpTypeMultiPtr)
 				flags = TypeFlag::Ptr_IsMulti;
-			else if (expr->tag == a2::Tag::UOpTypeOptMultiPtr)
+			else if (expr->tag == a2::AstTag::UOpTypeOptMultiPtr)
 				flags = TypeFlag::Ptr_IsOpt | TypeFlag::Ptr_IsMulti;
-			else if (expr->tag == a2::Tag::UOpTypeOptPtr)
+			else if (expr->tag == a2::AstTag::UOpTypeOptPtr)
 				flags = TypeFlag::Ptr_IsOpt;
 			else
 			{
-				ASSERT_OR_IGNORE(expr->tag == a2::Tag::UOpTypePtr);
+				ASSERT_OR_IGNORE(expr->tag == a2::AstTag::UOpTypePtr);
 
 				flags = TypeFlag::EMPTY;
 			}
@@ -328,7 +328,7 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 		return stack_value;
 	}
 
-	case a2::Tag::Call:
+	case a2::AstTag::Call:
 	{
 		a2::AstNode* const callee = a2::first_child_of(expr);
 
@@ -342,83 +342,83 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 		return nullptr;
 	}
 
-	case a2::Tag::Builtin:
-	case a2::Tag::File:
-	case a2::Tag::CompositeInitializer:
-	case a2::Tag::ArrayInitializer:
-	case a2::Tag::Wildcard:
-	case a2::Tag::Where:
-	case a2::Tag::Expects:
-	case a2::Tag::Ensures:
-	case a2::Tag::Definition:
-	case a2::Tag::Block:
-	case a2::Tag::If:
-	case a2::Tag::For:
-	case a2::Tag::ForEach:
-	case a2::Tag::Switch:
-	case a2::Tag::Case:
-	case a2::Tag::Func:
-	case a2::Tag::Trait:
-	case a2::Tag::Impl:
-	case a2::Tag::Catch:
-	case a2::Tag::ValInteger:
-	case a2::Tag::ValFloat:
-	case a2::Tag::ValChar:
-	case a2::Tag::ValString:
-	case a2::Tag::Return:
-	case a2::Tag::Leave:
-	case a2::Tag::Yield:
-	case a2::Tag::ParameterList:
-	case a2::Tag::UOpTypeTailArray:
-	case a2::Tag::UOpEval:
-	case a2::Tag::UOpTry:
-	case a2::Tag::UOpDefer:
-	case a2::Tag::UOpAddr:
-	case a2::Tag::UOpDeref:
-	case a2::Tag::UOpBitNot:
-	case a2::Tag::UOpLogNot:
-	case a2::Tag::UOpTypeVar:
-	case a2::Tag::UOpImpliedMember:
-	case a2::Tag::UOpNegate:
-	case a2::Tag::UOpPos:
-	case a2::Tag::OpAdd:
-	case a2::Tag::OpSub:
-	case a2::Tag::OpMul:
-	case a2::Tag::OpDiv:
-	case a2::Tag::OpAddTC:
-	case a2::Tag::OpSubTC:
-	case a2::Tag::OpMulTC:
-	case a2::Tag::OpMod:
-	case a2::Tag::OpBitAnd:
-	case a2::Tag::OpBitOr:
-	case a2::Tag::OpBitXor:
-	case a2::Tag::OpShiftL:
-	case a2::Tag::OpShiftR:
-	case a2::Tag::OpLogAnd:
-	case a2::Tag::OpLogOr:
-	case a2::Tag::OpMember:
-	case a2::Tag::OpCmpLT:
-	case a2::Tag::OpCmpGT:
-	case a2::Tag::OpCmpLE:
-	case a2::Tag::OpCmpGE:
-	case a2::Tag::OpCmpNE:
-	case a2::Tag::OpCmpEQ:
-	case a2::Tag::OpSet:
-	case a2::Tag::OpSetAdd:
-	case a2::Tag::OpSetSub:
-	case a2::Tag::OpSetMul:
-	case a2::Tag::OpSetDiv:
-	case a2::Tag::OpSetAddTC:
-	case a2::Tag::OpSetSubTC:
-	case a2::Tag::OpSetMulTC:
-	case a2::Tag::OpSetMod:
-	case a2::Tag::OpSetBitAnd:
-	case a2::Tag::OpSetBitOr:
-	case a2::Tag::OpSetBitXor:
-	case a2::Tag::OpSetShiftL:
-	case a2::Tag::OpSetShiftR:
-	case a2::Tag::OpTypeArray:
-	case a2::Tag::OpArrayIndex:
+	case a2::AstTag::Builtin:
+	case a2::AstTag::File:
+	case a2::AstTag::CompositeInitializer:
+	case a2::AstTag::ArrayInitializer:
+	case a2::AstTag::Wildcard:
+	case a2::AstTag::Where:
+	case a2::AstTag::Expects:
+	case a2::AstTag::Ensures:
+	case a2::AstTag::Definition:
+	case a2::AstTag::Block:
+	case a2::AstTag::If:
+	case a2::AstTag::For:
+	case a2::AstTag::ForEach:
+	case a2::AstTag::Switch:
+	case a2::AstTag::Case:
+	case a2::AstTag::Func:
+	case a2::AstTag::Trait:
+	case a2::AstTag::Impl:
+	case a2::AstTag::Catch:
+	case a2::AstTag::ValInteger:
+	case a2::AstTag::ValFloat:
+	case a2::AstTag::ValChar:
+	case a2::AstTag::ValString:
+	case a2::AstTag::Return:
+	case a2::AstTag::Leave:
+	case a2::AstTag::Yield:
+	case a2::AstTag::ParameterList:
+	case a2::AstTag::UOpTypeTailArray:
+	case a2::AstTag::UOpEval:
+	case a2::AstTag::UOpTry:
+	case a2::AstTag::UOpDefer:
+	case a2::AstTag::UOpAddr:
+	case a2::AstTag::UOpDeref:
+	case a2::AstTag::UOpBitNot:
+	case a2::AstTag::UOpLogNot:
+	case a2::AstTag::UOpTypeVar:
+	case a2::AstTag::UOpImpliedMember:
+	case a2::AstTag::UOpNegate:
+	case a2::AstTag::UOpPos:
+	case a2::AstTag::OpAdd:
+	case a2::AstTag::OpSub:
+	case a2::AstTag::OpMul:
+	case a2::AstTag::OpDiv:
+	case a2::AstTag::OpAddTC:
+	case a2::AstTag::OpSubTC:
+	case a2::AstTag::OpMulTC:
+	case a2::AstTag::OpMod:
+	case a2::AstTag::OpBitAnd:
+	case a2::AstTag::OpBitOr:
+	case a2::AstTag::OpBitXor:
+	case a2::AstTag::OpShiftL:
+	case a2::AstTag::OpShiftR:
+	case a2::AstTag::OpLogAnd:
+	case a2::AstTag::OpLogOr:
+	case a2::AstTag::OpMember:
+	case a2::AstTag::OpCmpLT:
+	case a2::AstTag::OpCmpGT:
+	case a2::AstTag::OpCmpLE:
+	case a2::AstTag::OpCmpGE:
+	case a2::AstTag::OpCmpNE:
+	case a2::AstTag::OpCmpEQ:
+	case a2::AstTag::OpSet:
+	case a2::AstTag::OpSetAdd:
+	case a2::AstTag::OpSetSub:
+	case a2::AstTag::OpSetMul:
+	case a2::AstTag::OpSetDiv:
+	case a2::AstTag::OpSetAddTC:
+	case a2::AstTag::OpSetSubTC:
+	case a2::AstTag::OpSetMulTC:
+	case a2::AstTag::OpSetMod:
+	case a2::AstTag::OpSetBitAnd:
+	case a2::AstTag::OpSetBitOr:
+	case a2::AstTag::OpSetBitXor:
+	case a2::AstTag::OpSetShiftL:
+	case a2::AstTag::OpSetShiftR:
+	case a2::AstTag::OpTypeArray:
+	case a2::AstTag::OpArrayIndex:
 		panic("Unimplemented AST node tag '%s' in interpret_expr\n", a2::tag_name(expr->tag));
 
 	default:

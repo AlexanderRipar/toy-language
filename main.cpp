@@ -19,7 +19,7 @@ static TypeId resolve_main(Config* config, Typechecker* typechecker, IdentifierP
 
 	a2::AstNode* const main_def = get_ptr(opt_main_def);
 
-	ASSERT_OR_IGNORE(main_def->tag == a2::Tag::Definition);
+	ASSERT_OR_IGNORE(main_def->tag == a2::AstTag::Definition);
 
 	if (!a2::has_children(main_def))
 		panic("Expected definition of entrypoint symbol \"%.*s\" to have a value\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());

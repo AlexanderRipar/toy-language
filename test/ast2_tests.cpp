@@ -31,7 +31,7 @@ static DummyTree single_node_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -41,9 +41,9 @@ static DummyTree unary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::Block, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::Block, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -53,11 +53,11 @@ static DummyTree binary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::OpBitAnd, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 3 * NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::OpBitAnd, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 3 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValIdentifer, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::ValIdentifer, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -69,13 +69,13 @@ static DummyTree nary_dummy_tree(u32 n) noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, NODE_DWORDS * (n + 1) });
+	push_node(&tree, { a2::AstTag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, NODE_DWORDS * (n + 1) });
 
 	for (u32 i = 0; i != n; ++i)
 	{
 		const u8 internal_flags = static_cast<u8>((i == 0 ? a2::AstNode::FLAG_FIRST_SIBLING : 0) | (i == n - 1 ? a2::AstNode::FLAG_LAST_SIBLING : 0) | a2::AstNode::FLAG_NO_CHILDREN);
 
-		push_node(&tree, { a2::Tag::Block, a2::Flag::EMPTY, NODE_DWORDS, internal_flags, NODE_DWORDS });
+		push_node(&tree, { a2::AstTag::Block, a2::Flag::EMPTY, NODE_DWORDS, internal_flags, NODE_DWORDS });
 	}
 
 	return tree;
@@ -86,23 +86,23 @@ static DummyTree complex_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { static_cast<a2::Tag>(1), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 9 * NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::AstTag>(1), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 9 * NODE_DWORDS });
 	
-	push_node(&tree, { static_cast<a2::Tag>(2), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING, 3 * NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::AstTag>(2), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING, 3 * NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(3), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::AstTag>(3), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(4), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::AstTag>(4), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(5), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING, 5 * NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::AstTag>(5), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING, 5 * NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(6), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::AstTag>(6), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(7), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::AstTag>(7), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(8), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::AstTag>(8), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
 
-	push_node(&tree, { static_cast<a2::Tag>(9), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { static_cast<a2::AstTag>(9), a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -112,19 +112,19 @@ static DummyTree double_binary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::OpSub, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 7 * NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::OpSub, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 7 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::OpAdd, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING, 5 * NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::OpAdd, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING, 5 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::OpMul, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING, 3 * NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::OpMul, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING, 3 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValFloat, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::ValFloat, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValInteger, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::ValInteger, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValString, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::ValString, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -134,23 +134,23 @@ static DummyTree flat_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { a2::Tag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 9 * NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::File, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING, 9 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::Definition, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValIdentifer, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::ValIdentifer, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, 0, 2 * NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::Definition, a2::Flag::EMPTY, NODE_DWORDS, 0, 2 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::ValChar, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, 0, 2 * NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::Definition, a2::Flag::EMPTY, NODE_DWORDS, 0, 2 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValFloat, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::ValFloat, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::Definition, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::Definition, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS });
 
-	push_node(&tree, { a2::Tag::ValString, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
+	push_node(&tree, { a2::AstTag::ValString, a2::Flag::EMPTY, NODE_DWORDS, a2::AstNode::FLAG_FIRST_SIBLING | a2::AstNode::FLAG_LAST_SIBLING | a2::AstNode::FLAG_NO_CHILDREN, NODE_DWORDS });
 
 	return tree;
 }
@@ -479,7 +479,7 @@ static void push_node_once_appends_node() noexcept
 
 	a2::Builder builder = a2::create_ast_builder();
 
-	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::File, a2::Flag::EMPTY);
+	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::File, a2::Flag::EMPTY);
 
 	DummyTree expected_tree = single_node_dummy_tree();
 
@@ -506,7 +506,7 @@ static void push_node_once_and_complete_appends_node() noexcept
 
 	a2::Builder builder = a2::create_ast_builder();
 
-	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::File, a2::Flag::EMPTY);
+	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::File, a2::Flag::EMPTY);
 
 	MockedPools pools = create_mocked_pools();
 
@@ -529,9 +529,9 @@ static void push_node_with_unary_op_and_complete_reverses_tree() noexcept
 
 	a2::Builder builder = a2::create_ast_builder();
 
-	const a2::BuilderToken token = a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::Block, a2::Flag::EMPTY);
+	const a2::BuilderToken token = a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::Block, a2::Flag::EMPTY);
 
-	a2::push_node(&builder, token, a2::Tag::File, a2::Flag::EMPTY);
+	a2::push_node(&builder, token, a2::AstTag::File, a2::Flag::EMPTY);
 
 	MockedPools pools = create_mocked_pools();
 
@@ -554,11 +554,11 @@ static void push_node_with_binary_op_and_complete_reverses_tree() noexcept
 
 	a2::Builder builder = a2::create_ast_builder();
 
-	const a2::BuilderToken token = a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::ValChar, a2::Flag::EMPTY);
+	const a2::BuilderToken token = a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::ValChar, a2::Flag::EMPTY);
 
-	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::ValIdentifer, a2::Flag::EMPTY);
+	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::ValIdentifer, a2::Flag::EMPTY);
 
-	a2::push_node(&builder, token, a2::Tag::OpBitAnd, a2::Flag::EMPTY);
+	a2::push_node(&builder, token, a2::AstTag::OpBitAnd, a2::Flag::EMPTY);
 
 	MockedPools pools = create_mocked_pools();
 
@@ -581,23 +581,23 @@ static void push_node_with_complex_tree_and_complete_reverses_tree() noexcept
 
 	a2::Builder builder = a2::create_ast_builder();
 
-	const a2::BuilderToken t3 = a2::push_node(&builder, a2::Builder::NO_CHILDREN, static_cast<a2::Tag>(3), a2::Flag::EMPTY);
+	const a2::BuilderToken t3 = a2::push_node(&builder, a2::Builder::NO_CHILDREN, static_cast<a2::AstTag>(3), a2::Flag::EMPTY);
 
-	a2::push_node(&builder, a2::Builder::NO_CHILDREN, static_cast<a2::Tag>(4), a2::Flag::EMPTY);
+	a2::push_node(&builder, a2::Builder::NO_CHILDREN, static_cast<a2::AstTag>(4), a2::Flag::EMPTY);
 
-	const a2::BuilderToken t2 = a2::push_node(&builder, t3, static_cast<a2::Tag>(2), a2::Flag::EMPTY);
+	const a2::BuilderToken t2 = a2::push_node(&builder, t3, static_cast<a2::AstTag>(2), a2::Flag::EMPTY);
 
-	const a2::BuilderToken t7 = a2::push_node(&builder, a2::Builder::NO_CHILDREN, static_cast<a2::Tag>(7), a2::Flag::EMPTY);
+	const a2::BuilderToken t7 = a2::push_node(&builder, a2::Builder::NO_CHILDREN, static_cast<a2::AstTag>(7), a2::Flag::EMPTY);
 
-	const a2::BuilderToken t6 = a2::push_node(&builder, t7, static_cast<a2::Tag>(6), a2::Flag::EMPTY);
+	const a2::BuilderToken t6 = a2::push_node(&builder, t7, static_cast<a2::AstTag>(6), a2::Flag::EMPTY);
 
-	const a2::BuilderToken t9 = a2::push_node(&builder, a2::Builder::NO_CHILDREN, static_cast<a2::Tag>(9), a2::Flag::EMPTY);
+	const a2::BuilderToken t9 = a2::push_node(&builder, a2::Builder::NO_CHILDREN, static_cast<a2::AstTag>(9), a2::Flag::EMPTY);
 
-	a2::push_node(&builder, t9, static_cast<a2::Tag>(8), a2::Flag::EMPTY);
+	a2::push_node(&builder, t9, static_cast<a2::AstTag>(8), a2::Flag::EMPTY);
 
-	a2::push_node(&builder, t6, static_cast<a2::Tag>(5), a2::Flag::EMPTY);
+	a2::push_node(&builder, t6, static_cast<a2::AstTag>(5), a2::Flag::EMPTY);
 
-	a2::push_node(&builder, t2, static_cast<a2::Tag>(1), a2::Flag::EMPTY);
+	a2::push_node(&builder, t2, static_cast<a2::AstTag>(1), a2::Flag::EMPTY);
 
 	MockedPools pools = create_mocked_pools();
 
@@ -620,19 +620,19 @@ static void push_node_with_double_binary_tree_and_complete_reverses_tree() noexc
 
 	a2::Builder builder = a2::create_ast_builder();
 
-	const a2::BuilderToken add = a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::ValChar, a2::Flag::EMPTY);
+	const a2::BuilderToken add = a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::ValChar, a2::Flag::EMPTY);
 
-	const a2::BuilderToken mul = a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::ValFloat, a2::Flag::EMPTY);
+	const a2::BuilderToken mul = a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::ValFloat, a2::Flag::EMPTY);
 
-	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::ValInteger, a2::Flag::EMPTY);
+	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::ValInteger, a2::Flag::EMPTY);
 
-	a2::push_node(&builder, mul, a2::Tag::OpMul, a2::Flag::EMPTY);
+	a2::push_node(&builder, mul, a2::AstTag::OpMul, a2::Flag::EMPTY);
 
-	const a2::BuilderToken sub = a2::push_node(&builder, add, a2::Tag::OpAdd, a2::Flag::EMPTY);
+	const a2::BuilderToken sub = a2::push_node(&builder, add, a2::AstTag::OpAdd, a2::Flag::EMPTY);
 
-	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::Tag::ValString, a2::Flag::EMPTY);
+	a2::push_node(&builder, a2::Builder::NO_CHILDREN, a2::AstTag::ValString, a2::Flag::EMPTY);
 
-	a2::push_node(&builder, sub, a2::Tag::OpSub, a2::Flag::EMPTY);
+	a2::push_node(&builder, sub, a2::AstTag::OpSub, a2::Flag::EMPTY);
 
 	MockedPools pools = create_mocked_pools();
 

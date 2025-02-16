@@ -73,7 +73,7 @@ static void push_std_import(a2::Builder* builder, IdentifierPool* identifiers) n
 
 	a2::push_node(builder, a2::Builder::NO_CHILDREN, a2::Flag::EMPTY, a2::ValStringData{ id_from_identifier(identifiers, range::from_literal_string("@std.src")) });
 
-	const a2::BuilderToken import_call_token = a2::push_node(builder, import_identifier_token, a2::Tag::Call, a2::Flag::EMPTY);
+	const a2::BuilderToken import_call_token = a2::push_node(builder, import_identifier_token, a2::AstTag::Call, a2::Flag::EMPTY);
 
 	a2::push_node(builder, import_call_token, a2::Flag::EMPTY, a2::DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")), /* TODO */ INVALID_TYPE_ID });
 }
@@ -96,9 +96,9 @@ static TypeId push_typeinfo_def(a2::Builder* builder, IdentifierPool* identifier
 
 	a2::push_node(builder, a2::Builder::NO_CHILDREN, a2::Flag::EMPTY, a2::ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("build_typeinfo_type")) });
 
-	const a2::BuilderToken member_token = a2::push_node(builder, std_token, a2::Tag::OpMember, a2::Flag::EMPTY);
+	const a2::BuilderToken member_token = a2::push_node(builder, std_token, a2::AstTag::OpMember, a2::Flag::EMPTY);
 
-	const a2::BuilderToken call_token = a2::push_node(builder, member_token, a2::Tag::Call, a2::Flag::EMPTY);
+	const a2::BuilderToken call_token = a2::push_node(builder, member_token, a2::AstTag::Call, a2::Flag::EMPTY);
 
 	a2::push_node(builder, call_token, a2::Flag::EMPTY, a2::DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("typeinfo")), type_type_id });
 

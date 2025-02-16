@@ -68,7 +68,7 @@ static void release_type_builder(Typechecker* typechecker, TypeBuilder* builder)
 
 static TypeId typecheck_parameter(Typechecker* typechecker, Scope* enclosing_scope, a2::AstNode* parameter) noexcept
 {
-	ASSERT_OR_IGNORE(parameter->tag == a2::Tag::Definition);
+	ASSERT_OR_IGNORE(parameter->tag == a2::AstTag::Definition);
 
 	a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(parameter);
 
@@ -129,27 +129,27 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 {
 	switch (expr->tag)
 	{
-	case a2::Tag::ValInteger:
+	case a2::AstTag::ValInteger:
 	{
 		return get_builtin_type_ids(typechecker->types)->comp_integer_type_id;
 	}
 
-	case a2::Tag::ValFloat:
+	case a2::AstTag::ValFloat:
 	{
 		return get_builtin_type_ids(typechecker->types)->comp_float_type_id;
 	}
 
-	case a2::Tag::ValChar:
+	case a2::AstTag::ValChar:
 	{
 		return get_builtin_type_ids(typechecker->types)->comp_integer_type_id;
 	}
 
-	case a2::Tag::ValString:
+	case a2::AstTag::ValString:
 	{
 		return get_builtin_type_ids(typechecker->types)->comp_string_type_id;
 	}
 
-	case a2::Tag::ValIdentifer:
+	case a2::AstTag::ValIdentifer:
 	{
 		a2::ValIdentifierData* const identifier_data = a2::attachment_of<a2::ValIdentifierData>(expr);
 
@@ -172,8 +172,8 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		return definition_data->type_id;
 	}
 
-	case a2::Tag::OpLogAnd:
-	case a2::Tag::OpLogOr:
+	case a2::AstTag::OpLogAnd:
+	case a2::AstTag::OpLogOr:
 	{
 		a2::AstNode* const lhs = a2::first_child_of(expr);
 
@@ -192,7 +192,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		return get_builtin_type_ids(typechecker->types)->bool_type_id;
 	}
 
-	case a2::Tag::OpTypeArray:
+	case a2::AstTag::OpTypeArray:
 	{
 		a2::AstNode* const count = a2::first_child_of(expr);
 
@@ -252,11 +252,11 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		return id_from_type(typechecker->types, TypeTag::Type, TypeFlag::EMPTY, range::from_object_bytes(&array_type_id));
 	}
 
-	case a2::Tag::UOpTypeSlice:
-	case a2::Tag::UOpTypeMultiPtr:
-	case a2::Tag::UOpTypeOptMultiPtr:
-	case a2::Tag::UOpTypeOptPtr:
-	case a2::Tag::UOpTypePtr:
+	case a2::AstTag::UOpTypeSlice:
+	case a2::AstTag::UOpTypeMultiPtr:
+	case a2::AstTag::UOpTypeOptMultiPtr:
+	case a2::AstTag::UOpTypeOptPtr:
+	case a2::AstTag::UOpTypePtr:
 	{
 		Value* const pointer_type_value = interpret_expr(typechecker->interpreter, enclosing_scope, expr);
 
@@ -269,7 +269,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		return id_from_type(typechecker->types, TypeTag::Type, TypeFlag::EMPTY, range::from_object_bytes(&pointer_type_id));
 	}
 
-	case a2::Tag::OpArrayIndex:
+	case a2::AstTag::OpArrayIndex:
 	{
 		a2::AstNode* const array = a2::first_child_of(expr);
 
@@ -308,7 +308,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		return element_type_id;
 	}
 
-	case a2::Tag::Block:
+	case a2::AstTag::Block:
 	{
 		if (!a2::has_children(expr))
 			return get_builtin_type_ids(typechecker->types)->void_type_id;
@@ -333,7 +333,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		ASSERT_UNREACHABLE;
 	}
 
-	case a2::Tag::If:
+	case a2::AstTag::If:
 	{
 		const a2::IfInfo if_info = a2::if_info(expr);
 
@@ -377,7 +377,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		}
 	}
 
-	case a2::Tag::Func:
+	case a2::AstTag::Func:
 	{
 		const a2::FuncInfo func_info = a2::func_info(expr);
 
@@ -436,14 +436,14 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		return func_data->signature_type_id;
 	}
 
-	case a2::Tag::File:
-	case a2::Tag::ParameterList:
-	case a2::Tag::Case:
+	case a2::AstTag::File:
+	case a2::AstTag::ParameterList:
+	case a2::AstTag::Case:
 	{
 		panic("Unexpected AST node type '%s' passed to typecheck_expr\n", a2::tag_name(expr->tag));
 	}
 
-	case a2::Tag::Call:
+	case a2::AstTag::Call:
 	{
 		a2::AstNode* const callee = a2::first_child_of(expr);
 
@@ -493,74 +493,74 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		return func_type->header.return_type_id;
 	}
 
-	case a2::Tag::OpAdd:
-	case a2::Tag::OpSub:
-	case a2::Tag::OpMul:
-	case a2::Tag::OpDiv:
+	case a2::AstTag::OpAdd:
+	case a2::AstTag::OpSub:
+	case a2::AstTag::OpMul:
+	case a2::AstTag::OpDiv:
 	{
 		// TODO
 		panic("TODO: typecheck_expr(%u)\n", expr->tag);
 	}
 
-	case a2::Tag::Builtin:
-	case a2::Tag::CompositeInitializer:
-	case a2::Tag::ArrayInitializer:
-	case a2::Tag::Wildcard:
-	case a2::Tag::Where:
-	case a2::Tag::Expects:
-	case a2::Tag::Ensures:
-	case a2::Tag::Definition:
-	case a2::Tag::For:
-	case a2::Tag::ForEach:
-	case a2::Tag::Switch:
-	case a2::Tag::Trait:
-	case a2::Tag::Impl:
-	case a2::Tag::Catch:
-	case a2::Tag::Return:
-	case a2::Tag::Leave:
-	case a2::Tag::Yield:
-	case a2::Tag::UOpTypeTailArray:
-	case a2::Tag::UOpEval:
-	case a2::Tag::UOpTry:
-	case a2::Tag::UOpDefer:
-	case a2::Tag::UOpAddr:
-	case a2::Tag::UOpDeref:
-	case a2::Tag::UOpBitNot:
-	case a2::Tag::UOpLogNot:
-	case a2::Tag::UOpTypeVar:
-	case a2::Tag::UOpImpliedMember:
-	case a2::Tag::UOpNegate:
-	case a2::Tag::UOpPos:
-	case a2::Tag::OpAddTC:
-	case a2::Tag::OpSubTC:
-	case a2::Tag::OpMulTC:
-	case a2::Tag::OpMod:
-	case a2::Tag::OpBitAnd:
-	case a2::Tag::OpBitOr:
-	case a2::Tag::OpBitXor:
-	case a2::Tag::OpShiftL:
-	case a2::Tag::OpShiftR:
-	case a2::Tag::OpMember:
-	case a2::Tag::OpCmpLT:
-	case a2::Tag::OpCmpGT:
-	case a2::Tag::OpCmpLE:
-	case a2::Tag::OpCmpGE:
-	case a2::Tag::OpCmpNE:
-	case a2::Tag::OpCmpEQ:
-	case a2::Tag::OpSet:
-	case a2::Tag::OpSetAdd:
-	case a2::Tag::OpSetSub:
-	case a2::Tag::OpSetMul:
-	case a2::Tag::OpSetDiv:
-	case a2::Tag::OpSetAddTC:
-	case a2::Tag::OpSetSubTC:
-	case a2::Tag::OpSetMulTC:
-	case a2::Tag::OpSetMod:
-	case a2::Tag::OpSetBitAnd:
-	case a2::Tag::OpSetBitOr:
-	case a2::Tag::OpSetBitXor:
-	case a2::Tag::OpSetShiftL:
-	case a2::Tag::OpSetShiftR:
+	case a2::AstTag::Builtin:
+	case a2::AstTag::CompositeInitializer:
+	case a2::AstTag::ArrayInitializer:
+	case a2::AstTag::Wildcard:
+	case a2::AstTag::Where:
+	case a2::AstTag::Expects:
+	case a2::AstTag::Ensures:
+	case a2::AstTag::Definition:
+	case a2::AstTag::For:
+	case a2::AstTag::ForEach:
+	case a2::AstTag::Switch:
+	case a2::AstTag::Trait:
+	case a2::AstTag::Impl:
+	case a2::AstTag::Catch:
+	case a2::AstTag::Return:
+	case a2::AstTag::Leave:
+	case a2::AstTag::Yield:
+	case a2::AstTag::UOpTypeTailArray:
+	case a2::AstTag::UOpEval:
+	case a2::AstTag::UOpTry:
+	case a2::AstTag::UOpDefer:
+	case a2::AstTag::UOpAddr:
+	case a2::AstTag::UOpDeref:
+	case a2::AstTag::UOpBitNot:
+	case a2::AstTag::UOpLogNot:
+	case a2::AstTag::UOpTypeVar:
+	case a2::AstTag::UOpImpliedMember:
+	case a2::AstTag::UOpNegate:
+	case a2::AstTag::UOpPos:
+	case a2::AstTag::OpAddTC:
+	case a2::AstTag::OpSubTC:
+	case a2::AstTag::OpMulTC:
+	case a2::AstTag::OpMod:
+	case a2::AstTag::OpBitAnd:
+	case a2::AstTag::OpBitOr:
+	case a2::AstTag::OpBitXor:
+	case a2::AstTag::OpShiftL:
+	case a2::AstTag::OpShiftR:
+	case a2::AstTag::OpMember:
+	case a2::AstTag::OpCmpLT:
+	case a2::AstTag::OpCmpGT:
+	case a2::AstTag::OpCmpLE:
+	case a2::AstTag::OpCmpGE:
+	case a2::AstTag::OpCmpNE:
+	case a2::AstTag::OpCmpEQ:
+	case a2::AstTag::OpSet:
+	case a2::AstTag::OpSetAdd:
+	case a2::AstTag::OpSetSub:
+	case a2::AstTag::OpSetMul:
+	case a2::AstTag::OpSetDiv:
+	case a2::AstTag::OpSetAddTC:
+	case a2::AstTag::OpSetSubTC:
+	case a2::AstTag::OpSetMulTC:
+	case a2::AstTag::OpSetMod:
+	case a2::AstTag::OpSetBitAnd:
+	case a2::AstTag::OpSetBitOr:
+	case a2::AstTag::OpSetBitXor:
+	case a2::AstTag::OpSetShiftL:
+	case a2::AstTag::OpSetShiftR:
 		panic("Unimplemented AST node tag '%s' in typecheck_expr\n", a2::tag_name(expr->tag));
 
 	default:
@@ -570,7 +570,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 
 TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, a2::AstNode* definition) noexcept
 {
-	ASSERT_OR_IGNORE(definition->tag == a2::Tag::Definition);
+	ASSERT_OR_IGNORE(definition->tag == a2::AstTag::Definition);
 
 	ASSERT_OR_IGNORE(a2::has_children(definition));
 
@@ -746,7 +746,7 @@ TypeId complete_type(Typechecker* typechecker, TypeBuilder* builder, u32 size, u
 
 TypeId typecheck_file(Typechecker* typechecker, a2::AstNode* root) noexcept
 {
-	ASSERT_OR_IGNORE(root->tag == a2::Tag::File);
+	ASSERT_OR_IGNORE(root->tag == a2::AstTag::File);
 
 	TypeBuilder* const builder = alloc_type_builder(typechecker);
 
@@ -756,7 +756,7 @@ TypeId typecheck_file(Typechecker* typechecker, a2::AstNode* root) noexcept
 	{
 		a2::AstNode* const definition = get_ptr(rst);
 
-		if (definition->tag != a2::Tag::Definition)
+		if (definition->tag != a2::AstTag::Definition)
 			continue;
 
 		if (a2::has_flag(definition, a2::Flag::Definition_IsGlobal))

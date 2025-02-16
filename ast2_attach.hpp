@@ -9,7 +9,7 @@ namespace a2
 {
 	struct ValIntegerData
 	{
-		static constexpr Tag TAG = Tag::ValInteger;
+		static constexpr AstTag TAG = AstTag::ValInteger;
 
 		#pragma pack(push)
 		#pragma pack(4)
@@ -19,7 +19,7 @@ namespace a2
 
 	struct ValFloatData
 	{
-		static constexpr Tag TAG = Tag::ValFloat;
+		static constexpr AstTag TAG = AstTag::ValFloat;
 
 		#pragma pack(push)
 		#pragma pack(4)
@@ -29,28 +29,28 @@ namespace a2
 
 	struct ValCharData
 	{
-		static constexpr Tag TAG = Tag::ValChar;
+		static constexpr AstTag TAG = AstTag::ValChar;
 
 		u32 codepoint;
 	};
 
 	struct ValIdentifierData
 	{
-		static constexpr Tag TAG = Tag::ValIdentifer;
+		static constexpr AstTag TAG = AstTag::ValIdentifer;
 
 		IdentifierId identifier_id;
 	};
 
 	struct ValStringData
 	{
-		static constexpr Tag TAG = Tag::ValString;
+		static constexpr AstTag TAG = AstTag::ValString;
 
 		IdentifierId string_id;
 	};
 
 	struct DefinitionData
 	{
-		static constexpr Tag TAG = Tag::Definition;
+		static constexpr AstTag TAG = AstTag::Definition;
 
 		IdentifierId identifier_id;
 
@@ -61,14 +61,14 @@ namespace a2
 
 	struct BlockData
 	{
-		static constexpr Tag TAG = Tag::Block;
+		static constexpr AstTag TAG = AstTag::Block;
 
 		u32 definition_count;
 	};
 
 	struct FileData
 	{
-		static constexpr Tag TAG = Tag::File;
+		static constexpr AstTag TAG = AstTag::File;
 
 		BlockData root_block;
 
@@ -77,7 +77,7 @@ namespace a2
 
 	struct BuiltinData
 	{
-		static constexpr Tag TAG = Tag::Builtin;
+		static constexpr AstTag TAG = AstTag::Builtin;
 
 		using BuiltinSignature = void (*) (Interpreter*);
 
@@ -89,7 +89,7 @@ namespace a2
 
 	struct FuncData
 	{
-		static constexpr Tag TAG = Tag::Func;
+		static constexpr AstTag TAG = AstTag::Func;
 
 		TypeId signature_type_id;
 

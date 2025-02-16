@@ -31,7 +31,7 @@ ScopePool* create_scope_pool(AllocPool* alloc, a2::AstNode* builtins) noexcept
 	{
 		a2::AstNode* const builtin_definition = get_ptr(rst);
 
-		if (builtin_definition->tag == a2::Tag::Definition)
+		if (builtin_definition->tag == a2::AstTag::Definition)
 			add_definition_to_scope(builtins_scope, builtin_definition);
 	}
 
@@ -51,7 +51,7 @@ void release_scope_pool(ScopePool* scopes) noexcept
 
 Scope* alloc_file_scope(ScopePool* scopes, a2::AstNode* root) noexcept
 {
-	ASSERT_OR_IGNORE(root->tag == a2::Tag::File);
+	ASSERT_OR_IGNORE(root->tag == a2::AstTag::File);
 
 	a2::BlockData* const file_block_data = &a2::attachment_of<a2::FileData>(root)->root_block;
 
@@ -69,7 +69,7 @@ Scope* alloc_file_scope(ScopePool* scopes, a2::AstNode* root) noexcept
 	{
 		a2::AstNode* const node = get_ptr(rst);
 
-		if (node->tag != a2::Tag::Definition)
+		if (node->tag != a2::AstTag::Definition)
 			continue;
 
 		add_definition_to_scope(scope, node);
@@ -125,7 +125,7 @@ Scope* scope_from_id(ScopePool* scopes, ScopeId id) noexcept
 
 void add_definition_to_scope(Scope* scope, a2::AstNode* definition) noexcept
 {
-	ASSERT_OR_IGNORE(definition->tag == a2::Tag::Definition);
+	ASSERT_OR_IGNORE(definition->tag == a2::AstTag::Definition);
 
 	ASSERT_OR_IGNORE(scope->header.used < scope->header.capacity);
 
