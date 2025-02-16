@@ -302,7 +302,7 @@ static void preorder_iterator_with_1_child_has_1_entry() noexcept
 
 	a2::AstPreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
-	const a2::IterationResult result = a2::next(&it);
+	const a2::AstIterationResult result = a2::next(&it);
 
 	TEST_EQUAL(a2::is_valid(result), true);
 
@@ -325,7 +325,7 @@ static void preorder_iterator_with_5_children_has_5_entries() noexcept
 
 	for (u32 i = 0; i != 5; ++i)
 	{
-		const a2::IterationResult result = a2::next(&it);
+		const a2::AstIterationResult result = a2::next(&it);
 
 		TEST_EQUAL(a2::is_valid(result), true);
 
@@ -351,7 +351,7 @@ static void preorder_iterator_with_grandchildren_iterates_grandchildren() noexce
 
 	for (u32 i = 0; i != 8; ++i)
 	{
-		const a2::IterationResult result = a2::next(&it);
+		const a2::AstIterationResult result = a2::next(&it);
 
 		TEST_EQUAL(a2::is_valid(result), true);
 
@@ -382,7 +382,7 @@ static void preorder_iterator_with_flat_tree_iterates_subtrees() noexcept
 
 	for (u32 i = 0; i != 8; ++i)
 	{
-		const a2::IterationResult result = a2::next(&it);
+		const a2::AstIterationResult result = a2::next(&it);
 
 		TEST_EQUAL(a2::is_valid(result), true);
 

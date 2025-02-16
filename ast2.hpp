@@ -241,14 +241,14 @@ namespace a2
 
 
 
-	struct IterationResult
+	struct AstIterationResult
 	{
 		AstNode* node;
 
 		u32 depth;
 	};
 
-	static inline bool is_valid(IterationResult result) noexcept
+	static inline bool is_valid(AstIterationResult result) noexcept
 	{
 		return result.node != nullptr;
 	}
@@ -317,12 +317,12 @@ namespace a2
 		return iterator;
 	}
 
-	static inline IterationResult next(AstPreorderIterator* iterator) noexcept
+	static inline AstIterationResult next(AstPreorderIterator* iterator) noexcept
 	{
 		if (iterator->curr == nullptr)
 			return { nullptr, 0 };
 
-		IterationResult result = { iterator->curr, iterator->depth };
+		AstIterationResult result = { iterator->curr, iterator->depth };
 
 		AstNode* const curr = iterator->curr;
 
@@ -360,7 +360,7 @@ namespace a2
 		return result;
 	}
 
-	static inline IterationResult peek(const AstPreorderIterator* iterator) noexcept
+	static inline AstIterationResult peek(const AstPreorderIterator* iterator) noexcept
 	{
 		return { iterator->curr, iterator->depth };
 	}
@@ -397,7 +397,7 @@ namespace a2
 		return iterator;
 	}
 
-	static inline IterationResult next(AstPostorderIterator* iterator) noexcept
+	static inline AstIterationResult next(AstPostorderIterator* iterator) noexcept
 	{
 		if (iterator->depth < 0)
 			return { nullptr, 0 };
@@ -436,7 +436,7 @@ namespace a2
 		return { ret_node, ret_depth };
 	}
 
-	static inline IterationResult peek(const AstPostorderIterator* iterator) noexcept
+	static inline AstIterationResult peek(const AstPostorderIterator* iterator) noexcept
 	{
 		if (iterator->depth == -1)
 			return { nullptr, 0 };

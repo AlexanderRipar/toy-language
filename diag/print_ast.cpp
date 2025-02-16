@@ -31,7 +31,7 @@ void diag::print_ast(FILE* out, IdentifierPool* identifiers, a2::AstNode* root) 
 
 	while (true)
 	{
-		a2::IterationResult result = next(&it);
+		a2::AstIterationResult result = next(&it);
 
 		if (!a2::is_valid(result))
 			break;
