@@ -25,9 +25,9 @@ static void builtin_import(Interpreter* interpreter) noexcept
 	// TODO
 }
 
-static a2::BuilderToken push_builtin_def(a2::Builder* builder, IdentifierPool* identifiers, Range<char8> name, a2::BuiltinData::BuiltinSignature function) noexcept
+static a2::AstBuilderToken push_builtin_def(a2::Builder* builder, IdentifierPool* identifiers, Range<char8> name, a2::BuiltinData::BuiltinSignature function) noexcept
 {
-	const a2::BuilderToken val_token = a2::push_node(builder, a2::Builder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::BuiltinData{ function });
+	const a2::AstBuilderToken val_token = a2::push_node(builder, a2::Builder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::BuiltinData{ function });
 
 	return a2::push_node(builder, val_token, a2::AstFlag::EMPTY, a2::DefinitionData{ id_from_identifier(identifiers, name), /* TODO */ INVALID_TYPE_ID });
 }
@@ -69,11 +69,11 @@ static TypeId push_type_def(a2::Builder* builder, IdentifierPool* identifiers, R
 
 static void push_std_import(a2::Builder* builder, IdentifierPool* identifiers) noexcept
 {
-	const a2::BuilderToken import_identifier_token = a2::push_node(builder, a2::Builder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("import")) });
+	const a2::AstBuilderToken import_identifier_token = a2::push_node(builder, a2::Builder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("import")) });
 
 	a2::push_node(builder, a2::Builder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValStringData{ id_from_identifier(identifiers, range::from_literal_string("@std.src")) });
 
-	const a2::BuilderToken import_call_token = a2::push_node(builder, import_identifier_token, a2::AstTag::Call, a2::AstFlag::EMPTY);
+	const a2::AstBuilderToken import_call_token = a2::push_node(builder, import_identifier_token, a2::AstTag::Call, a2::AstFlag::EMPTY);
 
 	a2::push_node(builder, import_call_token, a2::AstFlag::EMPTY, a2::DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")), /* TODO */ INVALID_TYPE_ID });
 }
@@ -92,13 +92,13 @@ static TypeId push_typeinfo_def(a2::Builder* builder, IdentifierPool* identifier
 
 	const TypeId typeinfo_type_id = id_from_type(types, TypeTag::Composite, TypeFlag::EMPTY, Range{ typeinfo_buf });
 
-	const a2::BuilderToken std_token = a2::push_node(builder, a2::Builder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
+	const a2::AstBuilderToken std_token = a2::push_node(builder, a2::Builder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
 
 	a2::push_node(builder, a2::Builder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("build_typeinfo_type")) });
 
-	const a2::BuilderToken member_token = a2::push_node(builder, std_token, a2::AstTag::OpMember, a2::AstFlag::EMPTY);
+	const a2::AstBuilderToken member_token = a2::push_node(builder, std_token, a2::AstTag::OpMember, a2::AstFlag::EMPTY);
 
-	const a2::BuilderToken call_token = a2::push_node(builder, member_token, a2::AstTag::Call, a2::AstFlag::EMPTY);
+	const a2::AstBuilderToken call_token = a2::push_node(builder, member_token, a2::AstTag::Call, a2::AstFlag::EMPTY);
 
 	a2::push_node(builder, call_token, a2::AstFlag::EMPTY, a2::DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("typeinfo")), type_type_id });
 
@@ -126,7 +126,7 @@ a2::AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept
 
 a2::AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, TypePool* types, ValuePool* values, a2::Builder* builder) noexcept
 {
-	const a2::BuilderToken first_child_token = push_builtin_def(builder, identifiers, range::from_literal_string("typeinfo"), &builtin_typeinfo);
+	const a2::AstBuilderToken first_child_token = push_builtin_def(builder, identifiers, range::from_literal_string("typeinfo"), &builtin_typeinfo);
 
 	push_builtin_def(builder, identifiers, range::from_literal_string("import"), &builtin_import);
 

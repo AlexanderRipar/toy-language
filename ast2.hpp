@@ -446,24 +446,24 @@ namespace a2
 
 
 
-	struct BuilderToken
+	struct AstBuilderToken
 	{
 		u32 rep;
 	};
 
 	struct Builder
 	{
-		static constexpr BuilderToken NO_CHILDREN = { ~0u };
+		static constexpr AstBuilderToken NO_CHILDREN = { ~0u };
 
 		ReservedVec<u32> scratch;
 	};
 
-	static inline bool operator==(BuilderToken lhs, BuilderToken rhs) noexcept
+	static inline bool operator==(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
 	{
 		return lhs.rep == rhs.rep;
 	}
 	
-	static inline bool operator!=(BuilderToken lhs, BuilderToken rhs) noexcept
+	static inline bool operator!=(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
 	{
 		return lhs.rep != rhs.rep;
 	}
@@ -477,7 +477,7 @@ namespace a2
 		return builder;
 	}
 
-	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, AstTag tag, AstFlag flags) noexcept
+	static inline AstBuilderToken push_node(Builder* builder, AstBuilderToken first_child, AstTag tag, AstFlag flags) noexcept
 	{
 		static_assert(sizeof(AstNode) % sizeof(u32) == 0);
 
@@ -493,7 +493,7 @@ namespace a2
 	}
 
 	template<typename T>
-	static inline BuilderToken push_node(Builder* builder, BuilderToken first_child, AstFlag flags, T attachment) noexcept
+	static inline AstBuilderToken push_node(Builder* builder, AstBuilderToken first_child, AstFlag flags, T attachment) noexcept
 	{
 		static_assert(sizeof(AstNode) % sizeof(u32) == 0);
 		
