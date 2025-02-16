@@ -55,14 +55,6 @@ static inline bool is_some(OptPtr<T> ptr) noexcept
 }
 
 template<typename T>
-static inline T& get(OptPtr<T> ptr) noexcept
-{
-	ASSERT_OR_IGNORE(is_some(ptr));
-
-	return *ptr.ptr;
-}
-
-template<typename T>
 static inline T* get_ptr(OptPtr<T> ptr) noexcept
 {
 	ASSERT_OR_IGNORE(is_some(ptr));
