@@ -284,7 +284,7 @@ namespace a2
 
 
 
-	struct PreorderIterator
+	struct AstPreorderIterator
 	{
 		AstNode* curr;
 
@@ -297,9 +297,9 @@ namespace a2
 		static_assert(MAX_AST_DEPTH <= UINT8_MAX);
 	};
 
-	static inline PreorderIterator preorder_ancestors_of(AstNode* node) noexcept
+	static inline AstPreorderIterator preorder_ancestors_of(AstNode* node) noexcept
 	{
-		PreorderIterator iterator;
+		AstPreorderIterator iterator;
 
 		if (has_children(node))
 		{
@@ -317,7 +317,7 @@ namespace a2
 		return iterator;
 	}
 
-	static inline IterationResult next(PreorderIterator* iterator) noexcept
+	static inline IterationResult next(AstPreorderIterator* iterator) noexcept
 	{
 		if (iterator->curr == nullptr)
 			return { nullptr, 0 };
@@ -360,7 +360,7 @@ namespace a2
 		return result;
 	}
 
-	static inline IterationResult peek(const PreorderIterator* iterator) noexcept
+	static inline IterationResult peek(const AstPreorderIterator* iterator) noexcept
 	{
 		return { iterator->curr, iterator->depth };
 	}

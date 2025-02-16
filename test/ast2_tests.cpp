@@ -287,7 +287,7 @@ static void preorder_iterator_with_0_children_has_0_entries() noexcept
 
 	DummyTree tree = single_node_dummy_tree();
 
-	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
+	a2::AstPreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
 	TEST_EQUAL(a2::is_valid(a2::next(&it)), false);
 
@@ -300,7 +300,7 @@ static void preorder_iterator_with_1_child_has_1_entry() noexcept
 
 	DummyTree tree = unary_dummy_tree();
 
-	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
+	a2::AstPreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
 	const a2::IterationResult result = a2::next(&it);
 
@@ -321,7 +321,7 @@ static void preorder_iterator_with_5_children_has_5_entries() noexcept
 
 	DummyTree tree = nary_dummy_tree(5);
 
-	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
+	a2::AstPreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
 	for (u32 i = 0; i != 5; ++i)
 	{
@@ -345,7 +345,7 @@ static void preorder_iterator_with_grandchildren_iterates_grandchildren() noexce
 
 	DummyTree tree = complex_dummy_tree();
 
-	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
+	a2::AstPreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
 	static constexpr u32 expected_depths[] = { 0, 1, 1, 0, 1, 2, 1, 2 };
 
@@ -371,7 +371,7 @@ static void preorder_iterator_with_flat_tree_iterates_subtrees() noexcept
 
 	DummyTree tree = flat_dummy_tree();
 
-	a2::PreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
+	a2::AstPreorderIterator it = a2::preorder_ancestors_of(reinterpret_cast<a2::AstNode*>(tree.dwords));
 
 	static constexpr u32 expected_depths[] = {
 		0, 1,

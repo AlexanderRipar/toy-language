@@ -23,7 +23,7 @@ static void print_node_header(FILE* out, IdentifierPool* identifiers, const a2::
 
 void diag::print_ast(FILE* out, IdentifierPool* identifiers, a2::AstNode* root) noexcept
 {
-	a2::PreorderIterator it = a2::preorder_ancestors_of(root);
+	a2::AstPreorderIterator it = a2::preorder_ancestors_of(root);
 
 	s32 prev_depth = -1;
 
