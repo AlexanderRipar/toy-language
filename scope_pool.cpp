@@ -37,8 +37,6 @@ ScopePool* create_scope_pool(AllocPool* alloc, a2::Node* builtins) noexcept
 
 	ASSERT_OR_IGNORE(builtins_scope->header.capacity == builtins_scope->header.used);
 
-	builtins_block->scope_id = id_from_static_scope(scopes, builtins_scope);
-
 	scopes->builtins_scope = builtins_scope;
 
 	return scopes;

@@ -154,11 +154,11 @@ static void print_type(FILE* out, IdentifierPool* identifiers, TypePool* types, 
 			{
 				CompositeTypeMember* const member = composite_type->members + i;
 
-				const Range<char8> member_name = identifier_entry_from_id(identifiers, member->name)->range();
+				const Range<char8> member_name = identifier_entry_from_id(identifiers, member->identifier_id)->range();
 
-				fprintf(out, "%*s%.*s (%+u): ", (depth + 1) * 2, "", static_cast<s32>(member_name.count()), member_name.begin(), member->offset);
+				fprintf(out, "%*s%.*s (%+llu): ", (depth + 1) * 2, "", static_cast<s32>(member_name.count()), member_name.begin(), member->offset);
 
-				print_type(out, identifiers, types, member->type, depth + 1, true);
+				print_type(out, identifiers, types, member->type_id, depth + 1, true);
 			}
 
 			fprintf(out, "%*s}\n", depth * 2, "");

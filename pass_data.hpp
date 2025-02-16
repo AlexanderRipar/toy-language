@@ -234,6 +234,8 @@ IdentifierEntry* identifier_entry_from_id(IdentifierPool* identifiers, Identifie
 
 struct TypePool;
 
+struct TypeBuilder;
+
 struct TypeId
 {
 	u32 rep;
@@ -367,19 +369,19 @@ struct FuncTypeBuffer
 
 struct CompositeTypeMember
 {
-	IdentifierId name;
+	IdentifierId identifier_id;
 
-	TypeId type;
+	TypeId type_id;
 
-	u32 offset : 28;
+	u64 offset : 60; // when is_global: offset into global data segment; otherwise offset inside instances of type.
 
-	u32 is_mut : 1;
+	u64 is_mut : 1;
 
-	u32 is_pub : 1;
+	u64 is_pub : 1;
 
-	u32 is_global : 1;
+	u64 is_global : 1;
 
-	u32 is_use : 1;
+	u64 is_use : 1;
 };
 
 struct CompositeTypeHeader
@@ -387,6 +389,8 @@ struct CompositeTypeHeader
 	u32 size;
 
 	u32 alignment;
+
+	u32 stride;
 
 	u32 member_count;
 };
@@ -400,6 +404,8 @@ struct CompositeType
 	CompositeTypeMember members[];
 	#pragma warning(pop)
 };
+
+static_assert(sizeof(CompositeTypeHeader) == sizeof(CompositeType));
 
 struct TypeKey
 {
@@ -447,7 +453,7 @@ struct alignas(8) TypeEntry
 
 	bool equal_to_key(TypeKey key, u32 key_hash) const noexcept
 	{
-		return m_hash == key_hash && key.bytes.count() == size && memcmp(key.bytes.begin(), m_value, size) == 0;
+		return m_hash == key_hash && key.tag == tag && key.flags == flags && key.bytes.count() == size && memcmp(key.bytes.begin(), m_value, size) == 0;
 	}
 
 	void init(TypeKey key, u32 key_hash) noexcept
@@ -762,5 +768,9 @@ void release_typechecker(Typechecker* typechecker) noexcept;
 TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* expr) noexcept;
 
 TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* definition) noexcept;
+
+void add_type_member(Typechecker* typechecker, TypeBuilder* builder, IdentifierId identifier_id, a2::Node* const type_expr, a2::Node* const value_expr, u64 offset, bool is_mut, bool is_pub, bool is_global, bool is_use) noexcept;
+
+TypeId complete_type_builder(TypePool* types, TypeBuilder* builder, u32 size, u32 alignment, u32 stride) noexcept;
 
 #endif // PARSEDATA_INCLUDE_GUARD

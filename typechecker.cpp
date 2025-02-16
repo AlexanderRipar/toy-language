@@ -3,6 +3,42 @@
 #include "ast2_attach.hpp"
 #include "ast2_helper.hpp"
 
+struct TypeBuilderMember
+{
+	IdentifierId identifier_id;
+
+	u32 unused_;
+
+	OptPtr<a2::Node> type_expr;
+
+	OptPtr<a2::Node> value_expr;
+
+	u64 offset : 60; // when is_global: offset into global data segment; otherwise offset inside instances of type.
+
+	u64 is_mut : 1;
+
+	u64 is_pub : 1;
+
+	u64 is_global : 1;
+
+	u64 is_use : 1;
+};
+
+struct TypeBuilder
+{
+	u32 used;
+
+	s32 next_offset;
+
+	s32 tail_offset;
+
+	u32 unused_[5];
+
+	TypeBuilderMember members[7];
+};
+
+static_assert(sizeof(TypeBuilder) == 256);
+
 struct Typechecker
 {
 	Interpreter* interpreter;
@@ -12,9 +48,25 @@ struct Typechecker
 	TypePool* types;
 
 	IdentifierPool* identifiers;
+
+	ReservedVec<TypeBuilder> builders;
+
+	s32 first_free_builder_index;
 };
 
-static TypeId typecheck_parameter(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* const parameter) noexcept
+static void release_type_builder(Typechecker* typechecker, TypeBuilder* builder) noexcept
+{
+	TypeBuilder* const tail = builder + builder->tail_offset;
+
+	if (typechecker->first_free_builder_index < 0)
+		tail->next_offset = 0;
+	else
+		tail->next_offset = static_cast<s32>(typechecker->builders.begin() + typechecker->first_free_builder_index - tail);
+
+		typechecker->first_free_builder_index = static_cast<s32>(builder - typechecker->builders.begin());
+}
+
+static TypeId typecheck_parameter(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* parameter) noexcept
 {
 	ASSERT_OR_IGNORE(parameter->tag == a2::Tag::Definition);
 
@@ -39,6 +91,20 @@ static TypeId typecheck_parameter(Typechecker* typechecker, Scope* enclosing_sco
 	return type_id;
 }
 
+static TypeId interpret_type_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* expr) noexcept
+{
+	Value* const type_value = interpret_expr(typechecker->interpreter, enclosing_scope, expr);
+
+	if (dealias_type_entry(typechecker->types, type_value->header.type_id)->tag != TypeTag::Type)
+		panic("Expected type expression\n");
+
+	const TypeId type_id = *access_value<TypeId>(type_value);
+
+	release_interpretation_result(typechecker->interpreter, type_value);
+
+	return type_id;
+}
+
 Typechecker* create_typechecker(AllocPool* alloc, Interpreter* Interpreter, ScopePool* scopes, TypePool* types, IdentifierPool* identifiers) noexcept
 {
 	Typechecker* const typechecker = static_cast<Typechecker*>(alloc_from_pool(alloc, sizeof(Typechecker), alignof(Typechecker)));
@@ -48,10 +114,16 @@ Typechecker* create_typechecker(AllocPool* alloc, Interpreter* Interpreter, Scop
 	typechecker->types = types;
 	typechecker->identifiers = identifiers;
 
+	typechecker->builders.init(1u << 16, 1u << 7);
+	typechecker->first_free_builder_index = -1;
+
 	return typechecker;
 }
 
-void release_typechecker([[maybe_unused]] Typechecker* typechecker) noexcept { /* No-Op */ }
+void release_typechecker(Typechecker* typechecker) noexcept
+{
+	typechecker->builders.release();
+}
 
 TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node* expr) noexcept
 {
@@ -286,7 +358,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::Node
 
 			TypeEntry* const alternative_type_entry = dealias_type_entry(typechecker->types, alternative_type_id);
 
-			// TODO: Support non-exact matches, especially in case of chained if-elseif-...-else
+			// TODO: Support non-exact matches, especially in case of chained if-elseif-...-else and switch
 
 			const OptPtr<TypeEntry> common_type_entry = find_common_type_entry(typechecker->types, consequent_type_entry, alternative_type_entry);
 
@@ -533,4 +605,169 @@ TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, a2
 	definition_data->type_id = definition_type_id;
 
 	return definition_type_id;
+}
+
+
+
+TypeBuilder* alloc_type_builder(Typechecker* typechecker) noexcept
+{
+	TypeBuilder* builder;
+
+	if (typechecker->first_free_builder_index < 0)
+	{
+		builder = static_cast<TypeBuilder*>(typechecker->builders.reserve_exact(sizeof(TypeBuilder)));
+	}
+	else
+	{
+		builder = typechecker->builders.begin() + typechecker->first_free_builder_index;
+
+		if (builder->next_offset == 0)
+			typechecker->first_free_builder_index = -1;
+		else
+			typechecker->first_free_builder_index += builder->next_offset;
+	}
+
+	builder->next_offset = 0;
+	builder->tail_offset = 0;
+	builder->used = 0;
+
+	return builder;
+}
+
+void add_type_member(Typechecker* typechecker, TypeBuilder* builder, IdentifierId identifier_id, OptPtr<a2::Node> const type_expr, OptPtr<a2::Node> const value_expr, u64 offset, bool is_mut, bool is_pub, bool is_global, bool is_use) noexcept
+{
+	ASSERT_OR_IGNORE(is_some(type_expr) || is_some(value_expr));
+
+	TypeBuilder* const head = builder;
+
+	builder = typechecker->builders.begin() + builder->tail_offset;
+
+	if (builder->used == array_count(builder->members))
+	{
+		TypeBuilder* const next = alloc_type_builder(typechecker);
+
+		builder->next_offset = static_cast<s32>(next - builder);
+
+		head->tail_offset = static_cast<s32>(next - head);
+
+		builder = next;
+	}
+
+	TypeBuilderMember* const member = builder->members + builder->used;
+
+	builder->used += 1;
+
+	memset(member, 0, sizeof(*member));
+
+	member->identifier_id = identifier_id;
+	member->type_expr = type_expr;
+	member->value_expr = value_expr;
+	member->offset = offset;
+	member->is_mut = is_mut;
+	member->is_pub = is_pub;
+	member->is_global = is_global;
+	member->is_use = is_use;
+}
+
+TypeId complete_type_builder(Typechecker* typechecker, TypeBuilder* builder, u32 size, u32 alignment, u32 stride) noexcept
+{
+	struct
+	{
+		CompositeTypeHeader header;
+
+		CompositeTypeMember members[512];
+	} buf;
+
+	TypeBuilder* const head = builder;
+
+	u32 member_count = 0;
+
+	while (true)
+	{
+		if (member_count + builder->used > array_count(buf.members))
+			panic("Maximum of %llu members in composite type exceeded\n", array_count(buf.members));
+
+		for (u32 i = 0; i != builder->used; ++i)
+		{
+			CompositeTypeMember* const dst = buf.members + member_count;
+
+			member_count += 1;
+
+			TypeBuilderMember* const src = builder->members + i;
+
+			ASSERT_OR_IGNORE(is_some(src->type_expr) || is_some(src->value_expr));
+
+			dst->identifier_id = src->identifier_id;
+			dst->offset = src->offset;
+			dst->is_mut = src->is_mut;
+			dst->is_pub = src->is_pub;
+			dst->is_global = src->is_global;
+			dst->is_use = src->is_use;
+
+			TypeId explicit_type_id = INVALID_TYPE_ID;
+
+			if (is_some(src->type_expr))
+			{
+				explicit_type_id = interpret_type_expr(typechecker, nullptr /* TOOD */, get_ptr(src->type_expr));
+
+				dst->type_id = explicit_type_id;
+			}
+
+			if (is_some(src->value_expr))
+			{
+				const TypeId implied_type_id = typecheck_expr(typechecker, nullptr /* TODO */, get_ptr(src->value_expr));
+
+				if (is_none(src->type_expr))
+					dst->type_id = implied_type_id;
+				else if (!can_implicity_convert_from_to(typechecker->types, implied_type_id, explicit_type_id))
+					panic("Incompatible declared and inferred types\n");
+			}
+		}
+
+		if (builder->next_offset == 0)
+			break;
+
+		builder += builder->next_offset;
+	}
+
+	ASSERT_OR_IGNORE(builder == head + head->tail_offset);
+
+	release_type_builder(typechecker, head);
+
+	buf.header.size = size;
+	buf.header.alignment = alignment;
+	buf.header.stride = stride;
+	buf.header.member_count = member_count;
+
+	return id_from_type(typechecker->types, TypeTag::Composite, TypeFlag::EMPTY, Range<byte>{ reinterpret_cast<byte*>(&buf), sizeof(buf.header) + member_count * sizeof(buf.members[0]) });
+}
+
+
+
+TypeId typecheck_file(Typechecker* typechecker, a2::Node* root) noexcept
+{
+	ASSERT_OR_IGNORE(root->tag == a2::Tag::File);
+
+	TypeBuilder* const builder = alloc_type_builder(typechecker);
+
+	a2::DirectChildIterator it = a2::direct_children_of(root);
+
+	for (OptPtr<a2::Node> rst = a2::next(&it); is_some(rst); rst = a2::next(&it))
+	{
+		a2::Node* const definition = get_ptr(rst);
+
+		if (definition->tag != a2::Tag::Definition)
+			continue;
+
+		if (a2::has_flag(definition, a2::Flag::Definition_IsGlobal))
+			fprintf(stderr, "WARN: Redundant 'global' definition modifier, as top level definitions are implicitly global\n");
+
+		a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(definition);
+
+		const a2::DefinitionInfo definition_info = a2::definition_info(definition);
+
+		add_type_member(typechecker, builder, definition_data->identifier_id, definition_info.type, definition_info.value, 0, a2::has_flag(definition, a2::Flag::Definition_IsMut), a2::has_flag(definition, a2::Flag::Definition_IsPub), true, a2::has_flag(definition, a2::Flag::Definition_IsUse));
+	}
+
+	return complete_type_builder(typechecker, builder, 0, 1, 0);
 }

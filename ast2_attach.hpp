@@ -64,8 +64,6 @@ namespace a2
 		static constexpr Tag TAG = Tag::Block;
 
 		u32 definition_count;
-
-		ScopeId scope_id;
 	};
 
 	struct FileData
