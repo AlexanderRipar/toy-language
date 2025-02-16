@@ -181,15 +181,15 @@ void set_interpreter_typechecker(Interpreter* interpreter, Typechecker* typechec
 	interpreter->typechecker = typechecker;
 }
 
-Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstNode* expr) noexcept
+Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, AstNode* expr) noexcept
 {
 	switch (expr->tag)
 	{
-	case a2::AstTag::ValIdentifer:
+	case AstTag::ValIdentifer:
 	{
-		ASSERT_OR_IGNORE(!a2::has_children(expr));
+		ASSERT_OR_IGNORE(!has_children(expr));
 
-		const IdentifierId identifier_id = a2::attachment_of<a2::ValIdentifierData>(expr)->identifier_id;
+		const IdentifierId identifier_id = attachment_of<ValIdentifierData>(expr)->identifier_id;
 
 		const ScopeLookupResult lookup = lookup_identifier_recursive(enclosing_scope, identifier_id);
 
@@ -200,9 +200,9 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 			panic("Could not find definition for identifier '%.*s'\n", static_cast<s32>(name.count()), name.begin());
 		}
 
-		a2::AstNode* const definition = lookup.definition;
+		AstNode* const definition = lookup.definition;
 
-		a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(definition);
+		DefinitionData* const definition_data = attachment_of<DefinitionData>(definition);
 
 		if (definition_data->type_id == INVALID_TYPE_ID)
 			typecheck_definition(interpreter->typechecker, lookup.enclosing_scope, definition);
@@ -222,7 +222,7 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 
 			definition_data->value_id = location.id;
 
-			const a2::DefinitionInfo definition_info = a2::definition_info(definition);
+			const DefinitionInfo definition_info = get_definition_info(definition);
 
 			if (is_none(definition_info.value))
 				panic("Attempted to evaluate definition without value\n");
@@ -253,17 +253,17 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 		return stack_value;
 	}
 
-	case a2::AstTag::UOpTypeMultiPtr:
-	case a2::AstTag::UOpTypeOptMultiPtr:
-	case a2::AstTag::UOpTypeSlice:
-	case a2::AstTag::UOpTypeOptPtr:
-	case a2::AstTag::UOpTypePtr:
+	case AstTag::UOpTypeMultiPtr:
+	case AstTag::UOpTypeOptMultiPtr:
+	case AstTag::UOpTypeSlice:
+	case AstTag::UOpTypeOptPtr:
+	case AstTag::UOpTypePtr:
 	{
-		ASSERT_OR_IGNORE(a2::has_children(expr));
+		ASSERT_OR_IGNORE(has_children(expr));
 
-		a2::AstNode* const element_type_node = a2::first_child_of(expr);
+		AstNode* const element_type_node = first_child_of(expr);
 
-		ASSERT_OR_IGNORE(!a2::has_next_sibling(element_type_node));
+		ASSERT_OR_IGNORE(!has_next_sibling(element_type_node));
 
 		Value* const element_type_value = interpret_expr(interpreter, enclosing_scope, element_type_node);
 
@@ -288,7 +288,7 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 
 		Range<byte> type_bytes;
 
-		if (expr->tag == a2::AstTag::UOpTypeSlice)
+		if (expr->tag == AstTag::UOpTypeSlice)
 		{
 			tag = TypeTag::Slice;
 
@@ -302,15 +302,15 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 		{
 			tag = TypeTag::Ptr;
 
-			if (expr->tag == a2::AstTag::UOpTypeMultiPtr)
+			if (expr->tag == AstTag::UOpTypeMultiPtr)
 				flags = TypeFlag::Ptr_IsMulti;
-			else if (expr->tag == a2::AstTag::UOpTypeOptMultiPtr)
+			else if (expr->tag == AstTag::UOpTypeOptMultiPtr)
 				flags = TypeFlag::Ptr_IsOpt | TypeFlag::Ptr_IsMulti;
-			else if (expr->tag == a2::AstTag::UOpTypeOptPtr)
+			else if (expr->tag == AstTag::UOpTypeOptPtr)
 				flags = TypeFlag::Ptr_IsOpt;
 			else
 			{
-				ASSERT_OR_IGNORE(expr->tag == a2::AstTag::UOpTypePtr);
+				ASSERT_OR_IGNORE(expr->tag == AstTag::UOpTypePtr);
 
 				flags = TypeFlag::EMPTY;
 			}
@@ -320,7 +320,7 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 			type_bytes = range::from_object_bytes(&ptr_type);
 		}
 
-		if (a2::has_flag(expr, a2::AstFlag::Type_IsMut))
+		if (has_flag(expr, AstFlag::Type_IsMut))
 			flags |= TypeFlag::SliceOrPtr_IsMut;
 
 		*reinterpret_cast<TypeId*>(stack_value->value) = id_from_type(interpreter->types, tag, flags, type_bytes);
@@ -328,9 +328,9 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 		return stack_value;
 	}
 
-	case a2::AstTag::Call:
+	case AstTag::Call:
 	{
-		a2::AstNode* const callee = a2::first_child_of(expr);
+		AstNode* const callee = first_child_of(expr);
 
 		Value* const callee_value = interpret_expr(interpreter, enclosing_scope, callee);
 
@@ -342,84 +342,84 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 		return nullptr;
 	}
 
-	case a2::AstTag::Builtin:
-	case a2::AstTag::File:
-	case a2::AstTag::CompositeInitializer:
-	case a2::AstTag::ArrayInitializer:
-	case a2::AstTag::Wildcard:
-	case a2::AstTag::Where:
-	case a2::AstTag::Expects:
-	case a2::AstTag::Ensures:
-	case a2::AstTag::Definition:
-	case a2::AstTag::Block:
-	case a2::AstTag::If:
-	case a2::AstTag::For:
-	case a2::AstTag::ForEach:
-	case a2::AstTag::Switch:
-	case a2::AstTag::Case:
-	case a2::AstTag::Func:
-	case a2::AstTag::Trait:
-	case a2::AstTag::Impl:
-	case a2::AstTag::Catch:
-	case a2::AstTag::ValInteger:
-	case a2::AstTag::ValFloat:
-	case a2::AstTag::ValChar:
-	case a2::AstTag::ValString:
-	case a2::AstTag::Return:
-	case a2::AstTag::Leave:
-	case a2::AstTag::Yield:
-	case a2::AstTag::ParameterList:
-	case a2::AstTag::UOpTypeTailArray:
-	case a2::AstTag::UOpEval:
-	case a2::AstTag::UOpTry:
-	case a2::AstTag::UOpDefer:
-	case a2::AstTag::UOpAddr:
-	case a2::AstTag::UOpDeref:
-	case a2::AstTag::UOpBitNot:
-	case a2::AstTag::UOpLogNot:
-	case a2::AstTag::UOpTypeVar:
-	case a2::AstTag::UOpImpliedMember:
-	case a2::AstTag::UOpNegate:
-	case a2::AstTag::UOpPos:
-	case a2::AstTag::OpAdd:
-	case a2::AstTag::OpSub:
-	case a2::AstTag::OpMul:
-	case a2::AstTag::OpDiv:
-	case a2::AstTag::OpAddTC:
-	case a2::AstTag::OpSubTC:
-	case a2::AstTag::OpMulTC:
-	case a2::AstTag::OpMod:
-	case a2::AstTag::OpBitAnd:
-	case a2::AstTag::OpBitOr:
-	case a2::AstTag::OpBitXor:
-	case a2::AstTag::OpShiftL:
-	case a2::AstTag::OpShiftR:
-	case a2::AstTag::OpLogAnd:
-	case a2::AstTag::OpLogOr:
-	case a2::AstTag::OpMember:
-	case a2::AstTag::OpCmpLT:
-	case a2::AstTag::OpCmpGT:
-	case a2::AstTag::OpCmpLE:
-	case a2::AstTag::OpCmpGE:
-	case a2::AstTag::OpCmpNE:
-	case a2::AstTag::OpCmpEQ:
-	case a2::AstTag::OpSet:
-	case a2::AstTag::OpSetAdd:
-	case a2::AstTag::OpSetSub:
-	case a2::AstTag::OpSetMul:
-	case a2::AstTag::OpSetDiv:
-	case a2::AstTag::OpSetAddTC:
-	case a2::AstTag::OpSetSubTC:
-	case a2::AstTag::OpSetMulTC:
-	case a2::AstTag::OpSetMod:
-	case a2::AstTag::OpSetBitAnd:
-	case a2::AstTag::OpSetBitOr:
-	case a2::AstTag::OpSetBitXor:
-	case a2::AstTag::OpSetShiftL:
-	case a2::AstTag::OpSetShiftR:
-	case a2::AstTag::OpTypeArray:
-	case a2::AstTag::OpArrayIndex:
-		panic("Unimplemented AST node tag '%s' in interpret_expr\n", a2::ast_tag_name(expr->tag));
+	case AstTag::Builtin:
+	case AstTag::File:
+	case AstTag::CompositeInitializer:
+	case AstTag::ArrayInitializer:
+	case AstTag::Wildcard:
+	case AstTag::Where:
+	case AstTag::Expects:
+	case AstTag::Ensures:
+	case AstTag::Definition:
+	case AstTag::Block:
+	case AstTag::If:
+	case AstTag::For:
+	case AstTag::ForEach:
+	case AstTag::Switch:
+	case AstTag::Case:
+	case AstTag::Func:
+	case AstTag::Trait:
+	case AstTag::Impl:
+	case AstTag::Catch:
+	case AstTag::ValInteger:
+	case AstTag::ValFloat:
+	case AstTag::ValChar:
+	case AstTag::ValString:
+	case AstTag::Return:
+	case AstTag::Leave:
+	case AstTag::Yield:
+	case AstTag::ParameterList:
+	case AstTag::UOpTypeTailArray:
+	case AstTag::UOpEval:
+	case AstTag::UOpTry:
+	case AstTag::UOpDefer:
+	case AstTag::UOpAddr:
+	case AstTag::UOpDeref:
+	case AstTag::UOpBitNot:
+	case AstTag::UOpLogNot:
+	case AstTag::UOpTypeVar:
+	case AstTag::UOpImpliedMember:
+	case AstTag::UOpNegate:
+	case AstTag::UOpPos:
+	case AstTag::OpAdd:
+	case AstTag::OpSub:
+	case AstTag::OpMul:
+	case AstTag::OpDiv:
+	case AstTag::OpAddTC:
+	case AstTag::OpSubTC:
+	case AstTag::OpMulTC:
+	case AstTag::OpMod:
+	case AstTag::OpBitAnd:
+	case AstTag::OpBitOr:
+	case AstTag::OpBitXor:
+	case AstTag::OpShiftL:
+	case AstTag::OpShiftR:
+	case AstTag::OpLogAnd:
+	case AstTag::OpLogOr:
+	case AstTag::OpMember:
+	case AstTag::OpCmpLT:
+	case AstTag::OpCmpGT:
+	case AstTag::OpCmpLE:
+	case AstTag::OpCmpGE:
+	case AstTag::OpCmpNE:
+	case AstTag::OpCmpEQ:
+	case AstTag::OpSet:
+	case AstTag::OpSetAdd:
+	case AstTag::OpSetSub:
+	case AstTag::OpSetMul:
+	case AstTag::OpSetDiv:
+	case AstTag::OpSetAddTC:
+	case AstTag::OpSetSubTC:
+	case AstTag::OpSetMulTC:
+	case AstTag::OpSetMod:
+	case AstTag::OpSetBitAnd:
+	case AstTag::OpSetBitOr:
+	case AstTag::OpSetBitXor:
+	case AstTag::OpSetShiftL:
+	case AstTag::OpSetShiftR:
+	case AstTag::OpTypeArray:
+	case AstTag::OpArrayIndex:
+		panic("Unimplemented AST node tag '%s' in interpret_expr\n", ast_tag_name(expr->tag));
 
 	default:
 		ASSERT_UNREACHABLE;

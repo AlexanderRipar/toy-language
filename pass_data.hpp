@@ -597,9 +597,9 @@ AstPool* create_ast_pool(AllocPool* pool) noexcept;
 
 void release_ast_pool(AstPool* asts) noexcept;
 
-a2::AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept;
+AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept;
 
-a2::AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, TypePool* types, ValuePool* values, a2::AstBuilder* builder) noexcept;
+AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, TypePool* types, ValuePool* values, AstBuilder* builder) noexcept;
 
 
 
@@ -649,9 +649,9 @@ struct Parser;
 
 [[nodiscard]] Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers) noexcept;
 
-[[nodiscard]] a2::AstNode* parse(Parser* parser, SourceFile source, AstPool* out) noexcept;
+[[nodiscard]] AstNode* parse(Parser* parser, SourceFile source, AstPool* out) noexcept;
 
-[[nodiscard]] a2::AstBuilder* get_ast_builder(Parser* parser) noexcept;
+[[nodiscard]] AstBuilder* get_ast_builder(Parser* parser) noexcept;
 
 
 
@@ -661,7 +661,7 @@ struct Scope;
 
 struct ScopeHeader
 {
-	a2::AstNode* root;
+	AstNode* root;
 
 	Scope* parent_scope;
 
@@ -701,7 +701,7 @@ struct ScopeLocation
 
 struct ScopeLookupResult
 {
-	a2::AstNode* definition;
+	AstNode* definition;
 
 	Scope* enclosing_scope;
 };
@@ -723,15 +723,15 @@ static inline bool is_valid(ScopeLookupResult result) noexcept
 	return result.definition != nullptr;
 }
 
-ScopePool* create_scope_pool(AllocPool* alloc, a2::AstNode* builtins) noexcept;
+ScopePool* create_scope_pool(AllocPool* alloc, AstNode* builtins) noexcept;
 
 void release_scope_pool(ScopePool* scopes) noexcept;
 
-Scope* alloc_file_scope(ScopePool* scopes, a2::AstNode* root) noexcept;
+Scope* alloc_file_scope(ScopePool* scopes, AstNode* root) noexcept;
 
-Scope* alloc_static_scope(ScopePool* scopes, Scope* parent_scope, a2::AstNode* root, u32 capacity) noexcept;
+Scope* alloc_static_scope(ScopePool* scopes, Scope* parent_scope, AstNode* root, u32 capacity) noexcept;
 
-Scope* alloc_dynamic_scope(ScopePool* scopes, Scope* parent_scope, a2::AstNode* root, u32 capacity) noexcept;
+Scope* alloc_dynamic_scope(ScopePool* scopes, Scope* parent_scope, AstNode* root, u32 capacity) noexcept;
 
 void release_dynamic_scope(ScopePool* scopes, Scope* scope) noexcept;
 
@@ -739,11 +739,11 @@ ScopeId id_from_static_scope(ScopePool* scopes, Scope* scope) noexcept;
 
 Scope* scope_from_id(ScopePool* scopes, ScopeId id) noexcept;
 
-void add_definition_to_scope(Scope* scope, a2::AstNode* definition) noexcept;
+void add_definition_to_scope(Scope* scope, AstNode* definition) noexcept;
 
 ScopeLookupResult lookup_identifier_recursive(Scope* scope, IdentifierId identifier_id) noexcept;
 
-OptPtr<a2::AstNode> lookup_identifier_local(Scope* scope, IdentifierId identifier_id) noexcept;
+OptPtr<AstNode> lookup_identifier_local(Scope* scope, IdentifierId identifier_id) noexcept;
 
 
 
@@ -753,7 +753,7 @@ struct Typechecker;
 
 Interpreter* create_interpreter(AllocPool* alloc, ScopePool* scopes, TypePool* types, ValuePool* values, IdentifierPool* identifiers) noexcept;
 
-Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstNode* expr) noexcept;
+Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, AstNode* expr) noexcept;
 
 void release_interpretation_result(Interpreter* interpreter, Value* result) noexcept;
 
@@ -765,11 +765,11 @@ Typechecker* create_typechecker(AllocPool* alloc, Interpreter* Interpreter, Scop
 
 void release_typechecker(Typechecker* typechecker) noexcept;
 
-TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstNode* expr) noexcept;
+TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, AstNode* expr) noexcept;
 
-TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, a2::AstNode* definition) noexcept;
+TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, AstNode* definition) noexcept;
 
-void add_type_member(Typechecker* typechecker, TypeBuilder* builder, IdentifierId identifier_id, a2::AstNode* const type_expr, a2::AstNode* const value_expr, u64 offset, bool is_mut, bool is_pub, bool is_global, bool is_use) noexcept;
+void add_type_member(Typechecker* typechecker, TypeBuilder* builder, IdentifierId identifier_id, AstNode* const type_expr, AstNode* const value_expr, u64 offset, bool is_mut, bool is_pub, bool is_global, bool is_use) noexcept;
 
 TypeId complete_type(Typechecker* types, TypeBuilder* builder, u32 size, u32 alignment, u32 stride) noexcept;
 

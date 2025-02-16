@@ -9,9 +9,9 @@ struct TypeBuilderMember
 
 	u32 unused_;
 
-	OptPtr<a2::AstNode> type_expr;
+	OptPtr<AstNode> type_expr;
 
-	OptPtr<a2::AstNode> value_expr;
+	OptPtr<AstNode> value_expr;
 
 	u64 offset : 60; // when is_global: offset into global data segment; otherwise offset inside instances of type.
 
@@ -66,18 +66,18 @@ static void release_type_builder(Typechecker* typechecker, TypeBuilder* builder)
 		typechecker->first_free_builder_index = static_cast<s32>(builder - typechecker->builders.begin());
 }
 
-static TypeId typecheck_parameter(Typechecker* typechecker, Scope* enclosing_scope, a2::AstNode* parameter) noexcept
+static TypeId typecheck_parameter(Typechecker* typechecker, Scope* enclosing_scope, AstNode* parameter) noexcept
 {
-	ASSERT_OR_IGNORE(parameter->tag == a2::AstTag::Definition);
+	ASSERT_OR_IGNORE(parameter->tag == AstTag::Definition);
 
-	a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(parameter);
+	DefinitionData* const definition_data = attachment_of<DefinitionData>(parameter);
 
-	const a2::DefinitionInfo definition_info = a2::definition_info(parameter);
+	const DefinitionInfo definition_info = get_definition_info(parameter);
 
 	if (is_none(definition_info.type))
 		panic("Untyped parameter definitions are not currently supported\n");
 
-	Value* const type_value = interpret_expr(typechecker->interpreter, enclosing_scope, a2::first_child_of(parameter));
+	Value* const type_value = interpret_expr(typechecker->interpreter, enclosing_scope, first_child_of(parameter));
 
 	if (dealias_type_entry(typechecker->types, type_value->header.type_id)->tag != TypeTag::Type)
 		panic("Expected type expression after ':'\n");
@@ -91,7 +91,7 @@ static TypeId typecheck_parameter(Typechecker* typechecker, Scope* enclosing_sco
 	return type_id;
 }
 
-static TypeId interpret_type_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstNode* expr) noexcept
+static TypeId interpret_type_expr(Typechecker* typechecker, Scope* enclosing_scope, AstNode* expr) noexcept
 {
 	Value* const type_value = interpret_expr(typechecker->interpreter, enclosing_scope, expr);
 
@@ -125,33 +125,33 @@ void release_typechecker(Typechecker* typechecker) noexcept
 	typechecker->builders.release();
 }
 
-TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstNode* expr) noexcept
+TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, AstNode* expr) noexcept
 {
 	switch (expr->tag)
 	{
-	case a2::AstTag::ValInteger:
+	case AstTag::ValInteger:
 	{
 		return get_builtin_type_ids(typechecker->types)->comp_integer_type_id;
 	}
 
-	case a2::AstTag::ValFloat:
+	case AstTag::ValFloat:
 	{
 		return get_builtin_type_ids(typechecker->types)->comp_float_type_id;
 	}
 
-	case a2::AstTag::ValChar:
+	case AstTag::ValChar:
 	{
 		return get_builtin_type_ids(typechecker->types)->comp_integer_type_id;
 	}
 
-	case a2::AstTag::ValString:
+	case AstTag::ValString:
 	{
 		return get_builtin_type_ids(typechecker->types)->comp_string_type_id;
 	}
 
-	case a2::AstTag::ValIdentifer:
+	case AstTag::ValIdentifer:
 	{
-		a2::ValIdentifierData* const identifier_data = a2::attachment_of<a2::ValIdentifierData>(expr);
+		ValIdentifierData* const identifier_data = attachment_of<ValIdentifierData>(expr);
 
 		const ScopeLookupResult lookup = lookup_identifier_recursive(enclosing_scope, identifier_data->identifier_id);
 
@@ -162,9 +162,9 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 			panic("Could not find definition for identifier '%.*s'\n", static_cast<s32>(name.count()), name.begin());
 		}
 
-		a2::AstNode* const definition = lookup.definition;
+		AstNode* const definition = lookup.definition;
 
-		a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(definition);
+		DefinitionData* const definition_data = attachment_of<DefinitionData>(definition);
 
 		if (definition_data->type_id == INVALID_TYPE_ID)
 			return typecheck_definition(typechecker, lookup.enclosing_scope, definition);
@@ -172,29 +172,29 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		return definition_data->type_id;
 	}
 
-	case a2::AstTag::OpLogAnd:
-	case a2::AstTag::OpLogOr:
+	case AstTag::OpLogAnd:
+	case AstTag::OpLogOr:
 	{
-		a2::AstNode* const lhs = a2::first_child_of(expr);
+		AstNode* const lhs = first_child_of(expr);
 
-		a2::AstNode* const rhs = a2::next_sibling_of(lhs);
+		AstNode* const rhs = next_sibling_of(lhs);
 
 		const TypeId lhs_type_id = typecheck_expr(typechecker, enclosing_scope, lhs);
 
 		const TypeId rhs_type_id = typecheck_expr(typechecker, enclosing_scope, rhs);
 
 		if (dealias_type_entry(typechecker->types, lhs_type_id)->tag != TypeTag::Boolean)
-			panic("Left-hand-side of '%s' must be of type bool\n", a2::ast_tag_name(expr->tag));
+			panic("Left-hand-side of '%s' must be of type bool\n", ast_tag_name(expr->tag));
 
 		if (dealias_type_entry(typechecker->types, rhs_type_id)->tag != TypeTag::Boolean)
-			panic("Right-hand-side of '%s' must be of type bool\n", a2::ast_tag_name(expr->tag));
+			panic("Right-hand-side of '%s' must be of type bool\n", ast_tag_name(expr->tag));
 
 		return get_builtin_type_ids(typechecker->types)->bool_type_id;
 	}
 
-	case a2::AstTag::OpTypeArray:
+	case AstTag::OpTypeArray:
 	{
-		a2::AstNode* const count = a2::first_child_of(expr);
+		AstNode* const count = first_child_of(expr);
 
 		Value* const count_value = interpret_expr(typechecker->interpreter, enclosing_scope, count);
 
@@ -232,7 +232,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 
 		release_interpretation_result(typechecker->interpreter, count_value);
 
-		a2::AstNode* const element_type = a2::next_sibling_of(count);
+		AstNode* const element_type = next_sibling_of(count);
 
 		Value* const element_type_value = interpret_expr(typechecker->interpreter, enclosing_scope, element_type);
 
@@ -252,11 +252,11 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		return id_from_type(typechecker->types, TypeTag::Type, TypeFlag::EMPTY, range::from_object_bytes(&array_type_id));
 	}
 
-	case a2::AstTag::UOpTypeSlice:
-	case a2::AstTag::UOpTypeMultiPtr:
-	case a2::AstTag::UOpTypeOptMultiPtr:
-	case a2::AstTag::UOpTypeOptPtr:
-	case a2::AstTag::UOpTypePtr:
+	case AstTag::UOpTypeSlice:
+	case AstTag::UOpTypeMultiPtr:
+	case AstTag::UOpTypeOptMultiPtr:
+	case AstTag::UOpTypeOptPtr:
+	case AstTag::UOpTypePtr:
 	{
 		Value* const pointer_type_value = interpret_expr(typechecker->interpreter, enclosing_scope, expr);
 
@@ -269,9 +269,9 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		return id_from_type(typechecker->types, TypeTag::Type, TypeFlag::EMPTY, range::from_object_bytes(&pointer_type_id));
 	}
 
-	case a2::AstTag::OpArrayIndex:
+	case AstTag::OpArrayIndex:
 	{
-		a2::AstNode* const array = a2::first_child_of(expr);
+		AstNode* const array = first_child_of(expr);
 
 		const TypeId array_type_id = typecheck_expr(typechecker, enclosing_scope, array);
 
@@ -296,7 +296,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 			panic("Expected first operand of array index operation to be of array, slice or multi-pointer type\n");
 		}
 
-		a2::AstNode* const index = a2::next_sibling_of(array);
+		AstNode* const index = next_sibling_of(array);
 
 		const TypeId index_type_id = typecheck_expr(typechecker, enclosing_scope, index);
 
@@ -308,20 +308,20 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		return element_type_id;
 	}
 
-	case a2::AstTag::Block:
+	case AstTag::Block:
 	{
-		if (!a2::has_children(expr))
+		if (!has_children(expr))
 			return get_builtin_type_ids(typechecker->types)->void_type_id;
 
-		a2::AstDirectChildIterator it = a2::direct_children_of(expr);
+		AstDirectChildIterator it = direct_children_of(expr);
 
-		for (OptPtr<a2::AstNode> rst = a2::next(&it); is_some(rst); rst = a2::next(&it))
+		for (OptPtr<AstNode> rst = next(&it); is_some(rst); rst = next(&it))
 		{
-			a2::AstNode* const child = get_ptr(rst);
+			AstNode* const child = get_ptr(rst);
 
 			const TypeId child_type_id = typecheck_expr(typechecker, enclosing_scope, child);
 
-			if (!a2::has_next_sibling(child))
+			if (!has_next_sibling(child))
 				return child_type_id;
 
 			TypeEntry* const child_type_entry = dealias_type_entry(typechecker->types, child_type_id);
@@ -333,9 +333,9 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		ASSERT_UNREACHABLE;
 	}
 
-	case a2::AstTag::If:
+	case AstTag::If:
 	{
-		const a2::IfInfo if_info = a2::if_info(expr);
+		const IfInfo if_info = get_if_info(expr);
 
 		const TypeId condition_type_id = typecheck_expr(typechecker, enclosing_scope, if_info.condition);
 
@@ -377,11 +377,11 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		}
 	}
 
-	case a2::AstTag::Func:
+	case AstTag::Func:
 	{
-		const a2::FuncInfo func_info = a2::func_info(expr);
+		const FuncInfo func_info = get_func_info(expr);
 
-		a2::FuncData* const func_data = a2::attachment_of<a2::FuncData>(expr);
+		FuncData* const func_data = attachment_of<FuncData>(expr);
 
 		if (is_some(func_info.return_type))
 		{
@@ -390,7 +390,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 			TypeEntry* return_type_entry = dealias_type_entry(typechecker->types, return_type_value->header.type_id);
 
 			if (return_type_entry->tag != TypeTag::Type)
-				panic("Expected type expression as %s's return type\n", a2::has_flag(expr, a2::AstFlag::Func_IsProc) ? "proc" : "func");
+				panic("Expected type expression as %s's return type\n", has_flag(expr, AstFlag::Func_IsProc) ? "proc" : "func");
 
 			const TypeId return_type_id = *access_value<TypeId>(return_type_value);
 
@@ -403,14 +403,14 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 			func_data->return_type_id = get_builtin_type_ids(typechecker->types)->void_type_id;
 		}
 
-		a2::AstDirectChildIterator it = a2::direct_children_of(func_info.parameters);
+		AstDirectChildIterator it = direct_children_of(func_info.parameters);
 
 		FuncTypeBuffer type_buf{};
 
 		type_buf.header.return_type_id = func_data->return_type_id;
 		type_buf.header.parameter_count = 0;
 
-		for (OptPtr<a2::AstNode> parameter = a2::next(&it); is_some(parameter); parameter = a2::next(&it))
+		for (OptPtr<AstNode> parameter = next(&it); is_some(parameter); parameter = next(&it))
 		{
 			ASSERT_OR_IGNORE(type_buf.header.parameter_count + 1 < array_count(type_buf.parameter_type_ids));
 
@@ -419,7 +419,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 			type_buf.header.parameter_count += 1;
 		}
 
-		const TypeFlag flags = a2::has_flag(expr, a2::AstFlag::Func_IsProc) ? TypeFlag::Func_IsProc : TypeFlag::EMPTY;
+		const TypeFlag flags = has_flag(expr, AstFlag::Func_IsProc) ? TypeFlag::Func_IsProc : TypeFlag::EMPTY;
 
 		const Range<byte> type = Range<byte>{ reinterpret_cast<const byte*>(&type_buf), sizeof(type_buf.header) + type_buf.header.parameter_count * sizeof(type_buf.parameter_type_ids[0]) };
 
@@ -436,16 +436,16 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		return func_data->signature_type_id;
 	}
 
-	case a2::AstTag::File:
-	case a2::AstTag::ParameterList:
-	case a2::AstTag::Case:
+	case AstTag::File:
+	case AstTag::ParameterList:
+	case AstTag::Case:
 	{
-		panic("Unexpected AST node type '%s' passed to typecheck_expr\n", a2::ast_tag_name(expr->tag));
+		panic("Unexpected AST node type '%s' passed to typecheck_expr\n", ast_tag_name(expr->tag));
 	}
 
-	case a2::AstTag::Call:
+	case AstTag::Call:
 	{
-		a2::AstNode* const callee = a2::first_child_of(expr);
+		AstNode* const callee = first_child_of(expr);
 
 		const TypeId callee_type_id = typecheck_expr(typechecker, enclosing_scope, callee);
 
@@ -456,14 +456,14 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 
 		FuncType* const func_type = entry->data<FuncType>();
 
-		a2::AstNode* curr = callee;
+		AstNode* curr = callee;
 
 		for (u32 i = 0; i != func_type->header.parameter_count; ++i)
 		{
-			if (!a2::has_next_sibling(curr))
+			if (!has_next_sibling(curr))
 				panic("Too few parameters in call (expected %u but got %u)\n", func_type->header.parameter_count, i);
 
-			curr = a2::next_sibling_of(curr);
+			curr = next_sibling_of(curr);
 
 			const TypeId parameter_type_id = typecheck_expr(typechecker, enclosing_scope, curr);
 
@@ -475,17 +475,17 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 				panic("Mismatch between expected and actual call parameter type\n");
 		}
 
-		if (a2::has_next_sibling(curr))
+		if (has_next_sibling(curr))
 		{
 			u32 actual_parameter_count = func_type->header.parameter_count;
 
 			do
 			{
-				curr = a2::next_sibling_of(curr);
+				curr = next_sibling_of(curr);
 
 				actual_parameter_count += 1;
 			}
-			while (a2::has_next_sibling(curr));
+			while (has_next_sibling(curr));
 
 			panic("Too many parameters in call (expected %u but got %u)\n", func_type->header.parameter_count, actual_parameter_count);
 		}
@@ -493,90 +493,90 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		return func_type->header.return_type_id;
 	}
 
-	case a2::AstTag::OpAdd:
-	case a2::AstTag::OpSub:
-	case a2::AstTag::OpMul:
-	case a2::AstTag::OpDiv:
+	case AstTag::OpAdd:
+	case AstTag::OpSub:
+	case AstTag::OpMul:
+	case AstTag::OpDiv:
 	{
 		// TODO
 		panic("TODO: typecheck_expr(%u)\n", expr->tag);
 	}
 
-	case a2::AstTag::Builtin:
-	case a2::AstTag::CompositeInitializer:
-	case a2::AstTag::ArrayInitializer:
-	case a2::AstTag::Wildcard:
-	case a2::AstTag::Where:
-	case a2::AstTag::Expects:
-	case a2::AstTag::Ensures:
-	case a2::AstTag::Definition:
-	case a2::AstTag::For:
-	case a2::AstTag::ForEach:
-	case a2::AstTag::Switch:
-	case a2::AstTag::Trait:
-	case a2::AstTag::Impl:
-	case a2::AstTag::Catch:
-	case a2::AstTag::Return:
-	case a2::AstTag::Leave:
-	case a2::AstTag::Yield:
-	case a2::AstTag::UOpTypeTailArray:
-	case a2::AstTag::UOpEval:
-	case a2::AstTag::UOpTry:
-	case a2::AstTag::UOpDefer:
-	case a2::AstTag::UOpAddr:
-	case a2::AstTag::UOpDeref:
-	case a2::AstTag::UOpBitNot:
-	case a2::AstTag::UOpLogNot:
-	case a2::AstTag::UOpTypeVar:
-	case a2::AstTag::UOpImpliedMember:
-	case a2::AstTag::UOpNegate:
-	case a2::AstTag::UOpPos:
-	case a2::AstTag::OpAddTC:
-	case a2::AstTag::OpSubTC:
-	case a2::AstTag::OpMulTC:
-	case a2::AstTag::OpMod:
-	case a2::AstTag::OpBitAnd:
-	case a2::AstTag::OpBitOr:
-	case a2::AstTag::OpBitXor:
-	case a2::AstTag::OpShiftL:
-	case a2::AstTag::OpShiftR:
-	case a2::AstTag::OpMember:
-	case a2::AstTag::OpCmpLT:
-	case a2::AstTag::OpCmpGT:
-	case a2::AstTag::OpCmpLE:
-	case a2::AstTag::OpCmpGE:
-	case a2::AstTag::OpCmpNE:
-	case a2::AstTag::OpCmpEQ:
-	case a2::AstTag::OpSet:
-	case a2::AstTag::OpSetAdd:
-	case a2::AstTag::OpSetSub:
-	case a2::AstTag::OpSetMul:
-	case a2::AstTag::OpSetDiv:
-	case a2::AstTag::OpSetAddTC:
-	case a2::AstTag::OpSetSubTC:
-	case a2::AstTag::OpSetMulTC:
-	case a2::AstTag::OpSetMod:
-	case a2::AstTag::OpSetBitAnd:
-	case a2::AstTag::OpSetBitOr:
-	case a2::AstTag::OpSetBitXor:
-	case a2::AstTag::OpSetShiftL:
-	case a2::AstTag::OpSetShiftR:
-		panic("Unimplemented AST node tag '%s' in typecheck_expr\n", a2::ast_tag_name(expr->tag));
+	case AstTag::Builtin:
+	case AstTag::CompositeInitializer:
+	case AstTag::ArrayInitializer:
+	case AstTag::Wildcard:
+	case AstTag::Where:
+	case AstTag::Expects:
+	case AstTag::Ensures:
+	case AstTag::Definition:
+	case AstTag::For:
+	case AstTag::ForEach:
+	case AstTag::Switch:
+	case AstTag::Trait:
+	case AstTag::Impl:
+	case AstTag::Catch:
+	case AstTag::Return:
+	case AstTag::Leave:
+	case AstTag::Yield:
+	case AstTag::UOpTypeTailArray:
+	case AstTag::UOpEval:
+	case AstTag::UOpTry:
+	case AstTag::UOpDefer:
+	case AstTag::UOpAddr:
+	case AstTag::UOpDeref:
+	case AstTag::UOpBitNot:
+	case AstTag::UOpLogNot:
+	case AstTag::UOpTypeVar:
+	case AstTag::UOpImpliedMember:
+	case AstTag::UOpNegate:
+	case AstTag::UOpPos:
+	case AstTag::OpAddTC:
+	case AstTag::OpSubTC:
+	case AstTag::OpMulTC:
+	case AstTag::OpMod:
+	case AstTag::OpBitAnd:
+	case AstTag::OpBitOr:
+	case AstTag::OpBitXor:
+	case AstTag::OpShiftL:
+	case AstTag::OpShiftR:
+	case AstTag::OpMember:
+	case AstTag::OpCmpLT:
+	case AstTag::OpCmpGT:
+	case AstTag::OpCmpLE:
+	case AstTag::OpCmpGE:
+	case AstTag::OpCmpNE:
+	case AstTag::OpCmpEQ:
+	case AstTag::OpSet:
+	case AstTag::OpSetAdd:
+	case AstTag::OpSetSub:
+	case AstTag::OpSetMul:
+	case AstTag::OpSetDiv:
+	case AstTag::OpSetAddTC:
+	case AstTag::OpSetSubTC:
+	case AstTag::OpSetMulTC:
+	case AstTag::OpSetMod:
+	case AstTag::OpSetBitAnd:
+	case AstTag::OpSetBitOr:
+	case AstTag::OpSetBitXor:
+	case AstTag::OpSetShiftL:
+	case AstTag::OpSetShiftR:
+		panic("Unimplemented AST node tag '%s' in typecheck_expr\n", ast_tag_name(expr->tag));
 
 	default:
 		ASSERT_UNREACHABLE;
 	}
 }
 
-TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, a2::AstNode* definition) noexcept
+TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, AstNode* definition) noexcept
 {
-	ASSERT_OR_IGNORE(definition->tag == a2::AstTag::Definition);
+	ASSERT_OR_IGNORE(definition->tag == AstTag::Definition);
 
-	ASSERT_OR_IGNORE(a2::has_children(definition));
+	ASSERT_OR_IGNORE(has_children(definition));
 
-	const a2::DefinitionInfo info = a2::definition_info(definition);
+	const DefinitionInfo info = get_definition_info(definition);
 
-	a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(definition);
+	DefinitionData* const definition_data = attachment_of<DefinitionData>(definition);
 
 	TypeId definition_type_id = INVALID_TYPE_ID;
 
@@ -634,7 +634,7 @@ TypeBuilder* alloc_type_builder(Typechecker* typechecker) noexcept
 	return builder;
 }
 
-void add_type_member(Typechecker* typechecker, TypeBuilder* builder, IdentifierId identifier_id, OptPtr<a2::AstNode> const type_expr, OptPtr<a2::AstNode> const value_expr, u64 offset, bool is_mut, bool is_pub, bool is_global, bool is_use) noexcept
+void add_type_member(Typechecker* typechecker, TypeBuilder* builder, IdentifierId identifier_id, OptPtr<AstNode> const type_expr, OptPtr<AstNode> const value_expr, u64 offset, bool is_mut, bool is_pub, bool is_global, bool is_use) noexcept
 {
 	ASSERT_OR_IGNORE(is_some(type_expr) || is_some(value_expr));
 
@@ -744,29 +744,29 @@ TypeId complete_type(Typechecker* typechecker, TypeBuilder* builder, u32 size, u
 
 
 
-TypeId typecheck_file(Typechecker* typechecker, a2::AstNode* root) noexcept
+TypeId typecheck_file(Typechecker* typechecker, AstNode* root) noexcept
 {
-	ASSERT_OR_IGNORE(root->tag == a2::AstTag::File);
+	ASSERT_OR_IGNORE(root->tag == AstTag::File);
 
 	TypeBuilder* const builder = alloc_type_builder(typechecker);
 
-	a2::AstDirectChildIterator it = a2::direct_children_of(root);
+	AstDirectChildIterator it = direct_children_of(root);
 
-	for (OptPtr<a2::AstNode> rst = a2::next(&it); is_some(rst); rst = a2::next(&it))
+	for (OptPtr<AstNode> rst = next(&it); is_some(rst); rst = next(&it))
 	{
-		a2::AstNode* const definition = get_ptr(rst);
+		AstNode* const definition = get_ptr(rst);
 
-		if (definition->tag != a2::AstTag::Definition)
+		if (definition->tag != AstTag::Definition)
 			continue;
 
-		if (a2::has_flag(definition, a2::AstFlag::Definition_IsGlobal))
+		if (has_flag(definition, AstFlag::Definition_IsGlobal))
 			fprintf(stderr, "WARN: Redundant 'global' definition modifier, as top level definitions are implicitly global\n");
 
-		a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(definition);
+		DefinitionData* const definition_data = attachment_of<DefinitionData>(definition);
 
-		const a2::DefinitionInfo definition_info = a2::definition_info(definition);
+		const DefinitionInfo definition_info = get_definition_info(definition);
 
-		add_type_member(typechecker, builder, definition_data->identifier_id, definition_info.type, definition_info.value, 0, a2::has_flag(definition, a2::AstFlag::Definition_IsMut), a2::has_flag(definition, a2::AstFlag::Definition_IsPub), true, a2::has_flag(definition, a2::AstFlag::Definition_IsUse));
+		add_type_member(typechecker, builder, definition_data->identifier_id, definition_info.type, definition_info.value, 0, has_flag(definition, AstFlag::Definition_IsMut), has_flag(definition, AstFlag::Definition_IsPub), true, has_flag(definition, AstFlag::Definition_IsUse));
 	}
 
 	return complete_type(typechecker, builder, 0, 1, 0);

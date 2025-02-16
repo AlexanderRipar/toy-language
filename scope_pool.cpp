@@ -11,7 +11,7 @@ struct ScopePool
 	Scope* builtins_scope;
 };
 
-ScopePool* create_scope_pool(AllocPool* alloc, a2::AstNode* builtins) noexcept
+ScopePool* create_scope_pool(AllocPool* alloc, AstNode* builtins) noexcept
 {
 	ScopePool* const scopes = static_cast<ScopePool*>(alloc_from_pool(alloc, sizeof(ScopePool), alignof(ScopePool)));
 
@@ -21,17 +21,17 @@ ScopePool* create_scope_pool(AllocPool* alloc, a2::AstNode* builtins) noexcept
 
 	(void) scopes->static_pool.reserve_exact(sizeof(u64));
 
-	a2::BlockData* const builtins_block = a2::attachment_of<a2::BlockData>(builtins);
+	BlockData* const builtins_block = attachment_of<BlockData>(builtins);
 
 	Scope* const builtins_scope = alloc_static_scope(scopes, nullptr, builtins, builtins_block->definition_count);
 
-	a2::AstDirectChildIterator it = a2::direct_children_of(builtins);
+	AstDirectChildIterator it = direct_children_of(builtins);
 
-	for (OptPtr<a2::AstNode> rst = a2::next(&it); is_some(rst); rst = a2::next(&it))
+	for (OptPtr<AstNode> rst = next(&it); is_some(rst); rst = next(&it))
 	{
-		a2::AstNode* const builtin_definition = get_ptr(rst);
+		AstNode* const builtin_definition = get_ptr(rst);
 
-		if (builtin_definition->tag == a2::AstTag::Definition)
+		if (builtin_definition->tag == AstTag::Definition)
 			add_definition_to_scope(builtins_scope, builtin_definition);
 	}
 
@@ -49,11 +49,11 @@ void release_scope_pool(ScopePool* scopes) noexcept
 	scopes->dynamic_stack.release();
 }
 
-Scope* alloc_file_scope(ScopePool* scopes, a2::AstNode* root) noexcept
+Scope* alloc_file_scope(ScopePool* scopes, AstNode* root) noexcept
 {
-	ASSERT_OR_IGNORE(root->tag == a2::AstTag::File);
+	ASSERT_OR_IGNORE(root->tag == AstTag::File);
 
-	a2::BlockData* const file_block_data = &a2::attachment_of<a2::FileData>(root)->root_block;
+	BlockData* const file_block_data = &attachment_of<FileData>(root)->root_block;
 
 	Scope* const scope = static_cast<Scope*>(scopes->static_pool.reserve_exact(sizeof(Scope) + file_block_data->definition_count * sizeof(ScopeEntry)));
 	scope->header.root = root;
@@ -63,13 +63,13 @@ Scope* alloc_file_scope(ScopePool* scopes, a2::AstNode* root) noexcept
 
 	const ScopeId scope_id = id_from_static_scope(scopes, scope);
 
-	a2::AstDirectChildIterator it = a2::direct_children_of(root);
+	AstDirectChildIterator it = direct_children_of(root);
 
-	for (OptPtr<a2::AstNode> rst = a2::next(&it); is_some(rst); rst = a2::next(&it))
+	for (OptPtr<AstNode> rst = next(&it); is_some(rst); rst = next(&it))
 	{
-		a2::AstNode* const node = get_ptr(rst);
+		AstNode* const node = get_ptr(rst);
 
-		if (node->tag != a2::AstTag::Definition)
+		if (node->tag != AstTag::Definition)
 			continue;
 
 		add_definition_to_scope(scope, node);
@@ -78,7 +78,7 @@ Scope* alloc_file_scope(ScopePool* scopes, a2::AstNode* root) noexcept
 	return scope;
 }
 
-Scope* alloc_static_scope(ScopePool* scopes, Scope* parent_scope, a2::AstNode* root, u32 capacity) noexcept
+Scope* alloc_static_scope(ScopePool* scopes, Scope* parent_scope, AstNode* root, u32 capacity) noexcept
 {
 	ASSERT_OR_IGNORE(parent_scope == nullptr || (reinterpret_cast<u64*>(parent_scope) >= scopes->static_pool.begin() && reinterpret_cast<u64*>(parent_scope) < scopes->static_pool.end()));
 
@@ -92,7 +92,7 @@ Scope* alloc_static_scope(ScopePool* scopes, Scope* parent_scope, a2::AstNode* r
 	return scope;
 }
 
-Scope* alloc_dynamic_scope(ScopePool* scopes, Scope* parent_scope, a2::AstNode* root, u32 capacity) noexcept
+Scope* alloc_dynamic_scope(ScopePool* scopes, Scope* parent_scope, AstNode* root, u32 capacity) noexcept
 {
 	Scope* const scope = static_cast<Scope*>(scopes->dynamic_stack.reserve_exact(sizeof(ScopeHeader) + capacity * sizeof(ScopeEntry)));
 
@@ -123,17 +123,17 @@ Scope* scope_from_id(ScopePool* scopes, ScopeId id) noexcept
 	return reinterpret_cast<Scope*>(scopes->static_pool.begin() + id.rep);
 }
 
-void add_definition_to_scope(Scope* scope, a2::AstNode* definition) noexcept
+void add_definition_to_scope(Scope* scope, AstNode* definition) noexcept
 {
-	ASSERT_OR_IGNORE(definition->tag == a2::AstTag::Definition);
+	ASSERT_OR_IGNORE(definition->tag == AstTag::Definition);
 
 	ASSERT_OR_IGNORE(scope->header.used < scope->header.capacity);
 
-	a2::DefinitionData* const definition_data = a2::attachment_of<a2::DefinitionData>(definition);
+	DefinitionData* const definition_data = attachment_of<DefinitionData>(definition);
 
 	ASSERT_OR_IGNORE(definition_data->identifier_id != INVALID_IDENTIFIER_ID);
 
-	ASSERT_OR_IGNORE(definition > scope->header.root && definition < a2::apply_offset_(scope->header.root, scope->header.root->next_sibling_offset));
+	ASSERT_OR_IGNORE(definition > scope->header.root && definition < apply_offset_(scope->header.root, scope->header.root->next_sibling_offset));
 
 	ScopeEntry* const entry = scope->definitions + scope->header.used;
 
@@ -147,7 +147,7 @@ ScopeLookupResult lookup_identifier_recursive(Scope* scope, IdentifierId identif
 {
 	while (scope != nullptr)
 	{
-		const OptPtr<a2::AstNode> result = lookup_identifier_local(scope, identifier_id);
+		const OptPtr<AstNode> result = lookup_identifier_local(scope, identifier_id);
 
 		if (is_some(result))
 			return { get_ptr(result), scope };
@@ -158,13 +158,13 @@ ScopeLookupResult lookup_identifier_recursive(Scope* scope, IdentifierId identif
 	return { nullptr, nullptr };
 }
 
-OptPtr<a2::AstNode> lookup_identifier_local(Scope* scope, IdentifierId identifier_id) noexcept
+OptPtr<AstNode> lookup_identifier_local(Scope* scope, IdentifierId identifier_id) noexcept
 {
 	for (u32 i = 0; i != scope->header.used; ++i)
 	{
 		if (scope->definitions[i].identifier_id == identifier_id)
-			return some(a2::apply_offset_(scope->header.root, scope->definitions[i].node_offset));
+			return some(apply_offset_(scope->header.root, scope->definitions[i].node_offset));
 	}
 
-	return none<a2::AstNode>();
+	return none<AstNode>();
 }

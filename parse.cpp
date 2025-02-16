@@ -58,9 +58,9 @@ struct RawLexeme
 
 struct OperatorDesc
 {
-	a2::AstTag node_type;
+	AstTag node_type;
 
-	a2::AstFlag node_flags;
+	AstFlag node_flags;
 
 	u8 precedence;
 
@@ -94,74 +94,74 @@ struct OperatorStack
 
 	OperatorDesc operators[64];
 
-	a2::AstBuilderToken operand_tokens[128];
+	AstBuilderToken operand_tokens[128];
 };
 
 struct Parser
 {
 	Lexer lexer;
 
-	a2::AstBuilder builder;
+	AstBuilder builder;
 };
 
 static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
-	{ a2::AstTag::INVALID,            a2::AstFlag::EMPTY,      10, false, true  }, // ( - Opening Parenthesis
-	{ a2::AstTag::UOpEval,            a2::AstFlag::EMPTY,       8, false, false }, // eval
-	{ a2::AstTag::UOpTry,             a2::AstFlag::EMPTY,       8, false, false }, // try
-	{ a2::AstTag::UOpDefer,           a2::AstFlag::EMPTY,       8, false, false }, // defer
-	{ a2::AstTag::UOpAddr,            a2::AstFlag::EMPTY,       2, false, false }, // $
-	{ a2::AstTag::UOpBitNot,          a2::AstFlag::EMPTY,       2, false, false }, // ~
-	{ a2::AstTag::UOpLogNot,          a2::AstFlag::EMPTY,       2, false, false }, // !
-	{ a2::AstTag::UOpTypeOptPtr,      a2::AstFlag::Type_IsMut,  2, false, false }, // ?
-	{ a2::AstTag::UOpTypeVar,         a2::AstFlag::EMPTY,       2, false, false }, // ...
-	{ a2::AstTag::UOpTypeTailArray,   a2::AstFlag::EMPTY,       2, false, false }, // [...]
-	{ a2::AstTag::UOpTypeMultiPtr,    a2::AstFlag::Type_IsMut,  2, false, false }, // [*]
-	{ a2::AstTag::UOpTypeOptMultiPtr, a2::AstFlag::Type_IsMut,  2, false, false }, // [?]
-	{ a2::AstTag::UOpTypeSlice,       a2::AstFlag::Type_IsMut,  2, false, false }, // []
-	{ a2::AstTag::UOpImpliedMember,   a2::AstFlag::EMPTY,       1, false, false }, // .
-	{ a2::AstTag::UOpTypePtr,         a2::AstFlag::Type_IsMut,  2, false, false }, // *
-	{ a2::AstTag::UOpNegate,          a2::AstFlag::EMPTY,       2, false, false }, // -
-	{ a2::AstTag::UOpPos,             a2::AstFlag::EMPTY,       2, false, false }, // +
+	{ AstTag::INVALID,            AstFlag::EMPTY,      10, false, true  }, // ( - Opening Parenthesis
+	{ AstTag::UOpEval,            AstFlag::EMPTY,       8, false, false }, // eval
+	{ AstTag::UOpTry,             AstFlag::EMPTY,       8, false, false }, // try
+	{ AstTag::UOpDefer,           AstFlag::EMPTY,       8, false, false }, // defer
+	{ AstTag::UOpAddr,            AstFlag::EMPTY,       2, false, false }, // $
+	{ AstTag::UOpBitNot,          AstFlag::EMPTY,       2, false, false }, // ~
+	{ AstTag::UOpLogNot,          AstFlag::EMPTY,       2, false, false }, // !
+	{ AstTag::UOpTypeOptPtr,      AstFlag::Type_IsMut,  2, false, false }, // ?
+	{ AstTag::UOpTypeVar,         AstFlag::EMPTY,       2, false, false }, // ...
+	{ AstTag::UOpTypeTailArray,   AstFlag::EMPTY,       2, false, false }, // [...]
+	{ AstTag::UOpTypeMultiPtr,    AstFlag::Type_IsMut,  2, false, false }, // [*]
+	{ AstTag::UOpTypeOptMultiPtr, AstFlag::Type_IsMut,  2, false, false }, // [?]
+	{ AstTag::UOpTypeSlice,       AstFlag::Type_IsMut,  2, false, false }, // []
+	{ AstTag::UOpImpliedMember,   AstFlag::EMPTY,       1, false, false }, // .
+	{ AstTag::UOpTypePtr,         AstFlag::Type_IsMut,  2, false, false }, // *
+	{ AstTag::UOpNegate,          AstFlag::EMPTY,       2, false, false }, // -
+	{ AstTag::UOpPos,             AstFlag::EMPTY,       2, false, false }, // +
 };
 
 static constexpr OperatorDesc BINARY_OPERATOR_DESCS[] = {
-	{ a2::AstTag::OpMember,    a2::AstFlag::EMPTY, 1, true,  true  }, // .
-	{ a2::AstTag::OpMul,       a2::AstFlag::EMPTY, 2, true,  true  }, // *
-	{ a2::AstTag::OpSub,       a2::AstFlag::EMPTY, 3, true,  true  }, // -
-	{ a2::AstTag::OpAdd,       a2::AstFlag::EMPTY, 3, true,  true  }, // +
-	{ a2::AstTag::OpDiv,       a2::AstFlag::EMPTY, 2, true,  true  }, // /
-	{ a2::AstTag::OpAddTC,     a2::AstFlag::EMPTY, 3, true,  true  }, // +:
-	{ a2::AstTag::OpSubTC,     a2::AstFlag::EMPTY, 3, true,  true  }, // -:
-	{ a2::AstTag::OpMulTC,     a2::AstFlag::EMPTY, 2, true,  true  }, // *:
-	{ a2::AstTag::OpMod,       a2::AstFlag::EMPTY, 2, true,  true  }, // %
-	{ a2::AstTag::UOpDeref,    a2::AstFlag::EMPTY, 1, false, false }, // .*
-	{ a2::AstTag::OpBitAnd,    a2::AstFlag::EMPTY, 6, true,  true  }, // &
-	{ a2::AstTag::OpBitOr,     a2::AstFlag::EMPTY, 6, true,  true  }, // |
-	{ a2::AstTag::OpBitXor,    a2::AstFlag::EMPTY, 6, true,  true  }, // ^
-	{ a2::AstTag::OpShiftL,    a2::AstFlag::EMPTY, 4, true,  true  }, // <<
-	{ a2::AstTag::OpShiftR,    a2::AstFlag::EMPTY, 4, true,  true  }, // >>
-	{ a2::AstTag::OpLogAnd,    a2::AstFlag::EMPTY, 7, true,  true  }, // &&
-	{ a2::AstTag::OpLogOr,     a2::AstFlag::EMPTY, 7, true,  true  }, // ||
-	{ a2::AstTag::OpCmpLT,     a2::AstFlag::EMPTY, 5, true,  true  }, // <
-	{ a2::AstTag::OpCmpGT,     a2::AstFlag::EMPTY, 5, true,  true  }, // >
-	{ a2::AstTag::OpCmpLE,     a2::AstFlag::EMPTY, 5, true,  true  }, // <=
-	{ a2::AstTag::OpCmpGE,     a2::AstFlag::EMPTY, 5, true,  true  }, // >=
-	{ a2::AstTag::OpCmpNE,     a2::AstFlag::EMPTY, 5, true,  true  }, // !=
-	{ a2::AstTag::OpCmpEQ,     a2::AstFlag::EMPTY, 5, true,  true  }, // ==
-	{ a2::AstTag::OpSet,       a2::AstFlag::EMPTY, 9, false, true  }, // =
-	{ a2::AstTag::OpSetAdd,    a2::AstFlag::EMPTY, 9, false, true  }, // +=
-	{ a2::AstTag::OpSetSub,    a2::AstFlag::EMPTY, 9, false, true  }, // -=
-	{ a2::AstTag::OpSetMul,    a2::AstFlag::EMPTY, 9, false, true  }, // *=
-	{ a2::AstTag::OpSetDiv,    a2::AstFlag::EMPTY, 9, false, true  }, // /=
-	{ a2::AstTag::OpSetAddTC,  a2::AstFlag::EMPTY, 9, false, true  }, // +:=
-	{ a2::AstTag::OpSetSubTC,  a2::AstFlag::EMPTY, 9, false, true  }, // -:=
-	{ a2::AstTag::OpSetMulTC,  a2::AstFlag::EMPTY, 9, false, true  }, // *:=
-	{ a2::AstTag::OpSetMod,    a2::AstFlag::EMPTY, 9, false, true  }, // %=
-	{ a2::AstTag::OpSetBitAnd, a2::AstFlag::EMPTY, 9, false, true  }, // &=
-	{ a2::AstTag::OpSetBitOr,  a2::AstFlag::EMPTY, 9, false, true  }, // |=
-	{ a2::AstTag::OpSetBitXor, a2::AstFlag::EMPTY, 9, false, true  }, // ^=
-	{ a2::AstTag::OpSetShiftL, a2::AstFlag::EMPTY, 9, false, true  }, // <<=
-	{ a2::AstTag::OpSetShiftR, a2::AstFlag::EMPTY, 9, false, true  }, // >>=
+	{ AstTag::OpMember,    AstFlag::EMPTY, 1, true,  true  }, // .
+	{ AstTag::OpMul,       AstFlag::EMPTY, 2, true,  true  }, // *
+	{ AstTag::OpSub,       AstFlag::EMPTY, 3, true,  true  }, // -
+	{ AstTag::OpAdd,       AstFlag::EMPTY, 3, true,  true  }, // +
+	{ AstTag::OpDiv,       AstFlag::EMPTY, 2, true,  true  }, // /
+	{ AstTag::OpAddTC,     AstFlag::EMPTY, 3, true,  true  }, // +:
+	{ AstTag::OpSubTC,     AstFlag::EMPTY, 3, true,  true  }, // -:
+	{ AstTag::OpMulTC,     AstFlag::EMPTY, 2, true,  true  }, // *:
+	{ AstTag::OpMod,       AstFlag::EMPTY, 2, true,  true  }, // %
+	{ AstTag::UOpDeref,    AstFlag::EMPTY, 1, false, false }, // .*
+	{ AstTag::OpBitAnd,    AstFlag::EMPTY, 6, true,  true  }, // &
+	{ AstTag::OpBitOr,     AstFlag::EMPTY, 6, true,  true  }, // |
+	{ AstTag::OpBitXor,    AstFlag::EMPTY, 6, true,  true  }, // ^
+	{ AstTag::OpShiftL,    AstFlag::EMPTY, 4, true,  true  }, // <<
+	{ AstTag::OpShiftR,    AstFlag::EMPTY, 4, true,  true  }, // >>
+	{ AstTag::OpLogAnd,    AstFlag::EMPTY, 7, true,  true  }, // &&
+	{ AstTag::OpLogOr,     AstFlag::EMPTY, 7, true,  true  }, // ||
+	{ AstTag::OpCmpLT,     AstFlag::EMPTY, 5, true,  true  }, // <
+	{ AstTag::OpCmpGT,     AstFlag::EMPTY, 5, true,  true  }, // >
+	{ AstTag::OpCmpLE,     AstFlag::EMPTY, 5, true,  true  }, // <=
+	{ AstTag::OpCmpGE,     AstFlag::EMPTY, 5, true,  true  }, // >=
+	{ AstTag::OpCmpNE,     AstFlag::EMPTY, 5, true,  true  }, // !=
+	{ AstTag::OpCmpEQ,     AstFlag::EMPTY, 5, true,  true  }, // ==
+	{ AstTag::OpSet,       AstFlag::EMPTY, 9, false, true  }, // =
+	{ AstTag::OpSetAdd,    AstFlag::EMPTY, 9, false, true  }, // +=
+	{ AstTag::OpSetSub,    AstFlag::EMPTY, 9, false, true  }, // -=
+	{ AstTag::OpSetMul,    AstFlag::EMPTY, 9, false, true  }, // *=
+	{ AstTag::OpSetDiv,    AstFlag::EMPTY, 9, false, true  }, // /=
+	{ AstTag::OpSetAddTC,  AstFlag::EMPTY, 9, false, true  }, // +:=
+	{ AstTag::OpSetSubTC,  AstFlag::EMPTY, 9, false, true  }, // -:=
+	{ AstTag::OpSetMulTC,  AstFlag::EMPTY, 9, false, true  }, // *:=
+	{ AstTag::OpSetMod,    AstFlag::EMPTY, 9, false, true  }, // %=
+	{ AstTag::OpSetBitAnd, AstFlag::EMPTY, 9, false, true  }, // &=
+	{ AstTag::OpSetBitOr,  AstFlag::EMPTY, 9, false, true  }, // |=
+	{ AstTag::OpSetBitXor, AstFlag::EMPTY, 9, false, true  }, // ^=
+	{ AstTag::OpSetShiftL, AstFlag::EMPTY, 9, false, true  }, // <<=
+	{ AstTag::OpSetShiftR, AstFlag::EMPTY, 9, false, true  }, // >>=
 };
 
 
@@ -1237,16 +1237,16 @@ static void pop_operator(Parser* parser, OperatorStack* stack) noexcept
 
 	stack->operator_top -= 1;
 
-	if (top.node_type == a2::AstTag::INVALID)
+	if (top.node_type == AstTag::INVALID)
 		return;
 
 	if (stack->operand_count <= top.is_binary)
-		error(&parser->lexer, stack->expression_offset, "Missing operand(s) for operator '%s'\n", a2::ast_tag_name(top.node_type));
+		error(&parser->lexer, stack->expression_offset, "Missing operand(s) for operator '%s'\n", ast_tag_name(top.node_type));
 
 	if (top.is_binary)
 		stack->operand_count -= 1;
 
-	const a2::AstBuilderToken operator_token = a2::push_node(&parser->builder, stack->operand_tokens[stack->operand_count - 1], top.node_type, top.node_flags);
+	const AstBuilderToken operator_token = push_node(&parser->builder, stack->operand_tokens[stack->operand_count - 1], top.node_type, top.node_flags);
 
 	stack->operand_tokens[stack->operand_count - 1] = operator_token;
 }
@@ -1266,7 +1266,7 @@ static bool pop_to_precedence(Parser* parser, OperatorStack* stack, u8 precedenc
 	return false;
 }
 
-static void push_operand(Parser* parser, OperatorStack* stack, a2::AstBuilderToken operand_token) noexcept
+static void push_operand(Parser* parser, OperatorStack* stack, AstBuilderToken operand_token) noexcept
 {
 	if (stack->operand_count == array_count(stack->operand_tokens) - 1)
 		error(&parser->lexer, stack->expression_offset, "Expression exceeds maximum open operands of %u\n");
@@ -1278,7 +1278,7 @@ static void push_operand(Parser* parser, OperatorStack* stack, a2::AstBuilderTok
 
 static void push_operator(Parser* parser, OperatorStack* stack, OperatorDesc op) noexcept
 {
-	if (op.node_type != a2::AstTag::INVALID)
+	if (op.node_type != AstTag::INVALID)
 		pop_to_precedence(parser, stack, op.precedence, op.is_right_to_left);
 
 	if (stack->operator_top == array_count(stack->operators))
@@ -1291,12 +1291,12 @@ static void push_operator(Parser* parser, OperatorStack* stack, OperatorDesc op)
 
 static void remove_lparen(OperatorStack* stack) noexcept
 {
-	ASSERT_OR_IGNORE(stack->operator_top != 0 && stack->operators[stack->operator_top - 1].node_type == a2::AstTag::INVALID);
+	ASSERT_OR_IGNORE(stack->operator_top != 0 && stack->operators[stack->operator_top - 1].node_type == AstTag::INVALID);
 
 	stack->operator_top -= 1;
 }
 
-static a2::AstBuilderToken pop_remaining(Parser* parser, OperatorStack* stack) noexcept
+static AstBuilderToken pop_remaining(Parser* parser, OperatorStack* stack) noexcept
 {
 	while (stack->operator_top != 0)
 		pop_operator(parser, stack);
@@ -1321,11 +1321,11 @@ static bool is_definition_start(Token token) noexcept
 		|| token == Token::KwdUse;
 }
 
-static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept;
+static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept;
 
-static a2::AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool is_optional_value) noexcept
+static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool is_optional_value) noexcept
 {
-	a2::AstFlag flags = a2::AstFlag::EMPTY;
+	AstFlag flags = AstFlag::EMPTY;
 
 	Lexeme lexeme = next(&parser->lexer);
 
@@ -1339,38 +1339,38 @@ static a2::AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bo
 		{
 			if (lexeme.token == Token::KwdPub)
 			{
-				if ((flags & a2::AstFlag::Definition_IsPub) != a2::AstFlag::EMPTY)
+				if ((flags & AstFlag::Definition_IsPub) != AstFlag::EMPTY)
 					error(&parser->lexer, lexeme.offset, "Definition modifier 'pub' encountered more than once\n");
 
-				flags |= a2::AstFlag::Definition_IsPub;
+				flags |= AstFlag::Definition_IsPub;
 			}
 			else if (lexeme.token == Token::KwdMut)
 			{
-				if ((flags & a2::AstFlag::Definition_IsMut) != a2::AstFlag::EMPTY)
+				if ((flags & AstFlag::Definition_IsMut) != AstFlag::EMPTY)
 					error(&parser->lexer, lexeme.offset, "Definition modifier 'mut' encountered more than once\n");
 
-				flags |= a2::AstFlag::Definition_IsMut;
+				flags |= AstFlag::Definition_IsMut;
 			}
 			else if (lexeme.token == Token::KwdGlobal)
 			{
-				if ((flags & a2::AstFlag::Definition_IsGlobal) != a2::AstFlag::EMPTY)
+				if ((flags & AstFlag::Definition_IsGlobal) != AstFlag::EMPTY)
 					error(&parser->lexer, lexeme.offset, "Definition modifier 'global' encountered more than once\n");
 
-				flags |= a2::AstFlag::Definition_IsGlobal;
+				flags |= AstFlag::Definition_IsGlobal;
 			}
 			else if (lexeme.token == Token::KwdAuto)
 			{
-				if ((flags & a2::AstFlag::Definition_IsAuto) != a2::AstFlag::EMPTY)
+				if ((flags & AstFlag::Definition_IsAuto) != AstFlag::EMPTY)
 					error(&parser->lexer, lexeme.offset, "Definition modifier 'auto' encountered more than once\n");
 
-				flags |= a2::AstFlag::Definition_IsAuto;
+				flags |= AstFlag::Definition_IsAuto;
 			}
 			else if (lexeme.token == Token::KwdUse)
 			{
-				if ((flags & a2::AstFlag::Definition_IsUse) != a2::AstFlag::EMPTY)
+				if ((flags & AstFlag::Definition_IsUse) != AstFlag::EMPTY)
 					error(&parser->lexer, lexeme.offset, "Definition modifier 'use' encountered more than once\n");
 
-				flags |= a2::AstFlag::Definition_IsUse;
+				flags |= AstFlag::Definition_IsUse;
 			}
 			else
 			{
@@ -1380,7 +1380,7 @@ static a2::AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bo
 			lexeme = next(&parser->lexer);
 		}
 
-		if (flags == a2::AstFlag::EMPTY && !is_implicit)
+		if (flags == AstFlag::EMPTY && !is_implicit)
 			error(&parser->lexer, lexeme.offset, "Missing 'let' or at least one of 'pub', 'mut' or 'global' at start of definition\n");
 	}
 
@@ -1391,11 +1391,11 @@ static a2::AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bo
 
 	lexeme = peek(&parser->lexer);
 
-	a2::AstBuilderToken first_child_token = a2::AstBuilder::NO_CHILDREN;
+	AstBuilderToken first_child_token = AstBuilder::NO_CHILDREN;
 
 	if (lexeme.token == Token::Colon)
 	{
-		flags |= a2::AstFlag::Definition_HasType;
+		flags |= AstFlag::Definition_HasType;
 
 		skip(&parser->lexer);
 
@@ -1408,9 +1408,9 @@ static a2::AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bo
 	{
 		skip(&parser->lexer);
 
-		const a2::AstBuilderToken value_token = parse_expr(parser, true);
+		const AstBuilderToken value_token = parse_expr(parser, true);
 
-		if (first_child_token == a2::AstBuilder::NO_CHILDREN)
+		if (first_child_token == AstBuilder::NO_CHILDREN)
 			first_child_token = value_token;
 	}
 	else if (!is_optional_value)
@@ -1418,41 +1418,41 @@ static a2::AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bo
 		error(&parser->lexer, lexeme.offset, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, flags, a2::DefinitionData{ identifier_id });
+	return push_node(&parser->builder, first_child_token, flags, DefinitionData{ identifier_id });
 }
 
-static a2::AstBuilderToken parse_return(Parser* parser) noexcept
+static AstBuilderToken parse_return(Parser* parser) noexcept
 {
 	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdReturn);
 
 	skip(&parser->lexer);
 
-	const a2::AstBuilderToken value_token = parse_expr(parser, true);
+	const AstBuilderToken value_token = parse_expr(parser, true);
 
-	return a2::push_node(&parser->builder, value_token, a2::AstTag::Return, a2::AstFlag::EMPTY);
+	return push_node(&parser->builder, value_token, AstTag::Return, AstFlag::EMPTY);
 }
 
-static a2::AstBuilderToken parse_leave(Parser* parser) noexcept
+static AstBuilderToken parse_leave(Parser* parser) noexcept
 {
 	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdLeave);
 
 	skip(&parser->lexer);
 
-	return a2::push_node(&parser->builder, a2::AstBuilder::NO_CHILDREN, a2::AstTag::Leave, a2::AstFlag::EMPTY);
+	return push_node(&parser->builder, AstBuilder::NO_CHILDREN, AstTag::Leave, AstFlag::EMPTY);
 }
 
-static a2::AstBuilderToken parse_yield(Parser* parser) noexcept
+static AstBuilderToken parse_yield(Parser* parser) noexcept
 {
 	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdYield);
 
 	skip(&parser->lexer);
 
-	const a2::AstBuilderToken value_token = parse_expr(parser, true);
+	const AstBuilderToken value_token = parse_expr(parser, true);
 
-	return a2::push_node(&parser->builder, value_token, a2::AstTag::Yield, a2::AstFlag::EMPTY);
+	return push_node(&parser->builder, value_token, AstTag::Yield, AstFlag::EMPTY);
 }
 
-static a2::AstBuilderToken parse_top_level_expr(Parser* parser, bool is_definition_optional_value, bool* out_is_definition) noexcept
+static AstBuilderToken parse_top_level_expr(Parser* parser, bool is_definition_optional_value, bool* out_is_definition) noexcept
 {
 	const Lexeme lexeme = peek(&parser->lexer);
 
@@ -1472,13 +1472,13 @@ static a2::AstBuilderToken parse_top_level_expr(Parser* parser, bool is_definiti
 		return parse_expr(parser, true);
 }
 
-static a2::AstBuilderToken parse_where(Parser* parser) noexcept
+static AstBuilderToken parse_where(Parser* parser) noexcept
 {
 	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdWhere);
 
 	skip(&parser->lexer);
 
-	const a2::AstBuilderToken first_child_token = parse_definition(parser, true, false);
+	const AstBuilderToken first_child_token = parse_definition(parser, true, false);
 
 	while (true)
 	{
@@ -1490,24 +1490,24 @@ static a2::AstBuilderToken parse_where(Parser* parser) noexcept
 		parse_definition(parser, true, false);
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Where, a2::AstFlag::EMPTY);
+	return push_node(&parser->builder, first_child_token, AstTag::Where, AstFlag::EMPTY);
 }
 
-static a2::AstBuilderToken parse_if(Parser* parser) noexcept
+static AstBuilderToken parse_if(Parser* parser) noexcept
 {
 	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdIf);
 
-	a2::AstFlag flags = a2::AstFlag::EMPTY;
+	AstFlag flags = AstFlag::EMPTY;
 
 	skip(&parser->lexer);
 
-	const a2::AstBuilderToken condition_token = parse_expr(parser, false);
+	const AstBuilderToken condition_token = parse_expr(parser, false);
 
 	Lexeme lexeme = peek(&parser->lexer);
 
 	if (lexeme.token == Token::KwdWhere)
 	{
-		flags |= a2::AstFlag::If_HasWhere;
+		flags |= AstFlag::If_HasWhere;
 
 		parse_where(parser);
 
@@ -1523,17 +1523,17 @@ static a2::AstBuilderToken parse_if(Parser* parser) noexcept
 
 	if (lexeme.token == Token::KwdElse)
 	{
-		flags |= a2::AstFlag::If_HasElse;
+		flags |= AstFlag::If_HasElse;
 
 		skip(&parser->lexer);
 
 		parse_expr(parser, true);
 	}
 
-	return a2::push_node(&parser->builder, condition_token, a2::AstTag::If, flags);
+	return push_node(&parser->builder, condition_token, AstTag::If, flags);
 }
 
-static a2::AstBuilderToken try_parse_foreach(Parser* parser) noexcept
+static AstBuilderToken try_parse_foreach(Parser* parser) noexcept
 {
 	bool is_foreach = false;
 
@@ -1554,17 +1554,17 @@ static a2::AstBuilderToken try_parse_foreach(Parser* parser) noexcept
 	}
 
 	if (!is_foreach)
-		return a2::AstBuilder::NO_CHILDREN;
+		return AstBuilder::NO_CHILDREN;
 
-	a2::AstFlag flags = a2::AstFlag::EMPTY;
+	AstFlag flags = AstFlag::EMPTY;
 
-	const a2::AstBuilderToken first_child_token = parse_definition(parser, true, true);
+	const AstBuilderToken first_child_token = parse_definition(parser, true, true);
 
 	Lexeme lexeme = peek(&parser->lexer);
 
 	if (lexeme.token == Token::Comma)
 	{
-		flags |= a2::AstFlag::ForEach_HasIndex;
+		flags |= AstFlag::ForEach_HasIndex;
 
 		skip(&parser->lexer);
 
@@ -1584,7 +1584,7 @@ static a2::AstBuilderToken try_parse_foreach(Parser* parser) noexcept
 
 	if (lexeme.token == Token::KwdWhere)
 	{
-		flags |= a2::AstFlag::ForEach_HasWhere;
+		flags |= AstFlag::ForEach_HasWhere;
 
 		parse_where(parser);
 
@@ -1600,32 +1600,32 @@ static a2::AstBuilderToken try_parse_foreach(Parser* parser) noexcept
 
 	if (lexeme.token == Token::KwdFinally)
 	{
-		flags |= a2::AstFlag::ForEach_HasFinally;
+		flags |= AstFlag::ForEach_HasFinally;
 
 		parse_expr(parser, true);
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::ForEach, flags);
+	return push_node(&parser->builder, first_child_token, AstTag::ForEach, flags);
 }
 
-static a2::AstBuilderToken parse_for(Parser* parser) noexcept
+static AstBuilderToken parse_for(Parser* parser) noexcept
 {
 	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdFor);
 
-	a2::AstFlag flags = a2::AstFlag::EMPTY;
+	AstFlag flags = AstFlag::EMPTY;
 
 	skip(&parser->lexer);
 
-	if (const a2::AstBuilderToken foreach_token = try_parse_foreach(parser); foreach_token != a2::AstBuilder::NO_CHILDREN)
+	if (const AstBuilderToken foreach_token = try_parse_foreach(parser); foreach_token != AstBuilder::NO_CHILDREN)
 		return foreach_token;
 
-	const a2::AstBuilderToken first_child_token = parse_expr(parser, false);
+	const AstBuilderToken first_child_token = parse_expr(parser, false);
 
 	Lexeme lexeme = peek(&parser->lexer);
 
 	if (lexeme.token == Token::Comma)
 	{
-		flags |= a2::AstFlag::For_HasStep;
+		flags |= AstFlag::For_HasStep;
 
 		skip(&parser->lexer);
 
@@ -1636,7 +1636,7 @@ static a2::AstBuilderToken parse_for(Parser* parser) noexcept
 
 	if (lexeme.token == Token::KwdWhere)
 	{
-		flags |= a2::AstFlag::For_HasWhere;
+		flags |= AstFlag::For_HasWhere;
 
 		parse_where(parser);
 
@@ -1652,21 +1652,21 @@ static a2::AstBuilderToken parse_for(Parser* parser) noexcept
 
 	if (lexeme.token == Token::KwdFinally)
 	{
-		flags |= a2::AstFlag::For_HasFinally;
+		flags |= AstFlag::For_HasFinally;
 
 		parse_expr(parser, true);
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::For, flags);
+	return push_node(&parser->builder, first_child_token, AstTag::For, flags);
 }
 
-static a2::AstBuilderToken parse_case(Parser* parser) noexcept
+static AstBuilderToken parse_case(Parser* parser) noexcept
 {
 	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdCase);
 
 	skip(&parser->lexer);
 
-	const a2::AstBuilderToken first_child_token = parse_expr(parser, false);
+	const AstBuilderToken first_child_token = parse_expr(parser, false);
 
 	Lexeme lexeme = next(&parser->lexer);
 
@@ -1675,24 +1675,24 @@ static a2::AstBuilderToken parse_case(Parser* parser) noexcept
 
 	parse_expr(parser, true);
 
-	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Case, a2::AstFlag::EMPTY);
+	return push_node(&parser->builder, first_child_token, AstTag::Case, AstFlag::EMPTY);
 }
 
-static a2::AstBuilderToken parse_switch(Parser* parser) noexcept
+static AstBuilderToken parse_switch(Parser* parser) noexcept
 {
 	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdSwitch);
 
-	a2::AstFlag flags = a2::AstFlag::EMPTY;
+	AstFlag flags = AstFlag::EMPTY;
 
 	skip(&parser->lexer);
 
-	const a2::AstBuilderToken first_child_token = parse_expr(parser, false);
+	const AstBuilderToken first_child_token = parse_expr(parser, false);
 
 	Lexeme lexeme = peek(&parser->lexer);
 
 	if (lexeme.token == Token::KwdWhere)
 	{
-		flags |= a2::AstFlag::Switch_HasWhere;
+		flags |= AstFlag::Switch_HasWhere;
 
 		parse_where(parser);
 
@@ -1712,16 +1712,16 @@ static a2::AstBuilderToken parse_switch(Parser* parser) noexcept
 			break;
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Switch, flags);
+	return push_node(&parser->builder, first_child_token, AstTag::Switch, flags);
 }
 
-static a2::AstBuilderToken parse_expects(Parser* parser) noexcept
+static AstBuilderToken parse_expects(Parser* parser) noexcept
 {
 	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdExpects);
 
 	skip(&parser->lexer);
 
-	const a2::AstBuilderToken first_child_token = parse_expr(parser, false);
+	const AstBuilderToken first_child_token = parse_expr(parser, false);
 
 	while (true)
 	{
@@ -1733,16 +1733,16 @@ static a2::AstBuilderToken parse_expects(Parser* parser) noexcept
 		parse_expr(parser, false);
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Expects, a2::AstFlag::EMPTY);
+	return push_node(&parser->builder, first_child_token, AstTag::Expects, AstFlag::EMPTY);
 }
 
-static a2::AstBuilderToken parse_ensures(Parser* parser) noexcept
+static AstBuilderToken parse_ensures(Parser* parser) noexcept
 {
 	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdEnsures);
 
 	skip(&parser->lexer);
 
-	const a2::AstBuilderToken first_child_token = parse_expr(parser, false);
+	const AstBuilderToken first_child_token = parse_expr(parser, false);
 
 	while (true)
 	{
@@ -1754,34 +1754,34 @@ static a2::AstBuilderToken parse_ensures(Parser* parser) noexcept
 		parse_expr(parser, false);
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Ensures, a2::AstFlag::EMPTY);
+	return push_node(&parser->builder, first_child_token, AstTag::Ensures, AstFlag::EMPTY);
 }
 
-static a2::AstBuilderToken parse_func(Parser* parser) noexcept
+static AstBuilderToken parse_func(Parser* parser) noexcept
 {
-	a2::AstFlag flags = a2::AstFlag::EMPTY;
+	AstFlag flags = AstFlag::EMPTY;
 
 	Lexeme lexeme = next(&parser->lexer);
 
 	if (lexeme.token == Token::KwdProc)
-		flags |= a2::AstFlag::Func_IsProc;
+		flags |= AstFlag::Func_IsProc;
 	else if (lexeme.token != Token::KwdFunc)
 		error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' but got '%s'\n", token_name(Token::KwdFunc), token_name(Token::KwdProc), token_name(lexeme.token));
 
 	lexeme = next(&parser->lexer);
 
 	if (lexeme.token != Token::ParenL)
-		error(&parser->lexer, lexeme.offset, "Expected '%s' after '%s' but got '%s'\n", token_name(Token::ParenL), token_name(flags == a2::AstFlag::Func_IsProc ? Token::KwdProc : Token::KwdFunc), token_name(lexeme.token));
+		error(&parser->lexer, lexeme.offset, "Expected '%s' after '%s' but got '%s'\n", token_name(Token::ParenL), token_name(flags == AstFlag::Func_IsProc ? Token::KwdProc : Token::KwdFunc), token_name(lexeme.token));
 
 	lexeme = peek(&parser->lexer);
 
-	a2::AstBuilderToken first_parameter_token = a2::AstBuilder::NO_CHILDREN;
+	AstBuilderToken first_parameter_token = AstBuilder::NO_CHILDREN;
 
 	while (lexeme.token != Token::ParenR)
 	{
-		const a2::AstBuilderToken parameter_token = parse_definition(parser, true, true);
+		const AstBuilderToken parameter_token = parse_definition(parser, true, true);
 
-		if (first_parameter_token == a2::AstBuilder::NO_CHILDREN)
+		if (first_parameter_token == AstBuilder::NO_CHILDREN)
 			first_parameter_token = parameter_token;
 
 		lexeme = peek(&parser->lexer);
@@ -1792,7 +1792,7 @@ static a2::AstBuilderToken parse_func(Parser* parser) noexcept
 			error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' after function parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
 	}
 
-	const a2::AstBuilderToken first_child_token = a2::push_node(&parser->builder, first_parameter_token, a2::AstTag::ParameterList, a2::AstFlag::EMPTY);
+	const AstBuilderToken first_child_token = push_node(&parser->builder, first_parameter_token, AstTag::ParameterList, AstFlag::EMPTY);
 
 	skip(&parser->lexer);
 
@@ -1800,50 +1800,50 @@ static a2::AstBuilderToken parse_func(Parser* parser) noexcept
 
 	if (lexeme.token == Token::ThinArrowR)
 	{
-		flags |= a2::AstFlag::Func_HasReturnType;
+		flags |= AstFlag::Func_HasReturnType;
 
 		skip(&parser->lexer);
 
-		const a2::AstBuilderToken return_type_token = parse_expr(parser, false);
+		const AstBuilderToken return_type_token = parse_expr(parser, false);
 
 		lexeme = peek(&parser->lexer);
 	}
 
 	if (lexeme.token == Token::KwdExpects)
 	{
-		flags |= a2::AstFlag::Func_HasExpects;
+		flags |= AstFlag::Func_HasExpects;
 
-		const a2::AstBuilderToken expects_token = parse_expects(parser);
+		const AstBuilderToken expects_token = parse_expects(parser);
 
 		lexeme = peek(&parser->lexer);
 	}
 
 	if (lexeme.token == Token::KwdEnsures)
 	{
-		flags |= a2::AstFlag::Func_HasEnsures;
+		flags |= AstFlag::Func_HasEnsures;
 
-		const a2::AstBuilderToken ensures_token = parse_ensures(parser);
+		const AstBuilderToken ensures_token = parse_ensures(parser);
 
 		lexeme = peek(&parser->lexer);
 	}
 
 	if (lexeme.token == Token::OpSet)
 	{
-		flags |= a2::AstFlag::Func_HasBody;
+		flags |= AstFlag::Func_HasBody;
 
 		skip(&parser->lexer);
 
-		const a2::AstBuilderToken body_token = parse_expr(parser, true);
+		const AstBuilderToken body_token = parse_expr(parser, true);
 	}
 
-	return a2::push_node(&parser->builder, first_child_token, flags, a2::FuncData{ INVALID_TYPE_ID, INVALID_TYPE_ID });
+	return push_node(&parser->builder, first_child_token, flags, FuncData{ INVALID_TYPE_ID, INVALID_TYPE_ID });
 }
 
-static a2::AstBuilderToken parse_trait(Parser* parser) noexcept
+static AstBuilderToken parse_trait(Parser* parser) noexcept
 {
 	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdTrait);
 
-	a2::AstFlag flags = a2::AstFlag::EMPTY;
+	AstFlag flags = AstFlag::EMPTY;
 
 	skip(&parser->lexer);
 
@@ -1854,13 +1854,13 @@ static a2::AstBuilderToken parse_trait(Parser* parser) noexcept
 
 	lexeme = peek(&parser->lexer);
 
-	a2::AstBuilderToken first_child_token = a2::AstBuilder::NO_CHILDREN;
+	AstBuilderToken first_child_token = AstBuilder::NO_CHILDREN;
 
 	while (lexeme.token != Token::ParenR)
 	{
-		const a2::AstBuilderToken parameter_token = parse_definition(parser, true, true);
+		const AstBuilderToken parameter_token = parse_definition(parser, true, true);
 
-		if (first_child_token == a2::AstBuilder::NO_CHILDREN)
+		if (first_child_token == AstBuilder::NO_CHILDREN)
 			first_child_token = parameter_token;
 
 		lexeme = next(&parser->lexer);
@@ -1875,11 +1875,11 @@ static a2::AstBuilderToken parse_trait(Parser* parser) noexcept
 
 	if (lexeme.token == Token::KwdExpects)
 	{
-		flags |= a2::AstFlag::Trait_HasExpects;
+		flags |= AstFlag::Trait_HasExpects;
 
-		const a2::AstBuilderToken expects_token = parse_expects(parser);
+		const AstBuilderToken expects_token = parse_expects(parser);
 
-		if (first_child_token == a2::AstBuilder::NO_CHILDREN)
+		if (first_child_token == AstBuilder::NO_CHILDREN)
 			first_child_token = expects_token;
 
 		lexeme = peek(&parser->lexer);
@@ -1887,7 +1887,7 @@ static a2::AstBuilderToken parse_trait(Parser* parser) noexcept
 
 	if (lexeme.token != Token::OpSet)
 	{
-		if ((flags & a2::AstFlag::Trait_HasExpects) == a2::AstFlag::EMPTY)
+		if ((flags & AstFlag::Trait_HasExpects) == AstFlag::EMPTY)
 			error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' after trait parameter list but got '%s'\n", token_name(Token::OpSet), token_name(Token::KwdExpects), token_name(lexeme.token));
 		else
 			error(&parser->lexer, lexeme.offset, "Expected '%s' after trait expects clause but got '%s'\n", token_name(Token::OpSet), token_name(lexeme.token));
@@ -1895,29 +1895,29 @@ static a2::AstBuilderToken parse_trait(Parser* parser) noexcept
 
 	skip(&parser->lexer);
 
-	const a2::AstBuilderToken body_token = parse_expr(parser, true);
+	const AstBuilderToken body_token = parse_expr(parser, true);
 
-	if (first_child_token == a2::AstBuilder::NO_CHILDREN)
+	if (first_child_token == AstBuilder::NO_CHILDREN)
 		first_child_token = body_token;
 
-	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Trait, flags);
+	return push_node(&parser->builder, first_child_token, AstTag::Trait, flags);
 }
 
-static a2::AstBuilderToken parse_impl(Parser* parser) noexcept
+static AstBuilderToken parse_impl(Parser* parser) noexcept
 {
 	ASSERT_OR_IGNORE(peek(&parser->lexer).token == Token::KwdImpl);
 
-	a2::AstFlag flags = a2::AstFlag::EMPTY;
+	AstFlag flags = AstFlag::EMPTY;
 
 	skip(&parser->lexer);
 
-	const a2::AstBuilderToken first_child_token = parse_expr(parser, false);
+	const AstBuilderToken first_child_token = parse_expr(parser, false);
 
 	Lexeme lexeme = peek(&parser->lexer);
 
 	if (lexeme.token == Token::KwdExpects)
 	{
-		flags |= a2::AstFlag::Impl_HasExpects;
+		flags |= AstFlag::Impl_HasExpects;
 
 		parse_expects(parser);
 
@@ -1926,7 +1926,7 @@ static a2::AstBuilderToken parse_impl(Parser* parser) noexcept
 
 	if (lexeme.token != Token::OpSet)
 	{
-		if ((flags & a2::AstFlag::Trait_HasExpects) == a2::AstFlag::EMPTY)
+		if ((flags & AstFlag::Trait_HasExpects) == AstFlag::EMPTY)
 			error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' after trait parameter list but got '%s'\n", token_name(Token::OpSet), token_name(Token::KwdExpects), token_name(lexeme.token));
 		else
 			error(&parser->lexer, lexeme.offset, "Expected '%s' after trait expects clause but got '%s'\n", token_name(Token::OpSet), token_name(lexeme.token));
@@ -1936,10 +1936,10 @@ static a2::AstBuilderToken parse_impl(Parser* parser) noexcept
 
 	parse_expr(parser, true);
 
-	return a2::push_node(&parser->builder, first_child_token, a2::AstTag::Impl, flags);
+	return push_node(&parser->builder, first_child_token, AstTag::Impl, flags);
 }
 
-static a2::AstBuilderToken parse_definition_or_impl(Parser* parser, bool* out_is_definition) noexcept
+static AstBuilderToken parse_definition_or_impl(Parser* parser, bool* out_is_definition) noexcept
 {
 	const Lexeme lexeme = peek(&parser->lexer);
 
@@ -1955,7 +1955,7 @@ static a2::AstBuilderToken parse_definition_or_impl(Parser* parser, bool* out_is
 		error(&parser->lexer, lexeme.offset, "Expected definition or impl but got %s\n", token_name(lexeme.token));
 }
 
-static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
+static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 {
 	Lexeme lexeme = peek(&parser->lexer);
 
@@ -1974,7 +1974,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValIdentifierData{ lexeme.identifier_id });
+				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, ValIdentifierData{ lexeme.identifier_id });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -1982,7 +1982,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValStringData{ lexeme.identifier_id });
+				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, ValStringData{ lexeme.identifier_id });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -1990,7 +1990,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValFloatData{ lexeme.float_value });
+				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, ValFloatData{ lexeme.float_value });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -1998,7 +1998,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValIntegerData{ lexeme.integer_value });
+				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, ValIntegerData{ lexeme.integer_value });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2006,7 +2006,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValCharData{ static_cast<u32>(lexeme.integer_value) });
+				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, ValCharData{ static_cast<u32>(lexeme.integer_value) });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2014,7 +2014,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken value_token = a2::push_node(&parser->builder, a2::AstBuilder::NO_CHILDREN, a2::AstTag::Wildcard, a2::AstFlag::EMPTY);
+				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, AstTag::Wildcard, AstFlag::EMPTY);
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2026,13 +2026,13 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 
 				lexeme = peek(&parser->lexer);
 
-				a2::AstBuilderToken first_child_token = a2::AstBuilder::NO_CHILDREN;
+				AstBuilderToken first_child_token = AstBuilder::NO_CHILDREN;
 
 				while (lexeme.token != Token::CurlyR)
 				{
-					const a2::AstBuilderToken curr_token = parse_expr(parser, true);
+					const AstBuilderToken curr_token = parse_expr(parser, true);
 
-					if (first_child_token == a2::AstBuilder::NO_CHILDREN)
+					if (first_child_token == AstBuilder::NO_CHILDREN)
 						first_child_token = curr_token;
 
 					lexeme = peek(&parser->lexer);
@@ -2049,7 +2049,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 					}
 				}
 
-				const a2::AstBuilderToken composite_token = a2::push_node(&parser->builder, first_child_token, a2::AstTag::CompositeInitializer, a2::AstFlag::EMPTY);
+				const AstBuilderToken composite_token = push_node(&parser->builder, first_child_token, AstTag::CompositeInitializer, AstFlag::EMPTY);
 
 				push_operand(parser, &stack, composite_token);
 			}
@@ -2061,13 +2061,13 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 
 				lexeme = peek(&parser->lexer);
 
-				a2::AstBuilderToken first_child_token = a2::AstBuilder::NO_CHILDREN;
+				AstBuilderToken first_child_token = AstBuilder::NO_CHILDREN;
 
 				while (lexeme.token != Token::BracketR)
 				{
-					const a2::AstBuilderToken curr_token = parse_expr(parser, true);
+					const AstBuilderToken curr_token = parse_expr(parser, true);
 
-					if (first_child_token == a2::AstBuilder::NO_CHILDREN)
+					if (first_child_token == AstBuilder::NO_CHILDREN)
 						first_child_token = curr_token;
 
 					lexeme = peek(&parser->lexer);
@@ -2084,7 +2084,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 					}
 				}
 
-				const a2::AstBuilderToken array_token = a2::push_node(&parser->builder, first_child_token, a2::AstTag::ArrayInitializer, a2::AstFlag::EMPTY);
+				const AstBuilderToken array_token = push_node(&parser->builder, first_child_token, AstTag::ArrayInitializer, AstFlag::EMPTY);
 				
 				push_operand(parser, &stack, array_token);
 			}
@@ -2103,7 +2103,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 
 				// TODO: Work out how to make this into an infix operator or something
 				// Use pop_to_precedence and then manually replace top
-				const a2::AstBuilderToken array_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::AstTag::OpTypeArray, a2::AstFlag::EMPTY);
+				const AstBuilderToken array_token = push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], AstTag::OpTypeArray, AstFlag::EMPTY);
 
 				stack.operand_tokens[stack.operand_count - 1] = array_token;
 			}
@@ -2115,7 +2115,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 
 				lexeme = peek(&parser->lexer);
 
-				a2::AstBuilderToken first_child_token = a2::AstBuilder::NO_CHILDREN;
+				AstBuilderToken first_child_token = AstBuilder::NO_CHILDREN;
 
 				u32 definition_count = 0;
 
@@ -2123,12 +2123,12 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 				{
 					bool is_definition;
 
-					const a2::AstBuilderToken curr_token = parse_top_level_expr(parser, false, &is_definition);
+					const AstBuilderToken curr_token = parse_top_level_expr(parser, false, &is_definition);
 
 					if (is_definition)
 						definition_count += 1;
 
-					if (first_child_token == a2::AstBuilder::NO_CHILDREN)
+					if (first_child_token == AstBuilder::NO_CHILDREN)
 						first_child_token = curr_token;
 
 					lexeme = peek(&parser->lexer);
@@ -2137,7 +2137,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 						break;
 				}
 
-				const a2::AstBuilderToken block_token = a2::push_node(&parser->builder, first_child_token, a2::AstFlag::EMPTY, a2::BlockData{ definition_count });
+				const AstBuilderToken block_token = push_node(&parser->builder, first_child_token, AstFlag::EMPTY, BlockData{ definition_count });
 				
 				push_operand(parser, &stack, block_token);
 			}
@@ -2145,7 +2145,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken if_token = parse_if(parser);
+				const AstBuilderToken if_token = parse_if(parser);
 
 				push_operand(parser, &stack, if_token);
 
@@ -2157,7 +2157,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken for_token = parse_for(parser);
+				const AstBuilderToken for_token = parse_for(parser);
 
 				push_operand(parser, &stack, for_token);
 
@@ -2169,7 +2169,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken switch_token = parse_switch(parser);
+				const AstBuilderToken switch_token = parse_switch(parser);
 
 				push_operand(parser, &stack, switch_token);
 
@@ -2181,7 +2181,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken func_token = parse_func(parser);
+				const AstBuilderToken func_token = parse_func(parser);
 
 				push_operand(parser, &stack, func_token);
 
@@ -2193,7 +2193,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken trait_token = parse_trait(parser);
+				const AstBuilderToken trait_token = parse_trait(parser);
 
 				push_operand(parser, &stack, trait_token);
 
@@ -2205,7 +2205,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 			{
 				expecting_operand = false;
 
-				const a2::AstBuilderToken impl_token = parse_impl(parser);
+				const AstBuilderToken impl_token = parse_impl(parser);
 
 				push_operand(parser, &stack, impl_token);
 
@@ -2230,7 +2230,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 
 				lexeme = peek(&parser->lexer);
 
-				if (op.node_flags == a2::AstFlag::Type_IsMut)
+				if (op.node_flags == AstFlag::Type_IsMut)
 				{
 					if (lexeme.token == Token::KwdMut)
 					{
@@ -2240,7 +2240,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 					}
 					else
 					{
-						op.node_flags = a2::AstFlag::EMPTY;
+						op.node_flags = AstFlag::EMPTY;
 					}
 				}
 
@@ -2265,7 +2265,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 				{
 					bool unused;
 
-					const a2::AstBuilderToken curr_token = parse_top_level_expr(parser, true, &unused);
+					const AstBuilderToken curr_token = parse_top_level_expr(parser, true, &unused);
 
 					lexeme = peek(&parser->lexer);
 
@@ -2281,7 +2281,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 					}
 				}
 
-				const a2::AstBuilderToken call_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::AstTag::Call, a2::AstFlag::EMPTY);
+				const AstBuilderToken call_token = push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], AstTag::Call, AstFlag::EMPTY);
 				
 				stack.operand_tokens[stack.operand_count - 1] = call_token;
 			}
@@ -2311,13 +2311,13 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 				if (lexeme.token != Token::BracketR)
 					error(&parser->lexer, lexeme.offset, "Expected ']' after array index expression, but got '%s'\n", token_name(lexeme.token));
 
-				const a2::AstBuilderToken index_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::AstTag::OpArrayIndex, a2::AstFlag::EMPTY);
+				const AstBuilderToken index_token = push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], AstTag::OpArrayIndex, AstFlag::EMPTY);
 				
 				stack.operand_tokens[stack.operand_count - 1] = index_token;
 			}
 			else if (lexeme.token == Token::KwdCatch)
 			{
-				a2::AstFlag flags = a2::AstFlag::EMPTY;
+				AstFlag flags = AstFlag::EMPTY;
 
 				pop_to_precedence(parser, &stack, 1, true);
 
@@ -2327,7 +2327,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 
 				if (is_definition_start(lexeme.token) || peek_n(&parser->lexer, 1).token == Token::ThinArrowR)
 				{
-					flags |= a2::AstFlag::Catch_HasDefinition;
+					flags |= AstFlag::Catch_HasDefinition;
 
 					parse_definition(parser, true, true);
 
@@ -2339,7 +2339,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 
 				parse_expr(parser, false);
 
-				const a2::AstBuilderToken catch_token = a2::push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], a2::AstTag::Catch, flags);
+				const AstBuilderToken catch_token = push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], AstTag::Catch, flags);
 
 				stack.operand_tokens[stack.operand_count - 1] = catch_token;
 
@@ -2376,7 +2376,7 @@ static a2::AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexce
 
 static void parse_file(Parser* parser) noexcept
 {
-	a2::AstBuilderToken first_child_token = a2::AstBuilder::NO_CHILDREN;
+	AstBuilderToken first_child_token = AstBuilder::NO_CHILDREN;
 
 	u32 definition_count = 0;
 
@@ -2389,16 +2389,16 @@ static void parse_file(Parser* parser) noexcept
 
 		bool is_definition;
 
-		const a2::AstBuilderToken curr_token = parse_definition_or_impl(parser, &is_definition);
+		const AstBuilderToken curr_token = parse_definition_or_impl(parser, &is_definition);
 
 		if (is_definition)
 			definition_count += 1;
 
-		if (first_child_token == a2::AstBuilder::NO_CHILDREN)
+		if (first_child_token == AstBuilder::NO_CHILDREN)
 			first_child_token = curr_token;
 	};
 
-	a2::push_node(&parser->builder, first_child_token, a2::AstFlag::EMPTY, a2::FileData{ a2::BlockData{ definition_count }, parser->lexer.filepath_id });
+	push_node(&parser->builder, first_child_token, AstFlag::EMPTY, FileData{ BlockData{ definition_count }, parser->lexer.filepath_id });
 }
 
 
@@ -2413,7 +2413,7 @@ Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers) noexcept
 	return parser;
 }
 
-a2::AstNode* parse(Parser* parser, SourceFile source, AstPool* out) noexcept
+AstNode* parse(Parser* parser, SourceFile source, AstPool* out) noexcept
 {
 	ASSERT_OR_IGNORE(source.content().count() != 0 && source.content().end()[-1] == '\0');
 
@@ -2427,10 +2427,10 @@ a2::AstNode* parse(Parser* parser, SourceFile source, AstPool* out) noexcept
 
 	parse_file(parser);
 
-	return a2::complete_ast(&parser->builder, out);
+	return complete_ast(&parser->builder, out);
 }
 
-a2::AstBuilder* get_ast_builder(Parser* parser) noexcept
+AstBuilder* get_ast_builder(Parser* parser) noexcept
 {
 	return &parser->builder;
 }

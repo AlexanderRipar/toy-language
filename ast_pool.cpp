@@ -25,15 +25,15 @@ static void builtin_import(Interpreter* interpreter) noexcept
 	// TODO
 }
 
-static a2::AstBuilderToken push_builtin_def(a2::AstBuilder* builder, IdentifierPool* identifiers, Range<char8> name, a2::BuiltinData::BuiltinSignature function) noexcept
+static AstBuilderToken push_builtin_def(AstBuilder* builder, IdentifierPool* identifiers, Range<char8> name, BuiltinData::BuiltinSignature function) noexcept
 {
-	const a2::AstBuilderToken val_token = a2::push_node(builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::BuiltinData{ function });
+	const AstBuilderToken val_token = push_node(builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, BuiltinData{ function });
 
-	return a2::push_node(builder, val_token, a2::AstFlag::EMPTY, a2::DefinitionData{ id_from_identifier(identifiers, name), /* TODO */ INVALID_TYPE_ID });
+	return push_node(builder, val_token, AstFlag::EMPTY, DefinitionData{ id_from_identifier(identifiers, name), /* TODO */ INVALID_TYPE_ID });
 }
 
 template<typename T>
-static TypeId push_type_def(a2::AstBuilder* builder, IdentifierPool* identifiers, Range<char8> name, TypePool* types, ValuePool* values, TypeId type_type_id, TypeTag tag, TypeFlag flags, const T& type) noexcept
+static TypeId push_type_def(AstBuilder* builder, IdentifierPool* identifiers, Range<char8> name, TypePool* types, ValuePool* values, TypeId type_type_id, TypeTag tag, TypeFlag flags, const T& type) noexcept
 {
 	const IdentifierId identifier_id = id_from_identifier(identifiers, name);
 
@@ -45,12 +45,12 @@ static TypeId push_type_def(a2::AstBuilder* builder, IdentifierPool* identifiers
 
 	*access_value<TypeId>(value.ptr) = type_id;
 
-	a2::push_node(builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::DefinitionData{ identifier_id, type_type_id == INVALID_TYPE_ID ? type_id : type_type_id, value.id });
+	push_node(builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, DefinitionData{ identifier_id, type_type_id == INVALID_TYPE_ID ? type_id : type_type_id, value.id });
 
 	return type_id;
 }
 
-static TypeId push_type_def(a2::AstBuilder* builder, IdentifierPool* identifiers, Range<char8> name, TypePool* types, ValuePool* values, TypeId type_type_id, TypeTag tag, TypeFlag flags) noexcept
+static TypeId push_type_def(AstBuilder* builder, IdentifierPool* identifiers, Range<char8> name, TypePool* types, ValuePool* values, TypeId type_type_id, TypeTag tag, TypeFlag flags) noexcept
 {
 	const IdentifierId identifier_id = id_from_identifier(identifiers, name);
 
@@ -62,23 +62,23 @@ static TypeId push_type_def(a2::AstBuilder* builder, IdentifierPool* identifiers
 
 	*access_value<TypeId>(value.ptr) = type_id;
 
-	a2::push_node(builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::DefinitionData{ identifier_id, type_type_id == INVALID_TYPE_ID ? type_id : type_type_id, value.id });
+	push_node(builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, DefinitionData{ identifier_id, type_type_id == INVALID_TYPE_ID ? type_id : type_type_id, value.id });
 
 	return type_id;
 }
 
-static void push_std_import(a2::AstBuilder* builder, IdentifierPool* identifiers) noexcept
+static void push_std_import(AstBuilder* builder, IdentifierPool* identifiers) noexcept
 {
-	const a2::AstBuilderToken import_identifier_token = a2::push_node(builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("import")) });
+	const AstBuilderToken import_identifier_token = push_node(builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("import")) });
 
-	a2::push_node(builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValStringData{ id_from_identifier(identifiers, range::from_literal_string("@std.src")) });
+	push_node(builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, ValStringData{ id_from_identifier(identifiers, range::from_literal_string("@std.src")) });
 
-	const a2::AstBuilderToken import_call_token = a2::push_node(builder, import_identifier_token, a2::AstTag::Call, a2::AstFlag::EMPTY);
+	const AstBuilderToken import_call_token = push_node(builder, import_identifier_token, AstTag::Call, AstFlag::EMPTY);
 
-	a2::push_node(builder, import_call_token, a2::AstFlag::EMPTY, a2::DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")), /* TODO */ INVALID_TYPE_ID });
+	push_node(builder, import_call_token, AstFlag::EMPTY, DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")), /* TODO */ INVALID_TYPE_ID });
 }
 
-static TypeId push_typeinfo_def(a2::AstBuilder* builder, IdentifierPool* identifiers, TypePool* types, TypeId u64_type_id, TypeId type_type_id) noexcept
+static TypeId push_typeinfo_def(AstBuilder* builder, IdentifierPool* identifiers, TypePool* types, TypeId u64_type_id, TypeId type_type_id) noexcept
 {
 	static constexpr u32 TYPEINFO_MEMBER_COUNT = 3;
 
@@ -92,15 +92,15 @@ static TypeId push_typeinfo_def(a2::AstBuilder* builder, IdentifierPool* identif
 
 	const TypeId typeinfo_type_id = id_from_type(types, TypeTag::Composite, TypeFlag::EMPTY, Range{ typeinfo_buf });
 
-	const a2::AstBuilderToken std_token = a2::push_node(builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
+	const AstBuilderToken std_token = push_node(builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
 
-	a2::push_node(builder, a2::AstBuilder::NO_CHILDREN, a2::AstFlag::EMPTY, a2::ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("build_typeinfo_type")) });
+	push_node(builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("build_typeinfo_type")) });
 
-	const a2::AstBuilderToken member_token = a2::push_node(builder, std_token, a2::AstTag::OpMember, a2::AstFlag::EMPTY);
+	const AstBuilderToken member_token = push_node(builder, std_token, AstTag::OpMember, AstFlag::EMPTY);
 
-	const a2::AstBuilderToken call_token = a2::push_node(builder, member_token, a2::AstTag::Call, a2::AstFlag::EMPTY);
+	const AstBuilderToken call_token = push_node(builder, member_token, AstTag::Call, AstFlag::EMPTY);
 
-	a2::push_node(builder, call_token, a2::AstFlag::EMPTY, a2::DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("typeinfo")), type_type_id });
+	push_node(builder, call_token, AstFlag::EMPTY, DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("typeinfo")), type_type_id });
 
 	return typeinfo_type_id;
 }
@@ -119,14 +119,14 @@ void release_ast_pool(AstPool* asts) noexcept
 	asts->pool.release();
 }
 
-a2::AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept
+AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept
 {
-	return static_cast<a2::AstNode*>(asts->pool.reserve_exact(dwords * sizeof(u32)));
+	return static_cast<AstNode*>(asts->pool.reserve_exact(dwords * sizeof(u32)));
 }
 
-a2::AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, TypePool* types, ValuePool* values, a2::AstBuilder* builder) noexcept
+AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, TypePool* types, ValuePool* values, AstBuilder* builder) noexcept
 {
-	const a2::AstBuilderToken first_child_token = push_builtin_def(builder, identifiers, range::from_literal_string("typeinfo"), &builtin_typeinfo);
+	const AstBuilderToken first_child_token = push_builtin_def(builder, identifiers, range::from_literal_string("typeinfo"), &builtin_typeinfo);
 
 	push_builtin_def(builder, identifiers, range::from_literal_string("import"), &builtin_import);
 
@@ -160,7 +160,7 @@ a2::AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifie
 
 	push_typeinfo_def(builder, identifiers, types, u64_type_id, type_type_id);
 
-	a2::push_node(builder, first_child_token, a2::AstFlag::EMPTY, a2::BlockData{ 17 });
+	push_node(builder, first_child_token, AstFlag::EMPTY, BlockData{ 17 });
 
-	return a2::complete_ast(builder, asts);
+	return complete_ast(builder, asts);
 }
