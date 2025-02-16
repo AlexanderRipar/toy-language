@@ -1,7 +1,7 @@
 #include "pass_data.hpp"
 
-#include "ast2_attach.hpp"
-#include "ast2_helper.hpp"
+#include "ast_attach.hpp"
+#include "ast_helper.hpp"
 #include "infra/container.hpp"
 
 struct ValueStack

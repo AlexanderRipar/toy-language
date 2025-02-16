@@ -6,8 +6,8 @@
 #include "infra/container.hpp"
 #include "infra/hash.hpp"
 #include "error.hpp"
-#include "ast2.hpp"
-#include "ast2_attach.hpp"
+#include "ast.hpp"
+#include "ast_attach.hpp"
 #include "pass_data.hpp"
 
 static constexpr u32 MAX_STRING_LITERAL_BYTES = 4096;

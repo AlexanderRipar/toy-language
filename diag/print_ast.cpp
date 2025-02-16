@@ -1,7 +1,7 @@
 #include "diag.hpp"
 
 #include "../pass_data.hpp"
-#include "../ast2_attach.hpp"
+#include "../ast_attach.hpp"
 
 static void print_node_header(FILE* out, IdentifierPool* identifiers, const AstNode* node, s32 depth) noexcept
 {

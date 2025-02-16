@@ -2,7 +2,7 @@
 #include "pass_data.hpp"
 #include "diag/diag.hpp"
 #include "infra/hash.hpp"
-#include "ast2_helper.hpp"
+#include "ast_helper.hpp"
 
 #include <cstdlib>
 #include <cstring>

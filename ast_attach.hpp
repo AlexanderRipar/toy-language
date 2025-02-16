@@ -2,7 +2,7 @@
 #define AST2_ATTACH_INCLUDE_GUARD
 
 #include "infra/common.hpp"
-#include "ast2.hpp"
+#include "ast.hpp"
 #include "pass_data.hpp"
 
 struct ValIntegerData

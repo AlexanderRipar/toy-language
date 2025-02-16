@@ -5,7 +5,7 @@
 #include "infra/container.hpp"
 #include "infra/threading.hpp"
 #include "infra/alloc_pool.hpp"
-#include "ast2.hpp"
+#include "ast.hpp"
 
 static constexpr u32 MAX_FUNC_PARAMETER_COUNT = 255;
 

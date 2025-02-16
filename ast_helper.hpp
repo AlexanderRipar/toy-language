@@ -2,8 +2,8 @@
 #define AST2_HELPER_INCLUDE_GUARD
 
 #include "infra/common.hpp"
-#include "ast2.hpp"
-#include "ast2_attach.hpp"
+#include "ast.hpp"
+#include "ast_attach.hpp"
 #include "pass_data.hpp"
 
 static inline AstNode* last_child_of(AstNode* node) noexcept

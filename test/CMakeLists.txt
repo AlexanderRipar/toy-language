@@ -4,7 +4,7 @@ project(test)
 
 add_executable(test test_main.cpp
 	test_helpers.hpp
-	ast2_tests.cpp
+	ast_tests.cpp
 
 
 	../infra/alloc_pool.hpp ../infra/alloc_pool.cpp
@@ -29,7 +29,8 @@ add_executable(test test_main.cpp
 	../type_pool.cpp
 	../typechecker.cpp
 	../value_pool.cpp
-	../ast2.hpp ../ast2.cpp
+	../ast.hpp ../ast.cpp
+	../ast_attach.hpp ../ast_helper.hpp
 
 	../diag/diag.hpp
 	../diag/print_ast.cpp
