@@ -669,7 +669,7 @@ void add_type_member(Typechecker* typechecker, TypeBuilder* builder, IdentifierI
 	member->is_use = is_use;
 }
 
-TypeId complete_type_builder(Typechecker* typechecker, TypeBuilder* builder, u32 size, u32 alignment, u32 stride) noexcept
+TypeId complete_type(Typechecker* typechecker, TypeBuilder* builder, u32 size, u32 alignment, u32 stride) noexcept
 {
 	struct
 	{
@@ -769,5 +769,5 @@ TypeId typecheck_file(Typechecker* typechecker, a2::AstNode* root) noexcept
 		add_type_member(typechecker, builder, definition_data->identifier_id, definition_info.type, definition_info.value, 0, a2::has_flag(definition, a2::Flag::Definition_IsMut), a2::has_flag(definition, a2::Flag::Definition_IsPub), true, a2::has_flag(definition, a2::Flag::Definition_IsUse));
 	}
 
-	return complete_type_builder(typechecker, builder, 0, 1, 0);
+	return complete_type(typechecker, builder, 0, 1, 0);
 }

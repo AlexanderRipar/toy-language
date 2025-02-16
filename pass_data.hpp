@@ -771,6 +771,6 @@ TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, a2
 
 void add_type_member(Typechecker* typechecker, TypeBuilder* builder, IdentifierId identifier_id, a2::AstNode* const type_expr, a2::AstNode* const value_expr, u64 offset, bool is_mut, bool is_pub, bool is_global, bool is_use) noexcept;
 
-TypeId complete_type_builder(TypePool* types, TypeBuilder* builder, u32 size, u32 alignment, u32 stride) noexcept;
+TypeId complete_type(Typechecker* types, TypeBuilder* builder, u32 size, u32 alignment, u32 stride) noexcept;
 
 #endif // PARSEDATA_INCLUDE_GUARD
