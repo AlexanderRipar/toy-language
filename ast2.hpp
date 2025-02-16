@@ -518,7 +518,7 @@ namespace a2
 
 
 
-	const char8* tag_name(AstTag tag) noexcept;
+	const char8* ast_tag_name(AstTag tag) noexcept;
 }
 
 #endif // AST2_INCLUDE_GUARD

@@ -1241,7 +1241,7 @@ static void pop_operator(Parser* parser, OperatorStack* stack) noexcept
 		return;
 
 	if (stack->operand_count <= top.is_binary)
-		error(&parser->lexer, stack->expression_offset, "Missing operand(s) for operator '%s'\n", a2::tag_name(top.node_type));
+		error(&parser->lexer, stack->expression_offset, "Missing operand(s) for operator '%s'\n", a2::ast_tag_name(top.node_type));
 
 	if (top.is_binary)
 		stack->operand_count -= 1;

@@ -419,7 +419,7 @@ Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, a2::AstN
 	case a2::AstTag::OpSetShiftR:
 	case a2::AstTag::OpTypeArray:
 	case a2::AstTag::OpArrayIndex:
-		panic("Unimplemented AST node tag '%s' in interpret_expr\n", a2::tag_name(expr->tag));
+		panic("Unimplemented AST node tag '%s' in interpret_expr\n", a2::ast_tag_name(expr->tag));
 
 	default:
 		ASSERT_UNREACHABLE;

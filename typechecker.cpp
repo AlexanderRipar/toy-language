@@ -184,10 +184,10 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 		const TypeId rhs_type_id = typecheck_expr(typechecker, enclosing_scope, rhs);
 
 		if (dealias_type_entry(typechecker->types, lhs_type_id)->tag != TypeTag::Boolean)
-			panic("Left-hand-side of '%s' must be of type bool\n", a2::tag_name(expr->tag));
+			panic("Left-hand-side of '%s' must be of type bool\n", a2::ast_tag_name(expr->tag));
 
 		if (dealias_type_entry(typechecker->types, rhs_type_id)->tag != TypeTag::Boolean)
-			panic("Right-hand-side of '%s' must be of type bool\n", a2::tag_name(expr->tag));
+			panic("Right-hand-side of '%s' must be of type bool\n", a2::ast_tag_name(expr->tag));
 
 		return get_builtin_type_ids(typechecker->types)->bool_type_id;
 	}
@@ -440,7 +440,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 	case a2::AstTag::ParameterList:
 	case a2::AstTag::Case:
 	{
-		panic("Unexpected AST node type '%s' passed to typecheck_expr\n", a2::tag_name(expr->tag));
+		panic("Unexpected AST node type '%s' passed to typecheck_expr\n", a2::ast_tag_name(expr->tag));
 	}
 
 	case a2::AstTag::Call:
@@ -561,7 +561,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, a2::AstN
 	case a2::AstTag::OpSetBitXor:
 	case a2::AstTag::OpSetShiftL:
 	case a2::AstTag::OpSetShiftR:
-		panic("Unimplemented AST node tag '%s' in typecheck_expr\n", a2::tag_name(expr->tag));
+		panic("Unimplemented AST node tag '%s' in typecheck_expr\n", a2::ast_tag_name(expr->tag));
 
 	default:
 		ASSERT_UNREACHABLE;
