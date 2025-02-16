@@ -367,7 +367,7 @@ namespace a2
 
 
 
-	struct PostorderIterator
+	struct AstPostorderIterator
 	{
 		AstNode* base;
 
@@ -376,9 +376,9 @@ namespace a2
 		u32 offsets[MAX_AST_DEPTH];
 	};
 
-	static inline PostorderIterator postorder_ancestors_of(AstNode* node) noexcept
+	static inline AstPostorderIterator postorder_ancestors_of(AstNode* node) noexcept
 	{
-		PostorderIterator iterator;
+		AstPostorderIterator iterator;
 
 		iterator.base = node;
 		iterator.depth = -1;
@@ -397,7 +397,7 @@ namespace a2
 		return iterator;
 	}
 
-	static inline IterationResult next(PostorderIterator* iterator) noexcept
+	static inline IterationResult next(AstPostorderIterator* iterator) noexcept
 	{
 		if (iterator->depth < 0)
 			return { nullptr, 0 };
@@ -436,7 +436,7 @@ namespace a2
 		return { ret_node, ret_depth };
 	}
 
-	static inline IterationResult peek(const PostorderIterator* iterator) noexcept
+	static inline IterationResult peek(const AstPostorderIterator* iterator) noexcept
 	{
 		if (iterator->depth == -1)
 			return { nullptr, 0 };
