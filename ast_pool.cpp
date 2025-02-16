@@ -111,6 +111,8 @@ AstPool* create_ast_pool(AllocPool* pool) noexcept
 
 	asts->pool.init(1u << 30, 1u << 18);
 
+	(void) asts->pool.reserve_exact(sizeof(*asts->pool.begin()));
+
 	return asts;
 }
 
@@ -123,6 +125,18 @@ AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept
 {
 	return static_cast<AstNode*>(asts->pool.reserve_exact(dwords * sizeof(u32)));
 }
+
+AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept
+{
+	return AstNodeId{ static_cast<u32>(reinterpret_cast<u32*>(node) - asts->pool.begin()) };
+}
+
+AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept
+{
+	return reinterpret_cast<AstNode*>(asts->pool.begin() + id.rep);
+}
+
+
 
 AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, TypePool* types, ValuePool* values, AstBuilder* builder) noexcept
 {

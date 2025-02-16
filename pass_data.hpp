@@ -214,6 +214,11 @@ static constexpr s32 MAX_AST_DEPTH = 128;
 
 struct AstPool;
 
+struct AstNodeId
+{
+	u32 rep;
+};
+
 enum class AstTag : u8
 {
 	INVALID = 0,
@@ -430,11 +435,27 @@ inline AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
 	return lhs;
 }
 
+inline bool operator==(AstNodeId lhs, AstNodeId rhs) noexcept
+{
+	return lhs.rep == rhs.rep;
+}
+
+inline bool operator!=(AstNodeId lhs, AstNodeId rhs) noexcept
+{
+	return lhs.rep != rhs.rep;
+}
+
+static constexpr AstNodeId INVALID_AST_NODE_ID = { 0 };
+
 AstPool* create_ast_pool(AllocPool* pool) noexcept;
 
 void release_ast_pool(AstPool* asts) noexcept;
 
 AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept;
+
+AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept;
+
+AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept;
 
 static inline AstNode* apply_offset_(AstNode* node, ureg offset) noexcept
 {
