@@ -61,6 +61,8 @@ struct BlockData
 	static constexpr AstTag TAG = AstTag::Block;
 
 	u32 definition_count;
+
+	ScopeId scope_id;
 };
 
 struct FileData
@@ -91,6 +93,8 @@ struct FuncData
 	TypeId signature_type_id;
 
 	TypeId return_type_id;
+
+	ScopeId scope_id;
 };
 
 #endif // AST2_ATTACH_INCLUDE_GUARD

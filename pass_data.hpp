@@ -7,7 +7,10 @@
 #include "infra/alloc_pool.hpp"
 #include "infra/optptr.hpp"
 
-static constexpr u32 MAX_FUNC_PARAMETER_COUNT = 255;
+struct ValueId
+{
+	u32 rep;
+};
 
 
 
@@ -217,6 +220,11 @@ struct AstPool;
 struct AstNodeId
 {
 	u32 rep;
+};
+
+struct AstNodeOffset
+{
+	s32 rep;
 };
 
 enum class AstTag : u8
@@ -462,6 +470,18 @@ static inline AstNode* apply_offset_(AstNode* node, ureg offset) noexcept
 	static_assert(sizeof(AstNode) % sizeof(u32) == 0 && alignof(AstNode) % sizeof(u32) == 0);
 
 	return reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(node) + offset);
+}
+
+static inline AstNode* apply_offset_(AstNode* node, AstNodeOffset offset) noexcept
+{
+	static_assert(sizeof(AstNode) % sizeof(u32) == 0 && alignof(AstNode) % sizeof(u32) == 0);
+
+	return reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(node) + offset.rep);
+}
+
+static inline AstNodeOffset get_offset(AstNode* from, AstNode* to) noexcept
+{
+	return { static_cast<s32>(reinterpret_cast<u32*>(to) - reinterpret_cast<u32*>(from)) };
 }
 
 static inline bool has_children(const AstNode* node) noexcept
@@ -762,7 +782,9 @@ inline bool comp_integer_as_u64(CompIntegerValue* comp_integer, u64* out) noexce
 
 struct TypePool;
 
-struct TypeBuilder;
+struct CompositeTypeBuilder;
+
+struct FuncTypeBuilder;
 
 struct TypeId
 {
@@ -812,7 +834,6 @@ enum class TypeFlag : u8
 	Ptr_IsOpt        = 0x02,
 	Ptr_IsMulti      = 0x04,
 	Integer_IsSigned = 0x02,
-	Func_IsProc      = 0x01,
 };
 
 static inline TypeFlag operator&(TypeFlag lhs, TypeFlag rhs) noexcept
@@ -875,7 +896,24 @@ struct FuncTypeHeader
 {
 	TypeId return_type_id;
 
-	u32 parameter_count;
+	u16 parameter_count;
+
+	bool is_proc : 1;
+};
+
+struct FuncTypeParam
+{
+	u32 internal_flags : 28;
+
+	u32 unused_ : 3;
+
+	u32 is_mut : 1;
+
+	IdentifierId name;
+
+	TypeId type;
+
+	ValueId default_value;
 };
 
 struct FuncType
@@ -884,32 +922,29 @@ struct FuncType
 
 	#pragma warning(push)
 	#pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
-	TypeId parameter_type_ids[];
+	FuncTypeParam params[];
 	#pragma warning(pop)
-};
-
-struct FuncTypeBuffer
-{
-	FuncTypeHeader header;
-
-	TypeId parameter_type_ids[MAX_FUNC_PARAMETER_COUNT];
 };
 
 struct CompositeTypeMember
 {
+	u32 internal_flags : 28;
+
+	u32 is_mut : 1;
+
+	u32 is_pub : 1;
+
+	u32 is_global : 1;
+
+	u32 is_use : 1;
+
 	IdentifierId identifier_id;
 
 	TypeId type_id;
 
-	u64 offset : 60; // when is_global: offset into global data segment; otherwise offset inside instances of type.
+	ValueId default_value;
 
-	u64 is_mut : 1;
-
-	u64 is_pub : 1;
-
-	u64 is_global : 1;
-
-	u64 is_use : 1;
+	s64 offset; // when is_global: offset into global data segment; otherwise offset inside instances of type.
 };
 
 struct CompositeTypeHeader
@@ -920,7 +955,9 @@ struct CompositeTypeHeader
 
 	u32 stride;
 
-	u32 member_count;
+	u32 member_count : 31;
+
+	u32 is_complete : 1;
 };
 
 struct CompositeType
@@ -932,8 +969,6 @@ struct CompositeType
 	CompositeTypeMember members[];
 	#pragma warning(pop)
 };
-
-static_assert(sizeof(CompositeTypeHeader) == sizeof(CompositeType));
 
 struct TypeKey
 {
@@ -1046,14 +1081,20 @@ bool can_implicity_convert_from_to(TypePool* types, TypeId from, TypeId to) noex
 
 OptPtr<TypeEntry> find_common_type_entry(TypePool* types, TypeEntry* a, TypeEntry* b) noexcept;
 
+CompositeTypeBuilder* alloc_composite_type_builder(TypePool* types) noexcept;
+
+void add_composite_type_member(TypePool* types, CompositeTypeBuilder* composite_builder, CompositeTypeMember member) noexcept;
+
+TypeId complete_composite_type(TypePool* types, CompositeTypeBuilder* composite_builder, u32 size, u32 alignment, u32 stride) noexcept;
+
+FuncTypeBuilder* alloc_func_type_builder(TypePool* types) noexcept;
+
+void add_func_type_param(TypePool* types, FuncTypeBuilder* func_builder, FuncTypeParam param) noexcept;
+
+TypeId complete_func_type(TypePool* types, FuncTypeBuilder* func_builder, TypeId return_type, bool is_proc) noexcept;
 
 
 struct ValuePool;
-
-struct ValueId
-{
-	u32 rep;
-};
 
 struct alignas(u64) ValueHeader
 {
@@ -1192,7 +1233,7 @@ struct ScopeEntry
 {
 	IdentifierId identifier_id;
 
-	u32 node_offset;
+	AstNodeOffset node_offset;
 };
 
 struct Scope
@@ -1245,19 +1286,13 @@ ScopePool* create_scope_pool(AllocPool* alloc, AstNode* builtins) noexcept;
 
 void release_scope_pool(ScopePool* scopes) noexcept;
 
-Scope* alloc_file_scope(ScopePool* scopes, AstNode* root) noexcept;
+Scope* alloc_scope(ScopePool* scopes, Scope* parent_scope, AstNode* root, u32 capacity) noexcept;
 
-Scope* alloc_static_scope(ScopePool* scopes, Scope* parent_scope, AstNode* root, u32 capacity) noexcept;
-
-Scope* alloc_dynamic_scope(ScopePool* scopes, Scope* parent_scope, AstNode* root, u32 capacity) noexcept;
-
-void release_dynamic_scope(ScopePool* scopes, Scope* scope) noexcept;
-
-ScopeId id_from_static_scope(ScopePool* scopes, Scope* scope) noexcept;
+ScopeId id_from_scope(ScopePool* scopes, Scope* scope) noexcept;
 
 Scope* scope_from_id(ScopePool* scopes, ScopeId id) noexcept;
 
-void add_definition_to_scope(Scope* scope, AstNode* definition) noexcept;
+[[nodiscard]] bool add_definition_to_scope(Scope* scope, AstNode* definition) noexcept;
 
 ScopeLookupResult lookup_identifier_recursive(Scope* scope, IdentifierId identifier_id) noexcept;
 
@@ -1279,7 +1314,7 @@ void set_interpreter_typechecker(Interpreter* interpreter, Typechecker* typechec
 
 
 
-Typechecker* create_typechecker(AllocPool* alloc, Interpreter* Interpreter, ScopePool* scopes, TypePool* types, IdentifierPool* identifiers) noexcept;
+Typechecker* create_typechecker(AllocPool* alloc, Interpreter* Interpreter, ScopePool* scopes, TypePool* types, IdentifierPool* identifiers, AstPool* asts) noexcept;
 
 void release_typechecker(Typechecker* typechecker) noexcept;
 
@@ -1287,9 +1322,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, AstNode*
 
 TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, AstNode* definition) noexcept;
 
-void add_type_member(Typechecker* typechecker, TypeBuilder* builder, IdentifierId identifier_id, AstNode* const type_expr, AstNode* const value_expr, u64 offset, bool is_mut, bool is_pub, bool is_global, bool is_use) noexcept;
-
-TypeId complete_type(Typechecker* types, TypeBuilder* builder, u32 size, u32 alignment, u32 stride) noexcept;
+TypeId typecheck_file(Typechecker* typechecker, AstNode* root) noexcept;
 
 
 

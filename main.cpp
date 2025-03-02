@@ -10,9 +10,11 @@
 
 static TypeId resolve_main(Config* config, Typechecker* typechecker, IdentifierPool* identifiers, ScopePool* scopes, AstNode* root) noexcept
 {
-	Scope* const main_file_scope = alloc_file_scope(scopes, root);
+	typecheck_file(typechecker, root);
 
-	const OptPtr<AstNode> opt_main_def = lookup_identifier_local(main_file_scope, id_from_identifier(identifiers, config->entrypoint.symbol));
+	Scope* const root_scope = scope_from_id(scopes, attachment_of<FileData>(root)->root_block.scope_id);
+
+	const OptPtr<AstNode> opt_main_def = lookup_identifier_local(root_scope, id_from_identifier(identifiers, config->entrypoint.symbol));
 
 	if (is_none(opt_main_def))
 		panic("Could not find definition for entrypoint symbol \"%.*s\" at top level of source file \"%.*s\"\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin(), static_cast<s32>(config->entrypoint.filepath.count()), config->entrypoint.filepath.begin());
@@ -37,8 +39,6 @@ static TypeId resolve_main(Config* config, Typechecker* typechecker, IdentifierP
 	fprintf(stderr, "\n------------ %.*s AST ------------\n\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());
 
 	diag::print_ast(stderr, identifiers, main_func);
-
-	typecheck_definition(typechecker, main_file_scope, main_def);
 
 	return attachment_of<DefinitionData>(main_def)->type_id;
 }
@@ -83,7 +83,7 @@ s32 main(s32 argc, const char8** argv)
 
 		Interpreter* const interpreter = create_interpreter(alloc, scopes, types, values, identifiers);
 
-		Typechecker* const typechecker = create_typechecker(alloc, interpreter, scopes, types, identifiers);
+		Typechecker* const typechecker = create_typechecker(alloc, interpreter, scopes, types, identifiers, asts);
 
 		set_interpreter_typechecker(interpreter, typechecker);
 		

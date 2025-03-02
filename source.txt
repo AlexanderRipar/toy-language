@@ -1,6 +1,6 @@
-let X = []mut char8
+let char8 = u8
 
-let std = import("@std")
+let X = []mut char8
 
 let TheType = s32
 
@@ -12,7 +12,33 @@ let return_value = the_value
 
 let TypeIdentity = func(t : type) -> type = t
 
-let main = proc() -> s32 = return_value
+// let x: TypeIdentity(s32) = 1
+
+let main = proc(args: [][]char8) -> ReturnType = f(3)
+
+let f = func(x0x0: s32) -> s32 = {
+	let m = x0x0 + 1
+
+	let n = {
+		let m = 2
+
+		m - 5
+	}
+
+	m / n
+}
+
+/*
+let S = Struct(
+	global T = u32,
+	global member_size = sizeof(T),
+	global a_offset = offsetof(a),
+	global b_offset = offsetof(b),
+
+	let a: T,
+	let b: T,
+)
+*/
 
 // proc() -> s32
 
@@ -20,6 +46,7 @@ let main = proc() -> s32 = return_value
 
 // proc(argc: s32, argv: [*][*]char8) -> s32
 
+/*
 impl std.Stringy(u32) = {
 	let to_string_length = func(mut n: u32) -> ureg =
 	{
@@ -52,6 +79,7 @@ impl std.Stringy(u32) = {
 		return count
 	}
 }
+*/
 
 /*
 1.2

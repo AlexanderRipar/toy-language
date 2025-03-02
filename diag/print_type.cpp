@@ -132,10 +132,10 @@ static void print_type(FILE* out, IdentifierPool* identifiers, TypePool* types, 
 		{
 			FuncType* const func_type = entry->data<FuncType>();
 
-			fprintf(out, "%*s%s(\n", continue_line ? 0 : depth * 2, "", (entry->flags & TypeFlag::Func_IsProc) == TypeFlag::Func_IsProc ? "proc" : "func");
+			fprintf(out, "%*s%s(\n", continue_line ? 0 : depth * 2, "", func_type->header.is_proc ? "proc" : "func");
 
 			for (u32 i = 0; i != func_type->header.parameter_count; ++i)
-				print_type(out, identifiers, types, func_type->parameter_type_ids[i], depth + 1, false);
+				print_type(out, identifiers, types, func_type->params[i].type, depth + 1, false);
 
 			fprintf(out, "%*s) -> ", depth * 2, "");
 

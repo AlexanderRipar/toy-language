@@ -3,42 +3,6 @@
 #include "ast_attach.hpp"
 #include "ast_helper.hpp"
 
-struct TypeBuilderMember
-{
-	IdentifierId identifier_id;
-
-	u32 unused_;
-
-	OptPtr<AstNode> type_expr;
-
-	OptPtr<AstNode> value_expr;
-
-	u64 offset : 60; // when is_global: offset into global data segment; otherwise offset inside instances of type.
-
-	u64 is_mut : 1;
-
-	u64 is_pub : 1;
-
-	u64 is_global : 1;
-
-	u64 is_use : 1;
-};
-
-struct TypeBuilder
-{
-	u32 used;
-
-	s32 next_offset;
-
-	s32 tail_offset;
-
-	u32 unused_[5];
-
-	TypeBuilderMember members[7];
-};
-
-static_assert(sizeof(TypeBuilder) == 256);
-
 struct Typechecker
 {
 	Interpreter* interpreter;
@@ -49,22 +13,8 @@ struct Typechecker
 
 	IdentifierPool* identifiers;
 
-	ReservedVec<TypeBuilder> builders;
-
-	s32 first_free_builder_index;
+	AstPool* asts;
 };
-
-static void release_type_builder(Typechecker* typechecker, TypeBuilder* builder) noexcept
-{
-	TypeBuilder* const tail = builder + builder->tail_offset;
-
-	if (typechecker->first_free_builder_index < 0)
-		tail->next_offset = 0;
-	else
-		tail->next_offset = static_cast<s32>(typechecker->builders.begin() + typechecker->first_free_builder_index - tail);
-
-		typechecker->first_free_builder_index = static_cast<s32>(builder - typechecker->builders.begin());
-}
 
 static TypeId typecheck_parameter(Typechecker* typechecker, Scope* enclosing_scope, AstNode* parameter) noexcept
 {
@@ -105,7 +55,69 @@ static TypeId interpret_type_expr(Typechecker* typechecker, Scope* enclosing_sco
 	return type_id;
 }
 
-Typechecker* create_typechecker(AllocPool* alloc, Interpreter* Interpreter, ScopePool* scopes, TypePool* types, IdentifierPool* identifiers) noexcept
+static Scope* init_file_scope(Typechecker* typechecker, AstNode* root) noexcept
+{
+	ASSERT_OR_IGNORE(root->tag == AstTag::File);
+
+	Scope* const scope = alloc_scope(typechecker->scopes, nullptr, root, attachment_of<FileData>(root)->root_block.definition_count);
+
+	AstDirectChildIterator it = direct_children_of(root);
+
+	for (OptPtr<AstNode> rst = next(&it); is_some(rst); rst = next(&it))
+	{
+		AstNode* const node = get_ptr(rst);
+
+		if (node->tag != AstTag::Definition)
+			continue;
+
+		if (!add_definition_to_scope(scope, node))
+		{
+			const Range<char8> name = identifier_entry_from_id(typechecker->identifiers, attachment_of<DefinitionData>(node)->identifier_id)->range();
+
+			panic("Definition '%.*s' already exists\n", static_cast<s32>(name.count()), name.begin());
+		}
+	}
+
+	attachment_of<FileData>(root)->root_block.scope_id = id_from_scope(typechecker->scopes, scope);
+
+	return scope;
+}
+
+static Scope* init_signature_scope(Typechecker* typechecker, Scope* enclosing_scope, AstNode* signature) noexcept
+{
+	AstNode* const parameters = first_child_of(signature);
+
+	u32 parameter_count = 0;
+
+	AstDirectChildIterator it1 = direct_children_of(parameters);
+
+	for (OptPtr<AstNode> rst = next(&it1); is_some(rst); rst = next(&it1))
+		parameter_count += 1;
+
+	Scope* const scope = alloc_scope(typechecker->scopes, enclosing_scope, signature, parameter_count);
+
+	AstDirectChildIterator it2 = direct_children_of(parameters);
+
+	for (OptPtr<AstNode> rst = next(&it2); is_some(rst); rst = next(&it2))
+	{
+		AstNode* const parameter = get_ptr(rst);
+
+		ASSERT_OR_IGNORE(parameter->tag == AstTag::Definition);
+
+		if (!add_definition_to_scope(scope, parameter))
+		{
+			const Range<char8> name = identifier_entry_from_id(typechecker->identifiers, attachment_of<DefinitionData>(parameter)->identifier_id)->range();
+
+			panic("Definition '%.*s' already exists\n", static_cast<s32>(name.count()), name.begin());
+		}
+	}
+
+	attachment_of<FuncData>(signature)->scope_id = id_from_scope(typechecker->scopes, scope);
+
+	return scope;
+}
+
+Typechecker* create_typechecker(AllocPool* alloc, Interpreter* Interpreter, ScopePool* scopes, TypePool* types, IdentifierPool* identifiers, AstPool* asts) noexcept
 {
 	Typechecker* const typechecker = static_cast<Typechecker*>(alloc_from_pool(alloc, sizeof(Typechecker), alignof(Typechecker)));
 
@@ -113,16 +125,13 @@ Typechecker* create_typechecker(AllocPool* alloc, Interpreter* Interpreter, Scop
 	typechecker->scopes = scopes;
 	typechecker->types = types;
 	typechecker->identifiers = identifiers;
-
-	typechecker->builders.init(1u << 16, 1u << 7);
-	typechecker->first_free_builder_index = -1;
+	typechecker->asts = asts;
 
 	return typechecker;
 }
 
-void release_typechecker(Typechecker* typechecker) noexcept
+void release_typechecker([[maybe_unused]] Typechecker* typechecker) noexcept
 {
-	typechecker->builders.release();
 }
 
 TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, AstNode* expr) noexcept
@@ -310,27 +319,47 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, AstNode*
 
 	case AstTag::Block:
 	{
-		if (!has_children(expr))
-			return get_builtin_type_ids(typechecker->types)->void_type_id;
+		BlockData* const block_data = attachment_of<BlockData>(expr);
+
+		Scope* const block_scope = alloc_scope(typechecker->scopes, enclosing_scope, expr, block_data->definition_count);
+
+		block_data->scope_id = id_from_scope(typechecker->scopes, block_scope);
 
 		AstDirectChildIterator it = direct_children_of(expr);
+
+		const TypeId void_type_id = get_builtin_type_ids(typechecker->types)->void_type_id;
+
+		TypeId last_child_type_id = void_type_id;
 
 		for (OptPtr<AstNode> rst = next(&it); is_some(rst); rst = next(&it))
 		{
 			AstNode* const child = get_ptr(rst);
 
-			const TypeId child_type_id = typecheck_expr(typechecker, enclosing_scope, child);
+			if (child->tag == AstTag::Definition)
+			{
+				if (!add_definition_to_scope(block_scope, child))
+				{
+					const Range<char8> name = identifier_entry_from_id(typechecker->identifiers, attachment_of<DefinitionData>(child)->identifier_id)->range();
+	
+					panic("Definition '%.*s' already exists\n", static_cast<s32>(name.count()), name.begin());
+				}
 
-			if (!has_next_sibling(child))
-				return child_type_id;
+				typecheck_definition(typechecker, block_scope, child);
 
-			TypeEntry* const child_type_entry = dealias_type_entry(typechecker->types, child_type_id);
+				last_child_type_id = void_type_id;
+			}
+			else
+			{
+				last_child_type_id = typecheck_expr(typechecker, block_scope, child);
 
-			if (child_type_entry->tag != TypeTag::Void)
-				panic("Non-void expression at non-terminal position inside block\n");
+				TypeEntry* const child_type_entry = dealias_type_entry(typechecker->types, last_child_type_id);
+	
+				if (child_type_entry->tag != TypeTag::Void && has_next_sibling(child))
+					panic("Non-void expression at non-terminal position inside block\n");
+			}
 		}
 
-		ASSERT_UNREACHABLE;
+		return last_child_type_id;
 	}
 
 	case AstTag::If:
@@ -403,31 +432,28 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, AstNode*
 			func_data->return_type_id = get_builtin_type_ids(typechecker->types)->void_type_id;
 		}
 
+		Scope* const signature_scope = init_signature_scope(typechecker, enclosing_scope, expr);
+
+		FuncTypeBuilder* const builder = alloc_func_type_builder(typechecker->types);
+
 		AstDirectChildIterator it = direct_children_of(func_info.parameters);
 
-		FuncTypeBuffer type_buf{};
-
-		type_buf.header.return_type_id = func_data->return_type_id;
-		type_buf.header.parameter_count = 0;
-
-		for (OptPtr<AstNode> parameter = next(&it); is_some(parameter); parameter = next(&it))
+		for (OptPtr<AstNode> rst = next(&it); is_some(rst); rst = next(&it))
 		{
-			ASSERT_OR_IGNORE(type_buf.header.parameter_count + 1 < array_count(type_buf.parameter_type_ids));
+			AstNode* const parameter = get_ptr(rst);
 
-			type_buf.parameter_type_ids[type_buf.header.parameter_count] = typecheck_parameter(typechecker, enclosing_scope, get_ptr(parameter));
+			typecheck_definition(typechecker, signature_scope, parameter);
 
-			type_buf.header.parameter_count += 1;
+			DefinitionData* const parameter_data = attachment_of<DefinitionData>(parameter);
+
+			add_func_type_param(typechecker->types, builder, { 0, 0, has_flag(parameter, AstFlag::Definition_IsMut), parameter_data->identifier_id, parameter_data->type_id, INVALID_VALUE_ID /* TODO */ });
 		}
 
-		const TypeFlag flags = has_flag(expr, AstFlag::Func_IsProc) ? TypeFlag::Func_IsProc : TypeFlag::EMPTY;
-
-		const Range<byte> type = Range<byte>{ reinterpret_cast<const byte*>(&type_buf), sizeof(type_buf.header) + type_buf.header.parameter_count * sizeof(type_buf.parameter_type_ids[0]) };
-
-		func_data->signature_type_id = id_from_type(typechecker->types, TypeTag::Func, flags, type);
+		func_data->signature_type_id = complete_func_type(typechecker->types, builder, func_data->return_type_id, has_flag(expr, AstFlag::Func_IsProc));
 
 		if (is_some(func_info.body))
 		{
-			TypeId const returned_type_id = typecheck_expr(typechecker, enclosing_scope, get_ptr(func_info.body));
+			TypeId const returned_type_id = typecheck_expr(typechecker, signature_scope, get_ptr(func_info.body));
 
 			if (!can_implicity_convert_from_to(typechecker->types, returned_type_id, func_data->return_type_id))
 				panic("Mismatch between declared and actual return type\n");
@@ -437,6 +463,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, AstNode*
 	}
 
 	case AstTag::File:
+	case AstTag::Definition:
 	case AstTag::ParameterList:
 	case AstTag::Case:
 	{
@@ -467,11 +494,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, AstNode*
 
 			const TypeId parameter_type_id = typecheck_expr(typechecker, enclosing_scope, curr);
 
-			TypeEntry* const parameter_type_entry = dealias_type_entry(typechecker->types, parameter_type_id);
-
-			TypeEntry* const expected_parameter_type_entry = dealias_type_entry(typechecker->types, func_type->parameter_type_ids[i]);
-
-			if (parameter_type_entry != expected_parameter_type_entry)
+			if (!can_implicity_convert_from_to(typechecker->types, parameter_type_id, func_type->params[i].type))
 				panic("Mismatch between expected and actual call parameter type\n");
 		}
 
@@ -498,8 +521,20 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, AstNode*
 	case AstTag::OpMul:
 	case AstTag::OpDiv:
 	{
-		// TODO
-		panic("TODO: typecheck_expr(%u)\n", expr->tag);
+		AstNode* const lhs = first_child_of(expr);
+
+		AstNode* const rhs = next_sibling_of(lhs);
+
+		const TypeId lhs_type_id = typecheck_expr(typechecker, enclosing_scope, lhs);
+
+		const TypeId rhs_type_id = typecheck_expr(typechecker, enclosing_scope, rhs);
+
+		const OptPtr<TypeEntry> common_type = find_common_type_entry(typechecker->types, type_entry_from_id(typechecker->types, lhs_type_id), type_entry_from_id(typechecker->types, rhs_type_id));
+
+		if (is_none(common_type))
+			panic("Operands of incompatible types supplied to binary operator '%s'\n", ast_tag_name(expr->tag));
+
+		return id_from_type_entry(typechecker->types, get_ptr(common_type));
 	}
 
 	case AstTag::Builtin:
@@ -509,7 +544,6 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, AstNode*
 	case AstTag::Where:
 	case AstTag::Expects:
 	case AstTag::Ensures:
-	case AstTag::Definition:
 	case AstTag::For:
 	case AstTag::ForEach:
 	case AstTag::Switch:
@@ -607,167 +641,44 @@ TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, As
 	return definition_type_id;
 }
 
-
-
-TypeBuilder* alloc_type_builder(Typechecker* typechecker) noexcept
-{
-	TypeBuilder* builder;
-
-	if (typechecker->first_free_builder_index < 0)
-	{
-		builder = static_cast<TypeBuilder*>(typechecker->builders.reserve_exact(sizeof(TypeBuilder)));
-	}
-	else
-	{
-		builder = typechecker->builders.begin() + typechecker->first_free_builder_index;
-
-		if (builder->next_offset == 0)
-			typechecker->first_free_builder_index = -1;
-		else
-			typechecker->first_free_builder_index += builder->next_offset;
-	}
-
-	builder->next_offset = 0;
-	builder->tail_offset = 0;
-	builder->used = 0;
-
-	return builder;
-}
-
-void add_type_member(Typechecker* typechecker, TypeBuilder* builder, IdentifierId identifier_id, OptPtr<AstNode> const type_expr, OptPtr<AstNode> const value_expr, u64 offset, bool is_mut, bool is_pub, bool is_global, bool is_use) noexcept
-{
-	ASSERT_OR_IGNORE(is_some(type_expr) || is_some(value_expr));
-
-	TypeBuilder* const head = builder;
-
-	builder = typechecker->builders.begin() + builder->tail_offset;
-
-	if (builder->used == array_count(builder->members))
-	{
-		TypeBuilder* const next = alloc_type_builder(typechecker);
-
-		builder->next_offset = static_cast<s32>(next - builder);
-
-		head->tail_offset = static_cast<s32>(next - head);
-
-		builder = next;
-	}
-
-	TypeBuilderMember* const member = builder->members + builder->used;
-
-	builder->used += 1;
-
-	memset(member, 0, sizeof(*member));
-
-	member->identifier_id = identifier_id;
-	member->type_expr = type_expr;
-	member->value_expr = value_expr;
-	member->offset = offset;
-	member->is_mut = is_mut;
-	member->is_pub = is_pub;
-	member->is_global = is_global;
-	member->is_use = is_use;
-}
-
-TypeId complete_type(Typechecker* typechecker, TypeBuilder* builder, u32 size, u32 alignment, u32 stride) noexcept
-{
-	struct
-	{
-		CompositeTypeHeader header;
-
-		CompositeTypeMember members[512];
-	} buf;
-
-	TypeBuilder* const head = builder;
-
-	u32 member_count = 0;
-
-	while (true)
-	{
-		if (member_count + builder->used > array_count(buf.members))
-			panic("Maximum of %llu members in composite type exceeded\n", array_count(buf.members));
-
-		for (u32 i = 0; i != builder->used; ++i)
-		{
-			CompositeTypeMember* const dst = buf.members + member_count;
-
-			member_count += 1;
-
-			TypeBuilderMember* const src = builder->members + i;
-
-			ASSERT_OR_IGNORE(is_some(src->type_expr) || is_some(src->value_expr));
-
-			dst->identifier_id = src->identifier_id;
-			dst->offset = src->offset;
-			dst->is_mut = src->is_mut;
-			dst->is_pub = src->is_pub;
-			dst->is_global = src->is_global;
-			dst->is_use = src->is_use;
-
-			TypeId explicit_type_id = INVALID_TYPE_ID;
-
-			if (is_some(src->type_expr))
-			{
-				explicit_type_id = interpret_type_expr(typechecker, nullptr /* TOOD */, get_ptr(src->type_expr));
-
-				dst->type_id = explicit_type_id;
-			}
-
-			if (is_some(src->value_expr))
-			{
-				const TypeId implied_type_id = typecheck_expr(typechecker, nullptr /* TODO */, get_ptr(src->value_expr));
-
-				if (is_none(src->type_expr))
-					dst->type_id = implied_type_id;
-				else if (!can_implicity_convert_from_to(typechecker->types, implied_type_id, explicit_type_id))
-					panic("Incompatible declared and inferred types\n");
-			}
-		}
-
-		if (builder->next_offset == 0)
-			break;
-
-		builder += builder->next_offset;
-	}
-
-	ASSERT_OR_IGNORE(builder == head + head->tail_offset);
-
-	release_type_builder(typechecker, head);
-
-	buf.header.size = size;
-	buf.header.alignment = alignment;
-	buf.header.stride = stride;
-	buf.header.member_count = member_count;
-
-	return id_from_type(typechecker->types, TypeTag::Composite, TypeFlag::EMPTY, Range<byte>{ reinterpret_cast<byte*>(&buf), sizeof(buf.header) + member_count * sizeof(buf.members[0]) });
-}
-
-
-
 TypeId typecheck_file(Typechecker* typechecker, AstNode* root) noexcept
 {
 	ASSERT_OR_IGNORE(root->tag == AstTag::File);
 
-	TypeBuilder* const builder = alloc_type_builder(typechecker);
+	Scope* const file_scope = init_file_scope(typechecker, root);
 
 	AstDirectChildIterator it = direct_children_of(root);
+
+	CompositeTypeBuilder* const builder = alloc_composite_type_builder(typechecker->types);
 
 	for (OptPtr<AstNode> rst = next(&it); is_some(rst); rst = next(&it))
 	{
 		AstNode* const definition = get_ptr(rst);
 
 		if (definition->tag != AstTag::Definition)
-			continue;
+			panic("Top-level %s are not currently supported.\n", ast_tag_name(definition->tag));
+
+		typecheck_definition(typechecker, file_scope, definition);
 
 		if (has_flag(definition, AstFlag::Definition_IsGlobal))
-			fprintf(stderr, "WARN: Redundant 'global' definition modifier, as top level definitions are implicitly global\n");
+			fprintf(stderr, "WARN: Redundant 'global' specifier on top-level definition. Top level definitions are implicitly global\n");
 
-		DefinitionData* const definition_data = attachment_of<DefinitionData>(definition);
+		DefinitionData* const attachment = attachment_of<DefinitionData>(definition);
 
-		const DefinitionInfo definition_info = get_definition_info(definition);
-
-		add_type_member(typechecker, builder, definition_data->identifier_id, definition_info.type, definition_info.value, 0, has_flag(definition, AstFlag::Definition_IsMut), has_flag(definition, AstFlag::Definition_IsPub), true, has_flag(definition, AstFlag::Definition_IsUse));
+		add_composite_type_member(typechecker->types, builder, {
+			0,
+			has_flag(definition, AstFlag::Definition_IsMut),
+			has_flag(definition, AstFlag::Definition_IsPub),
+			true,
+			has_flag(definition, AstFlag::Definition_IsUse),
+			attachment->identifier_id,
+			attachment->type_id,
+			INVALID_VALUE_ID /* TODO */,
+			0
+		});
 	}
 
-	return complete_type(typechecker, builder, 0, 1, 0);
+	attachment_of<FileData>(root)->root_block.scope_id = id_from_scope(typechecker->scopes, file_scope);
+
+	return complete_composite_type(typechecker->types, builder, 0, 1, 0);
 }

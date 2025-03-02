@@ -10,7 +10,7 @@ struct AstPool
 };
 
 // let typeinfo = eval func(t : type) -> TypeInfo
-static void builtin_typeinfo(Interpreter* interpreter) noexcept
+static void builtin_metaof(Interpreter* interpreter) noexcept
 {
 	interpreter;
 
@@ -86,9 +86,9 @@ static TypeId push_typeinfo_def(AstBuilder* builder, IdentifierPool* identifiers
 	*reinterpret_cast<CompositeTypeHeader*>(typeinfo_buf) = { 24, 8, 3 };
 
 	CompositeTypeMember* const members = reinterpret_cast<CompositeTypeMember*>(typeinfo_buf + sizeof(CompositeTypeHeader));
-	members[0] = { id_from_identifier(identifiers, range::from_literal_string("size")), u64_type_id, 0, false, true, false, false };
-	members[1] = { id_from_identifier(identifiers, range::from_literal_string("alignment")), u64_type_id, 8, false, true, false, false };
-	members[2] = { id_from_identifier(identifiers, range::from_literal_string("type")), type_type_id, 16, false, true, false, false };
+	members[0] = { 0, false, true, false, false, id_from_identifier(identifiers, range::from_literal_string("size")),       u64_type_id,  0 };
+	members[1] = { 0, false, true, false, false, id_from_identifier(identifiers, range::from_literal_string("alignment")),  u64_type_id,  8 };
+	members[2] = { 0, false, true, false, false, id_from_identifier(identifiers, range::from_literal_string("type")),      type_type_id, 16 };
 
 	const TypeId typeinfo_type_id = id_from_type(types, TypeTag::Composite, TypeFlag::EMPTY, Range{ typeinfo_buf });
 
@@ -140,7 +140,7 @@ AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept
 
 AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, TypePool* types, ValuePool* values, AstBuilder* builder) noexcept
 {
-	const AstBuilderToken first_child_token = push_builtin_def(builder, identifiers, range::from_literal_string("typeinfo"), &builtin_typeinfo);
+	const AstBuilderToken first_child_token = push_builtin_def(builder, identifiers, range::from_literal_string("metaof"), &builtin_metaof);
 
 	push_builtin_def(builder, identifiers, range::from_literal_string("import"), &builtin_import);
 
@@ -174,7 +174,7 @@ AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, 
 
 	push_typeinfo_def(builder, identifiers, types, u64_type_id, type_type_id);
 
-	push_node(builder, first_child_token, AstFlag::EMPTY, BlockData{ 17 });
+	push_node(builder, first_child_token, AstFlag::EMPTY, BlockData{ 17, INVALID_SCOPE_ID });
 
 	return complete_ast(builder, asts);
 }
