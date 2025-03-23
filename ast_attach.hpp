@@ -74,18 +74,6 @@ struct FileData
 	IdentifierId filename_id;
 };
 
-struct BuiltinData
-{
-	static constexpr AstTag TAG = AstTag::Builtin;
-
-	using BuiltinSignature = void (*) (Interpreter*);
-
-	#pragma pack(push)
-	#pragma pack(4)
-	BuiltinSignature function;
-	#pragma pack(pop)
-};
-
 struct FuncData
 {
 	static constexpr AstTag TAG = AstTag::Func;

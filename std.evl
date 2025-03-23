@@ -1,0 +1,62 @@
+let true = _true()
+
+let false = !_true()
+
+let u8 = _int(8, false)
+
+let u16 = _int(16, false)
+
+let u32 = _int(32, false)
+
+let u64 = _int(64, false)
+
+let s8 = _int(8, true)
+
+let s16 = _int(16, true)
+
+let s32 = _int(32, true)
+
+let s64 = _int(64, true)
+
+let type = _type()
+
+let comp_integer = _c_int()
+
+let comp_float = _c_flt()
+
+let comp_string = _c_str()
+
+let bool = typeof(_true())
+
+let void = typeof({})
+
+let TypeBuilder = _typebldr()
+
+let typeof = func(value: any) where Any(any) -> type = _typeof(value)
+
+let sizeof = func(value: any) where Any(any) -> comp_integer = _sizeof(value)
+
+let alignof = func(value: any) where Any(any) -> comp_integer = _alignof(value)
+
+let strideof = func(value: any) where Any(any) -> comp_integer = _strideof(value)
+
+let offsetof = func(value: any) where Any(any) -> comp_integer = _offsetof(value)
+
+let nameof = func(value: any) where Any(any) -> comp_string = _nameof(value)
+
+let import = func(path: []u8) -> type = _import(path, false)
+
+let create_type_builder = func() -> TypeBuilder = _tb_creat()
+
+let add_type_member = func(
+	builder: *mut TypeBuilder,
+	name: []u8,
+	typ: type,
+	offset: s64,
+	is_mut: bool,
+	is_pub: bool,
+	is_global: bool,
+	default_value: ?typ
+) -> void = _tb_add(builder, name, typ, offset, is_mut, is_pub, is_global, default_value)
+
+let complete_type = func(builder: TypeBuilder) -> type = tb_compl(builder)

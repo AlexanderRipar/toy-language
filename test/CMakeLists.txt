@@ -19,6 +19,7 @@ add_executable(test test_main.cpp
 	../config.hpp ../config.cpp
 
 	../ast_pool.cpp
+	../ast.cpp
 	../identifier_pool.cpp
 	../interpreter.cpp
 	../parse.cpp
@@ -29,7 +30,6 @@ add_executable(test test_main.cpp
 	../type_pool.cpp
 	../typechecker.cpp
 	../value_pool.cpp
-	../ast.cpp
 
 	../ast_attach.hpp ../ast_helper.hpp
 

@@ -81,6 +81,8 @@ struct Lexer
 	IdentifierPool* identifiers;
 
 	IdentifierId filepath_id;
+
+	bool is_std;
 };
 
 struct OperatorStack
@@ -101,6 +103,26 @@ struct Parser
 	Lexer lexer;
 
 	AstBuilder builder;
+};
+
+static constexpr char8 BUILTIN_NAMES[][8] = {
+	"int",
+	"type",
+	"c_int",
+	"c_flt",
+	"c_str",
+	{ 't', 'y', 'p', 'e', 'b', 'l', 'd', 'r' },
+	"true",
+	"typeof",
+	"sizeof",
+	"alignof",
+	{ 's', 't', 'r', 'i', 'd', 'e', 'o', 'f' },
+	{ 'o', 'f', 'f', 's', 'e', 't', 'o', 'f' },
+	"nameof",
+	"import",
+	{ 't', 'b', '_', 'c', 'r', 'e', 'a', 't' },
+	"tb_add",
+	{ 't', 'b', '_', 'c', 'o', 'm', 'p', 'l'},
 };
 
 static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
@@ -325,6 +347,33 @@ static RawLexeme scan_identifier_token(Lexer* lexer) noexcept
 	const Token identifier_token = identifier_value->token();
 
 	return { identifier_token, identifier_token == Token::Ident ? identifier_id.rep : 0 };
+}
+
+static RawLexeme scan_builtin_token(Lexer* lexer) noexcept
+{
+	const char8* curr = lexer->curr;
+
+	const char8* const token_begin = curr;
+
+	while (is_identifier_continuation_char(*curr))
+		curr += 1;
+
+	lexer->curr = curr;
+
+	if (curr - token_begin > 8)
+		error(lexer, lexer->peek.offset, "Unknown builtin\n");
+
+	u8 name[8]{};
+
+	memcpy(name, token_begin, curr - token_begin);
+
+	for (uint i = 0; i != array_count(BUILTIN_NAMES); ++i)
+	{
+		if (memcmp(name, BUILTIN_NAMES[i], 8) == 0)
+			return RawLexeme{ Token::Builtin, i };
+	}
+
+	error(lexer, lexer->peek.offset, "Unknown builtin\n");
 }
 
 static RawLexeme scan_number_token_with_base(Lexer* lexer, char8 base) noexcept
@@ -805,9 +854,17 @@ static RawLexeme raw_next(Lexer* lexer) noexcept
 
 	case '_':
 		if (is_identifier_continuation_char(second))
-			error(lexer, lexer->peek.offset, "Illegal identifier starting with '_'\n");
+		{
+			if (!lexer->is_std)
+				error(lexer, lexer->peek.offset, "Illegal identifier starting with '_'\n");
 
-		return { Token::Wildcard };
+			return scan_builtin_token(lexer);
+		}
+		else
+		{
+			return { Token::Wildcard };
+		}
+
 
 	case '+':
 		if (second == '=')
@@ -2212,6 +2269,14 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 
 				continue;
 			}
+			else if (lexeme.token == Token::Builtin)
+			{
+				expecting_operand = false;
+
+				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, AstTag::Builtin, static_cast<AstFlag>(lexeme.integer_value));
+
+				push_operand(parser, &stack, value_token);
+			}
 			else // Unary operator
 			{
 				const u8 token_ordinal = static_cast<u8>(lexeme.token);
@@ -2412,7 +2477,7 @@ Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers) noexcept
 	return parser;
 }
 
-AstNode* parse(Parser* parser, SourceFile source, AstPool* out) noexcept
+AstNode* parse(Parser* parser, SourceFile source, bool is_std, AstPool* out) noexcept
 {
 	ASSERT_OR_IGNORE(source.content().count() != 0 && source.content().end()[-1] == '\0');
 
@@ -2423,6 +2488,7 @@ AstNode* parse(Parser* parser, SourceFile source, AstPool* out) noexcept
 	parser->lexer.curr = content.begin();
 	parser->lexer.filepath_id = source.filepath_id();
 	parser->lexer.peek.token = Token::EMPTY;
+	parser->lexer.is_std = is_std;
 
 	parse_file(parser);
 

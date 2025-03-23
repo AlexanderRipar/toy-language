@@ -176,11 +176,18 @@ public:
 		return m_memory[m_used - 1];
 	}
 
-	void pop(Index count) noexcept
+	void pop_by(Index count) noexcept
 	{
 		ASSERT_OR_IGNORE(count <= m_used);
 
 		m_used -= count;
+	}
+
+	void pop_to(Index count) noexcept
+	{
+		ASSERT_OR_IGNORE(count <= m_used);
+
+		m_used = count;
 	}
 
 	void release() noexcept

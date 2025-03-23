@@ -15,7 +15,7 @@ struct Config
 
 	struct
 	{
-		Range<char8> folderpath;
+		Range<char8> filepath = range::from_literal_string("std.evl");
 	} std;
 	
 

@@ -7,10 +7,37 @@
 #include "infra/alloc_pool.hpp"
 #include "infra/optptr.hpp"
 
+enum class Builtin : u8
+{
+	Integer,
+	Type,
+	CompInteger,
+	CompFloat,
+	CompString,
+	TypeBuilder,
+	True,
+	Typeof,
+	Sizeof,
+	Alignof,
+	Strideof,
+	Offsetof,
+	Nameof,
+	Import,
+	CreateTypeBuilder,
+	AddTypeMember,
+	CompleteType,
+};
+
+
+
 struct ValueId
 {
 	u32 rep;
 };
+
+struct ScopePool;
+
+struct Scope;
 
 
 
@@ -110,7 +137,8 @@ enum class Token : u8
 		LitChar,              // '\'' .* '\''
 		LitString,            // '"' .* '"'
 		Ident,                // ( 'a' - 'z' | 'A' - 'Z' ) ( 'a' - 'z' | 'A' - 'Z' | '0' - '9' | '_' )*
-		Wildcard,           // _
+		Builtin,              // '_' ( 'a' - 'z' | 'A' - 'Z' | '0' - '9' | '_' )+    --- Only if is_std == true
+		Wildcard,             // _
 		END_OF_SOURCE,
 		MAX,
 };
@@ -791,26 +819,12 @@ struct TypeId
 	u32 rep;
 };
 
-struct BuiltinTypeIds
-{
-	TypeId comp_integer_type_id;
-
-	TypeId comp_float_type_id;
-
-	TypeId comp_string_type_id;
-
-	TypeId type_type_id;
-
-	TypeId void_type_id;
-
-	TypeId bool_type_id;
-};
-
 enum class TypeTag : u8
 {
 	INVALID = 0,
 	Void,
 	Type,
+	Definition,
 	CompInteger,
 	CompFloat,
 	CompString,
@@ -822,9 +836,12 @@ enum class TypeTag : u8
 	Alias,
 	Array,
 	Func,
+	Builtin,
 	Composite,
 	CompositeLiteral,
 	ArrayLiteral,
+	CallFrame,
+	TypeBuilder,
 };
 
 enum class TypeFlag : u8
@@ -926,6 +943,19 @@ struct FuncType
 	#pragma warning(pop)
 };
 
+struct CompositeTypeHeader
+{
+	u32 size;
+
+	u32 alignment;
+
+	u32 stride;
+
+	u32 member_count;
+
+	Scope* scope;
+};
+
 struct CompositeTypeMember
 {
 	u32 internal_flags : 28;
@@ -945,19 +975,6 @@ struct CompositeTypeMember
 	ValueId default_value;
 
 	s64 offset; // when is_global: offset into global data segment; otherwise offset inside instances of type.
-};
-
-struct CompositeTypeHeader
-{
-	u32 size;
-
-	u32 alignment;
-
-	u32 stride;
-
-	u32 member_count : 31;
-
-	u32 is_complete : 1;
 };
 
 struct CompositeType
@@ -1067,8 +1084,6 @@ TypeEntry* type_entry_from_id(TypePool* types, TypeId id) noexcept;
 
 TypeId id_from_type_entry(TypePool* types, TypeEntry* entry) noexcept;
 
-const BuiltinTypeIds* get_builtin_type_ids(const TypePool* types) noexcept;
-
 TypeId dealias_type_id(TypePool* types, TypeEntry* entry) noexcept;
 
 TypeId dealias_type_id(TypePool* types, TypeId id) noexcept;
@@ -1085,7 +1100,7 @@ CompositeTypeBuilder* alloc_composite_type_builder(TypePool* types) noexcept;
 
 void add_composite_type_member(TypePool* types, CompositeTypeBuilder* composite_builder, CompositeTypeMember member) noexcept;
 
-TypeId complete_composite_type(TypePool* types, CompositeTypeBuilder* composite_builder, u32 size, u32 alignment, u32 stride) noexcept;
+TypeId complete_composite_type(TypePool* types, ScopePool* scopes, CompositeTypeBuilder* composite_builder, u32 size, u32 alignment, u32 stride) noexcept;
 
 FuncTypeBuilder* alloc_func_type_builder(TypePool* types) noexcept;
 
@@ -1142,7 +1157,7 @@ static inline bool operator!=(ValueId lhs, ValueId rhs) noexcept
 }
 
 template<typename T>
-static inline T* access_value(Value* value) noexcept
+static inline T* data(Value* value) noexcept
 {
 	if (value->header.is_ref)
 		value = reinterpret_cast<ReferenceValue*>(value->value)->referenced;
@@ -1208,7 +1223,7 @@ struct Parser;
 
 [[nodiscard]] Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers) noexcept;
 
-[[nodiscard]] AstNode* parse(Parser* parser, SourceFile source, AstPool* out) noexcept;
+[[nodiscard]] AstNode* parse(Parser* parser, SourceFile source, bool is_std, AstPool* out) noexcept;
 
 [[nodiscard]] AstBuilder* get_ast_builder(Parser* parser) noexcept;
 
@@ -1224,9 +1239,11 @@ struct ScopeHeader
 
 	Scope* parent_scope;
 
-	u32 capacity;
+	u16 capacity;
 
-	u32 used;
+	u16 used;
+
+	bool is_composite : 1;
 };
 
 struct ScopeEntry
@@ -1282,11 +1299,15 @@ static inline bool is_valid(ScopeLookupResult result) noexcept
 	return result.definition != nullptr;
 }
 
-ScopePool* create_scope_pool(AllocPool* alloc, AstNode* builtins) noexcept;
+ScopePool* create_scope_pool(AllocPool* alloc) noexcept;
 
 void release_scope_pool(ScopePool* scopes) noexcept;
 
 Scope* alloc_scope(ScopePool* scopes, Scope* parent_scope, AstNode* root, u32 capacity) noexcept;
+
+Scope* alloc_builtins_scope(ScopePool* scopes, AstNode* root, u32 capacity) noexcept;
+
+void init_composite_scope(ScopePool* scopes, CompositeType* composite) noexcept;
 
 ScopeId id_from_scope(ScopePool* scopes, Scope* scope) noexcept;
 
@@ -1300,11 +1321,13 @@ OptPtr<AstNode> lookup_identifier_local(Scope* scope, IdentifierId identifier_id
 
 
 
+
+
 struct Interpreter;
 
 struct Typechecker;
 
-Interpreter* create_interpreter(AllocPool* alloc, ScopePool* scopes, TypePool* types, ValuePool* values, IdentifierPool* identifiers) noexcept;
+Interpreter* create_interpreter(AllocPool* alloc, SourceReader* reader, Parser* parser, AstPool* asts, ScopePool* scopes, TypePool* types, ValuePool* values, IdentifierPool* identifiers) noexcept;
 
 Value* interpret_expr(Interpreter* interpreter, Scope* enclosing_scope, AstNode* expr) noexcept;
 
@@ -1312,20 +1335,20 @@ void release_interpretation_result(Interpreter* interpreter, Value* result) noex
 
 void set_interpreter_typechecker(Interpreter* interpreter, Typechecker* typechecker) noexcept;
 
+TypeId import_file(Interpreter* interpreter, Range<char8> filepath, bool is_std) noexcept;
 
 
-Typechecker* create_typechecker(AllocPool* alloc, Interpreter* Interpreter, ScopePool* scopes, TypePool* types, IdentifierPool* identifiers, AstPool* asts) noexcept;
+
+Typechecker* create_typechecker(AllocPool* alloc, Interpreter* Interpreter, ScopePool* scopes, TypePool* types, IdentifierPool* identifiers, AstPool* asts, AstBuilder* builder) noexcept;
 
 void release_typechecker(Typechecker* typechecker) noexcept;
 
 TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, AstNode* expr) noexcept;
 
-TypeId typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, AstNode* definition) noexcept;
+TypeId typecheck_builtin(Typechecker* typechecker, Builtin builtin) noexcept;
+
+void typecheck_definition(Typechecker* typechecker, Scope* enclosing_scope, AstNode* definition) noexcept;
 
 TypeId typecheck_file(Typechecker* typechecker, AstNode* root) noexcept;
-
-
-
-AstNode* create_builtin_definitions(AstPool* asts, IdentifierPool* identifiers, TypePool* types, ValuePool* values, AstBuilder* builder) noexcept;
 
 #endif // PARSEDATA_INCLUDE_GUARD

@@ -5,52 +5,29 @@
 struct ScopePool
 {
 	ReservedVec<u64> scopes;
-
-	Scope* builtins_scope;
 };
 
 static Scope* alloc_scope_internal(ScopePool* scopes, Scope* parent_scope, AstNode* root, u32 capacity) noexcept
 {
+	ASSERT_OR_IGNORE(capacity <= UINT16_MAX);
+
 	Scope* const scope = static_cast<Scope*>(scopes->scopes.reserve_exact(sizeof(ScopeHeader) + capacity * sizeof(ScopeEntry)));
 
 	scope->header.root = root;
-	scope->header.parent_scope = parent_scope == nullptr ? scopes->builtins_scope : parent_scope;
-	scope->header.capacity = capacity;
+	scope->header.parent_scope = parent_scope;
+	scope->header.capacity = static_cast<u16>(capacity);
 	scope->header.used = 0;
 
 	return scope;
 }
 
-ScopePool* create_scope_pool(AllocPool* alloc, AstNode* builtins) noexcept
+ScopePool* create_scope_pool(AllocPool* alloc) noexcept
 {
 	ScopePool* const scopes = static_cast<ScopePool*>(alloc_from_pool(alloc, sizeof(ScopePool), alignof(ScopePool)));
 
 	scopes->scopes.init(1 << 24, 1 << 16);
 
 	(void) scopes->scopes.reserve_exact(sizeof(u64));
-
-	BlockData* const builtins_block = attachment_of<BlockData>(builtins);
-
-	Scope* const builtins_scope = alloc_scope_internal(scopes, nullptr, builtins, builtins_block->definition_count);
-
-	builtins_block->scope_id = id_from_scope(scopes, builtins_scope);
-
-	AstDirectChildIterator it = direct_children_of(builtins);
-
-	for (OptPtr<AstNode> rst = next(&it); is_some(rst); rst = next(&it))
-	{
-		AstNode* const builtin_definition = get_ptr(rst);
-
-		if (builtin_definition->tag == AstTag::Definition)
-		{
-			if (!add_definition_to_scope(builtins_scope, builtin_definition))
-				panic("Duplicate builtin definition :(\n");
-		}
-	}
-
-	ASSERT_OR_IGNORE(builtins_scope->header.capacity == builtins_scope->header.used);
-
-	scopes->builtins_scope = builtins_scope;
 
 	return scopes;
 }
@@ -62,9 +39,24 @@ void release_scope_pool(ScopePool* scopes) noexcept
 
 Scope* alloc_scope(ScopePool* scopes, Scope* parent_scope, AstNode* root, u32 capacity) noexcept
 {
-	ASSERT_OR_IGNORE((parent_scope == nullptr) == (root->tag == AstTag::File));
+	ASSERT_OR_IGNORE(parent_scope != nullptr);
 
 	return alloc_scope_internal(scopes, parent_scope, root, capacity);
+}
+
+Scope* alloc_builtins_scope(ScopePool* scopes, AstNode* root, u32 capacity) noexcept
+{
+	return alloc_scope_internal(scopes, nullptr, root, capacity);
+}
+
+void init_composite_scope(ScopePool* scopes, CompositeType* const composite) noexcept
+{
+	Scope* const scope = alloc_scope_internal(scopes, nullptr, nullptr, composite->header.member_count);
+
+	for (u16 i = 0; i != composite->header.member_count; ++i)
+		scope->definitions[i] = { composite->members[i].identifier_id, AstNodeOffset{ 0 } };
+
+	composite->header.scope = scope;
 }
 
 ScopeId id_from_scope(ScopePool* scopes, Scope* scope) noexcept

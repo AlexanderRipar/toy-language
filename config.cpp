@@ -97,7 +97,7 @@ static constexpr ConfigHeader CONFIG_ENTRYPOINT[] = {
 };
 
 static constexpr ConfigHeader CONFIG_STD[] = {
-	ConfigHeader::make_string(offsetof(Config, std.folderpath), "folderpath", "Path to the folder containing standard library source"),
+	ConfigHeader::make_string(offsetof(Config, std.filepath), "filepath", "Path to the file containing standard library source"),
 };
 
 static constexpr ConfigHeader CONFIG_ROOTS[] = {

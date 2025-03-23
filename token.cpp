@@ -95,6 +95,7 @@ static constexpr const char8* const TOKEN_NAMES[] = {
 	"LiteralChar",
 	"LiteralString",
 	"Identifier",
+	"Builtin",
 	"_",
 	"[END-OF-SOURCE]",
 };

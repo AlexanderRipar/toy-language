@@ -8,39 +8,41 @@
 #include <cstring>
 #include <cstdio>
 
-static TypeId resolve_main(Config* config, Typechecker* typechecker, IdentifierPool* identifiers, ScopePool* scopes, AstNode* root) noexcept
+static TypeId find_entrypoint(Config* config, IdentifierPool* identifiers, TypeEntry* file_type) noexcept
 {
-	typecheck_file(typechecker, root);
+	ASSERT_OR_IGNORE(file_type->tag == TypeTag::Composite);
 
-	Scope* const root_scope = scope_from_id(scopes, attachment_of<FileData>(root)->root_block.scope_id);
+	Scope* const file_scope = file_type->data<CompositeType>()->header.scope;
 
-	const OptPtr<AstNode> opt_main_def = lookup_identifier_local(root_scope, id_from_identifier(identifiers, config->entrypoint.symbol));
+	const IdentifierId entrypoint_identifier_id = id_from_identifier(identifiers, config->entrypoint.symbol);
 
-	if (is_none(opt_main_def))
+	const OptPtr<AstNode> opt_entrypoint = lookup_identifier_local(file_scope, entrypoint_identifier_id);
+
+	if (is_none(opt_entrypoint))
 		panic("Could not find definition for entrypoint symbol \"%.*s\" at top level of source file \"%.*s\"\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin(), static_cast<s32>(config->entrypoint.filepath.count()), config->entrypoint.filepath.begin());
 
-	AstNode* const main_def = get_ptr(opt_main_def);
+	AstNode* const entrypoint = get_ptr(opt_entrypoint);
 
-	ASSERT_OR_IGNORE(main_def->tag == AstTag::Definition);
-
-	if (!has_children(main_def))
+	ASSERT_OR_IGNORE(entrypoint->tag == AstTag::Definition);
+	
+	if (!has_children(entrypoint))
 		panic("Expected definition of entrypoint symbol \"%.*s\" to have a value\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());
 
-	const DefinitionInfo main_info = get_definition_info(main_def);
+	const DefinitionInfo entrypoint_info = get_definition_info(entrypoint);
 
-	if (is_none(main_info.value))
+	if (is_none(entrypoint_info.value))
 		panic("Expected definition of entrypoint symbol \"%.*s\" to have a value\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());
 
-	AstNode* const main_func = get_ptr(main_info.value);
+	AstNode* const entrypoint_func = get_ptr(entrypoint_info.value);
 
-	if (!has_flag(main_func, AstFlag::Func_HasBody))
-		panic("Expected entrypoint \"%.*s\" to have a body", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());
+	if (!has_flag(entrypoint_func, AstFlag::Func_HasBody))
+		panic("Expected entrypoint \"%.*s\" to have a body", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());	
 
 	fprintf(stderr, "\n------------ %.*s AST ------------\n\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());
 
-	diag::print_ast(stderr, identifiers, main_func);
+	diag::print_ast(stderr, identifiers, entrypoint_func);
 
-	return attachment_of<DefinitionData>(main_def)->type_id;
+	return attachment_of<DefinitionData>(entrypoint)->type_id;
 }
 
 s32 main(s32 argc, const char8** argv)
@@ -77,36 +79,17 @@ s32 main(s32 argc, const char8** argv)
 
 		ValuePool* const values = create_value_pool(alloc);
 
-		AstNode* const builtins = create_builtin_definitions(asts, identifiers, types, values, get_ast_builder(parser));
+		ScopePool* const scopes = create_scope_pool(alloc);
 
-		ScopePool* const scopes = create_scope_pool(alloc, builtins);
+		Interpreter* const interpreter = create_interpreter(alloc, reader, parser, asts, scopes, types, values, identifiers);
 
-		Interpreter* const interpreter = create_interpreter(alloc, scopes, types, values, identifiers);
-
-		Typechecker* const typechecker = create_typechecker(alloc, interpreter, scopes, types, identifiers, asts);
+		Typechecker* const typechecker = create_typechecker(alloc, interpreter, scopes, types, identifiers, asts, get_ast_builder(parser));
 
 		set_interpreter_typechecker(interpreter, typechecker);
-		
-		request_read(reader, config.entrypoint.filepath, id_from_identifier(identifiers, config.entrypoint.filepath));
 
-		SourceFile file;
+		const TypeId main_file_type_id = import_file(interpreter, config.entrypoint.filepath, false);
 
-		if (!await_completed_read(reader, &file))
-			panic("Could not read main source file\n");
-
-		AstNode* root = parse(parser, file, asts);
-
-		release_read(reader, file);
-
-		fprintf(stderr, "\n------------ %.*s AST ------------\n\n", static_cast<s32>(config.entrypoint.filepath.count()), config.entrypoint.filepath.begin());
-
-		diag::print_ast(stderr, identifiers, root);
-
-		const TypeId main_type_id = resolve_main(&config, typechecker, identifiers, scopes, root);
-
-		fprintf(stderr, "\n------------ %.*s TYPE ------------\n\n", static_cast<s32>(config.entrypoint.symbol.count()), config.entrypoint.symbol.begin());
-
-		diag::print_type(stderr, identifiers, types, main_type_id);
+		find_entrypoint(&config, identifiers, type_entry_from_id(types, main_file_type_id));
 
 		deinit_config(&config);
 

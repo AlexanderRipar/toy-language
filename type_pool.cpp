@@ -18,8 +18,6 @@ struct TypePool
 {
 	IndexMap<TypeKey, TypeEntry> map;
 
-	BuiltinTypeIds builtin_type_ids;
-	
 	ReservedVec<TypeBuilder> builders;
 
 	s32 first_free_builder_index;
@@ -42,18 +40,6 @@ TypePool* create_type_pool(AllocPool* pool) noexcept
 
 	// Reserve id 0, so it can serve as an invalid value
 	(void) type_entry_from_type(types, TypeTag::INVALID, TypeFlag::EMPTY, {});
-
-	types->builtin_type_ids.comp_integer_type_id = id_from_type(types, TypeTag::CompInteger, TypeFlag::EMPTY, {});
-
-	types->builtin_type_ids.comp_float_type_id = id_from_type(types, TypeTag::CompFloat, TypeFlag::EMPTY, {});
-
-	types->builtin_type_ids.comp_string_type_id = id_from_type(types, TypeTag::CompString, TypeFlag::EMPTY, {});
-
-	types->builtin_type_ids.type_type_id = id_from_type(types, TypeTag::Type, TypeFlag::EMPTY, {});
-
-	types->builtin_type_ids.void_type_id = id_from_type(types, TypeTag::Void, TypeFlag::EMPTY, {});
-
-	types->builtin_type_ids.bool_type_id = id_from_type(types, TypeTag::Boolean, TypeFlag::EMPTY, {});
 
 	types->builders.init(1u << 16, 1u << 7);
 
@@ -95,11 +81,6 @@ TypeEntry* type_entry_from_id(TypePool* types, TypeId id) noexcept
 TypeId id_from_type_entry(TypePool* types, TypeEntry* entry) noexcept
 {
 	return TypeId{ types->map.index_from(entry) };
-}
-
-const BuiltinTypeIds* get_builtin_type_ids(const TypePool* types) noexcept
-{
-	return &types->builtin_type_ids;
 }
 
 TypeId dealias_type_id(TypePool* types, TypeEntry* entry) noexcept
@@ -357,7 +338,7 @@ void add_composite_type_member(TypePool* types, CompositeTypeBuilder* composite_
 	set_builder_used(builder, used + 1);
 }
 
-TypeId complete_composite_type(TypePool* types, CompositeTypeBuilder* composite_builder, u32 size, u32 alignment, u32 stride) noexcept
+TypeId complete_composite_type(TypePool* types, ScopePool* scopes, CompositeTypeBuilder* composite_builder, u32 size, u32 alignment, u32 stride) noexcept
 {
 	TypeBuilder* builder = reinterpret_cast<TypeBuilder*>(composite_builder);
 
@@ -394,8 +375,16 @@ TypeId complete_composite_type(TypePool* types, CompositeTypeBuilder* composite_
 	composite->header.size = size;
 	composite->header.alignment = alignment;
 	composite->header.stride = stride;
+	composite->header.scope = nullptr;
 
-	return id_from_type(types, TypeTag::Composite, TypeFlag::EMPTY, Range<byte>{ reinterpret_cast<byte*>(composite), sizeof(composite->header) + member_index * sizeof(composite->members[0]) });
+	const TypeId result = id_from_type(types, TypeTag::Composite, TypeFlag::EMPTY, Range<byte>{ reinterpret_cast<byte*>(composite), sizeof(composite->header) + member_index * sizeof(composite->members[0]) });
+
+	TypeEntry* const entry = type_entry_from_id(types, result);
+
+	if (entry->data<CompositeType>()->header.scope == nullptr)
+		init_composite_scope(scopes, composite);
+
+	return result;
 }
 
 
