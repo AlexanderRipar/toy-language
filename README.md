@@ -1,24 +1,396 @@
-# Code Structure
+# The Language
+
+This project currently goes under thewWorking name `eval`.
+
+The semantics and even syntax are by no means finalized yet.
+
+## Goals
+
+The goals of `eval` are as follows:
+
+1. Allow fine-grained memory control.
+2. Allow anything that can happen at run-time to happen at compile-time.
+3. Make initialization easy and reliable.
+4. Provide genericity by making types and even definitions first-class citizens.
+4. Make side-effects visible and contained.
+
+The syntax is inspired by a mixture of Rust, Haskell, Javascript, Odin, and a
+hodgepodge of other stuff. The compile general compile-time support is a
+logical next step from that already found in languages such as C++
+(`constexpr`) or Zig (`comptime`).
+
+
+## Some Examples
+
+### A minimal program
+
+A minimal program consists of a main procedure such as the following:
+
+```
+let main = proc(args: [][]u8) -> void = {
+	std.print("Hello World!\n")
+}
+```
+
+We can see here the general structure of a definition in `eval`: The keyword
+`let`, followed by a name, an optional type prefixed by `:` (absent in the
+above case), and a value prefixed by `=` - which is again optional. \
+In the above case, the value of main is a `proc` - procedure - taking as its
+single argument a slice of slices of u8s, which is accessible as `args` in the
+procedure's body. Its return type is void. \
+
+We can also already see that there are no semicolons or statement terminators
+of any kind. Instead the syntax is designed to make it unambiguous where
+expressions end, making explicit terminators redundant.
+
+
+### Everything is an Expression
+
+We have chosen to make the body of `main` a block, introduced by `{` and
+terminated by `}`, as should be familiar from most C-family languages. Since
+this block only contains a single "statement", we can omit it like so:
+
+```
+let main = proc(args: [][]u8) -> void = std.print("Hello World!\n")
+```
+
+Generally, most language constructs can be used in most places, since they are
+generally expressions and not statements in the traditional sense. \
+`if` can thus also be used like the ternary `?:` operator in many other
+languages:
+
+```
+let x = if condition() then 1 else 2
+```
+
+
+### Mutability
+
+Variables declared using `let` are by default immutable. This means that their
+value cannot be altered after they are defined. \
+To create a mutable variable the keyword `mut` is used instead of `let`:
+
+```
+let i = 5
+
+i = 6 // compiler error
+
+mut j = 7
+
+j = 8 // OK
+```
+
+Immutability is always "deep", meaning that it is transitively applied to
+members of a variable.
+
+Along with this concept there is also that of the distinction between functions
+(`func`) and procedures (`proc`). This is similar to that found in Nim, in that
+`func`s may not access mutable global data, while `proc`s may. \
+Interestingly, a pure function is then a `func` which only takes
+value-arguments or immutable reference-arguments (i.e., pointers, slices, or
+types containing them as members).
+
+
+### Control Flow
+
+There are only a few types of control flow constructs:
+
+- Loops, introduced by the keyword `for` (there is no `while`; `for` does
+  double-duty)
+- Conditionals, introduced by the keyword `if`
+- Return, which comes in two variants: `return value`, as well as `leave`. This
+  is sadly necessary to avoid ambiguity in case of void returns due to the lack
+  of an expression terminator.
+- Break, which, again, comes in two variants: The familiar `break`, simply
+  exiting the surrounding loop, and `yield value`, which exits with the given
+  value. The rationale for having both is the same as with `return` and
+  `leave`.
+
+Each of these constructs is examined in more detail in the following sections.
+
+#### Loops
+
+All types of loops are introduced by the keyword `for`. To write a traditional
+`while` loop, the following syntax is used:
+
+```
+for condition do {
+	// repeated until condition is false
+}
+```
+
+The `do` in this case is optional, and mainly intended to make loops that have
+non-block bodies more legible.
+
+Additionally a step can be specified (equivalent to to third element in C's
+`for` loops):
+
+```
+for i < 10, i += 1 {
+	// Assuming i is initially 0, this will repeat 10 times
+}
+```
+
+Variables can also be defined inside the loop header using the `where` keyword
+inspired by Haskell:
+
+```
+for i < 10, i += 1 where mut i: u32 = 0 {
+	// This will repeat 10 times, with i ranging from 0 to 9
+}
+```
+
+The same can also be used with `if` and even function definitions.
+
+Loops may yield a value using the `yield` and `finally` keywords:
+
+```
+let five = for i < 10, i += 1 where mut i: u32 = 0 {
+	if i == 5 then
+		yield i
+} finally undefined
+```
+
+As soon as a `yield` is reached, the loop terminates and evaluates to the
+yielded value (in this contrived case always 5).
+
+If no `yield` is reached before the loop's condition becomes false, the value
+provided by the finally clause is used instead. In the above example, the
+keyword `undefined` means that we assure the compiler that this statement may
+never be reached.
+
+Infinite loops can be expressed by omitting the loop condition like so:
+
+```
+for do {
+	// Round and round and round and ...
+}
+```
+
+Lastly, ranged loops can be expressed as well, using the `<-` element-of
+"operator":
+
+```
+let is: []u32 = some_slice()
+
+for i <- is {
+	// Do something with each i
+}
+
+// Or more succinctly using where
+
+for i in is where is: []u32 = some_slice() {
+	// Do something with each i
+}
+```
+
+The iterated value must be of a type that implements the `Container` trait.
+A slice of Ts for example has
+
+```
+impl Container([]T, T) = {
+	// Compiler magic I guess
+}
+```
+
+
+### Conditionals
+
+Conditionals are introduced using the keyword `if` and subsume the role of
+traditional if-statements as well as the ternary operator `?:`:
+
+```
+if condition then {
+	consequent
+} else {
+	alternative
+}
+```
+
+Just like the `do` for loops, the `then` is optional. `else` may also be
+omitted, in which case the if's type must however be void:
+
+if condition {
+	std.print("condition was true\n")
+}
+
+
+## Types
+
+Types are first-class citizens, meaning that - at least during compile-time -
+they can be stored in variables, inspected, and reassigned.
+
+The basic built-in types are as follows:
+
+- Unsinged integers - `u8`, `u16`, `u32` and `u64`. It is planned to eventually
+  extend this to `u<any-bit-width>`.
+- Signed integers - `s8`, `s16`, `s32` and `s64`. Just like for unsigneds,
+  these shall eventually be arbitrary-width.
+- boolean truth values - `bool`
+- The unit type - `void`
+- slices, or counted pointers - `[]<element-type>`
+- Pointers - `*<pointed-type>`, or `?<pointed-type>` to allow `null`. These do
+  not support pointer arithmetic.
+- Multi-pointers - `[*]<pointed-type>` or `[?]<pointed-type>`. These are
+  equivalent to normal pointers but support pointer arithmetic and indexing
+  like slices.
+- Arrays - `[<count>]<element-type>`
+- Tail-arrays - `[...]<element-type>` to support arbitrary-length aligned
+  access to elements after a header (like a zero-length array in common C/C++
+  extensions).
+- Varargs - `...<arg-type>` to support variadic functions.
+- The Type-Type - `Type` - to store other types
+- The Definition-Type - `Definition`, holding a name, type, default value, and
+  other tidbits such as mutability information.
+
+All types that have elements apart from arrays also support a `mut` between the
+type introducer and the element type - as an example, `*mut u32` in case of a
+pointer. \
+This decouples the mutability of these reference types from that of their
+referenced data:
+
+```
+let p0: *u32 = something() // Immutable pointer to immutable data
+let p1: *mut u32 = something() // Immutable pointer to mutable data
+mut p2: *u32 = something() // Mutable pointer to immutable data
+mut p3: *mut u32 = something() // Mutable pointer to mutable data
+```
+
+Composite types - `struct`, `union`, and anything in between - are created
+using type builders, which expose three functions:
+
+```
+let create_type_builder = func() -> TypeBuilder // Creates a fresh type builder
+let add_type_member = func(mut tb: TypeBuilder, definition: Definition, offset: ?s64) -> void // Adds a member to the type being built
+let complete_type = func(tb: TypeBuilder, size: u64, align: u64, stride: u64) -> Type // Complete the type being built.
+```
+
+These are intended to be abstracted behind functional interfaces. To implement
+the C `struct` keyword, the following function would suffice (admittedly using
+some not-yet-introduced builtins to introspect definitions):
+
+```
+let CStruct = func(members: ...Definition) -> Type =
+{
+	mut tb = create_type_builder()
+
+	mut offset: s64 = 0
+
+	mut max_align: u64 = 1
+
+	for member <- members
+	{
+		if is_global(member) then
+		{
+			add_type_member(tb, member)
+		}
+		else
+		{
+			let align = alignof(type(member))
+
+			if align > max_align then
+				max_align = align
+
+			offset = next_multiple(.of = offset, .factor = align)
+
+			add_type_member(tb, member, .offset = &offset)
+
+			offset += sizeof(type(member))
+		}
+	}
+
+	let size = next_multiple(.of = offset, .factor = max_align)
+
+	// The last expression in a block is also its value, meaning it is implicitly `return`ed
+	complete_type(tb, .size = size /* C-structs are padded to their alignment */, .align = max_align, .stride = size)
+}
+```
+
+This can now be used to create e.g. the same layout as an arbitrary `struct`:
+
+```
+struct MyStruct
+{
+	int8_t x = 4;
+
+	static uint32_t* const glob; 
+
+	int32_t y = 2;
+};
+```
+
+becomes
+
+```
+let MyStruct = CStruct
+(
+	mut x: s8 = 4,
+	global glob: *u32,
+	mut y: s8 = 2, // Note that trailing commas are allowed. That is a good thing™
+)
+```
+
+`union` can equally be derived, by adjusting member offsets and the resulting type's total size.
+
+
+## Genericity
+
+This is currently still up for consideration. I believe it should be based on
+`trait`s, similar to those found in Rust or Haskell's `class`es. Traits in this
+concept express a relation over types. \
+A good example to consider seems to be that of iteration, noting that the
+following is just a mess of ideas that are not even internally consistent at
+this point:
+
+```
+let Container = trait(Cont: Type, Iter: Type, Elem: Type) =
+{
+	let iterator = func(cont: *Cont) -> Iter
+
+	let has_next = func(iter: *Iter) -> bool
+
+	let next = func(iter: *mut Iter) -> *Elem
+}
+```
+
+
+## Contracts
+
+Functional contracts are supported in the form of pre- and postconditions are
+supported by the keywords `requires` and `ensures` respectively (both initially
+inspired by Midori). \
+These can follow a function type and define the permissible values of inputs
+and global state, or the possible resulting return value and global state
+repsectively. The current intention is to runtime-check them in debug mode,
+while using them for optimizations in release mode. During compile-time
+evaluation they should probably always be checked.
+
+
+# Compiler Code Structure
 
 ## General odditities
 
 Since I keep flip-flopping between styles, here's an arbitrary set of rules
 intended to avoid useless refactorings.
 
-- Member functions are only used in container templates.
+- Member functions are only used in container templates (and will eventually be
+  eliminated there as well).
 - Constructors are never used.
-- Namespaces are only used for module's public interfaces.
+- All declarations that are required across modules are put in `pass_data.hpp`
+- Each module forward-declares a struct of its name, which is instantiated once
+  and acts as a pseudo-global. This struct's definition is kept in the module's
+  implementation to avoid over-entangled dependencies.
+- Each module is implemented in its on `.cpp` file.
 
-## What a Module looks like
 
-Every module is designed as follows:
+## Future Architectural Redesigns
 
-- One `.hpp` file containing the module's public definitions. This contains the
-  declarations of all public functions as well as public type definitions.
-  This is wrapped in a namespace indicating the module.
-- Zero or more `.cpp` files containing the  definitions of public functions as
-  well as internal definitions.
+Eventually all module objects should be combined into a single allocation.
 
-Data structures that cross module boundaries are declared in `schema.hpp`, with
-their related functions defined in `schema/<structure_name.cpp`. Schema
-consists of multiple namespaces, indicating grouping of data structures.
+This will allow a single fixed-sized header, followed by a single huge memory
+reservation holding all allocation pools. This will also allow all ids to
+occupy a single, DWORD-indexed space, which can then be addressed as
+`allocation_base + 4 * id`.
+
+This should also unify id definitions, by making id a template over the
+identified type.
