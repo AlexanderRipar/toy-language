@@ -20,9 +20,7 @@ logical next step from that already found in languages such as C++
 (`constexpr`) or Zig (`comptime`).
 
 
-## Some Examples
-
-### A minimal program
+## A minimal program
 
 A minimal program consists of a main procedure such as the following:
 
@@ -44,7 +42,7 @@ of any kind. Instead the syntax is designed to make it unambiguous where
 expressions end, making explicit terminators redundant.
 
 
-### Everything is an Expression
+## Everything is an Expression
 
 We have chosen to make the body of `main` a block, introduced by `{` and
 terminated by `}`, as should be familiar from most C-family languages. Since
@@ -64,7 +62,7 @@ let x = if condition() then 1 else 2
 ```
 
 
-### Mutability
+## Mutability
 
 Variables declared using `let` are by default immutable. This means that their
 value cannot be altered after they are defined. \
@@ -91,7 +89,7 @@ value-arguments or immutable reference-arguments (i.e., pointers, slices, or
 types containing them as members).
 
 
-### Control Flow
+## Control Flow
 
 There are only a few types of control flow constructs:
 
@@ -108,7 +106,7 @@ There are only a few types of control flow constructs:
 
 Each of these constructs is examined in more detail in the following sections.
 
-#### Loops
+### Loops
 
 All types of loops are introduced by the keyword `for`. To write a traditional
 `while` loop, the following syntax is used:
@@ -194,7 +192,7 @@ impl Container([]T, T) = {
 ```
 
 
-#### Conditionals
+### Conditionals
 
 Conditionals are introduced using the keyword `if` and subsume the role of
 traditional if-statements as well as the ternary operator `?:`:
@@ -217,7 +215,7 @@ if condition {
 ```
 
 
-#### Switch
+### Switch
 
 The final control-flow construct is the `switch`. It allows succinctly
 executing code based on the value of a switched-over expression, working mostly
