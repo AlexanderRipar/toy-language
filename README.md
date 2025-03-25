@@ -194,7 +194,7 @@ impl Container([]T, T) = {
 ```
 
 
-### Conditionals
+#### Conditionals
 
 Conditionals are introduced using the keyword `if` and subsume the role of
 traditional if-statements as well as the ternary operator `?:`:
@@ -210,9 +210,42 @@ if condition then {
 Just like the `do` for loops, the `then` is optional. `else` may also be
 omitted, in which case the if's type must however be void:
 
+```
 if condition {
 	std.print("condition was true\n")
 }
+```
+
+
+#### Switch
+
+The final control-flow construct is the `switch`. It allows succinctly
+executing code based on the value of a switched-over expression, working mostly
+like that familiar from Java or C.
+
+```
+switch value
+case a => got_a()
+case b => got_b()
+case c => got_c()
+case _ => got_other()
+```
+
+Unlike C or C++, fallthrough between cases is not supported.
+
+Instead of using `default` to indicate to code to execute in case no other
+cases match, `case _` is used.
+
+Just like `if` and `for`, `switch` is also an expression, meaning that it can
+have a result, and also supports a `where` clause:
+
+```
+let x = switch y where y = some_value()
+	case a => 1
+	case b => 2
+	case c => 3
+	case _ => undefined
+```
 
 
 ## Types
@@ -226,6 +259,8 @@ The basic built-in types are as follows:
   extend this to `u<any-bit-width>`.
 - Signed integers - `s8`, `s16`, `s32` and `s64`. Just like for unsigneds,
   these shall eventually be arbitrary-width.
+- IEEE 754 single- and double-precision floating point numbers - `f32` and
+  `f64`.
 - boolean truth values - `bool`
 - The unit type - `void`
 - slices, or counted pointers - `[]<element-type>`
@@ -239,9 +274,24 @@ The basic built-in types are as follows:
   access to elements after a header (like a zero-length array in common C/C++
   extensions).
 - Varargs - `...<arg-type>` to support variadic functions.
+- Compile-time integers - `CompInteger`. This is the type assigned to integer
+  literals. It is also a first-class citizen of the language, meaning e.g.
+  `1 + 2` still results in a value of type `CompInteger`. \
+  Unlike other types, this one supports implicit conversion to integer types.
+- Compile-time floats - `CompFloat`, following the same semantics as
+  `CompInteger` but for floating-point literals.
+- Compile-time strings - `CompString`, again being the type assigned to string
+  literals. These can be implicitly converted to `[<strlen>]u8`.
 - The Type-Type - `Type` - to store other types
 - The Definition-Type - `Definition`, holding a name, type, default value, and
   other tidbits such as mutability information.
+
+Note that there is no dedicated character type. This is meant to drive home the
+point that there is no such thing as a simple "character", but rather only
+concepts such as code-units and -points in modern encodings (i.e., Unicode).
+And even their usefulness is debatable. \
+Instead, treating text as a slice of unsigned integers of an appropriate
+bit-width is encouraged.
 
 All types that have elements apart from arrays also support a `mut` between the
 type introducer and the element type - as an example, `*mut u32` in case of a
@@ -330,7 +380,54 @@ let MyStruct = CStruct
 )
 ```
 
-`union` can equally be derived, by adjusting member offsets and the resulting type's total size.
+`union` can equally be derived, by adjusting member offsets and the resulting
+type's total size.
+
+
+## Initialization
+
+Initialization is supported by two constructs: Named arguments and compound
+literals.
+
+Named arguments have already been used in the section on types. They take the
+form of a `.` followed by an identifier, an `=` and then the desired value:
+
+```
+let my_func = double(value: u32) -> u32 = 2 * value
+
+let four_o_four = my_func(.value = 202)
+```
+
+Named arguments can occur in any order in the call and be mixed with non-named
+arguments. The semantics of this are similar to those of C-style `enum`s, with
+non-named arguments following a named one being assigned to the following
+parameters of the called function.
+
+Additionally, there are compund literals, divided into two types, Array and
+composite.
+
+Array literals are started by `.[`, and ended by a matching `]`. The following
+for example defined `my_array` as a four-element array holding the integer
+values from 1 to 4.
+
+```
+let my_array: [_]u8 = .[1, 2, 3, 4]
+```
+
+Positional initialization is not yet supported, but definitely planned for the
+future.
+
+Composite literals in the meantime are similar to C99's or Zig's designated
+initializers and enclosed in `.{` and a matching `}`. Each value can either be
+positional or named, using the same syntax as named function arguments:
+
+```
+let Vec2 = Struct(x: f32, y: f32)
+
+let my_vec: Vec2 = .{ .x = 0.5, .y = 0.8 }
+
+let my_other_vec: Vec2 = .{ 1.0, 71.3 }
+```
 
 
 ## Genericity
@@ -343,20 +440,45 @@ following is just a mess of ideas that are not even internally consistent at
 this point:
 
 ```
+// This would be a built-in trait supporting the `<-` element-of syntax in loops
 let Container = trait(Cont: Type, Iter: Type, Elem: Type) =
 {
 	let iterator = func(cont: *Cont) -> Iter
 
 	let has_next = func(iter: *Iter) -> bool
 
-	let next = func(iter: *mut Iter) -> *Elem
+	let next = func(iter: *mut Iter) requires has_next(iter) -> *Elem
+}
+
+impl Container(.Cont = []u8, .Iter = []u8 /* Use a slice as an iterator for itself by advancing its beginning */, .Elem = u8) =
+{
+	let iterator = func(cont: *[]u8) -> []u8 = cont.*
+
+	let has_next = func(iter: *[]u8) -> bool = count(iter.*) != 0
+
+	let next = func(iter: *mut []u8) -> *u8 =
+	{
+		let head = &iter.*[0]
+
+		iter.* = iter.*[1..]
+
+		head
+	}
+}
+
+// We can now use the `<-` element-of syntax on []u8, as we have defined an impl for it.
+
+let iterating
+for i <- my_slice where my_slice: []u8 = some_slice()
+{
+	// Do something with each i
 }
 ```
 
 
 ## Contracts
 
-Functional contracts are supported in the form of pre- and postconditions are
+Functional contracts, supported in the form of pre- and postconditions, are
 supported by the keywords `requires` and `ensures` respectively (both initially
 inspired by Midori). \
 These can follow a function type and define the permissible values of inputs
