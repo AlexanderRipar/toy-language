@@ -45,18 +45,16 @@
 #include <shellapi.h>
 #include <atomic>
 
-static constexpr u32 MAX_LONG_PATH_CHARS = 32767;
-
 static constexpr u32 MAX_COMMAND_LINE_CHARS = 32767;
 
 std::atomic<HANDLE> g_job;
 
-static bool map_path(Range<char8> path, MutRange<char16> buffer, u32* out_chars = nullptr) noexcept
+static bool map_path(Range<char8> path, MutRange<char16> buffer, u32* out_chars = nullptr, bool remove_last_element = false) noexcept
 {
 	if (path.count() > INT32_MAX)
 		return false;
 
-	char16 relative_path[MAX_LONG_PATH_CHARS + 1];
+	char16 relative_path[minos::MAX_PATH_CHARS + 1];
 
 	const u32 relative_chars = MultiByteToWideChar(CP_UTF8, 0, path.begin(), static_cast<s32>(path.count()), relative_path, static_cast<s32>(array_count(relative_path) - 1));
 
@@ -92,6 +90,24 @@ static bool map_path(Range<char8> path, MutRange<char16> buffer, u32* out_chars 
 		absolute_chars -= 1;
 	}
 
+	if (remove_last_element)
+	{
+		while (true)
+		{
+			if (absolute_chars <= 1)
+				return false;
+
+			if (buffer[absolute_chars - 1] == '\\')
+				break;
+
+			absolute_chars -= 1;
+		}
+
+		buffer[absolute_chars - 1] = '\0';
+
+		absolute_chars -= 1;
+	}
+
 	if (absolute_chars + 1 >= MAX_PATH)
 	{
 		if (absolute_chars + 4 + 1 > buffer.count())
@@ -109,6 +125,27 @@ static bool map_path(Range<char8> path, MutRange<char16> buffer, u32* out_chars 
 
 	if (out_chars != nullptr)
 		*out_chars = absolute_chars;
+
+	return true;
+}
+
+static bool is_relative_path(Range<char8> path) noexcept
+{
+	// See https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file?redirectedfrom=MSDN#fully_qualified_vs._relative_paths
+
+	if (path.count() >= 1 && path[0] == '\\')
+		return false; // "Absolute" path or UNC name
+
+	// Check for drive "letter", allowing for any sort of format not including '\' or '/' followed by ':\' or ':/'
+
+	for (uint i = 0; i + 1 < path.count(); ++i)
+	{
+		if (path[i] == '\\' || path[i] == '//')
+			break;
+
+		if (path[i] == ':' && (path[i + 1] == '/' || path[i] == '\\'))
+			return false;
+	}
 
 	return true;
 }
@@ -249,7 +286,7 @@ void minos::thread_close(ThreadHandle handle) noexcept
 
 bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_mode, NewMode new_mode, AccessPattern pattern, SyncMode syncmode, bool inheritable, FileHandle* out) noexcept
 {
-	char16 path_utf16[MAX_LONG_PATH_CHARS + 1];
+	char16 path_utf16[MAX_PATH_CHARS + 1];
 
 	if (!map_path(filepath, MutRange{ path_utf16 }))
 		return false;
@@ -679,7 +716,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 		}
 	}
 
-	char16 exe_path_utf16[MAX_LONG_PATH_CHARS + 1];
+	char16 exe_path_utf16[MAX_PATH_CHARS + 1];
 
 	u32 exe_path_utf16_chars;
 
@@ -916,14 +953,14 @@ static void make_directory_enumeration_result(const WIN32_FIND_DATAW* data, mino
 
 minos::DirectoryEnumerationStatus minos::directory_enumeration_create(Range<char8> directory_path, DirectoryEnumerationHandle* out, DirectoryEnumerationResult* out_first) noexcept
 {
-	char16 path_utf16[MAX_LONG_PATH_CHARS + 1];
+	char16 path_utf16[MAX_PATH_CHARS + 1];
 
 	u32 path_chars;
 
 	if (!map_path(directory_path, MutRange{ path_utf16 }, &path_chars))
 		return DirectoryEnumerationStatus::Error;
 
-	if (path_chars + 3 > MAX_LONG_PATH_CHARS)
+	if (path_chars + 3 > MAX_PATH_CHARS)
 		return DirectoryEnumerationStatus::Error;
 
 	path_utf16[path_chars] = '\\';
@@ -973,7 +1010,7 @@ void minos::directory_enumeration_close(DirectoryEnumerationHandle handle) noexc
 
 bool minos::directory_create(Range<char8> path) noexcept
 {
-	char16 path_utf16[MAX_LONG_PATH_CHARS + 1];
+	char16 path_utf16[MAX_PATH_CHARS + 1];
 	
 	if (!map_path(path, MutRange{ path_utf16 }))
 		return false;
@@ -985,7 +1022,7 @@ bool minos::directory_create(Range<char8> path) noexcept
 
 bool minos::path_is_directory(Range<char8> path) noexcept
 {
-	char16 path_utf16[MAX_LONG_PATH_CHARS + 1];
+	char16 path_utf16[MAX_PATH_CHARS + 1];
 
 	if (!map_path(path, MutRange{ path_utf16 }))
 		return false;
@@ -995,13 +1032,25 @@ bool minos::path_is_directory(Range<char8> path) noexcept
 	return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
 }
 
-u32 minos::path_to_absolute(Range<char8> path, MutRange<char8> out_buf) noexcept
+bool minos::path_is_file(Range<char8> path) noexcept
 {
-	char16 path_utf16[MAX_LONG_PATH_CHARS + 1];
+	char16 path_utf16[MAX_PATH_CHARS + 1];
+
+	if (!map_path(path, MutRange{ path_utf16 }))
+		return false;
+
+	const u32 attributes = GetFileAttributesW(path_utf16);
+
+	return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
+
+static u32 path_to_absolute_impl(Range<char8> path, MutRange<char8> out_buf, bool remove_last_path_element) noexcept
+{
+	char16 path_utf16[minos::MAX_PATH_CHARS + 1];
 
 	u32 path_chars;
 
-	if (!map_path(path, MutRange{ path_utf16 }, &path_chars))
+	if (!map_path(path, MutRange{ path_utf16 }, &path_chars, remove_last_path_element))
 		return 0;
 
 	char16* trimmed_path;
@@ -1023,6 +1072,98 @@ u32 minos::path_to_absolute(Range<char8> path, MutRange<char8> out_buf) noexcept
 		path_chars_utf8 = WideCharToMultiByte(CP_UTF8, 0, path_utf16, path_chars, nullptr, 0, nullptr, nullptr);
 
 	return path_chars_utf8;
+}
+
+u32 minos::path_to_absolute(Range<char8> path, MutRange<char8> out_buf) noexcept
+{
+	return path_to_absolute_impl(path, out_buf, false);
+}
+
+static bool remove_last_path_elem(Range<char8> buf, u32* inout_chars) noexcept
+{
+	u32 chars = *inout_chars;
+
+	while (chars > 1)
+	{
+		chars -= 1;
+
+		if (buf[chars] == '\\')
+		{
+			*inout_chars = chars;
+
+			return true;
+		}
+	}
+
+	return false;
+}
+
+u32 minos::path_to_absolute_relative_to(Range<char8> path, Range<char8> base, MutRange<char8> out_buf) noexcept
+{
+	if (!is_relative_path(path))
+	{
+		const u32 absolute_path_chars = path_to_absolute(path, out_buf);
+
+		return absolute_path_chars > out_buf.count() ? 0 : absolute_path_chars;
+	}
+
+	u32 path_chars = path_to_absolute(base, out_buf);
+
+	if (path_chars == 0 || path_chars > out_buf.count())
+		return 0;
+
+	bool is_elem_start = true;
+
+	for (uint i = 0; i != path.count(); ++i)
+	{
+		if (path[i] == '.' && is_elem_start)
+		{
+			if (i + 1 == path.count() || path[i + 1] == '\\' || path[i + 1] == '/')
+				continue;
+
+			if (path[i + 1] == '.' && (i + 2 == path.count() || path[i + 2] == '\\' || path[i + 2] == '/'))
+			{
+				if (!remove_last_path_elem(Range{ out_buf.begin(), out_buf.end() }, &path_chars))
+					return 0;
+
+				i += 1;
+
+				continue;
+			}
+		}
+		else if (path[i] == '\\' || path[i] == '/')
+		{
+			is_elem_start = true;
+
+			continue;
+		}
+
+		if (is_elem_start)
+		{
+			if (path_chars == out_buf.count())
+				return 0;
+
+			out_buf[path_chars] = '\\';
+
+			path_chars += 1;
+
+			is_elem_start = false;
+		}
+
+		if (path_chars == out_buf.count())
+			return 0;
+
+		out_buf[path_chars] = path[i];
+
+		path_chars += 1;
+	}
+
+	return path_chars;
+}
+
+u32 minos::path_to_absolute_directory(Range<char8> path, MutRange<char8> out_buf) noexcept
+{
+	return path_to_absolute_impl(path, out_buf, true);
 }
 
 bool minos::path_get_info(Range<char8> path, FileInfo* out) noexcept

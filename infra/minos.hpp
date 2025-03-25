@@ -8,6 +8,8 @@ namespace minos
 {
 	using thread_proc = u32 (__stdcall *) (void* param);
 
+	static constexpr u32 MAX_PATH_CHARS = 32767;
+
 	namespace timeout
 	{
 		static constexpr u32 INFINITE = 0xFFFF'FFFF;
@@ -315,7 +317,13 @@ namespace minos
 
 	[[nodiscard]] bool path_is_directory(Range<char8> path) noexcept;
 
+	[[nodiscard]] bool path_is_file(Range<char8> path) noexcept;
+
 	[[nodiscard]] u32 path_to_absolute(Range<char8> path, MutRange<char8> out_buf) noexcept;
+
+	[[nodiscard]] u32 path_to_absolute_relative_to(Range<char8> path, Range<char8> base, MutRange<char8> out_buf) noexcept;
+
+	[[nodiscard]] u32 path_to_absolute_directory(Range<char8> path, MutRange<char8> out_buf) noexcept;
 
 	[[nodiscard]] bool path_get_info(Range<char8> path, FileInfo* out) noexcept;
 
