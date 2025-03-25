@@ -31,6 +31,7 @@ struct ConfigHeader
 		Integer,
 		String,
 		Boolean,
+		Path,
 	} type;
 
 	u32 target_offset;
@@ -85,6 +86,11 @@ struct ConfigHeader
 		return { Type::String, target_offset, name, helptext };
 	}
 
+	static constexpr ConfigHeader make_path(u32 target_offset, const char8* name, const char8* helptext) noexcept
+	{
+		return { Type::Path, target_offset, name, helptext };
+	}
+
 	static constexpr ConfigHeader make_boolean(u32 target_offset, const char8* name, const char8* helptext) noexcept
 	{
 		return { Type::Boolean, target_offset, name, helptext };
@@ -92,12 +98,12 @@ struct ConfigHeader
 };
 
 static constexpr ConfigHeader CONFIG_ENTRYPOINT[] = {
-	ConfigHeader::make_string(offsetof(Config, entrypoint.filepath), "filepath", "Relative path of the source file containing the program's entrypoint"),
+	ConfigHeader::make_path(offsetof(Config, entrypoint.filepath), "filepath", "Relative path of the source file containing the program's entrypoint"),
 	ConfigHeader::make_string(offsetof(Config, entrypoint.symbol), "symbol", "Symbol name of the program's entrypoint function"),
 };
 
 static constexpr ConfigHeader CONFIG_STD[] = {
-	ConfigHeader::make_string(offsetof(Config, std.filepath), "filepath", "Path to the file containing standard library source"),
+	ConfigHeader::make_path(offsetof(Config, std.filepath), "filepath", "Path to the file containing standard library source"),
 };
 
 static constexpr ConfigHeader CONFIG_ROOTS[] = {
@@ -160,6 +166,8 @@ private:
 	const Range<char8> m_filepath;
 
 	const ConfigHeader* m_context_stack[8];
+
+	Range<char8> m_path_base;
 
 
 
@@ -746,7 +754,7 @@ private:
 
 		const ConfigHeader* const context = m_context_stack[m_context_top - 1];
 
-		if (context->type != ConfigHeader::Type::String)
+		if (context->type != ConfigHeader::Type::String && context->type != ConfigHeader::Type::Path)
 			error(string.begin() - m_content.begin(), "Cannot assign string to key '%s' expecting different value\n", context->name);
 
 		if (string[0] == '\n')
@@ -790,7 +798,23 @@ private:
 
 		m_heap.append_exact(string.begin() + uncopied_begin, uncopied_length);
 
-		const Range<char8> value = { static_cast<const char8*>(allocation_begin), reinterpret_cast<const char8*>(m_heap.begin()) + m_heap.used() };
+		Range<char8> value{ static_cast<const char8*>(allocation_begin), reinterpret_cast<const char8*>(m_heap.begin()) + m_heap.used() };
+
+		if (context->type == ConfigHeader::Type::Path)
+		{
+			char8 path_buf[minos::MAX_PATH_CHARS];
+
+			const u32 path_chars = minos::path_to_absolute_relative_to(value, m_path_base, MutRange{ path_buf });
+
+			if (path_chars == 0 || path_chars > array_count(path_buf))
+				error(string.begin() - m_content.begin(), "Resulting absolute path exceeds maximum of %u characters\n", minos::MAX_PATH_CHARS);
+
+			m_heap.pop_by(static_cast<u32>(value.count()));
+
+			value = { value.begin(), path_chars };
+
+			m_heap.append_exact(path_buf, path_chars);
+		}
 
 		*reinterpret_cast<Range<char8>*>(reinterpret_cast<byte*>(m_out) + context->target_offset) = value;
 	}
@@ -801,7 +825,7 @@ private:
 
 		const ConfigHeader* const context = m_context_stack[m_context_top - 1];
 
-		if (context->type != ConfigHeader::Type::String)
+		if (context->type != ConfigHeader::Type::String && context->type != ConfigHeader::Type::Path)
 			error(string.begin() - m_content.begin(), "Cannot assign string to key '%s' expecting different value\n", context->name);
 
 		if (string[0] == '\n')
@@ -809,11 +833,29 @@ private:
 		else if (string[0] == '\r' && string[1] == '\n')
 			string = Range{ string.begin() + 2, string.end() };
 
-		void* const allocation_begin = m_heap.begin() + m_heap.used();
-		
-		m_heap.append_exact(string.begin(), static_cast<u32>(string.count()));
+		Range<char8> value;
 
-		const Range<char8> value = { static_cast<const char8*>(allocation_begin), static_cast<u32>(string.count()) };
+		if (context->type == ConfigHeader::Type::Path)
+		{
+			char8 path_buf[minos::MAX_PATH_CHARS];
+
+			const u32 path_chars = minos::path_to_absolute_relative_to(string, m_path_base, MutRange{ path_buf });
+
+			if (path_chars == 0 || path_chars > array_count(path_buf))
+				error(string.begin() - m_content.begin(), "Resulting absolute path exceeds maximum of %u characters\n", minos::MAX_PATH_CHARS);
+
+			value = { reinterpret_cast<const char8*>(m_heap.begin() + m_heap.used()), path_chars };
+
+			m_heap.append_exact(path_buf, path_chars);
+		}
+		else
+		{
+			void* const allocation_begin = m_heap.begin() + m_heap.used();
+
+			m_heap.append_exact(string.begin(), static_cast<u32>(string.count()));
+	
+			value = { static_cast<const char8*>(allocation_begin), static_cast<u32>(string.count()) };
+		}
 
 		*reinterpret_cast<Range<char8>*>(reinterpret_cast<byte*>(m_out) + context->target_offset) = value;
 	}
@@ -1002,6 +1044,17 @@ public:
 			panic("Could not read config file '%.*s' (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
 
 		minos::file_close(filehandle);
+
+		char8 path_base[minos::MAX_PATH_CHARS];
+
+		const u32 path_base_chars = minos::path_to_absolute_directory(filepath, MutRange{ path_base });
+
+		if (path_base_chars == 0 || path_base_chars > array_count(path_base))
+			panic("Could not determine folder containing config file (0x%X)\n", minos::last_error());
+
+		m_path_base = { reinterpret_cast<char8*>(m_heap.begin() + m_heap.used()), path_base_chars };
+
+		m_heap.append_exact(path_base, path_base_chars);
 	}
 
 	Config parse() noexcept
@@ -1104,7 +1157,7 @@ static void print_config_node(const Config* config, const ConfigHeader* node, u3
 
 		fprintf(stdout, "%*s%s = %lld\n", indent, "", node->name, value);
 	}
-	else if (node->type == ConfigHeader::Type::String)
+	else if (node->type == ConfigHeader::Type::String || node->type == ConfigHeader::Type::Path)
 	{
 		const Range<char8> value = *reinterpret_cast<const Range<char8>*>(reinterpret_cast<const byte*>(config) + node->target_offset);
 
@@ -1156,11 +1209,11 @@ static void print_config_help_node(const Config* defaults, const ConfigHeader* n
 
 		fprintf(stdout, "%*s}\n", indent * 2, "");
 	}
-	else if (node->type == ConfigHeader::Type::String)
+	else if (node->type == ConfigHeader::Type::String || node->type == ConfigHeader::Type::Path)
 	{
 		const Range<char8> default_value = *reinterpret_cast<const Range<char8>*>(reinterpret_cast<const byte*>(defaults) + node->target_offset);
 
-		fprintf(stdout, "%*s%s {\n%*s%s\n%*stype: string\n%*sdefault: %.*s\n%*s}\n", indent * 2, "", node->name, (indent + 1) * 2, "", node->helptext, (indent + 1) * 2, "", (indent + 1) * 2, "", static_cast<u32>(default_value.count()), default_value.begin(), indent * 2, "");
+		fprintf(stdout, "%*s%s {\n%*s%s\n%*stype: %s\n%*sdefault: %.*s\n%*s}\n", indent * 2, "", node->name, (indent + 1) * 2, "", node->helptext, (indent + 1) * 2, "", node->type == ConfigHeader::Type::String ? "string" : "path", (indent + 1) * 2, "", static_cast<u32>(default_value.count()), default_value.begin(), indent * 2, "");
 	}
 	else if (node->type == ConfigHeader::Type::Boolean)
 	{
