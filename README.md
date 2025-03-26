@@ -308,6 +308,9 @@ mut p2: *u32 = something() // Mutable pointer to immutable data
 mut p3: *mut u32 = something() // Mutable pointer to mutable data
 ```
 
+
+### Composites
+
 Composite types - `struct`, `union`, and anything in between - are created
 using type builders, which expose three functions:
 
@@ -384,6 +387,103 @@ let MyStruct = CStruct
 
 `union` can equally be derived, by adjusting member offsets and the resulting
 type's total size.
+
+
+### Type Equivalence
+
+`Eval` uses a system somewhere in-between
+[nominal](https://en.wikipedia.org/wiki/Nominal_type_system) and
+[structural](https://en.wikipedia.org/wiki/Structural_type_system) type
+equivalence that can be most easily understood by how it is implemented:
+
+- Two references to the same primitive type are considered equivalent.
+- Two types created by different calls to `complete_type` are considered
+  distinct.
+- Calls to all other functions that return types are effectively cached,
+  meaning that the same type-valued function called twice with the same
+  arguments returns the same type, since the same underlying call to
+  `complete_type` gets reused.
+- The results of calls to type-valued functions whose return type is marked
+  with the `distinct` operator are considered distinct as when bound to an
+  identifier. \
+  However, they are still considered equivalent to the same call *not* bound to
+  an identifier.
+
+Some examples to illustrate this:
+
+```
+let T1 = func(def: Definition) -> Type =
+{
+	mut tb = create_type_builder()
+
+	add_type_member(tb, def, .offset = 0)
+
+	complete_type(tb, .size = sizeof(def), .align = alignof(def), .stride = strideof(def))
+}
+
+// Word-for-word copy of T1
+let T2 = func(def: Definition) -> Type =
+{
+	mut tb = create_type_builder()
+
+	add_type_member(tb, def, .offset = 0)
+
+	complete_type(tb, .size = sizeof(def), .align = alignof(def), .stride = strideof(def))
+}
+
+let T1a = T1(x: u32)
+
+let T1b = T1(x: u32)
+
+let T1c = T1(y: u32)
+
+let T2a = T2(x: u32)
+
+assert(T1a == T1b) // Equivalent due to same arguments
+
+assert(T1a != T1c) // Distict due to differing arguments
+
+assert(T1a != T2a) // Distinct due to different underlying funcs
+
+let D = func(def: Definition) -> Type = distinct T1(def)
+
+assert(D(x: u32) == D(x: u32)) // Equivalent, since not bound to identifier
+
+let Da = D(x: u32)
+
+let Da2 = Da
+
+let Db = D(x: u32)
+
+assert(Da == D(x: u32)) // Equivalent, since one side is not yet bound to an identifier
+
+assert(Da == Da2) // Equivalent, since both result from the same call site
+
+assert(Da != Db) // Distinct, since both are bound to an identifier
+```
+
+This ensures that there are no accidental type equivalences due to equivalent
+structures; It also allows type functions to be used directly and still be
+considered equivalent, essentially allowing the same usage as C++ templates.
+
+To elaborate a bit on the `distinct` operator (which is currently not yet
+implemented or even syntactically supported): It cannot only be used on
+function return values, but more generally on types, working similarly to
+Haskell's [`newtype`](https://wiki.haskell.org/index.php?title=Newtype):
+
+```
+let MyU32 = distinct u32
+
+let x: MyU32 = 1
+
+let y: MyU32 = 2
+
+let a: u32 = 3
+
+let _ = x + y // OK
+
+let _ = x + a // compile-time error due to incompatible types.
+```
 
 
 ## Initialization
