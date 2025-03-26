@@ -283,6 +283,10 @@ The basic built-in types are as follows:
 - The Type-Type - `Type` - to store other types
 - The Definition-Type - `Definition`, holding a name, type, default value, and
   other tidbits such as mutability information.
+- Composite and array initializer types - `CompComposite` and `CompArray`
+  respectively. These act similar to the other `Comp*` types, but for composite
+  and array initializers (discussed further under
+  [Initialization](#initialization)).
 
 Note that there is no dedicated character type. This is meant to drive home the
 point that there is no such thing as a simple "character", but rather only
@@ -387,8 +391,9 @@ type's total size.
 Initialization is supported by two constructs: Named arguments and compound
 literals.
 
-Named arguments have already been used in the section on types. They take the
-form of a `.` followed by an identifier, an `=` and then the desired value:
+Named arguments have already been used in the [section on types](#types). They
+take the form of a `.` followed by an identifier, an `=` and then the desired
+value:
 
 ```
 let my_func = double(value: u32) -> u32 = 2 * value
