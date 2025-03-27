@@ -1,5 +1,7 @@
 #include "diag.hpp"
 
+#include <inttypes.h>
+
 static void print_type(FILE* out, IdentifierPool* identifiers, TypePool* types, TypeId type_id, u32 depth, bool continue_line) noexcept
 {
 	if (type_id == INVALID_TYPE_ID)
@@ -121,7 +123,7 @@ static void print_type(FILE* out, IdentifierPool* identifiers, TypePool* types, 
 		{
 			ArrayType* const array_type = entry->data<ArrayType>();
 
-			fprintf(out, "%*s[%llu] ", continue_line ? 0 : depth * 2, "", array_type->count);
+			fprintf(out, "%*s[%" PRIu64 "] ", continue_line ? 0 : depth * 2, "", array_type->count);
 	
 			print_type(out, identifiers, types, array_type->element_id, depth, true);
 
@@ -156,7 +158,7 @@ static void print_type(FILE* out, IdentifierPool* identifiers, TypePool* types, 
 
 				const Range<char8> member_name = identifier_entry_from_id(identifiers, member->identifier_id)->range();
 
-				fprintf(out, "%*s%.*s (%+llu): ", (depth + 1) * 2, "", static_cast<s32>(member_name.count()), member_name.begin(), member->offset);
+				fprintf(out, "%*s%.*s (%+" PRId64 "): ", (depth + 1) * 2, "", static_cast<s32>(member_name.count()), member_name.begin(), member->offset);
 
 				print_type(out, identifiers, types, member->type_id, depth + 1, true);
 			}

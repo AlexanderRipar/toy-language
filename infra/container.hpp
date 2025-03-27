@@ -146,7 +146,7 @@ public:
 		m_used = new_used;
 	}
 
-	void reset(Index preserved_commit = std::numeric_limits<T>::max()) noexcept
+	void reset(Index preserved_commit = std::numeric_limits<Index>::max()) noexcept
 	{
 		m_used = 0;
 		
@@ -194,7 +194,7 @@ public:
 	{
 		ASSERT_OR_IGNORE(m_memory != nullptr);
 
-		minos::mem_unreserve(m_memory);
+		minos::mem_unreserve(m_memory, m_reserved * sizeof(T));
 
 		m_memory = nullptr;
 	}
@@ -558,7 +558,15 @@ public:
 
 	void release() noexcept
 	{
-		minos::mem_unreserve(m_lookups);
+		const u64 lookup_bytes = static_cast<u64>(m_lookup_capacity) * sizeof(*m_lookups);
+
+		const u64 offset_bytes = static_cast<u64>(m_lookup_capacity) * sizeof(*m_offsets);
+
+		const u64 value_bytes = static_cast<u64>(m_value_capacity) * V::stride();
+
+		const u64 total_bytes = lookup_bytes + offset_bytes + value_bytes;
+
+		minos::mem_unreserve(m_lookups, total_bytes);
 	}
 };
 

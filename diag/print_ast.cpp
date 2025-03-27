@@ -1,5 +1,7 @@
 #include "diag.hpp"
 
+#include <inttypes.h>
+
 #include "../pass_data.hpp"
 #include "../ast_attach.hpp"
 
@@ -13,7 +15,7 @@ static void print_node_header(FILE* out, IdentifierPool* identifiers, const AstN
 	}
 	else if (node->tag == AstTag::ValInteger)
 	{
-		fprintf(out, "%*s%s [%lld] {%s\n", (depth + 1) * 2, "", ast_tag_name(node->tag), attachment_of<ValIntegerData>(node)->value, has_children(node) ? "" : "}");
+		fprintf(out, "%*s%s [%" PRId64 "] {%s\n", (depth + 1) * 2, "", ast_tag_name(node->tag), attachment_of<ValIntegerData>(node)->value, has_children(node) ? "" : "}");
 	}
 	else
 	{

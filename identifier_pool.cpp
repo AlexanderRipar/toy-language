@@ -71,5 +71,5 @@ IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identi
 
 IdentifierEntry* identifier_entry_from_id(IdentifierPool* identifiers, IdentifierId id) noexcept
 {
-	return { identifiers->map.value_from(id.rep) };
+	return identifiers->map.value_from(id.rep);
 }

@@ -111,7 +111,7 @@ static void type_entry_from_primitive_type_with_integer_and_float_with_same_bit_
 
 	DummyTypePool dummy = create_dummy_types();
 
-	IntegerType2 u32_type{ 32 };
+	IntegerType2 u32_type{ 32, false };
 
 	TypeEntry2* const u32_entry = type_entry_from_primitive_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&u32_type));
 

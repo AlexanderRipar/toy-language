@@ -149,6 +149,10 @@ struct ConfigToken
 
 struct ConfigParser
 {
+	static constexpr u32 HEAP_RESERVE = 262144;
+
+	static constexpr u32 HEAP_COMMIT_INCREMENT = 16384;
+
 private:
 
 	ReservedVec<byte> m_heap;
@@ -316,7 +320,7 @@ private:
 			if (first != '\0' || m_curr != m_content.end())
 				error(m_curr - m_content.begin(), "Unexpected control character U+%02X in config file\n", first);
 
-			return { ConfigToken::Type::End };
+			return { ConfigToken::Type::End, {} };
 		}
 		else switch (first)
 		{
@@ -1004,10 +1008,10 @@ public:
 		m_peek{},
 		m_out{},
 		m_context_top{ 1 },
-		m_context_stack{ &CONFIG },
-		m_filepath{ filepath }
+		m_filepath{ filepath },
+		m_context_stack{ &CONFIG }
 	{
-		m_heap.init(262144, 16384);
+		m_heap.init(HEAP_RESERVE, HEAP_COMMIT_INCREMENT);
 
 		minos::FileHandle filehandle;
 
@@ -1027,10 +1031,10 @@ public:
 		char8* buffer = static_cast<char8*>(minos::mem_reserve(fileinfo.bytes + 1));
 
 		if (buffer == nullptr)
-			panic("Could not reserve buffer of %llu bytes for reading config file (0x%X)\n", fileinfo.bytes + 1, minos::last_error());
+			panic("Could not reserve buffer of %" PRId64 " bytes for reading config file (0x%X)\n", fileinfo.bytes + 1, minos::last_error());
 
 		if (!minos::mem_commit(buffer, fileinfo.bytes + 1))
-			panic("Could not commit buffer of %llu bytes for reading config file (0x%X)\n", fileinfo.bytes + 1, minos::last_error());
+			panic("Could not commit buffer of %" PRIu64 " bytes for reading config file (0x%X)\n", fileinfo.bytes + 1, minos::last_error());
 
 		buffer[fileinfo.bytes] = '\0';
 
@@ -1118,7 +1122,7 @@ public:
 			}
 		}
 
-		minos::mem_unreserve(const_cast<char8*>(m_content.begin()));
+		minos::mem_unreserve(const_cast<char8*>(m_content.begin()), m_content.count());
 	}
 };
 
@@ -1135,7 +1139,7 @@ void deinit_config(Config* config) noexcept
 {
 	ASSERT_OR_IGNORE(config->m_heap_ptr != nullptr);
 
-	minos::mem_unreserve(config->m_heap_ptr);
+	minos::mem_unreserve(config->m_heap_ptr, ConfigParser::HEAP_RESERVE);
 
 	config->m_heap_ptr = nullptr;
 }
@@ -1155,7 +1159,7 @@ static void print_config_node(const Config* config, const ConfigHeader* node, u3
 	{
 		const s64 value = *reinterpret_cast<const s64*>(reinterpret_cast<const byte*>(config) + node->target_offset);
 
-		fprintf(stdout, "%*s%s = %lld\n", indent, "", node->name, value);
+		fprintf(stdout, "%*s%s = %" PRId64 "\n", indent, "", node->name, value);
 	}
 	else if (node->type == ConfigHeader::Type::String || node->type == ConfigHeader::Type::Path)
 	{
@@ -1199,13 +1203,13 @@ static void print_config_help_node(const Config* defaults, const ConfigHeader* n
 	{
 		const s64 default_value = *reinterpret_cast<const s64*>(reinterpret_cast<const byte*>(defaults) + node->target_offset);
 
-		fprintf(stdout, "%*s%s {\n%*s%s\n%*stype: integer\n%*sdefault: %lld\n", indent * 2, "", node->name, (indent + 1) * 2, "", node->helptext, (indent + 1) * 2, "", (indent + 1) * 2, "", default_value);
+		fprintf(stdout, "%*s%s {\n%*s%s\n%*stype: integer\n%*sdefault: %" PRId64 "\n", indent * 2, "", node->name, (indent + 1) * 2, "", node->helptext, (indent + 1) * 2, "", (indent + 1) * 2, "", default_value);
 
 		if (node->integer.min != INT64_MIN)
-			fprintf(stdout, "%*smin: %lld\n", (indent + 1) * 2, "", node->integer.min);
+			fprintf(stdout, "%*smin: %" PRId64 "\n", (indent + 1) * 2, "", node->integer.min);
 
 		if (node->integer.max != INT64_MAX)
-			fprintf(stdout, "%*smax: %lld\n", (indent + 1) * 2, "", node->integer.max);
+			fprintf(stdout, "%*smax: %" PRId64 "\n", (indent + 1) * 2, "", node->integer.max);
 
 		fprintf(stdout, "%*s}\n", indent * 2, "");
 	}

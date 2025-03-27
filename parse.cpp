@@ -1,5 +1,6 @@
 #include <cstdarg>
 #include <cstdlib>
+#include <errno.h>
 
 #include "infra/common.hpp"
 #include "infra/alloc_pool.hpp"
@@ -1474,7 +1475,7 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 		error(&parser->lexer, lexeme.offset, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 	}
 
-	return push_node(&parser->builder, first_child_token, flags, DefinitionData{ identifier_id });
+	return push_node(&parser->builder, first_child_token, flags, DefinitionData{ identifier_id, INVALID_TYPE_ID, INVALID_VALUE_ID });
 }
 
 static AstBuilderToken parse_return(Parser* parser) noexcept
@@ -1860,7 +1861,8 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 
 		skip(&parser->lexer);
 
-		const AstBuilderToken return_type_token = parse_expr(parser, false);
+		// Return type
+		parse_expr(parser, false);
 
 		lexeme = peek(&parser->lexer);
 	}
@@ -1869,7 +1871,8 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 	{
 		flags |= AstFlag::Func_HasExpects;
 
-		const AstBuilderToken expects_token = parse_expects(parser);
+		// Expects
+		parse_expects(parser);
 
 		lexeme = peek(&parser->lexer);
 	}
@@ -1878,7 +1881,8 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 	{
 		flags |= AstFlag::Func_HasEnsures;
 
-		const AstBuilderToken ensures_token = parse_ensures(parser);
+		// Ensures
+		parse_ensures(parser);
 
 		lexeme = peek(&parser->lexer);
 	}
@@ -1889,10 +1893,11 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 
 		skip(&parser->lexer);
 
-		const AstBuilderToken body_token = parse_expr(parser, true);
+		// Body
+		parse_expr(parser, true);
 	}
 
-	return push_node(&parser->builder, first_child_token, flags, FuncData{ INVALID_TYPE_ID, INVALID_TYPE_ID });
+	return push_node(&parser->builder, first_child_token, flags, FuncData{ INVALID_TYPE_ID, INVALID_TYPE_ID, INVALID_SCOPE_ID });
 }
 
 static AstBuilderToken parse_trait(Parser* parser) noexcept
@@ -2193,7 +2198,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 						break;
 				}
 
-				const AstBuilderToken block_token = push_node(&parser->builder, first_child_token, AstFlag::EMPTY, BlockData{ definition_count });
+				const AstBuilderToken block_token = push_node(&parser->builder, first_child_token, AstFlag::EMPTY, BlockData{ definition_count, INVALID_SCOPE_ID });
 				
 				push_operand(parser, &stack, block_token);
 			}
@@ -2329,7 +2334,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 				{
 					bool unused;
 
-					const AstBuilderToken curr_token = parse_top_level_expr(parser, true, &unused);
+					parse_top_level_expr(parser, true, &unused);
 
 					lexeme = peek(&parser->lexer);
 
@@ -2462,7 +2467,7 @@ static void parse_file(Parser* parser) noexcept
 			first_child_token = curr_token;
 	};
 
-	push_node(&parser->builder, first_child_token, AstFlag::EMPTY, FileData{ BlockData{ definition_count }, parser->lexer.filepath_id });
+	push_node(&parser->builder, first_child_token, AstFlag::EMPTY, FileData{ BlockData{ definition_count, INVALID_SCOPE_ID }, parser->lexer.filepath_id });
 }
 
 

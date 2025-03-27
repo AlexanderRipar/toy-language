@@ -31,7 +31,7 @@ ValueLocation alloc_value(ValuePool* values, u32 bytes) noexcept
 
 	Value* const value = static_cast<Value*>(values->pool.reserve_padded(sizeof(Value) + bytes));
 
-	return { value, static_cast<u32>(reinterpret_cast<u64*>(value) - values->pool.begin()) };
+	return { value, ValueId{ static_cast<u32>(reinterpret_cast<u64*>(value) - values->pool.begin()) } };
 }
 
 Value* value_from_id(ValuePool* values, ValueId id) noexcept

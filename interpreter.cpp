@@ -17,10 +17,19 @@ struct CallFrame
 
 	u32 cleanup_index;
 
+	#if COMPILER_MSVC
 	#pragma warning(push)
-	#pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
+	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#endif
 	Value* args[];
+	#if COMPILER_MSVC
 	#pragma warning(pop)
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic pop
+	#endif
 };
 
 struct Interpreter
@@ -563,28 +572,27 @@ static void builtin_strideof(Interpreter* interpreter) noexcept
 
 static void builtin_import(Interpreter* interpreter) noexcept
 {
-	interpreter;
-
+	(void) interpreter;
 	panic("Builtin '_import' not yet implemented\n");
 }
 
 static void builtin_create_type_builder(Interpreter* interpreter) noexcept
 {
-	interpreter;
+	(void) interpreter;
 
 	panic("Builtin '_tb_creat' not yet implemented\n");
 }
 
 static void builtin_add_type_member(Interpreter* interpreter) noexcept
 {
-	interpreter;
+	(void) interpreter;
 
 	panic("Builtin '_tb_add' not yet implemented\n");
 }
 
 static void builtin_complete_type(Interpreter* interpreter) noexcept
 {
-	interpreter;
+	(void) interpreter;
 
 	panic("Builtin '_tb_compl' not yet implemented\n");
 }

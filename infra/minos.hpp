@@ -229,7 +229,7 @@ namespace minos
 
 	[[nodiscard]] bool mem_commit(void* ptr, u64 bytes) noexcept;
 
-	void mem_unreserve(void* ptr) noexcept;
+	void mem_unreserve(void* ptr, u64 bytes) noexcept;
 
 	void mem_decommit(void* ptr, u64 bytes) noexcept;
 
@@ -335,17 +335,11 @@ namespace minos
 
 	[[nodiscard]] u64 timestamp_utc() noexcept;
 
-	[[nodiscard]] u64 timestamp_local() noexcept;
-
-	[[nodiscard]] s64 timestamp_local_offset() noexcept;
-
 	[[nodiscard]] u64 timestamp_ticks_per_second() noexcept;
 
 	[[nodiscard]] u64 exact_timestamp() noexcept;
 
 	[[nodiscard]] u64 exact_timestamp_ticks_per_second() noexcept;
-
-	Range<Range<char8>> command_line_get() noexcept;
 }
 
 #endif // MINSO_HPP_INCLUDE_GUARD

@@ -1,3 +1,5 @@
+#ifdef _WIN32
+
 #include "minos.hpp"
 
 #define NOGDICAPMASKS
@@ -165,7 +167,7 @@ bool minos::mem_commit(void* ptr, u64 bytes) noexcept
 	return VirtualAlloc(ptr, bytes, MEM_COMMIT, PAGE_READWRITE) != nullptr;
 }
 
-void minos::mem_unreserve(void* ptr) noexcept
+void minos::mem_unreserve(void* ptr, [[maybe_unused]] u64 bytes) noexcept
 {
 	if (VirtualFree(ptr, 0, MEM_RELEASE) == 0)
 		panic("VirtualFree(MEM_RELEASE) failed (0x%X)\n", last_error());
@@ -678,7 +680,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 
 	if (!mem_commit(command_line_buffer, total_bytes))
 	{
-		mem_unreserve(command_line_buffer);
+		mem_unreserve(command_line_buffer, total_bytes);
 
 		return false;
 	}
@@ -693,14 +695,14 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	{
 		if (!InitializeProcThreadAttributeList(attribute_list, 1, 0, &proc_thread_attribute_list_bytes))
 		{
-			mem_unreserve(command_line_buffer);
+			mem_unreserve(command_line_buffer, total_bytes);
 			
 			return false;
 		}
 
 		if (!UpdateProcThreadAttribute(attribute_list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, const_cast<GenericHandle*>(inherited_handles.begin()), inherited_handles.count() * sizeof(GenericHandle), nullptr, nullptr))
 		{
-			mem_unreserve(command_line_buffer);
+			mem_unreserve(command_line_buffer, total_bytes);
 
 			return false;
 		}
@@ -710,7 +712,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	{
 		if (GetCurrentDirectoryW(working_directory_chars, working_directory_16) != working_directory_chars - 1)
 		{
-			mem_unreserve(command_line_buffer);
+			mem_unreserve(command_line_buffer, total_bytes);
 
 			return false;
 		}
@@ -726,7 +728,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	
 		if (exe_path_utf16_chars == array_count(exe_path_utf16))
 		{
-			mem_unreserve(command_line_buffer);
+			mem_unreserve(command_line_buffer, total_bytes);
 
 			return false;
 		}
@@ -735,7 +737,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	{
 		if (!map_path(exe_path, MutRange{ exe_path_utf16 }, &exe_path_utf16_chars))
 		{
-			mem_unreserve(command_line_buffer);
+			mem_unreserve(command_line_buffer, total_bytes);
 
 			return false;
 		}
@@ -743,7 +745,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 
 	if (!construct_command_line({ command_line_16, MAX_COMMAND_LINE_CHARS + 1 }, Range{ exe_path_utf16, exe_path_utf16_chars }, command_line))
 	{
-		mem_unreserve(command_line_buffer);
+		mem_unreserve(command_line_buffer, total_bytes);
 
 		return false;
 	}
@@ -754,7 +756,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 
 	const bool success = CreateProcessW(nullptr, command_line_16, &security_attributes, nullptr, inherited_handles.count() != 0, CREATE_SUSPENDED, nullptr, working_directory_16, &startup_info.StartupInfo, &process_info) != 0;
 
-	mem_unreserve(command_line_buffer);
+	mem_unreserve(command_line_buffer, total_bytes);
 
 	if (!success)
 		return false;
@@ -1202,40 +1204,6 @@ u64 minos::timestamp_utc() noexcept
 	return filetime.dwLowDateTime | (static_cast<u64>(filetime.dwHighDateTime) << 32);
 }
 
-u64 minos::timestamp_local() noexcept
-{
-	FILETIME utc_filetime;
-
-	GetSystemTimeAsFileTime(&utc_filetime);
-
-	FILETIME local_filetime;
-
-	if (!FileTimeToLocalFileTime(&utc_filetime, &local_filetime))
-		panic("FileTimeToLocalFileTime failed (0x%X)\n", last_error());
-
-	return local_filetime.dwLowDateTime | (static_cast<u64>(local_filetime.dwHighDateTime) << 32);
-}
-
-s64 minos::timestamp_local_offset() noexcept
-{
-	TIME_ZONE_INFORMATION timezone;
-
-	const u32 mode = GetTimeZoneInformation(&timezone);
-
-	u64 offset_minutes;
-
-	if (mode == TIME_ZONE_ID_UNKNOWN || mode == TIME_ZONE_ID_STANDARD)
-		offset_minutes = timezone.Bias + timezone.StandardBias;
-	else if (mode == TIME_ZONE_ID_DAYLIGHT)
-		offset_minutes = timezone.Bias + timezone.DaylightBias;
-	else if (mode == TIME_ZONE_ID_INVALID)
-		panic("Could not determine timezone information (0x%X)\n", last_error());
-	else
-		ASSERT_UNREACHABLE;
-
-	return offset_minutes * 60 * timestamp_ticks_per_second();
-}
-
 u64 minos::timestamp_ticks_per_second() noexcept
 {
 	return 10'000'000ui64;
@@ -1259,52 +1227,4 @@ u64 minos::exact_timestamp_ticks_per_second() noexcept
 	return result.QuadPart;
 }
 
-Range<Range<char8>> minos::command_line_get() noexcept
-{
-	s32 argc;
-
-	char16** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-
-	if (argv == nullptr)
-		panic("CommandLineToArgvW failed (0x%X)\n", last_error());
-
-	u32 required_bytes = sizeof(Range<char8>) * argc;
-
-	for (s32 i = 0; i != argc; ++i)
-	{
-		const u32 arg_bytes = WideCharToMultiByte(CP_UTF8, 0, argv[i], -1, nullptr, 0, nullptr, nullptr);
-
-		if (arg_bytes == 0)
-			panic("WideCharToMultiByte failed (0x%X)\n", last_error());
-
-		required_bytes += arg_bytes;
-	}
-
-	Range<char8>* const dst = static_cast<Range<char8>*>(mem_reserve(required_bytes));
-
-	if (dst == nullptr)
-		panic("reserve failed (0x%X)\n", last_error());
-
-	if (!mem_commit(dst, required_bytes))
-		panic("commit failed (0x%X)\n", last_error());
-
-	u32 dst_arg_offset = sizeof(Range<char8>) * argc;
-
-	char8* const dst_argv = reinterpret_cast<char8*>(dst);
-
-	for (s32 i = 0; i != argc; ++i)
-	{
-		const u32 arg_bytes = WideCharToMultiByte(CP_UTF8, 0, argv[i], -1, dst_argv + dst_arg_offset, required_bytes - dst_arg_offset, nullptr, nullptr);
-
-		if (arg_bytes == 0)
-			panic("WideCharToMultiByte failed (0x%X)\n", last_error());
-
-		dst[i] = Range<char8>{ dst_argv + dst_arg_offset, arg_bytes - 1 };
-
-		dst_arg_offset += arg_bytes;
-	}
-
-	LocalFree(argv);
-
-	return Range{ dst, static_cast<u64>(argc) };
-}
+#endif // defined(_WIN32)

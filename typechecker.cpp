@@ -3,6 +3,8 @@
 #include "ast_attach.hpp"
 #include "ast_helper.hpp"
 
+#include <cstdio>
+
 struct Typechecker
 {
 	Interpreter* interpreter;
@@ -32,7 +34,7 @@ static AstBuilderToken push_std_def(AstBuilder* builder, IdentifierPool* identif
 
 	const AstBuilderToken import_call_token = push_node(builder, import_builtin_token, AstTag::Call, AstFlag::EMPTY);
 
-	return push_node(builder, import_call_token, AstFlag::EMPTY, DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")), INVALID_TYPE_ID });
+	return push_node(builder, import_call_token, AstFlag::EMPTY, DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")), INVALID_TYPE_ID, INVALID_VALUE_ID });
 }
 
 static void push_std_use(AstBuilder* builder, IdentifierPool* identifiers, Range<char8> identifier) noexcept
@@ -43,7 +45,7 @@ static void push_std_use(AstBuilder* builder, IdentifierPool* identifiers, Range
 
 	const AstBuilderToken op_member_token = push_node(builder, std_identifier_token, AstTag::OpMember, AstFlag::EMPTY);
 	
-	push_node(builder, op_member_token, AstFlag::Definition_IsUse, DefinitionData{ id_from_identifier(identifiers, identifier), INVALID_TYPE_ID });
+	push_node(builder, op_member_token, AstFlag::Definition_IsUse, DefinitionData{ id_from_identifier(identifiers, identifier), INVALID_TYPE_ID, INVALID_VALUE_ID });
 }
 
 static AstNode* create_builtin_ast(AstBuilder* builder, IdentifierPool* identifiers, AstPool* asts) noexcept
@@ -292,7 +294,7 @@ TypeId typecheck_expr(Typechecker* typechecker, Scope* enclosing_scope, AstNode*
 			else
 				panic("Integer bit width of %u in array count expression is not currently supported\n", integer_type->bits);
 
-			if ((count_type->flags & TypeFlag::Integer_IsSigned) == TypeFlag::Integer_IsSigned && (the_count & (1ui64 << (integer_type->bits - 1))) != 0)
+			if ((count_type->flags & TypeFlag::Integer_IsSigned) == TypeFlag::Integer_IsSigned && (the_count & (static_cast<u64>(1) << (integer_type->bits - 1))) != 0)
 				panic("Array count expression value negative\n");
 		}
 		else

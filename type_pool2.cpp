@@ -60,6 +60,11 @@ struct TypeBuilder2
 {
 	union
 	{
+		#if COMPILER_CLANG
+			#pragma clang diagnostic push
+			#pragma clang diagnostic ignored "-Wgnu-anonymous-struct" // anonymous structs are a GNU extension
+			#pragma clang diagnostic ignored "-Wnested-anon-types" // anonymous types declared in an anonymous union are an extension
+		#endif
 		struct
 		{
 			s32 next_offset;
@@ -72,6 +77,9 @@ struct TypeBuilder2
 
 			TypePool2* types;
 		};
+		#if COMPILER_CLANG
+			#pragma clang diagnostic pop
+		#endif
 
 		Member2 unused_align_;
 	};

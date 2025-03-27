@@ -13,7 +13,7 @@ add_executable(
 	infra/alloc_pool.hpp infra/alloc_pool.cpp
 	infra/common.hpp infra/common.cpp
 	infra/hash.hpp
-	infra/minos.hpp infra/minos.cpp
+	infra/minos.hpp infra/minos_win32.cpp infra/minos_linux.cpp
 	infra/range.hpp
 	infra/container.hpp
 	infra/threading.hpp
@@ -42,11 +42,11 @@ add_executable(
 	diag/print_type.cpp
 )
 
-target_link_libraries(compil0r PRIVATE synchronization)
-
 target_compile_features(compil0r PRIVATE cxx_std_17)
 
 if (MSVC)
+	target_link_libraries(compil0r PRIVATE synchronization)
+
 	target_link_options(compil0r PRIVATE
 		"$<$<NOT:$<CONFIG:Debug>>:/DEBUG>"
 		"$<$<NOT:$<CONFIG:Debug>>:/OPT:REF>"

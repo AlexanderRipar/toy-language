@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdarg>
+#include <inttypes.h>
 
 #if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
 	#define COMPILER_MSVC 1

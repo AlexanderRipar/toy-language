@@ -10,7 +10,7 @@ add_executable(test test_main.cpp
 
 	../infra/alloc_pool.hpp ../infra/alloc_pool.cpp
 	../infra/common.hpp ../infra/common.cpp
-	../infra/minos.hpp ../infra/minos.cpp
+	../infra/minos.hpp ../infra/minos_win32.cpp ../infra/minos_linux.cpp
 	../infra/hash.hpp
 	../infra/range.hpp
 	../infra/container.hpp
@@ -40,11 +40,12 @@ add_executable(test test_main.cpp
 	../diag/print_type.cpp
 )
 
-target_link_libraries(test PRIVATE synchronization)
 
 target_compile_features(test PRIVATE cxx_std_17)
 
 if (MSVC)
+	target_link_libraries(test PRIVATE synchronization)
+
 	target_link_options(test PRIVATE
 		"$<$<NOT:$<CONFIG:Debug>>:/DEBUG>"
 		"$<$<NOT:$<CONFIG:Debug>>:/OPT:REF>"

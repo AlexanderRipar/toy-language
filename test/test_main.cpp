@@ -1,5 +1,7 @@
 #include <cstdio>
 #include <vector>
+#include <cstdlib>
+#include <inttypes.h>
 
 #include "test_helpers.hpp"
 
@@ -36,6 +38,9 @@ static TimeDesc readable_time(u64 duration, u64 ticks_per_second) noexcept
 
 s32 main(s32 argc, const char8** argv) noexcept
 {
+	if (minos::mem_reserve(65536) == nullptr)
+		panic("mem_reserve is broken :(\n");
+
 	const u64 start = minos::exact_timestamp();
 
 	bool command_line_ok = argc == 1;
@@ -77,7 +82,7 @@ s32 main(s32 argc, const char8** argv) noexcept
 	}
 
 	if (test_failure_count != 0)
-		fprintf(stderr, "%u out of %llu tests (%u asserts in total) failed in %.1f %s. Rerun under a debugger to trigger the relevant breakpoints.\n", test_failure_count, g_test_times.size(), assertion_failure_count, rd.count, rd.unit);
+		fprintf(stderr, "%u out of %" PRIu64 " tests (%u asserts in total) failed in %.1f %s. Rerun under a debugger to trigger the relevant breakpoints.\n", test_failure_count, g_test_times.size(), assertion_failure_count, rd.count, rd.unit);
 	else
-		fprintf(stderr, "All %llu tests passed in %.1f %s\n", g_test_times.size(), rd.count, rd.unit);
+		fprintf(stderr, "All %" PRIu64 " tests passed in %.1f %s\n", g_test_times.size(), rd.count, rd.unit);
 }

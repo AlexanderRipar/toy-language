@@ -3,6 +3,7 @@
 
 #include <cstring>
 #include <vector>
+#include <cstdio>
 
 #include "../infra/common.hpp"
 #include "../infra/minos.hpp"
@@ -11,7 +12,7 @@
 	#include <intrin.h>
 	#define DEBUGBREAK __debugbreak()
 #elif COMPILER_CLANG
-	#ifndef __has_builtin(__builtin_debugtrap)
+	#if !__has_builtin(__builtin_debugtrap)
 		#error("Required __builtin_debugtrap not supported by used clang version")
 	#endif
 
@@ -42,7 +43,7 @@ extern bool g_ignore_debugbreaks;
 
 #define TEST_END \
 		ASSERT_OR_IGNORE(g_curr_module != nullptr); \
-		g_test_times.push_back({ __FUNCTION__, g_curr_module, minos::exact_timestamp() - test_start_ })
+		g_test_times.push_back({ __FUNCTION__, g_curr_module, minos::exact_timestamp() - test_start_, 0 })
 
 #define TEST_MODULE_BEGIN \
 		g_curr_module = __FUNCTION__; \
@@ -51,7 +52,7 @@ extern bool g_ignore_debugbreaks;
 #define TEST_MODULE_END \
 		ASSERT_OR_IGNORE(g_curr_module != nullptr && strcmp(g_curr_module, __FUNCTION__) == 0); \
 		g_curr_module = nullptr; \
-		g_module_times.push_back({ nullptr, __FUNCTION__, minos::exact_timestamp() - module_start_ })
+		g_module_times.push_back({ nullptr, __FUNCTION__, minos::exact_timestamp() - module_start_, 0 })
 
 #define TEST_RELATION_(a, b, relation) \
 		do { \
@@ -65,7 +66,7 @@ extern bool g_ignore_debugbreaks;
 
 #define TEST_FUNCTION_(a, b, c, function, relation, expected) \
 		do { \
-			if (!(function((a), (b), (c))) relation (expected)) { \
+			if (!((function((a), (b), (c))) relation (expected))) { \
 				fprintf(stderr, "%s:\n    Assertion %s(%s, %s, %s) %s %s failed\n    (%s:%u)\n", __FUNCTION__, #function, #a, #b, #c, #relation, #expected, __FILE__, __LINE__); \
 				g_test_times.back().failure_count += 1; \
 				if (!g_ignore_debugbreaks) \

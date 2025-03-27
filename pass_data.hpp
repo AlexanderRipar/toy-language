@@ -1206,7 +1206,7 @@ struct SimpleType2
 {
 	static constexpr bool IS_INLINED = true;
 
-	u32 unused_;
+	u32 unused_ = 0;
 };
 
 struct ReferenceType2
@@ -1230,7 +1230,7 @@ struct IntegerType2
 	
 	bool is_signed;
 
-	u8 unused_;
+	u8 unused_ = 0;
 };
 
 struct FloatType2
@@ -1239,7 +1239,7 @@ struct FloatType2
 
 	u16 bits;
 
-	u16 unused_;
+	u16 unused_ = 0;
 };
 
 struct ArrayType2
