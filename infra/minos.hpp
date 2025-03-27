@@ -6,7 +6,15 @@
 
 namespace minos
 {
-	using thread_proc = u32 (__stdcall *) (void* param);
+	#if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
+		#define THREAD_PROC __stdcall
+	#elif defined(__clang__)
+		#define THREAD_PROC
+	#else
+		#error("Unsupported compiler")
+	#endif
+
+	using thread_proc = u32 (THREAD_PROC *) (void* param);
 
 	static constexpr u32 MAX_PATH_CHARS = 32767;
 
@@ -239,7 +247,7 @@ namespace minos
 
 	void thread_yield() noexcept;
 
-	__declspec(noreturn) void exit_process(u32 exit_code) noexcept;
+	NORETURN void exit_process(u32 exit_code) noexcept;
 
 	[[nodiscard]] u32 logical_processor_count() noexcept;
 

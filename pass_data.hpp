@@ -162,10 +162,19 @@ struct alignas(8) IdentifierEntry
 
 	Token m_token;
 
+	#if COMPILER_MSVC
 	#pragma warning(push)
 	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#endif
 	char8 m_chars[];
+	#if COMPILER_MSVC
 	#pragma warning(pop)
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic pop
+	#endif
 
 	static constexpr u32 stride() noexcept
 	{
@@ -937,10 +946,19 @@ struct FuncType
 {
 	FuncTypeHeader header;
 
+	#if COMPILER_MSVC
 	#pragma warning(push)
-	#pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
+	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#endif
 	FuncTypeParam params[];
+	#if COMPILER_MSVC
 	#pragma warning(pop)
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic pop
+	#endif
 };
 
 struct CompositeTypeHeader
@@ -981,10 +999,19 @@ struct CompositeType
 {
 	CompositeTypeHeader header;
 
+	#if COMPILER_MSVC
 	#pragma warning(push)
-	#pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
+	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#endif
 	CompositeTypeMember members[];
+	#if COMPILER_MSVC
 	#pragma warning(pop)
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic pop
+	#endif
 };
 
 struct TypeKey
@@ -1006,10 +1033,19 @@ struct alignas(8) TypeEntry
 
 	TypeFlag flags;
 
+	#if COMPILER_MSVC
 	#pragma warning(push)
 	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#endif
 	byte m_value[];
+	#if COMPILER_MSVC
 	#pragma warning(pop)
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic pop
+	#endif
 
 	static constexpr u32 stride() noexcept
 	{
@@ -1151,10 +1187,19 @@ struct alignas(u64) TypeEntry2
 
 	u32 inline_data;
 
+	#if COMPILER_MSVC
 	#pragma warning(push)
-	#pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
+	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#endif
 	u64 data[];
+	#if COMPILER_MSVC
 	#pragma warning(pop)
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic pop
+	#endif
 };
 
 struct SimpleType2
@@ -1234,10 +1279,19 @@ struct CompositeType2
 
 	CompositeTypeHeader2 header;
 
+	#if COMPILER_MSVC
 	#pragma warning(push)
-	#pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
+	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#endif
 	Member2 members[];
+	#if COMPILER_MSVC
 	#pragma warning(pop)
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic pop
+	#endif
 };
 
 struct FuncTypeHeader2
@@ -1257,10 +1311,19 @@ struct FuncType2
 
 	FuncTypeHeader2 header;
 
+	#if COMPILER_MSVC
 	#pragma warning(push)
-	#pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
+	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#endif
 	Member2 param[];
+	#if COMPILER_MSVC
 	#pragma warning(pop)
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic pop
+	#endif
 };
 
 static constexpr TypeId2 INVALID_TYPE_ID_2 = { 0 };
@@ -1330,10 +1393,19 @@ struct Value
 {
 	ValueHeader header;
 
+	#if COMPILER_MSVC
 	#pragma warning(push)
-	#pragma warning(disable: 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
+	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#endif
 	byte value[];
+	#if COMPILER_MSVC
 	#pragma warning(pop)
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic pop
+	#endif
 };
 
 struct ReferenceValue
@@ -1461,10 +1533,19 @@ struct Scope
 {
 	ScopeHeader header;
 
+	#if COMPILER_MSVC
 	#pragma warning(push)
-	#pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
+	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#endif
 	ScopeEntry definitions[];
+	#if COMPILER_MSVC
 	#pragma warning(pop)
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic pop
+	#endif
 };
 
 struct ScopeId

@@ -134,7 +134,7 @@ namespace thd
 
 				const u32 next = *next_ptr;
 
-				const u64 new_all = (all ^ next ^ head) + (1ui64 << 32);
+				const u64 new_all = (all ^ next ^ head) + (static_cast<u64>(1) << 32);
 
 				if (m_all.compare_exchange_weak(all, new_all))
 					return begin + head;

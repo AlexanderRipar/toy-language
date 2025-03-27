@@ -171,7 +171,7 @@ private:
 
 
 
-	__declspec(noreturn) void error(u64 offset, const char8* format, ...) const noexcept
+	NORETURN void error(u64 offset, const char8* format, ...) const noexcept
 	{
 		va_list args;
 

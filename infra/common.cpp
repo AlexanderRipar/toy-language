@@ -7,7 +7,7 @@
 #include "minos.hpp"
 
 #ifndef NDEBUG
-	__declspec(noreturn) void assert_unreachable_helper() noexcept
+NORETURN void assert_unreachable_helper() noexcept
 	{
 		fprintf(stderr, "Reached unreachable code\n");
 	
@@ -17,7 +17,7 @@
 	}
 #endif // !NDEBUG
 
-__declspec(noreturn) void vpanic(const char8* format, va_list args) noexcept
+NORETURN void vpanic(const char8* format, va_list args) noexcept
 {
 	vfprintf(stderr, format, args);
 
@@ -26,7 +26,7 @@ __declspec(noreturn) void vpanic(const char8* format, va_list args) noexcept
 	minos::exit_process(1);
 }
 
-__declspec(noreturn) void panic(const char8* format, ...) noexcept
+NORETURN void panic(const char8* format, ...) noexcept
 {
 	va_list args;
 

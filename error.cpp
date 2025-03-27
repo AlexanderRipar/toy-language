@@ -31,7 +31,7 @@ static SourceLocation source_location_from(u32 offset, Range<char8> content) noe
 	return { static_cast<u32>(line), static_cast<u32>(offset - line_begin + 1) };
 }
 
-__declspec(noreturn) void source_error(u64 offset, Range<char8> content, Range<char8> filepath, const char8* format, ...) noexcept
+NORETURN void source_error(u64 offset, Range<char8> content, Range<char8> filepath, const char8* format, ...) noexcept
 {
 	va_list args;
 
@@ -40,7 +40,7 @@ __declspec(noreturn) void source_error(u64 offset, Range<char8> content, Range<c
 	vsource_error(offset, content, filepath, format, args);
 }
 
-__declspec(noreturn) void vsource_error(u64 offset, Range<char8> content, Range<char8> filepath, const char8* format, va_list args) noexcept
+NORETURN void vsource_error(u64 offset, Range<char8> content, Range<char8> filepath, const char8* format, va_list args) noexcept
 {
 	ASSERT_OR_IGNORE(offset <= UINT32_MAX);
 

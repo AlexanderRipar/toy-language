@@ -225,7 +225,7 @@ static u8 hex_char_value(char8 c) noexcept
 
 
 
-__declspec(noreturn) static void error(const Lexer* lexer, u64 offset, const char8* format, ...) noexcept
+NORETURN static void error(const Lexer* lexer, u64 offset, const char8* format, ...) noexcept
 {
 	va_list args;
 

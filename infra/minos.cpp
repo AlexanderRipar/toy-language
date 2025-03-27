@@ -218,7 +218,7 @@ void minos::thread_yield() noexcept
 	YieldProcessor();
 }
 
-__declspec(noreturn) void minos::exit_process(u32 exit_code) noexcept
+NORETURN void minos::exit_process(u32 exit_code) noexcept
 {
 	ExitProcess(exit_code);
 }

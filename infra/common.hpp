@@ -3,6 +3,17 @@
 
 #include <cassert>
 #include <cstdint>
+#include <cstdarg>
+
+#if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
+	#define COMPILER_MSVC 1
+	#define NORETURN __declspec(noreturn)
+#elif defined(__clang__)
+	#define COMPILER_CLANG 1
+	#define NORETURN [[noreturn]]
+#else
+	#error("Unsupported compiler")
+#endif
 
 using u8  = uint8_t;
 using u16 = uint16_t;
@@ -31,7 +42,7 @@ using f64 = double;
 	#define ASSERT_OR_IGNORE(x) do {} while (false)
 	#define ASSERT_UNREACHABLE do { 1 / 0; } while (false)
 #else
-	__declspec(noreturn) void assert_unreachable_helper() noexcept;
+	NORETURN void assert_unreachable_helper() noexcept;
 
 	#define ASSERT_OR_IGNORE(x) assert(x)
 	#define ASSERT_UNREACHABLE assert_unreachable_helper()
@@ -71,8 +82,8 @@ inline u64 align_to(u64 n, u64 alignment) noexcept
 	return (n + alignment - 1) & ~(alignment - 1);
 }
 
-__declspec(noreturn) void panic(const char8* format, ...) noexcept;
+NORETURN void panic(const char8* format, ...) noexcept;
 
-__declspec(noreturn) void vpanic(const char8* format, va_list args) noexcept;
+NORETURN void vpanic(const char8* format, va_list args) noexcept;
 
 #endif // COMMON_INCLUDE_GUARD

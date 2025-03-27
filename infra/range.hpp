@@ -120,11 +120,11 @@ public:
 		return { m_begin + begin, m_end };
 	}
 
-	Range<T> subrange(uint begin, uint count) const noexcept
+	Range<T> subrange(uint begin, uint subrange_count) const noexcept
 	{
-		ASSERT_OR_IGNORE(begin + count <= count());
+		ASSERT_OR_IGNORE(begin + subrange_count <= count());
 
-		return { m_begin + begin, count };
+		return { m_begin + begin, subrange_count };
 	}
 
 	MutRange<T> mut_subrange(uint begin) noexcept
@@ -134,11 +134,11 @@ public:
 		return { m_begin + begin, m_end };
 	}
 
-	MutRange<T> mut_subrange(uint begin, uint count) noexcept
+	MutRange<T> mut_subrange(uint begin, uint subrange_count) noexcept
 	{
-		ASSERT_OR_IGNORE(begin + count <= count());
+		ASSERT_OR_IGNORE(begin + subrange_count <= count());
 
-		return { m_begin + begin, count };
+		return { m_begin + begin, subrange_count };
 	}
 
 	MutRange<byte> as_mut_byte_range() noexcept
@@ -252,7 +252,7 @@ public:
 
 	const T* end() const noexcept
 	{
-		return m_end;
+		return m_begin + m_count;
 	}
 
 	u32 count() const noexcept
@@ -355,7 +355,7 @@ public:
 
 	const T* end() const noexcept
 	{
-		return m_end;
+		return m_begin + m_count;
 	}
 
 	T* begin() noexcept
@@ -365,12 +365,12 @@ public:
 
 	T* end() noexcept
 	{
-		return m_end;
+		return m_begin + m_count;
 	}
 
 	uint count() const noexcept
 	{
-		return m_end - m_begin;
+		return m_count;
 	}
 
 	Attach attachment() const noexcept
