@@ -1354,8 +1354,6 @@ static inline T* data(TypeEntry2* entry) noexcept
 		return reinterpret_cast<T*>(entry->data);
 }
 
-static TypeEntry2* alloc_type(TypePool2* types, TypeTag tag, u32 bytes) noexcept;
-
 TypePool2* create_type_pool2(AllocPool* alloc) noexcept;
 
 void release_type_pool2(TypePool2* types) noexcept;

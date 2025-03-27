@@ -6,12 +6,10 @@
 
 namespace minos
 {
-	#if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
+	#if COMPILER_MSVC
 		#define THREAD_PROC __stdcall
-	#elif defined(__clang__)
+	#elif COMPILER_CLANG
 		#define THREAD_PROC
-	#else
-		#error("Unsupported compiler")
 	#endif
 
 	using thread_proc = u32 (THREAD_PROC *) (void* param);

@@ -1,12 +1,22 @@
 #ifndef TEST_HELPERS_INCLUDE_GUARD
 #define TEST_HELPERS_INCLUDE_GUARD
 
-#include <intrin.h>
 #include <cstring>
 #include <vector>
 
 #include "../infra/common.hpp"
 #include "../infra/minos.hpp"
+
+#if COMPILER_MSVC
+	#include <intrin.h>
+	#define DEBUGBREAK __debugbreak()
+#elif COMPILER_CLANG
+	#ifndef __has_builtin(__builtin_debugtrap)
+		#error("Required __builtin_debugtrap not supported by used clang version")
+	#endif
+
+	#define DEBUGBREAK __builtin_debugtrap()
+#endif
 
 struct TestResult
 {
@@ -49,7 +59,7 @@ extern bool g_ignore_debugbreaks;
 				fprintf(stderr, "%s:\n    Assertion %s %s %s failed\n    (%s:%u)\n", __FUNCTION__, #a, #relation, #b, __FILE__, __LINE__); \
 				g_test_times.back().failure_count += 1; \
 				if (!g_ignore_debugbreaks) \
-					__debugbreak(); \
+					DEBUGBREAK; \
 			} \
 		} while (false)
 
@@ -59,7 +69,7 @@ extern bool g_ignore_debugbreaks;
 				fprintf(stderr, "%s:\n    Assertion %s(%s, %s, %s) %s %s failed\n    (%s:%u)\n", __FUNCTION__, #function, #a, #b, #c, #relation, #expected, __FILE__, __LINE__); \
 				g_test_times.back().failure_count += 1; \
 				if (!g_ignore_debugbreaks) \
-					__debugbreak(); \
+					DEBUGBREAK; \
 			} \
 		} while (false)
 

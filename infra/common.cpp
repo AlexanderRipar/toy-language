@@ -2,7 +2,17 @@
 
 #include <cstdio>
 #include <cstdarg>
-#include <intrin.h>
+
+#if COMPILER_MSVC
+	#include <intrin.h>
+	#define DEBUGBREAK __debugbreak()
+#elif COMPILER_CLANG
+	#if !__has_builtin(__builtin_debugtrap)
+		#error("Required __builtin_debugtrap not supported by used clang version")
+	#endif
+
+	#define DEBUGBREAK __builtin_debugtrap()
+#endif
 
 #include "minos.hpp"
 
@@ -11,7 +21,7 @@ NORETURN void assert_unreachable_helper() noexcept
 	{
 		fprintf(stderr, "Reached unreachable code\n");
 	
-		__debugbreak();
+		DEBUGBREAK;
 
 		minos::exit_process(1);
 	}
@@ -21,7 +31,7 @@ NORETURN void vpanic(const char8* format, va_list args) noexcept
 {
 	vfprintf(stderr, format, args);
 
-	__debugbreak();
+	DEBUGBREAK;
 
 	minos::exit_process(1);
 }
