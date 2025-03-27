@@ -31,6 +31,7 @@ add_executable(
 	scope_pool.cpp
 	token.cpp
 	type_pool.cpp
+	type_pool2.cpp
 	typechecker.cpp
 	value_pool.cpp
 

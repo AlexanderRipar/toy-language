@@ -1109,6 +1109,210 @@ void add_func_type_param(TypePool* types, FuncTypeBuilder* func_builder, FuncTyp
 TypeId complete_func_type(TypePool* types, FuncTypeBuilder* func_builder, TypeId return_type, bool is_proc) noexcept;
 
 
+
+struct TypePool2;
+
+struct TypeBuilder2;
+
+struct TypeId2
+{
+	u32 rep;
+};
+
+struct Definition2
+{
+	IdentifierId name;
+
+	u32 is_pub : 1;
+
+	u32 is_mut : 1;
+
+	u32 is_global : 1;
+
+	u32 type_id_bits : 29;
+
+	AstNodeId opt_type;
+
+	AstNodeId opt_value;
+};
+
+struct Member2
+{
+	Definition2 definition;
+
+	s64 offset;
+};
+
+struct alignas(u64) TypeEntry2
+{
+	TypeTag tag;
+
+	u16 bytes;
+
+	u32 inline_data;
+
+	#pragma warning(push)
+	#pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
+	u64 data[];
+	#pragma warning(pop)
+};
+
+struct SimpleType2
+{
+	static constexpr bool IS_INLINED = true;
+
+	u32 unused_;
+};
+
+struct ReferenceType2
+{
+	static constexpr bool IS_INLINED = true;
+
+	u32 is_mut : 1;
+
+	u32 is_opt : 1;
+
+	u32 is_multi : 1;
+
+	u32 referenced_type_id : 29;
+};
+
+struct IntegerType2
+{
+	static constexpr bool IS_INLINED = true;
+
+	u16 bits;
+	
+	bool is_signed;
+
+	u8 unused_;
+};
+
+struct FloatType2
+{
+	static constexpr bool IS_INLINED = true;
+
+	u16 bits;
+
+	u16 unused_;
+};
+
+struct ArrayType2
+{
+	static constexpr bool IS_INLINED = false;
+
+	// TypeId element_type_id stored in inline_data
+
+	u64 element_count;
+};
+
+struct ArrayTypeInitializer2
+{
+	u32 unused_;
+
+	TypeId2 element_type_id;
+
+	u64 element_count;
+};
+
+struct CompositeTypeHeader2
+{
+	u64 size;
+
+	u64 stride;
+
+	u32 align;
+
+	u16 member_count;
+
+	bool is_complete;
+};
+
+struct CompositeType2
+{
+	static constexpr bool IS_INLINED = false;
+
+	CompositeTypeHeader2 header;
+
+	#pragma warning(push)
+	#pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
+	Member2 members[];
+	#pragma warning(pop)
+};
+
+struct FuncTypeHeader2
+{
+	TypeId2 return_type_id;
+
+	u16 param_count;
+
+	bool is_complete;
+
+	bool is_proc;
+};
+
+struct FuncType2
+{
+	static constexpr bool IS_INLINED = false;
+
+	FuncTypeHeader2 header;
+
+	#pragma warning(push)
+	#pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
+	Member2 param[];
+	#pragma warning(pop)
+};
+
+static constexpr TypeId2 INVALID_TYPE_ID_2 = { 0 };
+
+static inline bool operator==(TypeId2 lhs, TypeId2 rhs) noexcept
+{
+	return lhs.rep == rhs.rep;
+}
+
+static inline bool operator!=(TypeId2 lhs, TypeId2 rhs) noexcept
+{
+	return lhs.rep != rhs.rep;
+}
+
+static inline Range<byte> array_type_initializer_bytes(const ArrayTypeInitializer2* initializer) noexcept
+{
+	return Range<byte>{ reinterpret_cast<const byte*>(&initializer->element_type_id), 12 };
+}
+
+template<typename T>
+static inline T* data(TypeEntry2* entry) noexcept
+{
+	static_assert(!T::IS_INLINED || sizeof(T) <= sizeof(entry->inline_data));
+
+	if constexpr (T::IS_INLINED)
+		return reinterpret_cast<T*>(&entry->inline_data);
+	else
+		return reinterpret_cast<T*>(entry->data);
+}
+
+static TypeEntry2* alloc_type(TypePool2* types, TypeTag tag, u32 bytes) noexcept;
+
+TypePool2* create_type_pool2(AllocPool* alloc) noexcept;
+
+void release_type_pool2(TypePool2* types) noexcept;
+
+TypeEntry2* type_entry_from_primitive_type(TypePool2* types, TypeTag tag, Range<byte> bytes) noexcept;
+
+TypeEntry2* type_entry_from_id(TypePool2* types, TypeId id) noexcept;
+
+TypeId2 id_from_type_entry(TypePool2* types, TypeEntry2* entry) noexcept;
+
+TypeBuilder2* create_type_builder(TypePool2* types) noexcept;
+
+void add_type_member(TypeBuilder2* builder, Member2 member) noexcept;
+
+TypeEntry2* complete_type(TypeBuilder2* builder, u64 size, u32 align, u64 stride) noexcept;
+
+
+
+
+
 struct ValuePool;
 
 struct alignas(u64) ValueHeader

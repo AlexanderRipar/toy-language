@@ -5,6 +5,7 @@ project(test)
 add_executable(test test_main.cpp
 	test_helpers.hpp
 	ast_tests.cpp
+	type_pool2_tests.cpp
 
 
 	../infra/alloc_pool.hpp ../infra/alloc_pool.cpp
@@ -28,6 +29,7 @@ add_executable(test test_main.cpp
 	../scope_pool.cpp
 	../token.cpp
 	../type_pool.cpp
+	../type_pool2.cpp
 	../typechecker.cpp
 	../value_pool.cpp
 
