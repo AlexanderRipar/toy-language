@@ -129,6 +129,8 @@ void release_type_pool2(TypePool2* types) noexcept
 {
 	types->types.release();
 
+	types->primitive_types.release();
+
 	types->builders.release();
 }
 
