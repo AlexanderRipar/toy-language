@@ -168,12 +168,17 @@ struct alignas(8) IdentifierEntry
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic push
 	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	char8 m_chars[];
 	#if COMPILER_MSVC
 	#pragma warning(pop)
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic pop
 	#endif
 
 	static constexpr u32 stride() noexcept
@@ -952,12 +957,17 @@ struct FuncType
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic push
 	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	FuncTypeParam params[];
 	#if COMPILER_MSVC
 	#pragma warning(pop)
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic pop
 	#endif
 };
 
@@ -1005,12 +1015,17 @@ struct CompositeType
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic push
 	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	CompositeTypeMember members[];
 	#if COMPILER_MSVC
 	#pragma warning(pop)
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic pop
 	#endif
 };
 
@@ -1039,12 +1054,17 @@ struct alignas(8) TypeEntry
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic push
 	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	byte m_value[];
 	#if COMPILER_MSVC
 	#pragma warning(pop)
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic pop
 	#endif
 
 	static constexpr u32 stride() noexcept
@@ -1193,12 +1213,17 @@ struct alignas(u64) TypeEntry2
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic push
 	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	u64 data[];
 	#if COMPILER_MSVC
 	#pragma warning(pop)
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic pop
 	#endif
 };
 
@@ -1285,12 +1310,17 @@ struct CompositeType2
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic push
 	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	Member2 members[];
 	#if COMPILER_MSVC
 	#pragma warning(pop)
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic pop
 	#endif
 };
 
@@ -1317,12 +1347,17 @@ struct FuncType2
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic push
 	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	Member2 param[];
 	#if COMPILER_MSVC
 	#pragma warning(pop)
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic pop
 	#endif
 };
 
@@ -1397,12 +1432,17 @@ struct Value
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic push
 	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	byte value[];
 	#if COMPILER_MSVC
 	#pragma warning(pop)
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic pop
 	#endif
 };
 
@@ -1537,12 +1577,17 @@ struct Scope
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic push
 	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	ScopeEntry definitions[];
 	#if COMPILER_MSVC
 	#pragma warning(pop)
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic pop
 	#endif
 };
 

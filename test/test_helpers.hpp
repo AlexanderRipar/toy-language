@@ -17,6 +17,10 @@
 	#endif
 
 	#define DEBUGBREAK __builtin_debugtrap()
+#elif COMPILER_GCC
+	#include <signal.h>
+
+	#define DEBUGBREAK raise(SIGTRAP) 
 #endif
 
 struct TestResult

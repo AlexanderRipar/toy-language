@@ -9,8 +9,15 @@
 #include <cstdlib>
 
 // TODO: Remove
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter" // unused parameter
+#if COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wunused-parameter" // unused parameter
+#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wunused-parameter" // unused parameter
+#else
+	#error("Unsupported compiler")
+#endif
 
 u32 minos::last_error() noexcept
 {
@@ -322,6 +329,12 @@ u64 minos::exact_timestamp_ticks_per_second() noexcept
 }
 
 // TODO: Remove
-#pragma clang diagnostic pop
+#if COMPILER_CLANG
+	#pragma clang diagnostic pop
+#elif COMPILER_GCC
+#pragma GCC diagnostic pop
+#else
+	#error("Unknown compiler")
+#endif
 
 #endif

@@ -12,6 +12,12 @@
 	#endif
 
 	#define DEBUGBREAK __builtin_debugtrap()
+#elif COMPILER_GCC
+	#include <signal.h>
+
+	#define DEBUGBREAK raise(SIGTRAP)
+#else
+	#error("Unknown compiler")
 #endif
 
 #include "minos.hpp"

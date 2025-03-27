@@ -8,8 +8,10 @@ namespace minos
 {
 	#if COMPILER_MSVC
 		#define THREAD_PROC __stdcall
-	#elif COMPILER_CLANG
+	#elif COMPILER_CLANG || COMPILER_GCC
 		#define THREAD_PROC
+	#else
+		#error("Unknown compiler")
 	#endif
 
 	using thread_proc = u32 (THREAD_PROC *) (void* param);

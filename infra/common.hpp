@@ -12,6 +12,9 @@
 #elif defined(__clang__)
 	#define COMPILER_CLANG 1
 	#define NORETURN [[noreturn]]
+#elif defined(__GNUC__)
+	#define COMPILER_GCC 1
+	#define NORETURN __attribute__ ((noreturn))
 #else
 	#error("Unsupported compiler")
 #endif

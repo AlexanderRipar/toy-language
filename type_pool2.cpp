@@ -39,7 +39,7 @@ struct PrimitiveTypeEntry
 
 	bool equal_to_key(PrimitiveTypeKey key, [[maybe_unused]] u32 key_hash) noexcept
 	{
-		return key.data.count() == entry->bytes + 4 && memcmp(key.data.begin(), &entry->inline_data, key.data.count()) == 0;
+		return key.data.count() == entry->bytes + static_cast<u64>(4) && memcmp(key.data.begin(), &entry->inline_data, key.data.count()) == 0;
 	}
 
 	void init(PrimitiveTypeKey key, u32 key_hash) noexcept;
@@ -64,6 +64,9 @@ struct TypeBuilder2
 			#pragma clang diagnostic push
 			#pragma clang diagnostic ignored "-Wgnu-anonymous-struct" // anonymous structs are a GNU extension
 			#pragma clang diagnostic ignored "-Wnested-anon-types" // anonymous types declared in an anonymous union are an extension
+		#elif COMPILER_GCC
+			#pragma GCC diagnostic push
+			#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ prohibits anonymous structs
 		#endif
 		struct
 		{
@@ -79,6 +82,8 @@ struct TypeBuilder2
 		};
 		#if COMPILER_CLANG
 			#pragma clang diagnostic pop
+		#elif COMPILER_GCC
+			#pragma GCC diagnostic pop
 		#endif
 
 		Member2 unused_align_;
@@ -93,7 +98,7 @@ void PrimitiveTypeEntry::init(PrimitiveTypeKey key, [[maybe_unused]] u32 key_has
 {
 	const u16 extra_bytes = key.tag == TypeTag::Array ? 8 : 0;
 
-	ASSERT_OR_IGNORE(key.data.count() == extra_bytes + 4);
+	ASSERT_OR_IGNORE(key.data.count() == extra_bytes + static_cast<u64>(4));
 
 	TypeEntry2* const new_entry = static_cast<TypeEntry2*>(key.types->types.reserve_exact(sizeof(TypeEntry2) + extra_bytes));
 

@@ -23,12 +23,17 @@ struct CallFrame
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic push
 	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	Value* args[];
 	#if COMPILER_MSVC
 	#pragma warning(pop)
 	#elif COMPILER_CLANG
 	#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic pop
 	#endif
 };
 
