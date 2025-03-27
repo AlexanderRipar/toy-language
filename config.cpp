@@ -55,7 +55,7 @@ struct ConfigHeader
 		container{ children }
 	{}
 
-	constexpr ConfigHeader(uint target_offset, s64 min, s64 max, const char8* name, const char8* helptext) noexcept :
+	constexpr ConfigHeader(u64 target_offset, s64 min, s64 max, const char8* name, const char8* helptext) noexcept :
 		type{ Type::Integer },
 		target_offset{ static_cast<u32>(target_offset) },
 		name{ name },
@@ -63,7 +63,7 @@ struct ConfigHeader
 		integer{ min, max }
 	{}
 
-	constexpr ConfigHeader(Type type, uint target_offset, const char8* name, const char8* helptext) noexcept :
+	constexpr ConfigHeader(Type type, u64 target_offset, const char8* name, const char8* helptext) noexcept :
 		type{ type },
 		target_offset{ static_cast<u32>(target_offset) },
 		name{ name },
@@ -182,7 +182,7 @@ private:
 
 	static bool name_equal(Range<char8> text, const char8* name) noexcept
 	{
-		for (uint i = 0; i != text.count(); ++i)
+		for (u64 i = 0; i != text.count(); ++i)
 		{
 			if (text[i] != name[i])
 				return false;
@@ -660,7 +660,7 @@ private:
 			}
 			else if (text[1] == 'x')
 			{
-				for (uint i = 2; i != text.count(); ++i)
+				for (u64 i = 2; i != text.count(); ++i)
 				{
 					const char8 c = text[i];
 
@@ -676,7 +676,7 @@ private:
 			}
 			else if (text[1] == 'o')
 			{
-				for (uint i = 2; i != text.count(); ++i)
+				for (u64 i = 2; i != text.count(); ++i)
 				{
 					const char8 c = text[i];
 
@@ -689,7 +689,7 @@ private:
 			{
 				ASSERT_OR_IGNORE(text[1] == 'b');
 				
-				for (uint i = 2; i != text.count(); ++i)
+				for (u64 i = 2; i != text.count(); ++i)
 				{
 					const char8 c = text[i];
 

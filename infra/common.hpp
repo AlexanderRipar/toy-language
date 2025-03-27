@@ -32,9 +32,6 @@ using byte = u8;
 using char8 = char;
 using char16 = wchar_t;
 
-using uint = u64;
-using sint = s64;
-
 using f32 = float;
 using f64 = double;
 
@@ -69,8 +66,8 @@ static constexpr inline T next_multiple(T n, T factor) noexcept
 	return ((n + factor - 1) / factor) * factor;
 }
 
-template<typename T, uint COUNT>
-inline constexpr uint array_count([[maybe_unused]] const T(&arr)[COUNT]) noexcept
+template<typename T, u64 COUNT>
+inline constexpr u64 array_count([[maybe_unused]] const T(&arr)[COUNT]) noexcept
 {
 	return COUNT;
 }

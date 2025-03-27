@@ -18,15 +18,15 @@ public:
 
 	constexpr Range(const T* begin, const T* end) : m_begin{ begin }, m_end{ end } {}
 
-	constexpr Range(const T* begin, uint count) : m_begin{ begin }, m_end{ begin + count } {}
+	constexpr Range(const T* begin, u64 count) : m_begin{ begin }, m_end{ begin + count } {}
 
-	template<uint COUNT>
+	template<u64 COUNT>
 	explicit constexpr Range(const T(&arr)[COUNT]) : m_begin{ arr }, m_end{ arr + COUNT } {}
 
-	template<uint COUNT>
+	template<u64 COUNT>
 	explicit constexpr Range(T(&arr)[COUNT]) : m_begin{ arr }, m_end{ arr + COUNT } {}
 
-	const T& operator[](uint i) const noexcept
+	const T& operator[](u64 i) const noexcept
 	{
 		assert(i < count());
 
@@ -43,7 +43,7 @@ public:
 		return m_end;
 	}
 
-	uint count() const noexcept
+	u64 count() const noexcept
 	{
 		return m_end - m_begin;
 	}
@@ -69,19 +69,19 @@ public:
 	
 	constexpr MutRange(T* begin, T* end) : m_begin{ begin }, m_end{ end } {}
 
-	constexpr MutRange(T* begin, uint count) : m_begin{ begin }, m_end{ begin + count } {}
+	constexpr MutRange(T* begin, u64 count) : m_begin{ begin }, m_end{ begin + count } {}
 
-	template<uint COUNT>
+	template<u64 COUNT>
 	explicit constexpr MutRange(T(&arr)[COUNT]) : m_begin{ arr }, m_end{ arr + COUNT } {}
 
-	const T& operator[](uint i) const noexcept
+	const T& operator[](u64 i) const noexcept
 	{
 		assert(i < count());
 
 		return m_begin[i];
 	}
 
-	T& operator[](uint i) noexcept
+	T& operator[](u64 i) noexcept
 	{
 		assert(i < count());
 
@@ -108,33 +108,33 @@ public:
 		return m_end;
 	}
 
-	uint count() const noexcept
+	u64 count() const noexcept
 	{
 		return m_end - m_begin;
 	}
 
-	Range<T> subrange(uint begin) const noexcept
+	Range<T> subrange(u64 begin) const noexcept
 	{
 		ASSERT_OR_IGNORE(begin <= count());
 
 		return { m_begin + begin, m_end };
 	}
 
-	Range<T> subrange(uint begin, uint subrange_count) const noexcept
+	Range<T> subrange(u64 begin, u64 subrange_count) const noexcept
 	{
 		ASSERT_OR_IGNORE(begin + subrange_count <= count());
 
 		return { m_begin + begin, subrange_count };
 	}
 
-	MutRange<T> mut_subrange(uint begin) noexcept
+	MutRange<T> mut_subrange(u64 begin) noexcept
 	{
 		ASSERT_OR_IGNORE(begin <= count());
 
 		return { m_begin + begin, m_end };
 	}
 
-	MutRange<T> mut_subrange(uint begin, uint subrange_count) noexcept
+	MutRange<T> mut_subrange(u64 begin, u64 subrange_count) noexcept
 	{
 		ASSERT_OR_IGNORE(begin + subrange_count <= count());
 
@@ -334,14 +334,14 @@ public:
 		m_attachment{ attachment }
 	{}
 	
-	const T& operator[](uint i) const noexcept
+	const T& operator[](u64 i) const noexcept
 	{
 		assert(i < count());
 
 		return m_begin[i];
 	}
 
-	T& operator[](uint i) noexcept
+	T& operator[](u64 i) noexcept
 	{
 		assert(i < count());
 
@@ -368,7 +368,7 @@ public:
 		return m_begin + m_count;
 	}
 
-	uint count() const noexcept
+	u64 count() const noexcept
 	{
 		return m_count;
 	}
@@ -417,7 +417,7 @@ namespace range
 		return { str, len };
 	}
 
-	template<uint N>
+	template<u64 N>
 	inline constexpr Range<char8> from_literal_string(const char8 (&arr)[N]) noexcept
 	{
 		return { arr, N - 1 };

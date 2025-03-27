@@ -367,7 +367,7 @@ static RawLexeme scan_builtin_token(Lexer* lexer) noexcept
 
 	memcpy(name, token_begin, curr - token_begin);
 
-	for (uint i = 0; i != array_count(BUILTIN_NAMES); ++i)
+	for (u64 i = 0; i != array_count(BUILTIN_NAMES); ++i)
 	{
 		if (memcmp(name, BUILTIN_NAMES[i], 8) == 0)
 			return RawLexeme{ Token::Builtin, i };

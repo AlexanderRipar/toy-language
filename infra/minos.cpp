@@ -138,7 +138,7 @@ static bool is_relative_path(Range<char8> path) noexcept
 
 	// Check for drive "letter", allowing for any sort of format not including '\' or '/' followed by ':\' or ':/'
 
-	for (uint i = 0; i + 1 < path.count(); ++i)
+	for (u64 i = 0; i + 1 < path.count(); ++i)
 	{
 		if (path[i] == '\\' || path[i] == '//')
 			break;
@@ -1114,7 +1114,7 @@ u32 minos::path_to_absolute_relative_to(Range<char8> path, Range<char8> base, Mu
 
 	bool is_elem_start = true;
 
-	for (uint i = 0; i != path.count(); ++i)
+	for (u64 i = 0; i != path.count(); ++i)
 	{
 		if (path[i] == '.' && is_elem_start)
 		{
@@ -1306,5 +1306,5 @@ Range<Range<char8>> minos::command_line_get() noexcept
 
 	LocalFree(argv);
 
-	return Range{ dst, static_cast<uint>(argc) };
+	return Range{ dst, static_cast<u64>(argc) };
 }
