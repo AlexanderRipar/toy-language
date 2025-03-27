@@ -551,13 +551,13 @@ private:
 			error(token.content.begin() - m_content.begin(), "Arrays are currently not supported");
 
 		case ConfigToken::Type::CurlyBeg:
-			parse_inline_table();
+			return parse_inline_table();
 
 		case ConfigToken::Type::Identity:
-			parse_boolean();
+			return parse_boolean();
 
 		case ConfigToken::Type::Integer:
-			parse_integer();
+			return parse_integer();
 
 		case ConfigToken::Type::String:
 			return parse_string();
