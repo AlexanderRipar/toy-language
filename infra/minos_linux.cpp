@@ -10,10 +10,13 @@
 #include <sys/stat.h>
 #include <sys/fcntl.h>
 #include <sys/eventfd.h>
+#include <linux/futex.h>
+#include <sys/syscall.h>
 #include <limits.h>
 #include <time.h>
 #include <cstdlib>
 #include <cstring>
+#include <atomic>
 
 // TODO: Remove
 #if COMPILER_CLANG
@@ -60,24 +63,65 @@ u32 minos::page_bytes() noexcept
 	return static_cast<u32>(getpagesize());
 }
 
-void minos::address_wait(void* address, void* undesired, u32 bytes) noexcept
+static s64 syscall_futex(const u32* address, s32 futex_op, u32 undesired_value_or_wakeup, const timespec* timeout) noexcept
 {
-	panic("minos::address_wait is not yet implemented\n");
+	return syscall(SYS_futex, const_cast<u32*>(address), futex_op, undesired_value_or_wakeup, timeout, nullptr /* uaddr2 */, 0 /* val3 */);
 }
 
-bool minos::address_wait_timeout(void* address, void* undesired, u32 bytes, u32 milliseconds) noexcept
+static bool address_wait_impl(const void* address, const void* undesired, u32 bytes, const timespec* timeout) noexcept
 {
-	panic("minos::address_wait_timeout is not yet implemented\n");
+	ASSERT_OR_IGNORE(bytes == 1 || bytes == 2 || bytes == 4);
+
+	if (bytes == 1 || bytes == 2)
+		panic("minos::address_wait[_timeout] with bytes == %u is not yet implemented\n", bytes);
+
+	const std::atomic<u32>* const ptr = static_cast<const std::atomic<u32>*>(address);
+
+	const u32 undesired_value = *static_cast<const u32*>(undesired);
+
+	while (true)
+	{
+		const u32 observed_value = ptr->load(std::memory_order_relaxed);
+
+		if (observed_value != undesired_value)
+			break;
+
+		if (syscall_futex(static_cast<const u32*>(address), FUTEX_WAIT, observed_value, timeout) != 0)
+		{
+			if (timeout != 0 && errno == ETIMEDOUT)
+				return false;
+
+			panic("syscall(SYS_futex) failed (0x%X)\n", minos::last_error());
+		}
+	}
+
+	return true;
 }
 
-void minos::address_wake_single(void* address) noexcept
+void minos::address_wait(const void* address, const void* undesired, u32 bytes) noexcept
 {
-	panic("minos::address_wake_single is not yet implemented\n");
+	(void) address_wait_impl(address, undesired, bytes, nullptr);
 }
 
-void minos::address_wake_all(void* address) noexcept
+bool minos::address_wait_timeout(const void* address, const void* undesired, u32 bytes, u32 milliseconds) noexcept
 {
-	panic("minos::address_wake_all is not yet implemented\n");
+	timespec timeout;
+	timeout.tv_sec = static_cast<time_t>(milliseconds / 1000);
+	timeout.tv_nsec = static_cast<s64>(milliseconds % 1000) * 1000000;
+
+	return address_wait_impl(address, undesired, bytes, &timeout);
+}
+
+void minos::address_wake_single(const void* address) noexcept
+{
+	if (syscall_futex(static_cast<const u32*>(address), FUTEX_WAKE, 1, nullptr) == -1)
+		panic("syscall_futex(FUTEX_WAKE, 1) failed (0x%X)\n", last_error());
+}
+
+void minos::address_wake_all(const void* address) noexcept
+{
+	if (syscall_futex(static_cast<const u32*>(address), FUTEX_WAKE, INT32_MAX, nullptr) == -1)
+		panic("syscall_futex(FUTEX_WAKE, 1) failed (0x%X)\n", last_error());
 }
 
 void minos::thread_yield() noexcept
@@ -620,7 +664,7 @@ u64 minos::exact_timestamp() noexcept
 	if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
 		panic("clock_gettime failed (0x%X)\n", last_error());
 
-	return static_cast<u64>(ts.tv_nsec);
+	return static_cast<u64>(ts.tv_nsec) + static_cast<u64>(ts.tv_sec) * static_cast<u64>(1'000'000'000);
 }
 
 u64 minos::exact_timestamp_ticks_per_second() noexcept
@@ -629,6 +673,8 @@ u64 minos::exact_timestamp_ticks_per_second() noexcept
 
 	if (clock_getres(CLOCK_MONOTONIC, &ts) != 0)
 		panic("clock_getres failed (0x%X)\n", last_error());
+
+	ASSERT_OR_IGNORE(ts.tv_sec == 0);
 
 	return static_cast<u64>(1000000000) / static_cast<u64>(ts.tv_nsec);
 }

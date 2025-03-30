@@ -232,13 +232,13 @@ namespace minos
 
 	[[nodiscard]] u32 page_bytes() noexcept;
 
-	void address_wait(void* address, void* undesired, u32 bytes) noexcept;
+	void address_wait(const void* address, const void* undesired, u32 bytes) noexcept;
 
-	[[nodiscard]] bool address_wait_timeout(void* address, void* undesired, u32 bytes, u32 milliseconds) noexcept;
+	[[nodiscard]] bool address_wait_timeout(const void* address, const void* undesired, u32 bytes, u32 milliseconds) noexcept;
 
-	void address_wake_single(void* address) noexcept;
+	void address_wake_single(const void* address) noexcept;
 
-	void address_wake_all(void* address) noexcept;
+	void address_wake_all(const void* address) noexcept;
 
 	void thread_yield() noexcept;
 

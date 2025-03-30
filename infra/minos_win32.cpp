@@ -188,15 +188,17 @@ u32 minos::page_bytes() noexcept
 	return sysinfo.dwPageSize;
 }
 
-void minos::address_wait(void* address, void* undesired, u32 bytes) noexcept
+void minos::address_wait(const void* address, const void* undesired, u32 bytes) noexcept
 {
-	if (!WaitOnAddress(address, undesired, bytes, INFINITE))
+	ASSERT_OR_IGNORE(bytes == 1 || bytes == 2 || bytes == 4);
+
+	if (!WaitOnAddress(const_cast<void*>(address), const_cast<void*>(undesired), bytes, INFINITE))
 		panic("WaitOnAddress failed (0x%X)\n", last_error());
 }
 
-bool minos::address_wait_timeout(void* address, void* undesired, u32 bytes, u32 milliseconds) noexcept
+bool minos::address_wait_timeout(const void* address, const void* undesired, u32 bytes, u32 milliseconds) noexcept
 {
-	if (WaitOnAddress(address, undesired, bytes, milliseconds))
+	if (WaitOnAddress(const_cast<void*>(address), const_cast<void*>(undesired), bytes, milliseconds))
 		return true;
 
 	if (GetLastError() != ERROR_TIMEOUT)
@@ -205,14 +207,14 @@ bool minos::address_wait_timeout(void* address, void* undesired, u32 bytes, u32 
 	return false;
 }
 
-void minos::address_wake_single(void* address) noexcept
+void minos::address_wake_single(const void* address) noexcept
 {
-	WakeByAddressSingle(address);
+	WakeByAddressSingle(const_cast<void*>(address));
 }
 
-void minos::address_wake_all(void* address) noexcept
+void minos::address_wake_all(const void* address) noexcept
 {
-	WakeByAddressAll(address);
+	WakeByAddressAll(const_cast<void*>(address));
 }
 
 void minos::thread_yield() noexcept
