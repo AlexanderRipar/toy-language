@@ -6,12 +6,10 @@
 
 namespace minos
 {
-	#if COMPILER_MSVC
+	#ifdef _WIN32
 		#define THREAD_PROC __stdcall
-	#elif COMPILER_CLANG || COMPILER_GCC
-		#define THREAD_PROC
 	#else
-		#error("Unknown compiler")
+		#define THREAD_PROC
 	#endif
 
 	using thread_proc = u32 (THREAD_PROC *) (void* param);
@@ -87,7 +85,6 @@ namespace minos
 	enum class FileInfoMask
 	{
 		None             = 0x00,
-		Flags            = 0x01,
 		CreationTime     = 0x02,
 		LastModifiedTime = 0x04,
 		LastAccessTime   = 0x08,
@@ -166,7 +163,7 @@ namespace minos
 	
 	struct FileIdentity
 	{
-		u32 volume_serial;
+		u64 volume_serial;
 
 		u64 index;
 	};
@@ -182,8 +179,6 @@ namespace minos
 		u64 last_modified_time;
 
 		u64 last_access_time;
-
-		u32 raw_flags;
 
 		bool is_directory;
 	};
@@ -251,7 +246,7 @@ namespace minos
 
 	[[nodiscard]] u32 logical_processor_count() noexcept;
 
-	[[nodiscard]] bool thread_create(thread_proc proc, void* param, Range<char8> thread_identifier, ThreadHandle* opt_out = nullptr) noexcept;
+	[[nodiscard]] bool thread_create(thread_proc proc, void* param, Range<char8> thread_name, ThreadHandle* opt_out = nullptr) noexcept;
 
 	void thread_close(ThreadHandle handle) noexcept;
 

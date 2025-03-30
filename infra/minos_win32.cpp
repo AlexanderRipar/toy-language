@@ -417,7 +417,6 @@ bool minos::file_get_info(FileHandle handle, FileInfo* out) noexcept
 	out->creation_time = info.ftCreationTime.dwLowDateTime | (static_cast<u64>(info.ftCreationTime.dwHighDateTime) << 32);
 	out->last_modified_time = info.ftLastWriteTime.dwLowDateTime | (static_cast<u64>(info.ftLastWriteTime.dwHighDateTime) << 32);
 	out->last_access_time = info.ftLastAccessTime.dwLowDateTime | (static_cast<u64>(info.ftLastAccessTime.dwHighDateTime) << 32);
-	out->raw_flags = info.dwFileAttributes;
 	out->is_directory = (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
 
 	return true;
@@ -435,9 +434,6 @@ bool minos::file_set_info(FileHandle handle, const FileInfo* info, FileInfoMask 
 
 	if ((mask & FileInfoMask::LastModifiedTime) != FileInfoMask::None)
 		basic_info.LastWriteTime.QuadPart = info->last_modified_time;
-
-	if ((mask & FileInfoMask::Flags) != FileInfoMask::None)
-		basic_info.FileAttributes = info->raw_flags;
 
 	return SetFileInformationByHandle(handle.m_rep, FileBasicInfo, &basic_info, sizeof(basic_info)) != 0;
 }
@@ -464,7 +460,7 @@ bool minos::event_create(bool inheritable, EventHandle* out) noexcept
 {
 	SECURITY_ATTRIBUTES security_attributes{ sizeof(SECURITY_ATTRIBUTES), nullptr, inheritable };
 
-	const HANDLE event = CreateEventW(&security_attributes, TRUE, FALSE, nullptr);
+	const HANDLE event = CreateEventW(&security_attributes, FALSE, FALSE, nullptr);
 
 	if (event == nullptr)
 		return false;
@@ -1189,7 +1185,6 @@ bool minos::path_get_info(Range<char8> path, FileInfo* out) noexcept
 	out->creation_time = info.ftCreationTime.dwLowDateTime | (static_cast<u64>(info.ftCreationTime.dwHighDateTime) << 32);
 	out->last_modified_time = info.ftLastWriteTime.dwLowDateTime | (static_cast<u64>(info.ftLastWriteTime.dwHighDateTime) << 32);
 	out->last_access_time = info.ftLastAccessTime.dwLowDateTime | (static_cast<u64>(info.ftLastAccessTime.dwHighDateTime) << 32);
-	out->raw_flags = info.dwFileAttributes;
 	out->is_directory = (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
 
 	return true;

@@ -5,8 +5,15 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <sched.h>
+#include <pthread.h>
+#include <sys/stat.h>
+#include <sys/fcntl.h>
+#include <sys/eventfd.h>
+#include <limits.h>
 #include <time.h>
 #include <cstdlib>
+#include <cstring>
 
 // TODO: Remove
 #if COMPILER_CLANG
@@ -85,42 +92,169 @@ NORETURN void minos::exit_process(u32 exit_code) noexcept
 
 u32 minos::logical_processor_count() noexcept
 {
-	panic("minos::logical_processor_count is not yet implemented\n");
+	cpu_set_t set;
+
+	// TODO: This can fail with EINVAL in case of more than 1024 cpus present
+	// on the system
+	// See https://linux.die.net/man/2/sched_getaffinity
+	if (sched_getaffinity(0, sizeof(set), &set) != 0)
+		panic("sched_getaffinity(0) failed (0x%X)\n", last_error());
+
+	return CPU_COUNT(&set);
 }
 
-bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_identifier, ThreadHandle* opt_out) noexcept
+struct TrampolineThreadData
 {
-	panic("minos::thread_create is not yet implemented\n");
+	minos::thread_proc proc;
+
+	void* param;
+};
+
+static void* trampoline_thread_proc(void* param) noexcept
+{
+	TrampolineThreadData data = *static_cast<TrampolineThreadData*>(param);
+
+	free(param);
+
+	return reinterpret_cast<void*>(data.proc(data.param));
 }
 
-void minos::thread_close(ThreadHandle handle) noexcept
+bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_name, ThreadHandle* opt_out) noexcept
 {
-	panic("minos::thread_close is not yet implemented\n");
+	pthread_t thread;
+
+	pthread_attr_t attr;
+
+	if (pthread_attr_init(&attr) != 0)
+		return false;
+
+	TrampolineThreadData* const trampoline_data = static_cast<TrampolineThreadData*>(malloc(sizeof(TrampolineThreadData)));
+	trampoline_data->proc = proc;
+	trampoline_data->param = param;
+
+	const s32 result = pthread_create(&thread, &attr, trampoline_thread_proc, trampoline_data);
+
+	if (pthread_attr_destroy(&attr) != 0)
+		panic("pthread_attr_destroy failed (0x%X)\n", last_error());
+
+	if (result != 0)
+		return false;
+
+	if (opt_out != nullptr)
+		*opt_out = { reinterpret_cast<void*>(thread) };
+
+	if (thread_name.count())
+	{
+		char8 name_buf[16];
+
+		const u64 name_chars = thread_name.count() < 15 ? thread_name.count() : 15;
+
+		memcpy(name_buf, thread_name.begin(), name_chars);
+
+		name_buf[name_chars] = '\0';
+
+		if (pthread_setname_np(thread, name_buf) != 0)
+			panic("pthread_setname_np failed (0x%X)\n", last_error());
+	}
+
+	return true;
+}
+
+void minos::thread_close([[maybe_unused]] ThreadHandle handle) noexcept
+{
+	// No-op
 }
 
 bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_mode, NewMode new_mode, AccessPattern pattern, SyncMode syncmode, bool inheritable, FileHandle* out) noexcept
 {
-	panic("minos::file_create is not yet implemented\n");
+	// TODO: SyncMode::Asynchronous is not yet supported. It just acts as-if it were async
+	if (filepath.count() > PATH_MAX)
+		return false;
+
+	char8 terminated_filepath[PATH_MAX + 1];
+
+	memcpy(terminated_filepath, filepath.begin(), filepath.count());
+
+	terminated_filepath[filepath.count()] = '\0';
+
+	s32 oflag;
+
+	if ((access & (Access::Read | Access::Write)) == (Access::Read | Access::Write))
+		oflag = O_RDWR;
+	else if ((access & (Access::Read | Access::Write)) == (Access::Read))
+		oflag = O_RDONLY;
+	else if ((access & (Access::Read | Access::Write)) == Access::Write)
+		oflag = O_WRONLY;
+	else
+		panic("file_create access flags combination 0x%X not currently supported under linux\n", static_cast<u32>(access));
+
+	ASSERT_OR_IGNORE(new_mode != NewMode::Fail || exists_mode != ExistsMode::Fail);
+
+	if (exists_mode == ExistsMode::Truncate)
+		oflag |= O_TRUNC;
+
+	if (pattern == AccessPattern::Unbuffered)
+		oflag |= O_DIRECT;
+
+	if (!inheritable)
+		oflag |= O_CLOEXEC;
+
+	s32 fd;
+
+	if (new_mode == NewMode::Create)
+	{
+		oflag |= O_CREAT;
+	
+		if (exists_mode == ExistsMode::Fail)
+			oflag |= O_EXCL;
+
+		fd = open(terminated_filepath, oflag, S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+	}
+	else
+	{
+		fd = open(terminated_filepath, oflag);
+	}
+
+	if (fd == -1)
+		return false;
+
+	*out = { reinterpret_cast<void*>(fd) };
+
+	return true;
 }
 
 void minos::file_close(FileHandle handle) noexcept
 {
-	panic("minos::file_close is not yet implemented\n");
+	if (close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))) != 0)
+		panic("close(filefd) failed (0x%X)\n", last_error());
 }
 
 bool minos::file_read(FileHandle handle, void* buffer, u32 bytes_to_read, Overlapped* overlapped) noexcept
 {
-	panic("minos::file_read is not yet implemented\n");
+	return pread(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), buffer, bytes_to_read, overlapped->offset) >= 0;
 }
 
 bool minos::file_write(FileHandle handle, const void* buffer, u32 bytes_to_write, Overlapped* overlapped) noexcept
 {
-	panic("minos::file_write is not yet implemented\n");
+	return pwrite(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), buffer, bytes_to_write, overlapped->offset) >= 0;
 }
 
 bool minos::file_get_info(FileHandle handle, FileInfo* out) noexcept
 {
-	panic("minos::file_get_info is not yet implemented\n");
+	struct stat info;
+
+	if (fstat(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &info) != 0)
+		return false;
+		
+	out->identity.volume_serial = info.st_dev;
+	out->identity.index = info.st_ino;
+	out->bytes = info.st_size;
+	out->creation_time = 0; // This is not supported under *nix
+	out->last_modified_time = info.st_mtime; // Use mtime instead of ctime, as metadata changes likely do not matter (?)
+	out->last_access_time = info.st_atime;
+	out->is_directory = S_ISDIR(info.st_mode);
+
+	return true;
 }
 
 bool minos::file_set_info(FileHandle handle, const FileInfo* info, FileInfoMask mask) noexcept
@@ -130,7 +264,7 @@ bool minos::file_set_info(FileHandle handle, const FileInfo* info, FileInfoMask 
 
 bool minos::file_resize(FileHandle handle, u64 new_bytes) noexcept
 {
-	panic("minos::file_resize is not yet implemented\n");
+	return ftruncate(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), new_bytes) == 0;
 }
 
 bool minos::overlapped_wait(FileHandle handle, Overlapped* overlapped) noexcept
@@ -140,22 +274,36 @@ bool minos::overlapped_wait(FileHandle handle, Overlapped* overlapped) noexcept
 
 bool minos::event_create(bool inheritable, EventHandle* out) noexcept
 {
-	panic("minos::event_create is not yet implemented\n");
+	const s32 fd = eventfd(0, (inheritable ? 0 : EFD_CLOEXEC));
+
+	if (fd == -1)
+		return false;
+
+	*out = { reinterpret_cast<void*>(fd) };
+
+	return true;
 }
 
 void minos::event_close(EventHandle handle) noexcept
 {
-	panic("minos::event_close is not yet implemented\n");
+	if (close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))) != 0)
+		panic("close(eventfd) failed (0x%X)\n", last_error());
 }
 
 void minos::event_wake(EventHandle handle) noexcept
 {
-	panic("minos::event_wake is not yet implemented\n");
+	u64 increment = 1;
+
+	if (write(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &increment, sizeof(increment)) < 0)
+		panic("write(eventfd) failed (0x%X)\n", last_error());
 }
 
 void minos::event_wait(EventHandle handle) noexcept
 {
-	panic("minos::event_wait is not yet implemented\n");
+	u64 value;
+
+	if (read(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &value, sizeof(value)) < 0)
+		panic("read(eventfd) failed (0x%X)\n", last_error());
 }
 
 bool minos::event_wait_timeout(EventHandle handle, u32 milliseconds) noexcept
@@ -185,7 +333,8 @@ bool minos::completion_wait(CompletionHandle completion, CompletionResult* out) 
 
 void minos::sleep(u32 milliseconds) noexcept
 {
-	panic("minos::sleep is not yet implemented\n");
+	if (usleep(milliseconds * 1000) != 0)
+		panic("usleep failed (0x%X)\n", last_error());
 }
 
 bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_line, Range<char8> working_directory, Range<GenericHandle> inherited_handles, bool inheritable, ProcessHandle* out) noexcept
@@ -270,32 +419,188 @@ bool minos::directory_create(Range<char8> path) noexcept
 
 bool minos::path_is_directory(Range<char8> path) noexcept
 {
-	panic("minos::path_is_directory is not yet implemented\n");
+	if (path.count() > PATH_MAX)
+		return false;
+
+	char8 terminated_path[PATH_MAX + 1];
+
+	memcpy(terminated_path, path.begin(), path.count());
+
+	terminated_path[path.count()] = '\0';
+
+	struct stat info;
+
+	if (stat(terminated_path, &info) != 0)
+		return false;
+
+	return S_ISDIR(info.st_mode);
 }
 
 bool minos::path_is_file(Range<char8> path) noexcept
 {
-	panic("minos::path_is_file is not yet implemented\n");
+	if (path.count() > PATH_MAX)
+		return false;
+
+	char8 terminated_path[PATH_MAX + 1];
+
+	memcpy(terminated_path, path.begin(), path.count());
+
+	terminated_path[path.count()] = '\0';
+
+	struct stat info;
+
+	if (stat(terminated_path, &info) != 0)
+		return false;
+
+	return S_ISREG(info.st_mode);
+}
+
+static u64 remove_last_path_elem(MutRange<char8> out_buf, u64 out_index) noexcept
+{
+	if (out_index <= 1)
+		return 0;
+
+	ASSERT_OR_IGNORE(out_buf[0] == '/');
+
+	out_index -= 1;
+
+	while (out_buf[out_index] != '/')
+		out_index -= 1;
+
+	return out_index;
+}
+
+static u32 append_relative_path(Range<char8> path, MutRange<char8> out_buf, u64 out_index) noexcept
+{
+	bool is_element_start = true;
+
+	for (u64 i = 0; i != path.count(); ++i)
+	{
+		if (path[i] == '/')
+		{
+			is_element_start = true;
+		}
+		else if (is_element_start && path[i] == '.')
+		{
+			if (i + 1 == path.count() || path[i + 1] == '/')
+			{
+				i += 1;
+
+				continue;
+			}
+			else if (i + 2 == path.count() || (i + 2 < path.count() && path[i + 1] == '.' && path[i + 2] == '/'))
+			{
+				out_index = remove_last_path_elem(out_buf, out_index);
+
+				if (out_index == 0)
+					return 0;
+
+				i += 2;
+
+				continue;
+			}
+		}
+
+		if (is_element_start)
+		{
+			if (out_index == out_buf.count())
+				return 0;
+
+			is_element_start = false;
+
+			out_buf[out_index] = '/';
+
+			out_index += 1;
+		}
+
+		if (out_index == out_buf.count())
+			return 0;
+
+		out_buf[out_index] = path[i];
+
+		out_index += 1;
+	}
+
+	if (out_index > 1 && out_buf[out_index - 1] == '/')
+		out_index -= 1;
+
+	return out_index;
 }
 
 u32 minos::path_to_absolute(Range<char8> path, MutRange<char8> out_buf) noexcept
 {
-	panic("minos::path_to_absolute is not yet implemented\n");
+	if (path.count() > 0 && path[0] == '/')
+	{
+		if (path.count() < out_buf.count())
+			memcpy(out_buf.begin(), path.begin(), path.count());
+		
+		return path.count();
+	}
+
+	if (getcwd(out_buf.begin(), out_buf.count()) == nullptr)
+		return 0;
+
+	u64 out_index = 0;
+
+	while (out_buf[out_index] != '\0')
+		out_index += 1;
+	
+	return append_relative_path(path, out_buf, out_index);
 }
 
 u32 minos::path_to_absolute_relative_to(Range<char8> path, Range<char8> base, MutRange<char8> out_buf) noexcept
 {
-	panic("minos::path_to_absolute_relative_to is not yet implemented\n");
+	if (path.count() != 0 && path[0] == '/')
+	{
+		if (path.count() <= out_buf.count())
+			memcpy(out_buf.begin(), path.begin(), path.count());
+
+		return path.count();
+	}
+
+	const u64 out_index = path_to_absolute(base, out_buf);
+
+	if (out_index == 0 || out_index > out_buf.count())
+		return 0;
+
+	return append_relative_path(path, out_buf, out_index);
 }
 
 u32 minos::path_to_absolute_directory(Range<char8> path, MutRange<char8> out_buf) noexcept
 {
-	panic("minos::path_to_absolute_directory is not yet implemented\n");
+	const u64 out_index = path_to_absolute(path, out_buf);
+
+	if (out_index == 0 || out_index > out_buf.count())
+		return 0;
+
+	return remove_last_path_elem(out_buf, out_index);
 }
 
 bool minos::path_get_info(Range<char8> path, FileInfo* out) noexcept
 {
-	panic("minos::path_get_info is not yet implemented\n");
+	if (path.count() > PATH_MAX)
+		return false;
+
+	char8 terminated_path[PATH_MAX + 1];
+
+	memcpy(terminated_path, path.begin(), path.count());
+
+	terminated_path[path.count()] = '\0';
+
+	struct stat info;
+
+	if (stat(terminated_path, &info) != 0)
+		return false;
+
+	out->identity.volume_serial = info.st_dev;
+	out->identity.index = info.st_ino;
+	out->bytes = info.st_size;
+	out->creation_time = 0; // This is not supported under *nix
+	out->last_modified_time = info.st_mtime; // Use mtime instead of ctime, as metadata changes likely do not matter (?)
+	out->last_access_time = info.st_atime;
+	out->is_directory = S_ISDIR(info.st_mode);
+
+	return true;
 }
 
 u64 minos::timestamp_utc() noexcept
