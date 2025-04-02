@@ -13,6 +13,8 @@ const char8* g_curr_module;
 
 bool g_ignore_debugbreaks;
 
+void minos_tests() noexcept;
+
 void ast2_tests() noexcept;
 
 void type_pool2_tests() noexcept;
@@ -58,6 +60,8 @@ s32 main(s32 argc, const char8** argv) noexcept
 
 		return EXIT_FAILURE;
 	}
+
+	minos_tests();
 
 	ast2_tests();
 

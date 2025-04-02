@@ -7,6 +7,62 @@
 
 namespace thd
 {
+	struct Mutex
+	{
+	private:
+
+		std::atomic<u16> m_rep;
+
+	public:
+
+		void init() noexcept
+		{
+			m_rep.store(0, std::memory_order_relaxed);
+		}
+
+		void acquire(u32 spin_count = 0) noexcept
+		{
+			while (true)
+			{
+				u16 rep = m_rep.load(std::memory_order_relaxed);
+
+				if ((rep & 1) == 0)
+				{
+					if (m_rep.compare_exchange_weak(rep, rep | 1, std::memory_order_acquire))
+						return;
+				}
+
+				rep = m_rep.fetch_add(2, std::memory_order_relaxed) + 2;
+
+				while (true)
+				{
+					if ((rep & 1) == 0)
+					{
+						if (m_rep.compare_exchange_weak(rep, rep - 1, std::memory_order_acquire))
+							return;
+					}
+
+					rep = m_rep.load(std::memory_order_relaxed);
+
+					if (spin_count == 0)
+						break;
+
+					spin_count -= 1;
+				}
+
+				minos::address_wait(&m_rep, &rep, sizeof(m_rep));
+			}
+		}
+
+		void release() noexcept
+		{
+			if (m_rep.fetch_sub(1, std::memory_order_release) == 1)
+				return;
+
+			minos::address_wake_single(&m_rep);
+		}
+	};
+
 	struct Semaphore
 	{
 	private:

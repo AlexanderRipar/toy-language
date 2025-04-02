@@ -88,7 +88,11 @@ void request_read(SourceReader* reader, Range<char8> filepath, IdentifierId file
 
 	minos::FileHandle filehandle;
 
-	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, minos::SyncMode::Asynchronous, false, &filehandle))
+	minos::CompletionInitializer completion_init;
+	completion_init.completion = reader->completion_handle;
+	completion_init.key = 1;
+
+	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, &completion_init, false, &filehandle))
 		panic("Could not open source file %.*s for reading (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
 
 	// TODO: FileIdentity-based caching goes here
@@ -120,8 +124,6 @@ void request_read(SourceReader* reader, Range<char8> filepath, IdentifierId file
 
 	if (read->content == nullptr)
 		panic("Could not allocate buffer of %llu bytes for reading source file %.*s into\n", fileinfo.bytes, static_cast<u32>(filepath.count()), filepath.begin());
-
-	minos::completion_associate_file(reader->completion_handle, filehandle, 1);
 
 	if (!minos::file_read(filehandle, read->content, read->bytes, &read->overlapped))
 		panic("Could not read source file %.*s (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());

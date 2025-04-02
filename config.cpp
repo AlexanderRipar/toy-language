@@ -1015,7 +1015,7 @@ public:
 
 		minos::FileHandle filehandle;
 
-		if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, minos::SyncMode::Synchronous, false, &filehandle))
+		if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, nullptr, false, &filehandle))
 			panic("Could not open config file '%.*s' (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
 
 		minos::FileInfo fileinfo;

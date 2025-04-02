@@ -4,6 +4,7 @@ project(test)
 
 add_executable(test test_main.cpp
 	test_helpers.hpp
+	minos_tests.cpp
 	ast_tests.cpp
 	type_pool2_tests.cpp
 
@@ -66,6 +67,6 @@ else()
 	)
 endif()
 
-add_custom_target(run-tests COMMAND test --ignore-debugbreaks)
+add_custom_target(run-tests COMMAND test --ignore-debugbreaks WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_dependencies(run-tests test)
