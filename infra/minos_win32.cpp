@@ -811,45 +811,46 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	return true;
 }
 
-void minos::process_wait(ProcessHandle handle) noexcept
+void minos::process_wait(ProcessHandle handle, u32* opt_out_result) noexcept
 {
 	const u32 wait_result = WaitForSingleObject(handle.m_rep, INFINITE);
 
-	if (wait_result != 0)
+	if (wait_result != WAIT_OBJECT_0)
 		panic("WaitForSingleObject(ProcessHandle) failed with 0x%X (0x%X)\n", wait_result, last_error());
+
+	if (opt_out_result != nullptr)
+	{
+		DWORD exit_code;
+
+		if (!GetExitCodeProcess(handle.m_rep, &exit_code))
+			panic("GetExitCodeProcess failed (0x%X)\n", last_error());
+
+		*opt_out_result = exit_code;
+	}
 }
 
-bool minos::process_wait_timeout(ProcessHandle handle, u32 milliseconds) noexcept
+bool minos::process_wait_timeout(ProcessHandle handle, u32 milliseconds, u32* opt_out_result) noexcept
 {
 	const u32 wait_result = WaitForSingleObject(handle.m_rep, milliseconds);
 
-	if (wait_result == 0)
+	if (wait_result == WAIT_OBJECT_0)
+	{
+		if (opt_out_result != nullptr)
+		{
+			DWORD exit_code;
+
+			if (!GetExitCodeProcess(handle.m_rep, &exit_code))
+				panic("GetExitCodeProcess failed (0x%X)\n", last_error());
+
+			*opt_out_result = exit_code;
+		}
+
 		return true;
+	}
 	else if (wait_result == WAIT_TIMEOUT)
 		return false;
 
 	panic("WaitForSingleObject(ProcessHandle, timeout) failed with 0x%X (0x%X)\n", wait_result, last_error());
-}
-
-bool minos::process_get_exit_code(ProcessHandle handle, u32* out) noexcept
-{
-	DWORD exit_code;
-
-	if (!GetExitCodeProcess(handle.m_rep, &exit_code))
-		panic("GetExitCodeProcess failed (0x%X)\n", last_error());
-
-	if (exit_code == STATUS_PENDING)
-	{
-		if (!process_wait_timeout(handle, 0))
-			return false;
-
-		if (!GetExitCodeProcess(handle.m_rep, &exit_code))
-			panic("GetExitCodeProcess failed (0x%X)\n", last_error());
-	}
-
-	*out = exit_code;
-
-	return true;
 }
 
 bool minos::shm_create(Access access, u64 bytes, ShmHandle* out) noexcept

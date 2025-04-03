@@ -1187,19 +1187,14 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	panic("minos::process_create is not yet implemented\n");
 }
 
-void minos::process_wait(ProcessHandle handle) noexcept
+void minos::process_wait(ProcessHandle handle, u32* opt_out_result) noexcept
 {
 	panic("minos::process_wait is not yet implemented\n");
 }
 
-bool minos::process_wait_timeout(ProcessHandle handle, u32 milliseconds) noexcept
+bool minos::process_wait_timeout(ProcessHandle handle, u32 milliseconds, u32* opt_out_result) noexcept
 {
 	panic("minos::process_wait_timeout is not yet implemented\n");
-}
-
-bool minos::process_get_exit_code(ProcessHandle handle, u32* out) noexcept
-{
-	panic("minos::process_get_exit_code is not yet implemented\n");
 }
 
 bool minos::shm_create(Access access, u64 bytes, ShmHandle* out) noexcept
