@@ -659,6 +659,7 @@ static bool address_wait_impl(const void* address, const void* undesired, u32 by
 {
 	ASSERT_OR_IGNORE(bytes == 1 || bytes == 2 || bytes == 4);
 
+	// TODO: Implement this
 	if (bytes == 1 || bytes == 2)
 		panic("minos::address_wait[_timeout] with bytes == %u is not yet implemented\n", bytes);
 
@@ -999,11 +1000,6 @@ bool minos::file_get_info(FileHandle handle, FileInfo* out) noexcept
 	out->is_directory = S_ISDIR(info.st_mode);
 
 	return true;
-}
-
-bool minos::file_set_info(FileHandle handle, const FileInfo* info, FileInfoMask mask) noexcept
-{
-	panic("minos::file_set_info is not yet implemented\n");
 }
 
 bool minos::file_resize(FileHandle handle, u64 new_bytes) noexcept

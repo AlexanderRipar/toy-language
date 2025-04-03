@@ -407,8 +407,6 @@ namespace minos
 
 	[[nodiscard]] bool file_get_info(FileHandle handle, FileInfo* out) noexcept;
 
-	[[nodiscard]] bool file_set_info(FileHandle handle, const FileInfo* info, FileInfoMask mask) noexcept;
-
 	[[nodiscard]] bool file_resize(FileHandle handle, u64 new_bytes) noexcept;
 
 	[[nodiscard]] bool event_create(bool inheritable, EventHandle* out) noexcept;

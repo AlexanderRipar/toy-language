@@ -475,22 +475,6 @@ bool minos::file_get_info(FileHandle handle, FileInfo* out) noexcept
 	return true;
 }
 
-bool minos::file_set_info(FileHandle handle, const FileInfo* info, FileInfoMask mask) noexcept
-{
-	FILE_BASIC_INFO basic_info{};
-
-	if ((mask & FileInfoMask::CreationTime) != FileInfoMask::None)
-		basic_info.CreationTime.QuadPart = info->creation_time;
-
-	if ((mask & FileInfoMask::LastAccessTime) != FileInfoMask::None)
-		basic_info.LastAccessTime.QuadPart = info->last_access_time;
-
-	if ((mask & FileInfoMask::LastModifiedTime) != FileInfoMask::None)
-		basic_info.LastWriteTime.QuadPart = info->last_modified_time;
-
-	return SetFileInformationByHandle(handle.m_rep, FileBasicInfo, &basic_info, sizeof(basic_info)) != 0;
-}
-
 bool minos::file_resize(FileHandle handle, u64 new_bytes) noexcept
 {
 	LARGE_INTEGER destination;
