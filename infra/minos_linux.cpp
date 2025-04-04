@@ -1265,6 +1265,16 @@ static s32 syscall_pidfd_open(pid_t pid, u32 flags) noexcept
 	return static_cast<s32>(syscall(SYS_pidfd_open, pid, flags));
 }
 
+static minos::ProcessHandle make_private_process_handle(pid_t pid) noexcept
+{
+	return { reinterpret_cast<static_cast<u64>(pid) | (static_cast<u64>(1) << 63) };
+}
+
+static bool is_private_process_handle(minos::ProcessHandle handle) noexcept
+{
+	return (reinterpret_cast<64>(handle.m_rep) >> 63) != 0;
+}
+
 bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_line, Range<char8> working_directory, Range<GenericHandle> inherited_handles, bool inheritable, ProcessHandle* out) noexcept
 {
 	const pid_t parent_pid = getpid();
@@ -1280,18 +1290,30 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	{
 		restore_fds_after_fork(inherited_handles);
 	
-		const s32 child_fd = syscall_pidfd_open(child_pid, PIDFD_NONBLOCK);
+		// If the fd is inheritable, we need to open a pidfd, so siblings of
+		// the created process can wait on it.
+		// If the handle is private, this is not necessary. However, in this
+		// case it also must not be closed. To ensure this, set its highest
+		// bit.
+		if (is_inheritable)
+		{
+			const s32 child_fd = syscall_pidfd_open(child_pid, PIDFD_NONBLOCK);
 
-		if (child_fd == -1)
-			panic("syscall_pdifd_open failed (0x%X - %s)", last_error(), strerror(last_error()));
+			if (child_fd == -1)
+				panic("syscall_pdifd_open failed (0x%X - %s)", last_error(), strerror(last_error()));
 
-		// Since we haven't set any flags, we can simply set FD_CLOEXEC without
-		// or'ing with previous flags. Note that PIDFD_NONBLOCK would be set
-		// using F_SETFL, not F_SETFD, thus remaining unaffected by this call.
-		if (fcntl(child_fd, F_SETFD, FD_CLOEXEC) != 0)
-			panic("fcntl(pidfd) failed (0x%X - %s)", last_error(), strerror(last_error()));
+			// Since we haven't set any flags, we can simply set FD_CLOEXEC without
+			// or'ing with previous flags. Note that PIDFD_NONBLOCK would be set
+			// using F_SETFL, not F_SETFD, thus remaining unaffected by this call.
+			if (fcntl(child_fd, F_SETFD, FD_CLOEXEC) != 0)
+				panic("fcntl(pidfd) failed (0x%X - %s)", last_error(), strerror(last_error()));
 
-		*out = { reinterpret_cast<void*>(static_cast<u64>(child_fd)) };
+			*out = { reinterpret_cast<void*>(static_cast<u64>(child_fd)) };
+		}
+		else
+		{
+			*out = make_private_process_handle(child_pid);
+		}
 
 		return true;
 	}
@@ -1341,6 +1363,11 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 
 void minos::process_close(ProcessHandle handle) noexcept
 {
+	// if this is a private handle, we do not need to close it, since it is
+	// just a pid, not a pidfd.
+	if (is_private_process_handle(handle))
+		return;
+
 	if (close(static_cast<s32>(reinterpret_cast<u64>(handle))) != 0)
 		panic("close(pidfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
