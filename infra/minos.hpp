@@ -140,19 +140,13 @@ namespace minos
 
 		GenericHandle(ProcessHandle h) noexcept : m_rep{ h.m_rep } {}
 
-		GenericHandle(CompletionHandle h) noexcept : m_rep{ h.m_rep } {}
-
 		GenericHandle(EventHandle h) noexcept : m_rep{ h.m_rep } {}
 
 		GenericHandle(FileHandle h) noexcept : m_rep{ h.m_rep } {}
 
-		GenericHandle(ThreadHandle h) noexcept : m_rep{ h.m_rep } {}
-
 		GenericHandle(ShmHandle h) noexcept : m_rep{ h.m_rep } {}
 
 		GenericHandle(SemaphoreHandle h) noexcept : m_rep{ h.m_rep } {}
-
-		GenericHandle(DirectoryEnumerationHandle h) noexcept : m_rep{ h.m_rep } {}
 	};
 	
 	struct FileIdentity
