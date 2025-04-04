@@ -39,7 +39,6 @@
   - Add tests for parse.cpp
   - Add tests for identifier_pool.cpp
   - Add tests for config.cpp
-  - Add tests for 
 
 
 ## Planning
