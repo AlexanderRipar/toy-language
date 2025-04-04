@@ -16,6 +16,7 @@
 #include <sys/prctl.h>
 #include <sys/wait.h>
 #include <sys/mman.h>
+#include <sys/types.h>
 #include <linux/futex.h>
 #include <linux/io_uring.h>
 #include <linux/prctl.h>
@@ -26,6 +27,7 @@
 #include <atomic>
 #include <poll.h>
 #include <signal.h>
+#include <dirent.h>
 
 // TODO: Remove
 #if COMPILER_CLANG
@@ -998,7 +1000,7 @@ bool minos::file_get_info(FileHandle handle, FileInfo* out) noexcept
 
 	if (fstat(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &info) != 0)
 		return false;
-		
+
 	out->identity.volume_serial = info.st_dev;
 	out->identity.index = info.st_ino;
 	out->bytes = info.st_size;
@@ -1493,22 +1495,95 @@ bool minos::semaphore_wait_timeout(SemaphoreHandle handle, u32 milliseconds) noe
 
 minos::DirectoryEnumerationStatus minos::directory_enumeration_create(Range<char8> directory_path, DirectoryEnumerationHandle* out, DirectoryEnumerationResult* out_first) noexcept
 {
-	panic("minos::directory_enumeration_create is not yet implemented\n");
+	char8 terminated_path[PATH_MAX + 1];
+
+	if (directory_path.count() > array_count(terminated_path) - 1)
+	{
+		errno = ENAMETOOLONG;
+
+		return DirectoryEnumerationStatus::Error;
+	}
+
+	terminated_path[directory_path.count()] = '\0';
+
+	DIR* const dir = opendir(terminated_path);
+
+	if (dir == nullptr)
+		return DirectoryEnumerationStatus::Error;
+
+	*out = { dir };
+
+	errno = 0;
+
+	const DirectoryEnumerationStatus first_ok = directory_enumeration_next({ dir }, out_first);
+
+	if (first_ok == DirectoryEnumerationStatus::Error)
+		directory_enumeration_close({ dir });
+
+	return first_ok;
 }
 
 minos::DirectoryEnumerationStatus minos::directory_enumeration_next(DirectoryEnumerationHandle handle, DirectoryEnumerationResult* out) noexcept
 {
-	panic("minos::directory_enumeration_next is not yet implemented\n");
+	// Reset errno to determine whether readdir failed with an error or end-of-stream
+	errno = 0;
+
+	dirent* const entry = readdir(static_cast<DIR*>(handle.m_rep));
+
+	if (entry == nullptr)
+		return errno == 0 ? DirectoryEnumerationStatus::NoMoreFiles : DirectoryEnumerationStatus::Error;
+
+	const s32 dir_fd = dirfd(static_cast<DIR*>(handle.m_rep));
+
+	if (dir_fd == -1)
+		return DirectoryEnumerationStatus::Error;
+
+	const s32 entry_fd = openat(dir_fd, entry->d_name, O_RDONLY | O_PATH);
+
+	if (entry_fd == -1)
+		return DirectoryEnumerationStatus::Error;
+
+	struct stat info;
+
+	if (fstat(entry_fd, &info) != 0)
+	{
+		if (close(entry_fd) != 0)
+			panic("close(direntry_fd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+	}
+
+	out->creation_time = 0; // This is not supported under *nix
+	out->last_access_time = info.st_atime;
+	out->last_write_time = info.st_mtime; // Use mtime instead of ctime, as metadata changes likely do not matter (?)
+	out->bytes = info.st_size;
+	out->is_directory = S_ISDIR(info.st_mode);
+
+	static_assert(sizeof(entry->d_name) <= sizeof(out->filename));
+
+	memcpy(out->filename, entry->d_name, sizeof(entry->d_name));
+
+	return DirectoryEnumerationStatus::Ok;
 }
 
 void minos::directory_enumeration_close(DirectoryEnumerationHandle handle) noexcept
 {
-	panic("minos::directory_enumeration_close is not yet implemented\n");
+	if (closedir(static_cast<DIR*>(handle.m_rep)) != 0)
+		panic("closedir failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
 bool minos::directory_create(Range<char8> path) noexcept
 {
-	panic("minos::directory_create is not yet implemented\n");
+	char8 terminated_path[PATH_MAX + 1];
+
+	if (path.count() > array_count(terminated_path) - 1)
+	{
+		errno = ENAMETOOLONG;
+
+		return false;
+	}
+
+	memcpy(terminated_path, path.begin(), path.count());
+
+	return mkdir(terminated_path, S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) == 0;
 }
 
 bool minos::path_is_directory(Range<char8> path) noexcept

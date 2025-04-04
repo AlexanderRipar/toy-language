@@ -24,24 +24,6 @@
   infra/threading.hpp).
 
 
-## OS Wrapping
-
-- infra/minos.hpp
-  - Check up on what exactly `minos::shm_reserve` does, maybe renaming it to
-    `minos::shm_map` or `minos::shm_commit` in the process.
-
-- infra/minos_linux.cpp:
-  - Implement `minos::semaphore_create`.
-  - Implement `minos::semaphore_close`.
-  - Implement `minos::semaphore_post`.
-  - Implement `minos::semaphore_wait`.
-  - Implement `minos::semaphore_wait_timeout`.
-  - Implement `minos::directory_enumeration_create`.
-  - Implement `minos::directory_enumeration_next`.
-  - Implement `minos::directory_enumeration_close`.
-  - Implement `minos::directory_create`.
-
-
 ## Tests
 
 - minos_tests.cpp:
