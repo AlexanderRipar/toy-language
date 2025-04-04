@@ -1323,6 +1323,11 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	panic("execvp failed in newly spawned process (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
+void minos::process_close(ProcessHandle handle) noexcept
+{
+	// No-op
+}
+
 void minos::process_wait(ProcessHandle handle, u32* opt_out_result) noexcept
 {
 	panic("minos::process_wait is not yet implemented\n");

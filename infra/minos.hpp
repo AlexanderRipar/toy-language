@@ -423,6 +423,8 @@ namespace minos
 
 	[[nodiscard]] bool process_create(Range<char8> exe_path, Range<Range<char8>> command_line, Range<char8> working_directory, Range<GenericHandle> inherited_handles, bool inheritable, ProcessHandle* out) noexcept;
 
+	void process_close(ProcessHandle handle) noexcept;
+
 	void process_wait(ProcessHandle handle, u32* opt_out_result) noexcept;
 
 	[[nodiscard]] bool process_wait_timeout(ProcessHandle handle, u32 milliseconds, u32* opt_out_result) noexcept;

@@ -811,6 +811,12 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	return true;
 }
 
+void minos::process_close(ProcessHandle handle) noexcept
+{
+	if (!CloseHandle(handle.m_rep))
+		panic("CloseHandle(ProcessHandle) failed (0x%X)\n", last_error());
+}
+
 void minos::process_wait(ProcessHandle handle, u32* opt_out_result) noexcept
 {
 	const u32 wait_result = WaitForSingleObject(handle.m_rep, INFINITE);
