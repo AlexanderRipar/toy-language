@@ -1015,14 +1015,102 @@ bool minos::file_resize(FileHandle handle, u64 new_bytes) noexcept
 	return ftruncate(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), new_bytes) == 0;
 }
 
-bool minos::event_create(bool inheritable, EventHandle* out) noexcept
+static s32 event_create_impl(bool is_semaphore, u32 initial_value) noexcept
 {
-	const s32 fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+	return eventfd(initial_value, EFD_CLOEXEC | EFD_NONBLOCK | (is_semaphore ? EFD_SEMAPHORE : 0));
+}
+
+[[nodiscard]] static bool event_wait_impl(s32 fd, const timespec* opt_timeout) noexcept
+{
+	timespec end_time;
+
+	timespec timeout;
+
+	timespec* actual_timeout;
+
+	if (opt_timeout != nullptr)
+	{
+		if (clock_gettime(CLOCK_MONOTONIC, &end_time) != 0)
+			panic("clock_gettime failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+
+		end_time.tv_sec += opt_timeout->tv_sec;
+		end_time.tv_nsec += opt_timeout->tv_nsec;
+
+		if (end_time.tv_nsec >= 1'000'000'000)
+		{
+			ASSERT_OR_IGNORE(end_time.tv_nsec < 2'000'000'000);
+
+			end_time.tv_sec += 1;
+			end_time.tv_nsec -= 1'000'000'000;
+		}
+
+		timeout = *opt_timeout;
+
+		actual_timeout = &timeout;
+	}
+	else
+	{
+		actual_timeout = nullptr;
+	}
+
+	while (true)
+	{
+		u64 event_value;
+
+		const s64 read_result = read(fd, &event_value, sizeof(event_value));
+
+		if (read_result == 8)
+			return true;
+		else if (read_result != -1)
+			panic("read(eventfd) returned unexpected read count %d (expected 8)\n", read_result);
+		else if (errno != EAGAIN)
+			panic("read(eventfd) failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+		else if (opt_timeout != nullptr && opt_timeout->tv_sec == 0 && opt_timeout->tv_nsec == 0)
+			return false;
+
+		pollfd pfd;
+		pfd.fd = fd;
+		pfd.events = POLLIN;
+		pfd.revents = 0;
+
+		const s32 poll_result = ppoll(&pfd, 1, actual_timeout, nullptr);
+
+		if (poll_result == -1)
+			panic("poll(eventfd) failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+		else if (poll_result == 0)
+			return false;
+		else if (pfd.revents != POLLIN)
+			panic("poll(eventfd) returned with non-POLLIN event 0x%X\n", pfd.revents);
+
+		if (opt_timeout != nullptr)
+		{
+			timespec curr_time;
+
+			if (clock_gettime(CLOCK_MONOTONIC, &curr_time) != 0)
+				panic("clock_gettime failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+
+			timeout.tv_sec = end_time.tv_sec - curr_time.tv_sec;
+			timeout.tv_nsec = end_time.tv_nsec - curr_time.tv_nsec;
+
+			if (timeout.tv_nsec < 0)
+			{
+				ASSERT_OR_IGNORE(timeout.tv_nsec > -1'000'000'000);
+
+				timeout.tv_sec -= 1;
+				timeout.tv_nsec += 1'000'000'000;
+			}
+		}
+	}
+}
+
+bool minos::event_create([[maybe_unused]] bool inheritable, EventHandle* out) noexcept
+{
+	const s32 fd = event_create_impl(false, 0);
 
 	if (fd == -1)
 		return false;
 
-	*out = { reinterpret_cast<void*>(fd) };
+	*out = { reinterpret_cast<void*>(static_cast<u64>(fd)) };
 
 	return true;
 }
@@ -1043,93 +1131,16 @@ void minos::event_wake(EventHandle handle) noexcept
 
 void minos::event_wait(EventHandle handle) noexcept
 {
-	while (true)
-	{
-		u64 event_value;
-
-		const s64 read_result = read(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &event_value, sizeof(event_value));
-
-		if (read_result == 8)
-			return;
-		else if (read_result != -1)
-			panic("read(eventfd) returned unexpected read count %d (expected 8)\n", read_result);
-		else if (errno != EAGAIN)
-			panic("read(eventfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
-
-		pollfd fd;
-		fd.fd = static_cast<s32>(reinterpret_cast<u64>(handle.m_rep));
-		fd.events = POLLIN;
-		fd.revents = 0;
-
-		const s32 poll_result = ppoll(&fd, 1, nullptr, nullptr);
-
-		if (poll_result == -1)
-			panic("poll(eventfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
-
-		if (fd.revents != POLLIN)
-			panic("poll(eventfd) returned with non-POLLIN event 0x%X\n", fd.revents);
-	}
+	(void) event_wait_impl(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), nullptr);
 }
 
 bool minos::event_wait_timeout(EventHandle handle, u32 milliseconds) noexcept
 {
-	timespec start_time;
+	timespec ts;
+	ts.tv_sec = milliseconds / 1000;
+	ts.tv_nsec = (milliseconds % 1000) * 1'000'000;
 
-	if (clock_gettime(CLOCK_MONOTONIC, &start_time) != 0)
-		panic("clock_gettime failed (0x%X - %s)\n", last_error(), strerror(last_error()));
-
-	// Round up to next millisecond
-	const u64 end_milliseconds = static_cast<u64>(start_time.tv_sec) * 1000 + (static_cast<u64>(start_time.tv_nsec) + 999'999) / 1'000'000 + milliseconds;
-
-	while (true)
-	{
-		u64 event_value;
-	
-		const s64 read_result = read(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &event_value, sizeof(event_value));
-
-		if (read_result == 8)
-			return true;
-		else if (read_result != -1)
-			panic("read(eventfd) returned unexpected read count %d (expected 8)\n", read_result);
-		else if (errno != EAGAIN)
-			panic("read(eventfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
-		else if (milliseconds == 0) // Return without `ppoll`ing if our timeout is 0
-			return false;
-
-		timespec curr_time;
-
-		if (clock_gettime(CLOCK_MONOTONIC, &curr_time) != 0)
-			panic("clock_gettime failed (0x%X - %s)\n", last_error(), strerror(last_error()));
-
-		// Round up to next millisecond
-		const u64 curr_milliseconds = static_cast<u64>(start_time.tv_sec) * 1000 + (static_cast<u64>(start_time.tv_nsec) + 999'999) / 1'000'000;
-
-		if (curr_milliseconds > end_milliseconds)
-			return false;
-
-		const u64 remaining_milliseconds = end_milliseconds - curr_milliseconds;
-
-		timespec timeout;
-		timeout.tv_sec = remaining_milliseconds / 1000;
-		timeout.tv_nsec = (remaining_milliseconds % 1000) * 1'000'000;
-
-		pollfd fd;
-		fd.fd = static_cast<s32>(reinterpret_cast<u64>(handle.m_rep));
-		fd.events = POLLIN;
-		fd.revents = 0;
-
-		const s32 poll_result = ppoll(&fd, 1, &timeout, nullptr);
-
-		if (poll_result == -1)
-			panic("poll(eventfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
-
-		// Return false in case of `ppoll` timing out
-		if (poll_result == 0)
-			return false;
-
-		if (fd.revents != POLLIN)
-			panic("poll(eventfd) returned with non-POLLIN event 0x%X\n", fd.revents);
-	}
+	return event_wait_impl(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &ts);
 }
 
 bool minos::completion_create(CompletionHandle* out) noexcept
@@ -1440,29 +1451,44 @@ void minos::shm_unmap(void* address, u64 bytes) noexcept
 		panic("munmap(shm) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
-bool minos::sempahore_create(u32 initial_count, bool inheritable, SemaphoreHandle* out) noexcept
+bool minos::sempahore_create(u32 initial_count, [[maybe_unused]] bool inheritable, SemaphoreHandle* out) noexcept
 {
-	panic("minos::sempahore_create is not yet implemented\n");
+	const s32 fd = event_create_impl(true, initial_count);
+
+	if (fd == -1)
+		return false;
+
+	*out = { reinterpret_cast<void*>(fd) };
+
+	return true;
 }
 
 void minos::semaphore_close(SemaphoreHandle handle) noexcept
 {
-	panic("minos::semaphore_close is not yet implemented\n");
+	if (!close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))))
+		panic("close(eventfd semaphore) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
 void minos::semaphore_post(SemaphoreHandle handle, u32 count) noexcept
 {
-	panic("minos::semaphore_post is not yet implemented\n");
+	u64 increment = count;
+
+	if (write(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &increment, sizeof(increment)) < 0)
+		panic("write(eventfd semaphore) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
 void minos::semaphore_wait(SemaphoreHandle handle) noexcept
 {
-	panic("minos::semaphore_wait is not yet implemented\n");
+	(void) event_wait_impl(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), nullptr);
 }
 
 bool minos::semaphore_wait_timeout(SemaphoreHandle handle, u32 milliseconds) noexcept
 {
-	panic("minos::semaphore_wait_timeout is not yet implemented\n");
+	timespec ts;
+	ts.tv_sec = milliseconds / 1000;
+	ts.tv_nsec = (milliseconds % 1000) * 1'000'000;
+
+	return event_wait_impl(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &ts);
 }
 
 minos::DirectoryEnumerationStatus minos::directory_enumeration_create(Range<char8> directory_path, DirectoryEnumerationHandle* out, DirectoryEnumerationResult* out_first) noexcept
