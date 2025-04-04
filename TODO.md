@@ -27,14 +27,10 @@
 ## OS Wrapping
 
 - infra/minos.hpp
-  - Decide whether minos::process_close is necessary (likely yes) by reading
-    win32 docs on `CreateProcessW` and linux man page on `fork` or `exec` or
-	so.
   - Check up on what exactly `minos::shm_reserve` does, maybe renaming it to
     `minos::shm_map` or `minos::shm_commit` in the process.
 
 - infra/minos_linux.cpp:
-  - Implement `minos::process_create`.
   - Implement `minos::process_wait`.
   - Implement `minos::process_wait_timeout`.
   - Implement `minos::shm_create`.
