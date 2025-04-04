@@ -13,14 +13,17 @@
 #include <sys/fcntl.h>
 #include <sys/eventfd.h>
 #include <sys/syscall.h>
+#include <sys/prctl.h>
 #include <linux/futex.h>
 #include <linux/io_uring.h>
+#include <linux/prctl.h>
 #include <limits.h>
 #include <time.h>
 #include <cstdlib>
 #include <cstring>
 #include <atomic>
 #include <poll.h>
+#include <signal.h>
 
 // TODO: Remove
 #if COMPILER_CLANG
@@ -882,25 +885,25 @@ bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_
 
 	terminated_filepath[filepath.count()] = '\0';
 
-	s32 oflag;
+	s32 oflag = O_CLOEXEC;
 
 	if ((access & (Access::Read | Access::Write)) == (Access::Read | Access::Write))
 	{
-		oflag = O_RDWR;
+		oflag |= O_RDWR;
 	}
 	else if ((access & (Access::Read | Access::Write)) == (Access::Read))
 	{
-		oflag = O_RDONLY;
+		oflag |= O_RDONLY;
 	}
 	else if ((access & (Access::Read | Access::Write)) == Access::Write)
 	{
-		oflag = O_WRONLY;
+		oflag |= O_WRONLY;
 	}
 	else if (access == Access::None)
 	{
 		ASSERT_OR_IGNORE(new_mode == NewMode::Fail && (exists_mode == ExistsMode::Open || exists_mode == ExistsMode::OpenDirectory));
 
-		oflag = O_PATH;
+		oflag |= O_PATH;
 	}
 	else
 	{
@@ -916,9 +919,6 @@ bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_
 	// so just ignore them since they are only hints anyways.
 	if (pattern == AccessPattern::Unbuffered)
 		oflag |= O_DIRECT;
-
-	if (!inheritable)
-		oflag |= O_CLOEXEC;
 
 	s32 fd;
 
@@ -1015,7 +1015,7 @@ bool minos::file_resize(FileHandle handle, u64 new_bytes) noexcept
 
 bool minos::event_create(bool inheritable, EventHandle* out) noexcept
 {
-	const s32 fd = eventfd(0, (inheritable ? 0 : EFD_CLOEXEC) | EFD_NONBLOCK);
+	const s32 fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
 
 	if (fd == -1)
 		return false;
@@ -1188,9 +1188,139 @@ void minos::sleep(u32 milliseconds) noexcept
 		panic("usleep failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
+static char8** prepare_command_line_for_exec(char8* exe_path, u64 exe_path_chars, Range<Range<char8>> command_line) noexcept
+{
+	const u64 pointer_bytes = (command_line.count() + 2) * sizeof(char8*);
+
+	u64 command_line_bytes = exe_path_chars + 1;
+
+	for (Range<char8> arg : command_line)
+		command_line_bytes += arg.count() + 1;
+
+	void* const memory = malloc(pointer_bytes + command_line_bytes);
+
+	if (memory == nullptr)
+		panic("malloc failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+
+	char8** const arg_ptrs = static_cast<char8**>(memory);
+
+	char8* arg_buf = reinterpret_cast<char8*>(memory) + pointer_bytes;
+
+	arg_ptrs[0] = exe_path;
+
+	u32 arg_index = 1;
+
+	for (Range<char8> arg : command_line)
+	{
+		memcpy(arg_buf, arg.begin(), arg.count());
+
+		arg_ptrs[arg_index] = arg_buf;
+
+		arg_buf += arg.count();
+
+		*arg_buf = '\0';
+
+		arg_buf += 1;
+	}
+
+	arg_ptrs[command_line.count() + 1] = nullptr;
+
+	return arg_ptrs;
+}
+
+static void prepare_fds_for_fork(Range<minos::GenericHandle> inherited_handles) noexcept
+{
+	for (minos::GenericHandle handle : inherited_handles)
+	{
+		const s32 fd = static_cast<s32>(reinterpret_cast<u64>(handle.m_rep));
+
+		const s32 flags = fcntl(fd, F_GETFD);
+
+		if (flags == -1)
+			panic("fcntl(%s) to %sset FD_CLOEXEC failed on fd %d (0x%X - %s)\n", "F_GETFD", "un", fd, minos::last_error(), strerror(minos::last_error()));
+
+		if (fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC) != 0)
+			panic("fcntl(%s) to %sset FD_CLOEXEC failed on fd %d (0x%X - %s)\n", "F_SETFD", "un", fd, minos::last_error(), strerror(minos::last_error()));
+	}
+}
+
+static void restore_fds_after_fork(Range<minos::GenericHandle> inherited_handles) noexcept
+{
+	for (minos::GenericHandle handle : inherited_handles)
+	{
+		const s32 fd = static_cast<s32>(reinterpret_cast<u64>(handle.m_rep));
+
+		const s32 flags = fcntl(fd, F_GETFD);
+
+		if (flags == -1)
+			panic("fcntl(%s) to %sset FD_CLOEXEC failed on fd %d (0x%X - %s)\n", "F_GETFD", "re", fd, minos::last_error(), strerror(minos::last_error()));
+
+		if (fcntl(fd, F_SETFD, flags | FD_CLOEXEC) != 0)
+			panic("fcntl(%s) to %sset FD_CLOEXEC failed on fd %d (0x%X - %s)\n", "F_SETFD", "re", fd, minos::last_error(), strerror(minos::last_error()));
+	}
+}
+
 bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_line, Range<char8> working_directory, Range<GenericHandle> inherited_handles, bool inheritable, ProcessHandle* out) noexcept
 {
-	panic("minos::process_create is not yet implemented\n");
+	const pid_t parent_pid = getpid();
+
+	prepare_fds_for_fork(inherited_handles);
+
+	const pid_t child_pid = fork();
+
+	if (child_pid == -1)
+		return false;
+
+	if (child_pid != 0)
+	{
+		restore_fds_after_fork(inherited_handles);
+	
+		*out = { reinterpret_cast<void*>(child_pid) };
+
+		return true;
+	}
+
+	const s32 parent_deathsig_ok = prctl(PR_SET_PDEATHSIG, SIGKILL);
+
+	if (parent_deathsig_ok != 0)
+		panic("prctl(PR_SET_DEATHSIG, SIGKILL) failed in newly spawned child process (0x%X - %s)\n", last_error(), strerror(last_error()));
+
+	// Avoid race when parent is exited before prctl is called in the child.
+	// Note that the `parent_pid` is taken before `fork`ing to make this
+	// reliable. Also note that `getppid` returns a different pid when the
+	// parent has exited, as we get reparented.
+	if (parent_pid != getppid())
+		exit(1);
+
+	char8 absolute_exe_path[PATH_MAX + 1];
+
+	const u32 absolute_exe_path_chars = path_to_absolute(exe_path, MutRange{ absolute_exe_path, array_count(absolute_exe_path) - 1 });
+
+	if (absolute_exe_path_chars == 0 || absolute_exe_path_chars > array_count(absolute_exe_path) - 1)
+		panic("Failed to get absolute path of executable file in newly spawned child process (0x%X - %s)\n", last_error(), strerror(last_error()));
+
+	absolute_exe_path[absolute_exe_path_chars] = '\0';
+
+	char8** const terminated_args = prepare_command_line_for_exec(absolute_exe_path, absolute_exe_path_chars, command_line);
+
+	if (working_directory.count() != 0)
+	{
+		char8 terminated_working_directory[PATH_MAX + 1];
+
+		if (working_directory.count() > array_count(terminated_working_directory) - 1)
+			panic("working_directory passed to minos::process_create is longer than the supported maximum of %u characters", array_count(terminated_working_directory) - 1);
+
+		memcpy(terminated_working_directory, working_directory.begin(), working_directory.count());
+
+		terminated_working_directory[working_directory.count()] = '\0';
+
+		if (chdir(terminated_working_directory) != 0)
+			panic("Could not set working directory of newly spawned process (0x%X - %s)\n", last_error(), strerror(last_error()));
+	}
+
+	execvp(absolute_exe_path, terminated_args);
+
+	panic("execvp failed in newly spawned process (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
 void minos::process_wait(ProcessHandle handle, u32* opt_out_result) noexcept
