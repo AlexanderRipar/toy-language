@@ -1307,9 +1307,33 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	if (parent_pid != getppid())
 		exit(1);
 
+	const char8* relative_exe_path;
+
+	u32 relative_exe_path_chars;
+
+	char8 own_exe[PATH_MAX + 1];
+
+	if (exe_path.count() != 0)
+	{
+		relative_exe_path = exe_path.begin();
+
+		relative_exe_path_chars = static_cast<u32>(exe_path.count());
+	}
+	else
+	{
+		const s64 readlink_result = readlink("/proc/self/exe", own_exe, array_count(own_exe) - 1);
+
+		if (readlink_result < 0 || readlink_result == array_count(own_exe) - 1)
+			panic("readlink(\"/proc/self/exe\") failed or lead to truncation (0x%X - %s)", last_error(), strerror(last_error()));
+
+		relative_exe_path = own_exe;
+
+		relative_exe_path_chars = static_cast<u32>(readlink_result);
+	}
+
 	char8 absolute_exe_path[PATH_MAX + 1];
 
-	const u32 absolute_exe_path_chars = path_to_absolute(exe_path, MutRange{ absolute_exe_path, array_count(absolute_exe_path) - 1 });
+	const u32 absolute_exe_path_chars = path_to_absolute(Range{ relative_exe_path, relative_exe_path_chars }, MutRange{ absolute_exe_path, array_count(absolute_exe_path) - 1 });
 
 	if (absolute_exe_path_chars == 0 || absolute_exe_path_chars > array_count(absolute_exe_path) - 1)
 		panic("Failed to get absolute path of executable file in newly spawned child process (0x%X - %s)\n", last_error(), strerror(last_error()));
@@ -1318,10 +1342,10 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 
 	char8** const terminated_args = prepare_command_line_for_exec(absolute_exe_path, absolute_exe_path_chars, command_line);
 
+	char8 terminated_working_directory[PATH_MAX + 1];
+
 	if (working_directory.count() != 0)
 	{
-		char8 terminated_working_directory[PATH_MAX + 1];
-
 		if (working_directory.count() > array_count(terminated_working_directory) - 1)
 			panic("working_directory passed to minos::process_create is longer than the supported maximum of %u characters", array_count(terminated_working_directory) - 1);
 
