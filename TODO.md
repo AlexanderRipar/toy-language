@@ -31,9 +31,6 @@
     `minos::shm_map` or `minos::shm_commit` in the process.
 
 - infra/minos_linux.cpp:
-  - Implement `minos::shm_create`.
-  - Implement `minos::shm_close`.
-  - Implement `minos::shm_reserve`.
   - Implement `minos::semaphore_create`.
   - Implement `minos::semaphore_close`.
   - Implement `minos::semaphore_post`.

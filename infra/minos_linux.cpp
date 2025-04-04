@@ -15,6 +15,7 @@
 #include <sys/syscall.h>
 #include <sys/prctl.h>
 #include <sys/wait.h>
+#include <sys/mman.h>
 #include <linux/futex.h>
 #include <linux/io_uring.h>
 #include <linux/prctl.h>
@@ -1383,17 +1384,54 @@ bool minos::process_wait_timeout(ProcessHandle handle, u32 milliseconds, u32* op
 
 bool minos::shm_create(Access access, u64 bytes, ShmHandle* out) noexcept
 {
-	panic("minos::shm_create is not yet implemented\n");
+	const s32 fd = memfd_create("minos_memfd", MFD_CLOEXEC);
+
+	if (fd == -1)
+		return false;
+
+	if (ftruncate(fd, bytes) != 0)
+	{
+		if (close(fd) != 0)
+			panic("close(memfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+
+		return false;
+	}
+
+	*out = { reinterpret_cast<void*>(static_cast<u64>(fd)) };
+
+	return true;
 }
 
 void minos::shm_close(ShmHandle handle) noexcept
 {
-	panic("minos::shm_close is not yet implemented\n");
+	if (close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))) != 0)
+		panic("close(memfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
 void* minos::shm_reserve(ShmHandle handle, Access access, u64 offset, u64 bytes) noexcept
 {
-	panic("minos::shm_reserve is not yet implemented\n");
+	const s32 fd = static_cast<s32>(reinterpret_cast<u64>(handle.m_rep));
+
+	s32 native_access = 0;
+
+	if ((access & Access::Read) != Access::None)
+		native_access |= PROT_READ;
+
+	if ((access & Access::Write) != Access::None)
+		native_access |= PROT_WRITE;
+
+	if ((access & Access::Execute) != Access::None)
+		native_access |= PROT_EXEC;
+
+	if (access == Access::None)
+		native_access = PROT_NONE;
+
+	void* const address = mmap(nullptr, bytes, native_access, MAP_SHARED, fd, offset);
+
+	if (address == MAP_FAILED)
+		return nullptr;
+
+	return address;
 }
 
 bool minos::sempahore_create(u32 initial_count, u32 maximum_count, bool inheritable, SemaphoreHandle* out) noexcept
