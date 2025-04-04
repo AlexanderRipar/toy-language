@@ -699,9 +699,68 @@ static void file_read_with_completion_works() noexcept
 	MINOS_TEST_END;
 }
 
-// TODO: file_create and file_close with completion
+static void file_read_twice_with_completion_works() noexcept
+{
+	MINOS_TEST_BEGIN;
 
-// TODO: file_read and file_write with completion and completion_wait
+	minos::CompletionHandle completion;
+
+	TEST_EQUAL(minos::completion_create(&completion), true);
+
+	minos::CompletionInitializer completion_init;
+	completion_init.completion = completion;
+	completion_init.key = 1234;
+
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(range::from_literal_string("minos_fs_data/short_file"), minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, &completion_init, false, &file), true);
+
+	byte buf1[1024];
+
+	minos::Overlapped overlapped1{};
+	overlapped1.offset = 0;
+
+	TEST_EQUAL(minos::file_read(file, buf1, 1024, &overlapped1), true);
+
+	byte buf2[1024];
+
+	minos::Overlapped overlapped2{};
+	overlapped2.offset = 0;
+
+	TEST_EQUAL(minos::file_read(file, buf2, 1024, &overlapped2), true);
+
+	minos::CompletionResult read_result1;
+
+	TEST_EQUAL(minos::completion_wait(completion, &read_result1), true);
+
+	TEST_EQUAL(read_result1.key, 1234);
+
+	TEST_EQUAL(read_result1.bytes, 14);
+
+	TEST_EQUAL(read_result1.overlapped == &overlapped1 || read_result1.overlapped == &overlapped2, true);
+
+	TEST_MEM_EQUAL(buf1, "abcdefghijklmn", 14);
+
+	minos::CompletionResult read_result2;
+
+	TEST_EQUAL(minos::completion_wait(completion, &read_result2), true);
+
+	TEST_EQUAL(read_result2.key, 1234);
+
+	TEST_EQUAL(read_result2.bytes, 14);
+
+	TEST_EQUAL(read_result2.overlapped == &overlapped1 || read_result2.overlapped == &overlapped2, true);
+
+	TEST_UNEQUAL(read_result1.overlapped, read_result2.overlapped);
+
+	TEST_MEM_EQUAL(buf2, "abcdefghijklmn", 14);
+
+	minos::file_close(file);
+
+	minos::completion_close(completion);
+
+	MINOS_TEST_END;
+}
 
 
 // TODO: process_create and process_close
@@ -813,6 +872,8 @@ void minos_tests() noexcept
 	file_create_with_completion_works();
 
 	file_read_with_completion_works();
+
+	file_read_twice_with_completion_works();
 
 	TEST_MODULE_END;
 }
