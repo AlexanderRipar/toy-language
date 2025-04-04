@@ -14,6 +14,7 @@
 #include <sys/eventfd.h>
 #include <sys/syscall.h>
 #include <sys/prctl.h>
+#include <sys/wait.h>
 #include <linux/futex.h>
 #include <linux/io_uring.h>
 #include <linux/prctl.h>
@@ -1121,6 +1122,10 @@ bool minos::event_wait_timeout(EventHandle handle, u32 milliseconds) noexcept
 		if (poll_result == -1)
 			panic("poll(eventfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 
+		// Return false in case of `ppoll` timing out
+		if (poll_result == 0)
+			return false;
+
 		if (fd.revents != POLLIN)
 			panic("poll(eventfd) returned with non-POLLIN event 0x%X\n", fd.revents);
 	}
@@ -1228,7 +1233,7 @@ static char8** prepare_command_line_for_exec(char8* exe_path, u64 exe_path_chars
 	return arg_ptrs;
 }
 
-static void prepare_fds_for_fork(Range<minos::GenericHandle> inherited_handles) noexcept
+static void prepare_fds_for_exec(Range<minos::GenericHandle> inherited_handles) noexcept
 {
 	for (minos::GenericHandle handle : inherited_handles)
 	{
@@ -1237,26 +1242,10 @@ static void prepare_fds_for_fork(Range<minos::GenericHandle> inherited_handles) 
 		const s32 flags = fcntl(fd, F_GETFD);
 
 		if (flags == -1)
-			panic("fcntl(%s) to %sset FD_CLOEXEC failed on fd %d (0x%X - %s)\n", "F_GETFD", "un", fd, minos::last_error(), strerror(minos::last_error()));
+			panic("fcntl(%s) to unset FD_CLOEXEC failed on fd %d (0x%X - %s)\n", "F_GETFD", fd, minos::last_error(), strerror(minos::last_error()));
 
 		if (fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC) != 0)
-			panic("fcntl(%s) to %sset FD_CLOEXEC failed on fd %d (0x%X - %s)\n", "F_SETFD", "un", fd, minos::last_error(), strerror(minos::last_error()));
-	}
-}
-
-static void restore_fds_after_fork(Range<minos::GenericHandle> inherited_handles) noexcept
-{
-	for (minos::GenericHandle handle : inherited_handles)
-	{
-		const s32 fd = static_cast<s32>(reinterpret_cast<u64>(handle.m_rep));
-
-		const s32 flags = fcntl(fd, F_GETFD);
-
-		if (flags == -1)
-			panic("fcntl(%s) to %sset FD_CLOEXEC failed on fd %d (0x%X - %s)\n", "F_GETFD", "re", fd, minos::last_error(), strerror(minos::last_error()));
-
-		if (fcntl(fd, F_SETFD, flags | FD_CLOEXEC) != 0)
-			panic("fcntl(%s) to %sset FD_CLOEXEC failed on fd %d (0x%X - %s)\n", "F_SETFD", "re", fd, minos::last_error(), strerror(minos::last_error()));
+			panic("fcntl(%s) to unset FD_CLOEXEC failed on fd %d (0x%X - %s)\n", "F_SETFD", fd, minos::last_error(), strerror(minos::last_error()));
 	}
 }
 
@@ -1265,21 +1254,9 @@ static s32 syscall_pidfd_open(pid_t pid, u32 flags) noexcept
 	return static_cast<s32>(syscall(SYS_pidfd_open, pid, flags));
 }
 
-static minos::ProcessHandle make_private_process_handle(pid_t pid) noexcept
-{
-	return { reinterpret_cast<static_cast<u64>(pid) | (static_cast<u64>(1) << 63) };
-}
-
-static bool is_private_process_handle(minos::ProcessHandle handle) noexcept
-{
-	return (reinterpret_cast<64>(handle.m_rep) >> 63) != 0;
-}
-
 bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_line, Range<char8> working_directory, Range<GenericHandle> inherited_handles, bool inheritable, ProcessHandle* out) noexcept
 {
 	const pid_t parent_pid = getpid();
-
-	prepare_fds_for_fork(inherited_handles);
 
 	const pid_t child_pid = fork();
 
@@ -1288,32 +1265,18 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 
 	if (child_pid != 0)
 	{
-		restore_fds_after_fork(inherited_handles);
-	
-		// If the fd is inheritable, we need to open a pidfd, so siblings of
-		// the created process can wait on it.
-		// If the handle is private, this is not necessary. However, in this
-		// case it also must not be closed. To ensure this, set its highest
-		// bit.
-		if (is_inheritable)
-		{
-			const s32 child_fd = syscall_pidfd_open(child_pid);
+		const s32 child_fd = syscall_pidfd_open(child_pid, 0);
 
-			if (child_fd == -1)
-				panic("syscall_pdifd_open failed (0x%X - %s)", last_error(), strerror(last_error()));
+		if (child_fd == -1)
+			panic("syscall_pdifd_open failed (0x%X - %s)", last_error(), strerror(last_error()));
 
-			// Since we haven't set any flags, we can simply set FD_CLOEXEC without
-			// or'ing with previous flags. Note that PIDFD_NONBLOCK would be set
-			// using F_SETFL, not F_SETFD, thus remaining unaffected by this call.
-			if (fcntl(child_fd, F_SETFD, FD_CLOEXEC) != 0)
-				panic("fcntl(pidfd) failed (0x%X - %s)", last_error(), strerror(last_error()));
+		// Since we haven't set any flags, we can simply set FD_CLOEXEC without
+		// or'ing with previous flags. Note that PIDFD_NONBLOCK would be set
+		// using F_SETFL, not F_SETFD, thus remaining unaffected by this call.
+		if (fcntl(child_fd, F_SETFD, FD_CLOEXEC) != 0)
+			panic("fcntl(pidfd) failed (0x%X - %s)", last_error(), strerror(last_error()));
 
-			*out = { reinterpret_cast<void*>(static_cast<u64>(child_fd)) };
-		}
-		else
-		{
-			*out = make_private_process_handle(child_pid);
-		}
+		*out = { reinterpret_cast<void*>(static_cast<u64>(child_fd)) };
 
 		return true;
 	}
@@ -1356,6 +1319,8 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 			panic("Could not set working directory of newly spawned process (0x%X - %s)\n", last_error(), strerror(last_error()));
 	}
 
+	prepare_fds_for_exec(inherited_handles);
+
 	execvp(absolute_exe_path, terminated_args);
 
 	panic("execvp failed in newly spawned process (0x%X - %s)\n", last_error(), strerror(last_error()));
@@ -1363,23 +1328,57 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 
 void minos::process_close(ProcessHandle handle) noexcept
 {
-	// if this is a private handle, we do not need to close it, since it is
-	// just a pid, not a pidfd.
-	if (is_private_process_handle(handle))
-		return;
-
-	if (close(static_cast<s32>(reinterpret_cast<u64>(handle))) != 0)
+	if (close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))) != 0)
 		panic("close(pidfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+}
+
+[[nodiscard]] static bool process_wait_impl(minos::ProcessHandle handle, const timespec* opt_timeout, u32* opt_out_result) noexcept
+{
+	if (opt_timeout != nullptr)
+	{
+		pollfd fd;
+		fd.fd = static_cast<s32>(reinterpret_cast<u64>(handle.m_rep));
+		fd.events = POLLIN;
+		fd.revents = 0;
+
+		const s32 poll_result = ppoll(&fd, 1, opt_timeout, nullptr);
+
+		ASSERT_OR_IGNORE(poll_result != 0 || opt_timeout != nullptr);
+
+		if (poll_result == 0)
+			return false;
+		else if (poll_result == -1)
+			panic("ppoll(procfd) failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+
+		ASSERT_OR_IGNORE(poll_result == 1);
+	}
+
+	siginfo_t exit_info;
+
+	// WEXITED: Only wait for exited, not temporarily stopped processes.
+	// WNOWAIT: This allows multiple waits. Otherwise, only the first one would
+	//          succeed.
+	if (waitid(P_PIDFD, static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &exit_info, WEXITED | WNOWAIT) != 0)
+		panic("waitid(pidfd) failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+
+	if (opt_out_result != nullptr)
+		*opt_out_result = exit_info.si_status;
+
+	return true;
 }
 
 void minos::process_wait(ProcessHandle handle, u32* opt_out_result) noexcept
 {
-	panic("minos::process_wait is not yet implemented\n");
+	(void) process_wait_impl(handle, nullptr, opt_out_result);
 }
 
 bool minos::process_wait_timeout(ProcessHandle handle, u32 milliseconds, u32* opt_out_result) noexcept
 {
-	panic("minos::process_wait_timeout is not yet implemented\n");
+	timespec ts;
+	ts.tv_sec = milliseconds / 1000;
+	ts.tv_nsec = (milliseconds % 1000) * 1'000'000;
+
+	return process_wait_impl(handle, &ts, opt_out_result);
 }
 
 bool minos::shm_create(Access access, u64 bytes, ShmHandle* out) noexcept

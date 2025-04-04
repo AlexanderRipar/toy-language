@@ -31,8 +31,6 @@
     `minos::shm_map` or `minos::shm_commit` in the process.
 
 - infra/minos_linux.cpp:
-  - Implement `minos::process_wait`.
-  - Implement `minos::process_wait_timeout`.
   - Implement `minos::shm_create`.
   - Implement `minos::shm_close`.
   - Implement `minos::shm_reserve`.
