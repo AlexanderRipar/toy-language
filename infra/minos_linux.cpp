@@ -1297,7 +1297,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 		// bit.
 		if (is_inheritable)
 		{
-			const s32 child_fd = syscall_pidfd_open(child_pid, PIDFD_NONBLOCK);
+			const s32 child_fd = syscall_pidfd_open(child_pid);
 
 			if (child_fd == -1)
 				panic("syscall_pdifd_open failed (0x%X - %s)", last_error(), strerror(last_error()));
