@@ -437,7 +437,7 @@ namespace minos
 
 	void shm_unmap(void* address, u64 bytes) noexcept;
 
-	[[nodiscard]] bool sempahore_create(u32 initial_count, u32 maximum_count, bool inheritable, SemaphoreHandle* out) noexcept;
+	[[nodiscard]] bool sempahore_create(u32 initial_count, bool inheritable, SemaphoreHandle* out) noexcept;
 
 	void semaphore_close(SemaphoreHandle handle) noexcept;
 

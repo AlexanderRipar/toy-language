@@ -1440,7 +1440,7 @@ void minos::shm_unmap(void* address, u64 bytes) noexcept
 		panic("munmap(shm) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
-bool minos::sempahore_create(u32 initial_count, u32 maximum_count, bool inheritable, SemaphoreHandle* out) noexcept
+bool minos::sempahore_create(u32 initial_count, bool inheritable, SemaphoreHandle* out) noexcept
 {
 	panic("minos::sempahore_create is not yet implemented\n");
 }

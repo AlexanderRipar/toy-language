@@ -924,11 +924,11 @@ void minos::shm_unmap(void* address, [[maybe_unused]] u64 bytes) noexcept
 		panic("UnmapViewOfFile failed (0x%X)\n", last_error());
 }
 
-bool minos::sempahore_create(u32 initial_count, u32 maximum_count, bool inheritable, SemaphoreHandle* out) noexcept
+bool minos::sempahore_create(u32 initial_count, bool inheritable, SemaphoreHandle* out) noexcept
 {
 	SECURITY_ATTRIBUTES security_attribute{ sizeof(SECURITY_ATTRIBUTES), nullptr, inheritable };
 
-	const HANDLE handle = CreateSemaphoreW(&security_attribute, initial_count, maximum_count, nullptr);
+	const HANDLE handle = CreateSemaphoreW(&security_attribute, initial_count, LONG_MAX, nullptr);
 
 	if (handle == nullptr)
 		return false;
