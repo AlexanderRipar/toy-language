@@ -1260,6 +1260,11 @@ static void restore_fds_after_fork(Range<minos::GenericHandle> inherited_handles
 	}
 }
 
+static s32 syscall_pidfd_open(pid_t pid, u32 flags) noexcept
+{
+	return static_cast<s32>(syscall(SYS_pidfd_open, pid, flags));
+}
+
 bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_line, Range<char8> working_directory, Range<GenericHandle> inherited_handles, bool inheritable, ProcessHandle* out) noexcept
 {
 	const pid_t parent_pid = getpid();
@@ -1275,7 +1280,18 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	{
 		restore_fds_after_fork(inherited_handles);
 	
-		*out = { reinterpret_cast<void*>(child_pid) };
+		const s32 child_fd = syscall_pidfd_open(child_pid, PIDFD_NONBLOCK);
+
+		if (child_fd == -1)
+			panic("syscall_pdifd_open failed (0x%X - %s)", last_error(), strerror(last_error()));
+
+		// Since we haven't set any flags, we can simply set FD_CLOEXEC without
+		// or'ing with previous flags. Note that PIDFD_NONBLOCK would be set
+		// using F_SETFL, not F_SETFD, thus remaining unaffected by this call.
+		if (fcntl(child_fd, F_SETFD, FD_CLOEXEC) != 0)
+			panic("fcntl(pidfd) failed (0x%X - %s)", last_error(), strerror(last_error()));
+
+		*out = { reinterpret_cast<void*>(static_cast<u64>(child_fd)) };
 
 		return true;
 	}
@@ -1325,7 +1341,8 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 
 void minos::process_close(ProcessHandle handle) noexcept
 {
-	// No-op
+	if (close(static_cast<s32>(reinterpret_cast<u64>(handle))) != 0)
+		panic("close(pidfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
 void minos::process_wait(ProcessHandle handle, u32* opt_out_result) noexcept
