@@ -330,7 +330,7 @@ static u32 THREAD_PROC address_wait_test_proc(void* param) noexcept
 	return 0;
 }
 
-static void address_wait_and_wake_single_with_changed_value_wakes() noexcept
+static void address_wait_with_4_bytes_and_wake_single_with_changed_value_wakes() noexcept
 {
 	MINOS_TEST_BEGIN;
 
@@ -363,7 +363,7 @@ static void address_wait_and_wake_single_with_changed_value_wakes() noexcept
 	MINOS_TEST_END;
 }
 
-static void address_wait_and_wake_single_with_unchanged_value_sleeps() noexcept
+static void address_wait_with_4_bytes_and_wake_single_with_unchanged_value_sleeps() noexcept
 {
 	MINOS_TEST_BEGIN;
 
@@ -389,7 +389,170 @@ static void address_wait_and_wake_single_with_unchanged_value_sleeps() noexcept
 		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), false);
 
 		// Just so we don't have a lingering thread
-		address = 0;
+		address -= 1;
+
+		minos::address_wake_single(params.address);
+
+		minos::thread_wait(thread, nullptr);
+
+		minos::thread_close(thread);
+	}
+
+	MINOS_TEST_END;
+}
+
+static void address_wait_with_2_bytes_and_wake_single_with_changed_value_wakes() noexcept
+{
+	MINOS_TEST_BEGIN;
+
+	struct alignas(u32)
+	{
+		u16 padding = 0;
+
+		u16 address = 1;
+	} unaligned_2_bytes;
+
+	u16 undesired = 1;
+
+	AddressWaitParams params;
+	params.address = &unaligned_2_bytes.address;
+	params.undesired = &undesired;
+	params.bytes = 2;
+
+	minos::ThreadHandle thread;
+
+	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), &thread);
+
+	TEST_EQUAL(thread_ok, true);
+
+	if (thread_ok)
+	{
+		unaligned_2_bytes.address -= 1;
+
+		minos::address_wake_single(params.address);
+
+		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), true);
+
+		minos::thread_close(thread);
+	}
+
+	MINOS_TEST_END;
+}
+
+static void address_wait_with_2_bytes_and_wake_single_with_unchanged_value_sleeps() noexcept
+{
+	MINOS_TEST_BEGIN;
+
+	struct alignas(u32)
+	{
+		u16 padding = 0;
+
+		u16 address = 1;
+	} unaligned_2_bytes;
+
+	u16 undesired = 1;
+
+	AddressWaitParams params;
+	params.address = &unaligned_2_bytes.address;
+	params.undesired = &undesired;
+	params.bytes = 2;
+
+	minos::ThreadHandle thread;
+
+	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait sleep"), &thread);
+
+	TEST_EQUAL(thread_ok, true);
+
+	if (thread_ok)
+	{
+		// minos::address_wake_single(params.address);
+
+		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), false);
+
+		// Just so we don't have a lingering thread
+		unaligned_2_bytes.address -= 1;
+
+		minos::address_wake_single(params.address);
+
+		minos::thread_wait(thread, nullptr);
+
+		minos::thread_close(thread);
+	}
+
+	MINOS_TEST_END;
+}
+
+static void address_wait_with_1_byte_and_wake_single_with_changed_value_wakes() noexcept
+{
+	MINOS_TEST_BEGIN;
+
+	struct alignas(u32)
+	{
+		u8 padding[3] = { 0 };
+
+		u8 address = 1;
+	} unaligned_1_bytes;
+
+	u8 undesired = 1;
+
+	AddressWaitParams params;
+	params.address = &unaligned_1_bytes.address;
+	params.undesired = &undesired;
+	params.bytes = 1;
+
+	minos::ThreadHandle thread;
+
+	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), &thread);
+
+	TEST_EQUAL(thread_ok, true);
+
+	if (thread_ok)
+	{
+		unaligned_1_bytes.address -= 1;
+
+		minos::address_wake_single(params.address);
+
+		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), true);
+
+		minos::thread_close(thread);
+	}
+
+	MINOS_TEST_END;
+}
+
+static void address_wait_with_1_byte_and_wake_single_with_unchanged_value_sleeps() noexcept
+{
+	MINOS_TEST_BEGIN;
+
+	struct alignas(u32)
+	{
+		u8 padding[3] = { 0 };
+
+		u8 address = 1;
+	} unaligned_1_bytes;
+
+	u8 undesired = 1;
+
+	AddressWaitParams params;
+	params.address = &unaligned_1_bytes.address;
+	params.undesired = &undesired;
+	params.bytes = 1;
+
+	minos::ThreadHandle thread;
+
+	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), &thread);
+
+	TEST_EQUAL(thread_ok, true);
+
+	if (thread_ok)
+	{
+		minos::address_wake_single(params.address);
+
+		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), false);
+
+		// Just so we don't have a lingering thread
+		unaligned_1_bytes.address -= 1;
+
 		minos::address_wake_single(params.address);
 
 		minos::thread_wait(thread, nullptr);
@@ -523,8 +686,6 @@ static void file_read_with_completion_works() noexcept
 
 	TEST_EQUAL(minos::completion_wait(completion, &read_result), true);
 
-	fprintf(stderr, "read_result.key: %" PRId64 "\nread_result.bytes: %d\n", read_result.key, read_result.bytes);
-
 	TEST_EQUAL(read_result.key, 1234);
 
 	TEST_EQUAL(read_result.bytes, 14);
@@ -632,9 +793,17 @@ void minos_tests() noexcept
 	thread_wait_timeout_times_out_on_long_thread();
 
 
-	address_wait_and_wake_single_with_changed_value_wakes();
+	address_wait_with_4_bytes_and_wake_single_with_changed_value_wakes();
 
-	address_wait_and_wake_single_with_unchanged_value_sleeps();
+	address_wait_with_4_bytes_and_wake_single_with_unchanged_value_sleeps();
+
+	address_wait_with_2_bytes_and_wake_single_with_changed_value_wakes();
+
+	address_wait_with_2_bytes_and_wake_single_with_unchanged_value_sleeps();
+
+	address_wait_with_1_byte_and_wake_single_with_changed_value_wakes();
+
+	address_wait_with_1_byte_and_wake_single_with_unchanged_value_sleeps();
 
 	multiple_address_wait_and_wake_all_with_changed_value_wakes_all();
 

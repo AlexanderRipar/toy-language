@@ -34,7 +34,6 @@
     `minos::shm_map` or `minos::shm_commit` in the process.
 
 - infra/minos_linux.cpp:
-  - Implement `minos::address_wait_impl` for `bytes == 1` and `bytes == 2`.
   - Implement `minos::process_create`.
   - Implement `minos::process_wait`.
   - Implement `minos::process_wait_timeout`.

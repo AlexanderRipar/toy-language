@@ -657,24 +657,30 @@ static s64 syscall_futex(const u32* address, s32 futex_op, u32 undesired_value_o
 
 static bool address_wait_impl(const void* address, const void* undesired, u32 bytes, const timespec* timeout) noexcept
 {
-	ASSERT_OR_IGNORE(bytes == 1 || bytes == 2 || bytes == 4);
+	ASSERT_OR_IGNORE(bytes == 1
+	             || (bytes == 2 && (reinterpret_cast<u64>(address) & 1) == 0)
+	             || (bytes == 4 && (reinterpret_cast<u64>(address) & 3) == 0));
 
-	// TODO: Implement this
-	if (bytes == 1 || bytes == 2)
-		panic("minos::address_wait[_timeout] with bytes == %u is not yet implemented\n", bytes);
+	const u32 undesired_value =
+	    bytes == 1 ? *static_cast<const u8*>(undesired) :
+	    bytes == 2 ? *static_cast<const u16*>(undesired) :
+	                 *static_cast<const u32*>(undesired);
 
-	const std::atomic<u32>* const ptr = static_cast<const std::atomic<u32>*>(address);
-
-	const u32 undesired_value = *static_cast<const u32*>(undesired);
+	const void* const aligned_address = reinterpret_cast<const void*>(reinterpret_cast<u64>(address) & ~3);
 
 	while (true)
 	{
-		const u32 observed_value = ptr->load(std::memory_order_relaxed);
+		const u32 observed_value =
+		    bytes == 1 ? static_cast<const std::atomic<u8>*>(address)->load(std::memory_order_relaxed) :
+		    bytes == 2 ? static_cast<const std::atomic<u16>*>(address)->load(std::memory_order_relaxed) :
+		                 static_cast<const std::atomic<u32>*>(address)->load(std::memory_order_relaxed);
 
 		if (observed_value != undesired_value)
 			break;
 
-		if (syscall_futex(static_cast<const u32*>(address), FUTEX_WAIT | FUTEX_PRIVATE_FLAG, observed_value, timeout) != 0)
+		const u32 observed_value_4_byte = bytes == 4 ? observed_value : static_cast<const std::atomic<u32>*>(aligned_address)->load(std::memory_order_relaxed);
+
+		if (syscall_futex(static_cast<const u32*>(aligned_address), FUTEX_WAIT | FUTEX_PRIVATE_FLAG, observed_value_4_byte, timeout) != 0)
 		{
 			if (timeout != nullptr && errno == ETIMEDOUT)
 				return false;
@@ -708,13 +714,13 @@ bool minos::address_wait_timeout(const void* address, const void* undesired, u32
 
 void minos::address_wake_single(const void* address) noexcept
 {
-	if (syscall_futex(static_cast<const u32*>(address), FUTEX_WAKE | FUTEX_PRIVATE_FLAG, 1, nullptr) == -1)
+	if (syscall_futex(reinterpret_cast<const u32*>(reinterpret_cast<u64>(address) & ~3), FUTEX_WAKE | FUTEX_PRIVATE_FLAG, 1, nullptr) == -1)
 		panic("syscall_futex(FUTEX_WAKE, 1) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
 void minos::address_wake_all(const void* address) noexcept
 {
-	if (syscall_futex(static_cast<const u32*>(address), FUTEX_WAKE | FUTEX_PRIVATE_FLAG, INT32_MAX, nullptr) == -1)
+	if (syscall_futex(reinterpret_cast<const u32*>(reinterpret_cast<u64>(address) & ~3), FUTEX_WAKE | FUTEX_PRIVATE_FLAG, INT32_MAX, nullptr) == -1)
 		panic("syscall_futex(FUTEX_WAKE, 1) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
