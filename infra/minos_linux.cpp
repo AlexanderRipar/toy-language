@@ -1408,7 +1408,7 @@ void minos::shm_close(ShmHandle handle) noexcept
 		panic("close(memfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
-void* minos::shm_reserve(ShmHandle handle, Access access, u64 offset, u64 bytes) noexcept
+void* minos::shm_map(ShmHandle handle, Access access, u64 offset, u64 bytes) noexcept
 {
 	const s32 fd = static_cast<s32>(reinterpret_cast<u64>(handle.m_rep));
 
@@ -1432,6 +1432,12 @@ void* minos::shm_reserve(ShmHandle handle, Access access, u64 offset, u64 bytes)
 		return nullptr;
 
 	return address;
+}
+
+void minos::shm_unmap(void* address, u64 bytes) noexcept
+{
+	if (munmap(address, bytes) != 0)
+		panic("munmap(shm) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
 bool minos::sempahore_create(u32 initial_count, u32 maximum_count, bool inheritable, SemaphoreHandle* out) noexcept

@@ -896,7 +896,7 @@ void minos::shm_close(ShmHandle handle) noexcept
 		panic("CloseHandle(ShmHandle) failed (0x%X)\n", last_error());
 }
 
-void* minos::shm_reserve(ShmHandle handle, Access access, u64 offset, u64 bytes) noexcept
+void* minos::shm_map(ShmHandle handle, Access access, u64 offset, u64 bytes) noexcept
 {
 	u32 native_access = 0;
 
@@ -916,6 +916,12 @@ void* minos::shm_reserve(ShmHandle handle, Access access, u64 offset, u64 bytes)
 	}
 
 	return MapViewOfFile(handle.m_rep, native_access, static_cast<u32>(offset >> 32), static_cast<u32>(offset), bytes);
+}
+
+void minos::shm_unmap(void* address, [[maybe_unused]] u64 bytes) noexcept
+{
+	if (!UnmapViewOfFile(address))
+		panic("UnmapViewOfFile failed (0x%X)\n", last_error());
 }
 
 bool minos::sempahore_create(u32 initial_count, u32 maximum_count, bool inheritable, SemaphoreHandle* out) noexcept

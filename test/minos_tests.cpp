@@ -713,7 +713,7 @@ static void file_read_with_completion_works() noexcept
 
 // TODO: shm_create and shm_close
 
-// TODO: shm_reserve
+// TODO: shm_map and shm_unmap
 
 
 // TODO: semaphore_create and semaphore_close
