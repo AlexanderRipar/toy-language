@@ -1235,6 +1235,8 @@ static char8** prepare_command_line_for_exec(char8* exe_path, u64 exe_path_chars
 
 		arg_ptrs[arg_index] = arg_buf;
 
+		arg_index += 1;
+
 		arg_buf += arg.count();
 
 		*arg_buf = '\0';
