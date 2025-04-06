@@ -1142,7 +1142,7 @@ static s32 event_create_impl(bool is_semaphore, u32 initial_value) noexcept
 	}
 }
 
-bool minos::event_create([[maybe_unused]] bool inheritable, EventHandle* out) noexcept
+bool minos::event_create(EventHandle* out) noexcept
 {
 	const s32 fd = event_create_impl(false, 0);
 
@@ -1516,7 +1516,7 @@ void minos::shm_unmap(void* address, u64 bytes) noexcept
 		panic("munmap(shm) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
-bool minos::sempahore_create(u32 initial_count, [[maybe_unused]] bool inheritable, SemaphoreHandle* out) noexcept
+bool minos::sempahore_create(u32 initial_count, SemaphoreHandle* out) noexcept
 {
 	const s32 fd = event_create_impl(true, initial_count);
 

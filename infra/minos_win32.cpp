@@ -538,9 +538,9 @@ bool minos::file_resize(FileHandle handle, u64 new_bytes) noexcept
 	return SetEndOfFile(handle.m_rep);
 }
 
-bool minos::event_create(bool inheritable, EventHandle* out) noexcept
+bool minos::event_create(EventHandle* out) noexcept
 {
-	SECURITY_ATTRIBUTES security_attributes{ sizeof(SECURITY_ATTRIBUTES), nullptr, inheritable };
+	SECURITY_ATTRIBUTES security_attributes{ sizeof(SECURITY_ATTRIBUTES), nullptr, true };
 
 	const HANDLE event = CreateEventW(&security_attributes, FALSE, FALSE, nullptr);
 
@@ -976,9 +976,9 @@ void minos::shm_unmap(void* address, [[maybe_unused]] u64 bytes) noexcept
 		panic("UnmapViewOfFile failed (0x%X)\n", last_error());
 }
 
-bool minos::sempahore_create(u32 initial_count, bool inheritable, SemaphoreHandle* out) noexcept
+bool minos::sempahore_create(u32 initial_count, SemaphoreHandle* out) noexcept
 {
-	SECURITY_ATTRIBUTES security_attribute{ sizeof(SECURITY_ATTRIBUTES), nullptr, inheritable };
+	SECURITY_ATTRIBUTES security_attribute{ sizeof(SECURITY_ATTRIBUTES), nullptr, true };
 
 	const HANDLE handle = CreateSemaphoreW(&security_attribute, initial_count, LONG_MAX, nullptr);
 

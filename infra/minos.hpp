@@ -407,7 +407,7 @@ namespace minos
 
 	[[nodiscard]] bool file_resize(FileHandle handle, u64 new_bytes) noexcept;
 
-	[[nodiscard]] bool event_create(bool inheritable, EventHandle* out) noexcept;
+	[[nodiscard]] bool event_create(EventHandle* out) noexcept;
 
 	void event_close(EventHandle handle) noexcept;
 
@@ -441,7 +441,7 @@ namespace minos
 
 	void shm_unmap(void* address, u64 bytes) noexcept;
 
-	[[nodiscard]] bool sempahore_create(u32 initial_count, bool inheritable, SemaphoreHandle* out) noexcept;
+	[[nodiscard]] bool sempahore_create(u32 initial_count, SemaphoreHandle* out) noexcept;
 
 	void semaphore_close(SemaphoreHandle handle) noexcept;
 
