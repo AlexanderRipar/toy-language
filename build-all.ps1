@@ -60,7 +60,7 @@ else
 # Start one asynchronous job for each build.
 $jobs = $specs | Foreach-Object {
 	Start-Job `
-		-ScriptBlock { $input | Foreach-Object { Invoke-Expression $_.command } } `
+		-ScriptBlock { $input | Foreach-Object { @{ output = Invoke-Expression $_.command; exitcode = $LASTEXITCODE } } } `
 		-Name $_.jobname `
 		-InputObject $_
 }
@@ -70,13 +70,31 @@ $jobs = $specs | Foreach-Object {
 # Separately wait for any jobs to complete and print their results immediately
 # for improved responsiveness.
 
+$failed_jobs = @()
+
 while ($jobs.Count -ne 0)
 {
 	$completed_job = Wait-Job -Job $jobs -Any
 
 	$jobs = $jobs | Where-Object { $_ -ne $completed_job }
 
-	@('', '', "################# $($completed_job.Name) #################", '') + (Receive-Job $completed_job)
+	$job_result = Receive-Job $completed_job
+
+	@('', '', "################# $($completed_job.Name) #################", '') + $job_result.output
+
+	if ($job_result.exitcode -ne 0)
+	{
+		$failed_jobs += "$($completed_job.Name) ($($job_result.exitcode))"
+	}
 
 	Remove-Job $completed_job
+}
+
+if ($failed_jobs.Count -ne 0)
+{
+	"`n`nThe following builds failed:`n    - $($failed_jobs -join "`n    - ")"
+}
+else
+{
+	"`n`nAll builds succeeded"
 }
