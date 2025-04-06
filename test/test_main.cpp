@@ -38,20 +38,44 @@ static TimeDesc readable_time(u64 duration, u64 ticks_per_second) noexcept
 		return { "microseconds", static_cast<f64>(duration * 1'000'000) / ticks_per_second };
 }
 
-struct InvocationInfo
+enum class InvocationWaitType : u8
 {
-	bool ignore_debugbreaks;
-
-	bool show_help;
-
-	bool exit_with;
-
-	u32 exit_with_value;
+	None = 0,
+	Event,
+	Semaphore,
 };
 
-static bool parse_uint(const char8* arg, u32* out) noexcept
+struct InvocationInfo
 {
-	u32 value = 0;
+	bool has_ignore_debugbreaks;
+
+	bool has_show_help;
+
+	bool has_exit_with;
+
+	bool has_timeout;
+
+	bool has_check_cwd;
+
+	InvocationWaitType wait_type;
+
+	u32 exit_with_value;
+
+	u32 timeout_milliseconds;
+
+	Range<char8> check_cwd_suffix;
+
+	union
+	{
+		minos::EventHandle event;
+
+		minos::SemaphoreHandle semaphore;
+	};
+};
+
+static bool parse_u64(const char8* arg, u64* out) noexcept
+{
+	u64 value = 0;
 
 	if (*arg == '\0')
 		return false;
@@ -62,6 +86,9 @@ static bool parse_uint(const char8* arg, u32* out) noexcept
 			return false;
 
 		value = value * 10 + *arg - '0';
+
+		if (value > UINT32_MAX)
+			return false;
 
 		arg += 1;
 	}
@@ -82,47 +109,151 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 	{
 		if (strcmp(argv[arg_index], "--ignore-debugbreaks") == 0)
 		{
-			if (out->ignore_debugbreaks)
+			if (out->has_ignore_debugbreaks)
 			{
-				fprintf(stderr, "--ignore-debugbreaks specified more than once\n");
+				fprintf(stderr, "%s specified more than once\n", argv[arg_index]);
 
 				return false;
 			}
 
-			out->ignore_debugbreaks = true;
+			out->has_ignore_debugbreaks = true;
 
 			arg_index += 1;
 		}
 		else if (strcmp(argv[arg_index], "--exit-with") == 0)
 		{
-			if (out->exit_with)
+			if (out->has_exit_with)
 			{
-				fprintf(stderr, "--ignore-debugbreaks specified more than once\n");
+				fprintf(stderr, "%s specified more than once\n", argv[arg_index]);
 
 				return false;
 			}
 
 			if (arg_index + 1 == argc)
 			{
-				fprintf(stderr, "--exit-with expects an additional argument\n");
+				fprintf(stderr, "%s expects an additional argument\n", argv[arg_index]);
 
 				return false;
 			}
 
-			if (!parse_uint(argv[arg_index + 1], &out->exit_with_value))
+			u64 n;
+
+			if (!parse_u64(argv[arg_index + 1], &n))
 			{
-				fprintf(stderr, "--exit-with expects its additional argument to be a base-ten number\n");
+				fprintf(stderr, "%s expects its additional argument to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
-			out->exit_with = true;
+			if (n > UINT32_MAX)
+			{
+				fprintf(stderr, "%s expects its argument to be less than 2^32\n", argv[arg_index]);
+
+				return false;
+			}
+
+			out->has_exit_with = true;
+
+			out->exit_with_value = static_cast<u32>(n);
+
+			arg_index += 2;
+		}
+		else if (strcmp(argv[arg_index], "--event-wait") == 0 || strcmp(argv[arg_index], "--semaphore-wait") == 0)
+		{
+			if (out->wait_type != InvocationWaitType::None)
+			{
+				fprintf(stderr, "%s specified more than once\n", argv[arg_index]);
+
+				return false;
+			}
+
+			if (arg_index + 1 == argc)
+			{
+				fprintf(stderr, "%s expects an additional argument\n", argv[arg_index]);
+
+				return false;
+			}
+
+			u64 n;
+
+			if (!parse_u64(argv[arg_index + 1], &n))
+			{
+				fprintf(stderr, "%s expects its additional argument to be a base-ten number\n", argv[arg_index]);
+
+				return false;
+			}
+
+			const char8 first_char = argv[arg_index][2];
+
+			out->wait_type = first_char == 'e' ? InvocationWaitType::Event : InvocationWaitType::Semaphore;
+
+			out->event.m_rep = reinterpret_cast<void*>(n);
+
+			arg_index += 2;
+		}
+		else if (strcmp(argv[arg_index], "--timeout") == 0)
+		{
+			if (out->has_timeout)
+			{
+				fprintf(stderr, "%s specified more than once\n", argv[arg_index]);
+
+				return false;
+			}
+
+			if (arg_index + 1 == argc)
+			{
+				fprintf(stderr, "%s expects an additional argument\n", argv[arg_index]);
+
+				return false;
+			}
+
+			u64 n;
+
+			if (!parse_u64(argv[arg_index + 1], &n))
+			{
+				fprintf(stderr, "%s expects its additional argument to be a base-ten number\n", argv[arg_index]);
+
+				return false;
+			}
+
+			if (n > UINT32_MAX)
+			{
+				fprintf(stderr, "%s expects its argument to be less than 2^32\n", argv[arg_index]);
+
+				return false;
+			}
+
+			out->has_timeout = true;
+
+			out->timeout_milliseconds = static_cast<u32>(n);
+
+			arg_index += 2;
+		}
+		else if (strcmp(argv[arg_index], "--check-cwd") == 0)
+		{
+			if (out->has_check_cwd)
+			{
+				fprintf(stderr, "%s specified more than once\n", argv[arg_index]);
+
+				return false;
+			}
+
+			if (arg_index + 1 == argc)
+			{
+				fprintf(stderr, "%s expects an additional argument\n", argv[arg_index]);
+
+				return false;
+			}
+
+			out->has_check_cwd = true;
+
+			out->check_cwd_suffix = range::from_cstring(argv[arg_index + 1]);
 
 			arg_index += 2;
 		}
 		else if (strcmp(argv[arg_index], "--help") == 0 || strcmp(argv[arg_index], "-h") == 0)
 		{
-			out->show_help = true;
+			out->has_show_help = true;
 
 			return true;
 		}
@@ -134,7 +265,105 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 		}
 	}
 
+	if (out->has_timeout && out->wait_type == InvocationWaitType::None)
+	{
+		fprintf(stderr, "`--timeout` must only be specified together with `--<type>-wait`");
+
+		return false;
+	}
+
 	return true;
+}
+
+static void handle_divergent_invocations(const InvocationInfo* invocation) noexcept
+{
+	if (invocation->has_show_help)
+	{
+		fprintf(stdout,
+			"This is the `comp` project's test suite. The following arguments are supported:\n"
+			"  --help | -h          - Show this message.\n"
+			"  --ignore-debugbreaks - Skip any debug break intrinsics triggered due to\n"
+			"                         failed tests. This should be enabled when running as\n"
+			"                         part of the test suite to avoid dumping core.\n"
+			"  --exit-with <N>      - Immediately exit with exit code <N>. This is used for\n"
+			"                         testing process spawning.\n"
+			"  --event-wait <N>     - Calls `minos::event_wait(<N>)`. If `--timeout <T>` is\n"
+			"                         also specified, instead calls\n"
+			"                         `minos::event_wait_timeout(<N>, <T>)`.\n"
+			"                         If the wait times out, the exit code is 2, otherwise it\n"
+			"                         is 0.\n"
+			"  --semaphore-wait <N> - Calls `minos::semaphore_wait(<N>)`. If `--timeout <T>`\n"
+			"                         is also specified, instead calls\n"
+			"                         `minos::semaphore_wait_timeout(<N>, <T>)`.\n"
+			"                         If the wait times out, the exit code is 2, otherwise it\n"
+			"                         is 0.\n"
+			"  --timeout <N>        - Only available in conjunction with one of the\n"
+			"                         `--<type>-wait` options. Modifies it to call\n"
+			"                         `minos::<type>_wait_timeout` with the specified timeout\n"
+			"                         instead of `minos::<type>_wait`.\n"
+			"  --check-cwd <STR>    - Check whether the working directory ends with the given\n"
+			"                         string. If so, exit with 0, otherwise with 2.\n"
+		);
+
+		minos::exit_process(EXIT_FAILURE);
+	}
+
+	if (invocation->has_exit_with)
+		minos::exit_process(invocation->exit_with_value);
+
+	switch (invocation->wait_type)
+	{
+	case InvocationWaitType::None:
+		break;
+
+	case InvocationWaitType::Event:
+		if (invocation->has_timeout)
+		{
+			if (!minos::event_wait_timeout(invocation->event, static_cast<u32>(invocation->timeout_milliseconds)))
+				minos::exit_process(2);
+		}
+		else
+		{
+			minos::event_wait(invocation->event);
+		}
+
+		minos::exit_process(0);
+
+	case InvocationWaitType::Semaphore:
+		if (invocation->has_timeout)
+		{
+			if (!minos::semaphore_wait_timeout(invocation->semaphore, static_cast<u32>(invocation->timeout_milliseconds)))
+				minos::exit_process(2);
+		}
+		else
+		{
+			minos::semaphore_wait(invocation->semaphore);
+		}
+
+		minos::exit_process(0);
+
+	default:
+		ASSERT_UNREACHABLE;
+	}
+
+	if (invocation->has_check_cwd)
+	{
+		char8 cwd[8192];
+
+		const u32 cwd_chars = minos::working_directory(MutRange{ cwd });
+		if (cwd_chars == 0 || cwd_chars > array_count(cwd))
+			panic("Could not get working directory (0x%X)\n", minos::last_error());
+
+		if (invocation->check_cwd_suffix.count() <= cwd_chars)
+		{
+			if (memcmp(invocation->check_cwd_suffix.begin(), cwd + cwd_chars - invocation->check_cwd_suffix.count(), invocation->check_cwd_suffix.count()) == 0)
+				minos::exit_process(0);
+
+			fprintf(stderr, "cwd was %.*s and did not end with %.*s\n", static_cast<s32>(cwd_chars), cwd, static_cast<s32>(invocation->check_cwd_suffix.count()), invocation->check_cwd_suffix.begin());
+
+			minos::exit_process(2);
+		}
+	}
 }
 
 s32 main(s32 argc, const char8** argv) noexcept
@@ -148,27 +377,14 @@ s32 main(s32 argc, const char8** argv) noexcept
 
 	if (!parse_args(argc, argv, &invocation))
 	{
-		fprintf(stderr, "Usage %s [--help | -h] [--ignore-debugbreaks] [--exit-with <N>]\n", argv[0]);
+		fprintf(stderr, "Usage %s [--help | -h] [--ignore-debugbreaks] [--exit-with <N>] [--<type>-wait <N> [--timeout <T>]]\n", argv[0]);
 
 		return EXIT_FAILURE;
 	}
 
-	if (invocation.show_help)
-	{
-		fprintf(stderr,
-			"This is the `comp` project's test suite. The following arguments are supported:\n"
-			"  --help | -h          - Show this message.\n"
-			"  --ignore-debugbreaks - Skip any debug break intrinsics triggered due to\n"
-			"                         failed tests. This should be enabled when running as\n"
-			"                         part of the test suite to avoid dumping core.\n"
-			"  --exit-with <N>      - Immediately exit with exit code <N>. This is used for\n"
-			"                         testing process spawning.\n");
+	handle_divergent_invocations(&invocation);
 
-		return EXIT_SUCCESS;
-	}
-
-	if (invocation.exit_with)
-		return invocation.exit_with_value;
+	g_ignore_debugbreaks = invocation.has_ignore_debugbreaks;
 
 	minos_tests();
 

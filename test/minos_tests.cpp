@@ -7,6 +7,57 @@
 
 static constexpr u32 TIMEOUT_TEST_MILLIS = 50;
 
+static u32 log10_ceil(u64 n) noexcept
+{
+	u32 result = 1;
+
+	while (n >= 1000)
+	{
+		result += 3;
+
+		n /= 1000;
+	}
+
+	if (n >= 100)
+		return result + 2;
+	else if (n >= 10)
+		return result + 1;
+	else
+		return result;
+}
+
+static Range<char8> format_u64(u64 n, MutRange<char8> out) noexcept
+{
+	const u32 chars = log10_ceil(n);
+
+	char8* curr = out.begin() + chars - 1;
+
+	if (curr >= out.end())
+		panic("format_u64 got an insufficient buffer\n");
+
+	do
+	{
+		ASSERT_OR_IGNORE(curr >= out.begin());
+
+		*curr = '0' + (n % 10);
+
+		n /= 10;
+
+		curr -= 1;
+	}
+	while (n != 0);
+
+	ASSERT_OR_IGNORE(curr + 1 == out.begin());
+
+	return { out.begin(), chars };
+}
+
+static Range<char8> format_handle(minos::GenericHandle handle, MutRange<char8> out) noexcept
+{
+	return format_u64(reinterpret_cast<u64>(handle.m_rep), out);
+}
+
+
 static void mem_reserve_succeeds_on_small_allocation() noexcept
 {
 	MINOS_TEST_BEGIN;
@@ -850,7 +901,28 @@ static void file_read_on_empty_file_returns_no_bytes() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/empty_file"),
+			minos::Access::Read,
+			minos::ExistsMode::Open,
+			minos::NewMode::Fail,
+			minos::AccessPattern::Sequential,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	u32 bytes_read;
+
+	byte buf[1024];
+
+	TEST_EQUAL(minos::file_read(file, MutRange{ buf }, 0, &bytes_read), true);
+
+	TEST_EQUAL(bytes_read, 0);
+
+	minos::file_close(file);
 
 	MINOS_TEST_END;
 }
@@ -859,7 +931,28 @@ static void file_read_on_file_shorter_than_buffer_returns_file_size_bytes() noex
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/short_file"),
+			minos::Access::Read,
+			minos::ExistsMode::Open,
+			minos::NewMode::Fail,
+			minos::AccessPattern::Sequential,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	u32 bytes_read;
+
+	byte buf[1024];
+
+	TEST_EQUAL(minos::file_read(file, MutRange{ buf }, 0, &bytes_read), true);
+
+	TEST_EQUAL(bytes_read, 14);
+
+	minos::file_close(file);
 
 	MINOS_TEST_END;
 }
@@ -868,7 +961,28 @@ static void file_read_on_file_longer_than_buffer_returns_buffer_size_bytes() noe
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/long_file"),
+			minos::Access::Read,
+			minos::ExistsMode::Open,
+			minos::NewMode::Fail,
+			minos::AccessPattern::Sequential,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	u32 bytes_read;
+
+	byte buf[1024];
+
+	TEST_EQUAL(minos::file_read(file, MutRange{ buf }, 0, &bytes_read), true);
+
+	TEST_EQUAL(bytes_read, 1024);
+
+	minos::file_close(file);
 
 	MINOS_TEST_END;
 }
@@ -877,7 +991,36 @@ static void file_read_unbuffered_file_with_page_alignment_and_zero_offset_on_sho
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/short_file"),
+			minos::Access::Read,
+			minos::ExistsMode::Open,
+			minos::NewMode::Fail,
+			minos::AccessPattern::Unbuffered,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	u32 bytes_read;
+
+	const u32 buf_bytes = minos::page_bytes();
+
+	byte* const buf = static_cast<byte*>(minos::mem_reserve(buf_bytes));
+
+	TEST_UNEQUAL(buf, nullptr);
+
+	TEST_EQUAL(minos::mem_commit(buf, buf_bytes), true);
+
+	TEST_EQUAL(minos::file_read(file, MutRange{ buf, buf_bytes }, 0, &bytes_read), true);
+
+	TEST_EQUAL(bytes_read, 14);
+
+	minos::file_close(file);
+
+	minos::mem_unreserve(buf, buf_bytes);
 
 	MINOS_TEST_END;
 }
@@ -886,16 +1029,76 @@ static void file_read_unbuffered_file_with_page_alignment_and_zero_offset_on_lon
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/long_file"),
+			minos::Access::Read,
+			minos::ExistsMode::Open,
+			minos::NewMode::Fail,
+			minos::AccessPattern::Unbuffered,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	u32 bytes_read;
+
+	const u32 buf_bytes = minos::page_bytes();
+
+	byte* const buf = static_cast<byte*>(minos::mem_reserve(buf_bytes));
+
+	TEST_UNEQUAL(buf, nullptr);
+
+	TEST_EQUAL(minos::mem_commit(buf, buf_bytes), true);
+
+	TEST_EQUAL(minos::file_read(file, MutRange{ buf, buf_bytes }, 0, &bytes_read), true);
+
+	TEST_EQUAL(bytes_read, buf_bytes);
+
+	minos::file_close(file);
+
+	minos::mem_unreserve(buf, buf_bytes);
 
 	MINOS_TEST_END;
 }
 
-static void file_read_unbuffered_file_with_page_alignment_and_nonzero_offset_on_short_file_returns_remaining_file_size_bytes() noexcept
+static void file_read_unbuffered_file_with_page_alignment_and_nonzero_offset_on_medium_file_returns_remaining_file_size_bytes() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/medium_file"),
+			minos::Access::Read,
+			minos::ExistsMode::Open,
+			minos::NewMode::Fail,
+			minos::AccessPattern::Unbuffered,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	u32 bytes_read;
+
+	const u32 buf_bytes = minos::page_bytes();
+
+	TEST_EQUAL(buf_bytes % 4096, 0);
+
+	byte* const buf = static_cast<byte*>(minos::mem_reserve(buf_bytes));
+
+	TEST_UNEQUAL(buf, nullptr);
+
+	TEST_EQUAL(minos::mem_commit(buf, buf_bytes), true);
+
+	TEST_EQUAL(minos::file_read(file, MutRange{ buf, buf_bytes }, 4096, &bytes_read), true);
+
+	TEST_EQUAL(bytes_read, 22);
+
+	minos::file_close(file);
+
+	minos::mem_unreserve(buf, buf_bytes);
 
 	MINOS_TEST_END;
 }
@@ -904,7 +1107,38 @@ static void file_read_unbuffered_file_with_page_alignment_and_nonzero_offset_on_
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/long_file"),
+			minos::Access::Read,
+			minos::ExistsMode::Open,
+			minos::NewMode::Fail,
+			minos::AccessPattern::Unbuffered,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	u32 bytes_read;
+
+	const u32 buf_bytes = minos::page_bytes();
+
+	TEST_EQUAL(buf_bytes % 4096, 0);
+
+	byte* const buf = static_cast<byte*>(minos::mem_reserve(buf_bytes));
+
+	TEST_UNEQUAL(buf, nullptr);
+
+	TEST_EQUAL(minos::mem_commit(buf, buf_bytes), true);
+
+	TEST_EQUAL(minos::file_read(file, MutRange{ buf, buf_bytes }, buf_bytes * 2, &bytes_read), true);
+
+	TEST_EQUAL(bytes_read, buf_bytes);
+
+	minos::file_close(file);
+
+	minos::mem_unreserve(buf, buf_bytes);
 
 	MINOS_TEST_END;
 }
@@ -914,7 +1148,30 @@ static void file_write_on_empty_file_appends_to_that_file() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_B"),
+			minos::Access::Read | minos::Access::Write,
+			minos::ExistsMode::Fail,
+			minos::NewMode::Create,
+			minos::AccessPattern::Sequential,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	Range<byte> to_append = range::from_literal_string("test data to append").as_byte_range();
+
+	TEST_EQUAL(minos::file_write(file, to_append, 0), true);
+
+	minos::FileInfo fileinfo;
+
+	TEST_EQUAL(minos::file_get_info(file, &fileinfo), true);
+
+	TEST_EQUAL(fileinfo.bytes, to_append.count());
+
+	minos::file_close(file);
 
 	MINOS_TEST_END;
 }
@@ -923,7 +1180,46 @@ static void file_write_on_existing_file_part_overwrites_it() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_C"),
+			minos::Access::Read | minos::Access::Write,
+			minos::ExistsMode::Fail,
+			minos::NewMode::Create,
+			minos::AccessPattern::Sequential,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	byte buf[1024];
+
+	memset(buf, 1, sizeof(buf));
+
+	TEST_EQUAL(minos::file_write(file, Range{ buf }, 0), true);
+
+	minos::FileInfo fileinfo;
+
+	TEST_EQUAL(minos::file_get_info(file, &fileinfo), true);
+
+	TEST_EQUAL(fileinfo.bytes, sizeof(buf));
+
+	memset(buf + sizeof(buf) / 4, 2, sizeof(buf) / 2);
+
+	TEST_EQUAL(minos::file_write(file, Range{ buf + sizeof(buf) / 4, sizeof(buf) / 2 }, sizeof(buf) / 4), true);
+
+	byte read_buf[sizeof(buf)];
+
+	u32 bytes_read;
+
+	TEST_EQUAL(minos::file_read(file, MutRange{ read_buf }, 0, &bytes_read), true);
+
+	TEST_EQUAL(bytes_read, sizeof(buf));
+
+	TEST_MEM_EQUAL(buf, read_buf, sizeof(buf));
+
+	minos::file_close(file);
 
 	MINOS_TEST_END;
 }
@@ -932,7 +1228,52 @@ static void file_write_unbuffered_file_with_page_alignment_on_existing_file_part
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_D"),
+			minos::Access::Read | minos::Access::Write,
+			minos::ExistsMode::Fail,
+			minos::NewMode::Create,
+			minos::AccessPattern::Unbuffered,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	const u32 page_bytes = minos::page_bytes();
+
+	TEST_EQUAL(minos::file_resize(file, page_bytes * 4), true);
+
+	TEST_EQUAL(page_bytes % 4096, 0);
+
+	const u32 buf_bytes = page_bytes * 2;
+
+	byte* const buf = static_cast<byte*>(minos::mem_reserve(buf_bytes));
+
+	TEST_UNEQUAL(buf, nullptr);
+
+	TEST_EQUAL(minos::mem_commit(buf, buf_bytes), true);
+
+	memset(buf, 42, buf_bytes);
+
+	TEST_EQUAL(minos::file_write(file, Range{ buf, buf_bytes }, page_bytes), true);
+
+	memset(buf, 0, buf_bytes);
+
+	u32 bytes_read;
+
+	TEST_EQUAL(minos::file_read(file, MutRange{ buf, buf_bytes }, page_bytes, &bytes_read), true);
+
+	TEST_EQUAL(bytes_read, buf_bytes);
+
+	TEST_EQUAL(buf[0], 42);
+
+	TEST_EQUAL(buf[buf_bytes - 1], 42);
+
+	minos::file_close(file);
+
+	minos::mem_unreserve(buf, buf_bytes);
 
 	MINOS_TEST_END;
 }
@@ -941,7 +1282,56 @@ static void file_write_unbuffered_file_with_page_alignment_on_unaligned_file_end
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_E"),
+			minos::Access::Read | minos::Access::Write,
+			minos::ExistsMode::Fail,
+			minos::NewMode::Create,
+			minos::AccessPattern::Unbuffered,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	const u32 page_bytes = minos::page_bytes();
+
+	TEST_EQUAL(minos::file_resize(file, page_bytes + page_bytes / 2), true);
+
+	TEST_EQUAL(page_bytes % 4096, 0);
+
+	const u32 buf_bytes = page_bytes;
+
+	byte* const buf = static_cast<byte*>(minos::mem_reserve(buf_bytes));
+
+	TEST_UNEQUAL(buf, nullptr);
+
+	TEST_EQUAL(minos::mem_commit(buf, buf_bytes), true);
+
+	memset(buf, 42, buf_bytes);
+
+	TEST_EQUAL(minos::file_write(file, Range{ buf, buf_bytes }, page_bytes), true);
+
+	memset(buf, 0, buf_bytes);
+
+	u32 bytes_read;
+
+	TEST_EQUAL(minos::file_read(file, MutRange{ buf, buf_bytes }, page_bytes, &bytes_read), true);
+
+	TEST_EQUAL(buf[0], 42);
+
+	TEST_EQUAL(buf[buf_bytes - 1], 42);
+
+	minos::FileInfo fileinfo;
+
+	TEST_EQUAL(minos::file_get_info(file, &fileinfo), true);
+
+	TEST_EQUAL(fileinfo.bytes, page_bytes + buf_bytes);
+
+	minos::file_close(file);
+
+	minos::mem_unreserve(buf, buf_bytes);
 
 	MINOS_TEST_END;
 }
@@ -951,7 +1341,28 @@ static void file_get_info_on_file_handle_returns_not_is_directory_and_file_size(
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/short_file"),
+			minos::Access::None,
+			minos::ExistsMode::Open,
+			minos::NewMode::Fail,
+			minos::AccessPattern::Sequential,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	minos::FileInfo fileinfo;
+
+	TEST_EQUAL(minos::file_get_info(file, &fileinfo), true);
+
+	TEST_EQUAL(fileinfo.is_directory, false);
+
+	TEST_EQUAL(fileinfo.bytes, 14);
+
+	minos::file_close(file);
 
 	MINOS_TEST_END;
 }
@@ -960,7 +1371,26 @@ static void file_get_info_on_directory_handle_returns_is_directory() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data"),
+			minos::Access::None,
+			minos::ExistsMode::OpenDirectory,
+			minos::NewMode::Fail,
+			minos::AccessPattern::Sequential,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	minos::FileInfo fileinfo;
+
+	TEST_EQUAL(minos::file_get_info(file, &fileinfo), true);
+
+	TEST_EQUAL(fileinfo.is_directory, true);
+
+	minos::file_close(file);
 
 	MINOS_TEST_END;
 }
@@ -970,7 +1400,28 @@ static void file_resize_to_grow_empty_file_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_F"),
+			minos::Access::Read | minos::Access::Write,
+			minos::ExistsMode::Fail,
+			minos::NewMode::Create,
+			minos::AccessPattern::Sequential,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	TEST_EQUAL(minos::file_resize(file, 1024), true);
+
+	minos::FileInfo fileinfo;
+
+	TEST_EQUAL(minos::file_get_info(file, &fileinfo), true);
+
+	TEST_EQUAL(fileinfo.bytes, 1024);
+
+	minos::file_close(file);
 
 	MINOS_TEST_END;
 }
@@ -979,7 +1430,30 @@ static void file_resize_to_grow_file_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_G"),
+			minos::Access::Read | minos::Access::Write,
+			minos::ExistsMode::Fail,
+			minos::NewMode::Create,
+			minos::AccessPattern::Sequential,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	TEST_EQUAL(minos::file_resize(file, 1024), true);
+
+	TEST_EQUAL(minos::file_resize(file, 1200), true);
+
+	minos::FileInfo fileinfo;
+
+	TEST_EQUAL(minos::file_get_info(file, &fileinfo), true);
+
+	TEST_EQUAL(fileinfo.bytes, 1200);
+
+	minos::file_close(file);
 
 	MINOS_TEST_END;
 }
@@ -988,7 +1462,30 @@ static void file_resize_to_shrink_file_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_H"),
+			minos::Access::Read | minos::Access::Write,
+			minos::ExistsMode::Fail,
+			minos::NewMode::Create,
+			minos::AccessPattern::Sequential,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	TEST_EQUAL(minos::file_resize(file, 1024), true);
+
+	TEST_EQUAL(minos::file_resize(file, 751), true);
+
+	minos::FileInfo fileinfo;
+
+	TEST_EQUAL(minos::file_get_info(file, &fileinfo), true);
+
+	TEST_EQUAL(fileinfo.bytes, 751);
+
+	minos::file_close(file);
 
 	MINOS_TEST_END;
 }
@@ -997,17 +1494,70 @@ static void file_resize_to_empty_file_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(
+			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_I"),
+			minos::Access::Read | minos::Access::Write,
+			minos::ExistsMode::Fail,
+			minos::NewMode::Create,
+			minos::AccessPattern::Sequential,
+			nullptr,
+			false,
+			&file
+		), true);
+
+	TEST_EQUAL(minos::file_resize(file, 1024), true);
+
+	TEST_EQUAL(minos::file_resize(file, 0), true);
+
+	minos::FileInfo fileinfo;
+
+	TEST_EQUAL(minos::file_get_info(file, &fileinfo), true);
+
+	TEST_EQUAL(fileinfo.bytes, 0);
+
+	minos::file_close(file);
 
 	MINOS_TEST_END;
 }
 
 
+struct EventThreadParams
+{
+	minos::EventHandle event;
+
+	bool has_timeout;
+
+	u32 timeout_milliseconds;
+};
+
+static u32 THREAD_PROC event_test_proc(void* raw_params) noexcept
+{
+	EventThreadParams* const params = static_cast<EventThreadParams*>(raw_params);
+
+	if (params->has_timeout)
+	{
+		if (!minos::event_wait_timeout(params->event, params->timeout_milliseconds))
+			return 1;
+	}
+	else
+	{
+		minos::event_wait(params->event);
+	}
+
+	return 0;
+}
+
 static void event_create_creates_an_event() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::EventHandle event;
+
+	TEST_EQUAL(minos::event_create(&event), true);
+
+	minos::event_close(event);
 
 	MINOS_TEST_END;
 }
@@ -1016,16 +1566,48 @@ static void event_wake_allows_wait() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::EventHandle event;
+
+	TEST_EQUAL(minos::event_create(&event), true);
+
+	minos::event_wake(event);
+
+	TEST_EQUAL(minos::event_wait_timeout(event, TIMEOUT_TEST_MILLIS), true);
+
+	minos::event_close(event);
 
 	MINOS_TEST_END;
 }
 
-static void sem_wait_waits_until_wake() noexcept
+static void event_wait_waits_until_wake() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::EventHandle event;
+
+	TEST_EQUAL(minos::event_create(&event), true);
+
+	minos::ThreadHandle thread;
+
+	EventThreadParams params;
+	params.event = event;
+	params.has_timeout = false;
+
+	TEST_EQUAL(minos::thread_create(event_test_proc, &params, range::from_literal_string("event_wait"), &thread), true);
+
+	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), false);
+
+	minos::event_wake(event);
+
+	u32 thread_result;
+
+	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, &thread_result), true);
+
+	TEST_EQUAL(thread_result, 0);
+
+	minos::thread_close(thread);
+
+	minos::event_close(event);
 
 	MINOS_TEST_END;
 }
@@ -1034,7 +1616,32 @@ static void event_wait_timeout_with_long_timeout_waits_until_wake() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::EventHandle event;
+
+	TEST_EQUAL(minos::event_create(&event), true);
+
+	minos::ThreadHandle thread;
+
+	EventThreadParams params;
+	params.event = event;
+	params.has_timeout = true;
+	params.timeout_milliseconds = 1000;
+
+	TEST_EQUAL(minos::thread_create(event_test_proc, &params, range::from_literal_string("event_wait"), &thread), true);
+
+	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), false);
+
+	minos::event_wake(event);
+
+	u32 thread_result;
+
+	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, &thread_result), true);
+
+	TEST_EQUAL(thread_result, 0);
+
+	minos::thread_close(thread);
+
+	minos::event_close(event);
 
 	MINOS_TEST_END;
 }
@@ -1043,7 +1650,28 @@ static void event_wait_timeout_with_no_wakes_times_out() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::EventHandle event;
+
+	TEST_EQUAL(minos::event_create(&event), true);
+
+	minos::ThreadHandle thread;
+
+	EventThreadParams params;
+	params.event = event;
+	params.has_timeout = true;
+	params.timeout_milliseconds = 20;
+
+	TEST_EQUAL(minos::thread_create(event_test_proc, &params, range::from_literal_string("event_wait"), &thread), true);
+
+	u32 thread_result;
+
+	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, &thread_result), true);
+
+	TEST_EQUAL(thread_result, 1);
+
+	minos::thread_close(thread);
+
+	minos::event_close(event);
 
 	MINOS_TEST_END;
 }
@@ -1052,7 +1680,38 @@ static void event_wait_and_wake_work_across_processes() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::EventHandle event;
+
+	TEST_EQUAL(minos::event_create(&event), true);
+
+	char8 event_buf[64];
+
+	char8 timeout_buf[64];
+
+	const Range<char8> command_line[] = {
+		range::from_literal_string("--event-wait"),
+		format_handle(event, MutRange{ event_buf }),
+		range::from_literal_string("--timeout"),
+		format_u64(50, MutRange{ timeout_buf }),
+	};
+
+	const minos::GenericHandle generic_event = event;
+
+	minos::ProcessHandle process;
+
+	TEST_EQUAL(minos::process_create({}, Range{ command_line }, {}, Range<minos::GenericHandle>{ &generic_event, 1}, false, &process), true);
+
+	u32 process_result;
+
+	minos::event_wake(event);
+
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+
+	TEST_EQUAL(process_result, 0);
+
+	minos::process_close(process);
+
+	minos::event_close(event);
 
 	MINOS_TEST_END;
 }
@@ -1202,9 +1861,15 @@ static void process_create_with_empty_exe_path_and_empty_working_directory_spawn
 {
 	MINOS_TEST_BEGIN;
 
+	char8 cwd[8192];
+
+	const u32 cwd_chars = minos::working_directory(MutRange{ cwd });
+
+	TEST_EQUAL(cwd_chars != 0 && cwd_chars <= array_count(cwd), true);
+
 	Range<char8> command_line[] {
-		range::from_literal_string("--exit-with"),
-		range::from_literal_string("51"),
+		range::from_literal_string("--check-cwd"),
+		Range{ cwd, cwd_chars },
 	};
 
 	minos::ProcessHandle process;
@@ -1215,7 +1880,7 @@ static void process_create_with_empty_exe_path_and_empty_working_directory_spawn
 
 	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
 
-	TEST_EQUAL(process_result, 51);
+	TEST_EQUAL(process_result, 0);
 
 	minos::process_close(process);
 
@@ -1226,7 +1891,22 @@ static void process_create_with_empty_exe_path_and_given_working_directory_spawn
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	Range<char8> command_line[] {
+		range::from_literal_string("--check-cwd"),
+		range::from_literal_string("minos_fs_data"),
+	};
+
+	minos::ProcessHandle process;
+
+	TEST_EQUAL(minos::process_create({}, Range{ command_line }, range::from_literal_string("minos_fs_data"), {}, false, &process), true);
+
+	u32 process_result;
+
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+
+	TEST_EQUAL(process_result, 0);
+
+	minos::process_close(process);
 
 	MINOS_TEST_END;
 }
@@ -1743,6 +2423,14 @@ static void prepare_minos_tests() noexcept
 
 	static constexpr const AttachmentRange<char8, bool> paths_to_delete[] = {
 		AttachmentRange{ range::from_literal_string("DELETEME_A"), false },
+		AttachmentRange{ range::from_literal_string("DELETEME_B"), false },
+		AttachmentRange{ range::from_literal_string("DELETEME_C"), false },
+		AttachmentRange{ range::from_literal_string("DELETEME_D"), false },
+		AttachmentRange{ range::from_literal_string("DELETEME_E"), false },
+		AttachmentRange{ range::from_literal_string("DELETEME_F"), false },
+		AttachmentRange{ range::from_literal_string("DELETEME_G"), false },
+		AttachmentRange{ range::from_literal_string("DELETEME_H"), false },
+		AttachmentRange{ range::from_literal_string("DELETEME_I"), false },
 	};
 
 	char8 path_buf[256];
@@ -1867,7 +2555,7 @@ void minos_tests() noexcept
 
 	file_read_unbuffered_file_with_page_alignment_and_zero_offset_on_long_file_returns_buffer_size_bytes();
 
-	file_read_unbuffered_file_with_page_alignment_and_nonzero_offset_on_short_file_returns_remaining_file_size_bytes();
+	file_read_unbuffered_file_with_page_alignment_and_nonzero_offset_on_medium_file_returns_remaining_file_size_bytes();
 
 	file_read_unbuffered_file_with_page_alignment_and_nonzero_offset_on_long_file_returns_buffer_size_bytes();
 
@@ -1898,7 +2586,7 @@ void minos_tests() noexcept
 
 	event_wake_allows_wait();
 
-	sem_wait_waits_until_wake();
+	event_wait_waits_until_wake();
 
 	event_wait_timeout_with_long_timeout_waits_until_wake();
 
