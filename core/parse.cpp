@@ -2,10 +2,10 @@
 #include <cstdlib>
 #include <errno.h>
 
-#include "infra/common.hpp"
-#include "infra/alloc_pool.hpp"
-#include "infra/container.hpp"
-#include "infra/hash.hpp"
+#include "../infra/common.hpp"
+#include "../infra/alloc_pool.hpp"
+#include "../infra/container.hpp"
+#include "../infra/hash.hpp"
 #include "error.hpp"
 #include "pass_data.hpp"
 #include "ast_attach.hpp"

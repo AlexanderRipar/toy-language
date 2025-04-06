@@ -4,7 +4,7 @@
 #include <cstdio>
 
 #include "../infra/common.hpp"
-#include "../pass_data.hpp"
+#include "../core/pass_data.hpp"
 
 namespace diag
 {

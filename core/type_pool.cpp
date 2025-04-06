@@ -1,7 +1,7 @@
 #include "pass_data.hpp"
 
-#include "infra/container.hpp"
-#include "infra/hash.hpp"
+#include "../infra/container.hpp"
+#include "../infra/hash.hpp"
 
 static constexpr u32 TYPE_SCRATCH_CAPACITY = 4096;
 

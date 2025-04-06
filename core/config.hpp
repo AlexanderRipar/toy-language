@@ -1,8 +1,8 @@
 #ifndef CONFIG_INCLUDE_GUARD
 #define CONFIG_INCLUDE_GUARD
 
-#include "infra/common.hpp"
-#include "infra/range.hpp"
+#include "../infra/common.hpp"
+#include "../infra/range.hpp"
 
 struct Config
 {

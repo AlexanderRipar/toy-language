@@ -1,9 +1,9 @@
 #include <cstdlib>
 #include <atomic>
 
-#include "infra/common.hpp"
-#include "infra/threading.hpp"
-#include "infra/minos.hpp"
+#include "../infra/common.hpp"
+#include "../infra/threading.hpp"
+#include "../infra/minos.hpp"
 #include "pass_data.hpp"
 
 struct Read

@@ -2,8 +2,8 @@
 
 #include <inttypes.h>
 
-#include "../pass_data.hpp"
-#include "../ast_attach.hpp"
+#include "../core/pass_data.hpp"
+#include "../core/ast_attach.hpp"
 
 static void print_node_header(FILE* out, IdentifierPool* identifiers, const AstNode* node, s32 depth) noexcept
 {

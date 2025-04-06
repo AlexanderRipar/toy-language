@@ -1,8 +1,8 @@
-#include "config.hpp"
-#include "pass_data.hpp"
+#include "core/config.hpp"
+#include "core/pass_data.hpp"
+#include "core/ast_helper.hpp"
 #include "diag/diag.hpp"
 #include "infra/hash.hpp"
-#include "ast_helper.hpp"
 
 #include <cstdlib>
 #include <cstring>

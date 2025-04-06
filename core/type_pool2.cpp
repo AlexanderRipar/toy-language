@@ -1,6 +1,6 @@
 #include "pass_data.hpp"
 
-#include "infra/hash.hpp"
+#include "../infra/hash.hpp"
 
 struct PrimitiveTypeKey
 {

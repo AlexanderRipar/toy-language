@@ -17,24 +17,24 @@ add_executable(test test_main.cpp
 	../infra/container.hpp
 	../infra/threading.hpp
 
-	../error.hpp ../error.cpp
-	../config.hpp ../config.cpp
+	../core/error.hpp ../core/error.cpp
+	../core/config.hpp ../core/config.cpp
 
-	../ast_pool.cpp
-	../ast.cpp
-	../identifier_pool.cpp
-	../interpreter.cpp
-	../parse.cpp
-	../pass_data.hpp
-	../read.cpp
-	../scope_pool.cpp
-	../token.cpp
-	../type_pool.cpp
-	../type_pool2.cpp
-	../typechecker.cpp
-	../value_pool.cpp
+	../core/ast_pool.cpp
+	../core/ast.cpp
+	../core/identifier_pool.cpp
+	../core/interpreter.cpp
+	../core/parse.cpp
+	../core/pass_data.hpp
+	../core/read.cpp
+	../core/scope_pool.cpp
+	../core/token.cpp
+	../core/type_pool.cpp
+	../core/type_pool2.cpp
+	../core/typechecker.cpp
+	../core/value_pool.cpp
 
-	../ast_attach.hpp ../ast_helper.hpp
+	../core/ast_attach.hpp ../core/ast_helper.hpp
 
 	../diag/diag.hpp
 	../diag/print_ast.cpp
