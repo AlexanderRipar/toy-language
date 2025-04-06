@@ -8,12 +8,15 @@
 
 #if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
 	#define COMPILER_MSVC 1
+	#define COMPILER_NAME "msvc"
 	#define NORETURN __declspec(noreturn)
 #elif defined(__clang__)
 	#define COMPILER_CLANG 1
+	#define COMPILER_NAME "clang"
 	#define NORETURN [[noreturn]]
 #elif defined(__GNUC__)
 	#define COMPILER_GCC 1
+	#define COMPILER_NAME "gcc"
 	#define NORETURN __attribute__ ((noreturn))
 #else
 	#error("Unsupported compiler")
