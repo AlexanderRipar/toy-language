@@ -1,3 +1,5 @@
 build*/
 .vscode/
 test_output.txt
+test/minos_fs_data/dynamic_data/*
+!test/minos_fs_data/dynamic_data/.gitkeep
