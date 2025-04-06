@@ -1115,7 +1115,7 @@ static void file_read_with_completion_works() noexcept
 	minos::Overlapped overlapped{};
 	overlapped.offset = 0;
 
-	TEST_EQUAL(minos::file_read(file, buf, 1024, &overlapped), true);
+	TEST_EQUAL(minos::file_read_async(file, MutRange{ buf }, &overlapped), true);
 
 	minos::CompletionResult read_result;
 
@@ -1155,14 +1155,14 @@ static void file_read_twice_with_completion_works() noexcept
 	minos::Overlapped overlapped1{};
 	overlapped1.offset = 0;
 
-	TEST_EQUAL(minos::file_read(file, buf1, 1024, &overlapped1), true);
+	TEST_EQUAL(minos::file_read_async(file, MutRange{ buf1 }, &overlapped1), true);
 
 	byte buf2[1024];
 
 	minos::Overlapped overlapped2{};
 	overlapped2.offset = 0;
 
-	TEST_EQUAL(minos::file_read(file, buf2, 1024, &overlapped2), true);
+	TEST_EQUAL(minos::file_read_async(file, MutRange{ buf2 }, &overlapped2), true);
 
 	minos::CompletionResult read_result1;
 

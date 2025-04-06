@@ -509,7 +509,7 @@ static bool m_io_uring_submit_io(u32 opcode, minos::FileHandle handle, minos::Ov
 
 	ring->lock.mutex.acquire();
 
-	overlapped->unused_0 = reinterpret_cast<const u64*>(ring->data.registered_files + MINOS_IO_URING_REGISTERED_FILES_MAX)[file_slot - 1];
+	overlapped->reserved_0 = reinterpret_cast<const u64*>(ring->data.registered_files + MINOS_IO_URING_REGISTERED_FILES_MAX)[file_slot - 1];
 
 	// Claim an sqe
 	io_uring_sqe* const sqe = ring->freelist.sqes.pop(ring->data.submit_entries);
@@ -905,8 +905,6 @@ bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_
 	}
 	else if (access == Access::None)
 	{
-		ASSERT_OR_IGNORE(new_mode == NewMode::Fail && (exists_mode == ExistsMode::Open || exists_mode == ExistsMode::OpenDirectory));
-
 		oflag |= O_PATH;
 	}
 	else
@@ -978,20 +976,59 @@ void minos::file_close(FileHandle handle) noexcept
 		panic("close(filefd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
-bool minos::file_read(FileHandle handle, void* buffer, u32 bytes_to_read, Overlapped* overlapped) noexcept
+bool minos::file_read(FileHandle handle, MutRange<byte> buffer, u64 offset, u32* out_bytes_read) noexcept
 {
-	if ((reinterpret_cast<u64>(handle.m_rep) >> 32) != 0)
-		return m_io_uring_read(handle, overlapped, bytes_to_read, buffer);
-	else
-		return pread(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), buffer, bytes_to_read, overlapped->offset) >= 0;
+	ASSERT_OR_IGNORE((reinterpret_cast<u64>(handle.m_rep)) >> 32 == 0);
+
+	const u32 bytes_to_read = buffer.count() < UINT32_MAX ? static_cast<u32>(buffer.count()) : UINT32_MAX;
+
+	const s64 result = pread(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), buffer.begin(), bytes_to_read, offset);
+
+	if (result < 0)
+		return false;
+
+	ASSERT_OR_IGNORE(result <= UINT32_MAX);
+
+	*out_bytes_read = static_cast<u32>(result);
+
+	return true;
 }
 
-bool minos::file_write(FileHandle handle, const void* buffer, u32 bytes_to_write, Overlapped* overlapped) noexcept
+bool minos::file_read_async(FileHandle handle, MutRange<byte> buffer, Overlapped* overlapped) noexcept
 {
-	if ((reinterpret_cast<u64>(handle.m_rep) >> 32) != 0)
-		return m_io_uring_write(handle, overlapped, bytes_to_write, buffer);
-	else
-		return pwrite(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), buffer, bytes_to_write, overlapped->offset) >= 0;
+	ASSERT_OR_IGNORE((reinterpret_cast<u64>(handle.m_rep)) >> 32 != 0);
+
+	const u32 bytes_to_read = buffer.count() < UINT32_MAX ? static_cast<u32>(buffer.count()) : UINT32_MAX;
+
+	return m_io_uring_read(handle, overlapped, bytes_to_read, buffer.begin());
+}
+
+bool minos::file_write(FileHandle handle, Range<byte> buffer, u64 offset) noexcept
+{
+	ASSERT_OR_IGNORE((reinterpret_cast<u64>(handle.m_rep) >> 32) == 0);
+
+	if (buffer.count() > UINT32_MAX)
+	{
+		errno = EINVAL;
+
+		return false;
+	}
+
+	return pwrite(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), buffer.begin(), buffer.count(), offset) == static_cast<s64>(buffer.count());
+}
+
+bool minos::file_write_async(FileHandle handle, Range<byte> buffer, Overlapped* overlapped) noexcept
+{
+	ASSERT_OR_IGNORE((reinterpret_cast<u64>(handle.m_rep) >> 32) == 0);
+
+	if (buffer.count() > UINT32_MAX)
+	{
+		errno = EINVAL;
+
+		return false;
+	}
+
+	return m_io_uring_write(handle, overlapped, buffer.count(), buffer.begin());
 }
 
 bool minos::file_get_info(FileHandle handle, FileInfo* out) noexcept
@@ -1194,7 +1231,7 @@ bool minos::completion_wait(CompletionHandle completion, CompletionResult* out) 
 
 	ASSERT_OR_IGNORE(result.flags == 0);
 
-	out->key = overlapped->unused_0;
+	out->key = overlapped->reserved_0;
 	out->overlapped = overlapped;
 	out->bytes = result.res;
 
@@ -1612,12 +1649,52 @@ bool minos::directory_create(Range<char8> path) noexcept
 	return mkdir(terminated_path, S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) == 0;
 }
 
+bool minos::path_remove_file(Range<char8> path) noexcept
+{
+	char8 terminated_path[PATH_MAX + 1];
+
+	if (path.count() > array_count(terminated_path) - 1)
+	{
+		errno = ENAMETOOLONG;
+
+		return false;
+	}
+
+	memcpy(terminated_path, path.begin(), path.count());
+
+	terminated_path[path.count()] = '\0';
+
+	return unlink(terminated_path) == 0;
+}
+
+bool minos::path_remove_directory(Range<char8> path) noexcept
+{
+	char8 terminated_path[PATH_MAX + 1];
+
+	if (path.count() > array_count(terminated_path) - 1)
+	{
+		errno = ENAMETOOLONG;
+
+		return false;
+	}
+
+	memcpy(terminated_path, path.begin(), path.count());
+
+	terminated_path[path.count()] = '\0';
+
+	return rmdir(terminated_path) == 0;
+}
+
 bool minos::path_is_directory(Range<char8> path) noexcept
 {
-	if (path.count() > PATH_MAX)
-		return false;
-
 	char8 terminated_path[PATH_MAX + 1];
+
+	if (path.count() > array_count(terminated_path) - 1)
+	{
+		errno = ENAMETOOLONG;
+
+		return false;
+	}
 
 	memcpy(terminated_path, path.begin(), path.count());
 

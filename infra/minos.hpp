@@ -173,9 +173,9 @@ namespace minos
 
 	struct Overlapped
 	{
-		u64 unused_0;
+		u64 reserved_0;
 
-		u64 unused_1;
+		u64 reserved_1;
 
 		u64 offset;
 
@@ -395,9 +395,13 @@ namespace minos
 	// `minos::file_create`.
 	void file_close(FileHandle handle) noexcept;
 
-	[[nodiscard]] bool file_read(FileHandle handle, void* buffer, u32 bytes_to_read, Overlapped* overlapped) noexcept;
+	[[nodiscard]] bool file_read(FileHandle handle, MutRange<byte>, u64 offset, u32* out_bytes_read) noexcept;
 
-	[[nodiscard]] bool file_write(FileHandle handle, const void* buffer, u32 bytes_to_write, Overlapped* overlapped) noexcept;
+	[[nodiscard]] bool file_read_async(FileHandle handle, MutRange<byte> buffer, Overlapped* overlapped) noexcept;
+
+	[[nodiscard]] bool file_write(FileHandle handle, Range<byte> buffer, u64 offset) noexcept;
+
+	[[nodiscard]] bool file_write_async(FileHandle handle, Range<byte> buffer, Overlapped* overlapped) noexcept;
 
 	[[nodiscard]] bool file_get_info(FileHandle handle, FileInfo* out) noexcept;
 
@@ -454,6 +458,10 @@ namespace minos
 	void directory_enumeration_close(DirectoryEnumerationHandle handle) noexcept;
 
 	[[nodiscard]] bool directory_create(Range<char8> path) noexcept;
+
+	[[nodiscard]] bool path_remove_file(Range<char8> path) noexcept;
+
+	[[nodiscard]] bool path_remove_directory(Range<char8> path) noexcept;
 
 	[[nodiscard]] bool path_is_directory(Range<char8> path) noexcept;
 

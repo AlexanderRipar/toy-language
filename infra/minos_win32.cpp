@@ -439,19 +439,71 @@ void minos::file_close(FileHandle handle) noexcept
 		panic("CloseHandle(FileHandle) failed (0x%X)\n", last_error());
 }
 
-bool minos::file_read(FileHandle handle, void* buffer, u32 bytes_to_read, Overlapped* overlapped) noexcept
+bool minos::file_read(FileHandle handle, MutRange<byte> buffer, u64 offset, u32* out_bytes_read) noexcept
 {
-	if (ReadFile(handle.m_rep, buffer, bytes_to_read, nullptr, reinterpret_cast<OVERLAPPED*>(overlapped)))
+	DWORD bytes_read;
+
+	const u32 bytes_to_read = buffer.count() < UINT32_MAX ? static_cast<u32>(buffer.count()) : UINT32_MAX;
+
+	Overlapped overlapped{};
+	overlapped.offset = offset;
+
+	if (ReadFile(handle.m_rep, buffer.begin(), bytes_to_read, &bytes_read, reinterpret_cast<OVERLAPPED*>(&overlapped)))
+	{
+		*out_bytes_read = bytes_read;
+
+		return true;
+	}
+	else if (GetLastError() == ERROR_HANDLE_EOF)
+	{
+		*out_bytes_read = 0;
+
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+
+}
+
+bool minos::file_read_async(FileHandle handle, MutRange<byte> buffer, Overlapped* overlapped) noexcept
+{
+	const u32 bytes_to_read = buffer.count() < UINT32_MAX ? static_cast<u32>(buffer.count()) : UINT32_MAX;
+
+	if (ReadFile(handle.m_rep, buffer.begin(), bytes_to_read, nullptr, reinterpret_cast<OVERLAPPED*>(overlapped)))
 		return true;
 
 	return GetLastError() == ERROR_IO_PENDING;
 }
 
-bool minos::file_write(FileHandle handle, const void* buffer, u32 bytes_to_write, Overlapped* overlapped) noexcept
+bool minos::file_write(FileHandle handle, Range<byte> buffer, u64 offset) noexcept
 {
-	DWORD bytes_written = 0;
+	if (buffer.count() > UINT32_MAX)
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
 
-	if (WriteFile(handle.m_rep, buffer, bytes_to_write, &bytes_written, reinterpret_cast<OVERLAPPED*>(overlapped)))
+		return false;
+	}
+
+	Overlapped overlapped{};
+	overlapped.offset = offset;
+
+	DWORD bytes_written;
+
+	return WriteFile(handle.m_rep, buffer.begin(), static_cast<u32>(buffer.count()), &bytes_written, reinterpret_cast<OVERLAPPED*>(&overlapped)) && bytes_written == buffer.count();
+}
+
+bool minos::file_write_async(FileHandle handle, Range<byte> buffer, Overlapped* overlapped) noexcept
+{
+	if (buffer.count() > UINT32_MAX)
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+
+		return false;
+	}
+
+	if (WriteFile(handle.m_rep, buffer.begin(), static_cast<u32>(buffer.count()), nullptr, reinterpret_cast<OVERLAPPED*>(overlapped)))
 		return true;
 
 	return GetLastError() == ERROR_IO_PENDING;
@@ -1053,6 +1105,26 @@ bool minos::directory_create(Range<char8> path) noexcept
 	const bool success = CreateDirectoryW(path_utf16, nullptr);
 
 	return success;
+}
+
+bool minos::path_remove_file(Range<char8> path) noexcept
+{
+	char16 path_utf16[MAX_PATH_CHARS + 1];
+
+	if (!map_path(path, MutRange{ path_utf16 }))
+		return false;
+
+	return DeleteFileW(path_utf16);
+}
+
+bool minos::path_remove_directory(Range<char8> path) noexcept
+{
+	char16 path_utf16[MAX_PATH_CHARS + 1];
+
+	if (!map_path(path, MutRange{ path_utf16 }))
+		return false;
+
+	return RemoveDirectoryW(path_utf16);
 }
 
 bool minos::path_is_directory(Range<char8> path) noexcept

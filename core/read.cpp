@@ -125,7 +125,7 @@ void request_read(SourceReader* reader, Range<char8> filepath, IdentifierId file
 	if (read->content == nullptr)
 		panic("Could not allocate buffer of %llu bytes for reading source file %.*s into\n", fileinfo.bytes, static_cast<u32>(filepath.count()), filepath.begin());
 
-	if (!minos::file_read(filehandle, read->content, read->bytes, &read->overlapped))
+	if (!minos::file_read_async(filehandle, MutRange{ reinterpret_cast<byte*>(read->content), read->bytes }, &read->overlapped))
 		panic("Could not read source file %.*s (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
 
 	reader->pending_read_count.fetch_add(1, std::memory_order_relaxed);

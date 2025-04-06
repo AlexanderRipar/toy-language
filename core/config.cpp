@@ -1042,10 +1042,13 @@ public:
 
 		m_curr = m_content.begin();
 
-		minos::Overlapped overlapped{};
+		u32 bytes_read;
 
-		if (!minos::file_read(filehandle, buffer, static_cast<u32>(fileinfo.bytes), &overlapped))
+		if (!minos::file_read(filehandle, MutRange{ reinterpret_cast<byte*>(buffer), fileinfo.bytes }, 0, &bytes_read))
 			panic("Could not read config file '%.*s' (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
+
+		if (bytes_read != fileinfo.bytes)
+			panic("Could not read config file '%.*s' completely (read %u out of %" PRIu64 " bytes)\n", static_cast<u32>(filepath.count()), filepath.begin(), bytes_read, fileinfo.bytes);
 
 		minos::file_close(filehandle);
 
