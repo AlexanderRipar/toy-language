@@ -1727,6 +1727,33 @@ bool minos::path_is_file(Range<char8> path) noexcept
 	return S_ISREG(info.st_mode);
 }
 
+u32 minos::working_directory(MutRange<char8> out_buf) noexcept
+{
+	if (getcwd(out_buf.begin(), out_buf.count()) == nullptr)
+	{
+		if (errno == ERANGE && out_buf.count() == PATH_MAX)
+		{
+			char8 buf[PATH_MAX + 1];
+
+			if (getcwd(buf, sizeof(buf)) == nullptr)
+				return 0;
+
+			const u64 chars = strlen(buf);
+
+			if (chars > out_buf.count())
+				return 0;
+
+			memcpy(out_buf.begin(), buf, chars);
+
+			return chars;
+		}
+
+		return 0;
+	}
+
+	return strlen(out_buf.begin());
+}
+
 static u64 remove_last_path_elem(MutRange<char8> out_buf, u64 out_index) noexcept
 {
 	if (out_index <= 1)

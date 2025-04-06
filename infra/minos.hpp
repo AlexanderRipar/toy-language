@@ -467,6 +467,8 @@ namespace minos
 
 	[[nodiscard]] bool path_is_file(Range<char8> path) noexcept;
 
+	[[nodiscard]] u32 working_directory(MutRange<char8> out_buf) noexcept;
+
 	[[nodiscard]] u32 path_to_absolute(Range<char8> path, MutRange<char8> out_buf) noexcept;
 
 	[[nodiscard]] u32 path_to_absolute_relative_to(Range<char8> path, Range<char8> base, MutRange<char8> out_buf) noexcept;

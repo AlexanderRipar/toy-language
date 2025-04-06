@@ -1151,6 +1151,28 @@ bool minos::path_is_file(Range<char8> path) noexcept
 	return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
 }
 
+u32 minos::working_directory(MutRange<char8> out_buf) noexcept
+{
+	char16 path_utf16[MAX_PATH_CHARS + 1];
+
+	const u32 path_utf16_chars = GetCurrentDirectoryW(static_cast<u32>(array_count(path_utf16)), path_utf16);
+
+	if (path_utf16_chars == 0)
+		return 0;
+
+	const s32 chars = WideCharToMultiByte(CP_UTF8, 0, path_utf16, static_cast<s32>(path_utf16_chars), out_buf.begin(), static_cast<s32>(out_buf.count()), nullptr, nullptr);
+
+	if (chars == 0)
+	{
+		if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+			return WideCharToMultiByte(CP_UTF8, 0, path_utf16, static_cast<s32>(path_utf16_chars), nullptr, 0, nullptr, nullptr);
+
+		return 0;
+	}
+
+	return chars;
+}
+
 static u32 path_to_absolute_impl(Range<char8> path, MutRange<char8> out_buf, bool remove_last_path_element) noexcept
 {
 	char16 path_utf16[minos::MAX_PATH_CHARS + 1];
