@@ -26,29 +26,29 @@ public:
 	template<u64 COUNT>
 	explicit constexpr Range(T(&arr)[COUNT]) : m_begin{ arr }, m_end{ arr + COUNT } {}
 
-	const T& operator[](u64 i) const noexcept
+	constexpr const T& operator[](u64 i) const noexcept
 	{
 		assert(i < count());
 
 		return m_begin[i];
 	}
 
-	const T* begin() const noexcept
+	constexpr const T* begin() const noexcept
 	{
 		return m_begin;
 	}
 
-	const T* end() const noexcept
+	constexpr const T* end() const noexcept
 	{
 		return m_end;
 	}
 
-	u64 count() const noexcept
+	constexpr u64 count() const noexcept
 	{
 		return m_end - m_begin;
 	}
 
-	Range<byte> as_byte_range() const noexcept
+	constexpr Range<byte> as_byte_range() const noexcept
 	{
 		return { reinterpret_cast<const byte*>(m_begin), count() * sizeof(T) };
 	}
