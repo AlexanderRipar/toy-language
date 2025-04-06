@@ -2,6 +2,7 @@
 
 ## Maintenance / Get To Know the Codebase
 
+- Refactor member functions to free functions for non-container structs.
 - Add a field of type `TypeId` to to `AstNode` (defined in pass_data.hpp).
   This likely requires reworking at least test/ast_tests.cpp to adjust for the
   relevant offsets. If there are any other functions that explicitly rely on
@@ -28,6 +29,7 @@
 
 - minos_tests.cpp:
   - Implement tests marked as TODO above `void minos_tests()`.
+  - Increase TIMEOUT_TEST_MILLIS to avoid flaky failures under high load.
 
 - Other:
   - Add tests for infra/threading.hpp, including `thd::Mutex`, `thd::Semaphore`
@@ -39,6 +41,14 @@
   - Add tests for parse.cpp
   - Add tests for identifier_pool.cpp
   - Add tests for config.cpp
+
+
+## OS Wrapping
+
+- minos.hpp:
+  - Rename or rework `path_to_absolute_directory` since its name does not
+    reflect its behaviour (convert to absolute path, then remove trailing
+    element).
 
 
 ## Planning
