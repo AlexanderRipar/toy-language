@@ -1,3 +1,8 @@
+1. [The Language](#the-language)
+2. [Building](#building)
+3. [Code Structure](#code-structure)
+
+
 # The Language
 
 This project currently goes under thewWorking name `eval`.
@@ -591,7 +596,38 @@ while using them for optimizations in release mode. During compile-time
 evaluation they should probably always be checked.
 
 
-# Compiler Code Structure
+# Building
+
+## Prerequisites
+
+To build this project, you will need
+
+- A `cmake` installation of at least version 3.22
+- One of the [supported C++ compilers](#supported-compilers)
+
+
+## Multi-Compiler and -Platform Build Support
+
+If you want to build the project on all available supported compilers and
+platforms, you can use `build-all.ps1`. This is a wrapper around cmake which
+invokes all the available [supported compilers](#supported-compilers) on your
+system. \
+If you test a new build configuration, please add it to the script, as well as
+the [list of supported compilers](#supported-compilers).
+
+
+## Supported Compilers
+
+The following is a list of the compilers and platforms under which builds are known to succeed.
+
+| Platform   | Compiler | Versions |
+|------------|----------|----------|
+| Windows 10 | msvc     | 19.39    |
+| Ubuntu     | clang    | 18.1     |
+| Ubuntu     | gcc      | 13.3     |
+
+
+# Code Structure
 
 ## General odditities
 
