@@ -736,14 +736,14 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 			return false;
 	}
 
-	const u32 working_directory_chars = working_directory.count() == 0 ? 0 : GetCurrentDirectoryW(0, nullptr);
+	const u32 working_directory_16_chars = working_directory.count() == 0 ? 0 : MultiByteToWideChar(CP_UTF8, 0, working_directory.begin(), static_cast<s32>(working_directory.count()), nullptr, 0) + 1;
 
-	if (working_directory.count() != 0 && working_directory_chars == 0)
+	if (working_directory.count() != 0 && working_directory_16_chars == 0)
 		return false;
 
 	const u64 total_bytes = proc_thread_attribute_list_bytes
 	                      + (MAX_COMMAND_LINE_CHARS + 1) * sizeof(char16)
-						  + working_directory_chars * sizeof(char16);
+						  + working_directory_16_chars * sizeof(char16);
 
 	void* const command_line_buffer = mem_reserve(total_bytes);
 
@@ -761,7 +761,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 
 	char16* const working_directory_16 = working_directory.count() == 0 ? nullptr : command_line_16 + MAX_COMMAND_LINE_CHARS + 1;
 
-	LPPROC_THREAD_ATTRIBUTE_LIST const attribute_list = inherited_handles.count() == 0 ? nullptr : reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(command_line_16 + MAX_COMMAND_LINE_CHARS + 1 + working_directory_chars); 
+	LPPROC_THREAD_ATTRIBUTE_LIST const attribute_list = inherited_handles.count() == 0 ? nullptr : reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(command_line_16 + MAX_COMMAND_LINE_CHARS + 1 + working_directory_16_chars);
 
 	if (inherited_handles.count() != 0)
 	{
@@ -782,12 +782,14 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 
 	if (working_directory.count() != 0)
 	{
-		if (GetCurrentDirectoryW(working_directory_chars, working_directory_16) != working_directory_chars - 1)
+		if (static_cast<u32>(MultiByteToWideChar(CP_UTF8, 0, working_directory.begin(), static_cast<s32>(working_directory.count()), working_directory_16, working_directory_16_chars - 1)) != working_directory_16_chars - 1)
 		{
 			mem_unreserve(command_line_buffer, total_bytes);
 
 			return false;
 		}
+
+		working_directory_16[working_directory_16_chars - 1] = '\0';
 	}
 
 	char16 exe_path_utf16[MAX_PATH_CHARS + 1];
