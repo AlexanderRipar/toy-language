@@ -3,7 +3,7 @@
 ## Maintenance / Get To Know the Codebase
 
 - Refactor member functions to free functions for non-container structs.
-- Add a field of type `TypeId` to to `AstNode` (defined in pass_data.hpp).
+- Add a field of type `TypeId` to `AstNode` (defined in pass_data.hpp).
   This likely requires reworking at least test/ast_tests.cpp to adjust for the
   relevant offsets. If there are any other functions that explicitly rely on
   the current size of an `AstNode`, make them as flexible as viable to future
