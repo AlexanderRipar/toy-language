@@ -1484,36 +1484,57 @@ void minos::shm_close(ShmHandle handle) noexcept
 		panic("close(memfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
-void* minos::shm_map(ShmHandle handle, Access access, u64 offset, u64 bytes) noexcept
+void* minos::shm_reserve(ShmHandle handle, u64 offset, u64 bytes) noexcept
 {
 	const s32 fd = static_cast<s32>(reinterpret_cast<u64>(handle.m_rep));
 
+	const u64 aligned_offset = offset & ~static_cast<u64>(page_bytes() - 1);
+
+	const u64 adjusted_bytes = bytes + offset - aligned_offset;
+
+	void* const address = mmap(nullptr, adjusted_bytes, PROT_NONE, MAP_SHARED, fd, aligned_offset);
+
+	if (address == MAP_FAILED)
+		return nullptr;
+
+	return static_cast<byte*>(address) + offset - aligned_offset;
+}
+
+void minos::shm_unreserve(void* address, u64 bytes) noexcept
+{
+	const u64 address_bits = reinterpret_cast<u64>(address);
+
+	const u64 aligned_address_bits = address_bits & ~static_cast<u64>(page_bytes() - 1);
+
+	const u64 adjusted_bytes = bytes + address_bits - aligned_address_bits;
+
+	if (munmap(reinterpret_cast<void*>(aligned_address_bits), adjusted_bytes) != 0)
+		panic("munmap(shm) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+}
+
+bool minos::shm_commit(void* address, Access access, u64 bytes) noexcept
+{
 	s32 native_access = 0;
 
-	if ((access & Access::Read) != Access::None)
+	if ((access & Access::Read) == Access::Read)
 		native_access |= PROT_READ;
 
-	if ((access & Access::Write) != Access::None)
+	if ((access & Access::Write) == Access::Write)
 		native_access |= PROT_WRITE;
 
-	if ((access & Access::Execute) != Access::None)
+	if ((access & Access::Execute) == Access::Execute)
 		native_access |= PROT_EXEC;
 
 	if (access == Access::None)
 		native_access = PROT_NONE;
 
-	void* const address = mmap(nullptr, bytes, native_access, MAP_SHARED, fd, offset);
+	const u64 address_bits = reinterpret_cast<u64>(address);
 
-	if (address == MAP_FAILED)
-		return nullptr;
+	const u64 aligned_address_bits = address_bits & ~static_cast<u64>(page_bytes() - 1);
 
-	return address;
-}
+	const u64 adjusted_bytes = bytes + address_bits - aligned_address_bits;
 
-void minos::shm_unmap(void* address, u64 bytes) noexcept
-{
-	if (munmap(address, bytes) != 0)
-		panic("munmap(shm) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+	return mprotect(reinterpret_cast<void*>(aligned_address_bits), adjusted_bytes, native_access) == 0;
 }
 
 bool minos::sempahore_create(u32 initial_count, SemaphoreHandle* out) noexcept
@@ -1530,7 +1551,7 @@ bool minos::sempahore_create(u32 initial_count, SemaphoreHandle* out) noexcept
 
 void minos::semaphore_close(SemaphoreHandle handle) noexcept
 {
-	if (!close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))))
+	if (close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))) != 0)
 		panic("close(eventfd semaphore) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
@@ -1567,6 +1588,8 @@ minos::DirectoryEnumerationStatus minos::directory_enumeration_create(Range<char
 		return DirectoryEnumerationStatus::Error;
 	}
 
+	memcpy(terminated_path, directory_path.begin(), directory_path.count());
+
 	terminated_path[directory_path.count()] = '\0';
 
 	DIR* const dir = opendir(terminated_path);
@@ -1576,8 +1599,6 @@ minos::DirectoryEnumerationStatus minos::directory_enumeration_create(Range<char
 
 	*out = { dir };
 
-	errno = 0;
-
 	const DirectoryEnumerationStatus first_ok = directory_enumeration_next({ dir }, out_first);
 
 	if (first_ok == DirectoryEnumerationStatus::Error)
@@ -1586,12 +1607,26 @@ minos::DirectoryEnumerationStatus minos::directory_enumeration_create(Range<char
 	return first_ok;
 }
 
+static dirent* get_non_virtual_dirent(DIR* dir) noexcept
+{
+	while (true)
+	{
+		// Reset errno to determine whether readdir failed with an error or end-of-stream
+		errno = 0;
+
+		dirent* const entry = readdir(dir);
+
+		if (entry == nullptr)
+			return nullptr;
+
+		if (entry->d_name[0] != '.' || (entry->d_name[1] != '\0' && (entry->d_name[1] != '.' || entry->d_name[2] != '\0')))
+			return entry;
+	}
+}
+
 minos::DirectoryEnumerationStatus minos::directory_enumeration_next(DirectoryEnumerationHandle handle, DirectoryEnumerationResult* out) noexcept
 {
-	// Reset errno to determine whether readdir failed with an error or end-of-stream
-	errno = 0;
-
-	dirent* const entry = readdir(static_cast<DIR*>(handle.m_rep));
+	dirent* const entry = get_non_virtual_dirent(static_cast<DIR*>(handle.m_rep));
 
 	if (entry == nullptr)
 		return errno == 0 ? DirectoryEnumerationStatus::NoMoreFiles : DirectoryEnumerationStatus::Error;
@@ -1617,8 +1652,8 @@ minos::DirectoryEnumerationStatus minos::directory_enumeration_next(DirectoryEnu
 	out->creation_time = 0; // This is not supported under *nix
 	out->last_access_time = info.st_atime;
 	out->last_write_time = info.st_mtime; // Use mtime instead of ctime, as metadata changes likely do not matter (?)
-	out->bytes = info.st_size;
-	out->is_directory = S_ISDIR(info.st_mode);
+	out->bytes = S_ISDIR(info.st_mode) ? 0 : info.st_size; // Force bytes to 0 for directories.
+	out->is_directory = S_ISDIR(info.st_mode); // Force bytes to 0 for directories.
 
 	static_assert(sizeof(entry->d_name) <= sizeof(out->filename));
 
@@ -1645,6 +1680,8 @@ bool minos::directory_create(Range<char8> path) noexcept
 	}
 
 	memcpy(terminated_path, path.begin(), path.count());
+
+	terminated_path[path.count()] = '\0';
 
 	return mkdir(terminated_path, S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) == 0;
 }
@@ -1710,10 +1747,14 @@ bool minos::path_is_directory(Range<char8> path) noexcept
 
 bool minos::path_is_file(Range<char8> path) noexcept
 {
-	if (path.count() > PATH_MAX)
-		return false;
-
 	char8 terminated_path[PATH_MAX + 1];
+
+	if (path.count() > array_count(terminated_path) - 1)
+	{
+		errno = ENAMETOOLONG;
+
+		return false;
+	}
 
 	memcpy(terminated_path, path.begin(), path.count());
 
@@ -1778,6 +1819,8 @@ static u32 append_relative_path(Range<char8> path, MutRange<char8> out_buf, u64 
 		if (path[i] == '/')
 		{
 			is_element_start = true;
+
+			continue;
 		}
 		else if (is_element_start && path[i] == '.')
 		{
@@ -1823,18 +1866,20 @@ static u32 append_relative_path(Range<char8> path, MutRange<char8> out_buf, u64 
 	if (out_index > 1 && out_buf[out_index - 1] == '/')
 		out_index -= 1;
 
+	if (out_index == 0 && out_buf.count() != 0)
+	{
+		out_buf[0] = '/';
+
+		out_index += 1;
+	}
+
 	return out_index;
 }
 
 u32 minos::path_to_absolute(Range<char8> path, MutRange<char8> out_buf) noexcept
 {
 	if (path.count() > 0 && path[0] == '/')
-	{
-		if (path.count() < out_buf.count())
-			memcpy(out_buf.begin(), path.begin(), path.count());
-		
-		return path.count();
-	}
+		return append_relative_path(Range{ path.begin() + 1, path.end() }, out_buf, 0);
 
 	if (getcwd(out_buf.begin(), out_buf.count()) == nullptr)
 		return 0;
@@ -1850,12 +1895,7 @@ u32 minos::path_to_absolute(Range<char8> path, MutRange<char8> out_buf) noexcept
 u32 minos::path_to_absolute_relative_to(Range<char8> path, Range<char8> base, MutRange<char8> out_buf) noexcept
 {
 	if (path.count() != 0 && path[0] == '/')
-	{
-		if (path.count() <= out_buf.count())
-			memcpy(out_buf.begin(), path.begin(), path.count());
-
-		return path.count();
-	}
+		return append_relative_path(Range{ path.begin() + 1, path.end() }, out_buf, 0);
 
 	const u64 out_index = path_to_absolute(base, out_buf);
 
@@ -1877,10 +1917,14 @@ u32 minos::path_to_absolute_directory(Range<char8> path, MutRange<char8> out_buf
 
 bool minos::path_get_info(Range<char8> path, FileInfo* out) noexcept
 {
-	if (path.count() > PATH_MAX)
-		return false;
-
 	char8 terminated_path[PATH_MAX + 1];
+
+	if (path.count() > array_count(terminated_path) - 1)
+	{
+		errno = ENAMETOOLONG;
+
+		return false;
+	}
 
 	memcpy(terminated_path, path.begin(), path.count());
 
@@ -1893,7 +1937,7 @@ bool minos::path_get_info(Range<char8> path, FileInfo* out) noexcept
 
 	out->identity.volume_serial = info.st_dev;
 	out->identity.index = info.st_ino;
-	out->bytes = info.st_size;
+	out->bytes = S_ISDIR(info.st_mode) ? 0 : info.st_size;
 	out->creation_time = 0; // This is not supported under *nix
 	out->last_modified_time = info.st_mtime; // Use mtime instead of ctime, as metadata changes likely do not matter (?)
 	out->last_access_time = info.st_atime;
@@ -1929,14 +1973,7 @@ u64 minos::exact_timestamp() noexcept
 
 u64 minos::exact_timestamp_ticks_per_second() noexcept
 {
-	timespec ts;
-
-	if (clock_getres(CLOCK_MONOTONIC, &ts) != 0)
-		panic("clock_getres failed (0x%X - %s)\n", last_error(), strerror(last_error()));
-
-	ASSERT_OR_IGNORE(ts.tv_sec == 0);
-
-	return static_cast<u64>(1'000'000'000) / static_cast<u64>(ts.tv_nsec);
+	return static_cast<u64>(1'000'000'000);
 }
 
 // TODO: Remove

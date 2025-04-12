@@ -5,6 +5,14 @@
 
 #define MINOS_TEST_END minos::deinit(); TEST_END
 
+// This is here to shut up IntelliSense. HELPER_PROCESS_PATH is defined in the
+// CMakeLists.txt file to refer to the test-process-helper executable.
+#ifndef HELPER_PROCESS_PATH
+	#define HELPER_PROCESS_PATH "UNREACHABLE"
+
+	#error HELPER_PROCESS_PATH was not defined. Build with cmake to correct this.
+#endif
+
 static constexpr u32 TIMEOUT_TEST_MILLIS = 50;
 
 static u32 log10_ceil(u64 n) noexcept
@@ -1915,7 +1923,21 @@ static void process_create_with_given_exe_path_and_empty_working_directory_spawn
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	Range<char8> command_line[] {
+		range::from_literal_string("test"),
+	};
+
+	minos::ProcessHandle process;
+
+	TEST_EQUAL(minos::process_create(range::from_literal_string(HELPER_PROCESS_PATH), Range{ command_line }, {}, {}, false, &process), true);
+
+	u32 process_result;
+
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+
+	TEST_EQUAL(process_result, 0);
+
+	minos::process_close(process);
 
 	MINOS_TEST_END;
 }
@@ -1924,7 +1946,21 @@ static void process_create_with_given_exe_path_and_given_working_directory_spawn
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	Range<char8> command_line[] {
+		range::from_literal_string("minos_fs_data"),
+	};
+
+	minos::ProcessHandle process;
+
+	TEST_EQUAL(minos::process_create(range::from_literal_string(HELPER_PROCESS_PATH), Range{ command_line }, range::from_literal_string("./minos_fs_data"), {}, false, &process), true);
+
+	u32 process_result;
+
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+
+	TEST_EQUAL(process_result, 0);
+
+	minos::process_close(process);
 
 	MINOS_TEST_END;
 }
@@ -1933,16 +1969,37 @@ static void process_create_makes_inherited_handles_available_to_child() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::EventHandle event;
 
-	MINOS_TEST_END;
-}
+	TEST_EQUAL(minos::event_create(&event), true);
 
-static void process_create_makes_uninherited_handles_unavailable_to_child() noexcept
-{
-	MINOS_TEST_BEGIN;
+	// Pre-wake the event to minimize waiting
+	minos::event_wake(event);
 
-	// TODO
+	char8 event_buf[64];
+
+	Range<char8> command_line[] {
+		range::from_literal_string("--event-wait"),
+		format_u64(reinterpret_cast<u64>(event.m_rep), MutRange{ event_buf }),
+	};
+
+	minos::ProcessHandle process;
+
+	minos::GenericHandle inherited_handles[] = {
+		event
+	};
+
+	TEST_EQUAL(minos::process_create({}, Range{ command_line }, {}, Range{ inherited_handles }, false, &process), true);
+
+	u32 process_result;
+
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+
+	TEST_EQUAL(process_result, 0);
+
+	minos::process_close(process);
+
+	minos::event_close(event);
 
 	MINOS_TEST_END;
 }
@@ -1951,7 +2008,38 @@ static void process_wait_timeout_on_sleeping_process_times_out() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::EventHandle event;
+
+	TEST_EQUAL(minos::event_create(&event), true);
+
+	char8 event_buf[64];
+
+	Range<char8> command_line[] {
+		range::from_literal_string("--event-wait"),
+		format_u64(reinterpret_cast<u64>(event.m_rep), MutRange{ event_buf }),
+	};
+
+	minos::ProcessHandle process;
+
+	minos::GenericHandle inherited_handles[] = {
+		event
+	};
+
+	TEST_EQUAL(minos::process_create({}, Range{ command_line }, {}, Range{ inherited_handles }, false, &process), true);
+
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, nullptr), false);
+
+	minos::event_wake(event);
+
+	u32 process_result;
+
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+
+	TEST_EQUAL(process_result, 0);
+
+	minos::process_close(process);
+
+	minos::event_close(event);
 
 	MINOS_TEST_END;
 }
@@ -1960,81 +2048,321 @@ static void process_wait_waits_for_process_to_exit() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::EventHandle event;
+
+	TEST_EQUAL(minos::event_create(&event), true);
+
+	char8 event_buf[64];
+
+	Range<char8> command_line[] {
+		range::from_literal_string("--event-wait"),
+		format_u64(reinterpret_cast<u64>(event.m_rep), MutRange{ event_buf }),
+		range::from_literal_string("--timeout"),
+		range::from_literal_string("1"),
+	};
+
+	minos::ProcessHandle process;
+
+	minos::GenericHandle inherited_handles[] = {
+		event
+	};
+
+	TEST_EQUAL(minos::process_create({}, Range{ command_line }, {}, Range{ inherited_handles }, false, &process), true);
+
+	u32 process_result;
+
+	minos::process_wait(process, &process_result);
+
+	TEST_EQUAL(process_result, 2);
+
+	minos::process_close(process);
+
+	minos::event_close(event);
 
 	MINOS_TEST_END;
 }
 
-static void process_wait_on_completed_exited_still_works() noexcept
+static void process_wait_on_exited_process_still_works() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	Range<char8> command_line[] {
+		range::from_literal_string("--exit-with"),
+		range::from_literal_string("17"),
+	};
+
+	minos::ProcessHandle process;
+
+	TEST_EQUAL(minos::process_create({}, Range{ command_line }, {}, {}, false, &process), true);
+
+	u32 process_result;
+
+	minos::process_wait(process, nullptr);
+
+	minos::process_wait(process, &process_result);
+
+	TEST_EQUAL(process_result, 17);
+
+	minos::process_close(process);
 
 	MINOS_TEST_END;
 }
 
 
-static void shm_create_succeeds() noexcept
+static void shm_create_with_small_requst_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::ShmHandle shm;
+
+	TEST_EQUAL(minos::shm_create(minos::Access::Read | minos::Access::Write, 1024, &shm), true);
+
+	minos::shm_close(shm);
 
 	MINOS_TEST_END;
 }
 
-static void shm_map_of_entire_shm_succeeds() noexcept
+static void shm_create_with_large_requst_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::ShmHandle shm;
+
+	TEST_EQUAL(minos::shm_create(minos::Access::Read | minos::Access::Write, 1024 * 1024 * 1024, &shm), true);
+
+	minos::shm_close(shm);
 
 	MINOS_TEST_END;
 }
 
-static void shm_map_of_shm_subrange_at_begin_succeeds() noexcept
+static void shm_create_with_execute_access_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::ShmHandle shm;
+
+	TEST_EQUAL(minos::shm_create(minos::Access::Read | minos::Access::Execute, 1024, &shm), true);
+
+	minos::shm_close(shm);
 
 	MINOS_TEST_END;
 }
 
-static void shm_map_of_shm_subrange_at_offset_succeeds() noexcept
+static void shm_reserve_of_entire_shm_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::ShmHandle shm;
+
+	TEST_EQUAL(minos::shm_create(minos::Access::Read | minos::Access::Write, 1024 * 1024, &shm), true);
+
+	byte* const mem = static_cast<byte*>(minos::shm_reserve(shm, 0, 1024 * 1024));
+
+	TEST_UNEQUAL(mem, nullptr);
+
+	minos::shm_unreserve(mem, 1024 * 1024);
+
+	minos::shm_close(shm);
 
 	MINOS_TEST_END;
 }
 
-static void shm_map_works_across_processes() noexcept
+static void shm_reserve_of_shm_subrange_at_zero_offset_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::ShmHandle shm;
+
+	TEST_EQUAL(minos::shm_create(minos::Access::Read | minos::Access::Write, 1024 * 1024, &shm), true);
+
+	byte* const mem = static_cast<byte*>(minos::shm_reserve(shm, 0, 1024));
+
+	TEST_UNEQUAL(mem, nullptr);
+
+	minos::shm_unreserve(mem, 1024);
+
+	minos::shm_close(shm);
 
 	MINOS_TEST_END;
 }
 
-static void shm_is_consistent_across_processes() noexcept
+static void shm_reserve_of_shm_subrange_at_nonzero_aligned_offset_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::ShmHandle shm;
+
+	TEST_EQUAL(minos::shm_create(minos::Access::Read | minos::Access::Write, 1024 * 1024, &shm), true);
+
+	// Note that the below `offset` of 65536 is the alignment required by a
+	// native call to win32's `MapViewOfFile`, underlying `minos::shm_reserve`.
+	byte* const mem = static_cast<byte*>(minos::shm_reserve(shm, 65536, 1024));
+
+	TEST_UNEQUAL(mem, nullptr);
+
+	minos::shm_unreserve(mem, 1024);
+
+	minos::shm_close(shm);
 
 	MINOS_TEST_END;
 }
 
+static void shm_reserve_of_shm_subrange_at_nonzero_unaligned_offset_succeeds() noexcept
+{
+	MINOS_TEST_BEGIN;
+
+	minos::ShmHandle shm;
+
+	TEST_EQUAL(minos::shm_create(minos::Access::Read | minos::Access::Write, 1024 * 1024, &shm), true);
+
+	byte* const mem = static_cast<byte*>(minos::shm_reserve(shm, 585410, 1024));
+
+	TEST_UNEQUAL(mem, nullptr);
+
+	minos::shm_unreserve(mem, 1024);
+
+	minos::shm_close(shm);
+
+	MINOS_TEST_END;
+}
+
+static void shm_commit_read_of_reserved_shm_succeeds_and_is_readable() noexcept
+{
+	MINOS_TEST_BEGIN;
+
+	minos::ShmHandle shm;
+
+	TEST_EQUAL(minos::shm_create(minos::Access::Read | minos::Access::Write, 1024, &shm), true);
+
+	byte* const mem = static_cast<byte*>(minos::shm_reserve(shm, 0, 1024));
+
+	TEST_UNEQUAL(mem, nullptr);
+
+	TEST_EQUAL(minos::shm_commit(mem, minos::Access::Read, 1024), true);
+
+	TEST_EQUAL(mem[0], 0);
+
+	TEST_EQUAL(mem[1024 - 1], 0);
+
+	minos::shm_unreserve(mem, 1024);
+
+	minos::shm_close(shm);
+
+	MINOS_TEST_END;
+}
+
+static void shm_commit_read_write_of_reserved_shm_succeeds_and_is_readable_and_writeable() noexcept
+{
+	MINOS_TEST_BEGIN;
+
+	minos::ShmHandle shm;
+
+	TEST_EQUAL(minos::shm_create(minos::Access::Read | minos::Access::Write, 1024 * 1024, &shm), true);
+
+	byte* const mem = static_cast<byte*>(minos::shm_reserve(shm, 585410, 1024));
+
+	TEST_UNEQUAL(mem, nullptr);
+
+	TEST_EQUAL(minos::shm_commit(mem, minos::Access::Read | minos::Access::Write, 1024), true);
+
+	TEST_EQUAL(mem[0], 0);
+
+	TEST_EQUAL(mem[1024 - 1], 0);
+
+	mem[0] = 0xCC;
+
+	TEST_EQUAL(mem[0], 0xCC);
+
+	minos::shm_unreserve(mem, 1024);
+
+	minos::shm_close(shm);
+
+	MINOS_TEST_END;
+}
+
+static void shm_works_across_processes() noexcept
+{
+	MINOS_TEST_BEGIN;
+
+	minos::ShmHandle shm;
+
+	TEST_EQUAL(minos::shm_create(minos::Access::Read | minos::Access::Write, 1024 * 1024, &shm), true);
+
+	byte* const mem = static_cast<byte*>(minos::shm_reserve(shm, 0, 1024 * 1024));
+
+	TEST_UNEQUAL(mem, nullptr);
+
+	TEST_EQUAL(minos::shm_commit(mem, minos::Access::Read | minos::Access::Write, 1024 * 1024), true);
+
+	memset(mem, 0xAB, 1024 * 1024);
+
+	char8 arg_bufs[9][64];
+
+	Range<char8> command_line[] = {
+		range::from_literal_string("--shm"),
+		format_handle(shm, MutRange{ arg_bufs[0] }),
+		format_u64(0, MutRange{ arg_bufs[1] }), // reserve offset
+		format_u64(1024 * 1024, MutRange{ arg_bufs[2] }), // reserve bytes
+		format_u64(0, MutRange{ arg_bufs[3] }), // commit offset
+		format_u64(1024 * 1024, MutRange{ arg_bufs[4] }), // commit bytes
+		format_u64(10, MutRange{ arg_bufs[5] }), // read offset
+		format_u64(0xAB, MutRange{ arg_bufs[6] }), // commit value
+		format_u64(15, MutRange{ arg_bufs[7] }), // write offset
+		format_u64(0xF3, MutRange{ arg_bufs[8] }), // write value
+	};
+
+	minos::GenericHandle inherited_handles[] = { shm };
+
+	minos::ProcessHandle process;
+
+	TEST_EQUAL(minos::process_create({}, Range{ command_line }, {}, Range{ inherited_handles }, false, &process), true);
+
+	u32 process_result;
+
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+
+	TEST_EQUAL(process_result, 0);
+
+	minos::process_close(process);
+
+	minos::shm_unreserve(mem, 1024 * 1024);
+
+	minos::shm_close(shm);
+
+	MINOS_TEST_END;
+}
+
+
+struct SemaphoreThreadParams
+{
+	minos::SemaphoreHandle semaphore;
+
+	bool use_timeout;
+
+	u32 timeout_milliseconds;
+};
+
+static u32 THREAD_PROC semaphore_wait_proc(void* param) noexcept
+{
+	SemaphoreThreadParams* const params = static_cast<SemaphoreThreadParams*>(param);
+
+	if (params->use_timeout)
+		return minos::semaphore_wait_timeout(params->semaphore, params->timeout_milliseconds) ? 0 : 1;
+
+	minos::semaphore_wait(params->semaphore);
+
+	return 0;
+}
 
 static void sem_create_creates_a_semaphore() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::SemaphoreHandle semaphore;
+
+	TEST_EQUAL(minos::sempahore_create(0, &semaphore), true);
+
+	minos::semaphore_close(semaphore);
 
 	MINOS_TEST_END;
 }
@@ -2043,7 +2371,13 @@ static void sem_create_with_initial_count_1_allows_1_wait() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::SemaphoreHandle semaphore;
+
+	TEST_EQUAL(minos::sempahore_create(1, &semaphore), true);
+
+	TEST_EQUAL(minos::semaphore_wait_timeout(semaphore, 1), true);
+
+	minos::semaphore_close(semaphore);
 
 	MINOS_TEST_END;
 }
@@ -2052,7 +2386,13 @@ static void sem_create_with_initial_count_0_allows_no_waits() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::SemaphoreHandle semaphore;
+
+	TEST_EQUAL(minos::sempahore_create(0, &semaphore), true);
+
+	TEST_EQUAL(minos::semaphore_wait_timeout(semaphore, 1), false);
+
+	minos::semaphore_close(semaphore);
 
 	MINOS_TEST_END;
 }
@@ -2061,16 +2401,61 @@ static void sem_create_with_initial_count_5_allows_5_waits() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::SemaphoreHandle semaphore;
+
+	TEST_EQUAL(minos::sempahore_create(5, &semaphore), true);
+
+	TEST_EQUAL(minos::semaphore_wait_timeout(semaphore, 1), true);
+
+	TEST_EQUAL(minos::semaphore_wait_timeout(semaphore, 1), true);
+
+	TEST_EQUAL(minos::semaphore_wait_timeout(semaphore, 1), true);
+
+	TEST_EQUAL(minos::semaphore_wait_timeout(semaphore, 1), true);
+
+	TEST_EQUAL(minos::semaphore_wait_timeout(semaphore, 1), true);
+
+	TEST_EQUAL(minos::semaphore_wait_timeout(semaphore, 1), false);
+
+	minos::semaphore_close(semaphore);
 
 	MINOS_TEST_END;
 }
 
-static void sem_post_allows_wait() noexcept
+static void sem_post_one_allows_one_wait() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::SemaphoreHandle semaphore;
+
+	TEST_EQUAL(minos::sempahore_create(0, &semaphore), true);
+
+	minos::semaphore_post(semaphore, 1);
+
+	TEST_EQUAL(minos::semaphore_wait_timeout(semaphore, 1), true);
+
+	minos::semaphore_close(semaphore);
+
+	MINOS_TEST_END;
+}
+
+static void sem_post_two_allows_two_waits() noexcept
+{
+	MINOS_TEST_BEGIN;
+
+	minos::SemaphoreHandle semaphore;
+
+	TEST_EQUAL(minos::sempahore_create(0, &semaphore), true);
+
+	minos::semaphore_post(semaphore, 2);
+
+	TEST_EQUAL(minos::semaphore_wait_timeout(semaphore, 1), true);
+
+	TEST_EQUAL(minos::semaphore_wait_timeout(semaphore, 1), true);
+
+	TEST_EQUAL(minos::semaphore_wait_timeout(semaphore, 1), false);
+
+	minos::semaphore_close(semaphore);
 
 	MINOS_TEST_END;
 }
@@ -2079,7 +2464,27 @@ static void sem_wait_waits_until_post() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::SemaphoreHandle semaphore;
+
+	TEST_EQUAL(minos::sempahore_create(0, &semaphore), true);
+
+	SemaphoreThreadParams params;
+	params.semaphore = semaphore;
+	params.use_timeout = false;
+
+	minos::ThreadHandle thread;
+
+	TEST_EQUAL(minos::thread_create(semaphore_wait_proc, &params, range::from_literal_string("semaphore_wait"), &thread), true);
+
+	minos::semaphore_post(semaphore, 1);
+
+	u32 thread_result;
+
+	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, &thread_result), true);
+
+	TEST_EQUAL(thread_result, 0);
+
+	minos::semaphore_close(semaphore);
 
 	MINOS_TEST_END;
 }
@@ -2088,16 +2493,28 @@ static void sem_wait_timeout_with_long_timeout_waits_until_post() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::SemaphoreHandle semaphore;
 
-	MINOS_TEST_END;
-}
+	TEST_EQUAL(minos::sempahore_create(0, &semaphore), true);
 
-static void sem_wait_timeout_with_no_posts_times_out() noexcept
-{
-	MINOS_TEST_BEGIN;
+	SemaphoreThreadParams params;
+	params.semaphore = semaphore;
+	params.use_timeout = true;
+	params.timeout_milliseconds = 1000;
 
-	// TODO
+	minos::ThreadHandle thread;
+
+	TEST_EQUAL(minos::thread_create(semaphore_wait_proc, &params, range::from_literal_string("semaphore_wait"), &thread), true);
+
+	minos::semaphore_post(semaphore, 1);
+
+	u32 thread_result;
+
+	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, &thread_result), true);
+
+	TEST_EQUAL(thread_result, 0);
+
+	minos::semaphore_close(semaphore);
 
 	MINOS_TEST_END;
 }
@@ -2105,8 +2522,37 @@ static void sem_wait_timeout_with_no_posts_times_out() noexcept
 static void sem_wait_and_post_work_across_processes() noexcept
 {
 	MINOS_TEST_BEGIN;
+	
+	minos::SemaphoreHandle semaphore;
 
-	// TODO
+	TEST_EQUAL(minos::sempahore_create(1, &semaphore), true);
+
+	char8 semaphore_buf[64];
+
+	char8 timeout_buf[64];
+
+	Range<char8> command_line[] = {
+		range::from_literal_string("--semaphore-wait"),
+		format_handle(semaphore, MutRange{ semaphore_buf }),
+		range::from_literal_string("--timeout"),
+		format_u64(TIMEOUT_TEST_MILLIS, MutRange{ timeout_buf }),
+	};
+
+	minos::GenericHandle inherited_handles[] = { semaphore };
+
+	minos::ProcessHandle process;
+
+	TEST_EQUAL(minos::process_create({}, Range{ command_line }, {}, Range{ inherited_handles }, false, &process), true);
+
+	u32 process_result;
+
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+
+	TEST_EQUAL(process_result, 0);
+
+	minos::semaphore_close(semaphore);
+
+	minos::process_close(process);
 
 	MINOS_TEST_END;
 }
@@ -2116,7 +2562,15 @@ static void directory_enumeration_create_on_empty_directory_returns_no_more_file
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_EQUAL(minos::directory_create(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_empty_dir")), true);
+
+	minos::DirectoryEnumerationHandle enumeration;
+
+	minos::DirectoryEnumerationResult result;
+
+	TEST_EQUAL(minos::directory_enumeration_create(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_empty_dir"), &enumeration, &result), minos::DirectoryEnumerationStatus::NoMoreFiles);
+
+	minos::directory_enumeration_close(enumeration);
 
 	MINOS_TEST_END;
 }
@@ -2125,7 +2579,21 @@ static void directory_enumeration_on_directory_with_one_file_returns_that_file_t
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::DirectoryEnumerationHandle enumeration;
+
+	minos::DirectoryEnumerationResult result;
+
+	TEST_EQUAL(minos::directory_enumeration_create(range::from_literal_string("minos_fs_data/directory_with_1_file"), &enumeration, &result), minos::DirectoryEnumerationStatus::Ok);
+
+	TEST_EQUAL(result.is_directory, false);
+
+	TEST_EQUAL(result.bytes, 0);
+
+	TEST_MEM_EQUAL(result.filename, "file_1", sizeof("file_1"));
+
+	TEST_EQUAL(minos::directory_enumeration_next(enumeration, &result), minos::DirectoryEnumerationStatus::NoMoreFiles);
+
+	minos::directory_enumeration_close(enumeration);
 
 	MINOS_TEST_END;
 }
@@ -2134,16 +2602,72 @@ static void directory_enumeration_on_directory_with_5_files_returns_those_files_
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::DirectoryEnumerationHandle enumeration;
+
+	minos::DirectoryEnumerationResult result;
+
+	TEST_EQUAL(minos::directory_enumeration_create(range::from_literal_string("minos_fs_data/directory_with_5_files"), &enumeration, &result), minos::DirectoryEnumerationStatus::Ok);
+
+	TEST_EQUAL(result.is_directory, false);
+
+	TEST_EQUAL(result.bytes, 0);
+
+
+	TEST_EQUAL(minos::directory_enumeration_next(enumeration, &result), minos::DirectoryEnumerationStatus::Ok);
+
+	TEST_EQUAL(result.is_directory, false);
+
+	TEST_EQUAL(result.bytes, 0);
+
+
+	TEST_EQUAL(minos::directory_enumeration_next(enumeration, &result), minos::DirectoryEnumerationStatus::Ok);
+
+	TEST_EQUAL(result.is_directory, false);
+
+	TEST_EQUAL(result.bytes, 0);
+
+
+	TEST_EQUAL(minos::directory_enumeration_next(enumeration, &result), minos::DirectoryEnumerationStatus::Ok);
+
+	TEST_EQUAL(result.is_directory, false);
+
+	TEST_EQUAL(result.bytes, 0);
+
+
+	TEST_EQUAL(minos::directory_enumeration_next(enumeration, &result), minos::DirectoryEnumerationStatus::Ok);
+
+	TEST_EQUAL(result.is_directory, false);
+
+	TEST_EQUAL(result.bytes, 0);
+
+
+	TEST_EQUAL(minos::directory_enumeration_next(enumeration, &result), minos::DirectoryEnumerationStatus::NoMoreFiles);
+
+
+	minos::directory_enumeration_close(enumeration);
 
 	MINOS_TEST_END;
 }
 
-static void directory_enumeration_on_directory_subdirectory_returns_that_subdirectory_then_no_more_files() noexcept
+static void directory_enumeration_on_directory_with_subdirectory_returns_that_subdirectory_then_no_more_files() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::DirectoryEnumerationHandle enumeration;
+
+	minos::DirectoryEnumerationResult result;
+
+	TEST_EQUAL(minos::directory_enumeration_create(range::from_literal_string("minos_fs_data/directory_with_1_subdirectory"), &enumeration, &result), minos::DirectoryEnumerationStatus::Ok);
+
+	TEST_EQUAL(result.is_directory, true);
+
+	TEST_EQUAL(result.bytes, 0);
+
+	TEST_MEM_EQUAL(result.filename, "subdirectory", sizeof("subdirectory"));
+
+	TEST_EQUAL(minos::directory_enumeration_next(enumeration, &result), minos::DirectoryEnumerationStatus::NoMoreFiles);
+
+	minos::directory_enumeration_close(enumeration);
 
 	MINOS_TEST_END;
 }
@@ -2153,7 +2677,7 @@ static void directory_create_on_new_path_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_EQUAL(minos::directory_create(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_DIR_A")), true);
 
 	MINOS_TEST_END;
 }
@@ -2162,7 +2686,7 @@ static void directory_create_on_existing_path_fails() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_EQUAL(minos::directory_create(range::from_literal_string("minos_fs_data")), false);
 
 	MINOS_TEST_END;
 }
@@ -2172,7 +2696,13 @@ static void path_remove_file_on_file_path_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_J"), minos::Access::Write, minos::ExistsMode::Fail, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &file), true);
+
+	minos::file_close(file);
+
+	TEST_EQUAL(minos::path_remove_file(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_J")), true);
 
 	MINOS_TEST_END;
 }
@@ -2181,7 +2711,9 @@ static void path_remove_file_on_directory_path_fails() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_EQUAL(minos::directory_create(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_DIR_B")), true);
+
+	TEST_EQUAL(minos::path_remove_file(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_DIR_B")), false);
 
 	MINOS_TEST_END;
 }
@@ -2190,7 +2722,7 @@ static void path_remove_file_on_nonexistent_path_fails() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_EQUAL(minos::path_remove_file(range::from_literal_string("minos_fs_data/nonexistent_path")), false);
 
 	MINOS_TEST_END;
 }
@@ -2200,7 +2732,9 @@ static void path_remove_directory_on_directory_path_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_EQUAL(minos::directory_create(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_DIR_C")), true);
+
+	TEST_EQUAL(minos::path_remove_directory(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_DIR_C")), true);
 
 	MINOS_TEST_END;
 }
@@ -2209,7 +2743,13 @@ static void path_remove_directory_on_file_path_fails() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileHandle file;
+
+	TEST_EQUAL(minos::file_create(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_K"), minos::Access::Write, minos::ExistsMode::Fail, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &file), true);
+
+	minos::file_close(file);
+
+	TEST_EQUAL(minos::path_remove_directory(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_K")), false);
 
 	MINOS_TEST_END;
 }
@@ -2218,7 +2758,7 @@ static void path_remove_directory_on_nonexistent_path_fails() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_EQUAL(minos::path_remove_directory(range::from_literal_string("minos_fs_data/nonexistent_path")), false);
 
 	MINOS_TEST_END;
 }
@@ -2228,7 +2768,7 @@ static void path_is_directory_on_directory_path_returns_true() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_EQUAL(minos::path_is_directory(range::from_literal_string("minos_fs_data")), true);
 
 	MINOS_TEST_END;
 }
@@ -2237,7 +2777,7 @@ static void path_is_directory_on_file_path_returns_false() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_EQUAL(minos::path_is_directory(range::from_literal_string("minos_fs_data/empty_file")), false);
 
 	MINOS_TEST_END;
 }
@@ -2246,7 +2786,7 @@ static void path_is_directory_on_nonexistent_path_returns_false() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_EQUAL(minos::path_is_directory(range::from_literal_string("minos_fs_data/nonexistent_path")), false);
 
 	MINOS_TEST_END;
 }
@@ -2256,7 +2796,7 @@ static void path_is_file_on_file_path_returns_true() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_EQUAL(minos::path_is_file(range::from_literal_string("minos_fs_data/empty_file")), true);
 
 	MINOS_TEST_END;
 }
@@ -2265,7 +2805,7 @@ static void path_is_file_on_directory_path_returns_false() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_EQUAL(minos::path_is_file(range::from_literal_string("minos_fs_data")), false);
 
 	MINOS_TEST_END;
 }
@@ -2274,7 +2814,7 @@ static void path_is_file_on_nonexistent_path_returns_false() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_EQUAL(minos::path_is_file(range::from_literal_string("minos_fs_data/nonexistent_path")), false);
 
 	MINOS_TEST_END;
 }
@@ -2284,8 +2824,99 @@ static void path_to_absolute_on_absolute_path_returns_that_path() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	const Range<char8> path = range::from_literal_string("/xyz/abc/d");
 
+	char8 path_buf[1024];
+
+	const u32 path_chars = minos::path_to_absolute(path, MutRange{ path_buf });
+
+	#ifdef _WIN32
+		const Range<char8> win32_path = range::from_literal_string(":\\xyz\\abc\\d");
+
+		TEST_EQUAL(path_chars, win32_path.count() + 1);
+
+		TEST_MEM_EQUAL(win32_path.begin(), path_buf + 1, win32_path.count());
+	#else
+		TEST_EQUAL(path_chars, path.count());
+
+		TEST_MEM_EQUAL(path.begin(), path_buf, path.count());
+	#endif
+	MINOS_TEST_END;
+}
+
+static void path_to_absolute_on_absolute_path_with_dot_returns_that_path_without_dot() noexcept
+{
+	MINOS_TEST_BEGIN;
+
+	const Range<char8> path = range::from_literal_string("/./a/b/c");
+
+	char8 path_buf[1024];
+
+	const u32 path_chars = minos::path_to_absolute(path, MutRange{ path_buf });
+
+	#ifdef _WIN32
+		const Range<char8> win32_path = range::from_literal_string(":\\a\\b\\c");
+
+		TEST_EQUAL(path_chars, win32_path.count() + 1);
+
+		TEST_MEM_EQUAL(win32_path.begin(), path_buf + 1, win32_path.count());
+	#else
+		const Range<char8> linux_path = range::from_literal_string("/a/b/c");
+
+		TEST_EQUAL(path_chars, linux_path.count());
+
+		TEST_MEM_EQUAL(linux_path.begin(), path_buf, linux_path.count());
+	#endif
+	MINOS_TEST_END;
+}
+
+static void path_to_absolute_on_absolute_path_with_double_dash_returns_that_path_with_single_dash() noexcept
+{
+	MINOS_TEST_BEGIN;
+
+	const Range<char8> path = range::from_literal_string("/a//b/c");
+
+	char8 path_buf[1024];
+
+	const u32 path_chars = minos::path_to_absolute(path, MutRange{ path_buf });
+
+	#ifdef _WIN32
+		const Range<char8> win32_path = range::from_literal_string(":\\a\\b\\c");
+
+		TEST_EQUAL(path_chars, win32_path.count() + 1);
+
+		TEST_MEM_EQUAL(win32_path.begin(), path_buf + 1, win32_path.count());
+	#else
+		const Range<char8> linux_path = range::from_literal_string("/a/b/c");
+
+		TEST_EQUAL(path_chars, linux_path.count());
+
+		TEST_MEM_EQUAL(linux_path.begin(), path_buf, linux_path.count());
+	#endif
+	MINOS_TEST_END;
+}
+
+static void path_to_absolute_on_root_path_returns_root_path() noexcept
+{
+	MINOS_TEST_BEGIN;
+
+	const Range<char8> path = range::from_literal_string("/");
+
+	char8 path_buf[1024];
+
+	const u32 path_chars = minos::path_to_absolute(path, MutRange{ path_buf });
+
+	#ifdef _WIN32
+		const Range<char8> win32_path = range::from_literal_string(":");
+
+		TEST_EQUAL(path_chars, win32_path.count() + 1);
+
+		TEST_MEM_EQUAL(win32_path.begin(), path_buf + 1, win32_path.count());
+	#else
+		TEST_EQUAL(path_chars, path.count());
+
+		TEST_MEM_EQUAL(path.begin(), path_buf, path.count());
+	#endif
 	MINOS_TEST_END;
 }
 
@@ -2293,7 +2924,79 @@ static void path_to_absolute_on_relative_path_returns_an_absolute_path() noexcep
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	const Range<char8> path = range::from_literal_string("a/b/c");
+
+	char8 path_buf[1024];
+
+	const u32 path_chars = minos::path_to_absolute(path, MutRange{ path_buf });
+
+	char8 wd_buf[1024];
+
+	const u32 wd_chars = minos::working_directory(MutRange{ wd_buf });
+
+	TEST_EQUAL(path_chars, wd_chars + path.count() + 1);
+
+	TEST_MEM_EQUAL(path_buf, wd_buf, wd_chars);
+
+	#ifdef _WIN32
+		TEST_MEM_EQUAL(path_buf + wd_chars, "\\a\\b\\c", sizeof("\\a\\b\\c") - 1);
+	#else
+		TEST_MEM_EQUAL(path_buf + wd_chars, "/a/b/c", sizeof("/a/b/c") - 1);
+	#endif
+
+	MINOS_TEST_END;
+}
+
+static void path_to_absolute_on_relative_path_with_dot_returns_an_absolute_path_ignoring_dot() noexcept
+{
+	MINOS_TEST_BEGIN;
+
+	const Range<char8> path = range::from_literal_string("a/./b/c");
+
+	char8 path_buf[1024];
+
+	const u32 path_chars = minos::path_to_absolute(path, MutRange{ path_buf });
+
+	char8 wd_buf[1024];
+
+	const u32 wd_chars = minos::working_directory(MutRange{ wd_buf });
+
+	TEST_EQUAL(path_chars, wd_chars + path.count() - 1);
+
+	TEST_MEM_EQUAL(path_buf, wd_buf, wd_chars);
+
+	#ifdef _WIN32
+		TEST_MEM_EQUAL(path_buf + wd_chars, "\\a\\b\\c", sizeof("\\a\\b\\c") - 1);
+	#else
+		TEST_MEM_EQUAL(path_buf + wd_chars, "/a/b/c", sizeof("/a/b/c") - 1);
+	#endif
+
+	MINOS_TEST_END;
+}
+
+static void path_to_absolute_on_relative_path_with_double_dot_returns_an_absolute_path_ignoring_element_before_double_dot() noexcept
+{
+	MINOS_TEST_BEGIN;
+
+	const Range<char8> path = range::from_literal_string("a/../b/c");
+
+	char8 path_buf[1024];
+
+	const u32 path_chars = minos::path_to_absolute(path, MutRange{ path_buf });
+
+	char8 wd_buf[1024];
+
+	const u32 wd_chars = minos::working_directory(MutRange{ wd_buf });
+
+	TEST_EQUAL(path_chars, wd_chars + 4);
+
+	TEST_MEM_EQUAL(path_buf, wd_buf, wd_chars);
+
+	#ifdef _WIN32
+		TEST_MEM_EQUAL(path_buf + wd_chars, "\\b\\c", sizeof("\\b\\c") - 1);
+	#else
+		TEST_MEM_EQUAL(path_buf + wd_chars, "/b/c", sizeof("/b/c") - 1);
+	#endif
 
 	MINOS_TEST_END;
 }
@@ -2303,7 +3006,25 @@ static void path_to_absolute_relative_to_with_absolute_path_returns_that_path() 
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	const Range<char8> path = range::from_literal_string("/this/is/a/path");
+
+	const Range<char8> base = range::from_literal_string("/base");
+
+	char8 path_buf[1024];
+
+	const u32 path_chars = minos::path_to_absolute_relative_to(path, base, MutRange{ path_buf });
+
+	#ifdef _WIN32
+		const Range<char8> win32_path = range::from_literal_string(":\\this\\is\\a\\path");
+
+		TEST_EQUAL(path_chars, win32_path.count() + 1);
+
+		TEST_MEM_EQUAL(path_buf + 1, win32_path.begin(), win32_path.count());
+	#else
+		TEST_EQUAL(path_chars, path.count());
+
+		TEST_MEM_EQUAL(path_buf, path.begin(), path.count());
+	#endif
 
 	MINOS_TEST_END;
 }
@@ -2312,7 +3033,27 @@ static void path_to_absolute_relative_to_with_absolute_base_returns_path_appende
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	const Range<char8> path = range::from_literal_string("this/is/a/path");
+
+	const Range<char8> base = range::from_literal_string("/base");
+
+	char8 path_buf[1024];
+
+	const u32 path_chars = minos::path_to_absolute_relative_to(path, base, MutRange{ path_buf });
+
+	#ifdef _WIN32
+		const Range<char8> win32_path = range::from_literal_string(":\\base\\this\\is\\a\\path");
+
+		TEST_EQUAL(path_chars, win32_path.count() + 1);
+
+		TEST_MEM_EQUAL(path_buf + 1, win32_path.begin(), win32_path.count());
+	#else
+		const Range<char8> linux_path = range::from_literal_string("/base/this/is/a/path");
+
+		TEST_EQUAL(path_chars, linux_path.count());
+
+		TEST_MEM_EQUAL(path_buf, linux_path.begin(), linux_path.count());
+	#endif
 
 	MINOS_TEST_END;
 }
@@ -2321,7 +3062,29 @@ static void path_to_absolute_relative_to_with_relative_base_returns_path_appende
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	const Range<char8> path = range::from_literal_string("this/is/a/path");
+
+	const Range<char8> base = range::from_literal_string("base");
+
+	char8 path_buf[1024];
+
+	const u32 path_chars = minos::path_to_absolute_relative_to(path, base, MutRange{ path_buf });
+
+	char8 wd_buf[1024];
+
+	const u32 wd_chars = minos::working_directory(MutRange{ wd_buf });
+
+	TEST_MEM_EQUAL(path_buf, wd_buf, wd_chars);
+	
+	#ifdef _WIN32
+		const Range<char8> expected = range::from_literal_string("\\base\\this\\is\\a\\path");
+	#else
+		const Range<char8> expected = range::from_literal_string("/base/this/is/a/path");
+	#endif
+
+	TEST_EQUAL(path_chars, wd_chars + expected.count());
+
+	TEST_MEM_EQUAL(path_buf + wd_chars, expected.begin(), expected.count());
 
 	MINOS_TEST_END;
 }
@@ -2334,7 +3097,9 @@ static void path_get_info_on_nonexistent_path_fails() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileInfo fileinfo;
+
+	TEST_EQUAL(minos::path_get_info(range::from_literal_string("minos_fs_data/nonexistent_path"), &fileinfo), false);
 
 	MINOS_TEST_END;
 }
@@ -2343,16 +3108,28 @@ static void path_get_info_on_file_path_returns_is_not_directory_and_file_size() 
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileInfo fileinfo;
+
+	TEST_EQUAL(minos::path_get_info(range::from_literal_string("minos_fs_data/short_file"), &fileinfo), true);
+
+	TEST_EQUAL(fileinfo.is_directory, false);
+
+	TEST_EQUAL(fileinfo.bytes, 14);
 
 	MINOS_TEST_END;
 }
 
-static void path_get_info_on_directory_path_returns_is_directory() noexcept
+static void path_get_info_on_directory_path_returns_is_directory_and_0_bytes() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	minos::FileInfo fileinfo;
+
+	TEST_EQUAL(minos::path_get_info(range::from_literal_string("minos_fs_data"), &fileinfo), true);
+
+	TEST_EQUAL(fileinfo.is_directory, true);
+
+	TEST_EQUAL(fileinfo.bytes, 0);
 
 	MINOS_TEST_END;
 }
@@ -2362,7 +3139,7 @@ static void timestamp_utc_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	(void) minos::timestamp_utc();
 
 	MINOS_TEST_END;
 }
@@ -2371,7 +3148,7 @@ static void timestamp_ticks_per_second_succeeds_and_returns_nonzero() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_UNEQUAL(minos::timestamp_ticks_per_second(), 0);
 
 	MINOS_TEST_END;
 }
@@ -2381,7 +3158,7 @@ static void exact_timestamp_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	(void) minos::exact_timestamp();
 
 	MINOS_TEST_END;
 }
@@ -2390,7 +3167,7 @@ static void exact_timestamp_ticks_per_second_succeeds_and_returns_nonzero() noex
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	TEST_UNEQUAL(minos::exact_timestamp_ticks_per_second(), 0);
 
 	MINOS_TEST_END;
 }
@@ -2399,7 +3176,17 @@ static void exact_timestamp_then_sleep_10_milliseconds_then_exact_timestamp_agai
 {
 	MINOS_TEST_BEGIN;
 
-	// TODO
+	const u64 start = minos::exact_timestamp();
+
+	minos::sleep(10);
+
+	const u64 end = minos::exact_timestamp();
+
+	const u64 tps = minos::exact_timestamp_ticks_per_second();
+
+	const u64 elapsed_ms = (end - start) / (tps / 1000);
+
+	TEST_EQUAL(elapsed_ms > 5 && elapsed_ms < 25, true);
 
 	MINOS_TEST_END;
 }
@@ -2431,6 +3218,12 @@ static void prepare_minos_tests() noexcept
 		AttachmentRange{ range::from_literal_string("DELETEME_G"), false },
 		AttachmentRange{ range::from_literal_string("DELETEME_H"), false },
 		AttachmentRange{ range::from_literal_string("DELETEME_I"), false },
+		AttachmentRange{ range::from_literal_string("DELETEME_J"), false },
+		AttachmentRange{ range::from_literal_string("DELETEME_K"), false },
+		AttachmentRange{ range::from_literal_string("DELETEME_empty_dir"), true },
+		AttachmentRange{ range::from_literal_string("DELETEME_DIR_A"), true },
+		AttachmentRange{ range::from_literal_string("DELETEME_DIR_B"), true },
+		AttachmentRange{ range::from_literal_string("DELETEME_DIR_C"), true },
 	};
 
 	char8 path_buf[256];
@@ -2614,25 +3407,32 @@ void minos_tests() noexcept
 
 	process_create_makes_inherited_handles_available_to_child();
 
-	process_create_makes_uninherited_handles_unavailable_to_child();
-
 	process_wait_timeout_on_sleeping_process_times_out();
 
 	process_wait_waits_for_process_to_exit();
 
-	process_wait_on_completed_exited_still_works();
+	process_wait_on_exited_process_still_works();
 
-	shm_create_succeeds();
 
-	shm_map_of_entire_shm_succeeds();
+	shm_create_with_small_requst_succeeds();
 
-	shm_map_of_shm_subrange_at_begin_succeeds();
+	shm_create_with_large_requst_succeeds();
 
-	shm_map_of_shm_subrange_at_offset_succeeds();
+	shm_create_with_execute_access_succeeds();
 
-	shm_map_works_across_processes();
+	shm_reserve_of_entire_shm_succeeds();
 
-	shm_is_consistent_across_processes();
+	shm_reserve_of_shm_subrange_at_zero_offset_succeeds();
+
+	shm_reserve_of_shm_subrange_at_nonzero_aligned_offset_succeeds();
+
+	shm_reserve_of_shm_subrange_at_nonzero_unaligned_offset_succeeds();
+
+	shm_commit_read_of_reserved_shm_succeeds_and_is_readable();
+
+	shm_commit_read_write_of_reserved_shm_succeeds_and_is_readable_and_writeable();
+
+	shm_works_across_processes();
 
 
 	sem_create_creates_a_semaphore();
@@ -2643,13 +3443,13 @@ void minos_tests() noexcept
 
 	sem_create_with_initial_count_5_allows_5_waits();
 
-	sem_post_allows_wait();
+	sem_post_one_allows_one_wait();
+
+	sem_post_two_allows_two_waits();
 
 	sem_wait_waits_until_post();
 
 	sem_wait_timeout_with_long_timeout_waits_until_post();
-
-	sem_wait_timeout_with_no_posts_times_out();
 
 	sem_wait_and_post_work_across_processes();
 
@@ -2660,7 +3460,7 @@ void minos_tests() noexcept
 
 	directory_enumeration_on_directory_with_5_files_returns_those_files_then_no_more_files();
 
-	directory_enumeration_on_directory_subdirectory_returns_that_subdirectory_then_no_more_files();
+	directory_enumeration_on_directory_with_subdirectory_returns_that_subdirectory_then_no_more_files();
 
 
 	directory_create_on_new_path_succeeds();
@@ -2698,7 +3498,17 @@ void minos_tests() noexcept
 
 	path_to_absolute_on_absolute_path_returns_that_path();
 
+	path_to_absolute_on_absolute_path_with_dot_returns_that_path_without_dot();
+
+	path_to_absolute_on_absolute_path_with_double_dash_returns_that_path_with_single_dash();
+
+	path_to_absolute_on_root_path_returns_root_path();
+
 	path_to_absolute_on_relative_path_returns_an_absolute_path();
+
+	path_to_absolute_on_relative_path_with_dot_returns_an_absolute_path_ignoring_dot();
+
+	path_to_absolute_on_relative_path_with_double_dot_returns_an_absolute_path_ignoring_element_before_double_dot();
 
 
 	path_to_absolute_relative_to_with_absolute_path_returns_that_path();
@@ -2712,7 +3522,7 @@ void minos_tests() noexcept
 
 	path_get_info_on_file_path_returns_is_not_directory_and_file_size();
 
-	path_get_info_on_directory_path_returns_is_directory();
+	path_get_info_on_directory_path_returns_is_directory_and_0_bytes();
 
 
 	timestamp_utc_succeeds();

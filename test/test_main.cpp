@@ -38,39 +38,81 @@ static TimeDesc readable_time(u64 duration, u64 ticks_per_second) noexcept
 		return { "microseconds", static_cast<f64>(duration * 1'000'000) / ticks_per_second };
 }
 
-enum class InvocationWaitType : u8
+enum class InvocationType : u8
 {
 	None = 0,
+	Help,
+	ExitWith,
 	Event,
 	Semaphore,
+	CheckCwd,
+	Shm,
 };
 
 struct InvocationInfo
 {
-	bool has_ignore_debugbreaks;
-
-	bool has_show_help;
-
-	bool has_exit_with;
+	InvocationType type;
 
 	bool has_timeout;
 
-	bool has_check_cwd;
-
-	InvocationWaitType wait_type;
-
-	u32 exit_with_value;
-
 	u32 timeout_milliseconds;
 
-	Range<char8> check_cwd_suffix;
-
+	#if COMPILER_CLANG
+		#pragma clang diagnostic push
+		#pragma clang diagnostic ignored "-Wgnu-anonymous-struct" // anonymous structs are a GNU extension
+		#pragma clang diagnostic ignored "-Wnested-anon-types" // anonymous types declared in an anonymous union are an extension
+	#elif COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ prohibits anonymous structs
+	#endif
 	union
 	{
-		minos::EventHandle event;
+		struct
+		{
+			u32 exit_code;
+		} exit_with;
 
-		minos::SemaphoreHandle semaphore;
+		struct
+		{
+			minos::EventHandle handle;
+		} event;
+		
+		struct
+		{
+			minos::SemaphoreHandle handle;
+		} semaphore;
+
+		struct
+		{
+			Range<char8> suffix;
+		} check_cwd;
+
+		struct
+		{
+			minos::ShmHandle handle;
+		
+			u64 reserve_offset;
+		
+			u64 reserve_bytes;
+		
+			u64 commit_offset;
+		
+			u64 commit_bytes;
+		
+			u64 read_offset;
+		
+			u64 read_value;
+		
+			u64 write_offset;
+		
+			u64 write_value;		
+		} shm;
 	};
+	#if COMPILER_CLANG
+		#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
 };
 
 static bool parse_u64(const char8* arg, u64* out) noexcept
@@ -101,7 +143,7 @@ static bool parse_u64(const char8* arg, u64* out) noexcept
 
 static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexcept
 {
-	memset(out, 0, sizeof(*out));
+	const char8* prev_invocation_type = nullptr;
 
 	s32 arg_index = 1;
 
@@ -109,87 +151,16 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 	{
 		if (strcmp(argv[arg_index], "--ignore-debugbreaks") == 0)
 		{
-			if (out->has_ignore_debugbreaks)
+			if (g_ignore_debugbreaks)
 			{
 				fprintf(stderr, "%s specified more than once\n", argv[arg_index]);
 
 				return false;
 			}
 
-			out->has_ignore_debugbreaks = true;
+			g_ignore_debugbreaks = true;
 
 			arg_index += 1;
-		}
-		else if (strcmp(argv[arg_index], "--exit-with") == 0)
-		{
-			if (out->has_exit_with)
-			{
-				fprintf(stderr, "%s specified more than once\n", argv[arg_index]);
-
-				return false;
-			}
-
-			if (arg_index + 1 == argc)
-			{
-				fprintf(stderr, "%s expects an additional argument\n", argv[arg_index]);
-
-				return false;
-			}
-
-			u64 n;
-
-			if (!parse_u64(argv[arg_index + 1], &n))
-			{
-				fprintf(stderr, "%s expects its additional argument to be a base-ten number\n", argv[arg_index]);
-
-				return false;
-			}
-
-			if (n > UINT32_MAX)
-			{
-				fprintf(stderr, "%s expects its argument to be less than 2^32\n", argv[arg_index]);
-
-				return false;
-			}
-
-			out->has_exit_with = true;
-
-			out->exit_with_value = static_cast<u32>(n);
-
-			arg_index += 2;
-		}
-		else if (strcmp(argv[arg_index], "--event-wait") == 0 || strcmp(argv[arg_index], "--semaphore-wait") == 0)
-		{
-			if (out->wait_type != InvocationWaitType::None)
-			{
-				fprintf(stderr, "%s specified more than once\n", argv[arg_index]);
-
-				return false;
-			}
-
-			if (arg_index + 1 == argc)
-			{
-				fprintf(stderr, "%s expects an additional argument\n", argv[arg_index]);
-
-				return false;
-			}
-
-			u64 n;
-
-			if (!parse_u64(argv[arg_index + 1], &n))
-			{
-				fprintf(stderr, "%s expects its additional argument to be a base-ten number\n", argv[arg_index]);
-
-				return false;
-			}
-
-			const char8 first_char = argv[arg_index][2];
-
-			out->wait_type = first_char == 'e' ? InvocationWaitType::Event : InvocationWaitType::Semaphore;
-
-			out->event.m_rep = reinterpret_cast<void*>(n);
-
-			arg_index += 2;
 		}
 		else if (strcmp(argv[arg_index], "--timeout") == 0)
 		{
@@ -229,14 +200,22 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 			arg_index += 2;
 		}
-		else if (strcmp(argv[arg_index], "--check-cwd") == 0)
+		else if (strcmp(argv[arg_index], "--help") == 0 || strcmp(argv[arg_index], "-h") == 0)
 		{
-			if (out->has_check_cwd)
+			out->type = InvocationType::Help;
+
+			return true;
+		}
+		else if (strcmp(argv[arg_index], "--exit-with") == 0)
+		{
+			if (prev_invocation_type != nullptr)
 			{
-				fprintf(stderr, "%s specified more than once\n", argv[arg_index]);
+				fprintf(stderr, "%s: Conflicting invocation type %s already specified\n", argv[arg_index], prev_invocation_type);
 
 				return false;
 			}
+
+			prev_invocation_type = argv[arg_index];
 
 			if (arg_index + 1 == argc)
 			{
@@ -245,17 +224,175 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 				return false;
 			}
 
-			out->has_check_cwd = true;
+			u64 n;
 
-			out->check_cwd_suffix = range::from_cstring(argv[arg_index + 1]);
+			if (!parse_u64(argv[arg_index + 1], &n))
+			{
+				fprintf(stderr, "%s expects its additional argument to be a base-ten number\n", argv[arg_index]);
+
+				return false;
+			}
+
+			if (n > UINT32_MAX)
+			{
+				fprintf(stderr, "%s expects its argument to be less than 2^32\n", argv[arg_index]);
+
+				return false;
+			}
+
+			out->type = InvocationType::ExitWith;
+
+			out->exit_with.exit_code = static_cast<u32>(n);
 
 			arg_index += 2;
 		}
-		else if (strcmp(argv[arg_index], "--help") == 0 || strcmp(argv[arg_index], "-h") == 0)
+		else if (strcmp(argv[arg_index], "--event-wait") == 0 || strcmp(argv[arg_index], "--semaphore-wait") == 0)
 		{
-			out->has_show_help = true;
+			if (prev_invocation_type != nullptr)
+			{
+				fprintf(stderr, "%s: Conflicting invocation type %s already specified\n", argv[arg_index], prev_invocation_type);
 
-			return true;
+				return false;
+			}
+
+			prev_invocation_type = argv[arg_index];
+
+			if (arg_index + 1 == argc)
+			{
+				fprintf(stderr, "%s expects an additional argument\n", argv[arg_index]);
+
+				return false;
+			}
+
+			u64 n;
+
+			if (!parse_u64(argv[arg_index + 1], &n))
+			{
+				fprintf(stderr, "%s expects its additional argument to be a base-ten number\n", argv[arg_index]);
+
+				return false;
+			}
+
+			const char8 first_char = argv[arg_index][2];
+
+			out->type = first_char == 'e' ? InvocationType::Event : InvocationType::Semaphore;
+
+			out->event.handle.m_rep = reinterpret_cast<void*>(n);
+
+			arg_index += 2;
+		}
+		else if (strcmp(argv[arg_index], "--check-cwd") == 0)
+		{
+			if (prev_invocation_type != nullptr)
+			{
+				fprintf(stderr, "%s: Conflicting invocation type %s already specified\n", argv[arg_index], prev_invocation_type);
+
+				return false;
+			}
+
+			prev_invocation_type = argv[arg_index];
+
+			if (arg_index + 1 == argc)
+			{
+				fprintf(stderr, "%s expects an additional argument\n", argv[arg_index]);
+
+				return false;
+			}
+
+			out->type = InvocationType::CheckCwd;
+
+			out->check_cwd.suffix = range::from_cstring(argv[arg_index + 1]);
+
+			arg_index += 2;
+		}
+		else if (strcmp(argv[arg_index], "--shm") == 0)
+		{
+			if (prev_invocation_type != nullptr)
+			{
+				fprintf(stderr, "%s: Conflicting invocation type %s already specified\n", argv[arg_index], prev_invocation_type);
+
+				return false;
+			}
+
+			prev_invocation_type = argv[arg_index];
+
+			if (arg_index + 9 >= argc)
+			{
+				fprintf(stderr, "%s expects nine additional arguments\n", argv[arg_index]);
+
+				return false;
+			}
+
+			u64 n;
+
+			if (!parse_u64(argv[arg_index + 1], &n))
+			{
+				fprintf(stderr, "%s expects its 1st argument (shm handle) to be a base-ten number\n", argv[arg_index]);
+
+				return false;
+			}
+
+			out->shm.handle.m_rep = reinterpret_cast<void*>(n);
+
+			if (!parse_u64(argv[arg_index + 2], &out->shm.reserve_offset))
+			{
+				fprintf(stderr, "%s expects its 2nd argument (reservation offset) to be a base-ten number\n", argv[arg_index]);
+
+				return false;
+			}
+
+			if (!parse_u64(argv[arg_index + 3], &out->shm.reserve_bytes))
+			{
+				fprintf(stderr, "%s expects its 3rd argument (reservation bytes) to be a base-ten number\n", argv[arg_index]);
+
+				return false;
+			}
+
+			if (!parse_u64(argv[arg_index + 4], &out->shm.commit_offset))
+			{
+				fprintf(stderr, "%s expects its 4th argument (commit offset) to be a base-ten number\n", argv[arg_index]);
+
+				return false;
+			}
+
+			if (!parse_u64(argv[arg_index + 5], &out->shm.commit_bytes))
+			{
+				fprintf(stderr, "%s expects its 5th argument (commit bytes) to be a base-ten number\n", argv[arg_index]);
+
+				return false;
+			}
+
+			if (!parse_u64(argv[arg_index + 6], &out->shm.read_offset))
+			{
+				fprintf(stderr, "%s expects its 6th argument (read offset) to be a base-ten number\n", argv[arg_index]);
+
+				return false;
+			}
+
+			if (!parse_u64(argv[arg_index + 7], &out->shm.read_value))
+			{
+				fprintf(stderr, "%s expects its 7th argument (expected read value) to be a base-ten number\n", argv[arg_index]);
+
+				return false;
+			}
+
+			if (!parse_u64(argv[arg_index + 8], &out->shm.write_offset))
+			{
+				fprintf(stderr, "%s expects its 8th argument (write offset) to be a base-ten number\n", argv[arg_index]);
+
+				return false;
+			}
+
+			if (!parse_u64(argv[arg_index + 9], &out->shm.write_value))
+			{
+				fprintf(stderr, "%s expects its 9th argument (write value) to be a base-ten number\n", argv[arg_index]);
+
+				return false;
+			}
+
+			out->type = InvocationType::Shm;
+
+			arg_index += 10;
 		}
 		else
 		{
@@ -265,9 +402,9 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 		}
 	}
 
-	if (out->has_timeout && out->wait_type == InvocationWaitType::None)
+	if (out->has_timeout && (out->type != InvocationType::Event && out->type != InvocationType::Semaphore))
 	{
-		fprintf(stderr, "`--timeout` must only be specified together with `--<type>-wait`");
+		fprintf(stderr, "`--timeout` must only be specified together with `--event-wait` or `--semaphore-wait`\n");
 
 		return false;
 	}
@@ -277,76 +414,96 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 static void handle_divergent_invocations(const InvocationInfo* invocation) noexcept
 {
-	if (invocation->has_show_help)
+	switch (invocation->type)
+	{
+	case InvocationType::None:
+	{
+		return;
+	}
+
+	case InvocationType::Help:
 	{
 		fprintf(stdout,
 			"This is the `comp` project's test suite. The following arguments are supported:\n"
-			"  --help | -h          - Show this message.\n"
-			"  --ignore-debugbreaks - Skip any debug break intrinsics triggered due to\n"
-			"                         failed tests. This should be enabled when running as\n"
-			"                         part of the test suite to avoid dumping core.\n"
-			"  --exit-with <N>      - Immediately exit with exit code <N>. This is used for\n"
-			"                         testing process spawning.\n"
-			"  --event-wait <N>     - Calls `minos::event_wait(<N>)`. If `--timeout <T>` is\n"
-			"                         also specified, instead calls\n"
-			"                         `minos::event_wait_timeout(<N>, <T>)`.\n"
-			"                         If the wait times out, the exit code is 2, otherwise it\n"
-			"                         is 0.\n"
-			"  --semaphore-wait <N> - Calls `minos::semaphore_wait(<N>)`. If `--timeout <T>`\n"
-			"                         is also specified, instead calls\n"
-			"                         `minos::semaphore_wait_timeout(<N>, <T>)`.\n"
-			"                         If the wait times out, the exit code is 2, otherwise it\n"
-			"                         is 0.\n"
-			"  --timeout <N>        - Only available in conjunction with one of the\n"
-			"                         `--<type>-wait` options. Modifies it to call\n"
-			"                         `minos::<type>_wait_timeout` with the specified timeout\n"
-			"                         instead of `minos::<type>_wait`.\n"
-			"  --check-cwd <STR>    - Check whether the working directory ends with the given\n"
-			"                         string. If so, exit with 0, otherwise with 2.\n"
+			"  --help | -h           - Show this message.\n"
+			"  --ignore-debugbreaks  - Skip any debug break intrinsics triggered due to\n"
+			"                          failed tests. This should be enabled when running as\n"
+			"                          part of the test suite to avoid dumping core.\n"
+			"  --exit-with <N>       - Immediately exit with exit code <N>. This is used for\n"
+			"                          testing process spawning.\n"
+			"  --event-wait <H>      - Calls `minos::event_wait(<H>)`. If `--timeout <T>` is\n"
+			"                          also specified, instead calls\n"
+			"                          `minos::event_wait_timeout(<H>, <T>)`.\n"
+			"                          If the wait times out, the exit code is 2, otherwise\n"
+			"                          it is 0.\n"
+			"  --semaphore-wait <H>  - Calls `minos::semaphore_wait(<H>)`. If `--timeout <T>`\n"
+			"                          is also specified, instead calls\n"
+			"                          `minos::semaphore_wait_timeout(<H>, <T>)`.\n"
+			"                          If the wait times out, the exit code is 2, otherwise\n"
+			"                          it is 0.\n"
+			"  --timeout <N>         - Only available in conjunction with one of the\n"
+			"                          `--<type>-wait` options. Modifies it to call\n"
+			"                          `minos::<type>_wait_timeout` with the specified\n"
+			"                          timeout instead of `minos::<type>_wait`.\n"
+			"  --check-cwd <STR>     - Check whether the working directory ends with the given\n"
+			"                          string. If so, exit with 0, otherwise with 2.\n"
+			"  --shm-reserve <H>\n"
+			"    <RES-OFF> <RES-LEN>\n"
+			"    <COM-OFF> <COM-LEN>\n"
+			"    <RD-OFF> <RD-EXP>\n"
+			"    <WR-OFF> <WR-VAL>   - Calls `minos::shm_reserve(<H>, <RES-OFF>, <RES-LEN>)`.\n"
+			"                          If the reservation fails, exits with code 2.\n"
+			"                          Otherwise, calls\n"
+			"                          `minos::shm_commit(<ADDR> + <COM-OFF>, <COM-LEN>)`. If\n"
+			"                          the commit fails, exits with code 3.\n"
+			"                          Otherwise, reads from the committed shm at offset\n"
+			"                          <RD-OFF>. If the read value is not equal to <RD-EXP>,\n"
+			"                          exits with 4.\n"
+			"                          If <WR-VAL> is not zero, writes <WR-VAL>\n"
+			"                          to the committed shm range at offset <WR-OFF>, and\n"
+			"                          subsequently reads back. If the read-back value is\n"
+			"                          <WR-VAL>, exits with 0. Otherwise, exits with 5.\n"
 		);
 
-		minos::exit_process(EXIT_FAILURE);
+		minos::exit_process(1);
 	}
 
-	if (invocation->has_exit_with)
-		minos::exit_process(invocation->exit_with_value);
-
-	switch (invocation->wait_type)
+	case InvocationType::ExitWith:
 	{
-	case InvocationWaitType::None:
-		break;
-
-	case InvocationWaitType::Event:
-		if (invocation->has_timeout)
-		{
-			if (!minos::event_wait_timeout(invocation->event, static_cast<u32>(invocation->timeout_milliseconds)))
-				minos::exit_process(2);
-		}
-		else
-		{
-			minos::event_wait(invocation->event);
-		}
-
-		minos::exit_process(0);
-
-	case InvocationWaitType::Semaphore:
-		if (invocation->has_timeout)
-		{
-			if (!minos::semaphore_wait_timeout(invocation->semaphore, static_cast<u32>(invocation->timeout_milliseconds)))
-				minos::exit_process(2);
-		}
-		else
-		{
-			minos::semaphore_wait(invocation->semaphore);
-		}
-
-		minos::exit_process(0);
-
-	default:
-		ASSERT_UNREACHABLE;
+		minos::exit_process(invocation->exit_with.exit_code);
 	}
 
-	if (invocation->has_check_cwd)
+	case InvocationType::Event:
+	{
+		if (invocation->has_timeout)
+		{
+			if (!minos::event_wait_timeout(invocation->event.handle, static_cast<u32>(invocation->timeout_milliseconds)))
+				minos::exit_process(2);
+		}
+		else
+		{
+			minos::event_wait(invocation->event.handle);
+		}
+
+		minos::exit_process(0);
+	}
+
+	case InvocationType::Semaphore:
+	{
+		if (invocation->has_timeout)
+		{
+			if (!minos::semaphore_wait_timeout(invocation->semaphore.handle, static_cast<u32>(invocation->timeout_milliseconds)))
+				minos::exit_process(2);
+		}
+		else
+		{
+			minos::semaphore_wait(invocation->semaphore.handle);
+		}
+
+		minos::exit_process(0);
+	}
+
+	case InvocationType::CheckCwd:
 	{
 		char8 cwd[8192];
 
@@ -354,15 +511,50 @@ static void handle_divergent_invocations(const InvocationInfo* invocation) noexc
 		if (cwd_chars == 0 || cwd_chars > array_count(cwd))
 			panic("Could not get working directory (0x%X)\n", minos::last_error());
 
-		if (invocation->check_cwd_suffix.count() <= cwd_chars)
+		if (invocation->check_cwd.suffix.count() <= cwd_chars)
 		{
-			if (memcmp(invocation->check_cwd_suffix.begin(), cwd + cwd_chars - invocation->check_cwd_suffix.count(), invocation->check_cwd_suffix.count()) == 0)
+			if (memcmp(invocation->check_cwd.suffix.begin(), cwd + cwd_chars - invocation->check_cwd.suffix.count(), invocation->check_cwd.suffix.count()) == 0)
 				minos::exit_process(0);
-
-			fprintf(stderr, "cwd was %.*s and did not end with %.*s\n", static_cast<s32>(cwd_chars), cwd, static_cast<s32>(invocation->check_cwd_suffix.count()), invocation->check_cwd_suffix.begin());
-
-			minos::exit_process(2);
 		}
+
+		fprintf(stderr, "cwd was %.*s and did not end with %.*s\n", static_cast<s32>(cwd_chars), cwd, static_cast<s32>(invocation->check_cwd.suffix.count()), invocation->check_cwd.suffix.begin());
+
+		minos::exit_process(2);
+	}
+
+	case InvocationType::Shm:
+	{
+		byte* const mem = static_cast<byte*>(minos::shm_reserve(invocation->shm.handle, invocation->shm.reserve_offset, invocation->shm.reserve_bytes));
+
+		if (mem == nullptr)
+			minos::exit_process(2);
+
+		minos::Access access;
+
+		if (invocation->shm.write_value == 0)
+			access = minos::Access::Read;
+		else
+			access = minos::Access::Read | minos::Access::Write;
+
+		if (!minos::shm_commit(mem + invocation->shm.commit_offset, access, invocation->shm.commit_bytes))
+			minos::exit_process(3);
+
+		if (mem[invocation->shm.read_offset] != invocation->shm.read_value)
+			minos::exit_process(4);
+
+		if (invocation->shm.write_value != 0)
+		{
+			mem[invocation->shm.write_offset] = static_cast<byte>(invocation->shm.write_value);
+
+			if (mem[invocation->shm.write_offset] != static_cast<byte>(invocation->shm.write_value))
+				minos::exit_process(5);
+		}
+
+		minos::exit_process(0);
+	}
+
+	default:
+		ASSERT_UNREACHABLE;
 	}
 }
 
@@ -373,18 +565,27 @@ s32 main(s32 argc, const char8** argv) noexcept
 
 	const u64 start = minos::exact_timestamp();
 
-	InvocationInfo invocation;
+	InvocationInfo invocation{};
 
 	if (!parse_args(argc, argv, &invocation))
 	{
-		fprintf(stderr, "Usage %s [--help | -h] [--ignore-debugbreaks] [--exit-with <N>] [--<type>-wait <N> [--timeout <T>]]\n", argv[0]);
+		fprintf(stderr,
+			"Usage %s\n"
+			"    [ --help | -h ]\n"
+			"    [ --ignore-debugbreaks ]\n"
+			"    [\n"
+			"        --exit-with <CODE> |\n"
+			"        --check-cwd <SUFFIX> |\n"
+			"        --shm <HANDLE> <RES-OFF> <RES-LEN> <COM-OFF> <COM-LEN> <RD-OFF> <RD-EXP> <WR-OFF> <WR-VAL> |\n"
+			"      ( --<event|semaphore>-wait <HANDLE> [--timeout <T>] )\n"
+			"    ]\n",
+			argv[0]
+		);
 
 		return EXIT_FAILURE;
 	}
 
 	handle_divergent_invocations(&invocation);
-
-	g_ignore_debugbreaks = invocation.has_ignore_debugbreaks;
 
 	minos_tests();
 

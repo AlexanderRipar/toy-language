@@ -28,7 +28,6 @@
 ## Tests
 
 - minos_tests.cpp:
-  - Implement tests marked as TODO above `void minos_tests()`.
   - Increase TIMEOUT_TEST_MILLIS to avoid flaky failures under high load.
 
 - Other:

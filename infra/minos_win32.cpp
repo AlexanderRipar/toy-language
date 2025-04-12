@@ -135,14 +135,14 @@ static bool is_relative_path(Range<char8> path) noexcept
 {
 	// See https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file?redirectedfrom=MSDN#fully_qualified_vs._relative_paths
 
-	if (path.count() >= 1 && path[0] == '\\')
+	if (path.count() >= 1 && (path[0] == '\\' || path[0] == '/'))
 		return false; // "Absolute" path or UNC name
 
 	// Check for drive "letter", allowing for any sort of format not including '\' or '/' followed by ':\' or ':/'
 
 	for (u64 i = 0; i + 1 < path.count(); ++i)
 	{
-		if (path[i] == '\\' || path[i] == '//')
+		if (path[i] == '\\' || path[i] == '/')
 			break;
 
 		if (path[i] == ':' && (path[i + 1] == '/' || path[i] == '\\'))
@@ -939,7 +939,33 @@ bool minos::shm_create(Access access, u64 bytes, ShmHandle* out) noexcept
 	if (handle == nullptr)
 		return false;
 
-	out->m_rep = handle;
+	// This tagging is needed to cleanly implement shm_reserve, since
+	// `MapViewOfFile` needs the right access flags, even though we aren't
+	// committing anything at that point. Exact repetition of the access rights
+	// granted by `shm_create` is required, since if we over-request access
+	// compared to that specified to `CreateFileMappingW`, the function fails
+	// outright; if we under-request it instead, the later `VirtualAlloc` from
+	// `minos::shm_commit` fails if it requests a conflicting access.
+	// We store the data in the low two handle bits, since these are reserved
+	// for application-level tagging and ignored by OS-calls.
+	// This is "documented" here:
+	// https://devblogs.microsoft.com/oldnewthing/20080827-00/?p=21073
+	// Sadly, the link to the actual docs is broken now, but it used to work
+	// and is also documented as a comment in ntdef.h.
+
+	const u64 handle_bits = reinterpret_cast<u64>(handle);
+
+	ASSERT_OR_IGNORE((handle_bits & 3) == 0);
+
+	u64 access_flag_bits = 0;
+
+	if ((access & minos::Access::Write) == minos::Access::Write)
+		access_flag_bits |= 1;
+
+	if ((access & minos::Access::Execute) == minos::Access::Execute)
+		access_flag_bits |= 2;
+
+	out->m_rep = reinterpret_cast<void*>(handle_bits | access_flag_bits);
 
 	return true;
 }
@@ -950,32 +976,74 @@ void minos::shm_close(ShmHandle handle) noexcept
 		panic("CloseHandle(ShmHandle) failed (0x%X)\n", last_error());
 }
 
-void* minos::shm_map(ShmHandle handle, Access access, u64 offset, u64 bytes) noexcept
+void* minos::shm_reserve(ShmHandle handle, u64 offset, u64 bytes) noexcept
 {
-	u32 native_access = 0;
+	SYSTEM_INFO si;
 
+	GetSystemInfo(&si);
+
+	const u64 aligned_offset = offset & ~static_cast<u64>(si.dwAllocationGranularity - 1);
+
+	const u64 adjusted_bytes = bytes + offset - aligned_offset;
+
+	// Retrieve access rights set in `shm_create` call.
+
+	const u64 handle_tag_bits = reinterpret_cast<u64>(handle.m_rep);
+
+	DWORD native_access = FILE_MAP_READ;
+
+	if ((handle_tag_bits & 1) == 1)
+		native_access |= FILE_MAP_WRITE;
+
+	if ((handle_tag_bits & 2) == 2)
+		native_access |= FILE_MAP_EXECUTE;
+
+	void* const ptr = MapViewOfFile(handle.m_rep, native_access, static_cast<u32>(aligned_offset >> 32), static_cast<u32>(aligned_offset), adjusted_bytes);
+
+	if (ptr == nullptr)
+		return nullptr;
+
+	return static_cast<byte*>(ptr) + offset - aligned_offset;
+}
+
+void minos::shm_unreserve(void* address, [[maybe_unused]] u64 bytes) noexcept
+{
+	SYSTEM_INFO si;
+
+	GetSystemInfo(&si);
+
+	const u64 aligned_address_bits = reinterpret_cast<u64>(address) & ~static_cast<u64>(si.dwAllocationGranularity - 1);
+
+	void* const aligned_address = reinterpret_cast<void*>(aligned_address_bits);
+
+	if (!UnmapViewOfFile(aligned_address))
+		panic("UnmapViewOfFile failed (0x%X)\n", last_error());
+}
+
+bool minos::shm_commit(void* address, Access access, u64 bytes) noexcept
+{
+	DWORD native_protect;
+
+	if (access == Access::None)
+	{
+		native_protect = PAGE_NOACCESS;
+	}
 	if ((access & Access::Write) == Access::Write)
 	{
 		if ((access & Access::Execute) == Access::Execute)
-			native_access = PAGE_EXECUTE_READWRITE;
+			native_protect = PAGE_EXECUTE_READWRITE;
 		else
-			native_access = PAGE_READWRITE;
+			native_protect = PAGE_READWRITE;
 	}
 	else
 	{
 		if ((access & Access::Execute) == Access::Execute)
-			native_access = PAGE_EXECUTE_READ;
+			native_protect = PAGE_EXECUTE_READ;
 		else
-			native_access = PAGE_READONLY;
+			native_protect = PAGE_READONLY;
 	}
 
-	return MapViewOfFile(handle.m_rep, native_access, static_cast<u32>(offset >> 32), static_cast<u32>(offset), bytes);
-}
-
-void minos::shm_unmap(void* address, [[maybe_unused]] u64 bytes) noexcept
-{
-	if (!UnmapViewOfFile(address))
-		panic("UnmapViewOfFile failed (0x%X)\n", last_error());
+	return VirtualAlloc(address, bytes, MEM_COMMIT, native_protect);
 }
 
 bool minos::sempahore_create(u32 initial_count, SemaphoreHandle* out) noexcept
@@ -1313,12 +1381,14 @@ bool minos::path_get_info(Range<char8> path, FileInfo* out) noexcept
 	if (!GetFileAttributesExW(path_utf16, GetFileExInfoStandard, &info))
 		return false;
 
+	const bool is_directory = (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+
 	out->identity = {};
-	out->bytes = info.nFileSizeLow | (static_cast<u64>(info.nFileSizeHigh) << 32);
+	out->bytes = is_directory ? 0 : info.nFileSizeLow | (static_cast<u64>(info.nFileSizeHigh) << 32);
 	out->creation_time = info.ftCreationTime.dwLowDateTime | (static_cast<u64>(info.ftCreationTime.dwHighDateTime) << 32);
 	out->last_modified_time = info.ftLastWriteTime.dwLowDateTime | (static_cast<u64>(info.ftLastWriteTime.dwHighDateTime) << 32);
 	out->last_access_time = info.ftLastAccessTime.dwLowDateTime | (static_cast<u64>(info.ftLastAccessTime.dwHighDateTime) << 32);
-	out->is_directory = (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+	out->is_directory = is_directory;
 
 	return true;
 }
