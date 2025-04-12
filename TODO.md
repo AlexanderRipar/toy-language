@@ -27,9 +27,6 @@
 
 ## Tests
 
-- minos_tests.cpp:
-  - Increase TIMEOUT_TEST_MILLIS to avoid flaky failures under high load.
-
 - Other:
   - Add tests for infra/threading.hpp, including `thd::Mutex`, `thd::Semaphore`
     and `thd::IndexStackListHeader`.

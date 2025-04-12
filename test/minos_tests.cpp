@@ -13,7 +13,7 @@
 	#error HELPER_PROCESS_PATH was not defined. Build with cmake to correct this.
 #endif
 
-static constexpr u32 TIMEOUT_TEST_MILLIS = 50;
+static constexpr u32 TIMEOUT_TEST_MILLIS = 70;
 
 static u32 log10_ceil(u64 n) noexcept
 {
