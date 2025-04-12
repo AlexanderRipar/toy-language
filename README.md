@@ -5,7 +5,7 @@
 
 # The Language
 
-This project currently goes under thewWorking name `eval`.
+This project currently goes under the Working name `eval`.
 
 The semantics and even syntax are by no means finalized yet.
 
