@@ -35,6 +35,11 @@ struct ValueId
 	u32 rep;
 };
 
+struct TypeId2
+{
+	u32 rep;
+};
+
 struct ScopePool;
 
 struct Scope;
@@ -413,6 +418,8 @@ struct AstNode
 	u8 internal_flags;
 
 	u32 next_sibling_offset;
+
+	TypeId2 type_id;
 };
 
 struct AstBuilderToken
@@ -1169,11 +1176,6 @@ TypeId complete_func_type(TypePool* types, FuncTypeBuilder* func_builder, TypeId
 struct TypePool2;
 
 struct TypeBuilder2;
-
-struct TypeId2
-{
-	u32 rep;
-};
 
 struct Definition2
 {
