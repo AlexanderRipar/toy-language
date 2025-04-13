@@ -39,7 +39,7 @@ set(CORE_SOURCES
 	core/interpreter.cpp
 	core/parse.cpp
 	core/pass_data.hpp
-	core/read.cpp
+	core/source_reader.cpp
 	core/scope_pool.cpp
 	core/token.cpp
 	core/type_pool.cpp
