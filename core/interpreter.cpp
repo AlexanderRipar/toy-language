@@ -1046,9 +1046,7 @@ void release_interpretation_result(Interpreter* interpreter, Value* result) noex
 
 TypeId import_file(Interpreter* interpreter, Range<char8> filepath, bool is_std) noexcept
 {
-	const IdentifierId filepath_id = id_from_identifier(interpreter->identifiers, filepath);
-
-	SourceFileRead read = read_source_file(interpreter->reader, filepath, filepath_id);
+	SourceFileRead read = read_source_file(interpreter->reader, filepath);
 
 	AstNode* root;
 

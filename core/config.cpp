@@ -2,7 +2,7 @@
 
 #include "../infra/minos.hpp"
 #include "../infra/container.hpp"
-#include "error.hpp"
+#include "pass_data.hpp"
 
 #include <type_traits>
 #include <cstdio>
@@ -174,6 +174,26 @@ private:
 	Range<char8> m_path_base;
 
 
+	static u32 find_line_number(Range<char8> content, u64 offset, u64* out_line_begin_offset) noexcept
+	{
+		u64 line_begin = 0;
+	
+		u32 line_number = 1;
+	
+		for (u64 i = 0; i != offset; ++i)
+		{
+			if (content[i] == '\n')
+			{
+				line_begin = i;
+	
+				line_number += 1;
+			}
+		}
+
+		*out_line_begin_offset = line_begin;
+
+		return line_number;
+	}
 
 	NORETURN void error(u64 offset, const char8* format, ...) const noexcept
 	{
@@ -181,7 +201,18 @@ private:
 
 		va_start(args, format);
 
-		vsource_error(offset, m_content, m_filepath, format, args);
+		u64 line_begin_offset;
+
+		SourceLocation location;
+		location.filepath = m_filepath;
+		location.line_number = find_line_number(m_content, offset, &line_begin_offset);
+		location.column_number = static_cast<u32>(1 + offset - line_begin_offset);
+		location.context_offset = 0;
+		location.context_chars = 0;
+
+		print_error(&location, format, args);
+
+		minos::exit_process(1);
 	}
 
 	static bool name_equal(Range<char8> text, const char8* name) noexcept

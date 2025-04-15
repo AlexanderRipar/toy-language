@@ -29,8 +29,7 @@ set(INFRA_SOURCES
 )
 
 set(CORE_SOURCES
-	core/error.hpp
-	core/error.cpp
+	core/error_sink.cpp
 	core/config.hpp
 	core/config.cpp
 	core/ast_pool.cpp

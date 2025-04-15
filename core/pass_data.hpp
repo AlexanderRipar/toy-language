@@ -40,9 +40,20 @@ struct TypeId2
 	u32 rep;
 };
 
+struct SourceId
+{
+	u32 m_rep;
+};
+
 struct ScopePool;
 
+struct SourceReader;
+
+struct SourceLocation;
+
 struct Scope;
+
+struct AstNode;
 
 
 
@@ -260,6 +271,20 @@ IdentifierEntry* identifier_entry_from_id(IdentifierPool* identifiers, Identifie
 
 
 
+struct ErrorSink;
+
+[[nodiscard]] ErrorSink* create_error_sink(AllocPool* pool, SourceReader* reader) noexcept;
+
+void release_error_sink(ErrorSink* errors) noexcept;
+
+NORETURN void source_error(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
+
+NORETURN void vsource_error(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
+
+void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept; 
+
+
+
 static constexpr s32 MAX_AST_DEPTH = 128;
 
 struct AstPool;
@@ -420,6 +445,8 @@ struct AstNode
 	u32 next_sibling_offset;
 
 	TypeId2 type_id;
+
+	SourceId source_id;
 };
 
 struct AstBuilderToken
@@ -804,6 +831,59 @@ static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken fir
 AstNode* complete_ast(AstBuilder* builder, AstPool* dst) noexcept;
 
 const char8* ast_tag_name(AstTag tag) noexcept;
+
+
+
+struct SourceFile
+{
+	minos::FileHandle file;
+
+	AstNodeId ast_root;
+
+	u32 source_id_base;
+};
+
+struct SourceFileRead
+{
+	SourceFile* source_file;
+
+	Range<char8> content;
+};
+
+struct SourceLocation
+{
+	Range<char8> filepath;
+
+	u32 line_number;
+
+	u32 column_number;
+
+	u32 context_offset;
+
+	u32 context_chars;
+
+	char8 context[512];
+};
+
+struct SourceReader;
+
+static constexpr SourceId INVALID_SOURCE_ID = { 0 };
+
+[[nodiscard]] SourceReader* create_source_reader(AllocPool* pool) noexcept;
+
+void release_source_reader(SourceReader* reader) noexcept;
+
+[[nodiscard]] SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noexcept;
+
+void release_read(SourceReader* reader, SourceFileRead read) noexcept;
+
+[[nodiscard]] SourceLocation source_location_from_ast_node(SourceReader* reader, AstNode* node) noexcept;
+
+[[nodiscard]] SourceLocation source_location_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
+
+[[nodiscard]] SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
+
+[[nodiscard]] Range<char8> source_file_path(SourceReader* reader, SourceFile* source_file) noexcept;
 
 
 
@@ -1491,36 +1571,9 @@ Value* value_from_id(ValuePool* values, ValueId id) noexcept;
 
 
 
-
-struct SourceFile
-{
-	minos::FileHandle file;
-
-	IdentifierId filepath_id;
-
-	AstNodeId ast_root;
-};
-
-struct SourceFileRead
-{
-	SourceFile* source_file;
-
-	Range<char8> content;
-};
-
-struct SourceReader;
-
-[[nodiscard]] SourceReader* create_source_reader(AllocPool* pool) noexcept;
-
-[[nodiscard]] SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath, IdentifierId filepath_id) noexcept;
-
-void release_read(SourceReader* reader, SourceFileRead read) noexcept;
-
-
-
 struct Parser;
 
-[[nodiscard]] Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers) noexcept;
+[[nodiscard]] Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* errors) noexcept;
 
 [[nodiscard]] AstNode* parse(Parser* parser, SourceFileRead read, bool is_std, AstPool* out) noexcept;
 

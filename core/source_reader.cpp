@@ -7,13 +7,27 @@
 #include "../infra/hash.hpp"
 #include "pass_data.hpp"
 
+static u32 hash_file_identity(u64 file_id, u32 device_id) noexcept
+{
+	struct
+	{
+		u64 file_id;
+
+		u32 device_id;
+	} id { file_id, device_id };
+
+	return fnv1a(range::from_object_bytes(&id));
+}
+
+
+
 struct SourceFileByPathEntry
 {
 	u32 m_hash;
 
 	u32 path_bytes;
 
-	u32 source_file_index;
+	u32 id_entry_index;
 
 	#if COMPILER_MSVC
 	#pragma warning(push)
@@ -67,19 +81,19 @@ struct SourceFileByPathEntry
 
 		path_bytes = static_cast<u32>(key.count());
 
-		source_file_index = 0;
+		id_entry_index = 0;
 
 		memcpy(path, key.begin(), key.count());
 	}
 };
 
 struct SourceFileByIdEntry
-{
-	u32 m_hash;
+{	
+	u64 file_id;
 
 	u32 device_id;
 
-	u64 file_id;
+	u32 path_entry_index;
 
 	SourceFile data;
 
@@ -100,7 +114,7 @@ struct SourceFileByIdEntry
 
 	u32 hash() const noexcept
 	{
-		return m_hash;
+		return hash_file_identity(file_id, device_id);
 	}
 
 	bool equal_to_key(minos::FileIdentity key, [[maybe_unused]] u32 key_hash) noexcept
@@ -108,10 +122,8 @@ struct SourceFileByIdEntry
 		return device_id == key.volume_serial && file_id == key.index;
 	}
 
-	void init(minos::FileIdentity key, u32 key_hash) noexcept
+	void init(minos::FileIdentity key, [[maybe_unused]] u32 key_hash) noexcept
 	{
-		m_hash = key_hash;
-
 		device_id = key.volume_serial;
 
 		file_id = key.index;
@@ -123,26 +135,104 @@ struct SourceReader
 	IndexMap<Range<char8>, SourceFileByPathEntry> known_files_by_path;
 
 	IndexMap<minos::FileIdentity, SourceFileByIdEntry> known_files_by_identity;
+
+	u32 curr_source_id_base;
+
+	u32 source_file_count;
 };
+
+
+
+static SourceLocation build_source_location(Range<char8> filepath, Range<char8> content, u32 offset) noexcept
+{
+	u32 line_begin = 0;
+
+	u32 line_number = 1;
+
+	for (u32 i = 0; i != offset; ++i)
+	{
+		if (content[i] == '\n')
+		{
+			line_begin = i;
+
+			line_number += 1;
+		}
+	}
+
+	u32 line_end = line_begin;
+
+	while (line_begin < filepath.count() && filepath[line_end] != '\n' && filepath[line_end] != '\r')
+		line_end += 1;
+
+
+	const u32 column_number = offset - line_begin;
+
+	const u32 context_begin = line_begin + (column_number < 20 ? 0 : column_number - 20);
+
+	const u32 context_end = line_end - context_begin < sizeof(SourceLocation::context) ? line_end - context_begin : sizeof(SourceLocation::context);
+
+	SourceLocation location;
+	location.filepath = filepath;
+	location.line_number = line_number;
+	location.column_number = column_number + 1;
+	location.context_offset = context_begin - line_begin;
+	location.context_chars = context_end - context_begin;
+	memcpy(location.context, content.begin() + context_begin, context_end - context_begin);
+
+	return location;
+}
+
+static SourceLocation source_location_from_source_file_and_ast_node(SourceReader* reader, SourceFile* source_file, SourceId source_id) noexcept
+{
+	minos::FileInfo fileinfo;
+
+	Range<char8> filepath = source_file_path(reader, source_file);
+
+	if (!minos::file_get_info(source_file->file, &fileinfo))
+		panic("Could not get info on source file %.*s while trying to re-read it for error reporting (0x%X)\n", static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
+
+	char8* const buffer = static_cast<char8*>(malloc(fileinfo.bytes));
+
+	u32 bytes_read;
+
+	if (!minos::file_read(source_file->file, MutRange{ buffer, fileinfo.bytes }.as_mut_byte_range(), 0, &bytes_read))
+		panic("Could not read source file %.*s while trying to re-read it for error reporting (0x%X)\n", static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
+
+	if (bytes_read != fileinfo.bytes)
+		panic("Could only read %u out of %" PRIu64 " bytes from source file %.*s while trying to re-read it for error reporting (0x%X)\n", bytes_read, fileinfo.bytes, static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
+
+	SourceLocation location = build_source_location(filepath, Range{ buffer, fileinfo.bytes }, source_id.m_rep - source_file->source_id_base);
+
+	free(buffer);
+
+	return location;
+}
+
 
 
 SourceReader* create_source_reader(AllocPool* pool) noexcept
 {
 	SourceReader* const reader = static_cast<SourceReader*>(alloc_from_pool(pool, sizeof(SourceReader), alignof(SourceReader)));
 
-	reader->known_files_by_path.init(1 << 24, 1 << 10, 1 << 26, 1 << 13);
+	reader->known_files_by_path.init(1 << 24, 1 << 10, 1 << 23, 1 << 13);
 
-	reader->known_files_by_identity.init(1 << 24, 1 << 10, 1 << 26, 1 << 12);
+	reader->known_files_by_identity.init(1 << 24, 1 << 10, 1 << 23, 1 << 12);
 
-	minos::FileIdentity dummy_identity{};
+	reader->curr_source_id_base = 1;
 
-	// Reserve index 0.
-	(void) reader->known_files_by_identity.value_from(dummy_identity, fnv1a(range::from_object_bytes(&dummy_identity)));
+	reader->source_file_count = 0;
 
 	return reader;
 }
 
-SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath, IdentifierId filepath_id) noexcept
+void release_source_reader(SourceReader* reader) noexcept
+{
+	reader->known_files_by_path.release();
+
+	reader->known_files_by_identity.release();
+}
+
+SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noexcept
 {
 	// Try lookup via path. This is just approximate, but conservative, meaning
 	// that there *might* be a match here if the file has already been seen,
@@ -152,8 +242,8 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath, Ide
 
 	SourceFileByPathEntry* const path_entry = reader->known_files_by_path.value_from(filepath, fnv1a(filepath.as_byte_range()));
 
-	if (path_entry->source_file_index != 0)
-		return { &reader->known_files_by_identity.value_from(path_entry->source_file_index)->data, {} };
+	if (path_entry->id_entry_index != 0)
+		return { &reader->known_files_by_identity.value_from(path_entry->id_entry_index)->data, {} };
 
 	// Try lookup via file identity. This is exact, meaning there is a match
 	// here if and only if the file has already been seen.
@@ -171,18 +261,26 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath, Ide
 	if (fileinfo.bytes > UINT32_MAX)
 		panic("Could not read source file %.*s as its size %llu exceeds the supported maximum of %u bytes (< 4gb)\n", static_cast<u32>(filepath.count()), filepath.begin(), fileinfo.bytes, UINT32_MAX);
 
-	SourceFileByIdEntry* const id_entry = reader->known_files_by_identity.value_from(fileinfo.identity, fnv1a(range::from_object_bytes(&fileinfo.identity)));
+	SourceFileByIdEntry* const id_entry = reader->known_files_by_identity.value_from(fileinfo.identity, hash_file_identity(fileinfo.identity.index, fileinfo.identity.volume_serial));
 
-	path_entry->source_file_index = reader->known_files_by_identity.index_from(id_entry);
+	path_entry->id_entry_index = reader->known_files_by_identity.index_from(id_entry);
 
 	if (id_entry->data.file.m_rep != nullptr)
 		return { &id_entry->data, {} };
 
 	// File has not been read in yet. Do so.
 
+	id_entry->path_entry_index = reader->known_files_by_path.index_from(path_entry);
 	id_entry->data.file = file;
-	id_entry->data.filepath_id = filepath_id;
 	id_entry->data.ast_root = INVALID_AST_NODE_ID;
+	id_entry->data.source_id_base = reader->curr_source_id_base;
+
+	if (fileinfo.bytes + reader->curr_source_id_base > UINT32_MAX)
+		panic("Could not read source file %.*s as the maximum total capacity of 4gb of source code was exceeded.\n", static_cast<s32>(filepath.count()), filepath.begin());
+
+	reader->curr_source_id_base += static_cast<u32>(fileinfo.bytes);
+
+	reader->source_file_count += 1;
 
 	char8* const content = static_cast<char8*>(malloc(fileinfo.bytes + 1));
 
@@ -202,7 +300,78 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath, Ide
 	return { &id_entry->data, Range{ content, fileinfo.bytes + 1 } };
 }
 
-void release_read([[maybe_unused]] SourceReader* reader, SourceFileRead file) noexcept
+void release_read([[maybe_unused]] SourceReader* reader, SourceFileRead read) noexcept
 {
-	free(const_cast<char8*>(file.content.begin()));
+	free(const_cast<char8*>(read.content.begin()));
+}
+
+SourceLocation source_location_from_ast_node(SourceReader* reader, AstNode* node) noexcept
+{
+	return source_location_from_source_id(reader, node->source_id);
+}
+
+SourceLocation source_location_from_source_id(SourceReader* reader, SourceId source_id) noexcept
+{
+	SourceFile* const source_file = source_file_from_source_id(reader, source_id);
+
+	return source_location_from_source_file_and_ast_node(reader, source_file, source_id);
+}
+
+SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id) noexcept
+{
+	ASSERT_OR_IGNORE(reader->source_file_count != 0);
+
+	ASSERT_OR_IGNORE(reader->curr_source_id_base < source_id.m_rep);
+
+	SourceFileByIdEntry* const entries = reader->known_files_by_identity.value_from(0);;
+
+	// By handling the last entry as a special case, we can always index into
+	// `mid + 1`. This is necessary since `SourceFileByIdEntry` only stores the
+	// lowest source id present in the file. However, since entries are
+	// effectively ordered by their source id, the effective end index is the
+	// start id of the next entry.
+	if (entries[reader->source_file_count - 1].data.source_id_base <= source_id.m_rep)
+		return &entries[reader->source_file_count - 1].data;
+
+	u32 lo = 0;
+
+	// Ignore last entry, as described above.
+	u32 hi = reader->source_file_count - 2;
+
+	while (lo < hi)
+	{
+		// If we ever get to more than 2^31 source files, we should really
+		// already be over the 4gb source code limit, so no need to worry about
+		// arithmetic overflow here.
+		const u32 mid = (lo + hi) >> 1;
+		
+		SourceFileByIdEntry* const curr = entries + mid;
+
+		SourceFileByIdEntry* const next = entries + mid + 1;
+
+		if (source_id.m_rep < curr->data.source_id_base)
+		{
+			hi = mid - 1;
+		}
+		else if (source_id.m_rep >= next->data.source_id_base)
+		{
+			lo = mid + 1;
+		}
+		else
+		{
+			return &curr->data;
+		}
+	}
+
+	// Unreachable, as we have previously checked that we do not exceed the last entry.
+	ASSERT_UNREACHABLE;
+}
+
+Range<char8> source_file_path(SourceReader* reader, SourceFile* source_file) noexcept
+{
+	SourceFileByIdEntry* const id_entry = reinterpret_cast<SourceFileByIdEntry*>(reinterpret_cast<byte*>(source_file) - offsetof(SourceFileByIdEntry, data));
+
+	SourceFileByPathEntry* const path_entry = reader->known_files_by_path.value_from(id_entry->path_entry_index);
+
+	return Range{ path_entry->path, path_entry->path_bytes };
 }

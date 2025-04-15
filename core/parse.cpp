@@ -6,7 +6,6 @@
 #include "../infra/alloc_pool.hpp"
 #include "../infra/container.hpp"
 #include "../infra/hash.hpp"
-#include "error.hpp"
 #include "pass_data.hpp"
 #include "ast_attach.hpp"
 
@@ -16,7 +15,7 @@ struct Lexeme
 {
 	Token token;
 
-	u32 offset;
+	SourceId source_id;
 
 	union
 	{
@@ -29,9 +28,9 @@ struct Lexeme
 
 	Lexeme() noexcept = default;
 
-	Lexeme(Token token, u32 offset, u64 value_bits) noexcept :
+	Lexeme(Token token, SourceId source_id, u64 value_bits) noexcept :
 		token{ token },
-		offset{ offset },
+		source_id{ source_id },
 		integer_value{ value_bits }
 	{}
 };
@@ -79,11 +78,13 @@ struct Lexer
 
 	Lexeme peek;
 
-	IdentifierPool* identifiers;
-
-	IdentifierId filepath_id;
+	u32 source_id_base;
 
 	bool is_std;
+
+	IdentifierPool* identifiers;
+
+	ErrorSink* errors;
 };
 
 struct OperatorStack
@@ -92,7 +93,7 @@ struct OperatorStack
 
 	u32 operator_top;
 
-	u32 expression_offset;
+	SourceId expression_source_id;
 
 	OperatorDesc operators[64];
 
@@ -226,20 +227,9 @@ static u8 hex_char_value(char8 c) noexcept
 
 
 
-NORETURN static void error(const Lexer* lexer, u64 offset, const char8* format, ...) noexcept
-{
-	va_list args;
-
-	va_start(args, format);
-
-	vsource_error(offset, { lexer->begin, lexer->end }, identifier_entry_from_id(lexer->identifiers, lexer->filepath_id)->range(), format, args);
-}
-
 static void skip_block_comment(Lexer* lexer) noexcept
 {
 	const char8* curr = lexer->curr;
-
-	const u32 comment_offset = static_cast<u32>(curr - lexer->begin);
 
 	curr += 2;
 
@@ -277,7 +267,7 @@ static void skip_block_comment(Lexer* lexer) noexcept
 		}
 		else if (c == '\0')
 		{
-			error(lexer, comment_offset, "'/*' without matching '*/'\n");
+			source_error(lexer->errors, SourceId{ lexer->source_id_base + static_cast<u32>(curr - lexer->curr) }, "'/*' without matching '*/'\n");
 		}
 		else
 		{
@@ -362,7 +352,7 @@ static RawLexeme scan_builtin_token(Lexer* lexer) noexcept
 	lexer->curr = curr;
 
 	if (curr - token_begin > 8)
-		error(lexer, lexer->peek.offset, "Unknown builtin\n");
+		source_error(lexer->errors, lexer->peek.source_id, "Unknown builtin\n");
 
 	u8 name[8]{};
 
@@ -374,7 +364,7 @@ static RawLexeme scan_builtin_token(Lexer* lexer) noexcept
 			return RawLexeme{ Token::Builtin, i };
 	}
 
-	error(lexer, lexer->peek.offset, "Unknown builtin\n");
+	source_error(lexer->errors, lexer->peek.source_id, "Unknown builtin\n");
 }
 
 static RawLexeme scan_number_token_with_base(Lexer* lexer, char8 base) noexcept
@@ -394,7 +384,7 @@ static RawLexeme scan_number_token_with_base(Lexer* lexer, char8 base) noexcept
 			const u64 new_value = value * 2 + *curr - '0';
 
 			if (new_value < value)
-				error(lexer, lexer->peek.offset, "Binary integer literal exceeds maximum currently supported value of 2^64-1\n");
+				source_error(lexer->errors, lexer->peek.source_id, "Binary integer literal exceeds maximum currently supported value of 2^64-1\n");
 
 			value = new_value;
 
@@ -408,7 +398,7 @@ static RawLexeme scan_number_token_with_base(Lexer* lexer, char8 base) noexcept
 			const u64 new_value = value * 8 + *curr - '0';
 
 			if (new_value < value)
-				error(lexer, lexer->peek.offset, "Octal integer literal exceeds maximum currently supported value of 2^64-1\n");
+				source_error(lexer->errors, lexer->peek.source_id, "Octal integer literal exceeds maximum currently supported value of 2^64-1\n");
 
 			value = new_value;
 
@@ -429,7 +419,7 @@ static RawLexeme scan_number_token_with_base(Lexer* lexer, char8 base) noexcept
 			const u64 new_value = value * 16 + digit_value;
 
 			if (new_value < value)
-				error(lexer, lexer->peek.offset, "Hexadecimal integer literal exceeds maximum currently supported value of 2^64-1\n");
+				source_error(lexer->errors, lexer->peek.source_id, "Hexadecimal integer literal exceeds maximum currently supported value of 2^64-1\n");
 
 			value = new_value;
 
@@ -438,10 +428,10 @@ static RawLexeme scan_number_token_with_base(Lexer* lexer, char8 base) noexcept
 	}
 
 	if (curr == token_begin + 1)
-		error(lexer, lexer->peek.offset, "Expected at least one digit in integer literal\n");
+		source_error(lexer->errors, lexer->peek.source_id, "Expected at least one digit in integer literal\n");
 
 	if (is_identifier_continuation_char(*curr))
-		error(lexer, lexer->peek.offset, "Unexpected character '%c' after binary literal\n", *curr);
+		source_error(lexer->errors, lexer->peek.source_id, "Unexpected character '%c' after binary literal\n", *curr);
 
 	lexer->curr = curr;
 
@@ -459,7 +449,7 @@ static u32 scan_utf8_char_surrogates(Lexer* lexer, u32 leader_value, u32 surroga
 		const char8 surrogate = curr[i + 1];
 
 		if ((surrogate & 0xC0) != 0x80)
-			error(lexer, lexer->peek.offset, "Expected utf-8 surrogate code unit (0b10xx'xxxx) but got 0x%X\n", surrogate);
+			source_error(lexer->errors, lexer->peek.source_id, "Expected utf-8 surrogate code unit (0b10xx'xxxx) but got 0x%X\n", surrogate);
 
 		codepoint |= (surrogate & 0x3F) << (6 * (surrogate_count - i - 1));
 	}
@@ -494,7 +484,7 @@ static u32 scan_utf8_char(Lexer* lexer) noexcept
 	}
 	else
 	{
-		error(lexer, lexer->peek.offset, "Unexpected code unit 0x%X at start of character literal. This might be an encoding issue regarding the source file, as only utf-8 is supported.\n", first);
+		source_error(lexer->errors, lexer->peek.source_id, "Unexpected code unit 0x%X at start of character literal. This might be an encoding issue regarding the source file, as only utf-8 is supported.\n", first);
 	}
 }
 
@@ -513,12 +503,12 @@ static u32 scan_escape_char(Lexer* lexer) noexcept
 		const u8 hi = hex_char_value(curr[2]);
 
 		if (hi == INVALID_HEX_CHAR_VALUE)
-			error(lexer, lexer->peek.offset, "Expected two hexadecimal digits after character literal escape '\\x' but got '%c' instead of first digit\n", curr[2]);
+			source_error(lexer->errors, lexer->peek.source_id, "Expected two hexadecimal digits after character literal escape '\\x' but got '%c' instead of first digit\n", curr[2]);
 
 		const u8 lo = hex_char_value(curr[3]);
 		
 		if (lo == INVALID_HEX_CHAR_VALUE)
-			error(lexer, lexer->peek.offset, "Expected two hexadecimal digits after character literal escape '\\x' but got '%c' instead of second digit\n", curr[3]);
+			source_error(lexer->errors, lexer->peek.source_id, "Expected two hexadecimal digits after character literal escape '\\x' but got '%c' instead of second digit\n", curr[3]);
 
 		curr += 2;
 
@@ -536,13 +526,13 @@ static u32 scan_escape_char(Lexer* lexer) noexcept
 			const u8 char_value = hex_char_value(curr[i + 2]);
 
 			if (char_value == INVALID_HEX_CHAR_VALUE)
-				error(lexer, lexer->peek.offset, "Expected six hexadecimal digits after character literal escape '\\X' but got '%c' instead of digit %u\n", curr[i + 2], i + 1);
+				source_error(lexer->errors, lexer->peek.source_id, "Expected six hexadecimal digits after character literal escape '\\X' but got '%c' instead of digit %u\n", curr[i + 2], i + 1);
 
 			codepoint = codepoint * 16 + char_value;
 		}
 
 		if (codepoint > 0x10FFFF)
-			error(lexer, lexer->peek.offset, "Codepoint 0x%X indicated in character literal escape '\\X' is greater than the maximum unicode codepoint U+10FFFF", codepoint);
+			source_error(lexer->errors, lexer->peek.source_id, "Codepoint 0x%X indicated in character literal escape '\\X' is greater than the maximum unicode codepoint U+10FFFF", codepoint);
 
 		curr += 6;
 
@@ -556,7 +546,7 @@ static u32 scan_escape_char(Lexer* lexer) noexcept
 			const char8 c = curr[i + 2];
 
 			if (c < '0' || c > '9')
-				error(lexer, lexer->peek.offset, "Expected four decimal digits after character literal escape '\\X' but got '%c' instead of digit %u\n", curr[i + 2], i + 1);
+				source_error(lexer->errors, lexer->peek.source_id, "Expected four decimal digits after character literal escape '\\X' but got '%c' instead of digit %u\n", curr[i + 2], i + 1);
 
 			codepoint = codepoint * 10 + c - '0';
 		}
@@ -605,7 +595,7 @@ static u32 scan_escape_char(Lexer* lexer) noexcept
 		break;
 
 	default:
-		error(lexer, lexer->peek.offset, "Unknown character literal escape '%c'\n");
+		source_error(lexer->errors, lexer->peek.source_id, "Unknown character literal escape '%c'\n");
 	}
 
 	lexer->curr = curr + 2;
@@ -640,7 +630,7 @@ static RawLexeme scan_number_token(Lexer* lexer, char8 first) noexcept
 		curr += 1;
 
 		if (!is_numeric_char(*curr))
-			error(lexer, lexer->peek.offset, "Expected at least one digit after decimal point in float literal\n");
+			source_error(lexer->errors, lexer->peek.source_id, "Expected at least one digit after decimal point in float literal\n");
 
 		while (is_numeric_char(*curr))
 			curr += 1;
@@ -657,7 +647,7 @@ static RawLexeme scan_number_token(Lexer* lexer, char8 first) noexcept
 		}
 		
 		if (is_alphabetic_char(*curr) || *curr == '_')
-			error(lexer, lexer->peek.offset, "Unexpected character '%c' after float literal\n", *curr);
+			source_error(lexer->errors, lexer->peek.source_id, "Unexpected character '%c' after float literal\n", *curr);
 
 		char8* strtod_end;
 
@@ -666,10 +656,10 @@ static RawLexeme scan_number_token(Lexer* lexer, char8 first) noexcept
 		const f64 float_value = strtod(token_begin, &strtod_end);
 
 		if (strtod_end != curr)
-			error(lexer, lexer->peek.offset, "strtod disagrees with internal parsing about end of float literal\n");
+			source_error(lexer->errors, lexer->peek.source_id, "strtod disagrees with internal parsing about end of float literal\n");
 
 		if (errno == ERANGE)
-			error(lexer, lexer->peek.offset, "Float literal exceeds maximum IEEE-754 value\n");
+			source_error(lexer->errors, lexer->peek.source_id, "Float literal exceeds maximum IEEE-754 value\n");
 
 		lexer->curr = curr;
 
@@ -678,10 +668,10 @@ static RawLexeme scan_number_token(Lexer* lexer, char8 first) noexcept
 	else
 	{
 		if (max_exceeded)
-			error(lexer, lexer->peek.offset, "Integer literal exceeds maximum currently supported value of 2^64-1\n");
+			source_error(lexer->errors, lexer->peek.source_id, "Integer literal exceeds maximum currently supported value of 2^64-1\n");
 
 		if (is_alphabetic_char(*curr) || *curr == '_')
-			error(lexer, lexer->peek.offset, "Unexpected character '%c' after integer literal\n", *curr);
+			source_error(lexer->errors, lexer->peek.source_id, "Unexpected character '%c' after integer literal\n", *curr);
 
 		lexer->curr = curr;
 
@@ -700,7 +690,7 @@ static RawLexeme scan_char_token(Lexer* lexer) noexcept
 		codepoint = scan_utf8_char(lexer);
 	
 	if (*lexer->curr != '\'')
-		error(lexer, lexer->peek.offset, "Expected end of character literal (') but got %c\n", *lexer->curr);
+		source_error(lexer->errors, lexer->peek.source_id, "Expected end of character literal (') but got %c\n", *lexer->curr);
 
 	lexer->curr += 1;
 
@@ -724,7 +714,7 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 			const u32 bytes_to_copy = static_cast<u32>(curr - copy_begin);
 
 			if (buffer_index + bytes_to_copy > sizeof(buffer))
-					error(lexer, lexer->peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
+					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
 			memcpy(buffer + buffer_index, copy_begin, bytes_to_copy);
 
@@ -739,7 +729,7 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 			if (codepoint <= 0x7F)
 			{
 				if (buffer_index + 1 > sizeof(buffer))
-					error(lexer, lexer->peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
+					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 			
 				buffer[buffer_index] = static_cast<char8>(codepoint);
 
@@ -748,7 +738,7 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 			else if (codepoint <= 0x7FF)
 			{
 				if (buffer_index + 2 > sizeof(buffer))
-					error(lexer, lexer->peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
+					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
 				buffer[buffer_index] = static_cast<char8>((codepoint >> 6) | 0xC0);
 
@@ -759,7 +749,7 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 			else if (codepoint == 0x10000)
 			{
 				if (buffer_index + 3 > sizeof(buffer))
-					error(lexer, lexer->peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
+					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
 				buffer[buffer_index] = static_cast<char8>((codepoint >> 12) | 0xE0);
 
@@ -774,7 +764,7 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 				ASSERT_OR_IGNORE(codepoint <= 0x10FFFF);
 
 				if (buffer_index + 4 > sizeof(buffer))
-					error(lexer, lexer->peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
+					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
 				buffer[buffer_index] = static_cast<char8>((codepoint >> 18) | 0xE0);
 
@@ -791,7 +781,7 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 		}
 		else if (*curr == '\n')
 		{
-			error(lexer, lexer->peek.offset, "String constant spans across newline\n");
+			source_error(lexer->errors, lexer->peek.source_id, "String constant spans across newline\n");
 		}
 		else
 		{
@@ -802,7 +792,7 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 	const u32 bytes_to_copy = static_cast<u32>(curr - copy_begin);
 
 	if (buffer_index + bytes_to_copy > sizeof(buffer))
-			error(lexer, lexer->peek.offset, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
+			source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
 	memcpy(buffer + buffer_index, copy_begin, bytes_to_copy);
 
@@ -857,7 +847,7 @@ static RawLexeme raw_next(Lexer* lexer) noexcept
 		if (is_identifier_continuation_char(second))
 		{
 			if (!lexer->is_std)
-				error(lexer, lexer->peek.offset, "Illegal identifier starting with '_'\n");
+				source_error(lexer->errors, lexer->peek.source_id, "Illegal identifier starting with '_'\n");
 
 			return scan_builtin_token(lexer);
 		}
@@ -951,7 +941,7 @@ static RawLexeme raw_next(Lexer* lexer) noexcept
 		}
 		else if (second == '/')
 		{
-			error(lexer, lexer->peek.offset, "'*/' without previous matching '/*'\n");
+			source_error(lexer->errors, lexer->peek.source_id, "'*/' without previous matching '/*'\n");
 		}
 		else
 		{
@@ -1094,7 +1084,7 @@ static RawLexeme raw_next(Lexer* lexer) noexcept
 		if (second == '.')
 		{
 			if (lexer->curr[1] != '.')
-				error(lexer, lexer->peek.offset, "Unexpected Token '..'\n");
+				source_error(lexer->errors, lexer->peek.source_id, "Unexpected Token '..'\n");
 
 			lexer->curr += 2;
 
@@ -1220,12 +1210,12 @@ static RawLexeme raw_next(Lexer* lexer) noexcept
 		lexer->curr -= 1;
 
 		if (lexer->curr != lexer->end)
-			error(lexer, lexer->peek.offset, "Null character in source file\n");
+			source_error(lexer->errors, lexer->peek.source_id, "Null character in source file\n");
 
 		return { Token::END_OF_SOURCE };				
 
 	default:
-		error(lexer, lexer->peek.offset, "Unexpected character '%c' in source file\n", first);
+		source_error(lexer->errors, lexer->peek.source_id, "Unexpected character '%c' in source file\n", first);
 	}
 }
 
@@ -1242,11 +1232,11 @@ static Lexeme next(Lexer* lexer) noexcept
 
 	skip_whitespace(lexer);
 
-	lexer->peek.offset = static_cast<u32>(lexer->curr - lexer->begin);
+	lexer->peek.source_id = SourceId{ lexer->source_id_base + static_cast<u32>(lexer->curr - lexer->begin) };
 
 	const RawLexeme raw = raw_next(lexer);
 
-	return { raw.token, lexer->peek.offset, raw.integer_value };
+	return { raw.token, lexer->peek.source_id, raw.integer_value };
 }
 
 static Lexeme peek(Lexer* lexer) noexcept
@@ -1298,7 +1288,7 @@ static void pop_operator(Parser* parser, OperatorStack* stack) noexcept
 		return;
 
 	if (stack->operand_count <= top.is_binary)
-		error(&parser->lexer, stack->expression_offset, "Missing operand(s) for operator '%s'\n", ast_tag_name(top.node_type));
+		source_error(parser->lexer.errors, stack->expression_source_id, "Missing operand(s) for operator '%s'\n", ast_tag_name(top.node_type));
 
 	if (top.is_binary)
 		stack->operand_count -= 1;
@@ -1326,7 +1316,7 @@ static bool pop_to_precedence(Parser* parser, OperatorStack* stack, u8 precedenc
 static void push_operand(Parser* parser, OperatorStack* stack, AstBuilderToken operand_token) noexcept
 {
 	if (stack->operand_count == array_count(stack->operand_tokens) - 1)
-		error(&parser->lexer, stack->expression_offset, "Expression exceeds maximum open operands of %u\n");
+		source_error(parser->lexer.errors, stack->expression_source_id, "Expression exceeds maximum open operands of %u\n");
 
 	stack->operand_tokens[stack->operand_count] = operand_token;
 
@@ -1339,7 +1329,7 @@ static void push_operator(Parser* parser, OperatorStack* stack, OperatorDesc op)
 		pop_to_precedence(parser, stack, op.precedence, op.is_right_to_left);
 
 	if (stack->operator_top == array_count(stack->operators))
-		error(&parser->lexer, stack->expression_offset, "Expression exceeds maximum depth of %u\n", array_count(stack->operators));
+		source_error(parser->lexer.errors, stack->expression_source_id, "Expression exceeds maximum depth of %u\n", array_count(stack->operators));
 
 	stack->operators[stack->operator_top] = op;
 
@@ -1359,7 +1349,7 @@ static AstBuilderToken pop_remaining(Parser* parser, OperatorStack* stack) noexc
 		pop_operator(parser, stack);
 
 	if (stack->operand_count != 1)
-		error(&parser->lexer, stack->expression_offset, "Mismatched operand / operator count (%u operands remaining)", stack->operand_count);
+		source_error(parser->lexer.errors, stack->expression_source_id, "Mismatched operand / operator count (%u operands remaining)", stack->operand_count);
 
 	return stack->operand_tokens[0];
 }
@@ -1397,35 +1387,35 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 			if (lexeme.token == Token::KwdPub)
 			{
 				if ((flags & AstFlag::Definition_IsPub) != AstFlag::EMPTY)
-					error(&parser->lexer, lexeme.offset, "Definition modifier 'pub' encountered more than once\n");
+					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'pub' encountered more than once\n");
 
 				flags |= AstFlag::Definition_IsPub;
 			}
 			else if (lexeme.token == Token::KwdMut)
 			{
 				if ((flags & AstFlag::Definition_IsMut) != AstFlag::EMPTY)
-					error(&parser->lexer, lexeme.offset, "Definition modifier 'mut' encountered more than once\n");
+					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'mut' encountered more than once\n");
 
 				flags |= AstFlag::Definition_IsMut;
 			}
 			else if (lexeme.token == Token::KwdGlobal)
 			{
 				if ((flags & AstFlag::Definition_IsGlobal) != AstFlag::EMPTY)
-					error(&parser->lexer, lexeme.offset, "Definition modifier 'global' encountered more than once\n");
+					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'global' encountered more than once\n");
 
 				flags |= AstFlag::Definition_IsGlobal;
 			}
 			else if (lexeme.token == Token::KwdAuto)
 			{
 				if ((flags & AstFlag::Definition_IsAuto) != AstFlag::EMPTY)
-					error(&parser->lexer, lexeme.offset, "Definition modifier 'auto' encountered more than once\n");
+					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'auto' encountered more than once\n");
 
 				flags |= AstFlag::Definition_IsAuto;
 			}
 			else if (lexeme.token == Token::KwdUse)
 			{
 				if ((flags & AstFlag::Definition_IsUse) != AstFlag::EMPTY)
-					error(&parser->lexer, lexeme.offset, "Definition modifier 'use' encountered more than once\n");
+					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'use' encountered more than once\n");
 
 				flags |= AstFlag::Definition_IsUse;
 			}
@@ -1438,11 +1428,11 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 		}
 
 		if (flags == AstFlag::EMPTY && !is_implicit)
-			error(&parser->lexer, lexeme.offset, "Missing 'let' or at least one of 'pub', 'mut' or 'global' at start of definition\n");
+			source_error(parser->lexer.errors, lexeme.source_id, "Missing 'let' or at least one of 'pub', 'mut' or 'global' at start of definition\n");
 	}
 
 	if (lexeme.token != Token::Ident)
-		error(&parser->lexer, lexeme.offset, "Expected 'Identifier' after Definition modifiers but got '%s'\n", token_name(lexeme.token));
+		source_error(parser->lexer.errors, lexeme.source_id, "Expected 'Identifier' after Definition modifiers but got '%s'\n", token_name(lexeme.token));
 
 	const IdentifierId identifier_id = lexeme.identifier_id;
 
@@ -1472,7 +1462,7 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 	}
 	else if (!is_optional_value)
 	{
-		error(&parser->lexer, lexeme.offset, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
+		source_error(parser->lexer.errors, lexeme.source_id, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 	}
 
 	return push_node(&parser->builder, first_child_token, flags, DefinitionData{ identifier_id, INVALID_TYPE_ID, INVALID_VALUE_ID });
@@ -1631,7 +1621,7 @@ static AstBuilderToken try_parse_foreach(Parser* parser) noexcept
 	}
 
 	if (lexeme.token != Token::ThinArrowL)
-		error(&parser->lexer, lexeme.offset, "Expected '%s' after for-each loop variables but got '%s'\n", token_name(Token::ThinArrowL), token_name(lexeme.token));
+		source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' after for-each loop variables but got '%s'\n", token_name(Token::ThinArrowL), token_name(lexeme.token));
 
 	skip(&parser->lexer);
 
@@ -1728,7 +1718,7 @@ static AstBuilderToken parse_case(Parser* parser) noexcept
 	Lexeme lexeme = next(&parser->lexer);
 
 	if (lexeme.token != Token::ThinArrowR)
-		error(&parser->lexer, lexeme.offset, "Expected '%s' after case label expression but got '%s'\n", token_name(Token::ThinArrowR), token_name(lexeme.token));
+		source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' after case label expression but got '%s'\n", token_name(Token::ThinArrowR), token_name(lexeme.token));
 
 	parse_expr(parser, true);
 
@@ -1757,7 +1747,7 @@ static AstBuilderToken parse_switch(Parser* parser) noexcept
 	}
 
 	if (lexeme.token != Token::KwdCase)
-		error(&parser->lexer, lexeme.offset, "Expected at least one '%s' after switch expression but got '%s'\n", token_name(Token::KwdCase), token_name(lexeme.token));
+		source_error(parser->lexer.errors, lexeme.source_id, "Expected at least one '%s' after switch expression but got '%s'\n", token_name(Token::KwdCase), token_name(lexeme.token));
 
 	while (true)
 	{
@@ -1823,12 +1813,12 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 	if (lexeme.token == Token::KwdProc)
 		flags |= AstFlag::Func_IsProc;
 	else if (lexeme.token != Token::KwdFunc)
-		error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' but got '%s'\n", token_name(Token::KwdFunc), token_name(Token::KwdProc), token_name(lexeme.token));
+		source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' or '%s' but got '%s'\n", token_name(Token::KwdFunc), token_name(Token::KwdProc), token_name(lexeme.token));
 
 	lexeme = next(&parser->lexer);
 
 	if (lexeme.token != Token::ParenL)
-		error(&parser->lexer, lexeme.offset, "Expected '%s' after '%s' but got '%s'\n", token_name(Token::ParenL), token_name(flags == AstFlag::Func_IsProc ? Token::KwdProc : Token::KwdFunc), token_name(lexeme.token));
+		source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' after '%s' but got '%s'\n", token_name(Token::ParenL), token_name(flags == AstFlag::Func_IsProc ? Token::KwdProc : Token::KwdFunc), token_name(lexeme.token));
 
 	lexeme = peek(&parser->lexer);
 
@@ -1846,7 +1836,7 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 		if (lexeme.token == Token::Comma)
 			skip(&parser->lexer);
 		else if (lexeme.token != Token::ParenR)
-			error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' after function parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
+			source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' or '%s' after function parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
 	}
 
 	const AstBuilderToken first_child_token = push_node(&parser->builder, first_parameter_token, AstTag::ParameterList, AstFlag::EMPTY);
@@ -1911,7 +1901,7 @@ static AstBuilderToken parse_trait(Parser* parser) noexcept
 	Lexeme lexeme = next(&parser->lexer);
 
 	if (lexeme.token != Token::ParenL)
-		error(&parser->lexer, lexeme.offset, "Expected '%s' after '%s' but got '%s'\n", token_name(Token::ParenL), token_name(Token::KwdTrait), token_name(lexeme.token));
+		source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' after '%s' but got '%s'\n", token_name(Token::ParenL), token_name(Token::KwdTrait), token_name(lexeme.token));
 
 	lexeme = peek(&parser->lexer);
 
@@ -1929,7 +1919,7 @@ static AstBuilderToken parse_trait(Parser* parser) noexcept
 		if (lexeme.token == Token::Comma)
 			lexeme = peek(&parser->lexer);
 		else if (lexeme.token != Token::ParenR)
-			error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' after trait parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
+			source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' or '%s' after trait parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
 	}
 
 	lexeme = peek(&parser->lexer);
@@ -1949,9 +1939,9 @@ static AstBuilderToken parse_trait(Parser* parser) noexcept
 	if (lexeme.token != Token::OpSet)
 	{
 		if ((flags & AstFlag::Trait_HasExpects) == AstFlag::EMPTY)
-			error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' after trait parameter list but got '%s'\n", token_name(Token::OpSet), token_name(Token::KwdExpects), token_name(lexeme.token));
+			source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' or '%s' after trait parameter list but got '%s'\n", token_name(Token::OpSet), token_name(Token::KwdExpects), token_name(lexeme.token));
 		else
-			error(&parser->lexer, lexeme.offset, "Expected '%s' after trait expects clause but got '%s'\n", token_name(Token::OpSet), token_name(lexeme.token));
+			source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' after trait expects clause but got '%s'\n", token_name(Token::OpSet), token_name(lexeme.token));
 	}
 
 	skip(&parser->lexer);
@@ -1988,9 +1978,9 @@ static AstBuilderToken parse_impl(Parser* parser) noexcept
 	if (lexeme.token != Token::OpSet)
 	{
 		if ((flags & AstFlag::Trait_HasExpects) == AstFlag::EMPTY)
-			error(&parser->lexer, lexeme.offset, "Expected '%s' or '%s' after trait parameter list but got '%s'\n", token_name(Token::OpSet), token_name(Token::KwdExpects), token_name(lexeme.token));
+			source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' or '%s' after trait parameter list but got '%s'\n", token_name(Token::OpSet), token_name(Token::KwdExpects), token_name(lexeme.token));
 		else
-			error(&parser->lexer, lexeme.offset, "Expected '%s' after trait expects clause but got '%s'\n", token_name(Token::OpSet), token_name(lexeme.token));
+			source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' after trait expects clause but got '%s'\n", token_name(Token::OpSet), token_name(lexeme.token));
 	}
 
 	skip(&parser->lexer);
@@ -2013,7 +2003,7 @@ static AstBuilderToken parse_definition_or_impl(Parser* parser, bool* out_is_def
 	else if (lexeme.token == Token::KwdImpl)
 		return parse_impl(parser);
 	else
-		error(&parser->lexer, lexeme.offset, "Expected definition or impl but got %s\n", token_name(lexeme.token));
+		source_error(parser->lexer.errors, lexeme.source_id, "Expected definition or impl but got %s\n", token_name(lexeme.token));
 }
 
 static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
@@ -2023,7 +2013,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 	OperatorStack stack;
 	stack.operator_top = 0;
 	stack.operand_count = 0;
-	stack.expression_offset = lexeme.offset;
+	stack.expression_source_id = lexeme.source_id;
 
 	bool expecting_operand = true;
 
@@ -2106,7 +2096,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 					}
 					else if (lexeme.token != Token::CurlyR)
 					{
-						error(&parser->lexer, lexeme.offset, "Expected '}' or ',' after composite initializer argument expression but got '%s'\n", token_name(lexeme.token));
+						source_error(parser->lexer.errors, lexeme.source_id, "Expected '}' or ',' after composite initializer argument expression but got '%s'\n", token_name(lexeme.token));
 					}
 				}
 
@@ -2141,7 +2131,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 					}
 					else if (lexeme.token != Token::BracketR)
 					{
-						error(&parser->lexer, lexeme.offset, "Expected ']' or ',' after array initializer argument expression but got '%s'\n", token_name(lexeme.token));
+						source_error(parser->lexer.errors, lexeme.source_id, "Expected ']' or ',' after array initializer argument expression but got '%s'\n", token_name(lexeme.token));
 					}
 				}
 
@@ -2160,7 +2150,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 				lexeme = peek(&parser->lexer);
 
 				if (lexeme.token != Token::BracketR)
-					error(&parser->lexer, lexeme.offset, "Expected ']' after array type's size expression, but got '%s'\n", token_name(lexeme.token));
+					source_error(parser->lexer.errors, lexeme.source_id, "Expected ']' after array type's size expression, but got '%s'\n", token_name(lexeme.token));
 
 				// TODO: Work out how to make this into an infix operator or something
 				// Use pop_to_precedence and then manually replace top
@@ -2291,7 +2281,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 				const u8 hi_ordinal = static_cast<u8>(Token::OpAdd);
 
 				if (token_ordinal < lo_ordinal || token_ordinal > hi_ordinal)
-					error(&parser->lexer, lexeme.offset, "Expected operand or unary operator but got '%s'\n", token_name(lexeme.token));
+					source_error(parser->lexer.errors, lexeme.source_id, "Expected operand or unary operator but got '%s'\n", token_name(lexeme.token));
 
 				OperatorDesc op = UNARY_OPERATOR_DESCS[token_ordinal - lo_ordinal];
 
@@ -2346,7 +2336,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 					}
 					else if (lexeme.token != Token::ParenR)
 					{
-						error(&parser->lexer, lexeme.offset, "Expected ')' or ',' after function argument expression but got '%s'\n", token_name(lexeme.token));
+						source_error(parser->lexer.errors, lexeme.source_id, "Expected ')' or ',' after function argument expression but got '%s'\n", token_name(lexeme.token));
 					}
 				}
 
@@ -2378,7 +2368,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 				lexeme = peek(&parser->lexer);
 
 				if (lexeme.token != Token::BracketR)
-					error(&parser->lexer, lexeme.offset, "Expected ']' after array index expression, but got '%s'\n", token_name(lexeme.token));
+					source_error(parser->lexer.errors, lexeme.source_id, "Expected ']' after array index expression, but got '%s'\n", token_name(lexeme.token));
 
 				const AstBuilderToken index_token = push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], AstTag::OpArrayIndex, AstFlag::EMPTY);
 				
@@ -2403,7 +2393,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 					lexeme = next(&parser->lexer);
 
 					if (lexeme.token != Token::ThinArrowR)
-						error(&parser->lexer, lexeme.offset, "Expected '%s' after inbound definition in catch, but got '%s'\n", token_name(Token::ThinArrowR), token_name(lexeme.token));
+						source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' after inbound definition in catch, but got '%s'\n", token_name(Token::ThinArrowR), token_name(lexeme.token));
 				}
 
 				parse_expr(parser, false);
@@ -2467,16 +2457,17 @@ static void parse_file(Parser* parser) noexcept
 			first_child_token = curr_token;
 	};
 
-	push_node(&parser->builder, first_child_token, AstFlag::EMPTY, FileData{ BlockData{ definition_count, INVALID_SCOPE_ID }, parser->lexer.filepath_id });
+	push_node(&parser->builder, first_child_token, AstFlag::EMPTY, FileData{ BlockData{ definition_count, INVALID_SCOPE_ID } });
 }
 
 
 
-Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers) noexcept
+Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* errors) noexcept
 {
 	Parser* const parser = static_cast<Parser*>(alloc_from_pool(pool, sizeof(Parser), alignof(Parser)));
 
 	parser->lexer.identifiers = identifiers;
+	parser->lexer.errors = errors;
 	parser->builder.scratch.init(1u << 31, 1u << 18);
 
 	return parser;
@@ -2491,7 +2482,7 @@ AstNode* parse(Parser* parser, SourceFileRead read, bool is_std, AstPool* out) n
 	parser->lexer.begin = content.begin();
 	parser->lexer.end = content.end() - 1;
 	parser->lexer.curr = content.begin();
-	parser->lexer.filepath_id = read.source_file->filepath_id;
+	parser->lexer.source_id_base = read.source_file->source_id_base;
 	parser->lexer.peek.token = Token::EMPTY;
 	parser->lexer.is_std = is_std;
 

@@ -70,8 +70,6 @@ struct FileData
 	static constexpr AstTag TAG = AstTag::File;
 
 	BlockData root_block;
-
-	IdentifierId filename_id;
 };
 
 struct FuncData

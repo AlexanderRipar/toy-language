@@ -72,7 +72,7 @@ static AstNode* create_builtin_ast(AstBuilder* builder, IdentifierPool* identifi
 
 	push_std_use(builder, identifiers, range::from_literal_string("type"));
 
-	push_node(builder, first_child_token, AstFlag::EMPTY, FileData{ BlockData{ 11, INVALID_SCOPE_ID }, INVALID_IDENTIFIER_ID });
+	push_node(builder, first_child_token, AstFlag::EMPTY, FileData{ BlockData{ 11, INVALID_SCOPE_ID } });
 
 	return complete_ast(builder, asts);
 }

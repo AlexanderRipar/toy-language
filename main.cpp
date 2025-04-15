@@ -69,9 +69,11 @@ s32 main(s32 argc, const char8** argv)
 
 		IdentifierPool* const identifiers = create_identifier_pool(alloc);
 
-		Parser* const parser = create_parser(alloc, identifiers);
-
 		SourceReader* const reader = create_source_reader(alloc);
+
+		ErrorSink* const errors = create_error_sink(alloc, reader);
+
+		Parser* const parser = create_parser(alloc, identifiers, errors);
 
 		TypePool* const types = create_type_pool(alloc);
 
