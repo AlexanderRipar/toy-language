@@ -1492,46 +1492,29 @@ Value* value_from_id(ValuePool* values, ValueId id) noexcept;
 
 
 
-
 struct SourceFile
 {
-private:
+	minos::FileHandle file;
 
-	MutAttachmentRange<char8, IdentifierId> m_content_and_filepath;
+	IdentifierId filepath_id;
 
-public:
+	AstNodeId ast_root;
+};
 
-	SourceFile() noexcept : m_content_and_filepath{ nullptr, nullptr } {}
+struct SourceFileRead
+{
+	SourceFile* source_file;
 
-	SourceFile(char8* begin, u32 bytes, IdentifierId filepath_id) noexcept : m_content_and_filepath{ begin, bytes, filepath_id } {}
-
-	Range<char8> content() const noexcept
-	{
-		return m_content_and_filepath.range();
-	}
-
-	char8* raw_begin() noexcept
-	{
-		return m_content_and_filepath.begin();
-	}
-
-	IdentifierId filepath_id() const noexcept
-	{
-		return m_content_and_filepath.attachment();
-	}
+	Range<char8> content;
 };
 
 struct SourceReader;
 
-SourceReader* create_source_reader(AllocPool* pool) noexcept;
+[[nodiscard]] SourceReader* create_source_reader(AllocPool* pool) noexcept;
 
-void request_read(SourceReader* reader, Range<char8> filepath, IdentifierId filepath_id) noexcept;
+[[nodiscard]] SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath, IdentifierId filepath_id) noexcept;
 
-[[nodiscard]] bool poll_completed_read(SourceReader* reader, SourceFile* out) noexcept;
-
-[[nodiscard]] bool await_completed_read(SourceReader* reader, SourceFile* out) noexcept;
-
-void release_read(SourceReader* reader, SourceFile file) noexcept;
+void release_read(SourceReader* reader, SourceFileRead read) noexcept;
 
 
 
@@ -1539,7 +1522,7 @@ struct Parser;
 
 [[nodiscard]] Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers) noexcept;
 
-[[nodiscard]] AstNode* parse(Parser* parser, SourceFile source, bool is_std, AstPool* out) noexcept;
+[[nodiscard]] AstNode* parse(Parser* parser, SourceFileRead read, bool is_std, AstPool* out) noexcept;
 
 [[nodiscard]] AstBuilder* get_ast_builder(Parser* parser) noexcept;
 

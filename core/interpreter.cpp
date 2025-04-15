@@ -1048,19 +1048,22 @@ TypeId import_file(Interpreter* interpreter, Range<char8> filepath, bool is_std)
 {
 	const IdentifierId filepath_id = id_from_identifier(interpreter->identifiers, filepath);
 
-	request_read(interpreter->reader, filepath, filepath_id);
+	SourceFileRead read = read_source_file(interpreter->reader, filepath, filepath_id);
 
-	SourceFile source;
+	AstNode* root;
 
-	// TODO: Redesign SourceReader to simply block
-	// TODO: Cache ASTs
-	const bool read_success = await_completed_read(interpreter->reader, &source);
+	if (read.source_file->ast_root == INVALID_AST_NODE_ID)
+	{
+		root = parse(interpreter->parser, read, is_std, interpreter->asts);
 
-	ASSERT_OR_IGNORE(read_success);
+		read.source_file->ast_root = id_from_ast_node(interpreter->asts, root);
 
-	AstNode* const root = parse(interpreter->parser, source, is_std, interpreter->asts);
-
-	release_read(interpreter->reader, source);
+		release_read(interpreter->reader, read);
+	}
+	else
+	{
+		root = ast_node_from_id(interpreter->asts, read.source_file->ast_root);
+	}
 
 	return typecheck_file(interpreter->typechecker, root);
 }

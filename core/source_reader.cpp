@@ -4,171 +4,205 @@
 #include "../infra/common.hpp"
 #include "../infra/threading.hpp"
 #include "../infra/minos.hpp"
+#include "../infra/hash.hpp"
 #include "pass_data.hpp"
 
-struct Read
+struct SourceFileByPathEntry
 {
-	minos::Overlapped overlapped;
+	u32 m_hash;
 
-	minos::FileHandle filehandle;
+	u32 path_bytes;
 
-	char8* content;
+	u32 source_file_index;
 
-	u32 bytes;
+	#if COMPILER_MSVC
+	#pragma warning(push)
+	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
+	#endif
+	char8 path[];
+	#if COMPILER_MSVC
+	#pragma warning(pop)
+	#elif COMPILER_CLANG
+	#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic pop
+	#endif
 
-	u32 next;
+	static constexpr u32 stride() noexcept
+	{
+		return 8;
+	}
 
-	IdentifierId filepath_id;
+	static u32 required_strides(Range<char8> key) noexcept
+	{
+		return static_cast<u32>((offsetof(SourceFileByPathEntry, path) + key.count() + stride() - 1) / stride());
+	}
+
+	u32 used_strides() const noexcept
+	{
+		return (offsetof(SourceFileByPathEntry, path) + path_bytes + stride() - 1) / stride();
+	}
+
+	u32 hash() const noexcept
+	{
+		return m_hash;
+	}
+
+	bool equal_to_key(Range<char8> key, u32 key_hash) noexcept
+	{
+		return m_hash == key_hash && key.count() == path_bytes && memcmp(key.begin(), path, key.count()) == 0;
+	}
+
+	void init(Range<char8> key, u32 key_hash) noexcept
+	{
+		ASSERT_OR_IGNORE(key.count() < UINT32_MAX);
+
+		m_hash = key_hash;
+
+		path_bytes = static_cast<u32>(key.count());
+
+		source_file_index = 0;
+
+		memcpy(path, key.begin(), key.count());
+	}
+};
+
+struct SourceFileByIdEntry
+{
+	u32 m_hash;
+
+	u32 device_id;
+
+	u64 file_id;
+
+	SourceFile data;
+
+	static constexpr u32 stride() noexcept
+	{
+		return sizeof(SourceFileByIdEntry);
+	}
+
+	static u32 required_strides([[maybe_unused]] minos::FileIdentity key) noexcept
+	{
+		return 1;
+	}
+
+	u32 used_strides() const noexcept
+	{
+		return sizeof(SourceFileByIdEntry);
+	}
+
+	u32 hash() const noexcept
+	{
+		return m_hash;
+	}
+
+	bool equal_to_key(minos::FileIdentity key, [[maybe_unused]] u32 key_hash) noexcept
+	{
+		return device_id == key.volume_serial && file_id == key.index;
+	}
+
+	void init(minos::FileIdentity key, u32 key_hash) noexcept
+	{
+		m_hash = key_hash;
+
+		device_id = key.volume_serial;
+
+		file_id = key.index;
+	}
 };
 
 struct SourceReader
 {
-	thd::IndexStackListHeader<Read, offsetof(Read, next)> completed_reads;
+	IndexMap<Range<char8>, SourceFileByPathEntry> known_files_by_path;
 
-	thd::IndexStackListHeader<Read, offsetof(Read, next)> unused_reads;
-
-	thd::Semaphore available_read_count;
-
-	std::atomic<u32> pending_read_count;
-
-	Read reads[512];
-
-	minos::CompletionHandle completion_handle;
-
-	minos::ThreadHandle completion_thread;
+	IndexMap<minos::FileIdentity, SourceFileByIdEntry> known_files_by_identity;
 };
-
-
-
-static u32 read_completion_thread_proc(void* param) noexcept
-{
-	SourceReader* const reader = static_cast<SourceReader*>(param);
-
-	while (true)
-	{
-		minos::CompletionResult result;
-
-		if (!minos::completion_wait(reader->completion_handle, &result))
-			panic("Could not wait for read completion (0x%X)\n", minos::last_error());
-
-		Read* const read = reinterpret_cast<Read*>(result.overlapped);
-
-		reader->completed_reads.push(reader->reads, static_cast<u32>(read - reader->reads));
-
-		reader->available_read_count.post();
-	}
-}
-
 
 
 SourceReader* create_source_reader(AllocPool* pool) noexcept
 {
 	SourceReader* const reader = static_cast<SourceReader*>(alloc_from_pool(pool, sizeof(SourceReader), alignof(SourceReader)));
 
-	reader->completed_reads.init();
+	reader->known_files_by_path.init(1 << 24, 1 << 10, 1 << 26, 1 << 13);
 
-	reader->unused_reads.init(reader->reads, static_cast<u32>(array_count(reader->reads)));
+	reader->known_files_by_identity.init(1 << 24, 1 << 10, 1 << 26, 1 << 12);
 
-	reader->available_read_count.init(0);
+	minos::FileIdentity dummy_identity{};
 
-	reader->pending_read_count.store(0, std::memory_order_relaxed);
-
-	if (!minos::completion_create(&reader->completion_handle))
-		panic("Could not create read completion handle (0x%X)\n", minos::last_error());
-
-	if (!minos::thread_create(read_completion_thread_proc, reader, range::from_literal_string("Read Completions"), &reader->completion_thread))
-		panic("Could not create read completion thread (0x%X)\n", minos::last_error());
+	// Reserve index 0.
+	(void) reader->known_files_by_identity.value_from(dummy_identity, fnv1a(range::from_object_bytes(&dummy_identity)));
 
 	return reader;
 }
 
-void request_read(SourceReader* reader, Range<char8> filepath, IdentifierId filepath_id) noexcept
+SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath, IdentifierId filepath_id) noexcept
 {
-	// TODO: filepath-based caching goes here
+	// Try lookup via path. This is just approximate, but conservative, meaning
+	// that there *might* be a match here if the file has already been seen,
+	// but there will never be a match if it has not been seen.
 
-	minos::FileHandle filehandle;
+	// TODO: Normalize path to optimize hit rate?
 
-	minos::CompletionInitializer completion_init;
-	completion_init.completion = reader->completion_handle;
-	completion_init.key = 1;
+	SourceFileByPathEntry* const path_entry = reader->known_files_by_path.value_from(filepath, fnv1a(filepath.as_byte_range()));
 
-	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, &completion_init, false, &filehandle))
+	if (path_entry->source_file_index != 0)
+		return { &reader->known_files_by_identity.value_from(path_entry->source_file_index)->data, {} };
+
+	// Try lookup via file identity. This is exact, meaning there is a match
+	// here if and only if the file has already been seen.
+
+	minos::FileHandle file;
+
+	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, nullptr, false, &file))
 		panic("Could not open source file %.*s for reading (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
-
-	// TODO: FileIdentity-based caching goes here
 
 	minos::FileInfo fileinfo;
 
-	if (!minos::file_get_info(filehandle, &fileinfo))
-		panic("Could not get information on source file %.*s (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
+	if (!minos::file_get_info(file, &fileinfo))
+		panic("Could not get info on source file %.*s (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
 
 	if (fileinfo.bytes > UINT32_MAX)
 		panic("Could not read source file %.*s as its size %llu exceeds the supported maximum of %u bytes (< 4gb)\n", static_cast<u32>(filepath.count()), filepath.begin(), fileinfo.bytes, UINT32_MAX);
 
-	Read* const read = reader->unused_reads.pop(reader->reads);
+	SourceFileByIdEntry* const id_entry = reader->known_files_by_identity.value_from(fileinfo.identity, fnv1a(range::from_object_bytes(&fileinfo.identity)));
 
-	if (read == nullptr)
-		panic("Could not allocate read metadata due to too many parallel reads\n");
+	path_entry->source_file_index = reader->known_files_by_identity.index_from(id_entry);
 
-	memset(read, 0, sizeof(*read));
+	if (id_entry->data.file.m_rep != nullptr)
+		return { &id_entry->data, {} };
 
-	read->filehandle = filehandle;
+	// File has not been read in yet. Do so.
 
-	read->bytes = static_cast<u32>(fileinfo.bytes);
+	id_entry->data.file = file;
+	id_entry->data.filepath_id = filepath_id;
+	id_entry->data.ast_root = INVALID_AST_NODE_ID;
 
-	read->filepath_id = filepath_id;
+	char8* const content = static_cast<char8*>(malloc(fileinfo.bytes + 1));
 
-	read->content = static_cast<char8*>(malloc(fileinfo.bytes + 1));
+	if (content == nullptr)
+		panic("Could not allocate buffer for reading source file %.*s (0x%X)\n", static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
 
-	read->content[fileinfo.bytes] = '\0';
+	content[fileinfo.bytes] = '\0';
 
-	if (read->content == nullptr)
-		panic("Could not allocate buffer of %llu bytes for reading source file %.*s into\n", fileinfo.bytes, static_cast<u32>(filepath.count()), filepath.begin());
+	u32 bytes_read;
 
-	if (!minos::file_read_async(filehandle, MutRange{ reinterpret_cast<byte*>(read->content), read->bytes }, &read->overlapped))
-		panic("Could not read source file %.*s (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
+	if (!minos::file_read(file, MutRange{ content, fileinfo.bytes }.as_mut_byte_range(), 0, &bytes_read))
+		panic("Could not read source file %.*s (0x%X)\n", static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
 
-	reader->pending_read_count.fetch_add(1, std::memory_order_relaxed);
+	if (bytes_read != fileinfo.bytes)
+		panic("Could only read %u out of %" PRIu64 " bytes from source file %.*s (0x%X)\n", bytes_read, fileinfo.bytes, static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
+
+	return { &id_entry->data, Range{ content, fileinfo.bytes + 1 } };
 }
 
-[[nodiscard]] bool poll_completed_read(SourceReader* reader, SourceFile* out) noexcept
+void release_read([[maybe_unused]] SourceReader* reader, SourceFileRead file) noexcept
 {
-	Read* const read = reader->completed_reads.pop(reader->reads);
-
-	if (read == nullptr)
-		return false;
-
-	if (!reader->available_read_count.try_claim())
-		panic("Could not acquire token from completed read counter when knowing there is at least one completed read\n");
-
-	if (reader->pending_read_count.fetch_sub(1, std::memory_order_relaxed) == 0)
-		panic("Could not decrement pending read counter when knowing there is at least one pending read\n");
-
-	*out = SourceFile{ read->content, read->bytes + 1, read->filepath_id };
-
-	return true;
-}
-
-[[nodiscard]] bool await_completed_read(SourceReader* reader, SourceFile* out) noexcept
-{
-	if (reader->pending_read_count.load(std::memory_order_relaxed) == 0)
-		return false;
-
-	reader->pending_read_count.fetch_sub(1, std::memory_order_relaxed);
-
-	reader->available_read_count.await();
-
-	Read* const read = reader->completed_reads.pop(reader->reads);
-
-	if (read == nullptr)
-		panic("Could not retrieve completed read when expecting there to be at least one\n");
-
-	*out = SourceFile{ read->content, read->bytes + 1, read->filepath_id };
-
-	return true;
-}
-
-void release_read([[maybe_unused]] SourceReader* reader, SourceFile file) noexcept
-{
-	free(file.raw_begin());
+	free(const_cast<char8*>(file.content.begin()));
 }

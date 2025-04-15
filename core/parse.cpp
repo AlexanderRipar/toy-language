@@ -2482,16 +2482,16 @@ Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers) noexcept
 	return parser;
 }
 
-AstNode* parse(Parser* parser, SourceFile source, bool is_std, AstPool* out) noexcept
+AstNode* parse(Parser* parser, SourceFileRead read, bool is_std, AstPool* out) noexcept
 {
-	ASSERT_OR_IGNORE(source.content().count() != 0 && source.content().end()[-1] == '\0');
+	ASSERT_OR_IGNORE(read.content.count() != 0 && read.content.end()[-1] == '\0');
 
-	const Range<char8> content = source.content();
+	const Range<char8> content = read.content;
 
 	parser->lexer.begin = content.begin();
 	parser->lexer.end = content.end() - 1;
 	parser->lexer.curr = content.begin();
-	parser->lexer.filepath_id = source.filepath_id();
+	parser->lexer.filepath_id = read.source_file->filepath_id;
 	parser->lexer.peek.token = Token::EMPTY;
 	parser->lexer.is_std = is_std;
 
