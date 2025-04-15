@@ -791,7 +791,7 @@ static inline AstBuilder create_ast_builder() noexcept
 	return builder;
 }
 
-static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken first_child, AstTag tag, AstFlag flags) noexcept
+static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken first_child, AstFlag flags, AstTag tag) noexcept
 {
 	static_assert(sizeof(AstNode) % sizeof(u32) == 0);
 

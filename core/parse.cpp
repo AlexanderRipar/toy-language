@@ -1293,7 +1293,7 @@ static void pop_operator(Parser* parser, OperatorStack* stack) noexcept
 	if (top.is_binary)
 		stack->operand_count -= 1;
 
-	const AstBuilderToken operator_token = push_node(&parser->builder, stack->operand_tokens[stack->operand_count - 1], top.node_type, top.node_flags);
+	const AstBuilderToken operator_token = push_node(&parser->builder, stack->operand_tokens[stack->operand_count - 1], top.node_flags, top.node_type);
 
 	stack->operand_tokens[stack->operand_count - 1] = operator_token;
 }
@@ -1476,7 +1476,7 @@ static AstBuilderToken parse_return(Parser* parser) noexcept
 
 	const AstBuilderToken value_token = parse_expr(parser, true);
 
-	return push_node(&parser->builder, value_token, AstTag::Return, AstFlag::EMPTY);
+	return push_node(&parser->builder, value_token, AstFlag::EMPTY, AstTag::Return);
 }
 
 static AstBuilderToken parse_leave(Parser* parser) noexcept
@@ -1485,7 +1485,7 @@ static AstBuilderToken parse_leave(Parser* parser) noexcept
 
 	skip(&parser->lexer);
 
-	return push_node(&parser->builder, AstBuilder::NO_CHILDREN, AstTag::Leave, AstFlag::EMPTY);
+	return push_node(&parser->builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, AstTag::Leave);
 }
 
 static AstBuilderToken parse_yield(Parser* parser) noexcept
@@ -1496,7 +1496,7 @@ static AstBuilderToken parse_yield(Parser* parser) noexcept
 
 	const AstBuilderToken value_token = parse_expr(parser, true);
 
-	return push_node(&parser->builder, value_token, AstTag::Yield, AstFlag::EMPTY);
+	return push_node(&parser->builder, value_token, AstFlag::EMPTY, AstTag::Yield);
 }
 
 static AstBuilderToken parse_top_level_expr(Parser* parser, bool is_definition_optional_value, bool* out_is_definition) noexcept
@@ -1537,7 +1537,7 @@ static AstBuilderToken parse_where(Parser* parser) noexcept
 		parse_definition(parser, true, false);
 	}
 
-	return push_node(&parser->builder, first_child_token, AstTag::Where, AstFlag::EMPTY);
+	return push_node(&parser->builder, first_child_token, AstFlag::EMPTY, AstTag::Where);
 }
 
 static AstBuilderToken parse_if(Parser* parser) noexcept
@@ -1577,7 +1577,7 @@ static AstBuilderToken parse_if(Parser* parser) noexcept
 		parse_expr(parser, true);
 	}
 
-	return push_node(&parser->builder, condition_token, AstTag::If, flags);
+	return push_node(&parser->builder, condition_token, flags, AstTag::If);
 }
 
 static AstBuilderToken try_parse_foreach(Parser* parser) noexcept
@@ -1652,7 +1652,7 @@ static AstBuilderToken try_parse_foreach(Parser* parser) noexcept
 		parse_expr(parser, true);
 	}
 
-	return push_node(&parser->builder, first_child_token, AstTag::ForEach, flags);
+	return push_node(&parser->builder, first_child_token, flags, AstTag::ForEach);
 }
 
 static AstBuilderToken parse_for(Parser* parser) noexcept
@@ -1704,7 +1704,7 @@ static AstBuilderToken parse_for(Parser* parser) noexcept
 		parse_expr(parser, true);
 	}
 
-	return push_node(&parser->builder, first_child_token, AstTag::For, flags);
+	return push_node(&parser->builder, first_child_token, flags, AstTag::For);
 }
 
 static AstBuilderToken parse_case(Parser* parser) noexcept
@@ -1722,7 +1722,7 @@ static AstBuilderToken parse_case(Parser* parser) noexcept
 
 	parse_expr(parser, true);
 
-	return push_node(&parser->builder, first_child_token, AstTag::Case, AstFlag::EMPTY);
+	return push_node(&parser->builder, first_child_token, AstFlag::EMPTY, AstTag::Case);
 }
 
 static AstBuilderToken parse_switch(Parser* parser) noexcept
@@ -1759,7 +1759,7 @@ static AstBuilderToken parse_switch(Parser* parser) noexcept
 			break;
 	}
 
-	return push_node(&parser->builder, first_child_token, AstTag::Switch, flags);
+	return push_node(&parser->builder, first_child_token, flags, AstTag::Switch);
 }
 
 static AstBuilderToken parse_expects(Parser* parser) noexcept
@@ -1780,7 +1780,7 @@ static AstBuilderToken parse_expects(Parser* parser) noexcept
 		parse_expr(parser, false);
 	}
 
-	return push_node(&parser->builder, first_child_token, AstTag::Expects, AstFlag::EMPTY);
+	return push_node(&parser->builder, first_child_token, AstFlag::EMPTY, AstTag::Expects);
 }
 
 static AstBuilderToken parse_ensures(Parser* parser) noexcept
@@ -1801,7 +1801,7 @@ static AstBuilderToken parse_ensures(Parser* parser) noexcept
 		parse_expr(parser, false);
 	}
 
-	return push_node(&parser->builder, first_child_token, AstTag::Ensures, AstFlag::EMPTY);
+	return push_node(&parser->builder, first_child_token, AstFlag::EMPTY, AstTag::Ensures);
 }
 
 static AstBuilderToken parse_func(Parser* parser) noexcept
@@ -1839,7 +1839,7 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 			source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' or '%s' after function parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
 	}
 
-	const AstBuilderToken first_child_token = push_node(&parser->builder, first_parameter_token, AstTag::ParameterList, AstFlag::EMPTY);
+	const AstBuilderToken first_child_token = push_node(&parser->builder, first_parameter_token, AstFlag::EMPTY, AstTag::ParameterList);
 
 	skip(&parser->lexer);
 
@@ -1951,7 +1951,7 @@ static AstBuilderToken parse_trait(Parser* parser) noexcept
 	if (first_child_token == AstBuilder::NO_CHILDREN)
 		first_child_token = body_token;
 
-	return push_node(&parser->builder, first_child_token, AstTag::Trait, flags);
+	return push_node(&parser->builder, first_child_token, flags, AstTag::Trait);
 }
 
 static AstBuilderToken parse_impl(Parser* parser) noexcept
@@ -1987,7 +1987,7 @@ static AstBuilderToken parse_impl(Parser* parser) noexcept
 
 	parse_expr(parser, true);
 
-	return push_node(&parser->builder, first_child_token, AstTag::Impl, flags);
+	return push_node(&parser->builder, first_child_token, flags, AstTag::Impl);
 }
 
 static AstBuilderToken parse_definition_or_impl(Parser* parser, bool* out_is_definition) noexcept
@@ -2065,7 +2065,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, AstTag::Wildcard, AstFlag::EMPTY);
+				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, AstTag::Wildcard);
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2100,7 +2100,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 					}
 				}
 
-				const AstBuilderToken composite_token = push_node(&parser->builder, first_child_token, AstTag::CompositeInitializer, AstFlag::EMPTY);
+				const AstBuilderToken composite_token = push_node(&parser->builder, first_child_token, AstFlag::EMPTY, AstTag::CompositeInitializer);
 
 				push_operand(parser, &stack, composite_token);
 			}
@@ -2135,7 +2135,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 					}
 				}
 
-				const AstBuilderToken array_token = push_node(&parser->builder, first_child_token, AstTag::ArrayInitializer, AstFlag::EMPTY);
+				const AstBuilderToken array_token = push_node(&parser->builder, first_child_token, AstFlag::EMPTY, AstTag::ArrayInitializer);
 				
 				push_operand(parser, &stack, array_token);
 			}
@@ -2154,7 +2154,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 
 				// TODO: Work out how to make this into an infix operator or something
 				// Use pop_to_precedence and then manually replace top
-				const AstBuilderToken array_token = push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], AstTag::OpTypeArray, AstFlag::EMPTY);
+				const AstBuilderToken array_token = push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], AstFlag::EMPTY, AstTag::OpTypeArray);
 
 				stack.operand_tokens[stack.operand_count - 1] = array_token;
 			}
@@ -2268,7 +2268,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, AstTag::Builtin, static_cast<AstFlag>(lexeme.integer_value));
+				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, static_cast<AstFlag>(lexeme.integer_value), AstTag::Builtin);
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2340,7 +2340,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 					}
 				}
 
-				const AstBuilderToken call_token = push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], AstTag::Call, AstFlag::EMPTY);
+				const AstBuilderToken call_token = push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], AstFlag::EMPTY, AstTag::Call);
 				
 				stack.operand_tokens[stack.operand_count - 1] = call_token;
 			}
@@ -2370,7 +2370,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 				if (lexeme.token != Token::BracketR)
 					source_error(parser->lexer.errors, lexeme.source_id, "Expected ']' after array index expression, but got '%s'\n", token_name(lexeme.token));
 
-				const AstBuilderToken index_token = push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], AstTag::OpArrayIndex, AstFlag::EMPTY);
+				const AstBuilderToken index_token = push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], AstFlag::EMPTY, AstTag::OpArrayIndex);
 				
 				stack.operand_tokens[stack.operand_count - 1] = index_token;
 			}
@@ -2398,7 +2398,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 
 				parse_expr(parser, false);
 
-				const AstBuilderToken catch_token = push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], AstTag::Catch, flags);
+				const AstBuilderToken catch_token = push_node(&parser->builder, stack.operand_tokens[stack.operand_count - 1], flags, AstTag::Catch);
 
 				stack.operand_tokens[stack.operand_count - 1] = catch_token;
 

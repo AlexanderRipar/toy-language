@@ -24,15 +24,15 @@ struct Typechecker
 
 static AstBuilderToken push_std_def(AstBuilder* builder, IdentifierPool* identifiers) noexcept
 {
-	const AstBuilderToken import_builtin_token = push_node(builder, AstBuilder::NO_CHILDREN, AstTag::Builtin, static_cast<AstFlag>(Builtin::Import));
+	const AstBuilderToken import_builtin_token = push_node(builder, AstBuilder::NO_CHILDREN, static_cast<AstFlag>(Builtin::Import), AstTag::Builtin);
 
 	push_node(builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, ValStringData{ id_from_identifier(identifiers, range::from_literal_string("std.evl")) });
 
-	const AstBuilderToken true_builtin_token = push_node(builder, AstBuilder::NO_CHILDREN, AstTag::Builtin, static_cast<AstFlag>(Builtin::True));
+	const AstBuilderToken true_builtin_token = push_node(builder, AstBuilder::NO_CHILDREN, static_cast<AstFlag>(Builtin::True), AstTag::Builtin);
 
-	push_node(builder, true_builtin_token, AstTag::Call, AstFlag::EMPTY);
+	push_node(builder, true_builtin_token, AstFlag::EMPTY, AstTag::Call);
 
-	const AstBuilderToken import_call_token = push_node(builder, import_builtin_token, AstTag::Call, AstFlag::EMPTY);
+	const AstBuilderToken import_call_token = push_node(builder, import_builtin_token, AstFlag::EMPTY, AstTag::Call);
 
 	return push_node(builder, import_call_token, AstFlag::EMPTY, DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")), INVALID_TYPE_ID, INVALID_VALUE_ID });
 }
@@ -43,7 +43,7 @@ static void push_std_use(AstBuilder* builder, IdentifierPool* identifiers, Range
 
 	push_node(builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, ValIdentifierData{ id_from_identifier(identifiers, identifier) });
 
-	const AstBuilderToken op_member_token = push_node(builder, std_identifier_token, AstTag::OpMember, AstFlag::EMPTY);
+	const AstBuilderToken op_member_token = push_node(builder, std_identifier_token, AstFlag::EMPTY, AstTag::OpMember);
 	
 	push_node(builder, op_member_token, AstFlag::Definition_IsUse, DefinitionData{ id_from_identifier(identifiers, identifier), INVALID_TYPE_ID, INVALID_VALUE_ID });
 }
