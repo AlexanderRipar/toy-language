@@ -24,28 +24,28 @@ struct Typechecker
 
 static AstBuilderToken push_std_def(AstBuilder* builder, IdentifierPool* identifiers) noexcept
 {
-	const AstBuilderToken import_builtin_token = push_node(builder, AstBuilder::NO_CHILDREN, static_cast<AstFlag>(Builtin::Import), AstTag::Builtin);
+	const AstBuilderToken import_builtin_token = push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, static_cast<AstFlag>(Builtin::Import), AstTag::Builtin);
 
-	push_node(builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, ValStringData{ id_from_identifier(identifiers, range::from_literal_string("std.evl")) });
+	push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, ValStringData{ id_from_identifier(identifiers, range::from_literal_string("std.evl")) });
 
-	const AstBuilderToken true_builtin_token = push_node(builder, AstBuilder::NO_CHILDREN, static_cast<AstFlag>(Builtin::True), AstTag::Builtin);
+	const AstBuilderToken true_builtin_token = push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, static_cast<AstFlag>(Builtin::True), AstTag::Builtin);
 
-	push_node(builder, true_builtin_token, AstFlag::EMPTY, AstTag::Call);
+	push_node(builder, true_builtin_token, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::Call);
 
-	const AstBuilderToken import_call_token = push_node(builder, import_builtin_token, AstFlag::EMPTY, AstTag::Call);
+	const AstBuilderToken import_call_token = push_node(builder, import_builtin_token, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::Call);
 
-	return push_node(builder, import_call_token, AstFlag::EMPTY, DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")), INVALID_TYPE_ID, INVALID_VALUE_ID });
+	return push_node(builder, import_call_token, INVALID_SOURCE_ID, AstFlag::EMPTY, DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")), INVALID_TYPE_ID, INVALID_VALUE_ID });
 }
 
 static void push_std_use(AstBuilder* builder, IdentifierPool* identifiers, Range<char8> identifier) noexcept
 {
-	const AstBuilderToken std_identifier_token = push_node(builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
+	const AstBuilderToken std_identifier_token = push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
 
-	push_node(builder, AstBuilder::NO_CHILDREN, AstFlag::EMPTY, ValIdentifierData{ id_from_identifier(identifiers, identifier) });
+	push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, ValIdentifierData{ id_from_identifier(identifiers, identifier) });
 
-	const AstBuilderToken op_member_token = push_node(builder, std_identifier_token, AstFlag::EMPTY, AstTag::OpMember);
+	const AstBuilderToken op_member_token = push_node(builder, std_identifier_token, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::OpMember);
 	
-	push_node(builder, op_member_token, AstFlag::Definition_IsUse, DefinitionData{ id_from_identifier(identifiers, identifier), INVALID_TYPE_ID, INVALID_VALUE_ID });
+	push_node(builder, op_member_token, INVALID_SOURCE_ID, AstFlag::Definition_IsUse, DefinitionData{ id_from_identifier(identifiers, identifier), INVALID_TYPE_ID, INVALID_VALUE_ID });
 }
 
 static AstNode* create_builtin_ast(AstBuilder* builder, IdentifierPool* identifiers, AstPool* asts) noexcept
@@ -72,7 +72,7 @@ static AstNode* create_builtin_ast(AstBuilder* builder, IdentifierPool* identifi
 
 	push_std_use(builder, identifiers, range::from_literal_string("type"));
 
-	push_node(builder, first_child_token, AstFlag::EMPTY, FileData{ BlockData{ 11, INVALID_SCOPE_ID } });
+	push_node(builder, first_child_token, INVALID_SOURCE_ID, AstFlag::EMPTY, FileData{ BlockData{ 11, INVALID_SCOPE_ID } });
 
 	return complete_ast(builder, asts);
 }

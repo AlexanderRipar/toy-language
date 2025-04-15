@@ -791,7 +791,7 @@ static inline AstBuilder create_ast_builder() noexcept
 	return builder;
 }
 
-static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken first_child, AstFlag flags, AstTag tag) noexcept
+static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag) noexcept
 {
 	static_assert(sizeof(AstNode) % sizeof(u32) == 0);
 
@@ -802,12 +802,13 @@ static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken fir
 	node->flags = flags;
 	node->data_dwords = sizeof(AstNode) / sizeof(u32);
 	node->internal_flags = first_child == AstBuilder::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
+	node->source_id = source_id;
 
 	return { static_cast<u32>(reinterpret_cast<u32*>(node) - builder->scratch.begin()) };
 }
 
 template<typename T>
-static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken first_child, AstFlag flags, T attachment) noexcept
+static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken first_child, SourceId source_id, AstFlag flags, T attachment) noexcept
 {
 	static_assert(sizeof(AstNode) % sizeof(u32) == 0);
 	
@@ -822,6 +823,7 @@ static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken fir
 	node->flags = flags;
 	node->data_dwords = required_dwords;
 	node->internal_flags = first_child == AstBuilder::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
+	node->source_id = source_id;
 
 	memcpy(node + 1, &attachment, sizeof(T));
 
