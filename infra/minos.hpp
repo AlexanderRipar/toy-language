@@ -151,7 +151,7 @@ namespace minos
 	
 	struct FileIdentity
 	{
-		u64 volume_serial;
+		u32 volume_serial;
 
 		u64 index;
 	};
