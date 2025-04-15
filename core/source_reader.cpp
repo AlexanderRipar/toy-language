@@ -153,7 +153,7 @@ static SourceLocation build_source_location(Range<char8> filepath, Range<char8> 
 	{
 		if (content[i] == '\n')
 		{
-			line_begin = i;
+			line_begin = i + 1;
 
 			line_number += 1;
 		}
@@ -161,7 +161,7 @@ static SourceLocation build_source_location(Range<char8> filepath, Range<char8> 
 
 	u32 line_end = line_begin;
 
-	while (line_begin < filepath.count() && filepath[line_end] != '\n' && filepath[line_end] != '\r')
+	while (line_end < content.count() && content[line_end] != '\n' && content[line_end] != '\r')
 		line_end += 1;
 
 
@@ -321,7 +321,7 @@ SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id)
 {
 	ASSERT_OR_IGNORE(reader->source_file_count != 0);
 
-	ASSERT_OR_IGNORE(reader->curr_source_id_base < source_id.m_rep);
+	ASSERT_OR_IGNORE(source_id.m_rep < reader->curr_source_id_base);
 
 	SourceFileByIdEntry* const entries = reader->known_files_by_identity.value_from(0);;
 
