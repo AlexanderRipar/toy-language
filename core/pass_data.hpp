@@ -96,6 +96,7 @@ enum class Token : u8
 		KwdEval,              // eval
 		KwdTry,               // try
 		KwdDefer,             // defer
+		KwdDistinct,          // distinct
 		UOpAddr,              // $
 		UOpNot,               // ~
 		UOpLogNot,            // !
@@ -338,6 +339,7 @@ enum class AstTag : u8
 	UOpEval,
 	UOpTry,
 	UOpDefer,
+	UOpDistinct,
 	UOpAddr,
 	UOpDeref,
 	UOpBitNot,

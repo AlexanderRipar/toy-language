@@ -14,6 +14,8 @@ let the_value = 1
 
 let return_value = the_value
 
+(-)
+
 let TypeIdentity = func(t : type) -> type = t
 
 // let x: TypeIdentity(s32) = 1
