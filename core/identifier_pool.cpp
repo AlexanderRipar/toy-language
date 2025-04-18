@@ -60,6 +60,11 @@ IdentifierPool* create_identifier_pool(AllocPool* pool) noexcept
 	return identifiers;
 }
 
+void release_identifier_pool(IdentifierPool* identifiers) noexcept
+{
+	identifiers->map.release();
+}
+
 IdentifierEntry* identifier_entry_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept
 {
 	return identifiers->map.value_from(identifier, fnv1a(identifier.as_byte_range()));
