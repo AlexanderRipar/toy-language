@@ -212,7 +212,7 @@ public:
 
 	constexpr AttachmentRange(const T* begin, const T* end, Attach attachment) noexcept :
 		m_begin{ begin },
-		m_count{ end - begin },
+		m_count{ static_cast<u32>(end - begin) },
 		m_attachment{ attachment }
 	{
 		ASSERT_OR_IGNORE(end - begin <= UINT32_MAX);
