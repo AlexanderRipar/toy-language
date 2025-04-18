@@ -20,6 +20,7 @@ set(INFRA_SOURCES
 	infra/common.hpp
 	infra/common.cpp
 	infra/hash.hpp
+	infra/inplace_sort.hpp
 	infra/minos.hpp
 	infra/minos_win32.cpp
 	infra/minos_linux.cpp
