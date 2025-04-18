@@ -276,7 +276,7 @@ IdentifierEntry* identifier_entry_from_id(IdentifierPool* identifiers, Identifie
 
 struct ErrorSink;
 
-[[nodiscard]] ErrorSink* create_error_sink(AllocPool* pool, SourceReader* reader) noexcept;
+[[nodiscard]] ErrorSink* create_error_sink(AllocPool* pool, SourceReader* reader, IdentifierPool* identifiers) noexcept;
 
 void release_error_sink(ErrorSink* errors) noexcept;
 
@@ -1287,13 +1287,13 @@ struct Member2
 	s64 offset;
 };
 
-struct alignas(u64) TypeEntry2
+struct alignas(u64) TypeStructure2
 {
 	TypeTag tag;
 
 	u16 bytes;
 
-	u32 inline_data;
+	u32 m_hash;
 
 	#if COMPILER_MSVC
 	#pragma warning(push)
@@ -1313,19 +1313,53 @@ struct alignas(u64) TypeEntry2
 	#elif COMPILER_GCC
 	#pragma GCC diagnostic pop
 	#endif
+
+	static constexpr u32 stride() noexcept
+	{
+		return 8;
+	}
+
+	static u32 required_strides(AttachmentRange<byte, TypeTag> key) noexcept
+	{
+		return static_cast<u32>((offsetof(TypeStructure2, data) + key.count() + stride() - 1) / stride());
+	}
+
+	u32 used_strides() const noexcept
+	{
+		return static_cast<u32>((offsetof(TypeStructure2, data) + bytes + stride() - 1) / stride());
+	}
+
+	u32 hash() const noexcept
+	{
+		return m_hash;
+	}
+
+	bool equal_to_key(AttachmentRange<byte, TypeTag> key, u32 key_hash) const noexcept
+	{
+		return m_hash == key_hash && key.attachment() == tag && key.count() == bytes && memcmp(key.begin(), data, key.count()) == 0;
+	}
+
+	void init(AttachmentRange<byte, TypeTag> key, u32 key_hash) noexcept
+	{
+		ASSERT_OR_IGNORE(key.count() <= UINT16_MAX);
+
+		m_hash = key_hash;
+
+		bytes = static_cast<u16>(key.count());
+
+		tag = key.attachment();
+
+		memcpy(data, key.begin(), key.count());
+	}
 };
 
 struct SimpleType2
 {
-	static constexpr bool IS_INLINED = true;
-
 	u32 unused_ = 0;
 };
 
 struct ReferenceType2
 {
-	static constexpr bool IS_INLINED = true;
-
 	u32 is_mut : 1;
 
 	u32 is_opt : 1;
@@ -1337,10 +1371,8 @@ struct ReferenceType2
 
 struct IntegerType2
 {
-	static constexpr bool IS_INLINED = true;
-
 	u16 bits;
-	
+
 	bool is_signed;
 
 	u8 unused_ = 0;
@@ -1348,8 +1380,6 @@ struct IntegerType2
 
 struct FloatType2
 {
-	static constexpr bool IS_INLINED = true;
-
 	u16 bits;
 
 	u16 unused_ = 0;
@@ -1357,18 +1387,7 @@ struct FloatType2
 
 struct ArrayType2
 {
-	static constexpr bool IS_INLINED = false;
-
-	// TypeId element_type_id stored in inline_data
-
-	u64 element_count;
-};
-
-struct ArrayTypeInitializer2
-{
-	u32 unused_;
-
-	TypeId2 element_type_id;
+	TypeId2 element_type;
 
 	u64 element_count;
 };
@@ -1381,15 +1400,11 @@ struct CompositeTypeHeader2
 
 	u32 align;
 
-	u16 member_count;
-
-	bool is_complete;
+	u32 member_count;
 };
 
 struct CompositeType2
 {
-	static constexpr bool IS_INLINED = false;
-
 	CompositeTypeHeader2 header;
 
 	#if COMPILER_MSVC
@@ -1425,8 +1440,6 @@ struct FuncTypeHeader2
 
 struct FuncType2
 {
-	static constexpr bool IS_INLINED = false;
-
 	FuncTypeHeader2 header;
 
 	#if COMPILER_MSVC
@@ -1449,6 +1462,8 @@ struct FuncType2
 	#endif
 };
 
+
+
 static constexpr TypeId2 INVALID_TYPE_ID_2 = { 0 };
 
 static inline bool operator==(TypeId2 lhs, TypeId2 rhs) noexcept
@@ -1461,40 +1476,35 @@ static inline bool operator!=(TypeId2 lhs, TypeId2 rhs) noexcept
 	return lhs.rep != rhs.rep;
 }
 
-static inline Range<byte> array_type_initializer_bytes(const ArrayTypeInitializer2* initializer) noexcept
-{
-	return Range<byte>{ reinterpret_cast<const byte*>(&initializer->element_type_id), 12 };
-}
-
 template<typename T>
-static inline T* data(TypeEntry2* entry) noexcept
+static inline T* data(TypeStructure2* entry) noexcept
 {
-	static_assert(!T::IS_INLINED || sizeof(T) <= sizeof(entry->inline_data));
-
-	if constexpr (T::IS_INLINED)
-		return reinterpret_cast<T*>(&entry->inline_data);
-	else
-		return reinterpret_cast<T*>(entry->data);
+	return reinterpret_cast<T*>(&entry->data);
 }
 
-TypePool2* create_type_pool2(AllocPool* alloc) noexcept;
+TypePool2* create_type_pool2(AllocPool* alloc, ErrorSink* errors) noexcept;
 
 void release_type_pool2(TypePool2* types) noexcept;
 
-TypeEntry2* type_entry_from_primitive_type(TypePool2* types, TypeTag tag, Range<byte> bytes) noexcept;
+TypeId2 primitive_type(TypePool2* types, TypeTag tag, Range<byte> data) noexcept;
 
-TypeEntry2* type_entry_from_id(TypePool2* types, TypeId id) noexcept;
+TypeId2 alias_type(TypePool2* types, TypeId2 aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept;
 
-TypeId2 id_from_type_entry(TypePool2* types, TypeEntry2* entry) noexcept;
+OptPtr<TypeStructure2> type_structure_from_id(TypePool2* types, TypeId2 type_id) noexcept;
 
-TypeBuilder2* create_type_builder(TypePool2* types) noexcept;
+TypeBuilder2* create_type_builder(TypePool2* types, SourceId source_id) noexcept;
 
-void add_type_member(TypeBuilder2* builder, Member2 member) noexcept;
+void add_type_builder_member(TypeBuilder2* builder, Member2 member) noexcept;
 
-TypeEntry2* complete_type(TypeBuilder2* builder, u64 size, u32 align, u64 stride) noexcept;
+TypeId2 complete_type_builder(TypeBuilder2* builder, u64 size, u32 align, u64 stride) noexcept;
 
+[[nodiscard]] bool type_equality(TypePool2* types, TypeId2 type_id_a, TypeId2 type_id_b) noexcept;
 
+[[nodiscard]] bool type_can_cast_from_to(TypePool2* types, TypeId2 from_type_id, TypeId2 to_type_id) noexcept;
 
+[[nodiscard]] TypeId2 common_type(TypePool2* types, TypeId2 type_id_a, TypeId2 type_id_b) noexcept;
+
+[[nodiscard]] TypeId2 type_get_member(TypePool2* types, TypeId2 type_id, IdentifierId member_name) noexcept;
 
 
 struct ValuePool;
