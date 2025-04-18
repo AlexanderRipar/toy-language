@@ -38,6 +38,7 @@ static constexpr const char8* const TOKEN_NAMES[] = {
 	"eval",
 	"try",
 	"defer",
+	"distinct",
 	"$",
 	"~",
 	"!",

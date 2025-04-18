@@ -55,6 +55,13 @@ struct RawLexeme
 	RawLexeme(Token token, f64 value) noexcept : token{ token }, float_value{ value } {}
 };
 
+// Operator Description Tuple. Consists of:
+//  - `AstTag` with the node type
+//  - `AstFlag` with the node flags
+//  - `u8` precedence (low to high)
+//  - `u8` whether it's right-associative
+//  - `u8` is_binary whether it's a binary operator
+//         (or unary, no ternary operators anywhere)
 struct OperatorDesc
 {
 	AstTag node_type;
@@ -134,11 +141,13 @@ static constexpr char8 BUILTIN_NAMES[][8] = {
 	{ 't', 'b', '_', 'c', 'o', 'm', 'p', 'l'},
 };
 
+
 static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
 	{ AstTag::INVALID,            AstFlag::EMPTY,      10, false, true  }, // ( - Opening Parenthesis
 	{ AstTag::UOpEval,            AstFlag::EMPTY,       8, false, false }, // eval
 	{ AstTag::UOpTry,             AstFlag::EMPTY,       8, false, false }, // try
 	{ AstTag::UOpDefer,           AstFlag::EMPTY,       8, false, false }, // defer
+	{ AstTag::UOpDistinct,        AstFlag::EMPTY,       2, false, false }, // distinct
 	{ AstTag::UOpAddr,            AstFlag::EMPTY,       2, false, false }, // $
 	{ AstTag::UOpBitNot,          AstFlag::EMPTY,       2, false, false }, // ~
 	{ AstTag::UOpLogNot,          AstFlag::EMPTY,       2, false, false }, // !

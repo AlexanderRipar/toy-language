@@ -33,6 +33,7 @@ static constexpr AttachmentRange<char8, Token> KEYWORDS[] = {
 	range::from_literal_string("return",  Token::KwdReturn),
 	range::from_literal_string("leave",  Token::KwdLeave),
 	range::from_literal_string("yield",  Token::KwdYield),
+	range::from_literal_string("distinct", Token::KwdDistinct)
 };
 
 struct IdentifierPool

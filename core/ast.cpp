@@ -38,6 +38,7 @@ constexpr inline const char8* const NODE_TYPE_NAMES[] = {
 	"UOpEval",
 	"UOpTry",
 	"UOpDefer",
+	"UOpDistinct",
 	"UOpAddr",
 	"UOpDeref",
 	"UOpBitNot",
