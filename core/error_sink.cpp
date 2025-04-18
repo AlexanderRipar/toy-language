@@ -2,9 +2,21 @@
 
 #include <cstdio>
 
-[[nodiscard]] ErrorSink* create_error_sink([[maybe_unused]] AllocPool* pool, SourceReader* reader) noexcept
+struct ErrorSink
 {
-	return reinterpret_cast<ErrorSink*>(reader);
+	SourceReader* reader;
+
+	IdentifierPool* identifiers;
+};
+
+[[nodiscard]] ErrorSink* create_error_sink(AllocPool* alloc, SourceReader* reader, IdentifierPool* identifiers) noexcept
+{
+	ErrorSink* const errors = static_cast<ErrorSink*>(alloc_from_pool(alloc, sizeof(ErrorSink), alignof(ErrorSink)));
+
+	errors->reader = reader;
+	errors->identifiers = identifiers;
+
+	return errors;
 }
 
 void release_error_sink([[maybe_unused]] ErrorSink* errors) noexcept

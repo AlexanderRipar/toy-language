@@ -71,7 +71,7 @@ s32 main(s32 argc, const char8** argv)
 
 		SourceReader* const reader = create_source_reader(alloc);
 
-		ErrorSink* const errors = create_error_sink(alloc, reader);
+		ErrorSink* const errors = create_error_sink(alloc, reader, identifiers);
 
 		Parser* const parser = create_parser(alloc, identifiers, errors);
 
