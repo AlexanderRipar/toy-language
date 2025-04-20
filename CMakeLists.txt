@@ -39,7 +39,7 @@ set(CORE_SOURCES
 	core/pass_data.hpp
 	core/source_reader.cpp
 	core/token.cpp
-	core/type_pool2.cpp
+	core/type_pool.cpp
 	core/ast_attach.hpp
 	core/ast_helper.hpp
 )
