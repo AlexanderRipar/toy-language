@@ -25,7 +25,7 @@ struct TypeName
 	static constexpr u32 STRUCTURE_INDEX_INDIRECT = 2;
 
 	// This is used to initialize a `TypeName` entry that will never match any
-	// other in `create_type_pool2`. It must not be used as the value of the
+	// other in `create_type_pool`. It must not be used as the value of the
 	// `structure_index_kind` of any other `TypeName`.
 	static constexpr u32 INVALID_STRUCTURE_INDEX = 3;
 
@@ -347,7 +347,7 @@ static TypeBuilder* get_deferred_type_builder(TypePool* types, TypeName* name) n
 
 
 
-TypePool* create_type_pool2(AllocPool* alloc, ErrorSink* errors) noexcept
+TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept
 {
 	TypePool* const types = static_cast<TypePool*>(alloc_from_pool(alloc, sizeof(TypePool), alignof(TypePool)));
 

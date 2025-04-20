@@ -1199,7 +1199,7 @@ template<typename T>
 	return reinterpret_cast<const T*>(&entry->data);
 }
 
-[[nodiscard]] TypePool* create_type_pool2(AllocPool* alloc, ErrorSink* errors) noexcept;
+[[nodiscard]] TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept;
 
 void release_type_pool2(TypePool* types) noexcept;
 
