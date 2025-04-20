@@ -649,7 +649,7 @@ static void push_node_with_double_binary_tree_and_complete_reverses_tree() noexc
 }
 
 
-void ast2_tests() noexcept
+void ast_tests() noexcept
 {
 	TEST_MODULE_BEGIN;
 

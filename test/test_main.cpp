@@ -15,7 +15,7 @@ bool g_ignore_debugbreaks;
 
 void minos_tests() noexcept;
 
-void ast2_tests() noexcept;
+void ast_tests() noexcept;
 
 void type_pool_tests() noexcept;
 
@@ -589,7 +589,7 @@ s32 main(s32 argc, const char8** argv) noexcept
 
 	minos_tests();
 
-	ast2_tests();
+	ast_tests();
 
 	type_pool_tests();
 
