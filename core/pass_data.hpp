@@ -1,5 +1,5 @@
-#ifndef PARSEDATA_INCLUDE_GUARD
-#define PARSEDATA_INCLUDE_GUARD
+#ifndef PASS_DATA_INCLUDE_GUARD
+#define PASS_DATA_INCLUDE_GUARD
 
 #include "../infra/common.hpp"
 #include "../infra/container.hpp"
@@ -1210,4 +1210,4 @@ struct Parser;
 
 [[nodiscard]] AstBuilder* get_ast_builder(Parser* parser) noexcept;
 
-#endif // PARSEDATA_INCLUDE_GUARD
+#endif // PASS_DATA_INCLUDE_GUARD
