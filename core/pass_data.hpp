@@ -979,7 +979,7 @@ struct IncompleteMemberIterator
 	u32 curr;
 };
 
-struct Definition2
+struct Definition
 {
 	IdentifierId name;
 
@@ -998,7 +998,7 @@ struct Definition2
 
 struct Member2
 {
-	Definition2 definition;
+	Definition definition;
 
 	s64 offset;
 };
