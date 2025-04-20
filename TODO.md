@@ -3,17 +3,9 @@
 ## Maintenance / Get To Know the Codebase
 
 - Refactor member functions to free functions for non-container structs.
-- Add a field of type `TypeId` to `AstNode` (defined in pass_data.hpp).
-  This likely requires reworking at least test/ast_tests.cpp to adjust for the
-  relevant offsets. If there are any other functions that explicitly rely on
-  the current size of an `AstNode`, make them as flexible as viable to future
-  changes.
 - Remove usage of `TypePool`, replacing it with `TypePool2`. Once this is done,
   rename all references to `TypePool2` (including the filenames of
   type_pool2.cpp and test/type_pool2_tests.cpp) by removing the `2`.
-- Make test/CMakeLists.txt not duplicate all the dependencies declared in root
-  CMakeLists.txt. This should be possible by using a variable which is them
-  expanded in the `add_executable` call in both files.
 - Find a way to represent a source location as a 32-bit id for use in `AstNode`.
   One possible approach to this could be to make these file-specific, storing
   the filename only in `AstTag::File` nodes, and then a byte offset into the
@@ -33,7 +25,7 @@
   - Add tests for infra/container.hpp, including `ReservedVec` and `IndexMap`.
     These should definitely include all relevant growth operations for the
 	respective containers.
-  - Add tests for read.cpp
+  - Add tests for source_reader.cpp
   - Add tests for parse.cpp
   - Add tests for identifier_pool.cpp
   - Add tests for config.cpp
