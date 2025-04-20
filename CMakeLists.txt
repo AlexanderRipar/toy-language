@@ -31,7 +31,6 @@ set(INFRA_SOURCES
 
 set(CORE_SOURCES
 	core/error_sink.cpp
-	core/config.hpp
 	core/config.cpp
 	core/ast_pool.cpp
 	core/ast.cpp

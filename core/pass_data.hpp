@@ -155,6 +155,33 @@ const char8* token_name(Token token) noexcept;
 
 
 
+struct Config
+{
+	struct
+	{
+		Range<char8> filepath = range::from_literal_string("main.evl");
+
+		Range<char8> symbol = range::from_literal_string("main");
+	} entrypoint;
+
+	struct
+	{
+		Range<char8> filepath = range::from_literal_string("std.evl");
+	} std;
+
+	void* m_heap_ptr;
+};
+
+Config* create_config(AllocPool* alloc, Range<char8> filepath) noexcept;
+
+void release_config(Config* config) noexcept;
+
+void print_config(const Config* config) noexcept;
+
+void print_config_help(u32 depth = 0) noexcept;
+
+
+
 struct IdentifierPool;
 
 struct IdentifierId

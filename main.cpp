@@ -1,4 +1,3 @@
-#include "core/config.hpp"
 #include "core/pass_data.hpp"
 #include "core/ast_helper.hpp"
 #include "diag/diag.hpp"
@@ -24,11 +23,11 @@ s32 main(s32 argc, const char8** argv)
 	}
 	else if (argc == 3 && strcmp(argv[1] , "-config") == 0)
 	{
-		Config config = read_config(range::from_cstring(argv[2]));
-
-		print_config(&config);
-
 		AllocPool* const alloc = create_alloc_pool(1u << 24, 1u << 18);
+
+		Config* const config = create_config(alloc, range::from_cstring(argv[2]));
+
+		print_config(config);
 
 		IdentifierPool* const identifiers = create_identifier_pool(alloc);
 
@@ -40,7 +39,7 @@ s32 main(s32 argc, const char8** argv)
 
 		AstPool* const asts = create_ast_pool(alloc);
 
-		deinit_config(&config);
+		release_config(config);
 
 		fprintf(stderr, "\nCompleted successfully\n");
 
