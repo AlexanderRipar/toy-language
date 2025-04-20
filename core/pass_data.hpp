@@ -1069,7 +1069,7 @@ struct alignas(u64) TypeStructure
 	}
 };
 
-struct ReferenceType2
+struct ReferenceType
 {
 	u32 is_mut : 1;
 
@@ -1080,7 +1080,7 @@ struct ReferenceType2
 	u32 referenced_type_id : 29;
 };
 
-struct IntegerType2
+struct IntegerType
 {
 	u16 bits;
 
@@ -1089,21 +1089,21 @@ struct IntegerType2
 	u8 unused_ = 0;
 };
 
-struct FloatType2
+struct FloatType
 {
 	u16 bits;
 
 	u16 unused_ = 0;
 };
 
-struct ArrayType2
+struct ArrayType
 {
 	TypeId element_type;
 
 	u64 element_count;
 };
 
-struct CompositeTypeHeader2
+struct CompositeTypeHeader
 {
 	u64 size;
 
@@ -1114,9 +1114,9 @@ struct CompositeTypeHeader2
 	u32 member_count;
 };
 
-struct CompositeType2
+struct CompositeType
 {
-	CompositeTypeHeader2 header;
+	CompositeTypeHeader header;
 
 	#if COMPILER_MSVC
 	#pragma warning(push)
@@ -1138,7 +1138,7 @@ struct CompositeType2
 	#endif
 };
 
-struct FuncTypeHeader2
+struct FuncTypeHeader
 {
 	TypeId return_type_id;
 
@@ -1149,9 +1149,9 @@ struct FuncTypeHeader2
 	bool is_proc;
 };
 
-struct FuncType2
+struct FuncType
 {
-	FuncTypeHeader2 header;
+	FuncTypeHeader header;
 
 	#if COMPILER_MSVC
 	#pragma warning(push)

@@ -13,7 +13,7 @@
 
 struct CompositeTypeBuffer
 {
-	CompositeTypeHeader2 header;
+	CompositeTypeHeader header;
 
 	Member members[32];
 };
@@ -228,18 +228,18 @@ static u32 structure_index_from_complete_type_builder(TypePool* types, const Typ
 	// Otherwise allocate a buffer from the heap.
 	CompositeTypeBuffer stack_buffer;
 
-	CompositeType2* composite;
+	CompositeType* composite;
 
 	if (builder->total_used > array_count(stack_buffer.members))
 	{
-		composite = static_cast<CompositeType2*>(malloc(sizeof(CompositeType2::header) + builder->total_used * sizeof(CompositeType2::members[0])));
+		composite = static_cast<CompositeType*>(malloc(sizeof(CompositeType::header) + builder->total_used * sizeof(CompositeType::members[0])));
 
 		if (composite == nullptr)
 			panic("malloc failed (0x%X)\n", minos::last_error());
 	}
 	else
 	{
-		composite = reinterpret_cast<CompositeType2*>(&stack_buffer);
+		composite = reinterpret_cast<CompositeType*>(&stack_buffer);
 	}
 
 	// Initialize `composite->header`
@@ -299,7 +299,7 @@ static u32 structure_index_from_complete_type_builder(TypePool* types, const Typ
 	const u32 structural_index = types->structural_types.index_from(AttachmentRange{ data, TypeTag::Composite }, fnv1a_step(fnv1a(data), static_cast<byte>(TypeTag::Composite)));
 
 	// If we allocated the composite buffer from the heap, free it.
-	if (composite != reinterpret_cast<CompositeType2*>(&stack_buffer))
+	if (composite != reinterpret_cast<CompositeType*>(&stack_buffer))
 		free(composite);
 
 	return structural_index;
@@ -639,7 +639,7 @@ Member* type_get_member(TypePool* types, TypeId type_id, IdentifierId member_nam
 	if (structure->tag != TypeTag::Composite)
 		panic("Tried getting member of non-composite type\n"); // TODO: Report type
 
-	CompositeType2* const composite = data<CompositeType2>(structure);
+	CompositeType* const composite = data<CompositeType>(structure);
 
 	for (u32 i = 0; i != composite->header.member_count; ++i)
 	{
