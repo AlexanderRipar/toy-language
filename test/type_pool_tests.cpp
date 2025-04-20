@@ -54,7 +54,7 @@ static void primitive_type_with_integer_returns_integer_type_structure() noexcep
 
 	TypeId u16_id = primitive_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&u16_type));
 
-	TEST_UNEQUAL(u16_id, INVALID_TYPE_ID_2);
+	TEST_UNEQUAL(u16_id, INVALID_TYPE_ID);
 
 	const OptPtr<TypeStructure> opt_u16_structure = type_structure_from_id(dummy.types, u16_id);
 
@@ -85,7 +85,7 @@ static void primitive_type_with_integer_and_float_with_same_bit_pattern_returns_
 
 	const TypeId u32_id = primitive_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&u32_type));
 
-	TEST_UNEQUAL(u32_id, INVALID_TYPE_ID_2);
+	TEST_UNEQUAL(u32_id, INVALID_TYPE_ID);
 
 	const OptPtr<TypeStructure> opt_u32_structure = type_structure_from_id(dummy.types, u32_id);
 
@@ -105,7 +105,7 @@ static void primitive_type_with_integer_and_float_with_same_bit_pattern_returns_
 
 	const TypeId f32_id = primitive_type(dummy.types, TypeTag::Float, range::from_object_bytes(&f32_type));
 
-	TEST_UNEQUAL(f32_id, INVALID_TYPE_ID_2);
+	TEST_UNEQUAL(f32_id, INVALID_TYPE_ID);
 
 	OptPtr<TypeStructure> opt_f32_structure = type_structure_from_id(dummy.types, f32_id);
 
@@ -138,13 +138,13 @@ static void primitive_type_with_array_returns_array_type() noexcept
 
 	const TypeId s32_id = primitive_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&s32_type));
 
-	TEST_UNEQUAL(s32_id, INVALID_TYPE_ID_2);
+	TEST_UNEQUAL(s32_id, INVALID_TYPE_ID);
 
 	ArrayType array_type{ s32_id, 128 };
 
 	const TypeId array_id = primitive_type(dummy.types, TypeTag::Array, range::from_object_bytes(&array_type));
 
-	TEST_UNEQUAL(array_id, INVALID_TYPE_ID_2);
+	TEST_UNEQUAL(array_id, INVALID_TYPE_ID);
 
 	OptPtr<TypeStructure> opt_array_structure = type_structure_from_id(dummy.types, array_id);
 

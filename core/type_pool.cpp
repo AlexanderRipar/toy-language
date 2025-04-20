@@ -35,14 +35,14 @@ struct TypeName
 	// `U`.
 	//
 	// If the type is not derived from another one, `parent_id` is set to
-	// `INVALID_TYPE_ID_2`.
+	// `INVALID_TYPE_ID`.
 	TypeId parent_type_id;
 
 	// `TypeId` of the first type in the parent hierarchy which is `distinct`,
 	// or the root type if there is no such type.
 	//
 	// If this type is itself `distinct` or not derived from another type,
-	// `distinct_root_id` is set to `INVALID_TYPE_ID_2`.
+	// `distinct_root_id` is set to `INVALID_TYPE_ID`.
 	TypeId distinct_root_type_id;
 
 	// One of the following, depending on the value of `structure_index_kind`:
@@ -357,7 +357,7 @@ TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept
 	types->first_free_builder_index = -1;
 	types->errors = errors;
 
-	// Reserve 0 as INVALID_TYPE_ID_2
+	// Reserve 0 as INVALID_TYPE_ID
 
 	TypeName dummy_name{};
 	dummy_name.structure_index_kind = TypeName::INVALID_STRUCTURE_INDEX;
@@ -381,8 +381,8 @@ TypeId primitive_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept
 	const u32 structure_index = types->structural_types.index_from(AttachmentRange{ data, tag }, fnv1a_step(fnv1a(data), static_cast<byte>(tag)));
 
 	TypeName name;
-	name.parent_type_id = INVALID_TYPE_ID_2;
-	name.distinct_root_type_id = INVALID_TYPE_ID_2;
+	name.parent_type_id = INVALID_TYPE_ID;
+	name.distinct_root_type_id = INVALID_TYPE_ID;
 	name.structure_index = structure_index;
 	name.structure_index_kind = TypeName::STRUCTURE_INDEX_NORMAL;
 	name.source_id = INVALID_SOURCE_ID;
@@ -397,7 +397,7 @@ TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, Sou
 
 	TypeName name;
 	name.parent_type_id = aliased_type_id;
-	name.distinct_root_type_id = is_distinct ? INVALID_TYPE_ID_2 : aliased_ref->distinct_root_type_id;
+	name.distinct_root_type_id = is_distinct ? INVALID_TYPE_ID : aliased_ref->distinct_root_type_id;
 	name.source_id = source_id;
 	name.name_id = name_id;
 
@@ -482,8 +482,8 @@ void add_type_builder_member(TypePool* types, TypeBuilder* builder, Member membe
 TypeId complete_type_builder(TypePool* types, TypeBuilder* builder, u64 size, u32 align, u64 stride) noexcept
 {
 	TypeName name;
-	name.parent_type_id = INVALID_TYPE_ID_2;
-	name.distinct_root_type_id = INVALID_TYPE_ID_2;
+	name.parent_type_id = INVALID_TYPE_ID;
+	name.distinct_root_type_id = INVALID_TYPE_ID;
 	name.source_id = builder->source_id;
 	name.name_id = INVALID_IDENTIFIER_ID;
 
@@ -507,9 +507,9 @@ TypeId complete_type_builder(TypePool* types, TypeBuilder* builder, u64 size, u3
 
 bool type_compatible(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 {
-	ASSERT_OR_IGNORE(type_id_a != INVALID_TYPE_ID_2);
+	ASSERT_OR_IGNORE(type_id_a != INVALID_TYPE_ID);
 
-	ASSERT_OR_IGNORE(type_id_b != INVALID_TYPE_ID_2);
+	ASSERT_OR_IGNORE(type_id_b != INVALID_TYPE_ID);
 
 	// First, check the common case. If the ids themselves are equal, we have a
 	// match already.
@@ -537,9 +537,9 @@ bool type_compatible(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexce
 	if (!resolve_name_structure(types, name_b))
 		panic("Tried comparing incomplete type for compatibility\n"); // TODO: Figure out what to do here
 
-	const TypeId root_type_id_a = name_a->distinct_root_type_id == INVALID_TYPE_ID_2 ? type_id_a : name_a->distinct_root_type_id;
+	const TypeId root_type_id_a = name_a->distinct_root_type_id == INVALID_TYPE_ID ? type_id_a : name_a->distinct_root_type_id;
 
-	const TypeId root_type_id_b = name_b->distinct_root_type_id == INVALID_TYPE_ID_2 ? type_id_b : name_b->distinct_root_type_id;
+	const TypeId root_type_id_b = name_b->distinct_root_type_id == INVALID_TYPE_ID ? type_id_b : name_b->distinct_root_type_id;
 
 	if (root_type_id_a == root_type_id_b)
 		return true;
@@ -548,7 +548,7 @@ bool type_compatible(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexce
 
 	TypeName* root_name_a;
 
-	if (name_a->distinct_root_type_id == INVALID_TYPE_ID_2)
+	if (name_a->distinct_root_type_id == INVALID_TYPE_ID)
 	{
 		root_name_a = name_a;
 	}
@@ -562,7 +562,7 @@ bool type_compatible(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexce
 
 	TypeName* root_name_b;
 
-	if (name_b->distinct_root_type_id == INVALID_TYPE_ID_2)
+	if (name_b->distinct_root_type_id == INVALID_TYPE_ID)
 	{
 		root_name_b = name_b;
 	}
@@ -595,7 +595,7 @@ TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 		return type_id_a;
 
 	if (!type_compatible(types, type_id_a, type_id_b))
-		return INVALID_TYPE_ID_2;
+		return INVALID_TYPE_ID;
 
 	// TODO: Look if a is an alias of b (or the other way around). In this
 	//       case, return the aliased of the two (the one closer to the root).

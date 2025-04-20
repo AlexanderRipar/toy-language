@@ -1175,7 +1175,7 @@ struct FuncType
 
 
 
-static constexpr TypeId INVALID_TYPE_ID_2 = { 0 };
+static constexpr TypeId INVALID_TYPE_ID = { 0 };
 
 static inline bool operator==(TypeId lhs, TypeId rhs) noexcept
 {
