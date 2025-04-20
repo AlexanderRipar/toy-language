@@ -52,7 +52,7 @@ static void primitive_type_with_integer_returns_integer_type_structure() noexcep
 
 	IntegerType2 u16_type{ 16, false };
 
-	TypeId2 u16_id = primitive_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&u16_type));
+	TypeId u16_id = primitive_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&u16_type));
 
 	TEST_UNEQUAL(u16_id, INVALID_TYPE_ID_2);
 
@@ -83,7 +83,7 @@ static void primitive_type_with_integer_and_float_with_same_bit_pattern_returns_
 
 	IntegerType2 u32_type{ 32, false };
 
-	const TypeId2 u32_id = primitive_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&u32_type));
+	const TypeId u32_id = primitive_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&u32_type));
 
 	TEST_UNEQUAL(u32_id, INVALID_TYPE_ID_2);
 
@@ -103,7 +103,7 @@ static void primitive_type_with_integer_and_float_with_same_bit_pattern_returns_
 
 	FloatType2 f32_type{ 32 };
 
-	const TypeId2 f32_id = primitive_type(dummy.types, TypeTag::Float, range::from_object_bytes(&f32_type));
+	const TypeId f32_id = primitive_type(dummy.types, TypeTag::Float, range::from_object_bytes(&f32_type));
 
 	TEST_UNEQUAL(f32_id, INVALID_TYPE_ID_2);
 
@@ -136,13 +136,13 @@ static void primitive_type_with_array_returns_array_type() noexcept
 
 	IntegerType2 s32_type{ 32, true };
 
-	const TypeId2 s32_id = primitive_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&s32_type));
+	const TypeId s32_id = primitive_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&s32_type));
 
 	TEST_UNEQUAL(s32_id, INVALID_TYPE_ID_2);
 
 	ArrayType2 array_type{ s32_id, 128 };
 
-	const TypeId2 array_id = primitive_type(dummy.types, TypeTag::Array, range::from_object_bytes(&array_type));
+	const TypeId array_id = primitive_type(dummy.types, TypeTag::Array, range::from_object_bytes(&array_type));
 
 	TEST_UNEQUAL(array_id, INVALID_TYPE_ID_2);
 

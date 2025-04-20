@@ -36,14 +36,14 @@ struct TypeName
 	//
 	// If the type is not derived from another one, `parent_id` is set to
 	// `INVALID_TYPE_ID_2`.
-	TypeId2 parent_type_id;
+	TypeId parent_type_id;
 
 	// `TypeId` of the first type in the parent hierarchy which is `distinct`,
 	// or the root type if there is no such type.
 	//
 	// If this type is itself `distinct` or not derived from another type,
 	// `distinct_root_id` is set to `INVALID_TYPE_ID_2`.
-	TypeId2 distinct_root_type_id;
+	TypeId distinct_root_type_id;
 
 	// One of the following, depending on the value of `structure_index_kind`:
 	//
@@ -376,7 +376,7 @@ void release_type_pool2(TypePool2* types) noexcept
 	types->builders.release();
 }
 
-TypeId2 primitive_type(TypePool2* types, TypeTag tag, Range<byte> data) noexcept
+TypeId primitive_type(TypePool2* types, TypeTag tag, Range<byte> data) noexcept
 {
 	const u32 structure_index = types->structural_types.index_from(AttachmentRange{ data, tag }, fnv1a_step(fnv1a(data), static_cast<byte>(tag)));
 
@@ -388,10 +388,10 @@ TypeId2 primitive_type(TypePool2* types, TypeTag tag, Range<byte> data) noexcept
 	name.source_id = INVALID_SOURCE_ID;
 	name.name_id = INVALID_IDENTIFIER_ID;
 
-	return TypeId2{ types->named_types.index_from(name, fnv1a(range::from_object_bytes(&name))) };
+	return TypeId{ types->named_types.index_from(name, fnv1a(range::from_object_bytes(&name))) };
 }
 
-TypeId2 alias_type(TypePool2* types, TypeId2 aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept
+TypeId alias_type(TypePool2* types, TypeId aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept
 {
 	TypeName* const aliased_ref = types->named_types.value_from(aliased_type_id.rep);
 
@@ -412,10 +412,10 @@ TypeId2 alias_type(TypePool2* types, TypeId2 aliased_type_id, bool is_distinct, 
 		name.structure_index_kind = aliased_ref->structure_index_kind;
 	}
 
-	return TypeId2{ types->named_types.index_from(name, fnv1a(range::from_object_bytes(&name))) };
+	return TypeId{ types->named_types.index_from(name, fnv1a(range::from_object_bytes(&name))) };
 }
 
-OptPtr<TypeStructure2> type_structure_from_id(TypePool2* types, TypeId2 type_id) noexcept
+OptPtr<TypeStructure2> type_structure_from_id(TypePool2* types, TypeId type_id) noexcept
 {
 	TypeName* const name = types->named_types.value_from(type_id.rep);
 
@@ -479,7 +479,7 @@ void add_type_builder_member(TypePool2* types, TypeBuilder2* builder, Member2 me
 		builder->incomplete_member_count += 1;
 }
 
-TypeId2 complete_type_builder(TypePool2* types, TypeBuilder2* builder, u64 size, u32 align, u64 stride) noexcept
+TypeId complete_type_builder(TypePool2* types, TypeBuilder2* builder, u64 size, u32 align, u64 stride) noexcept
 {
 	TypeName name;
 	name.parent_type_id = INVALID_TYPE_ID_2;
@@ -502,10 +502,10 @@ TypeId2 complete_type_builder(TypePool2* types, TypeBuilder2* builder, u64 size,
 		builder->is_completed = true;
 	}
 
-	return TypeId2{ types->named_types.index_from(name, fnv1a(range::from_object_bytes(&name))) };
+	return TypeId{ types->named_types.index_from(name, fnv1a(range::from_object_bytes(&name))) };
 }
 
-bool type_compatible(TypePool2* types, TypeId2 type_id_a, TypeId2 type_id_b) noexcept
+bool type_compatible(TypePool2* types, TypeId type_id_a, TypeId type_id_b) noexcept
 {
 	ASSERT_OR_IGNORE(type_id_a != INVALID_TYPE_ID_2);
 
@@ -537,9 +537,9 @@ bool type_compatible(TypePool2* types, TypeId2 type_id_a, TypeId2 type_id_b) noe
 	if (!resolve_name_structure(types, name_b))
 		panic("Tried comparing incomplete type for compatibility\n"); // TODO: Figure out what to do here
 
-	const TypeId2 root_type_id_a = name_a->distinct_root_type_id == INVALID_TYPE_ID_2 ? type_id_a : name_a->distinct_root_type_id;
+	const TypeId root_type_id_a = name_a->distinct_root_type_id == INVALID_TYPE_ID_2 ? type_id_a : name_a->distinct_root_type_id;
 
-	const TypeId2 root_type_id_b = name_b->distinct_root_type_id == INVALID_TYPE_ID_2 ? type_id_b : name_b->distinct_root_type_id;
+	const TypeId root_type_id_b = name_b->distinct_root_type_id == INVALID_TYPE_ID_2 ? type_id_b : name_b->distinct_root_type_id;
 
 	if (root_type_id_a == root_type_id_b)
 		return true;
@@ -579,7 +579,7 @@ bool type_compatible(TypePool2* types, TypeId2 type_id_a, TypeId2 type_id_b) noe
 	return root_name_a->structure_index == root_name_b->structure_index && root_name_a->source_id == root_name_b->source_id;
 }
 
-bool type_can_cast_from_to(TypePool2* types, TypeId2 from_type_id, TypeId2 to_type_id) noexcept
+bool type_can_cast_from_to(TypePool2* types, TypeId from_type_id, TypeId to_type_id) noexcept
 {
 	if (type_compatible(types, from_type_id, to_type_id))
 		return true;
@@ -589,7 +589,7 @@ bool type_can_cast_from_to(TypePool2* types, TypeId2 from_type_id, TypeId2 to_ty
 	return false;
 }
 
-TypeId2 common_type(TypePool2* types, TypeId2 type_id_a, TypeId2 type_id_b) noexcept
+TypeId common_type(TypePool2* types, TypeId type_id_a, TypeId type_id_b) noexcept
 {
 	if (type_id_a == type_id_b)
 		return type_id_a;
@@ -607,7 +607,7 @@ TypeId2 common_type(TypePool2* types, TypeId2 type_id_a, TypeId2 type_id_b) noex
 	return type_id_a;
 }
 
-Member2* type_get_member(TypePool2* types, TypeId2 type_id, IdentifierId member_name) noexcept
+Member2* type_get_member(TypePool2* types, TypeId type_id, IdentifierId member_name) noexcept
 {
 	TypeName* const name = types->named_types.value_from(type_id.rep);
 
@@ -650,7 +650,7 @@ Member2* type_get_member(TypePool2* types, TypeId2 type_id, IdentifierId member_
 	panic("Tried getting nonexistent member of type\n"); // TODO: Report type
 }
 
-IncompleteMemberIterator incomplete_members_of(TypePool2* types, TypeId2 type_id) noexcept
+IncompleteMemberIterator incomplete_members_of(TypePool2* types, TypeId type_id) noexcept
 {
 	TypeName* name = types->named_types.value_from(type_id.rep);
 
