@@ -3,7 +3,7 @@
 
 struct DummyTypePool
 {
-	TypePool2* types;
+	TypePool* types;
 
 	SourceReader* reader;
 
@@ -24,7 +24,7 @@ static DummyTypePool create_dummy_types() noexcept
 
 	ErrorSink* errors = create_error_sink(alloc, reader, identifiers);
 
-	TypePool2* const types = create_type_pool2(alloc, errors);
+	TypePool* const types = create_type_pool2(alloc, errors);
 
 	return { types, reader, identifiers, errors, alloc };
 

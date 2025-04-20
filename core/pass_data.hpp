@@ -943,7 +943,7 @@ inline bool comp_integer_as_u64(CompIntegerValue* comp_integer, u64* out) noexce
 
 
 
-struct TypePool2;
+struct TypePool;
 
 enum class TypeTag : u8
 {
@@ -1199,31 +1199,31 @@ template<typename T>
 	return reinterpret_cast<const T*>(&entry->data);
 }
 
-[[nodiscard]] TypePool2* create_type_pool2(AllocPool* alloc, ErrorSink* errors) noexcept;
+[[nodiscard]] TypePool* create_type_pool2(AllocPool* alloc, ErrorSink* errors) noexcept;
 
-void release_type_pool2(TypePool2* types) noexcept;
+void release_type_pool2(TypePool* types) noexcept;
 
-[[nodiscard]] TypeId primitive_type(TypePool2* types, TypeTag tag, Range<byte> data) noexcept;
+[[nodiscard]] TypeId primitive_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept;
 
-[[nodiscard]] TypeId alias_type(TypePool2* types, TypeId aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept;
+[[nodiscard]] TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept;
 
-[[nodiscard]] OptPtr<TypeStructure2> type_structure_from_id(TypePool2* types, TypeId type_id) noexcept;
+[[nodiscard]] OptPtr<TypeStructure2> type_structure_from_id(TypePool* types, TypeId type_id) noexcept;
 
-[[nodiscard]] TypeBuilder2* create_type_builder(TypePool2* types, SourceId source_id) noexcept;
+[[nodiscard]] TypeBuilder2* create_type_builder(TypePool* types, SourceId source_id) noexcept;
 
 void add_type_builder_member(TypeBuilder2* builder, Member2 member) noexcept;
 
 [[nodiscard]] TypeId complete_type_builder(TypeBuilder2* builder, u64 size, u32 align, u64 stride) noexcept;
 
-[[nodiscard]] bool type_compatible(TypePool2* types, TypeId type_id_a, TypeId type_id_b) noexcept;
+[[nodiscard]] bool type_compatible(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
 
-[[nodiscard]] bool type_can_cast_from_to(TypePool2* types, TypeId from_type_id, TypeId to_type_id) noexcept;
+[[nodiscard]] bool type_can_cast_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept;
 
-[[nodiscard]] TypeId common_type(TypePool2* types, TypeId type_id_a, TypeId type_id_b) noexcept;
+[[nodiscard]] TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
 
-[[nodiscard]] Member2* type_get_member(TypePool2* types, TypeId type_id, IdentifierId member_name) noexcept;
+[[nodiscard]] Member2* type_get_member(TypePool* types, TypeId type_id, IdentifierId member_name) noexcept;
 
-[[nodiscard]] IncompleteMemberIterator incomplete_members_of(TypePool2* types, TypeId type_id) noexcept;
+[[nodiscard]] IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) noexcept;
 
 [[nodiscard]] OptPtr<Member2> next(IncompleteMemberIterator* it) noexcept;
 
