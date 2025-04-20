@@ -172,7 +172,7 @@ static void create_type_builder_returns_type_builder() noexcept
 
 	DummyTypePool dummy = create_dummy_types();
 
-	TypeBuilder2* const builder = create_type_builder(dummy.types, SourceId{ 1 });
+	TypeBuilder* const builder = create_type_builder(dummy.types, SourceId{ 1 });
 
 	TEST_UNEQUAL(builder, nullptr);
 

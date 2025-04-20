@@ -970,11 +970,11 @@ enum class TypeTag : u8
 	TypeBuilder,
 };
 
-struct TypeBuilder2;
+struct TypeBuilder;
 
 struct IncompleteMemberIterator
 {
-	TypeBuilder2* builder;
+	TypeBuilder* builder;
 
 	u32 curr;
 };
@@ -1209,11 +1209,11 @@ void release_type_pool2(TypePool* types) noexcept;
 
 [[nodiscard]] OptPtr<TypeStructure2> type_structure_from_id(TypePool* types, TypeId type_id) noexcept;
 
-[[nodiscard]] TypeBuilder2* create_type_builder(TypePool* types, SourceId source_id) noexcept;
+[[nodiscard]] TypeBuilder* create_type_builder(TypePool* types, SourceId source_id) noexcept;
 
-void add_type_builder_member(TypeBuilder2* builder, Member2 member) noexcept;
+void add_type_builder_member(TypeBuilder* builder, Member2 member) noexcept;
 
-[[nodiscard]] TypeId complete_type_builder(TypeBuilder2* builder, u64 size, u32 align, u64 stride) noexcept;
+[[nodiscard]] TypeId complete_type_builder(TypeBuilder* builder, u64 size, u32 align, u64 stride) noexcept;
 
 [[nodiscard]] bool type_compatible(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
 

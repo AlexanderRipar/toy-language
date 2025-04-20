@@ -123,7 +123,7 @@ struct TypePool
 	ErrorSink* errors;
 };
 
-struct TypeBuilder2
+struct TypeBuilder
 {
 	union
 	{
@@ -163,56 +163,56 @@ struct TypeBuilder2
 	Member2 members[7];
 };
 
-static_assert(sizeof(TypeBuilder2) == 8 * sizeof(Member2));
+static_assert(sizeof(TypeBuilder) == 8 * sizeof(Member2));
 
 
 
-static s32 index_from_type_builder(const TypePool* types, const TypeBuilder2* builder) noexcept
+static s32 index_from_type_builder(const TypePool* types, const TypeBuilder* builder) noexcept
 {
 	return static_cast<s32>(reinterpret_cast<const u64*>(builder) - types->builders.begin());
 }
 
-static TypeBuilder2* type_builder_from_index(TypePool* types, s32 index) noexcept
+static TypeBuilder* type_builder_from_index(TypePool* types, s32 index) noexcept
 {
-	return reinterpret_cast<TypeBuilder2*>(types->builders.begin() + index);
+	return reinterpret_cast<TypeBuilder*>(types->builders.begin() + index);
 }
 
-static TypeBuilder2* type_builder_at_offset(TypeBuilder2* builder, s32 offset) noexcept
+static TypeBuilder* type_builder_at_offset(TypeBuilder* builder, s32 offset) noexcept
 {
-	return reinterpret_cast<TypeBuilder2*>(reinterpret_cast<u64*>(builder) + offset);
+	return reinterpret_cast<TypeBuilder*>(reinterpret_cast<u64*>(builder) + offset);
 }
 
-static const TypeBuilder2* type_builder_at_offset(const TypeBuilder2* builder, s32 offset) noexcept
+static const TypeBuilder* type_builder_at_offset(const TypeBuilder* builder, s32 offset) noexcept
 {
-	return type_builder_at_offset(const_cast<TypeBuilder2*>(builder), offset);
+	return type_builder_at_offset(const_cast<TypeBuilder*>(builder), offset);
 }
 
-static s32 type_builder_difference(const TypeBuilder2* from, const TypeBuilder2* to) noexcept
+static s32 type_builder_difference(const TypeBuilder* from, const TypeBuilder* to) noexcept
 {
 	return static_cast<s32>(reinterpret_cast<const u64*>(to) - reinterpret_cast<const u64*>(from));
 }
 
-static TypeBuilder2* alloc_type_builder(TypePool* types) noexcept
+static TypeBuilder* alloc_type_builder(TypePool* types) noexcept
 {
 	const s32 first_free_index = types->first_free_builder_index;
 
 	if (first_free_index < 0)
-		return static_cast<TypeBuilder2*>(types->builders.reserve_exact(sizeof(TypeBuilder2)));
+		return static_cast<TypeBuilder*>(types->builders.reserve_exact(sizeof(TypeBuilder)));
 
-	TypeBuilder2* const builder = type_builder_from_index(types, first_free_index);
+	TypeBuilder* const builder = type_builder_from_index(types, first_free_index);
 
 	types->first_free_builder_index = builder->next_offset == 0 ? -1 : builder->next_offset + first_free_index;
 
 	return builder;
 }
 
-static void free_type_builder(TypePool* types, TypeBuilder2* builder) noexcept
+static void free_type_builder(TypePool* types, TypeBuilder* builder) noexcept
 {
 	const s32 old_first_free_index = types->first_free_builder_index;
 
 	if (old_first_free_index >= 0)
 	{
-		TypeBuilder2* const tail_builder = type_builder_at_offset(builder, builder->tail_offset);
+		TypeBuilder* const tail_builder = type_builder_at_offset(builder, builder->tail_offset);
 
 		const s32 tail_index = index_from_type_builder(types, tail_builder);
 
@@ -222,7 +222,7 @@ static void free_type_builder(TypePool* types, TypeBuilder2* builder) noexcept
 	types->first_free_builder_index = index_from_type_builder(types, builder);
 }
 
-static u32 structure_index_from_complete_type_builder(TypePool* types, const TypeBuilder2* builder, u64 size, u32 align, u64 stride) noexcept
+static u32 structure_index_from_complete_type_builder(TypePool* types, const TypeBuilder* builder, u64 size, u32 align, u64 stride) noexcept
 {
 	// Use a stack-based buffer if there are only a few members in the builder;
 	// Otherwise allocate a buffer from the heap.
@@ -251,7 +251,7 @@ static u32 structure_index_from_complete_type_builder(TypePool* types, const Typ
 
 	// Initialize `composite->members`
 
-	const TypeBuilder2* curr = builder;
+	const TypeBuilder* curr = builder;
 
 	u32 curr_member_index = 0;
 
@@ -292,7 +292,7 @@ static u32 structure_index_from_complete_type_builder(TypePool* types, const Typ
 			source_error(types->errors, builder->source_id, "Cannot create type with more than one member with the name %.*s\n", 1, "?" /* TODO */);
 	}
 
-	// Hash the created composite into `TypeBuilder2.structural_types`.
+	// Hash the created composite into `TypeBuilder.structural_types`.
 
 	const Range<byte> data{ reinterpret_cast<byte*>(composite), sizeof(composite->header) + builder->total_used * sizeof(composite->members[0]) };
 
@@ -333,7 +333,7 @@ static bool resolve_name_structure(TypePool* types, TypeName* name) noexcept
 	}
 }
 
-static TypeBuilder2* get_deferred_type_builder(TypePool* types, TypeName* name) noexcept
+static TypeBuilder* get_deferred_type_builder(TypePool* types, TypeName* name) noexcept
 {
 	ASSERT_OR_IGNORE(name->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER || name->structure_index_kind == TypeName::STRUCTURE_INDEX_INDIRECT);
 
@@ -425,9 +425,9 @@ OptPtr<TypeStructure2> type_structure_from_id(TypePool* types, TypeId type_id) n
 	return some(types->structural_types.value_from(name->structure_index));
 }
 
-TypeBuilder2* create_type_builder(TypePool* types, SourceId source_id) noexcept
+TypeBuilder* create_type_builder(TypePool* types, SourceId source_id) noexcept
 {
-	TypeBuilder2* const builder = alloc_type_builder(types);
+	TypeBuilder* const builder = alloc_type_builder(types);
 
 	builder->next_offset = 0;
 	builder->tail_offset = 0;
@@ -440,7 +440,7 @@ TypeBuilder2* create_type_builder(TypePool* types, SourceId source_id) noexcept
 	return builder;
 }
 
-void add_type_builder_member(TypePool* types, TypeBuilder2* builder, Member2 member) noexcept
+void add_type_builder_member(TypePool* types, TypeBuilder* builder, Member2 member) noexcept
 {
 	ASSERT_OR_IGNORE(member.definition.name != INVALID_IDENTIFIER_ID);
 
@@ -448,13 +448,13 @@ void add_type_builder_member(TypePool* types, TypeBuilder2* builder, Member2 mem
 
 	ASSERT_OR_IGNORE(builder->incomplete_member_count == ~0u);
 
-	TypeBuilder2* tail = type_builder_at_offset(builder, builder->tail_offset);
+	TypeBuilder* tail = type_builder_at_offset(builder, builder->tail_offset);
 
 	ASSERT_OR_IGNORE(tail->next_offset == 0);
 
 	if (tail->used == array_count(builder->members))
 	{
-		TypeBuilder2* const new_tail = alloc_type_builder(types);
+		TypeBuilder* const new_tail = alloc_type_builder(types);
 
 		new_tail->next_offset = 0;
 		new_tail->tail_offset = 0;
@@ -479,7 +479,7 @@ void add_type_builder_member(TypePool* types, TypeBuilder2* builder, Member2 mem
 		builder->incomplete_member_count += 1;
 }
 
-TypeId complete_type_builder(TypePool* types, TypeBuilder2* builder, u64 size, u32 align, u64 stride) noexcept
+TypeId complete_type_builder(TypePool* types, TypeBuilder* builder, u64 size, u32 align, u64 stride) noexcept
 {
 	TypeName name;
 	name.parent_type_id = INVALID_TYPE_ID_2;
@@ -613,7 +613,7 @@ Member2* type_get_member(TypePool* types, TypeId type_id, IdentifierId member_na
 
 	if (!resolve_name_structure(types, name))
 	{
-		TypeBuilder2* deferred_builder = get_deferred_type_builder(types, name);
+		TypeBuilder* deferred_builder = get_deferred_type_builder(types, name);
 
 		while (true)
 		{
@@ -670,7 +670,7 @@ OptPtr<Member2> next(IncompleteMemberIterator* it) noexcept
 	if (it->builder == nullptr)
 		return none<Member2>();
 
-	TypeBuilder2* builder = it->builder;
+	TypeBuilder* builder = it->builder;
 
 	u32 curr = it->curr;
 
