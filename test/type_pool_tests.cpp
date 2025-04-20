@@ -182,7 +182,7 @@ static void create_type_builder_returns_type_builder() noexcept
 }
 
 
-void type_pool2_tests() noexcept
+void type_pool_tests() noexcept
 {
 	TEST_MODULE_BEGIN;
 
