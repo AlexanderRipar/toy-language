@@ -15,7 +15,7 @@ struct CompositeTypeBuffer
 {
 	CompositeTypeHeader2 header;
 
-	Member2 members[32];
+	Member members[32];
 };
 
 struct TypeName
@@ -157,13 +157,13 @@ struct TypeBuilder
 			#pragma GCC diagnostic pop
 		#endif
 
-		Member2 unused_align_;
+		Member unused_align_;
 	};
 
-	Member2 members[7];
+	Member members[7];
 };
 
-static_assert(sizeof(TypeBuilder) == 8 * sizeof(Member2));
+static_assert(sizeof(TypeBuilder) == 8 * sizeof(Member));
 
 
 
@@ -272,13 +272,13 @@ static u32 structure_index_from_complete_type_builder(TypePool* types, const Typ
 
 	struct MemberComparator
 	{
-		static u32 compare(const Member2& lhs, const Member2& rhs) noexcept
+		static u32 compare(const Member& lhs, const Member& rhs) noexcept
 		{
 			return lhs.definition.name.rep - rhs.definition.name.rep;
 		}
 	};
 
-	inplace_sort<Member2, MemberComparator>(MutRange{ composite->members, composite->header.member_count });
+	inplace_sort<Member, MemberComparator>(MutRange{ composite->members, composite->header.member_count });
 
 	// Check for member name collisions.
 
@@ -440,7 +440,7 @@ TypeBuilder* create_type_builder(TypePool* types, SourceId source_id) noexcept
 	return builder;
 }
 
-void add_type_builder_member(TypePool* types, TypeBuilder* builder, Member2 member) noexcept
+void add_type_builder_member(TypePool* types, TypeBuilder* builder, Member member) noexcept
 {
 	ASSERT_OR_IGNORE(member.definition.name != INVALID_IDENTIFIER_ID);
 
@@ -607,7 +607,7 @@ TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 	return type_id_a;
 }
 
-Member2* type_get_member(TypePool* types, TypeId type_id, IdentifierId member_name) noexcept
+Member* type_get_member(TypePool* types, TypeId type_id, IdentifierId member_name) noexcept
 {
 	TypeName* const name = types->named_types.value_from(type_id.rep);
 
@@ -665,10 +665,10 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 	return { type_builder_from_index(types, name->structure_index), 0 };
 }
 
-OptPtr<Member2> next(IncompleteMemberIterator* it) noexcept
+OptPtr<Member> next(IncompleteMemberIterator* it) noexcept
 {
 	if (it->builder == nullptr)
-		return none<Member2>();
+		return none<Member>();
 
 	TypeBuilder* builder = it->builder;
 
@@ -688,7 +688,7 @@ OptPtr<Member2> next(IncompleteMemberIterator* it) noexcept
 		{
 			it->builder = nullptr;
 
-			return none<Member2>();
+			return none<Member>();
 		}
 
 		builder = type_builder_at_offset(builder, builder->next_offset);

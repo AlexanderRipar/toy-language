@@ -996,7 +996,7 @@ struct Definition
 	AstNodeId opt_value;
 };
 
-struct Member2
+struct Member
 {
 	Definition definition;
 
@@ -1128,7 +1128,7 @@ struct CompositeType2
 	#pragma GCC diagnostic push
 	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
-	Member2 members[];
+	Member members[];
 	#if COMPILER_MSVC
 	#pragma warning(pop)
 	#elif COMPILER_CLANG
@@ -1163,7 +1163,7 @@ struct FuncType2
 	#pragma GCC diagnostic push
 	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
-	Member2 param[];
+	Member param[];
 	#if COMPILER_MSVC
 	#pragma warning(pop)
 	#elif COMPILER_CLANG
@@ -1211,7 +1211,7 @@ void release_type_pool2(TypePool* types) noexcept;
 
 [[nodiscard]] TypeBuilder* create_type_builder(TypePool* types, SourceId source_id) noexcept;
 
-void add_type_builder_member(TypeBuilder* builder, Member2 member) noexcept;
+void add_type_builder_member(TypeBuilder* builder, Member member) noexcept;
 
 [[nodiscard]] TypeId complete_type_builder(TypeBuilder* builder, u64 size, u32 align, u64 stride) noexcept;
 
@@ -1221,11 +1221,11 @@ void add_type_builder_member(TypeBuilder* builder, Member2 member) noexcept;
 
 [[nodiscard]] TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
 
-[[nodiscard]] Member2* type_get_member(TypePool* types, TypeId type_id, IdentifierId member_name) noexcept;
+[[nodiscard]] Member* type_get_member(TypePool* types, TypeId type_id, IdentifierId member_name) noexcept;
 
 [[nodiscard]] IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) noexcept;
 
-[[nodiscard]] OptPtr<Member2> next(IncompleteMemberIterator* it) noexcept;
+[[nodiscard]] OptPtr<Member> next(IncompleteMemberIterator* it) noexcept;
 
 
 
