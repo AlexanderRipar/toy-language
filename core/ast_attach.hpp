@@ -1,5 +1,5 @@
-#ifndef AST2_ATTACH_INCLUDE_GUARD
-#define AST2_ATTACH_INCLUDE_GUARD
+#ifndef AST_ATTACH_INCLUDE_GUARD
+#define AST_ATTACH_INCLUDE_GUARD
 
 #include "../infra/common.hpp"
 #include "pass_data.hpp"
@@ -52,4 +52,4 @@ struct DefinitionData
 	IdentifierId identifier_id;
 };
 
-#endif // AST2_ATTACH_INCLUDE_GUARD
+#endif // AST_ATTACH_INCLUDE_GUARD
