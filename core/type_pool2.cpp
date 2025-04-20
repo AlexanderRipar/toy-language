@@ -5,6 +5,12 @@
 
 #include <cstdlib>
 
+///////////////////////////////////// TODO ////////////////////////////////////
+//
+// Create mechanism for managing dependencies on incomplete types.
+// This will likely take the form of a linked list of some form.
+//
+
 struct CompositeTypeBuffer
 {
 	CompositeTypeHeader2 header;
@@ -87,12 +93,12 @@ struct TypeName
 	{
 		return 1;
 	}
-	
+
 	u32 hash() const noexcept
 	{
 		return fnv1a(range::from_object_bytes(this));
 	}
-	
+
 	bool equal_to_key(TypeName key, [[maybe_unused]] u32 key_hash) const noexcept
 	{
 		return memcmp(&key, this, sizeof(*this)) == 0;
@@ -159,6 +165,8 @@ struct TypeBuilder2
 
 static_assert(sizeof(TypeBuilder2) == 8 * sizeof(Member2));
 
+
+
 static s32 index_from_type_builder(const TypePool2* types, const TypeBuilder2* builder) noexcept
 {
 	return static_cast<s32>(reinterpret_cast<const u64*>(builder) - types->builders.begin());
@@ -205,9 +213,9 @@ static void free_type_builder(TypePool2* types, TypeBuilder2* builder) noexcept
 	if (old_first_free_index >= 0)
 	{
 		TypeBuilder2* const tail_builder = type_builder_at_offset(builder, builder->tail_offset);
-	
+
 		const s32 tail_index = index_from_type_builder(types, tail_builder);
-	
+
 		tail_builder->next_offset = old_first_free_index - tail_index;
 	}
 
@@ -297,6 +305,48 @@ static u32 structure_index_from_complete_type_builder(TypePool2* types, const Ty
 	return structural_index;
 }
 
+static bool resolve_name_structure(TypePool2* types, TypeName* name) noexcept
+{
+	if (name->structure_index_kind == TypeName::STRUCTURE_INDEX_NORMAL)
+	{
+		return true;
+	}
+	else if (name->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER)
+	{
+		return false; // TODO: Try to complete builder (?)
+	}
+	else
+	{
+		ASSERT_OR_IGNORE(name->structure_index_kind == TypeName::STRUCTURE_INDEX_INDIRECT);
+
+		TypeName* const indirect = types->named_types.value_from(name->structure_index);
+
+		if (indirect->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER)
+			return false; // TODO: Try to complete builder (?)
+
+		ASSERT_OR_IGNORE(indirect->structure_index_kind == TypeName::STRUCTURE_INDEX_NORMAL);
+
+		name->structure_index = indirect->structure_index;
+		name->structure_index_kind = indirect->structure_index_kind;
+
+		return true;
+	}
+}
+
+static TypeBuilder2* get_deferred_type_builder(TypePool2* types, TypeName* name) noexcept
+{
+	ASSERT_OR_IGNORE(name->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER || name->structure_index_kind == TypeName::STRUCTURE_INDEX_INDIRECT);
+
+	if (name->structure_index_kind == TypeName::STRUCTURE_INDEX_INDIRECT)
+		name = types->named_types.value_from(name->structure_index);
+
+	ASSERT_OR_IGNORE(name->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER);
+
+	return type_builder_from_index(types, name->structure_index);
+}
+
+
+
 TypePool2* create_type_pool2(AllocPool* alloc, ErrorSink* errors) noexcept
 {
 	TypePool2* const types = static_cast<TypePool2*>(alloc_from_pool(alloc, sizeof(TypePool2), alignof(TypePool2)));
@@ -369,37 +419,10 @@ OptPtr<TypeStructure2> type_structure_from_id(TypePool2* types, TypeId2 type_id)
 {
 	TypeName* const name = types->named_types.value_from(type_id.rep);
 
-	u32 structure_index;
-
-	if (name->structure_index_kind == TypeName::STRUCTURE_INDEX_NORMAL)
-	{
-		structure_index = name->structure_index; 
-	}
-	else if (name->structure_index_kind == TypeName::STRUCTURE_INDEX_INDIRECT)
-	{
-		const TypeName* const indirection = types->named_types.value_from(name->structure_index);
-
-		ASSERT_OR_IGNORE(indirection->structure_index_kind == TypeName::STRUCTURE_INDEX_NORMAL || indirection->structure_index == TypeName::STRUCTURE_INDEX_BUILDER);
-
-		if (indirection->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER)
-			return none<TypeStructure2>();
-
-		// The parent type was completed since we last checked. Update the name
-		// to remove the indirection. 
-
-		structure_index = indirection->structure_index;
-
-		name->structure_index = structure_index;
-		name->structure_index_kind = TypeName::STRUCTURE_INDEX_NORMAL;
-	}
-	else
-	{
-		ASSERT_OR_IGNORE(name->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER);
-
+	if (!resolve_name_structure(types, name))
 		return none<TypeStructure2>();
-	}
 
-	return some(types->structural_types.value_from(structure_index));
+	return some(types->structural_types.value_from(name->structure_index));
 }
 
 TypeBuilder2* create_type_builder(TypePool2* types, SourceId source_id) noexcept
@@ -482,29 +505,200 @@ TypeId2 complete_type_builder(TypePool2* types, TypeBuilder2* builder, u64 size,
 	return TypeId2{ types->named_types.index_from(name, fnv1a(range::from_object_bytes(&name))) };
 }
 
+bool type_compatible(TypePool2* types, TypeId2 type_id_a, TypeId2 type_id_b) noexcept
+{
+	ASSERT_OR_IGNORE(type_id_a != INVALID_TYPE_ID_2);
+
+	ASSERT_OR_IGNORE(type_id_b != INVALID_TYPE_ID_2);
+
+	// First, check the common case. If the ids themselves are equal, we have a
+	// match already.
+
+	if (type_id_a == type_id_b)
+		return true;
+
+	// Since the ids were not equal, there are a few cases left:
+	// 1. The types are aliases with the same `distinct_root_type_id`; In this
+	//    case, we have a match.
+	// 2. The types refer to different `distinct_root_type_id`s, but the two
+	//    roots are really one. This happens when a partially complete type is
+	//    constructed twice before being completed and is a rare case.
+	// 3. The types are not compatible.
+
+	// Check for case 1.
+
+	TypeName* const name_a = types->named_types.value_from(type_id_a.rep);
+
+	if (!resolve_name_structure(types, name_a))
+		panic("Tried comparing incomplete type for compatibility\n"); // TODO: Figure out what to do here
+
+	TypeName* const name_b = types->named_types.value_from(type_id_b.rep);
+
+	if (!resolve_name_structure(types, name_b))
+		panic("Tried comparing incomplete type for compatibility\n"); // TODO: Figure out what to do here
+
+	const TypeId2 root_type_id_a = name_a->distinct_root_type_id == INVALID_TYPE_ID_2 ? type_id_a : name_a->distinct_root_type_id;
+
+	const TypeId2 root_type_id_b = name_b->distinct_root_type_id == INVALID_TYPE_ID_2 ? type_id_b : name_b->distinct_root_type_id;
+
+	if (root_type_id_a == root_type_id_b)
+		return true;
+
+	// Check for case 2.
+
+	TypeName* root_name_a;
+
+	if (name_a->distinct_root_type_id == INVALID_TYPE_ID_2)
+	{
+		root_name_a = name_a;
+	}
+	else
+	{
+		root_name_a = types->named_types.value_from(name_a->distinct_root_type_id.rep);
+
+		if (!resolve_name_structure(types, root_name_a))
+			panic("Tried comparing incomplete type for compatibility\n"); // TODO: Figure out what to do here
+	}
+
+	TypeName* root_name_b;
+
+	if (name_b->distinct_root_type_id == INVALID_TYPE_ID_2)
+	{
+		root_name_b = name_b;
+	}
+	else
+	{
+		root_name_b = types->named_types.value_from(name_b->distinct_root_type_id.rep);
+
+		if (!resolve_name_structure(types, root_name_b))
+			panic("Tried comparing incomplete type for compatibility\n"); // TODO: Figure out what to do here
+	}
+
+	// If this is `false` we are in case 3. (incompatible types)
+
+	return root_name_a->structure_index == root_name_b->structure_index && root_name_a->source_id == root_name_b->source_id;
+}
+
 bool type_can_cast_from_to(TypePool2* types, TypeId2 from_type_id, TypeId2 to_type_id) noexcept
 {
-	// TODO
+	if (type_compatible(types, from_type_id, to_type_id))
+		return true;
 
-	types; from_type_id; to_type_id;
+	// TODO: Check for applicable implicit conversion rules from `from` to `to`.
 
 	return false;
 }
 
 TypeId2 common_type(TypePool2* types, TypeId2 type_id_a, TypeId2 type_id_b) noexcept
 {
-	// TODO
+	if (type_id_a == type_id_b)
+		return type_id_a;
 
-	types; type_id_a; type_id_b;
+	if (!type_compatible(types, type_id_a, type_id_b))
+		return INVALID_TYPE_ID_2;
 
-	return INVALID_TYPE_ID_2;
+	// TODO: Look if a is an alias of b (or the other way around). In this
+	//       case, return the aliased of the two (the one closer to the root).
+	//       If they are not directly related, return their first common
+	//       ancestor.
+	//       Note that all of this is only a niceity for diagnostics, and does
+	//       not otherwise affect the compiler's correctness.
+
+	return type_id_a;
 }
 
-TypeId2 type_get_member(TypePool2* types, TypeId2 type_id, IdentifierId member_name) noexcept
+Member2* type_get_member(TypePool2* types, TypeId2 type_id, IdentifierId member_name) noexcept
 {
-	// TODO
+	TypeName* const name = types->named_types.value_from(type_id.rep);
 
-	types; type_id; member_name;
+	if (!resolve_name_structure(types, name))
+	{
+		TypeBuilder2* deferred_builder = get_deferred_type_builder(types, name);
 
-	return INVALID_TYPE_ID_2;
+		while (true)
+		{
+			for (u32 i = 0; i != deferred_builder->used; ++i)
+			{
+				if (deferred_builder->members[i].definition.name == member_name)
+				{
+					return deferred_builder->members + i;
+				}
+			}
+
+			if (deferred_builder->next_offset == 0)
+				break;
+
+			deferred_builder = type_builder_at_offset(deferred_builder, deferred_builder->next_offset);
+		}
+
+		panic("Tried getting nonexistent member of type\n"); // TODO: Report type
+	}
+
+	TypeStructure2* const structure = types->structural_types.value_from(name->structure_index);
+
+	if (structure->tag != TypeTag::Composite)
+		panic("Tried getting member of non-composite type\n"); // TODO: Report type
+
+	CompositeType2* const composite = data<CompositeType2>(structure);
+
+	for (u32 i = 0; i != composite->header.member_count; ++i)
+	{
+		if (composite->members[i].definition.name == member_name)
+			return composite->members + i;
+	}
+
+	panic("Tried getting nonexistent member of type\n"); // TODO: Report type
+}
+
+IncompleteMemberIterator incomplete_members_of(TypePool2* types, TypeId2 type_id) noexcept
+{
+	TypeName* name = types->named_types.value_from(type_id.rep);
+
+	if (name->structure_index_kind == TypeName::STRUCTURE_INDEX_INDIRECT)
+		name = types->named_types.value_from(name->structure_index);
+
+	if (name->structure_index_kind == TypeName::STRUCTURE_INDEX_NORMAL)
+		return { nullptr, 0 };
+
+	ASSERT_OR_IGNORE(name->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER);
+
+	return { type_builder_from_index(types, name->structure_index), 0 };
+}
+
+OptPtr<Member2> next(IncompleteMemberIterator* it) noexcept
+{
+	if (it->builder == nullptr)
+		return none<Member2>();
+
+	TypeBuilder2* builder = it->builder;
+
+	u32 curr = it->curr;
+
+	while (true)
+	{
+		while (curr != builder->used)
+		{
+			if (builder->members[curr].definition.type_id_bits == 0)
+				break;
+
+			curr += 1;
+		}
+
+		if (builder->next_offset == 0)
+		{
+			it->builder = nullptr;
+
+			return none<Member2>();
+		}
+
+		builder = type_builder_at_offset(builder, builder->next_offset);
+
+		curr = 0;
+	}
+
+	it->builder = builder;
+
+	it->curr = curr + 1;
+
+	return some(builder->members + curr);
 }

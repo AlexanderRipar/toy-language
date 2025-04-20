@@ -815,7 +815,7 @@ template<typename T>
 static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken first_child, SourceId source_id, AstFlag flags, T attachment) noexcept
 {
 	static_assert(sizeof(AstNode) % sizeof(u32) == 0);
-	
+
 	static_assert(sizeof(T) % sizeof(u32) == 0);
 
 	const u32 required_dwords = (sizeof(AstNode) + sizeof(T)) / sizeof(u32);
@@ -872,6 +872,16 @@ struct SourceLocation
 };
 
 struct SourceReader;
+
+static inline bool operator==(SourceId lhs, SourceId rhs) noexcept
+{
+	return lhs.m_rep == rhs.m_rep;
+}
+
+static inline bool operator!=(SourceId lhs, SourceId rhs) noexcept
+{
+	return lhs.m_rep != rhs.m_rep;
+}
 
 static constexpr SourceId INVALID_SOURCE_ID = { 0 };
 
@@ -1263,6 +1273,13 @@ struct TypePool2;
 
 struct TypeBuilder2;
 
+struct IncompleteMemberIterator
+{
+	TypeBuilder2* builder;
+
+	u32 curr;
+};
+
 struct Definition2
 {
 	IdentifierId name;
@@ -1351,11 +1368,6 @@ struct alignas(u64) TypeStructure2
 
 		memcpy(data, key.begin(), key.count());
 	}
-};
-
-struct SimpleType2
-{
-	u32 unused_ = 0;
 };
 
 struct ReferenceType2
@@ -1477,34 +1489,45 @@ static inline bool operator!=(TypeId2 lhs, TypeId2 rhs) noexcept
 }
 
 template<typename T>
-static inline T* data(TypeStructure2* entry) noexcept
+[[nodiscard]] static inline T* data(TypeStructure2* entry) noexcept
 {
 	return reinterpret_cast<T*>(&entry->data);
 }
 
-TypePool2* create_type_pool2(AllocPool* alloc, ErrorSink* errors) noexcept;
+template<typename T>
+[[nodiscard]] static inline const T* data(const TypeStructure2* entry) noexcept
+{
+	return reinterpret_cast<const T*>(&entry->data);
+}
+
+[[nodiscard]] TypePool2* create_type_pool2(AllocPool* alloc, ErrorSink* errors) noexcept;
 
 void release_type_pool2(TypePool2* types) noexcept;
 
-TypeId2 primitive_type(TypePool2* types, TypeTag tag, Range<byte> data) noexcept;
+[[nodiscard]] TypeId2 primitive_type(TypePool2* types, TypeTag tag, Range<byte> data) noexcept;
 
-TypeId2 alias_type(TypePool2* types, TypeId2 aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept;
+[[nodiscard]] TypeId2 alias_type(TypePool2* types, TypeId2 aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept;
 
-OptPtr<TypeStructure2> type_structure_from_id(TypePool2* types, TypeId2 type_id) noexcept;
+[[nodiscard]] OptPtr<TypeStructure2> type_structure_from_id(TypePool2* types, TypeId2 type_id) noexcept;
 
-TypeBuilder2* create_type_builder(TypePool2* types, SourceId source_id) noexcept;
+[[nodiscard]] TypeBuilder2* create_type_builder(TypePool2* types, SourceId source_id) noexcept;
 
 void add_type_builder_member(TypeBuilder2* builder, Member2 member) noexcept;
 
-TypeId2 complete_type_builder(TypeBuilder2* builder, u64 size, u32 align, u64 stride) noexcept;
+[[nodiscard]] TypeId2 complete_type_builder(TypeBuilder2* builder, u64 size, u32 align, u64 stride) noexcept;
 
-[[nodiscard]] bool type_equality(TypePool2* types, TypeId2 type_id_a, TypeId2 type_id_b) noexcept;
+[[nodiscard]] bool type_compatible(TypePool2* types, TypeId2 type_id_a, TypeId2 type_id_b) noexcept;
 
 [[nodiscard]] bool type_can_cast_from_to(TypePool2* types, TypeId2 from_type_id, TypeId2 to_type_id) noexcept;
 
 [[nodiscard]] TypeId2 common_type(TypePool2* types, TypeId2 type_id_a, TypeId2 type_id_b) noexcept;
 
-[[nodiscard]] TypeId2 type_get_member(TypePool2* types, TypeId2 type_id, IdentifierId member_name) noexcept;
+[[nodiscard]] Member2* type_get_member(TypePool2* types, TypeId2 type_id, IdentifierId member_name) noexcept;
+
+[[nodiscard]] IncompleteMemberIterator incomplete_members_of(TypePool2* types, TypeId2 type_id) noexcept;
+
+[[nodiscard]] OptPtr<Member2> next(IncompleteMemberIterator* it) noexcept;
+
 
 
 struct ValuePool;
