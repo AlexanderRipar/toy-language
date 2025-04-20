@@ -112,7 +112,7 @@ struct TypeName
 
 struct TypePool
 {
-	IndexMap<AttachmentRange<byte, TypeTag>, TypeStructure2> structural_types;
+	IndexMap<AttachmentRange<byte, TypeTag>, TypeStructure> structural_types;
 
 	IndexMap<TypeName, TypeName> named_types;
 
@@ -415,12 +415,12 @@ TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, Sou
 	return TypeId{ types->named_types.index_from(name, fnv1a(range::from_object_bytes(&name))) };
 }
 
-OptPtr<TypeStructure2> type_structure_from_id(TypePool* types, TypeId type_id) noexcept
+OptPtr<TypeStructure> type_structure_from_id(TypePool* types, TypeId type_id) noexcept
 {
 	TypeName* const name = types->named_types.value_from(type_id.rep);
 
 	if (!resolve_name_structure(types, name))
-		return none<TypeStructure2>();
+		return none<TypeStructure>();
 
 	return some(types->structural_types.value_from(name->structure_index));
 }
@@ -634,7 +634,7 @@ Member* type_get_member(TypePool* types, TypeId type_id, IdentifierId member_nam
 		panic("Tried getting nonexistent member of type\n"); // TODO: Report type
 	}
 
-	TypeStructure2* const structure = types->structural_types.value_from(name->structure_index);
+	TypeStructure* const structure = types->structural_types.value_from(name->structure_index);
 
 	if (structure->tag != TypeTag::Composite)
 		panic("Tried getting member of non-composite type\n"); // TODO: Report type

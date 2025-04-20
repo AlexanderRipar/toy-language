@@ -56,11 +56,11 @@ static void primitive_type_with_integer_returns_integer_type_structure() noexcep
 
 	TEST_UNEQUAL(u16_id, INVALID_TYPE_ID_2);
 
-	const OptPtr<TypeStructure2> opt_u16_structure = type_structure_from_id(dummy.types, u16_id);
+	const OptPtr<TypeStructure> opt_u16_structure = type_structure_from_id(dummy.types, u16_id);
 
 	TEST_EQUAL(is_some(opt_u16_structure), true);
 
-	TypeStructure2* const u16_structure = get_ptr(opt_u16_structure);
+	TypeStructure* const u16_structure = get_ptr(opt_u16_structure);
 
 	TEST_EQUAL(u16_structure->tag, TypeTag::Integer);
 
@@ -87,11 +87,11 @@ static void primitive_type_with_integer_and_float_with_same_bit_pattern_returns_
 
 	TEST_UNEQUAL(u32_id, INVALID_TYPE_ID_2);
 
-	const OptPtr<TypeStructure2> opt_u32_structure = type_structure_from_id(dummy.types, u32_id);
+	const OptPtr<TypeStructure> opt_u32_structure = type_structure_from_id(dummy.types, u32_id);
 
 	TEST_EQUAL(is_some(opt_u32_structure), true);
 
-	TypeStructure2* const u32_structure = get_ptr(opt_u32_structure);
+	TypeStructure* const u32_structure = get_ptr(opt_u32_structure);
 
 	TEST_EQUAL(u32_structure->tag, TypeTag::Integer);
 
@@ -107,11 +107,11 @@ static void primitive_type_with_integer_and_float_with_same_bit_pattern_returns_
 
 	TEST_UNEQUAL(f32_id, INVALID_TYPE_ID_2);
 
-	OptPtr<TypeStructure2> opt_f32_structure = type_structure_from_id(dummy.types, f32_id);
+	OptPtr<TypeStructure> opt_f32_structure = type_structure_from_id(dummy.types, f32_id);
 
 	TEST_EQUAL(is_some(opt_f32_structure), true);
 
-	TypeStructure2* const f32_structure = get_ptr(opt_f32_structure);
+	TypeStructure* const f32_structure = get_ptr(opt_f32_structure);
 
 	TEST_EQUAL(f32_structure->tag, TypeTag::Float);
 
@@ -146,11 +146,11 @@ static void primitive_type_with_array_returns_array_type() noexcept
 
 	TEST_UNEQUAL(array_id, INVALID_TYPE_ID_2);
 
-	OptPtr<TypeStructure2> opt_array_structure = type_structure_from_id(dummy.types, array_id);
+	OptPtr<TypeStructure> opt_array_structure = type_structure_from_id(dummy.types, array_id);
 
 	TEST_EQUAL(is_some(opt_array_structure), true);
 
-	TypeStructure2* const array_structure = get_ptr(opt_array_structure);
+	TypeStructure* const array_structure = get_ptr(opt_array_structure);
 
 	TEST_EQUAL(array_structure->tag, TypeTag::Array);
 

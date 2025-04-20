@@ -1003,7 +1003,7 @@ struct Member
 	s64 offset;
 };
 
-struct alignas(u64) TypeStructure2
+struct alignas(u64) TypeStructure
 {
 	TypeTag tag;
 
@@ -1037,12 +1037,12 @@ struct alignas(u64) TypeStructure2
 
 	static u32 required_strides(AttachmentRange<byte, TypeTag> key) noexcept
 	{
-		return static_cast<u32>((offsetof(TypeStructure2, data) + key.count() + stride() - 1) / stride());
+		return static_cast<u32>((offsetof(TypeStructure, data) + key.count() + stride() - 1) / stride());
 	}
 
 	u32 used_strides() const noexcept
 	{
-		return static_cast<u32>((offsetof(TypeStructure2, data) + bytes + stride() - 1) / stride());
+		return static_cast<u32>((offsetof(TypeStructure, data) + bytes + stride() - 1) / stride());
 	}
 
 	u32 hash() const noexcept
@@ -1188,13 +1188,13 @@ static inline bool operator!=(TypeId lhs, TypeId rhs) noexcept
 }
 
 template<typename T>
-[[nodiscard]] static inline T* data(TypeStructure2* entry) noexcept
+[[nodiscard]] static inline T* data(TypeStructure* entry) noexcept
 {
 	return reinterpret_cast<T*>(&entry->data);
 }
 
 template<typename T>
-[[nodiscard]] static inline const T* data(const TypeStructure2* entry) noexcept
+[[nodiscard]] static inline const T* data(const TypeStructure* entry) noexcept
 {
 	return reinterpret_cast<const T*>(&entry->data);
 }
@@ -1207,7 +1207,7 @@ void release_type_pool2(TypePool* types) noexcept;
 
 [[nodiscard]] TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept;
 
-[[nodiscard]] OptPtr<TypeStructure2> type_structure_from_id(TypePool* types, TypeId type_id) noexcept;
+[[nodiscard]] OptPtr<TypeStructure> type_structure_from_id(TypePool* types, TypeId type_id) noexcept;
 
 [[nodiscard]] TypeBuilder* create_type_builder(TypePool* types, SourceId source_id) noexcept;
 
