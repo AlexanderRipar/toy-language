@@ -367,7 +367,7 @@ TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept
 	return types;
 }
 
-void release_type_pool2(TypePool* types) noexcept
+void release_type_pool(TypePool* types) noexcept
 {
 	types->named_types.release();
 

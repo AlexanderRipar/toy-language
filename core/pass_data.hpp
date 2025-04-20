@@ -1201,7 +1201,7 @@ template<typename T>
 
 [[nodiscard]] TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept;
 
-void release_type_pool2(TypePool* types) noexcept;
+void release_type_pool(TypePool* types) noexcept;
 
 [[nodiscard]] TypeId primitive_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept;
 

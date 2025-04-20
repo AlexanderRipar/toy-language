@@ -32,7 +32,7 @@ static DummyTypePool create_dummy_types() noexcept
 
 static void release_dummy_types(DummyTypePool dummy) noexcept
 {
-	release_type_pool2(dummy.types);
+	release_type_pool(dummy.types);
 
 	release_error_sink(dummy.errors);
 
