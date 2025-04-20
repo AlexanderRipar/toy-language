@@ -1,5 +1,5 @@
-#ifndef AST2_HELPER_INCLUDE_GUARD
-#define AST2_HELPER_INCLUDE_GUARD
+#ifndef AST_HELPER_INCLUDE_GUARD
+#define AST_HELPER_INCLUDE_GUARD
 
 #include "../infra/common.hpp"
 #include "pass_data.hpp"
@@ -151,4 +151,4 @@ inline IfInfo get_if_info(AstNode* if_node) noexcept
 	return info;
 }
 
-#endif // AST2_HELPER_INCLUDE_GUARD
+#endif // AST_HELPER_INCLUDE_GUARD
