@@ -8,9 +8,7 @@
 
 namespace diag
 {
-	void print_ast(FILE* out, IdentifierPool* identifiers, AstNode* root) noexcept;	
-
-	void print_type(FILE* out, IdentifierPool* identifiers, TypePool* types, TypeId type_id) noexcept;
+	void print_ast(FILE* out, IdentifierPool* identifiers, AstNode* root) noexcept;
 }
 
 #endif // DIAG_INCLUDE_GUARD

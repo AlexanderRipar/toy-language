@@ -36,16 +36,11 @@ set(CORE_SOURCES
 	core/ast_pool.cpp
 	core/ast.cpp
 	core/identifier_pool.cpp
-	core/interpreter.cpp
 	core/parse.cpp
 	core/pass_data.hpp
 	core/source_reader.cpp
-	core/scope_pool.cpp
 	core/token.cpp
-	core/type_pool.cpp
 	core/type_pool2.cpp
-	core/typechecker.cpp
-	core/value_pool.cpp
 	core/ast_attach.hpp
 	core/ast_helper.hpp
 )
@@ -53,7 +48,6 @@ set(CORE_SOURCES
 set(DIAG_SOURCES
 	diag/diag.hpp
 	diag/print_ast.cpp
-	diag/print_type.cpp
 )
 
 function(prepare_exe NAME)

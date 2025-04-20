@@ -1483,7 +1483,7 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 		source_error(parser->lexer.errors, lexeme.source_id, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 	}
 
-	return push_node(&parser->builder, first_child_token, source_id, flags, DefinitionData{ identifier_id, INVALID_TYPE_ID, INVALID_VALUE_ID });
+	return push_node(&parser->builder, first_child_token, source_id, flags, DefinitionData{ identifier_id });
 }
 
 static AstBuilderToken parse_return(Parser* parser) noexcept
@@ -1909,7 +1909,7 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 		parse_expr(parser, true);
 	}
 
-	return push_node(&parser->builder, first_child_token, func_source_id, flags, FuncData{ INVALID_TYPE_ID, INVALID_TYPE_ID, INVALID_SCOPE_ID });
+	return push_node(&parser->builder, first_child_token, func_source_id, flags, AstTag::Func);
 }
 
 static AstBuilderToken parse_trait(Parser* parser) noexcept
@@ -2198,16 +2198,11 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 
 				AstBuilderToken first_child_token = AstBuilder::NO_CHILDREN;
 
-				u32 definition_count = 0;
-
 				while (lexeme.token != Token::CurlyR)
 				{
 					bool is_definition;
 
 					const AstBuilderToken curr_token = parse_top_level_expr(parser, false, &is_definition);
-
-					if (is_definition)
-						definition_count += 1;
 
 					if (first_child_token == AstBuilder::NO_CHILDREN)
 						first_child_token = curr_token;
@@ -2218,7 +2213,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 						break;
 				}
 
-				const AstBuilderToken block_token = push_node(&parser->builder, first_child_token, source_id, AstFlag::EMPTY, BlockData{ definition_count, INVALID_SCOPE_ID });
+				const AstBuilderToken block_token = push_node(&parser->builder, first_child_token, source_id, AstFlag::EMPTY, AstTag::Block);
 				
 				push_operand(parser, &stack, block_token);
 			}
@@ -2475,8 +2470,6 @@ static void parse_file(Parser* parser) noexcept
 {
 	AstBuilderToken first_child_token = AstBuilder::NO_CHILDREN;
 
-	u32 definition_count = 0;
-
 	while (true)
 	{
 		const Lexeme lexeme = peek(&parser->lexer);
@@ -2488,14 +2481,11 @@ static void parse_file(Parser* parser) noexcept
 
 		const AstBuilderToken curr_token = parse_definition_or_impl(parser, &is_definition);
 
-		if (is_definition)
-			definition_count += 1;
-
 		if (first_child_token == AstBuilder::NO_CHILDREN)
 			first_child_token = curr_token;
 	};
 
-	push_node(&parser->builder, first_child_token, SourceId{ parser->lexer.source_id_base }, AstFlag::EMPTY, FileData{ BlockData{ definition_count, INVALID_SCOPE_ID } });
+	push_node(&parser->builder, first_child_token, SourceId{ parser->lexer.source_id_base }, AstFlag::EMPTY, AstTag::File);
 }
 
 
