@@ -208,7 +208,7 @@ static TypeBuilder2* alloc_type_builder(TypePool2* types) noexcept
 
 static void free_type_builder(TypePool2* types, TypeBuilder2* builder) noexcept
 {
-	const u32 old_first_free_index = types->first_free_builder_index;
+	const s32 old_first_free_index = types->first_free_builder_index;
 
 	if (old_first_free_index >= 0)
 	{
