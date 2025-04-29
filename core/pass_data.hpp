@@ -621,11 +621,6 @@ static inline OptPtr<AstNode> next(AstDirectChildIterator* iterator) noexcept
 	return some(curr);
 }
 
-static inline OptPtr<AstNode> peek(const AstDirectChildIterator* iterator) noexcept
-{
-	return maybe(iterator->curr);
-}
-
 static inline AstPreorderIterator preorder_ancestors_of(AstNode* node) noexcept
 {
 	AstPreorderIterator iterator;
@@ -689,11 +684,6 @@ static inline AstIterationResult next(AstPreorderIterator* iterator) noexcept
 	return result;
 }
 
-static inline AstIterationResult peek(const AstPreorderIterator* iterator) noexcept
-{
-	return { iterator->curr, iterator->depth };
-}
-
 static inline AstPostorderIterator postorder_ancestors_of(AstNode* node) noexcept
 {
 	AstPostorderIterator iterator;
@@ -752,14 +742,6 @@ static inline AstIterationResult next(AstPostorderIterator* iterator) noexcept
 	}
 
 	return { ret_node, ret_depth };
-}
-
-static inline AstIterationResult peek(const AstPostorderIterator* iterator) noexcept
-{
-	if (iterator->depth == -1)
-		return { nullptr, 0 };
-
-	return { apply_offset_(iterator->base, iterator->offsets[iterator->depth]), static_cast<u32>(iterator->depth) };
 }
 
 static inline bool operator==(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
