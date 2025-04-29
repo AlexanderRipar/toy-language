@@ -1571,27 +1571,27 @@ static void init_builtin_types(Interpreter* interp) noexcept
 	);
 }
 
-static void init_prelude_type(Interpreter* interp, Config* config, AstBuilder* builder, IdentifierPool* identifiers, AstPool* asts) noexcept
+static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPool* identifiers, AstPool* asts) noexcept
 {
-	const AstBuilderToken import_builtin = push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, static_cast<AstFlag>(Builtin::Import), AstTag::Builtin);
+	const AstBuilderToken import_builtin = push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, static_cast<AstFlag>(Builtin::Import), AstTag::Builtin);
 
-	push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstLitStringData{ id_from_identifier(identifiers, config->std.filepath)});
+	push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstLitStringData{ id_from_identifier(identifiers, config->std.filepath)});
 
-	const AstBuilderToken import_call = push_node(builder, import_builtin, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::Call);
+	const AstBuilderToken import_call = push_node(asts, import_builtin, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::Call);
 
-	const AstBuilderToken std_definition = push_node(builder, import_call, INVALID_SOURCE_ID, AstFlag::EMPTY, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
+	const AstBuilderToken std_definition = push_node(asts, import_call, INVALID_SOURCE_ID, AstFlag::EMPTY, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
 
-	const AstBuilderToken std_identifier = push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
+	const AstBuilderToken std_identifier = push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
 
-	push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("prelude")) });
+	push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("prelude")) });
 
-	const AstBuilderToken prelude_member = push_node(builder, std_identifier, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::OpMember);
+	const AstBuilderToken prelude_member = push_node(asts, std_identifier, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::OpMember);
 
-	push_node(builder, prelude_member, INVALID_SOURCE_ID, AstFlag::Definition_IsUse, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("prelude"))} );
+	push_node(asts, prelude_member, INVALID_SOURCE_ID, AstFlag::Definition_IsUse, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("prelude"))} );
 
-	push_node(builder, std_definition, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::File);
+	push_node(asts, std_definition, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::File);
 
-	AstNode* const prelude_ast = complete_ast(builder, asts);
+	AstNode* const prelude_ast = complete_ast(asts);
 
 	interp->prelude_type_id = type_from_file_ast(interp, prelude_ast, INVALID_SOURCE_ID);
 }
@@ -1617,7 +1617,7 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 
 	init_builtin_types(interp);
 
-	init_prelude_type(interp, config, get_ast_builder(parser), identifiers, asts);
+	init_prelude_type(interp, config, identifiers, asts);
 
 	return interp;
 }
@@ -1635,7 +1635,7 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 
 	if (read.source_file->ast_root == INVALID_AST_NODE_ID)
 	{
-		root = parse(interp->parser, read.content, read.source_file->source_id_base, is_std, interp->asts, filepath);
+		root = parse(interp->parser, read.content, read.source_file->source_id_base, is_std, filepath);
 
 		read.source_file->ast_root = id_from_ast_node(interp->asts, root);
 	}

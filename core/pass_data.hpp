@@ -447,13 +447,6 @@ struct AstBuilderToken
 	u32 rep;
 };
 
-struct AstBuilder
-{
-	static constexpr AstBuilderToken NO_CHILDREN = { ~0u };
-
-	ReservedVec<u32> scratch;
-};
-
 struct AstIterationResult
 {
 	AstNode* node;
@@ -542,6 +535,8 @@ struct AstBlockData
 
 	TypeId scope_type_id;
 };
+
+static constexpr AstBuilderToken AST_BUILDER_NO_CHILDREN = { ~0u };
 
 inline AstFlag operator|(AstFlag lhs, AstFlag rhs) noexcept
 {
@@ -672,55 +667,19 @@ AstPostorderIterator postorder_ancestors_of(AstNode* node) noexcept;
 
 AstIterationResult next(AstPostorderIterator* iterator) noexcept;
 
-static inline AstBuilder create_ast_builder() noexcept
-{
-	AstBuilder builder;
+AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag) noexcept;
 
-	builder.scratch.init(1u << 31, 1u << 18);
-
-	return builder;
-}
-
-static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag) noexcept
-{
-	static_assert(sizeof(AstNode) % sizeof(u32) == 0);
-
-	AstNode* const node = reinterpret_cast<AstNode*>(builder->scratch.reserve_exact(sizeof(AstNode)));
-
-	node->next_sibling_offset = first_child.rep;
-	node->tag = tag;
-	node->flags = flags;
-	node->data_dwords = sizeof(AstNode) / sizeof(u32);
-	node->internal_flags = first_child == AstBuilder::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
-	node->source_id = source_id;
-
-	return { static_cast<u32>(reinterpret_cast<u32*>(node) - builder->scratch.begin()) };
-}
+AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_dwords, const void* attachment) noexcept;
 
 template<typename T>
-static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken first_child, SourceId source_id, AstFlag flags, T attachment) noexcept
+static inline AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, T attachment) noexcept
 {
-	static_assert(sizeof(AstNode) % sizeof(u32) == 0);
-
 	static_assert(sizeof(T) % sizeof(u32) == 0);
 
-	const u32 required_dwords = (sizeof(AstNode) + sizeof(T)) / sizeof(u32);
-
-	AstNode* const node = reinterpret_cast<AstNode*>(builder->scratch.reserve_exact(required_dwords * sizeof(u32)));
-
-	node->next_sibling_offset = first_child.rep;
-	node->tag = T::TAG;
-	node->flags = flags;
-	node->data_dwords = required_dwords;
-	node->internal_flags = first_child == AstBuilder::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
-	node->source_id = source_id;
-
-	memcpy(node + 1, &attachment, sizeof(T));
-
-	return { static_cast<u32>(reinterpret_cast<u32*>(node) - builder->scratch.begin()) };
+	return push_node(asts, first_child, source_id, flags, T::TAG, sizeof(attachment) / sizeof(u32), &attachment);
 }
 
-AstNode* complete_ast(AstBuilder* builder, AstPool* dst) noexcept;
+AstNode* complete_ast(AstPool* asts) noexcept;
 
 const char8* tag_name(AstTag tag) noexcept;
 
@@ -1045,9 +1004,7 @@ struct Parser;
 
 [[nodiscard]] Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* errors, minos::FileHandle log_file) noexcept;
 
-[[nodiscard]] AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std, AstPool* out, Range<char8> filepath) noexcept;
-
-[[nodiscard]] AstBuilder* get_ast_builder(Parser* parser) noexcept;
+[[nodiscard]] AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std, Range<char8> filepath) noexcept;
 
 
 

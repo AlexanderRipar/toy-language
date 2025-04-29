@@ -6,6 +6,8 @@
 struct AstPool
 {
 	ReservedVec<u32> pool;
+
+	ReservedVec<u32> builder;
 };
 
 // Set FLAG_FIRST_SIBLING and FLAG_LAST_SIBLING (note that next_sibling_offset
@@ -27,7 +29,7 @@ static void set_internal_flags(AstNode* begin, AstNode* end) noexcept
 	{
 		AstNode* const next = apply_offset_(curr, curr->data_dwords);
 
-		if (curr->next_sibling_offset != AstBuilder::NO_CHILDREN.rep)
+		if (curr->next_sibling_offset != AST_BUILDER_NO_CHILDREN.rep)
 		{
 			ASSERT_OR_IGNORE(prev != nullptr);
 
@@ -57,7 +59,7 @@ static AstNode* build_traversal_list(AstNode* begin, AstNode* end) noexcept
 {
 	sreg depth = -1;
 
-	u32 recursively_last_child = AstBuilder::NO_CHILDREN.rep;
+	u32 recursively_last_child = AST_BUILDER_NO_CHILDREN.rep;
 
 	u32 prev_sibling_inds[MAX_AST_DEPTH];
 
@@ -96,7 +98,7 @@ static AstNode* build_traversal_list(AstNode* begin, AstNode* end) noexcept
 
 			if ((curr->internal_flags & AstNode::FLAG_NO_CHILDREN) == 0)
 			{
-				ASSERT_OR_IGNORE(recursively_last_child != AstBuilder::NO_CHILDREN.rep);
+				ASSERT_OR_IGNORE(recursively_last_child != AST_BUILDER_NO_CHILDREN.rep);
 
 				prev_sibling_inds[depth] = recursively_last_child;
 			}
@@ -186,7 +188,7 @@ static AstNode* copy_postorder_to_preorder(const AstNode* begin, const AstNode* 
 
 		prev_sibling_inds[depth] = curr_ind;
 
-		if (src_curr->next_sibling_offset == AstBuilder::NO_CHILDREN.rep)
+		if (src_curr->next_sibling_offset == AST_BUILDER_NO_CHILDREN.rep)
 			break;
 
 		src_curr = reinterpret_cast<const AstNode*>(reinterpret_cast<const u32*>(begin) + src_curr->next_sibling_offset);
@@ -216,6 +218,8 @@ AstPool* create_ast_pool(AllocPool* pool) noexcept
 
 	asts->pool.init(1u << 30, 1u << 18);
 
+	asts->builder.init(1u << 31, 1u << 18);
+
 	(void) asts->pool.reserve_exact(sizeof(*asts->pool.begin()));
 
 	return asts;
@@ -241,119 +245,62 @@ AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept
 	return reinterpret_cast<AstNode*>(asts->pool.begin() + id.rep);
 }
 
-AstNode* complete_ast(AstBuilder* builder, AstPool* dst) noexcept
-{
-	AstNode* const begin = reinterpret_cast<AstNode*>(builder->scratch.begin());
 
-	AstNode* const end = reinterpret_cast<AstNode*>(builder->scratch.end());
+
+AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag) noexcept
+{
+	static_assert(sizeof(AstNode) % sizeof(u32) == 0);
+
+	AstNode* const node = reinterpret_cast<AstNode*>(asts->builder.reserve_exact(sizeof(AstNode)));
+
+	node->next_sibling_offset = first_child.rep;
+	node->tag = tag;
+	node->flags = flags;
+	node->data_dwords = sizeof(AstNode) / sizeof(u32);
+	node->internal_flags = first_child == AST_BUILDER_NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
+	node->source_id = source_id;
+
+	return { static_cast<u32>(reinterpret_cast<u32*>(node) - asts->builder.begin()) };
+}
+
+AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_dwords, const void* attachment) noexcept
+{
+	static_assert(sizeof(AstNode) % sizeof(u32) == 0);
+
+	const u8 required_dwords = static_cast<u8>((sizeof(AstNode) + attachment_dwords) / sizeof(u32));
+
+	AstNode* const node = reinterpret_cast<AstNode*>(asts->builder.reserve_exact(required_dwords * sizeof(u32)));
+
+	node->next_sibling_offset = first_child.rep;
+	node->tag = tag;
+	node->flags = flags;
+	node->data_dwords = required_dwords;
+	node->internal_flags = first_child == AST_BUILDER_NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
+	node->source_id = source_id;
+
+	memcpy(node + 1, &attachment, attachment_dwords * sizeof(u32));
+
+	return { static_cast<u32>(reinterpret_cast<u32*>(node) - asts->builder.begin()) };
+}
+
+AstNode* complete_ast(AstPool* asts) noexcept
+{
+	AstNode* const begin = reinterpret_cast<AstNode*>(asts->builder.begin());
+
+	AstNode* const end = reinterpret_cast<AstNode*>(asts->builder.end());
 
 	set_internal_flags(begin, end);
 
 	AstNode* const src_root = build_traversal_list(begin, end);
 
-	AstNode* const dst_root = copy_postorder_to_preorder(begin, end, src_root, dst);
+	AstNode* const dst_root = copy_postorder_to_preorder(begin, end, src_root, asts);
 
-	builder->scratch.reset(1 << 20);
+	asts->builder.reset(1 << 20);
 
 	return dst_root;
 }
 
-const char8* tag_name(AstTag tag) noexcept
-{
-	static constexpr const char8* AST_TAG_NAMES[] = {
-		"[unknown]",
-		"Builtin",
-		"File",
-		"CompositeInitializer",
-		"ArrayInitializer",
-		"Wildcard",
-		"Where",
-		"Expects",
-		"Ensures",
-		"Definition",
-		"Block",
-		"If",
-		"For",
-		"ForEach",
-		"Switch",
-		"Case",
-		"Func",
-		"Trait",
-		"Impl",
-		"Catch",
-		"Identifier",
-		"LitInteger",
-		"LitFloat",
-		"LitChar",
-		"LitString",
-		"Return",
-		"Leave",
-		"Yield",
-		"ParameterList",
-		"Call",
-		"UOpTypeTailArray",
-		"UOpTypeSlice",
-		"UOpTypeMultiPtr",
-		"UOpTypeOptMultiPtr",
-		"UOpEval",
-		"UOpTry",
-		"UOpDefer",
-		"UOpDistinct",
-		"UOpAddr",
-		"UOpDeref",
-		"UOpBitNot",
-		"UOpLogNot",
-		"UOpTypeOptPtr",
-		"UOpTypeVar",
-		"UOpImpliedMember",
-		"UOpTypePtr",
-		"UOpNegate",
-		"UOpPos",
-		"OpAdd",
-		"OpSub",
-		"OpMul",
-		"OpDiv",
-		"OpAddTC",
-		"OpSubTC",
-		"OpMulTC",
-		"OpMod",
-		"OpBitAnd",
-		"OpBitOr",
-		"OpBitXor",
-		"OpShiftL",
-		"OpShiftR",
-		"OpLogAnd",
-		"OpLogOr",
-		"OpMember",
-		"OpCmpLT",
-		"OpCmpGT",
-		"OpCmpLE",
-		"OpCmpGE",
-		"OpCmpNE",
-		"OpCmpEQ",
-		"OpSet",
-		"OpSetAdd",
-		"OpSetSub",
-		"OpSetMul",
-		"OpSetDiv",
-		"OpSetAddTC",
-		"OpSetSubTC",
-		"OpSetMulTC",
-		"OpSetMod",
-		"OpSetBitAnd",
-		"OpSetBitOr",
-		"OpSetBitXor",
-		"OpSetShiftL",
-		"OpSetShiftR",
-		"OpTypeArray",
-		"OpArrayIndex",
-	};
 
-	if (static_cast<u8>(tag) < array_count(AST_TAG_NAMES))
-		return AST_TAG_NAMES[static_cast<u8>(tag)];
-
-	return AST_TAG_NAMES[0];
-}
 
 AstDirectChildIterator direct_children_of(AstNode* node) noexcept
 {
@@ -493,4 +440,103 @@ AstIterationResult next(AstPostorderIterator* iterator) noexcept
 	}
 
 	return { ret_node, ret_depth };
+}
+
+
+
+const char8* tag_name(AstTag tag) noexcept
+{
+	static constexpr const char8* AST_TAG_NAMES[] = {
+		"[unknown]",
+		"Builtin",
+		"File",
+		"CompositeInitializer",
+		"ArrayInitializer",
+		"Wildcard",
+		"Where",
+		"Expects",
+		"Ensures",
+		"Definition",
+		"Block",
+		"If",
+		"For",
+		"ForEach",
+		"Switch",
+		"Case",
+		"Func",
+		"Trait",
+		"Impl",
+		"Catch",
+		"Identifier",
+		"LitInteger",
+		"LitFloat",
+		"LitChar",
+		"LitString",
+		"Return",
+		"Leave",
+		"Yield",
+		"ParameterList",
+		"Call",
+		"UOpTypeTailArray",
+		"UOpTypeSlice",
+		"UOpTypeMultiPtr",
+		"UOpTypeOptMultiPtr",
+		"UOpEval",
+		"UOpTry",
+		"UOpDefer",
+		"UOpDistinct",
+		"UOpAddr",
+		"UOpDeref",
+		"UOpBitNot",
+		"UOpLogNot",
+		"UOpTypeOptPtr",
+		"UOpTypeVar",
+		"UOpImpliedMember",
+		"UOpTypePtr",
+		"UOpNegate",
+		"UOpPos",
+		"OpAdd",
+		"OpSub",
+		"OpMul",
+		"OpDiv",
+		"OpAddTC",
+		"OpSubTC",
+		"OpMulTC",
+		"OpMod",
+		"OpBitAnd",
+		"OpBitOr",
+		"OpBitXor",
+		"OpShiftL",
+		"OpShiftR",
+		"OpLogAnd",
+		"OpLogOr",
+		"OpMember",
+		"OpCmpLT",
+		"OpCmpGT",
+		"OpCmpLE",
+		"OpCmpGE",
+		"OpCmpNE",
+		"OpCmpEQ",
+		"OpSet",
+		"OpSetAdd",
+		"OpSetSub",
+		"OpSetMul",
+		"OpSetDiv",
+		"OpSetAddTC",
+		"OpSetSubTC",
+		"OpSetMulTC",
+		"OpSetMod",
+		"OpSetBitAnd",
+		"OpSetBitOr",
+		"OpSetBitXor",
+		"OpSetShiftL",
+		"OpSetShiftR",
+		"OpTypeArray",
+		"OpArrayIndex",
+	};
+
+	if (static_cast<u8>(tag) < array_count(AST_TAG_NAMES))
+		return AST_TAG_NAMES[static_cast<u8>(tag)];
+
+	return AST_TAG_NAMES[0];
 }
