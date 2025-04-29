@@ -2,7 +2,6 @@
 #define PASS_DATA_INCLUDE_GUARD
 
 #include "../infra/common.hpp"
-#include "../infra/container.hpp"
 #include "../infra/alloc_pool.hpp"
 #include "../infra/optptr.hpp"
 #include "../infra/minos.hpp"

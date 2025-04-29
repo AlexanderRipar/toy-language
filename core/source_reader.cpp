@@ -2,6 +2,7 @@
 #include <atomic>
 
 #include "../infra/common.hpp"
+#include "../infra/container.hpp"
 #include "../infra/threading.hpp"
 #include "../infra/minos.hpp"
 #include "../infra/hash.hpp"

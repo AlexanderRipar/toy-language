@@ -1,9 +1,11 @@
 #include "pass_data.hpp"
 
 #include "../infra/hash.hpp"
+#include "../infra/container.hpp"
 #include "../infra/inplace_sort.hpp"
 
 #include <cstdlib>
+#include <cstring>
 
 struct TypeStructure
 {
