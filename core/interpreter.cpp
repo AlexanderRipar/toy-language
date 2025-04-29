@@ -257,7 +257,7 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node) noexcept
 		return stack_value;
 	}
 
-	case AstTag::ValChar:
+	case AstTag::LitChar:
 	{
 		CompIntegerValue* const stack_value = static_cast<CompIntegerValue*>(alloc_stack_value(interp, sizeof(CompIntegerValue), alignof(CompIntegerValue)));
 
@@ -716,7 +716,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		return primitive_type(interp->types, TypeTag::Float, {});
 	}
 
-	case AstTag::ValChar:
+	case AstTag::LitChar:
 	{
 		return primitive_type(interp->types, TypeTag::CompInteger, {});
 	}

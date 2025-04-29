@@ -24,7 +24,7 @@ constexpr inline const char8* const NODE_TYPE_NAMES[] = {
 	"Identifier",
 	"LitInteger",
 	"LitFloat",
-	"ValChar",
+	"LitChar",
 	"ValString",
 	"Return",
 	"Leave",

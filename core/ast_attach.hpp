@@ -26,7 +26,7 @@ struct ValFloatData
 
 struct ValCharData
 {
-	static constexpr AstTag TAG = AstTag::ValChar;
+	static constexpr AstTag TAG = AstTag::LitChar;
 
 	u32 codepoint;
 };
