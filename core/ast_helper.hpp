@@ -10,7 +10,7 @@ static inline AstNode* last_child_of(AstNode* node) noexcept
 	ASSERT_OR_IGNORE(has_children(node));
 
 	AstNode* curr = first_child_of(node);
-	
+
 	while (has_next_sibling(curr))
 		curr = next_sibling_of(curr);
 
@@ -184,7 +184,7 @@ inline ForInfo get_for_info(AstNode* node) noexcept
 	if (has_flag(node, AstFlag::For_HasWhere))
 	{
 		info.where = some(curr);
-		
+
 		curr = next_sibling_of(curr);
 	}
 
@@ -226,13 +226,13 @@ inline ForEachInfo get_foreach_info(AstNode* node) noexcept
 	ForEachInfo info{};
 
 	info.element = curr;
-	
+
 	curr = next_sibling_of(curr);
 
 	if (has_flag(node, AstFlag::ForEach_HasIndex))
 	{
 		info.index = some(curr);
-		
+
 		curr = next_sibling_of(curr);
 	}
 

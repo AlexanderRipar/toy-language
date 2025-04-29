@@ -10,7 +10,7 @@ struct DummyTypePool
 	IdentifierPool* identifiers;
 
 	ErrorSink* errors;
-	
+
 	AllocPool* alloc;
 };
 

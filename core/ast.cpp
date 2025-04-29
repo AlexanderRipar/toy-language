@@ -206,7 +206,7 @@ static AstNode* build_traversal_list(AstNode* begin, AstNode* end) noexcept
 
 		curr = next;
 	}
-	
+
 	ASSERT_OR_IGNORE(depth == -1);
 
 	ASSERT_OR_IGNORE(reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(curr) + curr->data_dwords) == end);
@@ -235,7 +235,7 @@ static AstNode* copy_postorder_to_preorder(const AstNode* begin, const AstNode* 
 		// Copy node
 
 		AstNode* const dst_node = dst_curr;
-		
+
 		dst_curr = apply_offset_(dst_curr, src_curr->data_dwords);
 
 		memcpy(dst_node, src_curr, src_curr->data_dwords * sizeof(u32));

@@ -95,7 +95,7 @@ struct MinosIoUringData
 struct MinosIoUringLock
 {
 	thd::Mutex mutex;
-	
+
 	// Bookkeeping for teardown. Put here in one cacheline with mutex since it
 	// is only accessed on creation and teardown.
 
@@ -135,7 +135,7 @@ struct MinosIoUring
 
 		byte unused_freelist_[next_multiple(sizeof(MinosIoUringSQEFreelist), static_cast<u64>(minos::CACHELINE_BYTES))];
 	};
-	
+
 };
 
 struct MinosGlobalIoUrings
@@ -345,7 +345,7 @@ ERROR:
 	if (ring_fd >= 0)
 	{
 		if (close(ring_fd) != 0)
-			panic("close(ring_fd) failed after io_uring setup error (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));	
+			panic("close(ring_fd) failed after io_uring setup error (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
 	}
 
 	g_io_urings.freelist.push(g_io_urings.rings, ring - g_io_urings.rings);
@@ -456,13 +456,13 @@ ERROR:
 	if (needs_register)
 	{
 		const s32 update_ok = syscall_io_uring_register(ring->data.ring_fd, IORING_REGISTER_FILES_UPDATE, &update, 1);
-	
+
 		if (update_ok < 0)
 		{
 			(void) ring->data.registered_files[slot - 1].compare_exchange_strong(file_fd, -1, std::memory_order_release);
-	
+
 			errno = -update_ok;
-	
+
 			return { nullptr };
 		}
 	}
@@ -575,7 +575,7 @@ static bool m_io_uring_write(minos::FileHandle handle, minos::Overlapped* overla
 	while (true)
 	{
 		const u32 complete_head = m_io_uring_load_acquire(ring->data.complete_head);
-	
+
 		// If there are no available completion events, enter the kernel by
 		// specifying IORING_ENTER_GETEVENTS in io_uring_enter.
 		while (complete_head == ring->data.complete_tail->load(std::memory_order_acquire))
@@ -590,10 +590,10 @@ static bool m_io_uring_write(minos::FileHandle handle, minos::Overlapped* overla
 				return false;
 			}
 		}
-	
+
 		// Tentatively copy the completion event. This may however already have been claimed.
 		*out = ring->data.complete_begin[complete_head & ring->data.complete_mask];
-	
+
 		// Try to now actually claim it; Return success if we manage to do so.
 		// If another thread raced ahead of us, try again.
 		if (m_io_uring_try_store_increment_cqe_head(ring->data.complete_head, complete_head))
@@ -927,7 +927,7 @@ bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_
 	if (new_mode == NewMode::Create)
 	{
 		oflag |= O_CREAT;
-	
+
 		if (exists_mode == ExistsMode::Fail)
 			oflag |= O_EXCL;
 
@@ -982,7 +982,7 @@ minos::FileHandle minos::standard_file_handle(StdFileName name) noexcept
 	{
 	case StdFileName::StdIn:
 		return FileHandle{ 0 };
-	
+
 	case StdFileName::StdOut:
 		return FileHandle{ 1 };
 
@@ -1230,7 +1230,7 @@ void minos::completion_close(CompletionHandle handle) noexcept
 
 	if (munmap(ring->lock.submit_memory, ring->lock.submit_memory_bytes) != 0)
 		panic("munmap(io_uring submit_memory) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
-		
+
 	if (ring->lock.complete_memory != MAP_FAILED)
 	{
 		if (munmap(ring->lock.complete_memory, ring->lock.complete_memory_bytes) != 0)
@@ -1918,7 +1918,7 @@ u32 minos::path_to_absolute(Range<char8> path, MutRange<char8> out_buf) noexcept
 
 	while (out_buf[out_index] != '\0')
 		out_index += 1;
-	
+
 	return append_relative_path(path, out_buf, out_index);
 }
 
@@ -1982,7 +1982,7 @@ u64 minos::timestamp_utc() noexcept
 
 	if (t == static_cast<time_t>(-1))
 		panic("time failed (0x%X - %s)\n", last_error(), strerror(last_error()));
-		
+
 	return t;
 }
 

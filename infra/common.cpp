@@ -26,7 +26,7 @@
 NORETURN void assert_unreachable_helper() noexcept
 	{
 		fprintf(stderr, "Reached unreachable code\n");
-	
+
 		DEBUGBREAK;
 
 		minos::exit_process(1);

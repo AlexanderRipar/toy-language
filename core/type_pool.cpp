@@ -679,7 +679,7 @@ static bool find_composite_member_by_name(TypePool* types, CompositeType* compos
 			out->member = members + i;
 			out->rank = static_cast<u16>(i);
 			out->surrounding_type_id = type_id;
-			
+
 			return true;
 		}
 	}
@@ -854,7 +854,7 @@ const char8* tag_name(TypeTag tag) noexcept
 		"Divergent",
 		"Trait",
 	};
-	
+
 	u8 index = static_cast<u8>(tag);
 
 	if (index > array_count(TYPE_TAG_NAMES))
@@ -1350,17 +1350,17 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 	{
 		if (name->structure_index_kind == TypeName::STRUCTURE_INDEX_INDIRECT)
 			name = types->named_types.value_from(name->structure_index);
-	
+
 		ASSERT_OR_IGNORE(name->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER);
 
 		TypeBuilderHeader* const header = type_builder_header_at_index(types, name->structure_index);
 
 		if (!header->is_closed)
 			panic("Passed open type to `incomplete_members_of`\n");
-	
+
 		if (header->head_offset == 0)
 			return { nullptr, nullptr, 0 };
-	
+
 		return { type_builder_at_offset(&header->unused_, header->tail_offset), name, 0, type_id };
 	}
 
@@ -1424,7 +1424,7 @@ bool has_next(MemberIterator* it) noexcept
 
 			it->rank = 0;
 		}
-	
+
 		return true;
 	}
 	else

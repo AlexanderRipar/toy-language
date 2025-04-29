@@ -76,7 +76,7 @@ struct InvocationInfo
 		{
 			minos::EventHandle handle;
 		} event;
-		
+
 		struct
 		{
 			minos::SemaphoreHandle handle;
@@ -90,22 +90,22 @@ struct InvocationInfo
 		struct
 		{
 			minos::ShmHandle handle;
-		
+
 			u64 reserve_offset;
-		
+
 			u64 reserve_bytes;
-		
+
 			u64 commit_offset;
-		
+
 			u64 commit_bytes;
-		
+
 			u64 read_offset;
-		
+
 			u64 read_value;
-		
+
 			u64 write_offset;
-		
-			u64 write_value;		
+
+			u64 write_value;
 		} shm;
 	};
 	#if COMPILER_CLANG

@@ -88,7 +88,7 @@ struct SourceFileByPathEntry
 };
 
 struct SourceFileByIdEntry
-{	
+{
 	u64 file_id;
 
 	u32 device_id;
@@ -353,7 +353,7 @@ SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id)
 		// already be over the 4gb source code limit, so no need to worry about
 		// arithmetic overflow here.
 		const u32 mid = (lo + hi) >> 1;
-		
+
 		SourceFileByIdEntry* const curr = entries + mid;
 
 		SourceFileByIdEntry* const next = entries + mid + 1;

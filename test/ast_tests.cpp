@@ -86,7 +86,7 @@ static DummyTree complex_dummy_tree() noexcept
 	tree.index = 0;
 
 	push_node(&tree, { static_cast<AstTag>(1), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING, 9 * NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
-	
+
 	push_node(&tree, { static_cast<AstTag>(2), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING, 3 * NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
 
 	push_node(&tree, { static_cast<AstTag>(3), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
@@ -175,7 +175,7 @@ static MockedPools create_mocked_pools() noexcept
 static void release_mocked_pools(MockedPools mock) noexcept
 {
 	release_ast_pool(mock.asts);
-	
+
 	release_alloc_pool(mock.alloc);
 }
 

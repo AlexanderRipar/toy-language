@@ -89,7 +89,7 @@ static inline void inplace_sort(MutRange<T> elems) noexcept
 	else
 	{
 		inplace_sort_impl::make_heap<T, Comparator>(count, begin);
-	
+
 		for (u64 i = count - 1; i > 1; i -= 1)
 		{
 			const T tmp = begin[i];

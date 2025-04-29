@@ -150,7 +150,7 @@ namespace minos
 
 		GenericHandle(SemaphoreHandle h) noexcept : m_rep{ h.m_rep } {}
 	};
-	
+
 	struct FileIdentity
 	{
 		u32 volume_serial;
@@ -255,7 +255,7 @@ namespace minos
 	// The entire range from `ptr` to `ptr + bytes` must refer to memory
 	// previously obtained from `minos::mem_reserve`.
 	// Subsequent calls to `mem_commit` overlapping the committed range are
-	// explicitly supported, having no effect on the overlapping portions. 
+	// explicitly supported, having no effect on the overlapping portions.
 	[[nodiscard]] bool mem_commit(void* ptr, u64 bytes) noexcept;
 
 	// Makes virtual address space previously reserved via `minos::mem_reserve`
@@ -390,7 +390,7 @@ namespace minos
 	// waiting at the time of completion, a thread calling
 	// `minos::completion_wait` on the given `CompletionHandle` at a later time
 	// will be woken.
-	// 
+	//
 	// `inheritable` decides whether the handle will be inherited by processes
 	// created via `minos::process_create`.
 	//

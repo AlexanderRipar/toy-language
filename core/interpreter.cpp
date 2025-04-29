@@ -291,7 +291,7 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node) noexcept
 
 		if (size > UINT32_MAX)
 			source_error(interp->errors, node->source_id, "Size %" PRIu64 " of type exceeds maximum interpreter-stack-allocatable size %u.\n", UINT32_MAX);
-		
+
 		void* const stack_value = alloc_stack_value(interp, static_cast<u32>(size), align);
 
 		if (is_assignable(node->type_id))
@@ -386,7 +386,7 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::OpTypeArray:
 	case AstTag::OpArrayIndex:
 		panic("Evaluation of AST node type %s is not yet implemented.\n", tag_name(node->tag));
-		
+
 	case AstTag::File:
 	default:
 		ASSERT_UNREACHABLE;
@@ -587,7 +587,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 				else
 				{
 					const TypeTag expr_type_tag = type_tag_from_id(interp->types, expr_type_id);
-	
+
 					if (expr_type_tag != TypeTag::Void && expr_type_tag != TypeTag::Definition)
 						source_error(interp->errors, child->source_id, "Expression in non-terminal position in block must be a definition or of void type.\n");
 				}
@@ -601,7 +601,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		// Empty blocks are of type `Void`.
 		if (result_type_id.rep == INVALID_TYPE_ID.rep)
 			result_type_id = primitive_type(interp->types, TypeTag::Void, {});
-		
+
 		return result_type_id;
 	}
 
@@ -1149,7 +1149,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		if (lhs_type_tag == TypeTag::Composite)
 		{
 			const IdentifierId identifier_id = attachment_of<ValIdentifierData>(rhs)->identifier_id;
-	
+
 			MemberInfo member;
 
 			if (!type_member_info_by_name(interp->types, lhs_type_id, identifier_id, &member))
@@ -1380,7 +1380,7 @@ static TypeId typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file_type_source_id) noexcept
 {
 	ASSERT_OR_IGNORE(file->tag == AstTag::File);
-	
+
 	const TypeId file_type_id = create_open_type(interp->types, file_type_source_id);
 
 	push_typechecker_context(interp, file_type_id, true);
@@ -1636,7 +1636,7 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 	if (read.source_file->ast_root == INVALID_AST_NODE_ID)
 	{
 		root = parse(interp->parser, read.content, read.source_file->source_id_base, is_std, interp->asts, filepath);
-		
+
 		read.source_file->ast_root = id_from_ast_node(interp->asts, root);
 	}
 	else

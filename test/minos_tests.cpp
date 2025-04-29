@@ -2522,7 +2522,7 @@ static void sem_wait_timeout_with_long_timeout_waits_until_post() noexcept
 static void sem_wait_and_post_work_across_processes() noexcept
 {
 	MINOS_TEST_BEGIN;
-	
+
 	minos::SemaphoreHandle semaphore;
 
 	TEST_EQUAL(minos::sempahore_create(1, &semaphore), true);
@@ -3075,7 +3075,7 @@ static void path_to_absolute_relative_to_with_relative_base_returns_path_appende
 	const u32 wd_chars = minos::working_directory(MutRange{ wd_buf });
 
 	TEST_MEM_EQUAL(path_buf, wd_buf, wd_chars);
-	
+
 	#ifdef _WIN32
 		const Range<char8> expected = range::from_literal_string("\\base\\this\\is\\a\\path");
 	#else

@@ -152,18 +152,18 @@ struct Config
 		struct
 		{
 			bool enable = false;
-	
+
 			Range<char8> log_filepath = {};
 		} asts;
 
 		struct
 		{
 			bool enable = false;
-	
+
 			Range<char8> log_filepath = {};
 		} config;
 	} logging;
-	
+
 
 	void* m_heap_ptr;
 
@@ -1060,7 +1060,7 @@ struct MemberInfo
 	AstNodeId opt_type_node_id;
 
 	AstNodeId opt_value_node_id;
-	
+
 	TypecheckerResumptionId opt_type_resumption_id;
 };
 
@@ -1095,7 +1095,7 @@ struct MemberInit
 struct ReferenceType
 {
 	TypeId referenced_type_id;
-	
+
 	bool is_opt;
 
 	bool is_multi;
@@ -1115,7 +1115,7 @@ struct NumericType
 struct ArrayType
 {
 	u64 element_count;
-	
+
 	TypeId element_type;
 
 	u32 unused_ = 0;

@@ -162,9 +162,9 @@ struct ConfigToken
 struct ConfigParser
 {
 	static constexpr u32 HEAP_RESERVE = 1 << 18;
-	
+
 	static constexpr u32 HEAP_COMMIT_INCREMENT = 1 << 12;
-	
+
 	const char8* begin;
 
 	const char8* end;
@@ -611,7 +611,7 @@ static void parse_inline_table(ConfigParser* parser) noexcept
 	if (token.type == ConfigToken::Type::CurlyEnd)
 	{
 		skip(parser);
-		
+
 		return;
 	}
 
@@ -715,7 +715,7 @@ static void parse_integer(ConfigParser* parser) noexcept
 		else // if (text[1] == 'b')
 		{
 			ASSERT_OR_IGNORE(text[1] == 'b');
-			
+
 			for (u64 i = 2; i != text.count(); ++i)
 			{
 				const char8 c = text[i];
@@ -868,11 +868,11 @@ static u32 parse_escape_sequence(ConfigParser* parser, Range<char8> text, Codepo
 		if (has_newline)
 			return i;
 	}
-	
+
 	// FALLTHROUGH
 
 	default:
-		error(parser, text.begin(), "Unexpected escape sequence '\\%c'\n", text[1]); 
+		error(parser, text.begin(), "Unexpected escape sequence '\\%c'\n", text[1]);
 	}
 }
 
@@ -1095,7 +1095,7 @@ static void parse_config(ConfigParser* parser) noexcept
 
 			if (token.type != ConfigToken::Type::Set)
 				error(parser, token.content.begin(), "Expected '=' or '.' but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
-			
+
 			parse_value(parser);
 
 			pop_names(parser, name_depth);
