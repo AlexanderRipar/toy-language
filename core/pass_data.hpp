@@ -24,10 +24,6 @@ struct TypecheckerResumptionId
 	u32 rep;
 };
 
-struct SourceReader;
-
-struct SourceLocation;
-
 
 
 enum class Token : u8
@@ -291,24 +287,6 @@ IdentifierEntry* identifier_entry_from_identifier(IdentifierPool* identifiers, R
 IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept;
 
 IdentifierEntry* identifier_entry_from_id(IdentifierPool* identifiers, IdentifierId id) noexcept;
-
-
-
-struct ErrorSink;
-
-[[nodiscard]] ErrorSink* create_error_sink(AllocPool* pool, SourceReader* reader, IdentifierPool* identifiers) noexcept;
-
-void release_error_sink(ErrorSink* errors) noexcept;
-
-NORETURN void source_error(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
-
-NORETURN void vsource_error(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
-
-void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
-
-void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
-
-void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept; 
 
 
 
@@ -848,6 +826,8 @@ const char8* tag_name(AstTag tag) noexcept;
 
 
 
+struct SourceReader;
+
 struct SourceFile
 {
 	minos::FileHandle file;
@@ -879,8 +859,6 @@ struct SourceLocation
 	char8 context[512];
 };
 
-struct SourceReader;
-
 static inline bool operator==(SourceId lhs, SourceId rhs) noexcept
 {
 	return lhs.m_rep == rhs.m_rep;
@@ -908,6 +886,24 @@ void release_read(SourceReader* reader, SourceFileRead read) noexcept;
 [[nodiscard]] SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
 
 [[nodiscard]] Range<char8> source_file_path(SourceReader* reader, SourceFile* source_file) noexcept;
+
+
+
+struct ErrorSink;
+
+[[nodiscard]] ErrorSink* create_error_sink(AllocPool* pool, SourceReader* reader, IdentifierPool* identifiers) noexcept;
+
+void release_error_sink(ErrorSink* errors) noexcept;
+
+NORETURN void source_error(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
+
+NORETURN void vsource_error(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
+
+void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
+
+void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
+
+void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept;
 
 
 
