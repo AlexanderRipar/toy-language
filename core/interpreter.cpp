@@ -252,7 +252,7 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node) noexcept
 	{
 		CompFloatValue* const stack_value = static_cast<CompFloatValue*>(alloc_stack_value(interp, sizeof(CompFloatValue), alignof(CompFloatValue)));
 
-		*stack_value = attachment_of<ValFloatData>(node)->value;
+		*stack_value = attachment_of<AstLitFloatData>(node)->value;
 
 		return stack_value;
 	}

@@ -14,7 +14,7 @@ struct AstLitIntegerData
 	#pragma pack(pop)
 };
 
-struct ValFloatData
+struct AstLitFloatData
 {
 	static constexpr AstTag TAG = AstTag::LitFloat;
 
