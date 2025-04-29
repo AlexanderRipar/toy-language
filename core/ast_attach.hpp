@@ -45,7 +45,7 @@ struct AstLitStringData
 	IdentifierId string_id;
 };
 
-struct DefinitionData
+struct AstDefinitionData
 {
 	static constexpr AstTag TAG = AstTag::Definition;
 

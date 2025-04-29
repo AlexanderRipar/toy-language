@@ -1429,7 +1429,7 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 		source_error(parser->lexer.errors, lexeme.source_id, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 	}
 
-	return push_node(&parser->builder, first_child_token, source_id, flags, DefinitionData{ identifier_id });
+	return push_node(&parser->builder, first_child_token, source_id, flags, AstDefinitionData{ identifier_id });
 }
 
 static AstBuilderToken parse_return(Parser* parser) noexcept

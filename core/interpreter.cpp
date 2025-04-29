@@ -166,7 +166,7 @@ static MemberInit member_init_from_definition(Interpreter* interp, AstNode* defi
 	const bool has_pending_type = definition->type_id.rep == INVALID_TYPE_ID.rep || definition->type_id.rep == CHECKING_TYPE_ID.rep;
 
 	MemberInit member;
-	member.name = attachment_of<DefinitionData>(definition)->identifier_id;
+	member.name = attachment_of<AstDefinitionData>(definition)->identifier_id;
 	member.source = definition->source_id;
 	member.is_global = has_flag(definition, AstFlag::Definition_IsGlobal);
 	member.is_pub = has_flag(definition, AstFlag::Definition_IsPub);
@@ -1579,7 +1579,7 @@ static void init_prelude_type(Interpreter* interp, Config* config, AstBuilder* b
 
 	const AstBuilderToken import_call = push_node(builder, import_builtin, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::Call);
 
-	const AstBuilderToken std_definition = push_node(builder, import_call, INVALID_SOURCE_ID, AstFlag::EMPTY, DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
+	const AstBuilderToken std_definition = push_node(builder, import_call, INVALID_SOURCE_ID, AstFlag::EMPTY, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
 
 	const AstBuilderToken std_identifier = push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
 
@@ -1587,7 +1587,7 @@ static void init_prelude_type(Interpreter* interp, Config* config, AstBuilder* b
 
 	const AstBuilderToken prelude_member = push_node(builder, std_identifier, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::OpMember);
 
-	push_node(builder, prelude_member, INVALID_SOURCE_ID, AstFlag::Definition_IsUse, DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("prelude"))} );
+	push_node(builder, prelude_member, INVALID_SOURCE_ID, AstFlag::Definition_IsUse, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("prelude"))} );
 
 	push_node(builder, std_definition, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::File);
 
