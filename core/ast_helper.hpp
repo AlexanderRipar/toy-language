@@ -5,20 +5,6 @@
 #include "pass_data.hpp"
 #include "ast_attach.hpp"
 
-static inline AstNode* last_child_of(AstNode* node) noexcept
-{
-	ASSERT_OR_IGNORE(has_children(node));
-
-	AstNode* curr = first_child_of(node);
-
-	while (has_next_sibling(curr))
-		curr = next_sibling_of(curr);
-
-	return curr;
-}
-
-
-
 struct FuncInfo
 {
 	AstNode* parameters;
@@ -80,8 +66,6 @@ inline FuncInfo get_func_info(AstNode* func) noexcept
 
 	return desc;
 }
-
-
 
 struct DefinitionInfo
 {
