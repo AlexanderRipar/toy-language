@@ -52,7 +52,7 @@ struct AstDefinitionData
 	IdentifierId identifier_id;
 };
 
-struct BlockData
+struct AstBlockData
 {
 	static constexpr AstTag TAG = AstTag::Block;
 

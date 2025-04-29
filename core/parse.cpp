@@ -2159,7 +2159,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 						break;
 				}
 
-				const AstBuilderToken block_token = push_node(&parser->builder, first_child_token, source_id, AstFlag::EMPTY, BlockData{ INVALID_TYPE_ID });
+				const AstBuilderToken block_token = push_node(&parser->builder, first_child_token, source_id, AstFlag::EMPTY, AstBlockData{ INVALID_TYPE_ID });
 
 				push_operand(parser, &stack, block_token);
 			}

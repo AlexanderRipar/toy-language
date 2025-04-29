@@ -498,11 +498,11 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 	case AstTag::Block:
 	{
-		ASSERT_OR_IGNORE(attachment_of<BlockData>(node)->scope_type_id.rep == INVALID_TYPE_ID.rep);
+		ASSERT_OR_IGNORE(attachment_of<AstBlockData>(node)->scope_type_id.rep == INVALID_TYPE_ID.rep);
 
 		const TypeId scope_type_id = create_open_type(interp->types, node->source_id);
 
-		attachment_of<BlockData>(node)->scope_type_id = scope_type_id;
+		attachment_of<AstBlockData>(node)->scope_type_id = scope_type_id;
 
 		push_typechecker_context(interp, scope_type_id, false);
 
