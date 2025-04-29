@@ -2001,7 +2001,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, ValStringData{ lexeme.identifier_id });
+				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitStringData{ lexeme.identifier_id });
 
 				push_operand(parser, &stack, value_token);
 			}

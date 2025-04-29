@@ -1575,7 +1575,7 @@ static void init_prelude_type(Interpreter* interp, Config* config, AstBuilder* b
 {
 	const AstBuilderToken import_builtin = push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, static_cast<AstFlag>(Builtin::Import), AstTag::Builtin);
 
-	push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, ValStringData{ id_from_identifier(identifiers, config->std.filepath)});
+	push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstLitStringData{ id_from_identifier(identifiers, config->std.filepath)});
 
 	const AstBuilderToken import_call = push_node(builder, import_builtin, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::Call);
 

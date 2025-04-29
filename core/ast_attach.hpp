@@ -38,7 +38,7 @@ struct AstIdentifierData
 	IdentifierId identifier_id;
 };
 
-struct ValStringData
+struct AstLitStringData
 {
 	static constexpr AstTag TAG = AstTag::LitString;
 
