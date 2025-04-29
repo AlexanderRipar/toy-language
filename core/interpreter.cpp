@@ -243,7 +243,7 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node) noexcept
 	{
 		CompIntegerValue* const stack_value = static_cast<CompIntegerValue*>(alloc_stack_value(interp, sizeof(CompIntegerValue), alignof(CompIntegerValue)));
 
-		*stack_value = attachment_of<ValIntegerData>(node)->value;
+		*stack_value = attachment_of<AstLitIntegerData>(node)->value;
 
 		return stack_value;
 	}

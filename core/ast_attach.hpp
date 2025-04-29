@@ -4,7 +4,7 @@
 #include "../infra/common.hpp"
 #include "pass_data.hpp"
 
-struct ValIntegerData
+struct AstLitIntegerData
 {
 	static constexpr AstTag TAG = AstTag::LitInteger;
 

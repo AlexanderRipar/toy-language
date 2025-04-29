@@ -14,7 +14,7 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 	}
 	else if (node->tag == AstTag::LitInteger)
 	{
-		diag::buf_printf(ctx, "%*s%s [%" PRId64 "] {%s\n", (depth + 1) * 2, "", tag_name(node->tag), attachment_of<ValIntegerData>(node)->value, has_children(node) ? "" : "}");
+		diag::buf_printf(ctx, "%*s%s [%" PRId64 "] {%s\n", (depth + 1) * 2, "", tag_name(node->tag), attachment_of<AstLitIntegerData>(node)->value, has_children(node) ? "" : "}");
 	}
 	else
 	{
