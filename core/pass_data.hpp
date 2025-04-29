@@ -650,145 +650,17 @@ static inline bool is_valid(AstIterationResult result) noexcept
 	return result.node != nullptr;
 }
 
-static inline AstDirectChildIterator direct_children_of(AstNode* node) noexcept
-{
-	return { has_children(node) ? first_child_of(node) : nullptr };
-}
+AstDirectChildIterator direct_children_of(AstNode* node) noexcept;
 
-static inline OptPtr<AstNode> next(AstDirectChildIterator* iterator) noexcept
-{
-	if (iterator->curr == nullptr)
-		return none<AstNode>();
+OptPtr<AstNode> next(AstDirectChildIterator* iterator) noexcept;
 
-	AstNode* const curr = iterator->curr;
+AstPreorderIterator preorder_ancestors_of(AstNode* node) noexcept;
 
-	iterator->curr = has_next_sibling(curr) ? next_sibling_of(curr) : nullptr;
+AstIterationResult next(AstPreorderIterator* iterator) noexcept;
 
-	return some(curr);
-}
+AstPostorderIterator postorder_ancestors_of(AstNode* node) noexcept;
 
-static inline AstPreorderIterator preorder_ancestors_of(AstNode* node) noexcept
-{
-	AstPreorderIterator iterator;
-
-	if (has_children(node))
-	{
-		iterator.curr = first_child_of(node);
-		iterator.depth = 0;
-		iterator.top = -1;
-	}
-	else
-	{
-		iterator.curr = nullptr;
-		iterator.depth = 0;
-		iterator.top = -1;
-	}
-
-	return iterator;
-}
-
-static inline AstIterationResult next(AstPreorderIterator* iterator) noexcept
-{
-	if (iterator->curr == nullptr)
-		return { nullptr, 0 };
-
-	AstIterationResult result = { iterator->curr, iterator->depth };
-
-	AstNode* const curr = iterator->curr;
-
-	iterator->curr = apply_offset_(curr, curr->data_dwords);
-
-	if ((curr->internal_flags & AstNode::FLAG_NO_CHILDREN) == 0)
-	{
-		if ((curr->internal_flags & AstNode::FLAG_LAST_SIBLING) == 0)
-		{
-			ASSERT_OR_IGNORE(iterator->top + 1 < MAX_AST_DEPTH);
-
-			iterator->top += 1;
-
-			iterator->prev_depths[iterator->top] = iterator->depth;
-		}
-
-		ASSERT_OR_IGNORE(iterator->depth + 1 < MAX_AST_DEPTH);
-
-		iterator->depth += 1;
-	}
-	else if ((curr->internal_flags & AstNode::FLAG_LAST_SIBLING) == AstNode::FLAG_LAST_SIBLING)
-	{
-		if (iterator->top == -1)
-		{
-			iterator->curr = nullptr;
-		}
-		else
-		{
-			iterator->depth = iterator->prev_depths[iterator->top];
-
-			iterator->top -= 1;
-		}
-	}
-
-	return result;
-}
-
-static inline AstPostorderIterator postorder_ancestors_of(AstNode* node) noexcept
-{
-	AstPostorderIterator iterator;
-
-	iterator.base = node;
-	iterator.depth = -1;
-
-	while (has_children(node))
-	{
-		ASSERT_OR_IGNORE(iterator.depth < MAX_AST_DEPTH);
-
-		node = first_child_of(node);
-
-		iterator.depth += 1;
-
-		iterator.offsets[iterator.depth] = static_cast<u32>(reinterpret_cast<u32*>(node) - reinterpret_cast<u32*>(iterator.base));
-	}
-
-	return iterator;
-}
-
-static inline AstIterationResult next(AstPostorderIterator* iterator) noexcept
-{
-	if (iterator->depth < 0)
-		return { nullptr, 0 };
-
-	AstNode* const ret_node = reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(iterator->base) + iterator->offsets[iterator->depth]);
-
-	const u32 ret_depth = static_cast<u32>(iterator->depth);
-
-	AstNode* curr = ret_node;
-
-	if (has_next_sibling(curr))
-	{
-		curr = next_sibling_of(curr);
-
-		iterator->offsets[iterator->depth] = static_cast<u32>(reinterpret_cast<u32*>(curr) - reinterpret_cast<u32*>(iterator->base));
-
-		while (has_children(curr))
-		{
-			curr = first_child_of(curr);
-
-			iterator->depth += 1;
-
-			ASSERT_OR_IGNORE(iterator->depth < MAX_AST_DEPTH);
-
-			iterator->offsets[iterator->depth] = static_cast<u32>(reinterpret_cast<u32*>(curr) - reinterpret_cast<u32*>(iterator->base));
-		}
-	}
-	else
-	{
-		iterator->depth -= 1;
-
-		if (iterator->depth >= 0)
-			curr = reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(iterator->base) + iterator->offsets[iterator->depth]);
-	}
-
-	return { ret_node, ret_depth };
-}
+AstIterationResult next(AstPostorderIterator* iterator) noexcept;
 
 static inline bool operator==(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
 {
