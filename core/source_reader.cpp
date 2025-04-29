@@ -312,13 +312,22 @@ SourceLocation source_location_from_ast_node(SourceReader* reader, AstNode* node
 
 SourceLocation source_location_from_source_id(SourceReader* reader, SourceId source_id) noexcept
 {
-	SourceFile* const source_file = source_file_from_source_id(reader, source_id);
+	if (source_id == INVALID_SOURCE_ID)
+	{
+		return build_source_location(range::from_literal_string("<prelude>"), {}, 0);
+	}
+	else
+	{
+		SourceFile* const source_file = source_file_from_source_id(reader, source_id);
 
-	return source_location_from_source_file_and_ast_node(reader, source_file, source_id);
+		return source_location_from_source_file_and_ast_node(reader, source_file, source_id);
+	}
 }
 
 SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id) noexcept
 {
+	ASSERT_OR_IGNORE(source_id != INVALID_SOURCE_ID);
+
 	ASSERT_OR_IGNORE(reader->source_file_count != 0);
 
 	ASSERT_OR_IGNORE(source_id.m_rep < reader->curr_source_id_base);
