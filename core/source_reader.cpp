@@ -201,7 +201,7 @@ static SourceLocation source_location_from_source_file_and_ast_node(SourceReader
 	if (bytes_read != fileinfo.bytes)
 		panic("Could only read %u out of %" PRIu64 " bytes from source file %.*s while trying to re-read it for error reporting (0x%X)\n", bytes_read, fileinfo.bytes, static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
 
-	SourceLocation location = build_source_location(filepath, Range{ buffer, fileinfo.bytes }, source_id.m_rep - source_file->source_id_base);
+	SourceLocation location = build_source_location(filepath, Range{ buffer, fileinfo.bytes }, source_id.m_rep - source_file->source_id_base.m_rep);
 
 	free(buffer);
 
@@ -273,7 +273,7 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noe
 	id_entry->path_entry_index = reader->known_files_by_path.index_from(path_entry);
 	id_entry->data.file = file;
 	id_entry->data.ast_root = INVALID_AST_NODE_ID;
-	id_entry->data.source_id_base = reader->curr_source_id_base;
+	id_entry->data.source_id_base = SourceId{ reader->curr_source_id_base };
 
 	if (fileinfo.bytes + reader->curr_source_id_base > UINT32_MAX)
 		panic("Could not read source file %.*s as the maximum total capacity of 4gb of source code was exceeded.\n", static_cast<s32>(filepath.count()), filepath.begin());
@@ -330,7 +330,7 @@ SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id)
 	// lowest source id present in the file. However, since entries are
 	// effectively ordered by their source id, the effective end index is the
 	// start id of the next entry.
-	if (entries[reader->source_file_count - 1].data.source_id_base <= source_id.m_rep)
+	if (entries[reader->source_file_count - 1].data.source_id_base.m_rep <= source_id.m_rep)
 		return &entries[reader->source_file_count - 1].data;
 
 	u32 lo = 0;
@@ -349,11 +349,11 @@ SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id)
 
 		SourceFileByIdEntry* const next = entries + mid + 1;
 
-		if (source_id.m_rep < curr->data.source_id_base)
+		if (source_id.m_rep < curr->data.source_id_base.m_rep)
 		{
 			hi = mid - 1;
 		}
-		else if (source_id.m_rep >= next->data.source_id_base)
+		else if (source_id.m_rep >= next->data.source_id_base.m_rep)
 		{
 			lo = mid + 1;
 		}

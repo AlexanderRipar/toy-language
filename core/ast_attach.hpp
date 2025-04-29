@@ -10,7 +10,7 @@ struct ValIntegerData
 
 	#pragma pack(push)
 	#pragma pack(4)
-	u64 value;
+	CompIntegerValue value;
 	#pragma pack(pop)
 };
 
@@ -20,7 +20,7 @@ struct ValFloatData
 
 	#pragma pack(push)
 	#pragma pack(4)
-	f64 value;
+	CompFloatValue value;
 	#pragma pack(pop)
 };
 
@@ -50,6 +50,13 @@ struct DefinitionData
 	static constexpr AstTag TAG = AstTag::Definition;
 
 	IdentifierId identifier_id;
+};
+
+struct BlockData
+{
+	static constexpr AstTag TAG = AstTag::Block;
+
+	TypeId scope_type_id;
 };
 
 #endif // AST_ATTACH_INCLUDE_GUARD

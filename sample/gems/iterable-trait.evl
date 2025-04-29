@@ -1,0 +1,14 @@
+let Iterable = trait(T: Type, Iter: Type, Elem: Type, Index: Type) =>
+{
+	iterator = func(t: *T) -> Iter
+
+	has_next = func(it: *Iter) -> bool
+
+	next = func(it: *Iter) -> Elem
+}
+
+let IndexIterable = trait(T: Type, Iter: Type, Elem: Type, Index: Type)
+	requires Iterable(T, Iter, Elem) =>
+{
+	next_with_index = func(it: *Iter) -> Record(elem: Elem, index: Index)
+}

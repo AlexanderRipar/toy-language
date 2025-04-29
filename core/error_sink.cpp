@@ -1,6 +1,7 @@
 #include "pass_data.hpp"
 
 #include <cstdio>
+#include <cstdarg>
 
 struct ErrorSink
 {
@@ -35,11 +36,29 @@ NORETURN void source_error(ErrorSink* errors, SourceId source_id, const char8* f
 
 NORETURN void vsource_error(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept
 {
-	const SourceLocation location = source_location_from_source_id(reinterpret_cast<SourceReader*>(errors), source_id);
+	const SourceLocation location = source_location_from_source_id(errors->reader, source_id);
 
 	print_error(&location, format, args);
 
 	minos::exit_process(1);
+}
+
+void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept
+{
+	va_list args;
+
+	va_start(args, format);
+
+	vsource_warning(errors, source_id, format, args);
+
+	va_end(args);
+}
+
+void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept
+{
+	const SourceLocation location = source_location_from_source_id(errors->reader, source_id);
+
+	print_error(&location, format, args);
 }
 
 void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept

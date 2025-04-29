@@ -306,7 +306,7 @@ AstNode* complete_ast(AstBuilder* builder, AstPool* dst) noexcept
 	return dst_root;
 }
 
-const char8* ast_tag_name(AstTag tag) noexcept
+const char8* tag_name(AstTag tag) noexcept
 {
 	if (static_cast<u8>(tag) < array_count(NODE_TYPE_NAMES))
 		return NODE_TYPE_NAMES[static_cast<u8>(tag)];

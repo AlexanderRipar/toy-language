@@ -2,10 +2,7 @@
 
 #include "../infra/minos.hpp"
 #include "../infra/container.hpp"
-
-#include <type_traits>
-#include <cstdio>
-#include <cstdarg>
+#include "../diag/diag.hpp"
 
 struct ConfigHeader;
 
@@ -105,9 +102,24 @@ static constexpr ConfigHeader CONFIG_STD[] = {
 	ConfigHeader::make_path(offsetof(Config, std.filepath), "filepath", "Path to the file containing standard library source"),
 };
 
+static constexpr ConfigHeader CONFIG_LOGGING_ASTS[] = {
+	ConfigHeader::make_boolean(offsetof(Config, logging.asts.enable), "enable", "Print ASTs after they are parsed"),
+	ConfigHeader::make_path(offsetof(Config, logging.asts.log_filepath), "log-file", "Path of the log file. Defaults to stdout"),
+};
+
+static constexpr ConfigHeader CONFIG_LOGGING_CONFIG[] = {
+	ConfigHeader::make_boolean(offsetof(Config, logging.config.enable), "enable", "Print config after it is parsed"),
+};
+
+static constexpr ConfigHeader CONFIG_LOGGING[] = {
+	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_LOGGING_ASTS }, "asts", "AST logging parameters"),
+	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_LOGGING_CONFIG }, "config", "Config logging parameters"),
+};
+
 static constexpr ConfigHeader CONFIG_ROOTS[] = {
-	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_ENTRYPOINT }, "entrypoint", "Entrypoint information"),
+	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_ENTRYPOINT }, "entrypoint", "Entrypoint configuration"),
 	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_STD }, "std", "Standard library configuration"),
+	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_LOGGING }, "logging", "Debug log configuration"),
 };
 
 static constexpr ConfigHeader CONFIG = ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_ROOTS }, "config", "");
@@ -1110,7 +1122,9 @@ static ConfigParser init_config_parser(Range<char8> filepath, Config* out) noexc
 	ConfigParser parser;
 
 	parser.out = out;
-
+	parser.peek = {};
+	parser.context_top = 1;
+	parser.context_stack[0] = &CONFIG;
 	parser.heap.init(ConfigParser::HEAP_RESERVE, ConfigParser::HEAP_COMMIT_INCREMENT);
 
 	minos::FileHandle filehandle;
@@ -1164,40 +1178,41 @@ static ConfigParser init_config_parser(Range<char8> filepath, Config* out) noexc
 	parser.heap.append_exact(path_base, path_base_chars);
 
 	out->m_heap_ptr = parser.heap.begin();
+	out->m_config_filepath = filepath;
 
 	return parser;
 }
 
 
 
-static void print_config_node(const Config* config, const ConfigHeader* node, u32 indent) noexcept
+static void print_config_node(diag::PrintContext* ctx, const Config* config, const ConfigHeader* node, u32 indent) noexcept
 {
 	if (node->type == ConfigHeader::Type::Container)
 	{
-		fprintf(stdout, "%*s%s {\n", indent * 2, "", node->name);
+		diag::buf_printf(ctx, "%*s%s {\n", indent * 2, "", node->name);
 
 		for (const ConfigHeader& child : node->container.children)
-			print_config_node(config, &child, indent + 1);
+			print_config_node(ctx, config, &child, indent + 1);
 
-		fprintf(stdout, "%*s}\n", indent * 2, "");
+		diag::buf_printf(ctx, "%*s}\n", indent * 2, "");
 	}
 	else if (node->type == ConfigHeader::Type::Integer)
 	{
 		const s64 value = *reinterpret_cast<const s64*>(reinterpret_cast<const byte*>(config) + node->target_offset);
 
-		fprintf(stdout, "%*s%s = %" PRId64 "\n", indent, "", node->name, value);
+		diag::buf_printf(ctx, "%*s%s = %" PRId64 "\n", indent * 2, "", node->name, value);
 	}
 	else if (node->type == ConfigHeader::Type::String || node->type == ConfigHeader::Type::Path)
 	{
 		const Range<char8> value = *reinterpret_cast<const Range<char8>*>(reinterpret_cast<const byte*>(config) + node->target_offset);
 
-		fprintf(stdout, "%*s%s = '%.*s'\n", indent, "", node->name, static_cast<u32>(value.count()), value.begin());
+		diag::buf_printf(ctx, "%*s%s = '%.*s'\n", indent * 2, "", node->name, static_cast<u32>(value.count()), value.begin());
 	}
 	else if (node->type == ConfigHeader::Type::Boolean)
 	{
 		const bool value = *reinterpret_cast<const bool*>(reinterpret_cast<const byte*>(config) + node->target_offset);
 
-		fprintf(stdout, "%*s%s = %s\n", indent, "", node->name, value ? "true" : "false");
+		diag::buf_printf(ctx, "%*s%s = %s\n", indent * 2, "", node->name, value ? "true" : "false");
 	}
 	else
 	{
@@ -1275,10 +1290,18 @@ void release_config(Config* config) noexcept
 	config->m_heap_ptr = nullptr;
 }
 
-void print_config(const Config* config) noexcept
+void print_config(minos::FileHandle out, const Config* config) noexcept
 {
+	diag::PrintContext ctx;
+	ctx.curr = ctx.buf;
+	ctx.file = out;
+
+	diag::buf_printf(&ctx, "\n#### CONFIG [%.*s] ####\n\n", static_cast<s32>(config->m_config_filepath.count()), config->m_config_filepath.begin());
+
 	for (const ConfigHeader& root : CONFIG.container.children)
-		print_config_node(config, &root, 0);
+		print_config_node(&ctx, config, &root, 0);
+
+	diag::buf_flush(&ctx);
 }
 
 void print_config_help(u32 depth) noexcept

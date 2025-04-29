@@ -1,0 +1,39 @@
+assert(T(52, 12) == u32)
+
+let T = func(n: u32) -> if n == 0 then Type else T(n - 1) => Type
+
+
+
+let T = func(n: u32, U: if n == 0 then bool else T(n - 1)) -> Type => U
+
+let V = {
+	v: V = 1
+
+	u32
+}
+
+import_file
+{
+	<T> func
+	{
+		<u32> ::= Type
+		if
+		{
+			==
+			{
+				n ::= [u32 ==> IntegerType(32, false)]
+				0 ::= CompInteger
+				<- Boolean
+			}
+
+			bool ::= Type
+
+			Call
+			{
+				T ::= ????
+
+
+			}
+		}
+	}
+}

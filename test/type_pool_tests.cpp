@@ -50,25 +50,19 @@ static void primitive_type_with_integer_returns_integer_type_structure() noexcep
 
 	DummyTypePool dummy = create_dummy_types();
 
-	IntegerType u16_type{ 16, false };
+	NumericType u16_type{ 16, false };
 
 	TypeId u16_id = primitive_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&u16_type));
 
-	TEST_UNEQUAL(u16_id, INVALID_TYPE_ID);
+	TEST_UNEQUAL(u16_id.rep, INVALID_TYPE_ID.rep);
 
-	const OptPtr<TypeStructure> opt_u16_structure = type_structure_from_id(dummy.types, u16_id);
+	TEST_EQUAL(type_tag_from_id(dummy.types, u16_id), TypeTag::Integer);
 
-	TEST_EQUAL(is_some(opt_u16_structure), true);
+	const NumericType* const interned = static_cast<const NumericType*>(primitive_type_structure(dummy.types, u16_id));
 
-	TypeStructure* const u16_structure = get_ptr(opt_u16_structure);
+	TEST_EQUAL(interned->bits, 16);
 
-	TEST_EQUAL(u16_structure->tag, TypeTag::Integer);
-
-	TEST_EQUAL(u16_structure->bytes, sizeof(IntegerType));
-
-	TEST_EQUAL(data<IntegerType>(u16_structure)->bits, 16);
-
-	TEST_EQUAL(data<IntegerType>(u16_structure)->is_signed, false);
+	TEST_EQUAL(interned->is_signed, false);
 
 	release_dummy_types(dummy);
 
@@ -81,47 +75,35 @@ static void primitive_type_with_integer_and_float_with_same_bit_pattern_returns_
 
 	DummyTypePool dummy = create_dummy_types();
 
-	IntegerType u32_type{ 32, false };
+	NumericType u32_type{ 32, false };
 
 	const TypeId u32_id = primitive_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&u32_type));
 
-	TEST_UNEQUAL(u32_id, INVALID_TYPE_ID);
+	TEST_UNEQUAL(u32_id.rep, INVALID_TYPE_ID.rep);
 
-	const OptPtr<TypeStructure> opt_u32_structure = type_structure_from_id(dummy.types, u32_id);
+	TEST_EQUAL(type_tag_from_id(dummy.types, u32_id), TypeTag::Integer);
 
-	TEST_EQUAL(is_some(opt_u32_structure), true);
+	const NumericType* const interned_u32 = static_cast<const NumericType*>(primitive_type_structure(dummy.types, u32_id));
 
-	TypeStructure* const u32_structure = get_ptr(opt_u32_structure);
+	TEST_EQUAL(interned_u32->bits, 32);
 
-	TEST_EQUAL(u32_structure->tag, TypeTag::Integer);
+	TEST_EQUAL(interned_u32->is_signed, false);
 
-	TEST_EQUAL(u32_structure->bytes, sizeof(IntegerType));
-
-	TEST_EQUAL(data<IntegerType>(u32_structure)->bits, 32);
-
-	TEST_EQUAL(data<IntegerType>(u32_structure)->is_signed, false);
-
-	FloatType f32_type{ 32 };
+	NumericType f32_type{ 32, false };
 
 	const TypeId f32_id = primitive_type(dummy.types, TypeTag::Float, range::from_object_bytes(&f32_type));
 
-	TEST_UNEQUAL(f32_id, INVALID_TYPE_ID);
+	TEST_UNEQUAL(f32_id.rep, INVALID_TYPE_ID.rep);
 
-	OptPtr<TypeStructure> opt_f32_structure = type_structure_from_id(dummy.types, f32_id);
+	TEST_EQUAL(type_tag_from_id(dummy.types, f32_id), TypeTag::Float);
 
-	TEST_EQUAL(is_some(opt_f32_structure), true);
+	const NumericType* const interned_f32 = static_cast<const NumericType*>(primitive_type_structure(dummy.types, f32_id));
 
-	TypeStructure* const f32_structure = get_ptr(opt_f32_structure);
+	TEST_EQUAL(interned_f32->bits, 32);
 
-	TEST_EQUAL(f32_structure->tag, TypeTag::Float);
+	TEST_UNEQUAL(u32_id.rep, f32_id.rep);
 
-	TEST_EQUAL(f32_structure->bytes, 4);
-
-	TEST_EQUAL(data<FloatType>(f32_structure)->bits, 32);
-
-	TEST_UNEQUAL(u32_id, f32_id);
-
-	TEST_UNEQUAL(u32_structure, f32_structure);
+	TEST_UNEQUAL(interned_u32, interned_f32);
 
 	release_dummy_types(dummy);
 
@@ -134,52 +116,31 @@ static void primitive_type_with_array_returns_array_type() noexcept
 
 	DummyTypePool dummy = create_dummy_types();
 
-	IntegerType s32_type{ 32, true };
+	NumericType s32_type{ 32, true };
 
 	const TypeId s32_id = primitive_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&s32_type));
 
-	TEST_UNEQUAL(s32_id, INVALID_TYPE_ID);
+	TEST_UNEQUAL(s32_id.rep, INVALID_TYPE_ID.rep);
 
-	ArrayType array_type{ s32_id, 128 };
+	ArrayType array_type{ 128, s32_id };
 
 	const TypeId array_id = primitive_type(dummy.types, TypeTag::Array, range::from_object_bytes(&array_type));
 
-	TEST_UNEQUAL(array_id, INVALID_TYPE_ID);
+	TEST_UNEQUAL(array_id.rep, INVALID_TYPE_ID.rep);
 
-	OptPtr<TypeStructure> opt_array_structure = type_structure_from_id(dummy.types, array_id);
+	TEST_EQUAL(type_tag_from_id(dummy.types, array_id), TypeTag::Array);
 
-	TEST_EQUAL(is_some(opt_array_structure), true);
+	const ArrayType* const interned = static_cast<const ArrayType*>(primitive_type_structure(dummy.types, array_id));
 
-	TypeStructure* const array_structure = get_ptr(opt_array_structure);
+	TEST_EQUAL(interned->element_count, 128);
 
-	TEST_EQUAL(array_structure->tag, TypeTag::Array);
-
-	TEST_EQUAL(array_structure->bytes, 16);
-
-	TEST_EQUAL(data<ArrayType>(array_structure)->element_count, 128);
-
-	TEST_EQUAL(data<ArrayType>(array_structure)->element_type, s32_id);
+	TEST_EQUAL(interned->element_type.rep, s32_id.rep);
 
 	release_dummy_types(dummy);
 
 	TEST_END;
 }
 
-
-static void create_type_builder_returns_type_builder() noexcept
-{
-	TEST_BEGIN;
-
-	DummyTypePool dummy = create_dummy_types();
-
-	TypeBuilder* const builder = create_type_builder(dummy.types, SourceId{ 1 });
-
-	TEST_UNEQUAL(builder, nullptr);
-
-	release_dummy_types(dummy);
-
-	TEST_END;
-}
 
 
 void type_pool_tests() noexcept
@@ -192,9 +153,6 @@ void type_pool_tests() noexcept
 	primitive_type_with_integer_and_float_with_same_bit_pattern_returns_different_type_structures();
 
 	primitive_type_with_array_returns_array_type();
-
-
-	create_type_builder_returns_type_builder();
 
 	TEST_MODULE_END;
 }

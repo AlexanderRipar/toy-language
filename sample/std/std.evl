@@ -1,0 +1,34 @@
+// Prelude type defining namespace'd primitives.
+// This gets `use`d in the hard-coded prelude that is scoped around every
+// import.
+
+pub use prelude = std_import("prelude.evl")
+
+
+
+// Composite type creation
+
+pub TypeBuilder: Type = _type_builder()
+
+pub create_type_builder = func() -> TypeBuilder = _create_type_builder()
+
+pub add_type_member = func(
+	builder: *mut TypeBuilder,
+	definition: Definition,
+	name: []u8,
+	Typ: Type,
+	offset: s64,
+	is_mut: Bool,
+	is_pub: Bool,
+	is_use: Bool,
+	is_global: Bool,
+	default_value: ?Typ
+) -> Void = _add_type_member(builder, name, Typ, offset, is_mut, is_pub, is_global, is_use, default_value)
+
+pub complete_type = func(builder: TypeBuilder) -> Type = _complete_type(builder)
+
+
+
+// Internal helpers
+
+let std_import = func(path: []char8) -> Type = _import(path, true)

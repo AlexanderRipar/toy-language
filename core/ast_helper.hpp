@@ -118,17 +118,17 @@ struct IfInfo
 	OptPtr<AstNode> where;
 };
 
-inline IfInfo get_if_info(AstNode* if_node) noexcept
+inline IfInfo get_if_info(AstNode* node) noexcept
 {
-	ASSERT_OR_IGNORE(if_node->tag == AstTag::If);
+	ASSERT_OR_IGNORE(node->tag == AstTag::If);
 
-	AstNode* curr = first_child_of(if_node);
+	AstNode* curr = first_child_of(node);
 
 	IfInfo info{};
 
 	info.condition = curr;
 
-	if (has_flag(if_node, AstFlag::If_HasWhere))
+	if (has_flag(node, AstFlag::If_HasWhere))
 	{
 		curr = next_sibling_of(curr);
 
@@ -139,11 +139,121 @@ inline IfInfo get_if_info(AstNode* if_node) noexcept
 
 	info.consequent = curr;
 
-	if (has_flag(if_node, AstFlag::If_HasElse))
+	if (has_flag(node, AstFlag::If_HasElse))
 	{
 		curr = next_sibling_of(curr);
 
 		info.alternative = some(curr);
+	}
+
+	ASSERT_OR_IGNORE(!has_next_sibling(curr));
+
+	return info;
+}
+
+struct ForInfo
+{
+	AstNode* condition;
+
+	OptPtr<AstNode> step;
+
+	OptPtr<AstNode> where;
+
+	AstNode* body;
+
+	OptPtr<AstNode> finally;
+};
+
+inline ForInfo get_for_info(AstNode* node) noexcept
+{
+	ASSERT_OR_IGNORE(node->tag == AstTag::If);
+
+	AstNode* curr = first_child_of(node);
+
+	ForInfo info{};
+
+	info.condition = curr;
+
+	if (has_flag(node, AstFlag::For_HasStep))
+	{
+		info.step = some(curr);
+
+		curr = next_sibling_of(curr);
+	}
+
+	if (has_flag(node, AstFlag::For_HasWhere))
+	{
+		info.where = some(curr);
+		
+		curr = next_sibling_of(curr);
+	}
+
+	info.body = curr;
+
+	if (has_flag(node, AstFlag::For_HasFinally))
+	{
+		curr = next_sibling_of(curr);
+
+		info.finally = some(curr);
+	}
+
+	ASSERT_OR_IGNORE(!has_next_sibling(curr));
+
+	return info;
+}
+
+struct ForEachInfo
+{
+	AstNode* element;
+
+	OptPtr<AstNode> index;
+
+	AstNode* iterated;
+
+	OptPtr<AstNode> where;
+
+	AstNode* body;
+
+	OptPtr<AstNode> finally;
+};
+
+inline ForEachInfo get_foreach_info(AstNode* node) noexcept
+{
+	ASSERT_OR_IGNORE(node->tag == AstTag::ForEach);
+
+	AstNode* curr = first_child_of(node);
+
+	ForEachInfo info{};
+
+	info.element = curr;
+	
+	curr = next_sibling_of(curr);
+
+	if (has_flag(node, AstFlag::ForEach_HasIndex))
+	{
+		info.index = some(curr);
+		
+		curr = next_sibling_of(curr);
+	}
+
+	info.iterated = curr;
+
+	curr = next_sibling_of(curr);
+
+	if (has_flag(node, AstFlag::ForEach_HasWhere))
+	{
+		info.where = some(curr);
+
+		curr = next_sibling_of(curr);
+	}
+
+	info.body = curr;
+
+	if (has_flag(node, AstFlag::ForEach_HasFinally))
+	{
+		curr = next_sibling_of(curr);
+
+		info.finally = some(curr);
 	}
 
 	ASSERT_OR_IGNORE(!has_next_sibling(curr));

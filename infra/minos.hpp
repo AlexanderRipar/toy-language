@@ -16,6 +16,8 @@ namespace minos
 
 	static constexpr u32 MAX_PATH_CHARS = 32767;
 
+	static constexpr u64 FILE_WRITE_APPEND = static_cast<u64>(static_cast<s64>(-1));
+
 	namespace timeout
 	{
 		static constexpr u32 INFINITE = 0xFFFF'FFFF;
@@ -213,6 +215,13 @@ namespace minos
 		char8 filename[260 * 3];
 	};
 
+	enum class StdFileName
+	{
+		StdIn,
+		StdOut,
+		StdErr,
+	};
+
 	static constexpr u32 CACHELINE_BYTES = 64;
 
 	void init() noexcept;
@@ -394,6 +403,8 @@ namespace minos
 	// Closes a `minos::FileHandle` obtained from a previous call to
 	// `minos::file_create`.
 	void file_close(FileHandle handle) noexcept;
+
+	[[nodiscard]] FileHandle standard_file_handle(StdFileName name) noexcept;
 
 	[[nodiscard]] bool file_read(FileHandle handle, MutRange<byte>, u64 offset, u32* out_bytes_read) noexcept;
 

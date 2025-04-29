@@ -439,6 +439,36 @@ void minos::file_close(FileHandle handle) noexcept
 		panic("CloseHandle(FileHandle) failed (0x%X)\n", last_error());
 }
 
+minos::FileHandle minos::standard_file_handle(StdFileName name) noexcept
+{
+	DWORD native_name;
+
+	switch (name)
+	{
+	case StdFileName::StdIn:
+		native_name = STD_INPUT_HANDLE;
+		break;
+
+	case StdFileName::StdOut:
+		native_name = STD_OUTPUT_HANDLE;
+		break;
+
+	case StdFileName::StdErr:
+		native_name = STD_ERROR_HANDLE;
+		break;
+
+	default:
+		ASSERT_UNREACHABLE;
+	}
+
+	const HANDLE handle = GetStdHandle(native_name);
+
+	if (handle == INVALID_HANDLE_VALUE)
+		panic("GetStdHandle failed (0x%X)\n", GetLastError());
+
+	return FileHandle{ handle };
+}
+
 bool minos::file_read(FileHandle handle, MutRange<byte> buffer, u64 offset, u32* out_bytes_read) noexcept
 {
 	DWORD bytes_read;

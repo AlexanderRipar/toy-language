@@ -3,14 +3,16 @@
 
 #include "../infra/common.hpp"
 #include "../infra/container.hpp"
-#include "../infra/threading.hpp"
 #include "../infra/alloc_pool.hpp"
 #include "../infra/optptr.hpp"
+#include "../infra/minos.hpp"
 
 enum class Builtin : u8
 {
+	INVALID = 0,
 	Integer,
 	Type,
+	Definition,
 	CompInteger,
 	CompFloat,
 	CompString,
@@ -38,6 +40,11 @@ struct TypeId
 struct SourceId
 {
 	u32 m_rep;
+};
+
+struct TypecheckerResumptionId
+{
+	u32 rep;
 };
 
 struct SourceReader;
@@ -169,14 +176,34 @@ struct Config
 		Range<char8> filepath = range::from_literal_string("std.evl");
 	} std;
 
+	struct
+	{
+		struct
+		{
+			bool enable = false;
+	
+			Range<char8> log_filepath = {};
+		} asts;
+
+		struct
+		{
+			bool enable = false;
+	
+			Range<char8> log_filepath = {};
+		} config;
+	} logging;
+	
+
 	void* m_heap_ptr;
+
+	Range<char8> m_config_filepath;
 };
 
 Config* create_config(AllocPool* alloc, Range<char8> filepath) noexcept;
 
 void release_config(Config* config) noexcept;
 
-void print_config(const Config* config) noexcept;
+void print_config(minos::FileHandle out, const Config* config) noexcept;
 
 void print_config_help(u32 depth = 0) noexcept;
 
@@ -302,6 +329,10 @@ NORETURN void source_error(ErrorSink* errors, SourceId source_id, const char8* f
 
 NORETURN void vsource_error(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
 
+void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
+
+void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
+
 void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept; 
 
 
@@ -313,11 +344,6 @@ struct AstPool;
 struct AstNodeId
 {
 	u32 rep;
-};
-
-struct AstNodeOffset
-{
-	s32 rep;
 };
 
 enum class AstTag : u8
@@ -425,9 +451,10 @@ enum class AstFlag : u8
 	If_HasWhere          = 0x20,
 	If_HasElse           = 0x01,
 
+	For_HasCondition     = 0x01,
 	For_HasWhere         = 0x20,
-	For_HasStep          = 0x01,
-	For_HasFinally       = 0x02,
+	For_HasStep          = 0x02,
+	For_HasFinally       = 0x04,
 
 	ForEach_HasWhere     = 0x20,
 	ForEach_HasIndex     = 0x01,
@@ -568,18 +595,6 @@ static inline AstNode* apply_offset_(AstNode* node, ureg offset) noexcept
 	static_assert(sizeof(AstNode) % sizeof(u32) == 0 && alignof(AstNode) % sizeof(u32) == 0);
 
 	return reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(node) + offset);
-}
-
-static inline AstNode* apply_offset_(AstNode* node, AstNodeOffset offset) noexcept
-{
-	static_assert(sizeof(AstNode) % sizeof(u32) == 0 && alignof(AstNode) % sizeof(u32) == 0);
-
-	return reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(node) + offset.rep);
-}
-
-static inline AstNodeOffset get_offset(AstNode* from, AstNode* to) noexcept
-{
-	return { static_cast<s32>(reinterpret_cast<u32*>(to) - reinterpret_cast<u32*>(from)) };
 }
 
 static inline bool has_children(const AstNode* node) noexcept
@@ -854,7 +869,7 @@ static inline AstBuilderToken push_node(AstBuilder* builder, AstBuilderToken fir
 
 AstNode* complete_ast(AstBuilder* builder, AstPool* dst) noexcept;
 
-const char8* ast_tag_name(AstTag tag) noexcept;
+const char8* tag_name(AstTag tag) noexcept;
 
 
 
@@ -864,7 +879,7 @@ struct SourceFile
 
 	AstNodeId ast_root;
 
-	u32 source_id_base;
+	SourceId source_id_base;
 };
 
 struct SourceFileRead
@@ -923,23 +938,71 @@ void release_read(SourceReader* reader, SourceFileRead read) noexcept;
 
 struct CompIntegerValue
 {
-	s64 value;
+	u64 rep;
 };
 
-inline CompIntegerValue create_comp_integer(s64 value) noexcept
+struct CompFloatValue
 {
-	return CompIntegerValue{ value };
-}
+	f64 rep;
+};
 
-inline bool comp_integer_as_u64(CompIntegerValue* comp_integer, u64* out) noexcept
-{
-	if (comp_integer->value < 0)
-		return false;
+[[nodiscard]] CompIntegerValue comp_integer_from_u64(u64 value) noexcept;
 
-	*out = static_cast<u64>(comp_integer->value);
+[[nodiscard]] CompIntegerValue comp_integer_from_s64(s64 value) noexcept;
 
-	return true;
-}
+[[nodiscard]] bool comp_integer_from_comp_float(CompFloatValue value, CompIntegerValue* out) noexcept;
+
+[[nodiscard]] bool u64_from_comp_integer(CompIntegerValue value, u64* out) noexcept;
+
+[[nodiscard]] bool s64_from_comp_integer(CompIntegerValue value, s64* out) noexcept;
+
+[[nodiscard]] CompIntegerValue comp_integer_add(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+
+[[nodiscard]] CompIntegerValue comp_integer_sub(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+
+[[nodiscard]] CompIntegerValue comp_integer_mul(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+
+[[nodiscard]] bool comp_integer_div(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+
+[[nodiscard]] bool comp_integer_mod(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+
+[[nodiscard]] CompIntegerValue comp_integer_neg(CompIntegerValue value) noexcept;
+
+[[nodiscard]] CompIntegerValue comp_integer_shift_left(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+
+[[nodiscard]] CompIntegerValue comp_integer_shift_right(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+
+[[nodiscard]] bool comp_integer_bit_and(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+
+[[nodiscard]] bool comp_integer_bit_or(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+
+[[nodiscard]] bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+
+[[nodiscard]] bool comp_float_from_literal(Range<char8> literal, CompIntegerValue* out) noexcept;
+
+[[nodiscard]] CompFloatValue comp_float_from_f64(f64 value) noexcept;
+
+[[nodiscard]] CompFloatValue comp_float_from_f32(f32 value) noexcept;
+
+[[nodiscard]] bool comp_float_from_u64(u64 value, CompFloatValue* out) noexcept;
+
+[[nodiscard]] bool comp_float_from_s64(s64 value, CompFloatValue* out) noexcept;
+
+[[nodiscard]] bool comp_float_from_comp_integer(CompIntegerValue value, CompFloatValue* out) noexcept;
+
+[[nodiscard]] f64 f64_from_comp_float(CompFloatValue value) noexcept;
+
+[[nodiscard]] f32 f32_from_comp_float(CompFloatValue value) noexcept;
+
+[[nodiscard]] CompFloatValue comp_float_add(CompFloatValue lhs, CompFloatValue rhs) noexcept;
+
+[[nodiscard]] CompFloatValue comp_float_sub(CompFloatValue lhs, CompFloatValue rhs) noexcept;
+
+[[nodiscard]] CompFloatValue comp_float_mul(CompFloatValue lhs, CompFloatValue rhs) noexcept;
+
+[[nodiscard]] CompFloatValue comp_float_div(CompFloatValue lhs, CompFloatValue rhs) noexcept;
+
+[[nodiscard]] CompFloatValue comp_float_neg(CompFloatValue value) noexcept;
 
 
 
@@ -959,128 +1022,116 @@ enum class TypeTag : u8
 	Boolean,
 	Slice,
 	Ptr,
-	Alias,
 	Array,
 	Func,
 	Builtin,
 	Composite,
 	CompositeLiteral,
 	ArrayLiteral,
-	CallFrame,
 	TypeBuilder,
+	Variadic,
+	Divergent,
+	Trait,
 };
 
-struct TypeBuilder;
+struct TypeMetrics
+{
+	u64 size;
+
+	u64 stride;
+
+	u32 align;
+};
 
 struct IncompleteMemberIterator
 {
-	TypeBuilder* builder;
+	void* structure;
+
+	void* name;
 
 	u32 curr;
+
+	TypeId type_id;
 };
 
-struct Definition
+struct MemberIterator
+{
+	void* structure;
+
+	void* name;
+
+	u32 curr;
+
+	TypeId type_id;
+};
+
+struct MemberInfo
 {
 	IdentifierId name;
 
-	u32 is_pub : 1;
+	TypeId opt_type;
 
-	u32 is_mut : 1;
+	SourceId source;
 
-	u32 is_global : 1;
+	bool is_global : 1;
 
-	u32 type_id_bits : 29;
+	bool is_pub : 1;
 
-	AstNodeId opt_type;
+	bool is_use : 1;
 
-	AstNodeId opt_value;
+	u16 rank;
+
+	u64 offset_or_global_value;
+
+	TypeId surrounding_type_id;
+
+	AstNodeId opt_type_node_id;
+
+	AstNodeId opt_value_node_id;
+	
+	TypecheckerResumptionId opt_type_resumption_id;
 };
 
-struct Member
+struct MemberInit
 {
-	Definition definition;
+	IdentifierId name;
 
-	s64 offset;
-};
-
-struct alignas(u64) TypeStructure
-{
-	TypeTag tag;
-
-	u16 bytes;
-
-	u32 m_hash;
-
-	#if COMPILER_MSVC
-	#pragma warning(push)
-	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
-	#elif COMPILER_CLANG
-	#pragma clang diagnostic push
-	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
-	#elif COMPILER_GCC
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
-	#endif
-	u64 data[];
-	#if COMPILER_MSVC
-	#pragma warning(pop)
-	#elif COMPILER_CLANG
-	#pragma clang diagnostic pop
-	#elif COMPILER_GCC
-	#pragma GCC diagnostic pop
-	#endif
-
-	static constexpr u32 stride() noexcept
+	union
 	{
-		return 8;
-	}
+		TypeId id;
 
-	static u32 required_strides(AttachmentRange<byte, TypeTag> key) noexcept
-	{
-		return static_cast<u32>((offsetof(TypeStructure, data) + key.count() + stride() - 1) / stride());
-	}
+		TypecheckerResumptionId resumption_id;
+	} type;
 
-	u32 used_strides() const noexcept
-	{
-		return static_cast<u32>((offsetof(TypeStructure, data) + bytes + stride() - 1) / stride());
-	}
+	SourceId source;
 
-	u32 hash() const noexcept
-	{
-		return m_hash;
-	}
+	bool is_global : 1;
 
-	bool equal_to_key(AttachmentRange<byte, TypeTag> key, u32 key_hash) const noexcept
-	{
-		return m_hash == key_hash && key.attachment() == tag && key.count() == bytes && memcmp(key.begin(), data, key.count()) == 0;
-	}
+	bool is_pub : 1;
 
-	void init(AttachmentRange<byte, TypeTag> key, u32 key_hash) noexcept
-	{
-		ASSERT_OR_IGNORE(key.count() <= UINT16_MAX);
+	bool is_use : 1;
 
-		m_hash = key_hash;
+	bool has_pending_type : 1;
 
-		bytes = static_cast<u16>(key.count());
+	u64 offset_or_global_value;
 
-		tag = key.attachment();
+	AstNodeId opt_type_node_id;
 
-		memcpy(data, key.begin(), key.count());
-	}
+	AstNodeId opt_value_node_id;
 };
 
 struct ReferenceType
 {
-	u32 is_mut : 1;
+	TypeId referenced_type_id;
+	
+	bool is_opt;
 
-	u32 is_opt : 1;
+	bool is_multi;
 
-	u32 is_multi : 1;
-
-	u32 referenced_type_id : 29;
+	u64 unused_ = 0;
 };
 
-struct IntegerType
+struct NumericType
 {
 	u16 bits;
 
@@ -1089,152 +1140,121 @@ struct IntegerType
 	u8 unused_ = 0;
 };
 
-struct FloatType
-{
-	u16 bits;
-
-	u16 unused_ = 0;
-};
-
 struct ArrayType
 {
+	u64 element_count;
+	
 	TypeId element_type;
 
-	u64 element_count;
+	u32 unused_ = 0;
 };
 
-struct CompositeTypeHeader
-{
-	u64 size;
-
-	u64 stride;
-
-	u32 align;
-
-	u32 member_count;
-};
-
-struct CompositeType
-{
-	CompositeTypeHeader header;
-
-	#if COMPILER_MSVC
-	#pragma warning(push)
-	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
-	#elif COMPILER_CLANG
-	#pragma clang diagnostic push
-	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
-	#elif COMPILER_GCC
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
-	#endif
-	Member members[];
-	#if COMPILER_MSVC
-	#pragma warning(pop)
-	#elif COMPILER_CLANG
-	#pragma clang diagnostic pop
-	#elif COMPILER_GCC
-	#pragma GCC diagnostic pop
-	#endif
-};
-
-struct FuncTypeHeader
+struct FuncType
 {
 	TypeId return_type_id;
 
 	u16 param_count;
 
-	bool is_complete;
-
 	bool is_proc;
+
+	TypeId signature_type_id;
 };
-
-struct FuncType
-{
-	FuncTypeHeader header;
-
-	#if COMPILER_MSVC
-	#pragma warning(push)
-	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
-	#elif COMPILER_CLANG
-	#pragma clang diagnostic push
-	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
-	#elif COMPILER_GCC
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
-	#endif
-	Member param[];
-	#if COMPILER_MSVC
-	#pragma warning(pop)
-	#elif COMPILER_CLANG
-	#pragma clang diagnostic pop
-	#elif COMPILER_GCC
-	#pragma GCC diagnostic pop
-	#endif
-};
-
-
 
 static constexpr TypeId INVALID_TYPE_ID = { 0 };
 
-static inline bool operator==(TypeId lhs, TypeId rhs) noexcept
+static constexpr TypeId CHECKING_TYPE_ID = { 2 };
+
+static constexpr TypeId NO_TYPE_TYPE_ID = { 4 };
+
+[[nodiscard]] static inline bool is_assignable(TypeId type_id) noexcept
 {
-	return lhs.rep == rhs.rep;
+	return (type_id.rep & 1) == 1;
 }
 
-static inline bool operator!=(TypeId lhs, TypeId rhs) noexcept
+[[nodiscard]] static inline TypeId set_assignability(TypeId type_id, bool assignable) noexcept
 {
-	return lhs.rep != rhs.rep;
+	if (assignable)
+		return TypeId{ type_id.rep | 1 };
+
+	return TypeId{ type_id.rep & ~1 };
 }
 
-template<typename T>
-[[nodiscard]] static inline T* data(TypeStructure* entry) noexcept
+[[nodiscard]] static inline TypeId mask_assignability(TypeId type_id, bool assignable) noexcept
 {
-	return reinterpret_cast<T*>(&entry->data);
-}
+	if (assignable)
+		return type_id;
 
-template<typename T>
-[[nodiscard]] static inline const T* data(const TypeStructure* entry) noexcept
-{
-	return reinterpret_cast<const T*>(&entry->data);
+	return TypeId{ type_id.rep & ~1 };
 }
 
 [[nodiscard]] TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept;
 
 void release_type_pool(TypePool* types) noexcept;
 
+[[nodiscard]] const char8* tag_name(TypeTag tag) noexcept;
+
 [[nodiscard]] TypeId primitive_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept;
 
 [[nodiscard]] TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept;
 
-[[nodiscard]] OptPtr<TypeStructure> type_structure_from_id(TypePool* types, TypeId type_id) noexcept;
+[[nodiscard]] IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept;
 
-[[nodiscard]] TypeBuilder* create_type_builder(TypePool* types, SourceId source_id) noexcept;
+[[nodiscard]] SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept;
 
-void add_type_builder_member(TypeBuilder* builder, Member member) noexcept;
+[[nodiscard]] TypeId create_open_type(TypePool* types, SourceId source_id) noexcept;
 
-[[nodiscard]] TypeId complete_type_builder(TypeBuilder* builder, u64 size, u32 align, u64 stride) noexcept;
+void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit member) noexcept;
 
-[[nodiscard]] bool type_compatible(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
+void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, u64 stride) noexcept;
 
-[[nodiscard]] bool type_can_cast_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept;
+void set_incomplete_type_member_type(TypePool* types, TypeId open_type_id, IdentifierId member_name_id, TypeId member_type_id) noexcept;
+
+[[nodiscard]] TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
+
+[[nodiscard]] TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept;
+
+[[nodiscard]] bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept;
 
 [[nodiscard]] TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
 
-[[nodiscard]] Member* type_get_member(TypePool* types, TypeId type_id, IdentifierId member_name) noexcept;
+[[nodiscard]] bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId member_name_id, MemberInfo* out) noexcept;
+
+[[nodiscard]] bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberInfo* out) noexcept;
+
+[[nodiscard]] const void* primitive_type_structure(TypePool* types, TypeId type_id) noexcept;
 
 [[nodiscard]] IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) noexcept;
 
-[[nodiscard]] OptPtr<Member> next(IncompleteMemberIterator* it) noexcept;
+[[nodiscard]] MemberInfo next(IncompleteMemberIterator* it) noexcept;
+
+[[nodiscard]] bool has_next(IncompleteMemberIterator* it) noexcept;
+
+[[nodiscard]] MemberIterator members_of(TypePool* types, TypeId type_id) noexcept;
+
+[[nodiscard]] MemberInfo next(MemberIterator* it) noexcept;
+
+[[nodiscard]] bool has_next(MemberIterator* it) noexcept;
 
 
 
 struct Parser;
 
-[[nodiscard]] Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* errors) noexcept;
+[[nodiscard]] Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* errors, minos::FileHandle log_file) noexcept;
 
-[[nodiscard]] AstNode* parse(Parser* parser, SourceFileRead read, bool is_std, AstPool* out) noexcept;
+[[nodiscard]] AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std, AstPool* out, Range<char8> filepath) noexcept;
 
 [[nodiscard]] AstBuilder* get_ast_builder(Parser* parser) noexcept;
+
+
+
+struct Interpreter;
+
+static constexpr TypecheckerResumptionId INVALID_RESUMPTION_ID = { 0 };
+
+Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, ErrorSink* errors) noexcept;
+
+void release_interpreter([[maybe_unused]] Interpreter* interp) noexcept;
+
+TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noexcept;
 
 #endif // PASS_DATA_INCLUDE_GUARD

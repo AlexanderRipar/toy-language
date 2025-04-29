@@ -1,12 +1,14 @@
+#include "pass_data.hpp"
+
 #include <cstdarg>
 #include <cstdlib>
 #include <errno.h>
 
+#include "../diag/diag.hpp"
 #include "../infra/common.hpp"
 #include "../infra/alloc_pool.hpp"
 #include "../infra/container.hpp"
 #include "../infra/hash.hpp"
-#include "pass_data.hpp"
 #include "ast_attach.hpp"
 
 static constexpr u32 MAX_STRING_LITERAL_BYTES = 4096;
@@ -19,20 +21,16 @@ struct Lexeme
 
 	union
 	{
-		u64 integer_value;
+		CompIntegerValue integer_value;
 
-		f64 float_value; 
+		CompFloatValue float_value;
+
+		u32 char_value;
 
 		IdentifierId identifier_id;
+
+		AstFlag builtin_flags;
 	};
-
-	Lexeme() noexcept = default;
-
-	Lexeme(Token token, SourceId source_id, u64 value_bits) noexcept :
-		token{ token },
-		source_id{ source_id },
-		integer_value{ value_bits }
-	{}
 };
 
 struct RawLexeme
@@ -41,18 +39,30 @@ struct RawLexeme
 
 	union
 	{
-		u64 integer_value;
+		CompIntegerValue integer_value;
 
-		f64 float_value; 
+		CompFloatValue float_value;
+
+		u32 char_value;
+
+		IdentifierId identifier_id;
+
+		Builtin builtin;
 	};
+
+	RawLexeme() noexcept = default;
 
 	RawLexeme(Token token) noexcept : token{ token } {}
 
-	RawLexeme(Token token, u32 value) noexcept : token{ token }, integer_value{ value } {}
+	RawLexeme(Token token, CompIntegerValue integer_value) noexcept : token{ token }, integer_value{ integer_value } {}
 
-	RawLexeme(Token token, u64 value) noexcept : token{ token }, integer_value{ value } {}
+	RawLexeme(Token token, CompFloatValue float_value) noexcept : token{ token }, float_value{ float_value } {}
 
-	RawLexeme(Token token, f64 value) noexcept : token{ token }, float_value{ value } {}
+	RawLexeme(Token token, u32 char_value) noexcept : token{ token }, char_value{ char_value } {}
+
+	RawLexeme(Token token, IdentifierId identifier_id) noexcept : token{ token }, identifier_id{ identifier_id } {}
+
+	RawLexeme(Token token, Builtin builtin) noexcept : token{ token }, builtin{ builtin } {}
 };
 
 // Operator Description Tuple. Consists of:
@@ -119,28 +129,9 @@ struct Parser
 	Lexer lexer;
 
 	AstBuilder builder;
-};
 
-static constexpr char8 BUILTIN_NAMES[][8] = {
-	"int",
-	"type",
-	"c_int",
-	"c_flt",
-	"c_str",
-	{ 't', 'y', 'p', 'e', 'b', 'l', 'd', 'r' },
-	"true",
-	"typeof",
-	"sizeof",
-	"alignof",
-	{ 's', 't', 'r', 'i', 'd', 'e', 'o', 'f' },
-	{ 'o', 'f', 'f', 's', 'e', 't', 'o', 'f' },
-	"nameof",
-	"import",
-	{ 't', 'b', '_', 'c', 'r', 'e', 'a', 't' },
-	"tb_add",
-	{ 't', 'b', '_', 'c', 'o', 'm', 'p', 'l'},
+	minos::FileHandle log_file;
 };
-
 
 static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
 	{ AstTag::INVALID,            AstFlag::EMPTY,      10, false, true  }, // ( - Opening Parenthesis
@@ -334,7 +325,7 @@ static void skip_whitespace(Lexer* lexer) noexcept
 	lexer->curr = curr;
 }
 
-static RawLexeme scan_identifier_token(Lexer* lexer) noexcept
+static RawLexeme scan_identifier_token(Lexer* lexer, bool is_builtin) noexcept
 {
 	const char8* curr = lexer->curr;
 
@@ -353,34 +344,17 @@ static RawLexeme scan_identifier_token(Lexer* lexer) noexcept
 
 	const Token identifier_token = identifier_value->token();
 
-	return { identifier_token, identifier_token == Token::Ident ? identifier_id.rep : 0 };
-}
-
-static RawLexeme scan_builtin_token(Lexer* lexer) noexcept
-{
-	const char8* curr = lexer->curr;
-
-	const char8* const token_begin = curr;
-
-	while (is_identifier_continuation_char(*curr))
-		curr += 1;
-
-	lexer->curr = curr;
-
-	if (curr - token_begin > 8)
-		source_error(lexer->errors, lexer->peek.source_id, "Unknown builtin\n");
-
-	u8 name[8]{};
-
-	memcpy(name, token_begin, curr - token_begin);
-
-	for (u64 i = 0; i != array_count(BUILTIN_NAMES); ++i)
+	if (is_builtin)
 	{
-		if (memcmp(name, BUILTIN_NAMES[i], 8) == 0)
-			return RawLexeme{ Token::Builtin, i };
-	}
+		if (identifier_token == Token::EMPTY)
+			source_error(lexer->errors, lexer->peek.source_id, "Unknown builtin `%.*s`.\n", static_cast<s32>(identifier_bytes.count()), identifier_bytes.begin());
 
-	source_error(lexer->errors, lexer->peek.source_id, "Unknown builtin\n");
+		return { Token::Builtin, static_cast<Builtin>(identifier_token) };
+	}
+	else
+	{
+		return { identifier_token, identifier_token == Token::Ident ? identifier_id.rep : 0 };
+	}
 }
 
 static RawLexeme scan_number_token_with_base(Lexer* lexer, char8 base) noexcept
@@ -391,18 +365,13 @@ static RawLexeme scan_number_token_with_base(Lexer* lexer, char8 base) noexcept
 
 	curr += 1;
 
-	u64 value = 0;
+	CompIntegerValue integer_value = comp_integer_from_u64(0);
 
 	if (base == 'b')
 	{
 		while (*curr == '0' || *curr == '1')
 		{
-			const u64 new_value = value * 2 + *curr - '0';
-
-			if (new_value < value)
-				source_error(lexer->errors, lexer->peek.source_id, "Binary integer literal exceeds maximum currently supported value of 2^64-1\n");
-
-			value = new_value;
+			integer_value = comp_integer_add(comp_integer_mul(integer_value, comp_integer_from_u64(10)), comp_integer_from_u64(*curr - '0'));
 
 			curr += 1;
 		}
@@ -411,12 +380,7 @@ static RawLexeme scan_number_token_with_base(Lexer* lexer, char8 base) noexcept
 	{
 		while (*curr >= '0' && *curr <= '7')
 		{
-			const u64 new_value = value * 8 + *curr - '0';
-
-			if (new_value < value)
-				source_error(lexer->errors, lexer->peek.source_id, "Octal integer literal exceeds maximum currently supported value of 2^64-1\n");
-
-			value = new_value;
+			integer_value = comp_integer_add(comp_integer_mul(integer_value, comp_integer_from_u64(8)), comp_integer_from_u64(*curr - '0'));
 
 			curr += 1;
 		}
@@ -427,17 +391,12 @@ static RawLexeme scan_number_token_with_base(Lexer* lexer, char8 base) noexcept
 		
 		while (true)
 		{
-			const u8 digit_value = hex_char_value(*curr);
+			const u8 hex = hex_char_value(*curr);
 
-			if (digit_value == INVALID_HEX_CHAR_VALUE)
+			if (hex == INVALID_HEX_CHAR_VALUE)
 				break;
 
-			const u64 new_value = value * 16 + digit_value;
-
-			if (new_value < value)
-				source_error(lexer->errors, lexer->peek.source_id, "Hexadecimal integer literal exceeds maximum currently supported value of 2^64-1\n");
-
-			value = new_value;
+			integer_value = comp_integer_add(comp_integer_mul(integer_value, comp_integer_from_u64(16)), comp_integer_from_u64(hex));
 
 			curr += 1;
 		}
@@ -447,11 +406,11 @@ static RawLexeme scan_number_token_with_base(Lexer* lexer, char8 base) noexcept
 		source_error(lexer->errors, lexer->peek.source_id, "Expected at least one digit in integer literal\n");
 
 	if (is_identifier_continuation_char(*curr))
-		source_error(lexer->errors, lexer->peek.source_id, "Unexpected character '%c' after binary literal\n", *curr);
+		source_error(lexer->errors, lexer->peek.source_id, "Unexpected character '%c' after integer literal\n", *curr);
 
 	lexer->curr = curr;
 
-	return { Token::LitInteger, value };
+	return { Token::LitInteger, integer_value };
 }
 
 static u32 scan_utf8_char_surrogates(Lexer* lexer, u32 leader_value, u32 surrogate_count) noexcept
@@ -625,18 +584,11 @@ static RawLexeme scan_number_token(Lexer* lexer, char8 first) noexcept
 
 	const char8* const token_begin = curr - 1;
 
-	u64 integer_value = first - '0';
-
-	bool max_exceeded = false;
+	CompIntegerValue integer_value = comp_integer_from_u64(first - '0');
 
 	while (is_numeric_char(*curr))
 	{
-		const u64 new_value = integer_value * 10 + *curr - '0';
-
-		if (new_value < integer_value)
-			max_exceeded = true;
-
-		integer_value = new_value;
+		integer_value = comp_integer_add(comp_integer_mul(integer_value, comp_integer_from_u64(10)), comp_integer_from_u64(*curr - '0'));
 
 		curr += 1;
 	}
@@ -661,10 +613,10 @@ static RawLexeme scan_number_token(Lexer* lexer, char8 first) noexcept
 			while (is_numeric_char(*curr))
 				curr += 1;
 		}
-		
+
 		if (is_alphabetic_char(*curr) || *curr == '_')
 			source_error(lexer->errors, lexer->peek.source_id, "Unexpected character '%c' after float literal\n", *curr);
-
+	
 		char8* strtod_end;
 
 		errno = 0;
@@ -678,22 +630,18 @@ static RawLexeme scan_number_token(Lexer* lexer, char8 first) noexcept
 			source_error(lexer->errors, lexer->peek.source_id, "Float literal exceeds maximum IEEE-754 value\n");
 
 		lexer->curr = curr;
-
-		return { Token::LitFloat, float_value };
+	
+		return { Token::LitFloat, comp_float_from_f64(float_value) };
 	}
 	else
 	{
-		if (max_exceeded)
-			source_error(lexer->errors, lexer->peek.source_id, "Integer literal exceeds maximum currently supported value of 2^64-1\n");
-
 		if (is_alphabetic_char(*curr) || *curr == '_')
-			source_error(lexer->errors, lexer->peek.source_id, "Unexpected character '%c' after integer literal\n", *curr);
-
+			source_error(lexer->errors, lexer->peek.source_id, "Unexpected character '%c' after float literal\n", *curr);
+	
 		lexer->curr = curr;
-
+	
 		return { Token::LitInteger, integer_value };
 	}
-
 }
 
 static RawLexeme scan_char_token(Lexer* lexer) noexcept
@@ -841,7 +789,7 @@ static RawLexeme raw_next(Lexer* lexer) noexcept
 	case 'I': case 'J': case 'K': case 'L': case 'M': case 'N': case 'O': case 'P':
 	case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V': case 'W': case 'X':
 	case 'Y': case 'Z':
-		return scan_identifier_token(lexer);
+		return scan_identifier_token(lexer, false);
 	
 	case '0':
 		if (second == 'b' || second == 'o' || second == 'x')
@@ -865,7 +813,7 @@ static RawLexeme raw_next(Lexer* lexer) noexcept
 			if (!lexer->is_std)
 				source_error(lexer->errors, lexer->peek.source_id, "Illegal identifier starting with '_'\n");
 
-			return scan_builtin_token(lexer);
+			return scan_identifier_token(lexer, true);
 		}
 		else
 		{
@@ -1304,7 +1252,7 @@ static void pop_operator(Parser* parser, OperatorStack* stack) noexcept
 		return;
 
 	if (stack->operand_count <= top.operator_desc.is_binary)
-		source_error(parser->lexer.errors, stack->expression_source_id, "Missing operand(s) for operator '%s'\n", ast_tag_name(top.operator_desc.node_type));
+		source_error(parser->lexer.errors, stack->expression_source_id, "Missing operand(s) for operator '%s'\n", tag_name(top.operator_desc.node_type));
 
 	if (top.operator_desc.is_binary)
 		stack->operand_count -= 1;
@@ -2079,7 +2027,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, ValCharData{ static_cast<u32>(lexeme.integer_value) });
+				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, ValCharData{ lexeme.char_value });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2213,7 +2161,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 						break;
 				}
 
-				const AstBuilderToken block_token = push_node(&parser->builder, first_child_token, source_id, AstFlag::EMPTY, AstTag::Block);
+				const AstBuilderToken block_token = push_node(&parser->builder, first_child_token, source_id, AstFlag::EMPTY, BlockData{ INVALID_TYPE_ID });
 				
 				push_operand(parser, &stack, block_token);
 			}
@@ -2293,7 +2241,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, lexeme.source_id, static_cast<AstFlag>(lexeme.integer_value), AstTag::Builtin);
+				const AstBuilderToken value_token = push_node(&parser->builder, AstBuilder::NO_CHILDREN, lexeme.source_id, lexeme.builtin_flags, AstTag::Builtin);
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2490,33 +2438,37 @@ static void parse_file(Parser* parser) noexcept
 
 
 
-Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* errors) noexcept
+Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* errors, minos::FileHandle log_file) noexcept
 {
 	Parser* const parser = static_cast<Parser*>(alloc_from_pool(pool, sizeof(Parser), alignof(Parser)));
 
 	parser->lexer.identifiers = identifiers;
 	parser->lexer.errors = errors;
 	parser->builder.scratch.init(1u << 31, 1u << 18);
+	parser->log_file = log_file;
 
 	return parser;
 }
 
-AstNode* parse(Parser* parser, SourceFileRead read, bool is_std, AstPool* out) noexcept
+AstNode* parse(Parser* parser, Range<char8> content, SourceId source_id_base, bool is_std, AstPool* out, Range<char8> filepath) noexcept
 {
-	ASSERT_OR_IGNORE(read.content.count() != 0 && read.content.end()[-1] == '\0');
-
-	const Range<char8> content = read.content;
+	ASSERT_OR_IGNORE(content.count() != 0 && content.end()[-1] == '\0');
 
 	parser->lexer.begin = content.begin();
 	parser->lexer.end = content.end() - 1;
 	parser->lexer.curr = content.begin();
-	parser->lexer.source_id_base = read.source_file->source_id_base;
+	parser->lexer.source_id_base = source_id_base.m_rep;
 	parser->lexer.peek.token = Token::EMPTY;
 	parser->lexer.is_std = is_std;
 
 	parse_file(parser);
 
-	return complete_ast(&parser->builder, out);
+	AstNode* const root = complete_ast(&parser->builder, out);
+
+	if (parser->log_file.m_rep != nullptr)
+		diag::print_ast(parser->log_file, parser->lexer.identifiers, root, filepath);
+
+	return root;
 }
 
 AstBuilder* get_ast_builder(Parser* parser) noexcept

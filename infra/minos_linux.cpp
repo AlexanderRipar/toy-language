@@ -976,6 +976,24 @@ void minos::file_close(FileHandle handle) noexcept
 		panic("close(filefd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
 }
 
+minos::FileHandle minos::standard_file_handle(StdFileName name) noexcept
+{
+	switch (name)
+	{
+	case StdFileName::StdIn:
+		return FileHandle{ 0 };
+	
+	case StdFileName::StdOut:
+		return FileHandle{ 1 };
+
+	case StdFileName::StdErr:
+		return FileHandle{ 2 };
+
+	default:
+		ASSERT_UNREACHABLE;
+	}
+}
+
 bool minos::file_read(FileHandle handle, MutRange<byte> buffer, u64 offset, u32* out_bytes_read) noexcept
 {
 	ASSERT_OR_IGNORE((reinterpret_cast<u64>(handle.m_rep)) >> 32 == 0);
@@ -1012,6 +1030,18 @@ bool minos::file_write(FileHandle handle, Range<byte> buffer, u64 offset) noexce
 		errno = EINVAL;
 
 		return false;
+	}
+
+	if (offset == FILE_WRITE_APPEND)
+	{
+		const s64 end_offset = lseek(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), 0, SEEK_END);
+
+		if (end_offset == -1)
+			panic("lseek failed (0x%X - %s)\n", errno, strerror(errno));
+
+		ASSERT_OR_IGNORE(end_offset >= 0);
+
+		offset = static_cast<u64>(end_offset);
 	}
 
 	return pwrite(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), buffer.begin(), buffer.count(), offset) == static_cast<s64>(buffer.count());

@@ -27,7 +27,37 @@ s32 main(s32 argc, const char8** argv)
 
 		Config* const config = create_config(alloc, range::from_cstring(argv[2]));
 
-		print_config(config);
+		if (config->logging.config.enable)
+		{
+			minos::FileHandle config_log_file;
+
+			if (config->logging.config.log_filepath.count() == 0)
+			{
+				config_log_file = minos::standard_file_handle(minos::StdFileName::StdOut);
+			}
+			else
+			{
+				if (!minos::file_create(config->logging.config.log_filepath, minos::Access::Write, minos::ExistsMode::Truncate, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &config_log_file))
+					panic("Failed to open config log file %.*s (0x%X)\n", static_cast<s32>(config->logging.config.log_filepath.count()), config->logging.config.log_filepath.begin(), minos::last_error());
+			}
+
+			print_config(config_log_file, config);
+		}
+
+		minos::FileHandle ast_log_file{};
+
+		if (config->logging.asts.enable)
+		{
+			if (config->logging.asts.log_filepath.count() == 0)
+			{
+				ast_log_file = minos::standard_file_handle(minos::StdFileName::StdOut);
+			}
+			else
+			{
+				if (!minos::file_create(config->logging.asts.log_filepath, minos::Access::Write, minos::ExistsMode::Truncate, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &ast_log_file))
+					panic("Failed to open ast log file %.*s (0x%X)\n", static_cast<s32>(config->logging.asts.log_filepath.count()), config->logging.asts.log_filepath.begin(), minos::last_error());
+			}
+		}
 
 		IdentifierPool* const identifiers = create_identifier_pool(alloc);
 
@@ -35,9 +65,19 @@ s32 main(s32 argc, const char8** argv)
 
 		ErrorSink* const errors = create_error_sink(alloc, reader, identifiers);
 
-		Parser* const parser = create_parser(alloc, identifiers, errors);
+		Parser* const parser = create_parser(alloc, identifiers, errors, ast_log_file);
 
 		AstPool* const asts = create_ast_pool(alloc);
+
+		TypePool* const types = create_type_pool(alloc, errors);
+
+		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, errors);
+
+		const TypeId main_file_type_id = import_file(interp, config->entrypoint.filepath, false);
+
+		SourceLocation main_file_type_location = source_location_from_source_id(reader, type_source_from_id(types, main_file_type_id));
+
+		diag::print_type(minos::standard_file_handle(minos::StdFileName::StdOut), identifiers, types, main_file_type_id, &main_file_type_location);
 
 		release_config(config);
 

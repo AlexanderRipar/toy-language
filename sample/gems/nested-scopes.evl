@@ -1,0 +1,17 @@
+/* (1) -> (-) unordered scope */
+
+let f = /* (2) -> (1) unordered scope*/ func(T: Type) -> Type =>
+/* (3) -> (2) procedural scope */
+{
+	global n = x
+
+	let g = func(T: Type) -> Type =>
+	/* (4) -> (3) procedural scope */
+	{
+		return [n]T
+	}
+	
+	return g(T)
+}
+
+let x = 1
