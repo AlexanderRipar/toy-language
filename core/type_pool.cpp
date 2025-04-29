@@ -5,12 +5,6 @@
 
 #include <cstdlib>
 
-///////////////////////////////////// TODO ////////////////////////////////////
-//
-// Create mechanism for managing dependencies on incomplete types.
-// This will likely take the form of a linked list of some form.
-//
-
 struct TypeStructure
 {
 	TypeTag tag;
