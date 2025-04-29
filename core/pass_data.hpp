@@ -282,8 +282,6 @@ IdentifierPool* create_identifier_pool(AllocPool* pool) noexcept;
 
 void release_identifier_pool(IdentifierPool* identifiers) noexcept;
 
-IdentifierEntry* identifier_entry_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept;
-
 IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept;
 
 IdentifierEntry* identifier_entry_from_id(IdentifierPool* identifiers, IdentifierId id) noexcept;
