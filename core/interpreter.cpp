@@ -268,7 +268,7 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node) noexcept
 
 	case AstTag::Identifer:
 	{
-		void* const identifier_value = lookup_identifier_value(interp, attachment_of<ValIdentifierData>(node)->identifier_id);
+		void* const identifier_value = lookup_identifier_value(interp, attachment_of<AstIdentifierData>(node)->identifier_id);
 
 		u64 size;
 
@@ -699,7 +699,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 	case AstTag::Identifer:
 	{
-		const IdentifierId identifier_id = attachment_of<ValIdentifierData>(node)->identifier_id;
+		const IdentifierId identifier_id = attachment_of<AstIdentifierData>(node)->identifier_id;
 
 		MemberInfo member = lookup_identifier_definition(interp, identifier_id, node->source_id);
 
@@ -780,7 +780,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 				// TODO: Enforce this in parser
 				ASSERT_OR_IGNORE(argument_name->tag == AstTag::Identifer);
 
-				const IdentifierId argument_identifier = attachment_of<ValIdentifierData>(argument_name)->identifier_id;
+				const IdentifierId argument_identifier = attachment_of<AstIdentifierData>(argument_name)->identifier_id;
 
 				if (!type_member_info_by_name(interp->types, callee_type_id, argument_identifier, &argument_member))
 				{
@@ -1148,7 +1148,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		if (lhs_type_tag == TypeTag::Composite)
 		{
-			const IdentifierId identifier_id = attachment_of<ValIdentifierData>(rhs)->identifier_id;
+			const IdentifierId identifier_id = attachment_of<AstIdentifierData>(rhs)->identifier_id;
 
 			MemberInfo member;
 
@@ -1581,9 +1581,9 @@ static void init_prelude_type(Interpreter* interp, Config* config, AstBuilder* b
 
 	const AstBuilderToken std_definition = push_node(builder, import_call, INVALID_SOURCE_ID, AstFlag::EMPTY, DefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
 
-	const AstBuilderToken std_identifier = push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
+	const AstBuilderToken std_identifier = push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
 
-	push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, ValIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("prelude")) });
+	push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("prelude")) });
 
 	const AstBuilderToken prelude_member = push_node(builder, std_identifier, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::OpMember);
 

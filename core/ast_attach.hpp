@@ -31,7 +31,7 @@ struct AstLitCharData
 	u32 codepoint;
 };
 
-struct ValIdentifierData
+struct AstIdentifierData
 {
 	static constexpr AstTag TAG = AstTag::Identifer;
 
