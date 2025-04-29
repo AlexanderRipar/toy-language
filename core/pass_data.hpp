@@ -1183,7 +1183,9 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit membe
 
 void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, u64 stride) noexcept;
 
-void set_incomplete_type_member_type(TypePool* types, TypeId open_type_id, IdentifierId member_name_id, TypeId member_type_id) noexcept;
+void set_incomplete_type_member_type_by_name(TypePool* types, TypeId open_type_id, IdentifierId member_name_id, TypeId member_type_id) noexcept;
+
+void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_id, u16 rank, TypeId member_type_id) noexcept;
 
 [[nodiscard]] TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
 
@@ -1257,5 +1259,7 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 void release_interpreter([[maybe_unused]] Interpreter* interp) noexcept;
 
 TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noexcept;
+
+const char8* tag_name(Builtin builtin) noexcept;
 
 #endif // PASS_DATA_INCLUDE_GUARD

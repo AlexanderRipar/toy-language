@@ -2,13 +2,6 @@
 
 #include "ast_helper.hpp"
 
-struct alignas(u64) Resumption
-{
-	s32 next_offset;
-
-	TypeId contexts[3];
-};
-
 struct Interpreter
 {
 	SourceReader* reader;
@@ -36,6 +29,15 @@ struct Interpreter
 	s32 context_top;
 
 	TypeId contexts[256];
+
+	TypeId builtin_type_ids[static_cast<u8>(Builtin::MAX) - 1];
+};
+
+struct FuncTypeParamHelper
+{
+	IdentifierId name;
+
+	TypeId type;
 };
 
 
@@ -393,15 +395,6 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node) noexcept
 
 static TypeId typecheck_expr(Interpreter* interp, AstNode* node) noexcept;
 
-static void typecheck_where(Interpreter* interp, AstNode* node) noexcept
-{
-	TODO("Implement");
-
-	(void) interp;
-
-	(void) node;
-}
-
 static TypeId delayed_typecheck_member(Interpreter* interp, const MemberInfo* member) noexcept
 {
 	if (member->opt_type.rep != INVALID_TYPE_ID.rep)
@@ -416,17 +409,19 @@ static TypeId delayed_typecheck_member(Interpreter* interp, const MemberInfo* me
 	if (member->opt_type_node_id != INVALID_AST_NODE_ID)
 	{
 		AstNode* const type = ast_node_from_id(interp->asts, member->opt_type_node_id);
-	
+
 		const TypeId type_type_id = typecheck_expr(interp, type);
-	
+
 		const TypeTag type_type_tag = type_tag_from_id(interp->types, type_type_id);
-	
+
 		if (type_type_tag != TypeTag::Type)
 			source_error(interp->errors, type->source_id, "Explicit type annotation of definition must be of type `Type`.\n");
-	
+
 		defined_type_id = *static_cast<TypeId*>(evaluate_expr(interp, type));
-	
+
 		pop_stack_value(interp);
+
+		set_incomplete_type_member_type_by_rank(interp->types, member->surrounding_type_id, member->rank, defined_type_id);
 
 		if (member->opt_value_node_id != INVALID_AST_NODE_ID)
 		{
@@ -445,6 +440,8 @@ static TypeId delayed_typecheck_member(Interpreter* interp, const MemberInfo* me
 		AstNode* const value = ast_node_from_id(interp->asts, member->opt_value_node_id);
 
 		defined_type_id = typecheck_expr(interp, value);
+
+		set_incomplete_type_member_type_by_rank(interp->types, member->surrounding_type_id, member->rank, defined_type_id);
 	}
 
 	release_typechecker_resumption(interp);
@@ -452,35 +449,19 @@ static TypeId delayed_typecheck_member(Interpreter* interp, const MemberInfo* me
 	return defined_type_id;
 }
 
+static void typecheck_where(Interpreter* interp, AstNode* node) noexcept
+{
+	TODO("Implement");
+
+	(void) interp;
+
+	(void) node;
+}
+
 static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 {
 	switch (node->tag)
 	{
-	case AstTag::Builtin:
-	{
-		switch (static_cast<Builtin>(node->flags))
-		{
-		case Builtin::Integer:
-		case Builtin::Type:
-		case Builtin::CompInteger:
-		case Builtin::CompFloat:
-		case Builtin::CompString:
-		case Builtin::TypeBuilder:
-		case Builtin::True:
-		case Builtin::Typeof:
-		case Builtin::Sizeof:
-		case Builtin::Alignof:
-		case Builtin::Strideof:
-		case Builtin::Offsetof:
-		case Builtin::Nameof:
-		case Builtin::Import:
-		case Builtin::CreateTypeBuilder:
-		case Builtin::AddTypeMember:
-		case Builtin::CompleteType:
-			panic("Typechecking for builtin %s not yet supported.\n");
-		}
-	}
-
 	case AstTag::CompositeInitializer:
 	case AstTag::ArrayInitializer:
 	case AstTag::Wildcard:
@@ -500,6 +481,20 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::UOpDefer:
 	case AstTag::UOpImpliedMember:
 		panic("Typechecking of AST node type %s is not yet implemented.\n", tag_name(node->tag));
+
+	case AstTag::Builtin:
+	{
+		const Builtin builtin = static_cast<Builtin>(node->flags);
+
+		if (builtin == Builtin::AddTypeMember || builtin == Builtin::Offsetof)
+			panic("Typechecking for builtin %s not yet supported.\n", tag_name(builtin));
+
+		const u8 ordinal = static_cast<u8>(builtin);
+
+		ASSERT_OR_IGNORE(ordinal < array_count(interp->builtin_type_ids) && interp->builtin_type_ids[ordinal].rep != INVALID_TYPE_ID.rep);
+
+		return interp->builtin_type_ids[ordinal];
+	}
 
 	case AstTag::Block:
 	{
@@ -733,6 +728,8 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 	case AstTag::Call:
 	{
+		// TODO: Variadics
+
 		AstNode* const callee = first_child_of(node);
 
 		const TypeId callee_type_id = typecheck_expr(interp, callee);
@@ -742,9 +739,9 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		if (callee_type_tag != TypeTag::Func && callee_type_tag != TypeTag::Builtin)
 			source_error(interp->errors, callee->source_id, "Left-hand-side of call operator must be of function or builtin type.\n");
 
-		const FuncType* const structure = static_cast<const FuncType*>(primitive_type_structure(interp->types, callee_type_id));
+		const FuncType* const func_type = static_cast<const FuncType*>(primitive_type_structure(interp->types, callee_type_id));
 
-		const TypeId signature_type_id = structure->signature_type_id;
+		const TypeId signature_type_id = func_type->signature_type_id;
 
 		bool expect_named = false;
 
@@ -753,8 +750,6 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		u16 seen_argument_count = 0;
 
 		AstNode* argument = callee;
-
-		push_typechecker_context(interp, signature_type_id, false);
 
 		while (has_next_sibling(argument))
 		{
@@ -811,12 +806,14 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 			}
 			else
 			{
+				ASSERT_OR_IGNORE(seen_argument_count < 64);
+
 				if (expect_named)
 					source_error(interp->errors, argument->source_id, "Positional arguments must not follow named arguments.\n");
 
-				if (seen_argument_count >= 64)
-					source_error(interp->errors, argument->source_id, "Exceeded maximum of 64 function arguments.\n");
-	
+				if (seen_argument_count >= func_type->param_count)
+					source_error(interp->errors, argument->source_id, "Call supplies more than the expeceted %d arguments.\n", func_type->param_count);
+
 				if (!type_member_info_by_rank(interp->types, signature_type_id, seen_argument_count, &argument_member))
 					source_error(interp->errors, argument->source_id, "Too many arguments in function call.\n");
 
@@ -833,9 +830,10 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 			argument_type_id = typecheck_expr(interp, argument);
 		}
 
-		pop_typechecker_context(interp, false);
+		if (!expect_named)
+			seen_argument_mask = (static_cast<u64>(1) << seen_argument_count) - 1;
 
-		const FuncType* const func_type = static_cast<const FuncType*>(primitive_type_structure(interp->types, callee_type_id));
+		// TODO: Check missing arguments have a default value in the callee's signature.
 
 		return func_type->return_type_id;
 	}
@@ -1169,6 +1167,8 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		{
 			ASSERT_OR_IGNORE(lhs_type_tag == TypeTag::Type);
 
+			const TypeId defined_type_id = *static_cast<TypeId*>(evaluate_expr(interp, lhs));
+
 			panic("Typechecking of AST node type %s with a `Type` as its left-hand-side is not yet implemented.\n", tag_name(node->tag));
 		}
 	}
@@ -1377,22 +1377,6 @@ static TypeId typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 	return result;
 }
 
-static void typecheck_file(Interpreter* interp, TypeId file_type_id) noexcept
-{
-	push_typechecker_context(interp, file_type_id, true);
-
-	IncompleteMemberIterator it = incomplete_members_of(interp->types, file_type_id);
-
-	while (has_next(&it))
-	{
-		MemberInfo member = next(&it);
-
-		(void) delayed_typecheck_member(interp, &member);
-	}
-
-	pop_typechecker_context(interp, true);
-}
-
 static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file_type_source_id) noexcept
 {
 	ASSERT_OR_IGNORE(file->tag == AstTag::File);
@@ -1401,9 +1385,9 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 
 	push_typechecker_context(interp, file_type_id, true);
 
-	AstDirectChildIterator it = direct_children_of(file);
+	AstDirectChildIterator ast_it = direct_children_of(file);
 
-	for (OptPtr<AstNode> rst = next(&it); is_some(rst); rst = next(&it))
+	for (OptPtr<AstNode> rst = next(&ast_it); is_some(rst); rst = next(&ast_it))
 	{
 		AstNode* const node = get_ptr(rst);
 
@@ -1422,12 +1406,172 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 
 	close_open_type(interp->types, file_type_id, 0, 1, 0);
 
+	IncompleteMemberIterator member_it = incomplete_members_of(interp->types, file_type_id);
+
+	while (has_next(&member_it))
+	{
+		MemberInfo member = next(&member_it);
+
+		(void) delayed_typecheck_member(interp, &member);
+	}
+
 	pop_typechecker_context(interp, true);
 
 	return file_type_id;
 }
 
-static TypeId build_prelude_type(Interpreter* interp, Config* config, AstBuilder* builder, IdentifierPool* identifiers, AstPool* asts) noexcept
+
+
+static TypeId make_func_type_from_array(TypePool* types, TypeId return_type_id, u16 param_count, const FuncTypeParamHelper* params) noexcept
+{
+	const TypeId signature_type_id = create_open_type(types, INVALID_SOURCE_ID);
+
+	u64 offset = 0;
+
+	u32 max_align = 1;
+
+	for (u16 i = 0; i != param_count; ++i)
+	{
+		const TypeMetrics metrics = type_metrics_from_id(types, params[i].type);
+
+		offset = next_multiple(offset, static_cast<u64>(metrics.align));
+
+		MemberInit init{};
+		init.name = params[i].name;
+		init.type.id = params[i].type;
+		init.source = INVALID_SOURCE_ID;
+		init.is_global = false;
+		init.is_pub = false;
+		init.is_use = false;
+		init.has_pending_type = false;
+		init.offset_or_global_value = offset;
+		init.opt_type_node_id = INVALID_AST_NODE_ID;
+		init.opt_value_node_id = INVALID_AST_NODE_ID;
+
+		offset += metrics.size;
+
+		if (metrics.align > max_align)
+			max_align = metrics.align;
+
+		add_open_type_member(types, signature_type_id, init);
+	}
+
+	close_open_type(types, signature_type_id, offset, max_align, next_multiple(offset, static_cast<u64>(max_align)));
+
+	FuncType func_type{};
+	func_type.return_type_id = return_type_id;
+	func_type.param_count = param_count;
+	func_type.is_proc = false;
+	func_type.signature_type_id = signature_type_id;
+
+	return primitive_type(types, TypeTag::Func, range::from_object_bytes(&func_type));
+}
+
+template<typename... Params>
+static TypeId make_func_type(TypePool* types, TypeId return_type_id, Params... params) noexcept
+{
+	if constexpr (sizeof...(params) == 0)
+	{
+		return make_func_type_from_array(types, return_type_id, 0, nullptr);
+	}
+	else
+	{
+		const FuncTypeParamHelper params_array[] = { params... };
+
+		return make_func_type_from_array(types, return_type_id, sizeof...(params), params_array);
+	}
+}
+
+static void init_builtin_types(Interpreter* interp) noexcept
+{
+	const TypeId type_type_id = primitive_type(interp->types, TypeTag::Type, {});
+
+	const TypeId comp_integer_type_id = primitive_type(interp->types, TypeTag::CompInteger, {});
+
+	const TypeId comp_string_type_id = primitive_type(interp->types, TypeTag::CompString, {});
+
+	const TypeId bool_type_id = primitive_type(interp->types, TypeTag::Boolean, {});
+
+	const TypeId definition_type_id = primitive_type(interp->types, TypeTag::Definition, {});
+
+	const TypeId type_builder_type_id = primitive_type(interp->types, TypeTag::TypeBuilder, {});
+
+	const TypeId void_type_id = primitive_type(interp->types, TypeTag::Void, {});
+
+	const TypeId type_info_type_id = primitive_type(interp->types, TypeTag::TypeInfo, {});
+
+	ReferenceType ptr_to_type_builder_type{};
+	ptr_to_type_builder_type.referenced_type_id = set_assignability(type_builder_type_id, true);
+	ptr_to_type_builder_type.is_opt = false;
+	ptr_to_type_builder_type.is_multi = false;
+
+	const TypeId ptr_to_type_builder_type_id = primitive_type(interp->types, TypeTag::Ptr, range::from_object_bytes(&ptr_to_type_builder_type));
+
+
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::Integer)] = make_func_type(interp->types, type_type_id,
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("bits")), comp_integer_type_id },
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("is_signed")), bool_type_id }
+	);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::Type)] = make_func_type(interp->types, type_type_id);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::Definition)] = make_func_type(interp->types, type_type_id);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::CompInteger)] = make_func_type(interp->types, type_type_id);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::CompFloat)] = make_func_type(interp->types, type_type_id);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::CompString)] = make_func_type(interp->types, type_type_id);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::TypeBuilder)] = make_func_type(interp->types, type_type_id);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::True)] = make_func_type(interp->types, bool_type_id);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::Typeof)] = make_func_type(interp->types, type_type_id,
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_info_type_id }
+	);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::Returntypeof)] = make_func_type(interp->types, type_type_id,
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_info_type_id }
+	);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::Sizeof)] = make_func_type(interp->types, comp_integer_type_id,
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_info_type_id }
+	);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::Alignof)] = make_func_type(interp->types, comp_integer_type_id,
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_info_type_id }
+	);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::Strideof)] = make_func_type(interp->types, comp_integer_type_id,
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_info_type_id }
+	);
+
+	// TODO: Figure out what type this takes as its argument. A member? If so,
+	//       how do you effectively get that?
+	interp->builtin_type_ids[static_cast<u8>(Builtin::Offsetof)] = make_func_type(interp->types, comp_integer_type_id);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::Nameof)] = make_func_type(interp->types, comp_string_type_id,
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_info_type_id }
+	);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::Import)] = make_func_type(interp->types, type_type_id,
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("path")), comp_string_type_id },
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("is_std")), bool_type_id }
+	);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::CreateTypeBuilder)] = make_func_type(interp->types, type_builder_type_id);
+
+	// TODO
+	interp->builtin_type_ids[static_cast<u8>(Builtin::AddTypeMember)] = make_func_type(interp->types, void_type_id);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::CompleteType)] = make_func_type(interp->types, type_type_id,
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_builder_type_id }
+	);
+}
+
+static void init_prelude_type(Interpreter* interp, Config* config, AstBuilder* builder, IdentifierPool* identifiers, AstPool* asts) noexcept
 {
 	const AstBuilderToken import_builtin = push_node(builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, static_cast<AstFlag>(Builtin::Import), AstTag::Builtin);
 
@@ -1449,7 +1593,7 @@ static TypeId build_prelude_type(Interpreter* interp, Config* config, AstBuilder
 
 	AstNode* const prelude_ast = complete_ast(builder, asts);
 
-	return type_from_file_ast(interp, prelude_ast, INVALID_SOURCE_ID);
+	interp->prelude_type_id = type_from_file_ast(interp, prelude_ast, INVALID_SOURCE_ID);
 }
 
 
@@ -1471,7 +1615,9 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 	interp->prelude_type_id = INVALID_TYPE_ID;
 	interp->context_top = -1;
 
-	interp->prelude_type_id = build_prelude_type(interp, config, get_ast_builder(parser), identifiers, asts);
+	init_builtin_types(interp);
+
+	init_prelude_type(interp, config, get_ast_builder(parser), identifiers, asts);
 
 	return interp;
 }
@@ -1500,7 +1646,38 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 
 	const TypeId file_type_id = type_from_file_ast(interp, root, read.source_file->source_id_base);
 
-	typecheck_file(interp, file_type_id);
-
 	return file_type_id;
+}
+
+const char8* tag_name(Builtin builtin) noexcept
+{
+	static constexpr const char8* BUILTIN_NAMES[] = {
+		"[Unknown]",
+		"_integer",
+		"_type",
+		"_definition",
+		"_comp_integer",
+		"_comp_float",
+		"_comp_string",
+		"_bype_builder",
+		"_true",
+		"_typeof",
+		"_returntypeof",
+		"_sizeof",
+		"_alignof",
+		"_strideof",
+		"_offsetof",
+		"_nameof",
+		"_import",
+		"_create_type_builder",
+		"_add_type_member",
+		"_complete_type",
+	};
+
+	u8 ordinal = static_cast<u8>(builtin);
+
+	if (ordinal >= array_count(BUILTIN_NAMES))
+		ordinal = 0;
+
+	return BUILTIN_NAMES[ordinal];
 }

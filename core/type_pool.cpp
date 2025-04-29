@@ -257,19 +257,6 @@ struct TypeName
 	}
 };
 
-struct TypePool
-{
-	IndexMap<AttachmentRange<byte, TypeTag>, TypeStructure> structural_types;
-
-	IndexMap<TypeName, TypeName> named_types;
-
-	ReservedVec<u64> builders;
-
-	s32 first_free_builder_index;
-
-	ErrorSink* errors;
-};
-
 struct TypeBuilder
 {
 	s32 next_offset;
@@ -322,11 +309,24 @@ union TypeBuilderHeader
 	TypeBuilder unused_;
 };
 
+struct TypePool
+{
+	IndexMap<AttachmentRange<byte, TypeTag>, TypeStructure> structural_types;
+
+	IndexMap<TypeName, TypeName> named_types;
+
+	ReservedVec<u64> builders;
+
+	s32 first_free_builder_index;
+
+	ErrorSink* errors;
+};
+
 static_assert(sizeof(TypeBuilder) == sizeof(TypeBuilderHeader));
 
 
 
-static bool find_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, FindByNameResult* out) noexcept;
+static bool find_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, bool include_use, FindByNameResult* out) noexcept;
 
 template<typename T>
 [[nodiscard]] static T* data(TypeStructure* entry) noexcept
@@ -612,17 +612,34 @@ static TypeId common_type_id_with_masked_assignability(TypePool* types, TypeId t
 	return INVALID_TYPE_ID;
 }
 
-static TypeId resolve_member_type_id(TypePool* types, TypeMember* member) noexcept
+static MemberInfo member_info_from_type_member(const TypeMember* member, TypeMemberAst ast, TypeId surrounding_type_id, IdentifierId name, u16 rank) noexcept
 {
-	(void) types; // TODO: Remove
+	MemberInfo info;
+	info.name = name;
+	info.source = member->source;
+	info.is_global = member->is_global;
+	info.is_pub = member->is_pub;
+	info.is_use = member->is_use;
+	info.rank = rank;
+	info.offset_or_global_value = member->offset_or_global_value;
+	info.surrounding_type_id = surrounding_type_id;
 
 	if (member->has_pending_type)
-		TODO("Link back to Interpreter, getting the required type id.");
+	{
+		info.opt_type_resumption_id = member->type.resumption_id;
+		info.opt_type_node_id = ast.opt_type;
+		info.opt_value_node_id = ast.opt_value;
+		info.opt_type = INVALID_TYPE_ID;
+	}
+	else
+	{
+		info.opt_type = member->type.id;
+	}
 
-	return member->type.id;
+	return info;
 }
 
-static bool find_builder_member_by_name(TypePool* types, TypeBuilderHeader* header, IdentifierId name, TypeId type_id, FindByNameResult* out) noexcept
+static bool find_builder_member_by_name(TypeBuilderHeader* header, IdentifierId name, TypeId type_id, FindByNameResult* out) noexcept
 {
 	if (header->head_offset == 0)
 		return false;
@@ -631,7 +648,7 @@ static bool find_builder_member_by_name(TypePool* types, TypeBuilderHeader* head
 
 	TypeBuilder* curr = head;
 
-	u32 rank = 0;
+	u16 rank = 0;
 
 	while (true)
 	{
@@ -643,44 +660,21 @@ static bool find_builder_member_by_name(TypePool* types, TypeBuilderHeader* head
 				out->rank = static_cast<u16>(rank + i);
 				out->surrounding_type_id = type_id;
 				out->ast = curr->asts[i];
-			}
-		}
 
-		if (curr->next_offset == 0)
-			break;
-
-		rank += static_cast<u32>(array_count(curr->names));
-
-		curr = type_builder_at_offset(curr, curr->next_offset);
-	}
-	
-	// Handle `use`.
-
-	curr = head;
-
-	while (true)
-	{
-		for (u32 i = 0; i != curr->used; ++i)
-		{
-			if (!curr->members[i].is_use)
-				continue;
-
-			const TypeId use_type_id = resolve_member_type_id(types, curr->members + i);
-	
-			if (find_member_by_name(types, use_type_id, name, out))
 				return true;
+			}
 		}
 
 		if (curr->next_offset == 0)
 			return false;
 
-		rank += static_cast<u32>(array_count(curr->names));
+		rank += static_cast<u16>(array_count(curr->names));
 
 		curr = type_builder_at_offset(curr, curr->next_offset);
 	}
 }
 
-static bool find_composite_member_by_name(TypePool* types, CompositeType* composite, IdentifierId name, TypeId type_id, FindByNameResult* out) noexcept
+static bool find_composite_member_by_name(TypePool* types, CompositeType* composite, IdentifierId name, TypeId type_id, bool include_use, FindByNameResult* out) noexcept
 {
 	TypeMember* const members = member_array_from_name_array(composite->names, composite->header.member_count);
 
@@ -696,6 +690,9 @@ static bool find_composite_member_by_name(TypePool* types, CompositeType* compos
 		}
 	}
 
+	if (!include_use)
+		return false;
+
 	// Handle `use`.
 
 	for (u32 i = 0; i != composite->header.member_count; ++i)
@@ -703,19 +700,18 @@ static bool find_composite_member_by_name(TypePool* types, CompositeType* compos
 		if (!members[i].is_use)
 			continue;
 
-		const TypeId use_type_id = resolve_member_type_id(types, members + i);
+		const TypeId use_type_id = members[i].type.id;
 
-		if (use_type_id.rep == INVALID_TYPE_ID.rep)
-			TODO("Link back to Interpreter, getting the required type id.");
+		ASSERT_OR_IGNORE(use_type_id.rep != INVALID_TYPE_ID.rep);
 
-		if (find_member_by_name(types, use_type_id, name, out))
+		if (find_member_by_name(types, use_type_id, name, include_use, out))
 			return true;
 	}
 
 	return false;
 }
 
-static bool find_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, FindByNameResult* out) noexcept
+static bool find_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, bool include_use, FindByNameResult* out) noexcept
 {
 	TypeName* const type_name = types->named_types.value_from(type_id.rep >> 1);
 
@@ -723,7 +719,7 @@ static bool find_member_by_name(TypePool* types, TypeId type_id, IdentifierId na
 	{
 		TypeBuilderHeader* const header = get_deferred_type_builder(types, type_name);
 
-		return find_builder_member_by_name(types, header, name, type_id, out);
+		return find_builder_member_by_name(header, name, type_id, out);
 	}
 	else
 	{
@@ -732,7 +728,7 @@ static bool find_member_by_name(TypePool* types, TypeId type_id, IdentifierId na
 		if (structure->tag != TypeTag::Composite)
 			panic("Tried getting member of non-composite type by name.\n");
 
-		return find_composite_member_by_name(types, data<CompositeType>(structure), name, type_id, out);
+		return find_composite_member_by_name(types, data<CompositeType>(structure), name, type_id, include_use, out);
 	}
 }
 
@@ -797,30 +793,6 @@ static bool find_member_by_rank(TypePool* types, TypeId type_id, u16 rank, FindB
 	}
 }
 
-static MemberInfo member_info_from_type_member(const TypeMember* member, TypeMemberAst ast, TypeId surrounding_type_id, IdentifierId name, u16 rank) noexcept
-{
-	MemberInfo info;
-	info.name = name;
-	info.opt_type = member->has_pending_type ? INVALID_TYPE_ID : member->type.id;
-	info.opt_type_resumption_id = member->has_pending_type ? member->type.resumption_id : INVALID_RESUMPTION_ID;
-	info.source = member->source;
-	info.is_global = member->is_global;
-	info.is_pub = member->is_pub;
-	info.is_use = member->is_use;
-	info.rank = rank;
-	info.offset_or_global_value = member->offset_or_global_value;
-	info.surrounding_type_id = surrounding_type_id;
-
-	if (member->has_pending_type)
-	{
-		info.opt_type_resumption_id = member->type.resumption_id;
-		info.opt_type_node_id = ast.opt_type;
-		info.opt_value_node_id = ast.opt_value;
-	}
-
-	return info;
-}
-
 
 
 TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept
@@ -833,8 +805,9 @@ TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept
 	types->first_free_builder_index = -1;
 	types->errors = errors;
 
-	// Reserve `0 << 1` as `INVALID_TYPE_ID`
-	// and `1 << 1` as `CHECKING_TYPE_ID`. 
+	// Reserve `0 << 1` as `INVALID_TYPE_ID`,
+	// `1 << 1` as `CHECKING_TYPE_ID` and
+	// `2 << 1` as `NO_TYPE_TYPE_ID`.
 
 	TypeName dummy_name{};
 	dummy_name.structure_index_kind = TypeName::INVALID_STRUCTURE_INDEX;
@@ -842,6 +815,10 @@ TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept
 	(void) types->named_types.index_from(dummy_name, fnv1a(range::from_object_bytes(&dummy_name)));
 
 	dummy_name.parent_type_id = TypeId{ 1 };
+
+	(void) types->named_types.index_from(dummy_name, fnv1a(range::from_object_bytes(&dummy_name)));
+
+	dummy_name.parent_type_id = TypeId{ 2 };
 
 	(void) types->named_types.index_from(dummy_name, fnv1a(range::from_object_bytes(&dummy_name)));
 
@@ -992,7 +969,7 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit membe
 
 	FindByNameResult unused_found;
 
-	if (find_builder_member_by_name(types, header, member.name, open_type_id, &unused_found))
+	if (find_builder_member_by_name(header, member.name, open_type_id, &unused_found))
 		source_error(types->errors, member.source, "Type already has a member with the same name.\n");
 
 	TypeBuilder* tail;
@@ -1083,7 +1060,7 @@ void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, 
 	}
 }
 
-void set_incomplete_type_member_type(TypePool* types, TypeId open_type_id, IdentifierId member_name_id, TypeId member_type_id) noexcept
+void set_incomplete_type_member_type_by_name(TypePool* types, TypeId open_type_id, IdentifierId member_name_id, TypeId member_type_id) noexcept
 {
 	ASSERT_OR_IGNORE(open_type_id.rep != INVALID_TYPE_ID.rep);
 
@@ -1098,7 +1075,32 @@ void set_incomplete_type_member_type(TypePool* types, TypeId open_type_id, Ident
 
 	FindByNameResult found;
 
-	if (!find_builder_member_by_name(types, header, member_name_id, open_type_id, &found) || found.surrounding_type_id.rep != open_type_id.rep)
+	if (!find_builder_member_by_name(header, member_name_id, open_type_id, &found))
+		panic("Tried setting type of non-existent member.\n");
+
+	if (!found.member->has_pending_type)
+		panic("Tried setting type of already typed member.\n");
+
+	found.member->has_pending_type = false;
+	found.member->type.id = member_type_id;
+}
+
+void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_id, u16 rank, TypeId member_type_id) noexcept
+{
+	ASSERT_OR_IGNORE(open_type_id.rep != INVALID_TYPE_ID.rep);
+
+	ASSERT_OR_IGNORE(member_type_id.rep != INVALID_TYPE_ID.rep);
+
+	TypeName* const builder_name = types->named_types.value_from(open_type_id.rep >> 1);
+
+	if (resolve_name_structure(types, builder_name))
+		panic("Passed completed type to `add_open_type_member`.\n");
+
+	TypeBuilderHeader* const header = get_deferred_type_builder(types, builder_name);
+
+	FindByRankResult found;
+
+	if (!find_builder_member_by_rank(header, rank, &found))
 		panic("Tried setting type of non-existent member.\n");
 
 	if (!found.member->has_pending_type)
@@ -1131,6 +1133,7 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 
 	case TypeTag::TypeBuilder:
 	case TypeTag::Type:
+	case TypeTag::TypeInfo:
 		return { 4, 4, 4 };
 
 	case TypeTag::CompInteger:
@@ -1209,7 +1212,7 @@ bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId name
 {
 	FindByNameResult found;
 
-	if (!find_member_by_name(types, type_id, name, &found))
+	if (!find_member_by_name(types, type_id, name, true, &found))
 		return false;
 
 	*out = member_info_from_type_member(found.member, found.ast, found.surrounding_type_id, name, found.rank);
@@ -1249,7 +1252,7 @@ const void* primitive_type_structure(TypePool* types, TypeId type_id) noexcept
 	{
 		const TypeStructure* structure = types->structural_types.value_from(name->structure_index);
 
-		if (structure->tag != TypeTag::Composite && structure->tag != TypeTag::Func)
+		if (structure->tag != TypeTag::Composite)
 			return &structure->data;
 	}
 
@@ -1287,15 +1290,15 @@ MemberInfo next(IncompleteMemberIterator* it) noexcept
 
 	ASSERT_OR_IGNORE(static_cast<TypeName*>(it->name)->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER);
 
-	const u32 rank = it->curr;
+	const u16 rank = it->rank;
 
-	it->curr += rank + 1;
+	it->rank += rank + 1;
 
 	const TypeBuilder* const builder = static_cast<const TypeBuilder*>(it->structure);
 
-	const u32 index = rank & (array_count(builder->names) - 1);
+	const u16 index = rank & (static_cast<u16>(array_count(builder->names)) - 1);
 
-	return member_info_from_type_member(builder->members + index, builder->asts[index], it->type_id, builder->names[index], static_cast<u16>(rank));
+	return member_info_from_type_member(builder->members + index, builder->asts[index], it->type_id, builder->names[index], rank);
 }
 
 bool has_next(IncompleteMemberIterator* it) noexcept
@@ -1312,7 +1315,7 @@ bool has_next(IncompleteMemberIterator* it) noexcept
 
 	TypeBuilder* builder = static_cast<TypeBuilder*>(it->structure);
 
-	u32 curr = it->curr;
+	u32 curr = it->rank;
 
 	while (true)
 	{
@@ -1373,9 +1376,9 @@ MemberInfo next(MemberIterator* it) noexcept
 {
 	ASSERT_OR_IGNORE(it->structure != nullptr);
 
-	const u32 rank = it->curr;
+	const u16 rank = it->rank;
 
-	it->curr = rank + 1;
+	it->rank = rank + 1;
 
 	if (it->name != nullptr)
 	{
@@ -1383,7 +1386,7 @@ MemberInfo next(MemberIterator* it) noexcept
 
 		const u32 index = rank & (array_count(builder->names) - 1);
 
-		return member_info_from_type_member(builder->members + index, builder->asts[index], it->type_id, builder->names[index], static_cast<u16>(rank));
+		return member_info_from_type_member(builder->members + index, builder->asts[index], it->type_id, builder->names[index], rank);
 	}
 	else
 	{
@@ -1391,7 +1394,7 @@ MemberInfo next(MemberIterator* it) noexcept
 
 		const TypeMember* const members = member_array_from_name_array(composite->names, composite->header.member_count);
 
-		return member_info_from_type_member(members + rank, { INVALID_AST_NODE_ID, INVALID_AST_NODE_ID }, it->type_id, composite->names[rank], static_cast<u16>(rank));
+		return member_info_from_type_member(members + rank, { INVALID_AST_NODE_ID, INVALID_AST_NODE_ID }, it->type_id, composite->names[rank], rank);
 	}
 }
 
@@ -1414,7 +1417,7 @@ bool has_next(MemberIterator* it) noexcept
 
 		TypeBuilder* builder = static_cast<TypeBuilder*>(it->structure);
 
-		if (it->curr == builder->used)
+		if (it->rank == builder->used)
 		{
 			if (builder->next_offset == 0)
 			{
@@ -1425,7 +1428,7 @@ bool has_next(MemberIterator* it) noexcept
 
 			it->structure = type_builder_at_offset(builder, builder->next_offset);
 
-			it->curr = 0;
+			it->rank = 0;
 		}
 	
 		return true;
@@ -1434,18 +1437,18 @@ bool has_next(MemberIterator* it) noexcept
 	{
 		CompositeType* const structure = static_cast<CompositeType*>(it->structure);
 
-		const u32 curr = it->curr;
+		const u16 rank = it->rank;
 
-		ASSERT_OR_IGNORE(structure->header.member_count <= curr);
+		ASSERT_OR_IGNORE(structure->header.member_count <= rank);
 
-		if (structure->header.member_count == curr)
+		if (structure->header.member_count == rank)
 		{
 			it->structure = nullptr;
 
 			return false;
 		}
 
-		it->curr = curr;
+		it->rank = rank;
 
 		return true;
 	}
