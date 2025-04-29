@@ -23,7 +23,7 @@ constexpr inline const char8* const NODE_TYPE_NAMES[] = {
 	"Catch",
 	"Identifier",
 	"LitInteger",
-	"ValFloat",
+	"LitFloat",
 	"ValChar",
 	"ValString",
 	"Return",

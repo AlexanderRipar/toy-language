@@ -16,7 +16,7 @@ struct ValIntegerData
 
 struct ValFloatData
 {
-	static constexpr AstTag TAG = AstTag::ValFloat;
+	static constexpr AstTag TAG = AstTag::LitFloat;
 
 	#pragma pack(push)
 	#pragma pack(4)

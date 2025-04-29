@@ -119,7 +119,7 @@ static DummyTree double_binary_dummy_tree() noexcept
 
 	push_node(&tree, { AstTag::OpMul, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING, 3 * NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
 
-	push_node(&tree, { AstTag::ValFloat, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
+	push_node(&tree, { AstTag::LitFloat, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
 
 	push_node(&tree, { AstTag::LitInteger, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
 
@@ -145,7 +145,7 @@ static DummyTree flat_dummy_tree() noexcept
 
 	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_DWORDS, 0, 2 * NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
 
-	push_node(&tree, { AstTag::ValFloat, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
+	push_node(&tree, { AstTag::LitFloat, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
 
 	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
 
@@ -621,7 +621,7 @@ static void push_node_with_double_binary_tree_and_complete_reverses_tree() noexc
 
 	const AstBuilderToken add = push_node(&builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::ValChar);
 
-	const AstBuilderToken mul = push_node(&builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::ValFloat);
+	const AstBuilderToken mul = push_node(&builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::LitFloat);
 
 	push_node(&builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::LitInteger);
 

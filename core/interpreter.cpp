@@ -248,7 +248,7 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node) noexcept
 		return stack_value;
 	}
 
-	case AstTag::ValFloat:
+	case AstTag::LitFloat:
 	{
 		CompFloatValue* const stack_value = static_cast<CompFloatValue*>(alloc_stack_value(interp, sizeof(CompFloatValue), alignof(CompFloatValue)));
 
@@ -711,7 +711,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		return primitive_type(interp->types, TypeTag::CompString, {});
 	}
 
-	case AstTag::ValFloat:
+	case AstTag::LitFloat:
 	{
 		return primitive_type(interp->types, TypeTag::Float, {});
 	}

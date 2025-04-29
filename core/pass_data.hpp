@@ -244,7 +244,7 @@ enum class AstTag : u8
 	Catch,
 	Identifer,
 	LitInteger,
-	ValFloat,
+	LitFloat,
 	ValChar,
 	ValString,
 	Return,
