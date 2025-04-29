@@ -6,7 +6,7 @@
 
 struct ValIntegerData
 {
-	static constexpr AstTag TAG = AstTag::ValInteger;
+	static constexpr AstTag TAG = AstTag::LitInteger;
 
 	#pragma pack(push)
 	#pragma pack(4)

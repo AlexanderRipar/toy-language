@@ -239,7 +239,7 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node) noexcept
 			return alloc_stack_value(interp, 0, 1); // Void
 	}
 
-	case AstTag::ValInteger:
+	case AstTag::LitInteger:
 	{
 		CompIntegerValue* const stack_value = static_cast<CompIntegerValue*>(alloc_stack_value(interp, sizeof(CompIntegerValue), alignof(CompIntegerValue)));
 
@@ -706,7 +706,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		return delayed_typecheck_member(interp, &member);
 	}
 
-	case AstTag::ValInteger:
+	case AstTag::LitInteger:
 	{
 		return primitive_type(interp->types, TypeTag::CompString, {});
 	}

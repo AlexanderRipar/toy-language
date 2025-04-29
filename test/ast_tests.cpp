@@ -121,7 +121,7 @@ static DummyTree double_binary_dummy_tree() noexcept
 
 	push_node(&tree, { AstTag::ValFloat, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
 
-	push_node(&tree, { AstTag::ValInteger, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
+	push_node(&tree, { AstTag::LitInteger, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
 
 	push_node(&tree, { AstTag::ValString, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
 
@@ -623,7 +623,7 @@ static void push_node_with_double_binary_tree_and_complete_reverses_tree() noexc
 
 	const AstBuilderToken mul = push_node(&builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::ValFloat);
 
-	push_node(&builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::ValInteger);
+	push_node(&builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::LitInteger);
 
 	push_node(&builder, mul, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::OpMul);
 
