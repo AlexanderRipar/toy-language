@@ -88,7 +88,18 @@ IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identi
 	return { identifiers->map.index_from(identifier, fnv1a(identifier.as_byte_range())) };
 }
 
-IdentifierEntry* identifier_entry_from_id(IdentifierPool* identifiers, IdentifierId id) noexcept
+IdentifierId id_from_identifier_with_token(IdentifierPool* identifiers, Range<char8> identifier, Token* out_token) noexcept
 {
-	return identifiers->map.value_from(id.rep);
+	const IdentifierEntry* entry = identifiers->map.value_from(identifier, fnv1a(identifier.as_byte_range()));
+
+	*out_token = entry->m_token;
+
+	return { identifiers->map.index_from(entry) };
+}
+
+Range<char8> identifier_name_from_id(const IdentifierPool* identifiers, IdentifierId id) noexcept
+{
+	const IdentifierEntry* const entry = identifiers->map.value_from(id.rep);
+
+	return { entry->m_chars, entry->m_hash };
 }

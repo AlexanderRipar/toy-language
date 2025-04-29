@@ -8,7 +8,7 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 {
 	if (node->tag == AstTag::ValIdentifer)
 	{
-		const Range<char8> name = identifier_entry_from_id(identifiers, attachment_of<ValIdentifierData>(node)->identifier_id)->range();
+		const Range<char8> name = identifier_name_from_id(identifiers, attachment_of<ValIdentifierData>(node)->identifier_id);
 
 		diag::buf_printf(ctx, "%*s%s [%.*s] {%s\n", (depth + 1) * 2, "", tag_name(node->tag), static_cast<s32>(name.count()), name.begin(), has_children(node) ? "" : "}");
 	}

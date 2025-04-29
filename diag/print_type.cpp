@@ -13,7 +13,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 	const IdentifierId name_id = type_name_from_id(types, type_id);
 
-	const Range<char8> name = name_id == INVALID_IDENTIFIER_ID ? range::from_literal_string("UNNAMED") : identifier_entry_from_id(identifiers, name_id)->range();
+	const Range<char8> name = name_id == INVALID_IDENTIFIER_ID ? range::from_literal_string("UNNAMED") : identifier_name_from_id(identifiers, name_id);
 
 	const char8 name_opener = name_id == INVALID_IDENTIFIER_ID ? '<' : '\"';
 
@@ -104,7 +104,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 		{
 			MemberInfo member = next(&it);
 
-			const Range<char8> member_name = identifier_entry_from_id(identifiers, member.name)->range();
+			const Range<char8> member_name = identifier_name_from_id(identifiers, member.name);
 
 			diag::buf_printf(ctx, "%s%*s%s%s%s\"%.*s\": ", has_members ? "" : "\n",
 				(indent + 1) * 2, "",

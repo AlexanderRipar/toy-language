@@ -284,7 +284,9 @@ void release_identifier_pool(IdentifierPool* identifiers) noexcept;
 
 IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept;
 
-IdentifierEntry* identifier_entry_from_id(IdentifierPool* identifiers, IdentifierId id) noexcept;
+IdentifierId id_from_identifier_with_token(IdentifierPool* identifiers, Range<char8> identifier, Token* out_token) noexcept;
+
+Range<char8> identifier_name_from_id(const IdentifierPool* identifiers, IdentifierId id) noexcept;
 
 
 

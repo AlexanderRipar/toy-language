@@ -154,7 +154,7 @@ static MemberInfo lookup_identifier_definition(Interpreter* interp, IdentifierId
 		index -= 1;
 	}
 
-	const Range<char8> name = identifier_entry_from_id(interp->identifiers, identifier_id)->range();
+	const Range<char8> name = identifier_name_from_id(interp->identifiers, identifier_id);
 
 	source_error(interp->errors, lookup_source, "Could not find definition for identifier %.*s\n", static_cast<s32>(name.count()), name.begin());
 }
@@ -784,7 +784,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 				if (!type_member_info_by_name(interp->types, callee_type_id, argument_identifier, &argument_member))
 				{
-					const Range<char8> name = identifier_entry_from_id(interp->identifiers, argument_identifier)->range();
+					const Range<char8> name = identifier_name_from_id(interp->identifiers, argument_identifier);
 
 					source_error(interp->errors, argument_lhs->source_id, "`%.*s` is not an argument of the called function.\n", static_cast<s32>(name.count()), name.begin());
 				}
@@ -795,7 +795,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 				if ((seen_argument_mask & curr_argument_bit) != 0)
 				{
-					const Range<char8> name = identifier_entry_from_id(interp->identifiers, argument_identifier)->range();
+					const Range<char8> name = identifier_name_from_id(interp->identifiers, argument_identifier);
 
 					source_error(interp->errors, argument_lhs->source_id, "Function argument `%.*s` set more than once.\n", static_cast<s32>(name.count()), name.begin());
 				}
@@ -1154,7 +1154,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 			if (!type_member_info_by_name(interp->types, lhs_type_id, identifier_id, &member))
 			{
-				const Range<char8> name = identifier_entry_from_id(interp->identifiers, identifier_id)->range();
+				const Range<char8> name = identifier_name_from_id(interp->identifiers, identifier_id);
 
 				source_error(interp->errors, node->source_id, "Left-hand-side of `.` has no member \"%.*s\"", static_cast<s32>(name.count()), name.begin());
 			}

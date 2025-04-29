@@ -338,11 +338,9 @@ static RawLexeme scan_identifier_token(Lexer* lexer, bool is_builtin) noexcept
 
 	const Range<char8> identifier_bytes{ token_begin, curr };
 
-	const IdentifierId identifier_id = id_from_identifier(lexer->identifiers, identifier_bytes);
+	Token identifier_token;
 
-	const IdentifierEntry* const identifier_value = identifier_entry_from_id(lexer->identifiers, identifier_id);
-
-	const Token identifier_token = identifier_value->token();
+	const IdentifierId identifier_id = id_from_identifier_with_token(lexer->identifiers, identifier_bytes, &identifier_token);
 
 	if (is_builtin)
 	{
