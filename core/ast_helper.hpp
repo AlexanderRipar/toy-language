@@ -3,7 +3,6 @@
 
 #include "../infra/common.hpp"
 #include "pass_data.hpp"
-#include "ast_attach.hpp"
 
 struct FuncInfo
 {

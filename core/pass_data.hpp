@@ -211,6 +211,76 @@ Range<char8> identifier_name_from_id(const IdentifierPool* identifiers, Identifi
 
 
 
+struct CompIntegerValue
+{
+	u64 rep;
+};
+
+struct CompFloatValue
+{
+	f64 rep;
+};
+
+[[nodiscard]] CompIntegerValue comp_integer_from_u64(u64 value) noexcept;
+
+[[nodiscard]] CompIntegerValue comp_integer_from_s64(s64 value) noexcept;
+
+[[nodiscard]] bool comp_integer_from_comp_float(CompFloatValue value, CompIntegerValue* out) noexcept;
+
+[[nodiscard]] bool u64_from_comp_integer(CompIntegerValue value, u64* out) noexcept;
+
+[[nodiscard]] bool s64_from_comp_integer(CompIntegerValue value, s64* out) noexcept;
+
+[[nodiscard]] CompIntegerValue comp_integer_add(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+
+[[nodiscard]] CompIntegerValue comp_integer_sub(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+
+[[nodiscard]] CompIntegerValue comp_integer_mul(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+
+[[nodiscard]] bool comp_integer_div(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+
+[[nodiscard]] bool comp_integer_mod(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+
+[[nodiscard]] CompIntegerValue comp_integer_neg(CompIntegerValue value) noexcept;
+
+[[nodiscard]] CompIntegerValue comp_integer_shift_left(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+
+[[nodiscard]] CompIntegerValue comp_integer_shift_right(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+
+[[nodiscard]] bool comp_integer_bit_and(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+
+[[nodiscard]] bool comp_integer_bit_or(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+
+[[nodiscard]] bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+
+[[nodiscard]] bool comp_float_from_literal(Range<char8> literal, CompIntegerValue* out) noexcept;
+
+[[nodiscard]] CompFloatValue comp_float_from_f64(f64 value) noexcept;
+
+[[nodiscard]] CompFloatValue comp_float_from_f32(f32 value) noexcept;
+
+[[nodiscard]] bool comp_float_from_u64(u64 value, CompFloatValue* out) noexcept;
+
+[[nodiscard]] bool comp_float_from_s64(s64 value, CompFloatValue* out) noexcept;
+
+[[nodiscard]] bool comp_float_from_comp_integer(CompIntegerValue value, CompFloatValue* out) noexcept;
+
+[[nodiscard]] f64 f64_from_comp_float(CompFloatValue value) noexcept;
+
+[[nodiscard]] f32 f32_from_comp_float(CompFloatValue value) noexcept;
+
+[[nodiscard]] CompFloatValue comp_float_add(CompFloatValue lhs, CompFloatValue rhs) noexcept;
+
+[[nodiscard]] CompFloatValue comp_float_sub(CompFloatValue lhs, CompFloatValue rhs) noexcept;
+
+[[nodiscard]] CompFloatValue comp_float_mul(CompFloatValue lhs, CompFloatValue rhs) noexcept;
+
+[[nodiscard]] CompFloatValue comp_float_div(CompFloatValue lhs, CompFloatValue rhs) noexcept;
+
+[[nodiscard]] CompFloatValue comp_float_neg(CompFloatValue value) noexcept;
+
+
+
 static constexpr s32 MAX_AST_DEPTH = 128;
 
 struct AstPool;
@@ -416,6 +486,61 @@ struct AstPostorderIterator
 	s32 depth;
 
 	u32 offsets[MAX_AST_DEPTH];
+};
+
+struct AstLitIntegerData
+{
+	static constexpr AstTag TAG = AstTag::LitInteger;
+
+	#pragma pack(push)
+	#pragma pack(4)
+	CompIntegerValue value;
+	#pragma pack(pop)
+};
+
+struct AstLitFloatData
+{
+	static constexpr AstTag TAG = AstTag::LitFloat;
+
+	#pragma pack(push)
+	#pragma pack(4)
+	CompFloatValue value;
+	#pragma pack(pop)
+};
+
+struct AstLitCharData
+{
+	static constexpr AstTag TAG = AstTag::LitChar;
+
+	u32 codepoint;
+};
+
+struct AstIdentifierData
+{
+	static constexpr AstTag TAG = AstTag::Identifer;
+
+	IdentifierId identifier_id;
+};
+
+struct AstLitStringData
+{
+	static constexpr AstTag TAG = AstTag::LitString;
+
+	IdentifierId string_id;
+};
+
+struct AstDefinitionData
+{
+	static constexpr AstTag TAG = AstTag::Definition;
+
+	IdentifierId identifier_id;
+};
+
+struct AstBlockData
+{
+	static constexpr AstTag TAG = AstTag::Block;
+
+	TypeId scope_type_id;
 };
 
 inline AstFlag operator|(AstFlag lhs, AstFlag rhs) noexcept
@@ -807,76 +932,6 @@ void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, 
 void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
 
 void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept;
-
-
-
-struct CompIntegerValue
-{
-	u64 rep;
-};
-
-struct CompFloatValue
-{
-	f64 rep;
-};
-
-[[nodiscard]] CompIntegerValue comp_integer_from_u64(u64 value) noexcept;
-
-[[nodiscard]] CompIntegerValue comp_integer_from_s64(s64 value) noexcept;
-
-[[nodiscard]] bool comp_integer_from_comp_float(CompFloatValue value, CompIntegerValue* out) noexcept;
-
-[[nodiscard]] bool u64_from_comp_integer(CompIntegerValue value, u64* out) noexcept;
-
-[[nodiscard]] bool s64_from_comp_integer(CompIntegerValue value, s64* out) noexcept;
-
-[[nodiscard]] CompIntegerValue comp_integer_add(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
-
-[[nodiscard]] CompIntegerValue comp_integer_sub(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
-
-[[nodiscard]] CompIntegerValue comp_integer_mul(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
-
-[[nodiscard]] bool comp_integer_div(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
-
-[[nodiscard]] bool comp_integer_mod(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
-
-[[nodiscard]] CompIntegerValue comp_integer_neg(CompIntegerValue value) noexcept;
-
-[[nodiscard]] CompIntegerValue comp_integer_shift_left(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
-
-[[nodiscard]] CompIntegerValue comp_integer_shift_right(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
-
-[[nodiscard]] bool comp_integer_bit_and(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
-
-[[nodiscard]] bool comp_integer_bit_or(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
-
-[[nodiscard]] bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
-
-[[nodiscard]] bool comp_float_from_literal(Range<char8> literal, CompIntegerValue* out) noexcept;
-
-[[nodiscard]] CompFloatValue comp_float_from_f64(f64 value) noexcept;
-
-[[nodiscard]] CompFloatValue comp_float_from_f32(f32 value) noexcept;
-
-[[nodiscard]] bool comp_float_from_u64(u64 value, CompFloatValue* out) noexcept;
-
-[[nodiscard]] bool comp_float_from_s64(s64 value, CompFloatValue* out) noexcept;
-
-[[nodiscard]] bool comp_float_from_comp_integer(CompIntegerValue value, CompFloatValue* out) noexcept;
-
-[[nodiscard]] f64 f64_from_comp_float(CompFloatValue value) noexcept;
-
-[[nodiscard]] f32 f32_from_comp_float(CompFloatValue value) noexcept;
-
-[[nodiscard]] CompFloatValue comp_float_add(CompFloatValue lhs, CompFloatValue rhs) noexcept;
-
-[[nodiscard]] CompFloatValue comp_float_sub(CompFloatValue lhs, CompFloatValue rhs) noexcept;
-
-[[nodiscard]] CompFloatValue comp_float_mul(CompFloatValue lhs, CompFloatValue rhs) noexcept;
-
-[[nodiscard]] CompFloatValue comp_float_div(CompFloatValue lhs, CompFloatValue rhs) noexcept;
-
-[[nodiscard]] CompFloatValue comp_float_neg(CompFloatValue value) noexcept;
 
 
 
