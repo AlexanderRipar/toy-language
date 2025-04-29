@@ -21,7 +21,7 @@ constexpr inline const char8* const NODE_TYPE_NAMES[] = {
 	"Trait",
 	"Impl",
 	"Catch",
-	"ValIdentifier",
+	"Identifier",
 	"ValInteger",
 	"ValFloat",
 	"ValChar",

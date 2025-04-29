@@ -33,7 +33,7 @@ struct ValCharData
 
 struct ValIdentifierData
 {
-	static constexpr AstTag TAG = AstTag::ValIdentifer;
+	static constexpr AstTag TAG = AstTag::Identifer;
 
 	IdentifierId identifier_id;
 };

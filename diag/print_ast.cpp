@@ -6,7 +6,7 @@
 
 static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifiers, const AstNode* node, s32 depth) noexcept
 {
-	if (node->tag == AstTag::ValIdentifer)
+	if (node->tag == AstTag::Identifer)
 	{
 		const Range<char8> name = identifier_name_from_id(identifiers, attachment_of<ValIdentifierData>(node)->identifier_id);
 

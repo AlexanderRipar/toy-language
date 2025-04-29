@@ -242,7 +242,7 @@ enum class AstTag : u8
 	Trait,
 	Impl,
 	Catch,
-	ValIdentifer,
+	Identifer,
 	ValInteger,
 	ValFloat,
 	ValChar,

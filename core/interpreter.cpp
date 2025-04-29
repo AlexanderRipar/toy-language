@@ -266,7 +266,7 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node) noexcept
 		return stack_value;
 	}
 
-	case AstTag::ValIdentifer:
+	case AstTag::Identifer:
 	{
 		void* const identifier_value = lookup_identifier_value(interp, attachment_of<ValIdentifierData>(node)->identifier_id);
 
@@ -697,7 +697,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		}
 	}
 
-	case AstTag::ValIdentifer:
+	case AstTag::Identifer:
 	{
 		const IdentifierId identifier_id = attachment_of<ValIdentifierData>(node)->identifier_id;
 
@@ -778,7 +778,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 				AstNode* const argument_name = first_child_of(argument_lhs);
 
 				// TODO: Enforce this in parser
-				ASSERT_OR_IGNORE(argument_name->tag == AstTag::ValIdentifer);
+				ASSERT_OR_IGNORE(argument_name->tag == AstTag::Identifer);
 
 				const IdentifierId argument_identifier = attachment_of<ValIdentifierData>(argument_name)->identifier_id;
 
@@ -1141,7 +1141,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		AstNode* const rhs = next_sibling_of(lhs);
 
-		if (rhs->tag != AstTag::ValIdentifer)
+		if (rhs->tag != AstTag::Identifer)
 			source_error(interp->errors, rhs->source_id, "Right-hand-side of `.` must be an identifier\n");
 
 		rhs->type_id = NO_TYPE_TYPE_ID;
