@@ -246,7 +246,7 @@ enum class AstTag : u8
 	LitInteger,
 	LitFloat,
 	LitChar,
-	ValString,
+	LitString,
 	Return,
 	Leave,
 	Yield,

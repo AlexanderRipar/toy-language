@@ -123,7 +123,7 @@ static DummyTree double_binary_dummy_tree() noexcept
 
 	push_node(&tree, { AstTag::LitInteger, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
 
-	push_node(&tree, { AstTag::ValString, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
+	push_node(&tree, { AstTag::LitString, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
 
 	return tree;
 }
@@ -149,7 +149,7 @@ static DummyTree flat_dummy_tree() noexcept
 
 	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
 
-	push_node(&tree, { AstTag::ValString, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
+	push_node(&tree, { AstTag::LitString, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID, INVALID_SOURCE_ID });
 
 	return tree;
 }
@@ -629,7 +629,7 @@ static void push_node_with_double_binary_tree_and_complete_reverses_tree() noexc
 
 	const AstBuilderToken sub = push_node(&builder, add, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::OpAdd);
 
-	push_node(&builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::ValString);
+	push_node(&builder, AstBuilder::NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::LitString);
 
 	push_node(&builder, sub, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::OpSub);
 

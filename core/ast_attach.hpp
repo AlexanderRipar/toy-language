@@ -40,7 +40,7 @@ struct ValIdentifierData
 
 struct ValStringData
 {
-	static constexpr AstTag TAG = AstTag::ValString;
+	static constexpr AstTag TAG = AstTag::LitString;
 
 	IdentifierId string_id;
 };

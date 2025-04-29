@@ -323,7 +323,7 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::Trait:
 	case AstTag::Impl:
 	case AstTag::Catch:
-	case AstTag::ValString:
+	case AstTag::LitString:
 	case AstTag::Return:
 	case AstTag::Leave:
 	case AstTag::Yield:
@@ -721,7 +721,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		return primitive_type(interp->types, TypeTag::CompInteger, {});
 	}
 
-	case AstTag::ValString:
+	case AstTag::LitString:
 	{
 		return primitive_type(interp->types, TypeTag::CompString, {});
 	}
