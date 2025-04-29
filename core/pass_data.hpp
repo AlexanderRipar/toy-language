@@ -577,6 +577,16 @@ inline bool operator!=(AstNodeId lhs, AstNodeId rhs) noexcept
 	return lhs.rep != rhs.rep;
 }
 
+static inline bool operator==(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
+{
+	return lhs.rep == rhs.rep;
+}
+
+static inline bool operator!=(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
+{
+	return lhs.rep != rhs.rep;
+}
+
 static constexpr AstNodeId INVALID_AST_NODE_ID = { 0 };
 
 AstPool* create_ast_pool(AllocPool* pool) noexcept;
@@ -661,16 +671,6 @@ AstIterationResult next(AstPreorderIterator* iterator) noexcept;
 AstPostorderIterator postorder_ancestors_of(AstNode* node) noexcept;
 
 AstIterationResult next(AstPostorderIterator* iterator) noexcept;
-
-static inline bool operator==(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
-{
-	return lhs.rep == rhs.rep;
-}
-
-static inline bool operator!=(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
-{
-	return lhs.rep != rhs.rep;
-}
 
 static inline AstBuilder create_ast_builder() noexcept
 {
