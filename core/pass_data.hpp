@@ -7,29 +7,6 @@
 #include "../infra/optptr.hpp"
 #include "../infra/minos.hpp"
 
-enum class Builtin : u8
-{
-	INVALID = 0,
-	Integer,
-	Type,
-	Definition,
-	CompInteger,
-	CompFloat,
-	CompString,
-	TypeBuilder,
-	True,
-	Typeof,
-	Sizeof,
-	Alignof,
-	Strideof,
-	Offsetof,
-	Nameof,
-	Import,
-	CreateTypeBuilder,
-	AddTypeMember,
-	CompleteType,
-};
-
 
 
 struct TypeId
@@ -50,8 +27,6 @@ struct TypecheckerResumptionId
 struct SourceReader;
 
 struct SourceLocation;
-
-struct AstNode;
 
 
 
@@ -1032,6 +1007,7 @@ enum class TypeTag : u8
 	Variadic,
 	Divergent,
 	Trait,
+	TypeInfo,
 };
 
 struct TypeMetrics
@@ -1049,7 +1025,7 @@ struct IncompleteMemberIterator
 
 	void* name;
 
-	u32 curr;
+	u16 rank;
 
 	TypeId type_id;
 };
@@ -1060,7 +1036,7 @@ struct MemberIterator
 
 	void* name;
 
-	u32 curr;
+	u16 rank;
 
 	TypeId type_id;
 };
@@ -1248,6 +1224,31 @@ struct Parser;
 
 
 struct Interpreter;
+
+enum class Builtin : u8
+{
+	INVALID = 0,
+	Integer,
+	Type,
+	Definition,
+	CompInteger,
+	CompFloat,
+	CompString,
+	TypeBuilder,
+	True,
+	Typeof,
+	Returntypeof,
+	Sizeof,
+	Alignof,
+	Strideof,
+	Offsetof,
+	Nameof,
+	Import,
+	CreateTypeBuilder,
+	AddTypeMember,
+	CompleteType,
+	MAX,
+};
 
 static constexpr TypecheckerResumptionId INVALID_RESUMPTION_ID = { 0 };
 
