@@ -267,7 +267,7 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 {
 	static_assert(sizeof(AstNode) % sizeof(u32) == 0);
 
-	const u8 required_dwords = static_cast<u8>((sizeof(AstNode) + attachment_dwords) / sizeof(u32));
+	const u8 required_dwords = static_cast<u8>(sizeof(AstNode) / sizeof(u32) + attachment_dwords);
 
 	AstNode* const node = reinterpret_cast<AstNode*>(asts->builder.reserve_exact(required_dwords * sizeof(u32)));
 
@@ -278,7 +278,7 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 	node->internal_flags = first_child == AST_BUILDER_NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
 	node->source_id = source_id;
 
-	memcpy(node + 1, &attachment, attachment_dwords * sizeof(u32));
+	memcpy(node + 1, attachment, attachment_dwords * sizeof(u32));
 
 	return { static_cast<u32>(reinterpret_cast<u32*>(node) - asts->builder.begin()) };
 }
