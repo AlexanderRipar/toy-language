@@ -1174,6 +1174,9 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 	case TypeTag::Divergent:
 	case TypeTag::Trait:
 		panic("`type_metrics_from_id` is not yet implemented for `%s`.\n", tag_name(structure->tag));
+
+	case TypeTag::INVALID:
+		ASSERT_UNREACHABLE;
 	}
 
 	ASSERT_UNREACHABLE;
