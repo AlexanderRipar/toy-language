@@ -30,7 +30,7 @@ struct Interpreter
 
 	TypeId contexts[256];
 
-	TypeId builtin_type_ids[static_cast<u8>(Builtin::MAX) - 1];
+	TypeId builtin_type_ids[static_cast<u8>(Builtin::MAX)];
 };
 
 struct FuncTypeParamHelper
