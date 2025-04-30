@@ -8,16 +8,32 @@
 
 
 
+// Forward declarations.
+// These are necessary because the modules defining them would otherwise appear
+// after those using them.
+
+// Id used to refer to a type in the `TypePool`. See `TypePool` for further
+// information.
 struct TypeId
 {
 	u32 rep;
 };
 
+// Id used to identify a particular source code location.
+// This encodes the location's file, line and column. See `SourceReader` for
+// further information.
 struct SourceId
 {
 	u32 m_rep;
 };
 
+// Id that identifies a typechecker context so that it can be resumed to
+// complete typechecking.
+// A resumption only remains valid as long as typechecking has not
+// concluded for the context it identifies has not completed. Since these
+// context scoping rules are internal to `Interpreter`, this type can only be
+// meaningfully used therein, and only stored for later use by an `Interpreter`
+// otherwise.
 struct TypecheckerResumptionId
 {
 	u32 rep;
