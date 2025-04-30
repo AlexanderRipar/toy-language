@@ -100,7 +100,7 @@ static void apply_typechecker_resumption(Interpreter* interp, TypecheckerResumpt
 
 	const s32 resumption_count = 1 + resumption_top - resumption_bottom;
 
-	if (interp->context_top + resumption_count >= array_count(interp->contexts))
+	if (interp->context_top + resumption_count >= static_cast<s32>(array_count(interp->contexts)))
 		panic("Maximum active interpreter context limit of %u exceeded.\n", array_count(interp->contexts));
 
 	memcpy(interp->contexts + interp->context_top + 1, interp->contexts + resumption_bottom, resumption_count * sizeof(*interp->contexts));
