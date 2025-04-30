@@ -1265,7 +1265,7 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 	TypeName* name = types->named_types.value_from(type_id.rep >> 1);
 
 	if (resolve_name_structure(types, name))
-		return { nullptr, nullptr, 0 };
+		return { nullptr, nullptr, 0, INVALID_TYPE_ID };
 
 	if (name->structure_index_kind == TypeName::STRUCTURE_INDEX_INDIRECT)
 		name = types->named_types.value_from(name->structure_index);
@@ -1278,7 +1278,7 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 		panic("Passed open type to `incomplete_members_of`\n");
 
 	if (header->head_offset == 0)
-		return { nullptr, nullptr, 0 };
+		return { nullptr, nullptr, 0, INVALID_TYPE_ID };
 
 	return { type_builder_at_offset(&header->unused_, header->head_offset), name, 0, type_id };
 }
@@ -1364,7 +1364,7 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 			panic("Passed open type to `incomplete_members_of`\n");
 
 		if (header->head_offset == 0)
-			return { nullptr, nullptr, 0 };
+			return { nullptr, nullptr, 0, INVALID_TYPE_ID };
 
 		return { type_builder_at_offset(&header->unused_, header->tail_offset), name, 0, type_id };
 	}
