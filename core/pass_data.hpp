@@ -185,63 +185,63 @@ struct CompFloatValue
 	f64 rep;
 };
 
-[[nodiscard]] CompIntegerValue comp_integer_from_u64(u64 value) noexcept;
+CompIntegerValue comp_integer_from_u64(u64 value) noexcept;
 
-[[nodiscard]] CompIntegerValue comp_integer_from_s64(s64 value) noexcept;
+CompIntegerValue comp_integer_from_s64(s64 value) noexcept;
 
-[[nodiscard]] bool comp_integer_from_comp_float(CompFloatValue value, CompIntegerValue* out) noexcept;
+bool comp_integer_from_comp_float(CompFloatValue value, CompIntegerValue* out) noexcept;
 
-[[nodiscard]] bool u64_from_comp_integer(CompIntegerValue value, u64* out) noexcept;
+bool u64_from_comp_integer(CompIntegerValue value, u64* out) noexcept;
 
-[[nodiscard]] bool s64_from_comp_integer(CompIntegerValue value, s64* out) noexcept;
+bool s64_from_comp_integer(CompIntegerValue value, s64* out) noexcept;
 
-[[nodiscard]] CompIntegerValue comp_integer_add(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+CompIntegerValue comp_integer_add(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
 
-[[nodiscard]] CompIntegerValue comp_integer_sub(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+CompIntegerValue comp_integer_sub(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
 
-[[nodiscard]] CompIntegerValue comp_integer_mul(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+CompIntegerValue comp_integer_mul(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
 
-[[nodiscard]] bool comp_integer_div(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+bool comp_integer_div(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
 
-[[nodiscard]] bool comp_integer_mod(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+bool comp_integer_mod(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
 
-[[nodiscard]] CompIntegerValue comp_integer_neg(CompIntegerValue value) noexcept;
+CompIntegerValue comp_integer_neg(CompIntegerValue value) noexcept;
 
-[[nodiscard]] CompIntegerValue comp_integer_shift_left(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+CompIntegerValue comp_integer_shift_left(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
 
-[[nodiscard]] CompIntegerValue comp_integer_shift_right(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+CompIntegerValue comp_integer_shift_right(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
 
-[[nodiscard]] bool comp_integer_bit_and(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+bool comp_integer_bit_and(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
 
-[[nodiscard]] bool comp_integer_bit_or(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+bool comp_integer_bit_or(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
 
-[[nodiscard]] bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
 
-[[nodiscard]] bool comp_float_from_literal(Range<char8> literal, CompIntegerValue* out) noexcept;
+bool comp_float_from_literal(Range<char8> literal, CompIntegerValue* out) noexcept;
 
-[[nodiscard]] CompFloatValue comp_float_from_f64(f64 value) noexcept;
+CompFloatValue comp_float_from_f64(f64 value) noexcept;
 
-[[nodiscard]] CompFloatValue comp_float_from_f32(f32 value) noexcept;
+CompFloatValue comp_float_from_f32(f32 value) noexcept;
 
-[[nodiscard]] bool comp_float_from_u64(u64 value, CompFloatValue* out) noexcept;
+bool comp_float_from_u64(u64 value, CompFloatValue* out) noexcept;
 
-[[nodiscard]] bool comp_float_from_s64(s64 value, CompFloatValue* out) noexcept;
+bool comp_float_from_s64(s64 value, CompFloatValue* out) noexcept;
 
-[[nodiscard]] bool comp_float_from_comp_integer(CompIntegerValue value, CompFloatValue* out) noexcept;
+bool comp_float_from_comp_integer(CompIntegerValue value, CompFloatValue* out) noexcept;
 
-[[nodiscard]] f64 f64_from_comp_float(CompFloatValue value) noexcept;
+f64 f64_from_comp_float(CompFloatValue value) noexcept;
 
-[[nodiscard]] f32 f32_from_comp_float(CompFloatValue value) noexcept;
+f32 f32_from_comp_float(CompFloatValue value) noexcept;
 
-[[nodiscard]] CompFloatValue comp_float_add(CompFloatValue lhs, CompFloatValue rhs) noexcept;
+CompFloatValue comp_float_add(CompFloatValue lhs, CompFloatValue rhs) noexcept;
 
-[[nodiscard]] CompFloatValue comp_float_sub(CompFloatValue lhs, CompFloatValue rhs) noexcept;
+CompFloatValue comp_float_sub(CompFloatValue lhs, CompFloatValue rhs) noexcept;
 
-[[nodiscard]] CompFloatValue comp_float_mul(CompFloatValue lhs, CompFloatValue rhs) noexcept;
+CompFloatValue comp_float_mul(CompFloatValue lhs, CompFloatValue rhs) noexcept;
 
-[[nodiscard]] CompFloatValue comp_float_div(CompFloatValue lhs, CompFloatValue rhs) noexcept;
+CompFloatValue comp_float_div(CompFloatValue lhs, CompFloatValue rhs) noexcept;
 
-[[nodiscard]] CompFloatValue comp_float_neg(CompFloatValue value) noexcept;
+CompFloatValue comp_float_neg(CompFloatValue value) noexcept;
 
 
 
@@ -767,21 +767,21 @@ static inline bool operator!=(SourceId lhs, SourceId rhs) noexcept
 
 static constexpr SourceId INVALID_SOURCE_ID = { 0 };
 
-[[nodiscard]] SourceReader* create_source_reader(AllocPool* pool) noexcept;
+SourceReader* create_source_reader(AllocPool* pool) noexcept;
 
 void release_source_reader(SourceReader* reader) noexcept;
 
-[[nodiscard]] SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noexcept;
+SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noexcept;
 
 void release_read(SourceReader* reader, SourceFileRead read) noexcept;
 
-[[nodiscard]] SourceLocation source_location_from_ast_node(SourceReader* reader, AstNode* node) noexcept;
+SourceLocation source_location_from_ast_node(SourceReader* reader, AstNode* node) noexcept;
 
-[[nodiscard]] SourceLocation source_location_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
+SourceLocation source_location_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
 
-[[nodiscard]] SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
+SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
 
-[[nodiscard]] Range<char8> source_file_path(SourceReader* reader, SourceFile* source_file) noexcept;
+Range<char8> source_file_path(SourceReader* reader, SourceFile* source_file) noexcept;
 
 
 
@@ -789,7 +789,7 @@ void release_read(SourceReader* reader, SourceFileRead read) noexcept;
 
 struct ErrorSink;
 
-[[nodiscard]] ErrorSink* create_error_sink(AllocPool* pool, SourceReader* reader, IdentifierPool* identifiers) noexcept;
+ErrorSink* create_error_sink(AllocPool* pool, SourceReader* reader, IdentifierPool* identifiers) noexcept;
 
 void release_error_sink(ErrorSink* errors) noexcept;
 
@@ -968,12 +968,12 @@ static constexpr TypeId CHECKING_TYPE_ID = { 2 };
 
 static constexpr TypeId NO_TYPE_TYPE_ID = { 4 };
 
-[[nodiscard]] static inline bool is_assignable(TypeId type_id) noexcept
+static inline bool is_assignable(TypeId type_id) noexcept
 {
 	return (type_id.rep & 1) == 1;
 }
 
-[[nodiscard]] static inline TypeId set_assignability(TypeId type_id, bool assignable) noexcept
+static inline TypeId set_assignability(TypeId type_id, bool assignable) noexcept
 {
 	if (assignable)
 		return TypeId{ type_id.rep | 1 };
@@ -981,7 +981,7 @@ static constexpr TypeId NO_TYPE_TYPE_ID = { 4 };
 	return TypeId{ type_id.rep & ~1 };
 }
 
-[[nodiscard]] static inline TypeId mask_assignability(TypeId type_id, bool assignable) noexcept
+static inline TypeId mask_assignability(TypeId type_id, bool assignable) noexcept
 {
 	if (assignable)
 		return type_id;
@@ -989,21 +989,21 @@ static constexpr TypeId NO_TYPE_TYPE_ID = { 4 };
 	return TypeId{ type_id.rep & ~1 };
 }
 
-[[nodiscard]] TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept;
+TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept;
 
 void release_type_pool(TypePool* types) noexcept;
 
-[[nodiscard]] const char8* tag_name(TypeTag tag) noexcept;
+const char8* tag_name(TypeTag tag) noexcept;
 
-[[nodiscard]] TypeId primitive_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept;
+TypeId primitive_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept;
 
-[[nodiscard]] TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept;
+TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept;
 
-[[nodiscard]] IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept;
+IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept;
 
-[[nodiscard]] SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept;
+SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept;
 
-[[nodiscard]] TypeId create_open_type(TypePool* types, SourceId source_id) noexcept;
+TypeId create_open_type(TypePool* types, SourceId source_id) noexcept;
 
 void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit member) noexcept;
 
@@ -1013,31 +1013,31 @@ void set_incomplete_type_member_type_by_name(TypePool* types, TypeId open_type_i
 
 void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_id, u16 rank, TypeId member_type_id) noexcept;
 
-[[nodiscard]] TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
+TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
 
-[[nodiscard]] TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept;
+TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept;
 
-[[nodiscard]] bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept;
+bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept;
 
-[[nodiscard]] TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
+TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
 
-[[nodiscard]] bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId member_name_id, MemberInfo* out) noexcept;
+bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId member_name_id, MemberInfo* out) noexcept;
 
-[[nodiscard]] bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberInfo* out) noexcept;
+bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberInfo* out) noexcept;
 
-[[nodiscard]] const void* primitive_type_structure(TypePool* types, TypeId type_id) noexcept;
+const void* primitive_type_structure(TypePool* types, TypeId type_id) noexcept;
 
-[[nodiscard]] IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) noexcept;
+IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) noexcept;
 
-[[nodiscard]] MemberInfo next(IncompleteMemberIterator* it) noexcept;
+MemberInfo next(IncompleteMemberIterator* it) noexcept;
 
-[[nodiscard]] bool has_next(IncompleteMemberIterator* it) noexcept;
+bool has_next(IncompleteMemberIterator* it) noexcept;
 
-[[nodiscard]] MemberIterator members_of(TypePool* types, TypeId type_id) noexcept;
+MemberIterator members_of(TypePool* types, TypeId type_id) noexcept;
 
-[[nodiscard]] MemberInfo next(MemberIterator* it) noexcept;
+MemberInfo next(MemberIterator* it) noexcept;
 
-[[nodiscard]] bool has_next(MemberIterator* it) noexcept;
+bool has_next(MemberIterator* it) noexcept;
 
 
 
@@ -1045,9 +1045,9 @@ void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_i
 
 struct Parser;
 
-[[nodiscard]] Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* errors, minos::FileHandle log_file) noexcept;
+Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* errors, minos::FileHandle log_file) noexcept;
 
-[[nodiscard]] AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std, Range<char8> filepath) noexcept;
+AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std, Range<char8> filepath) noexcept;
 
 
 
