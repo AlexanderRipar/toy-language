@@ -220,7 +220,9 @@ void release_identifier_pool(IdentifierPool* identifiers) noexcept;
 
 IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept;
 
-IdentifierId id_from_identifier_with_token(IdentifierPool* identifiers, Range<char8> identifier, Token* out_token) noexcept;
+IdentifierId id_and_attachment_from_identifier(IdentifierPool* identifiers, Range<char8> identifier, u8* out_attachment) noexcept;
+
+void identifier_set_attachment(IdentifierPool* identifiers, Range<char8> identifier, u8 attachment) noexcept;
 
 Range<char8> identifier_name_from_id(const IdentifierPool* identifiers, IdentifierId id) noexcept;
 

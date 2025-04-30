@@ -12,6 +12,56 @@
 
 static constexpr u32 MAX_STRING_LITERAL_BYTES = 4096;
 
+static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
+	range::from_literal_string("if",       static_cast<u8>(Token::KwdIf)),
+	range::from_literal_string("then",     static_cast<u8>(Token::KwdThen)),
+	range::from_literal_string("else",     static_cast<u8>(Token::KwdElse)),
+	range::from_literal_string("for",      static_cast<u8>(Token::KwdFor)),
+	range::from_literal_string("do",       static_cast<u8>(Token::KwdDo)),
+	range::from_literal_string("finally",  static_cast<u8>(Token::KwdFinally)),
+	range::from_literal_string("switch",   static_cast<u8>(Token::KwdSwitch)),
+	range::from_literal_string("case",     static_cast<u8>(Token::KwdCase)),
+	range::from_literal_string("eval",     static_cast<u8>(Token::KwdEval)),
+	range::from_literal_string("try",      static_cast<u8>(Token::KwdTry)),
+	range::from_literal_string("catch",    static_cast<u8>(Token::KwdCatch)),
+	range::from_literal_string("defer",    static_cast<u8>(Token::KwdDefer)),
+	range::from_literal_string("func",     static_cast<u8>(Token::KwdFunc)),
+	range::from_literal_string("proc",     static_cast<u8>(Token::KwdProc)),
+	range::from_literal_string("trait",    static_cast<u8>(Token::KwdTrait)),
+	range::from_literal_string("impl",     static_cast<u8>(Token::KwdImpl)),
+	range::from_literal_string("where",    static_cast<u8>(Token::KwdWhere)),
+	range::from_literal_string("expects",  static_cast<u8>(Token::KwdExpects)),
+	range::from_literal_string("ensures",  static_cast<u8>(Token::KwdEnsures)),
+	range::from_literal_string("pub",      static_cast<u8>(Token::KwdPub)),
+	range::from_literal_string("mut",      static_cast<u8>(Token::KwdMut)),
+	range::from_literal_string("let",      static_cast<u8>(Token::KwdLet)),
+	range::from_literal_string("auto",     static_cast<u8>(Token::KwdAuto)),
+	range::from_literal_string("use",      static_cast<u8>(Token::KwdUse)),
+	range::from_literal_string("global",   static_cast<u8>(Token::KwdGlobal)),
+	range::from_literal_string("return",   static_cast<u8>(Token::KwdReturn)),
+	range::from_literal_string("leave",    static_cast<u8>(Token::KwdLeave)),
+	range::from_literal_string("yield",    static_cast<u8>(Token::KwdYield)),
+	range::from_literal_string("distinct", static_cast<u8>(Token::KwdDistinct)),
+	range::from_literal_string("_integer",             static_cast<u8>(Builtin::Integer)),
+	range::from_literal_string("_type",                static_cast<u8>(Builtin::Type)),
+	range::from_literal_string("_definition",          static_cast<u8>(Builtin::Definition)),
+	range::from_literal_string("_comp_integer",        static_cast<u8>(Builtin::CompInteger)),
+	range::from_literal_string("_comp_float",          static_cast<u8>(Builtin::CompFloat)),
+	range::from_literal_string("_comp_string",         static_cast<u8>(Builtin::CompString)),
+	range::from_literal_string("_type_builder",        static_cast<u8>(Builtin::TypeBuilder)),
+	range::from_literal_string("_true",                static_cast<u8>(Builtin::True)),
+	range::from_literal_string("_typeof",              static_cast<u8>(Builtin::Typeof)),
+	range::from_literal_string("_sizeof",              static_cast<u8>(Builtin::Sizeof)),
+	range::from_literal_string("_alignof",             static_cast<u8>(Builtin::Alignof)),
+	range::from_literal_string("_strideof",            static_cast<u8>(Builtin::Strideof)),
+	range::from_literal_string("_offsetof",            static_cast<u8>(Builtin::Offsetof)),
+	range::from_literal_string("_nameof",              static_cast<u8>(Builtin::Nameof)),
+	range::from_literal_string("_import",              static_cast<u8>(Builtin::Import)),
+	range::from_literal_string("_create_type_builder", static_cast<u8>(Builtin::CreateTypeBuilder)),
+	range::from_literal_string("_add_type_member",     static_cast<u8>(Builtin::AddTypeMember)),
+	range::from_literal_string("_complete_type",       static_cast<u8>(Builtin::CompleteType)),
+};
+
 struct Lexeme
 {
 	Token token;
@@ -337,20 +387,24 @@ static RawLexeme scan_identifier_token(Lexer* lexer, bool is_builtin) noexcept
 
 	const Range<char8> identifier_bytes{ token_begin, curr };
 
-	Token identifier_token;
+	u8 identifier_attachment;
 
-	const IdentifierId identifier_id = id_from_identifier_with_token(lexer->identifiers, identifier_bytes, &identifier_token);
+	const IdentifierId identifier_id = id_and_attachment_from_identifier(lexer->identifiers, identifier_bytes, &identifier_attachment);
 
 	if (is_builtin)
 	{
-		if (identifier_token == Token::EMPTY)
+		const Builtin builtin = static_cast<Builtin>(identifier_attachment);
+
+		if (builtin == Builtin::INVALID)
 			source_error(lexer->errors, lexer->peek.source_id, "Unknown builtin `%.*s`.\n", static_cast<s32>(identifier_bytes.count()), identifier_bytes.begin());
 
-		return { Token::Builtin, static_cast<Builtin>(identifier_token) };
+		return { Token::Builtin, builtin };
 	}
 	else
 	{
-		return { identifier_token, identifier_token == Token::Ident ? identifier_id.rep : 0 };
+		const Token token = identifier_attachment == 0 ? static_cast<Token>(identifier_attachment) : Token::Ident;
+
+		return { token, token == Token::Ident ? identifier_id.rep : 0 };
 	}
 }
 
@@ -2442,6 +2496,9 @@ Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* e
 	parser->lexer.identifiers = identifiers;
 	parser->lexer.errors = errors;
 	parser->log_file = log_file;
+
+	for (const AttachmentRange keyword : KEYWORDS)
+		identifier_set_attachment(identifiers, keyword.range(), keyword.attachment());
 
 	return parser;
 }
