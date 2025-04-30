@@ -41,13 +41,12 @@ struct TypecheckerResumptionId
 
 
 
-// Configuration.
-// This parses a .toml config file into a predefined binary format
-// (`struct Config`), which is then used to inform and parameterize the further
-// compilation process.
 
-// Structure storing config parameters. This filled in by `create_config` and
-// must only be read afterwards.
+
+// Structure holding config parameters used to parameterize the further
+// compilation process.
+// This is filled in by `create_config` and must only be read afterwards.
+// To free it, use `release_config`.
 struct Config
 {
 	struct
@@ -105,13 +104,28 @@ void print_config_help(u32 depth = 0) noexcept;
 
 
 
+
+
+// Identifier Pool.
+// This deduplicates identifiers, making it possible to refer to them with
+// fixed-size `IdentifierId`s.
+// Additionally supports storing an 8-bit attachment for each identifier, which
+// is currently used to distinguish keywords and builtins from other
+// identifiers.
+// This is created by `create_identifier_pool` and freed by
+// `release_identifier_pool`.
 struct IdentifierPool;
 
+// Id used to refer to an identifier. Obtained from `id_from_identifier` or
+// `id_and_attachment_from_identifier` and usable with
+// `identifier_name_from_id` to retrieve associated name.
 struct IdentifierId
 {
 	u32 rep;
 };
 
+// Used to indicate that there is no identifier associated with a construct. No
+// valid identifier will ever map to this `IdentifierId`.
 static constexpr IdentifierId INVALID_IDENTIFIER_ID = { 0 };
 
 static inline bool operator==(IdentifierId lhs, IdentifierId rhs) noexcept
@@ -124,17 +138,40 @@ static inline bool operator!=(IdentifierId lhs, IdentifierId rhs) noexcept
 	return lhs.rep != rhs.rep;
 }
 
-IdentifierPool* create_identifier_pool(AllocPool* pool) noexcept;
+// Creates an `IdentifierPool`, allocating the necessary storage from `alloc`.
+// Resources associated with the created `IdentifierPool` can be freed using
+// `release_identifier_pool`.
+IdentifierPool* create_identifier_pool(AllocPool* alloc) noexcept;
 
+// Releases the resources associated with the given `IdentifierPool`.
 void release_identifier_pool(IdentifierPool* identifiers) noexcept;
 
+// Returns the unique `IdentifierId` that corresponds to the given `identifier`
+// in `identifiers`. All calls with the same `IdentifierPool` and same
+// byte-for-byte `identifier` are guaranteed to return the same `IdentifierId`.
+// All calls to the same `IdentifierPool` with distinct `identifier`s are
+// guaranteed to return distinct `IdentifierId`s.
 IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept;
 
+// Same as `id_from_identifier`, but additionally sets `*out_attachment` to the
+// value previously set for the given `identifier` by
+// `identifier_set_attachment`, or `0` if no attachment has been set.
+// Note that this call will never return `INVALID_IDENTIFIER_ID`.
 IdentifierId id_and_attachment_from_identifier(IdentifierPool* identifiers, Range<char8> identifier, u8* out_attachment) noexcept;
 
+// Sets the attachment associated with `identifier` in the given
+// `IdentifierPool` to the given `attachment`. The given `identifier` must not
+// have previously had an attachment set.
+// Additionally, `attachment` must not be `0`.
 void identifier_set_attachment(IdentifierPool* identifiers, Range<char8> identifier, u8 attachment) noexcept;
 
+// Returns the byte-sequence corresponding to the given `IdentifierId` in the
+// given `IdentifierPool`. `id` must not be `INVALID_IDENTIFIER_ID` and must
+// have been returned from a previous call to `id_from_identifier` or
+// `id_and_attachment_from_identifier`.
 Range<char8> identifier_name_from_id(const IdentifierPool* identifiers, IdentifierId id) noexcept;
+
+
 
 
 

@@ -73,9 +73,9 @@ struct IdentifierPool
 	IndexMap<Range<char8>, IdentifierEntry> map;
 };
 
-IdentifierPool* create_identifier_pool(AllocPool* pool) noexcept
+IdentifierPool* create_identifier_pool(AllocPool* alloc) noexcept
 {
-	IdentifierPool* const identifiers = static_cast<IdentifierPool*>(alloc_from_pool(pool, sizeof(IdentifierPool), alignof(IdentifierPool)));
+	IdentifierPool* const identifiers = static_cast<IdentifierPool*>(alloc_from_pool(alloc, sizeof(IdentifierPool), alignof(IdentifierPool)));
 
 	identifiers->map.init(1u << 24, 1u << 15, 1u << 31, 1u << 18);
 
@@ -115,6 +115,8 @@ void identifier_set_attachment(IdentifierPool* identifiers, Range<char8> identif
 
 Range<char8> identifier_name_from_id(const IdentifierPool* identifiers, IdentifierId id) noexcept
 {
+	ASSERT_OR_IGNORE(id != INVALID_IDENTIFIER_ID);
+
 	const IdentifierEntry* const entry = identifiers->map.value_from(id.rep);
 
 	return { entry->m_chars, entry->m_hash };
