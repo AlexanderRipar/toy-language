@@ -887,6 +887,16 @@ void print_error(const SourceLocation* location, const char8* format, va_list ar
 
 
 
+struct Parser;
+
+Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* errors, minos::FileHandle log_file) noexcept;
+
+AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std, Range<char8> filepath) noexcept;
+
+
+
+
+
 struct TypePool;
 
 enum class TypeTag : u8
@@ -1118,16 +1128,6 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept;
 MemberInfo next(MemberIterator* it) noexcept;
 
 bool has_next(MemberIterator* it) noexcept;
-
-
-
-
-
-struct Parser;
-
-Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* errors, minos::FileHandle log_file) noexcept;
-
-AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std, Range<char8> filepath) noexcept;
 
 
 
