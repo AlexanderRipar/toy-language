@@ -981,13 +981,13 @@ minos::FileHandle minos::standard_file_handle(StdFileName name) noexcept
 	switch (name)
 	{
 	case StdFileName::StdIn:
-		return FileHandle{ 0 };
+		return FileHandle{ reinterpret_cast<void*>(STDIN_FILENO) };
 
 	case StdFileName::StdOut:
-		return FileHandle{ 1 };
+		return FileHandle{ reinterpret_cast<void*>(STDOUT_FILENO) };
 
 	case StdFileName::StdErr:
-		return FileHandle{ 2 };
+		return FileHandle{ reinterpret_cast<void*>(STDERR_FILENO) };
 
 	default:
 		ASSERT_UNREACHABLE;
