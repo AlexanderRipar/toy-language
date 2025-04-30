@@ -174,48 +174,101 @@ Range<char8> identifier_name_from_id(const IdentifierPool* identifiers, Identifi
 
 
 
-
+// Representation of a compile-time known, arbitrary-width signed integer.
+// This is used to represent integer literals, and arithmetic involving them.
+// Currently, it really only supports values in the range [-2^62, 2^62-1].
 struct CompIntegerValue
 {
 	u64 rep;
 };
 
+// Representation of a compile-time known floating-point value.
 struct CompFloatValue
 {
 	f64 rep;
 };
 
+// Creates a `CompIntegerValue` representing the given unsigned 64-bit value.
 CompIntegerValue comp_integer_from_u64(u64 value) noexcept;
 
+// Creates a `CompIntegerValue` representing the given signed 64-bit value.
 CompIntegerValue comp_integer_from_s64(s64 value) noexcept;
 
-bool comp_integer_from_comp_float(CompFloatValue value, CompIntegerValue* out) noexcept;
+// Creates a `CompIntegerValue` representing the given floating point value.
+// If the given `value` is `+/-inf` or `nan`, the function returns `false` and
+// leaves `*out` uninitialized. The same occurs if `round` is false and `value`
+// does not represent a whole number.
+// Otherwise, the function returns `true` and initializes `*out` with the
+// integer value corresponding to the given floating point `value`.
+bool comp_integer_from_comp_float(CompFloatValue value, bool round, CompIntegerValue* out) noexcept;
 
+// Attempts to extract the value of the given `CompIntegerValue` into a `u64`.
+// If the value is outside the range of a 64-bit unsigned integer, `false` is
+// returned and `*out` is left uninitialized. Otherwise `true` is returned and
+// `*out` contains the value of the given `CompIntegerValue`.
 bool u64_from_comp_integer(CompIntegerValue value, u64* out) noexcept;
 
+// Attempts to extract the value of the given `CompIntegerValue` into a `s64`.
+// If the value is outside the range of a 64-bit signed integer, `false` is
+// returned and `*out` is left uninitialized. Otherwise `true` is returned and
+// `*out` contains the value of the given `CompIntegerValue`.
 bool s64_from_comp_integer(CompIntegerValue value, s64* out) noexcept;
 
+// Adds `lhs` and `rhs` together, returning a new `CompIntegerValue`
+// representing the result.
 CompIntegerValue comp_integer_add(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
 
+// Subtracts `rhs` from 'lhs', returning a new `CompIntegerValue` representing
+// the result.
 CompIntegerValue comp_integer_sub(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
 
+// Multiplies `lhs` with `rhs`, returning a new `CompIntegerValue` representing
+// the result.
 CompIntegerValue comp_integer_mul(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
 
+// Performs truncating division of `lhs` by 'rhs'.
+// If `rhs` is `0`, `false` is returned and `*out` is left uninitialized.
+// Otherwise, `true` is returned and `*out` receives the resulting value.
 bool comp_integer_div(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
 
+// Takes the module of `lhs` by 'rhs'.
+// If `rhs` is `0`, `false` is returned and `*out` is left uninitialized.
+// Otherwise, `true` is returned and `*out` receives the resulting value.
 bool comp_integer_mod(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
 
+// Flips the sign of the given `CompIntegerValue`, returning a new
+// `CompIntegerValue` holding the resulting value.
 CompIntegerValue comp_integer_neg(CompIntegerValue value) noexcept;
 
-CompIntegerValue comp_integer_shift_left(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+// Shift `lhs` left by `rhs` bits, effectively calculating `lhs * 2^rhs`.
+// If `rhs` is negative, returns `false` and leaves `*out` uninitialized.
+// Otherwise returns `true` and sets `*out` to the resulting value.
+bool comp_integer_shift_left(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
 
-CompIntegerValue comp_integer_shift_right(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+// Shift `lhs` right by `rhs` bits, effectively calculating `lhs / 2^rhs` where
+// `/` is truncating division.
+// If `rhs` is negative, returns `false` and leaves `*out` uninitialized.
+// Otherwise returns `true` and sets `*out` to the resulting value.
+bool comp_integer_shift_right(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
 
+// Takes the bitwise and of `lhs` and `rhs`.
+// If either `lhs` or `rhs` are negative, returns `false` and leaves `*out`
+// uninitialized.
+// Otherwise returns `true` and sets `*out` to the resulting value.
 bool comp_integer_bit_and(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
 
+// Takes the bitwise or of `lhs` and `rhs`.
+// If either `lhs` or `rhs` are negative, returns `false` and leaves `*out`
+// uninitialized.
+// Otherwise returns `true` and sets `*out` to the resulting value.
 bool comp_integer_bit_or(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
 
+// Takes the bitwise exclusive or of `lhs` and `rhs`.
+// If either `lhs` or `rhs` are negative, returns `false` and leaves `*out`
+// uninitialized.
+// Otherwise returns `true` and sets `*out` to the resulting value.
 bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+
 
 bool comp_float_from_literal(Range<char8> literal, CompIntegerValue* out) noexcept;
 

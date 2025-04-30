@@ -1,5 +1,7 @@
 #include "pass_data.hpp"
 
+#include <cmath>
+
 #if defined(COMPILER_MSVC)
 	#include <intrin.h>
 
@@ -75,12 +77,15 @@ CompIntegerValue comp_integer_from_s64(s64 value) noexcept
 	return { static_cast<u64>(value) << 1 };
 }
 
-bool comp_integer_from_comp_float(CompFloatValue value, CompIntegerValue* out) noexcept
+bool comp_integer_from_comp_float(CompFloatValue value, bool round, CompIntegerValue* out) noexcept
 {
-	f64 float_value = value.rep;
+	const f64 float_value = value.rep;
 
-	if (float_value < static_cast<f64>(COMP_INTEGER_MIN) || float_value > static_cast<f64>(COMP_INTEGER_MAX))
+	if (isnan(float_value) || isinf(float_value) || (!round && ceil(float_value) != float_value))
 		return false;
+
+	if ((float_value < 0 && static_cast<s64>(float_value) < COMP_INTEGER_MIN) || (float_value > 0 && static_cast<u64>(float_value) > COMP_INTEGER_MAX))
+		panic("Value %f exceeds range of current supported values of compile-time integers.\n", float_value);
 
 	*out = { static_cast<u64>(static_cast<s64>(float_value)) << 1 };
 
@@ -194,31 +199,41 @@ CompIntegerValue comp_integer_neg(CompIntegerValue value) noexcept
 	return { static_cast<u64>(-static_cast<s64>(value.rep >> 1)) << 1 };
 }
 
-CompIntegerValue comp_integer_shift_left(CompIntegerValue lhs, CompIntegerValue rhs) noexcept
+bool comp_integer_shift_left(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept
 {
 	if (!is_inlined(lhs) || !is_inlined(rhs))
 		panic("Unexpected non-inlined `CompIntegerValue`.\n");
 
+	if (is_negative(rhs))
+		return false;
+
 	const u64 shift = rhs.rep >> 1;
 
-	const u64 sign_mask = static_cast<u64>(-1) << (shift - 1);
+	const u64 sign_mask = static_cast<u64>(static_cast<s64>(-1)) << (shift - 1);
 
-	const u64 sign_bits = shift & sign_mask;
+	const u64 sign_bits = lhs.rep & sign_mask;
 
-	if (sign_bits != 0 && sign_bits != sign_bits)
+	if (sign_bits != 0 && sign_bits != sign_mask)
 		panic("Value of left-shift of `CompIntegerValue` exceeds currently supported maximum value.\n");
 
-	return { lhs.rep << shift };
+	*out = { lhs.rep << shift };
+
+	return true;
 }
 
-CompIntegerValue comp_integer_shift_right(CompIntegerValue lhs, CompIntegerValue rhs) noexcept
+bool comp_integer_shift_right(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept
 {
 	if (!is_inlined(lhs) || !is_inlined(rhs))
 		panic("Unexpected non-inlined `CompIntegerValue`.\n");
 
+	if (is_negative(rhs))
+		return false;
+
 	const u64 shift = rhs.rep >> 1;
 
-	return { (lhs.rep >> shift) & ~1 };
+	*out = { (lhs.rep >> shift) & ~1 };
+
+	return true;
 }
 
 bool comp_integer_bit_and(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept
