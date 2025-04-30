@@ -31,7 +31,6 @@ set(INFRA_SOURCES
 
 set(CORE_SOURCES
 	core/pass_data.hpp
-	core/ast_helper.hpp
 	core/ast_pool.cpp
 	core/comp_values.cpp
 	core/config.cpp
@@ -40,7 +39,6 @@ set(CORE_SOURCES
 	core/interpreter.cpp
 	core/parse.cpp
 	core/source_reader.cpp
-	core/token.cpp
 	core/type_pool.cpp
 )
 

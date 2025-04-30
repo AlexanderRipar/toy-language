@@ -12,6 +12,220 @@
 
 static constexpr u32 MAX_STRING_LITERAL_BYTES = 4096;
 
+enum class Token : u8
+{
+		EMPTY = 0,
+		KwdIf,                // if
+		KwdThen,              // then
+		KwdElse,              // else
+		KwdFor,               // for
+		KwdDo,                // do
+		KwdFinally,           // finally
+		KwdSwitch,            // switch
+		KwdCase,              // case
+		KwdFunc,              // func
+		KwdProc,              // proc
+		KwdTrait,             // trait
+		KwdImpl,              // impl
+		KwdWhere,             // where
+		KwdExpects,           // expects
+		KwdEnsures,           // ensures
+		KwdCatch,             // catch
+		KwdLet,               // let
+		KwdPub,               // pub
+		KwdMut,               // mut
+		KwdGlobal,            // global
+		KwdAuto,              // auto
+		KwdUse,               // use
+		KwdReturn,            // return
+		KwdLeave,             // leave
+		KwdYield,             // yield
+		ArrayInitializer,     // .[
+		CompositeInitializer, // .{
+		BracketR,             // ]
+		BracketL,             // [
+		CurlyR,               // }
+		CurlyL,               // {
+		ParenR,               // )
+		ParenL,               // (
+		KwdEval,              // eval
+		KwdTry,               // try
+		KwdDefer,             // defer
+		KwdDistinct,          // distinct
+		UOpAddr,              // $
+		UOpNot,               // ~
+		UOpLogNot,            // !
+		TypOptPtr,            // ?
+		TypVar,               // ...
+		TypTailArray,         // [...]
+		TypMultiPtr,          // [*]
+		TypOptMultiPtr,       // [?]
+		TypSlice,             // []
+		OpMemberOrRef,        // .
+		OpMulOrTypPtr,        // *
+		OpSub,                // -
+		OpAdd,                // +
+		OpDiv,                // /
+		OpAddTC,              // +:
+		OpSubTC,              // -:
+		OpMulTC,              // *:
+		OpMod,                // %
+		UOpDeref,             // .*
+		OpAnd,                // &
+		OpOr,                 // |
+		OpXor,                // ^
+		OpShl,                // <<
+		OpShr,                // >>
+		OpLogAnd,             // &&
+		OpLogOr,              // ||
+		OpLt,                 // <
+		OpGt,                 // >
+		OpLe,                 // <=
+		OpGe,                 // >=
+		OpNe,                 // !=
+		OpEq,                 // ==
+		OpSet,                // =
+		OpSetAdd,             // +=
+		OpSetSub,             // -=
+		OpSetMul,             // *=
+		OpSetDiv,             // /=
+		OpSetAddTC,           // +:=
+		OpSetSubTC,           // -:=
+		OpSetMulTC,           // *:=
+		OpSetMod,             // %=
+		OpSetAnd,             // &=
+		OpSetOr,              // |=
+		OpSetXor,             // ^=
+		OpSetShl,             // <<=
+		OpSetShr,             // >>=
+		Colon,                // :
+		Comma,                // ,
+		ThinArrowL,           // <-
+		ThinArrowR,           // ->
+		WideArrowR,           // =>
+		Pragma,               // #
+		LitInteger,           // ( '0' - '9' )+
+		LitFloat,             // ( '0' - '9' )+ '.' ( '0' - '9' )+
+		LitChar,              // '\'' .* '\''
+		LitString,            // '"' .* '"'
+		Ident,                // ( 'a' - 'z' | 'A' - 'Z' ) ( 'a' - 'z' | 'A' - 'Z' | '0' - '9' | '_' )*
+		Builtin,              // '_' ( 'a' - 'z' | 'A' - 'Z' | '0' - '9' | '_' )+    --- Only if is_std == true
+		Wildcard,             // _
+		END_OF_SOURCE,
+		MAX,
+};
+
+const char8* token_name(Token token) noexcept
+{
+	static constexpr const char8* const TOKEN_NAMES[] = {
+		"[Unknown]",
+		"if",
+		"then",
+		"else",
+		"for",
+		"do",
+		"finally",
+		"switch",
+		"case",
+		"func",
+		"proc",
+		"trait",
+		"impl",
+		"where",
+		"expects",
+		"ensures",
+		"catch",
+		"let",
+		"pub",
+		"mut",
+		"global",
+		"auto",
+		"use",
+		"return",
+		"leave",
+		"yield",
+		".[",
+		".{",
+		"]",
+		"[",
+		"}",
+		"{",
+		")",
+		"(",
+		"eval",
+		"try",
+		"defer",
+		"distinct",
+		"$",
+		"~",
+		"!",
+		"?",
+		"...",
+		"[...]",
+		"[*]",
+		"[?]",
+		"[]",
+		".",
+		"*",
+		"-",
+		"+",
+		"/",
+		"+:",
+		"-:",
+		"*:",
+		"%",
+		".*",
+		"&",
+		"|",
+		"^",
+		"<<",
+		">>",
+		"&&",
+		"||",
+		"<",
+		">",
+		"<=",
+		">=",
+		"!=",
+		"==",
+		"=",
+		"+=",
+		"-=",
+		"*=",
+		"/=",
+		"+:=",
+		"-:=",
+		"*:=",
+		"%=",
+		"&=",
+		"|=",
+		"^=",
+		"<<=",
+		">>=",
+		":",
+		",",
+		"<-",
+		"->",
+		"=>",
+		"#",
+		"LiteralInteger",
+		"LiteralFloat",
+		"LiteralChar",
+		"LiteralString",
+		"Identifier",
+		"Builtin",
+		"_",
+		"[END-OF-SOURCE]",
+	};
+
+	const u8 ordinal = static_cast<u8>(token);
+
+	if (ordinal < array_count(TOKEN_NAMES))
+		return TOKEN_NAMES[ordinal];
+
+	return TOKEN_NAMES[0];
+}
+
 static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
 	range::from_literal_string("if",       static_cast<u8>(Token::KwdIf)),
 	range::from_literal_string("then",     static_cast<u8>(Token::KwdThen)),
