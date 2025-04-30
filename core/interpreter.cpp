@@ -486,7 +486,7 @@ static TypeId typecheck_expr_impl(Interpreter* interp, AstNode* node) noexcept
 	{
 		const Builtin builtin = static_cast<Builtin>(node->flags);
 
-		if (builtin == Builtin::AddTypeMember || builtin == Builtin::Offsetof)
+		if (builtin == Builtin::Offsetof)
 			panic("Typechecking for builtin %s not yet supported.\n", tag_name(builtin));
 
 		const u8 ordinal = static_cast<u8>(builtin);
@@ -1505,7 +1505,13 @@ static void init_builtin_types(Interpreter* interp) noexcept
 	ptr_to_type_builder_type.is_opt = false;
 	ptr_to_type_builder_type.is_multi = false;
 
-	const TypeId ptr_to_type_builder_type_id = primitive_type(interp->types, TypeTag::Ptr, range::from_object_bytes(&ptr_to_type_builder_type));
+	const TypeId ptr_to_mut_type_builder_type_id = primitive_type(interp->types, TypeTag::Ptr, range::from_object_bytes(&ptr_to_type_builder_type));
+
+	NumericType s64_type{};
+	s64_type.bits = 64;
+	s64_type.is_signed = true;
+
+	const TypeId s64_type_id = primitive_type(interp->types, TypeTag::Integer, range::from_object_bytes(&s64_type));
 
 
 
@@ -1563,8 +1569,11 @@ static void init_builtin_types(Interpreter* interp) noexcept
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::CreateTypeBuilder)] = make_func_type(interp->types, type_builder_type_id);
 
-	// TODO
-	interp->builtin_type_ids[static_cast<u8>(Builtin::AddTypeMember)] = make_func_type(interp->types, void_type_id);
+	interp->builtin_type_ids[static_cast<u8>(Builtin::AddTypeMember)] = make_func_type(interp->types, void_type_id,
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("builder")), ptr_to_mut_type_builder_type_id },
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("definition")), definition_type_id },
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("offset")), s64_type_id }
+	);
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::CompleteType)] = make_func_type(interp->types, type_type_id,
 		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_builder_type_id }
