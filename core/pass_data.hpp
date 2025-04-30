@@ -41,6 +41,13 @@ struct TypecheckerResumptionId
 
 
 
+// Configuration.
+// This parses a .toml config file into a predefined binary format
+// (`struct Config`), which is then used to inform and parameterize the further
+// compilation process.
+
+// Structure storing config parameters. This filled in by `create_config` and
+// must only be read afterwards.
 struct Config
 {
 	struct
@@ -78,12 +85,22 @@ struct Config
 	Range<char8> m_config_filepath;
 };
 
+// Parses the file at `filepath` into a `Config` struct that is allocated into
+// `alloc`. The file is expected to be in [TOML](https://toml.io) format.
 Config* create_config(AllocPool* alloc, Range<char8> filepath) noexcept;
 
+// Releases resources associated with a `Config` that was previously returned
+// from `create_config`.
 void release_config(Config* config) noexcept;
 
+// Prints the values in the given `Config` to `out` in a readable, JSON-like
+// format.
 void print_config(minos::FileHandle out, const Config* config) noexcept;
 
+// Prints help and explanations for the supported config parameters to the
+// standard error stream. Only parameters that are nested less than `depth` are
+// included in the output. If `depth` is set to `0`, all parameters are
+// printed, regardless of depth.
 void print_config_help(u32 depth = 0) noexcept;
 
 
