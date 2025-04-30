@@ -284,11 +284,6 @@ static constexpr s32 MAX_AST_DEPTH = 128;
 
 struct AstPool;
 
-struct AstNodeId
-{
-	u32 rep;
-};
-
 enum class AstTag : u8
 {
 	INVALID = 0,
@@ -420,6 +415,11 @@ enum class AstFlag : u8
 	Type_IsMut           = 0x02,
 };
 
+struct AstNodeId
+{
+	u32 rep;
+};
+
 struct AstNode
 {
 	static constexpr u8 FLAG_LAST_SIBLING  = 0x01;
@@ -533,6 +533,65 @@ struct AstBlockData
 	static constexpr AstTag TAG = AstTag::Block;
 
 	TypeId scope_type_id;
+};
+
+struct FuncInfo
+{
+	AstNode* parameters;
+
+	OptPtr<AstNode> return_type;
+
+	OptPtr<AstNode> expects;
+
+	OptPtr<AstNode> ensures;
+
+	OptPtr<AstNode> body;
+};
+
+struct DefinitionInfo
+{
+	OptPtr<AstNode> type;
+
+	OptPtr<AstNode> value;
+};
+
+struct IfInfo
+{
+	AstNode* condition;
+
+	AstNode* consequent;
+
+	OptPtr<AstNode> alternative;
+
+	OptPtr<AstNode> where;
+};
+
+struct ForInfo
+{
+	AstNode* condition;
+
+	OptPtr<AstNode> step;
+
+	OptPtr<AstNode> where;
+
+	AstNode* body;
+
+	OptPtr<AstNode> finally;
+};
+
+struct ForEachInfo
+{
+	AstNode* element;
+
+	OptPtr<AstNode> index;
+
+	AstNode* iterated;
+
+	OptPtr<AstNode> where;
+
+	AstNode* body;
+
+	OptPtr<AstNode> finally;
 };
 
 static constexpr AstBuilderToken AST_BUILDER_NO_CHILDREN = { ~0u };
@@ -681,6 +740,16 @@ static inline AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_chi
 AstNode* complete_ast(AstPool* asts) noexcept;
 
 const char8* tag_name(AstTag tag) noexcept;
+
+FuncInfo get_func_info(AstNode* func) noexcept;
+
+DefinitionInfo get_definition_info(AstNode* definition) noexcept;
+
+IfInfo get_if_info(AstNode* node) noexcept;
+
+ForInfo get_for_info(AstNode* node) noexcept;
+
+ForEachInfo get_foreach_info(AstNode* node) noexcept;
 
 
 

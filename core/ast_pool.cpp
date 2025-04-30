@@ -444,6 +444,189 @@ AstIterationResult next(AstPostorderIterator* iterator) noexcept
 
 
 
+FuncInfo get_func_info(AstNode* func) noexcept
+{
+	ASSERT_OR_IGNORE(func->tag == AstTag::Func);
+
+	ASSERT_OR_IGNORE(has_children(func));
+
+	AstNode* curr = first_child_of(func);
+
+	ASSERT_OR_IGNORE(curr->tag == AstTag::ParameterList);
+
+	FuncInfo desc{};
+
+	desc.parameters = curr;
+
+	if (has_flag(func, AstFlag::Func_HasReturnType))
+	{
+		curr = next_sibling_of(curr);
+
+		desc.return_type = some(curr);
+	}
+
+	if (has_flag(func, AstFlag::Func_HasExpects))
+	{
+		curr = next_sibling_of(curr);
+
+		ASSERT_OR_IGNORE(curr->tag == AstTag::Expects);
+
+		desc.expects = some(curr);
+	}
+
+	if (has_flag(func, AstFlag::Func_HasEnsures))
+	{
+		curr = next_sibling_of(curr);
+
+		ASSERT_OR_IGNORE(curr->tag == AstTag::Ensures);
+
+		desc.ensures = some(curr);
+	}
+
+	if (has_flag(func, AstFlag::Func_HasBody))
+	{
+		curr = next_sibling_of(curr);
+
+		desc.body = some(curr);
+	}
+
+	return desc;
+}
+
+DefinitionInfo get_definition_info(AstNode* definition) noexcept
+{
+	ASSERT_OR_IGNORE(definition->tag == AstTag::Definition);
+
+	if (!has_children(definition))
+		return {};
+
+	if (has_flag(definition, AstFlag::Definition_HasType))
+	{
+		AstNode* const type = first_child_of(definition);
+
+		return { some(type), has_next_sibling(type) ? some(next_sibling_of(type)) : none<AstNode>() };
+	}
+
+	return { none<AstNode>(), some(first_child_of(definition)) };
+}
+
+IfInfo get_if_info(AstNode* node) noexcept
+{
+	ASSERT_OR_IGNORE(node->tag == AstTag::If);
+
+	AstNode* curr = first_child_of(node);
+
+	IfInfo info{};
+
+	info.condition = curr;
+
+	if (has_flag(node, AstFlag::If_HasWhere))
+	{
+		curr = next_sibling_of(curr);
+
+		info.where = some(curr);
+	}
+
+	curr = next_sibling_of(curr);
+
+	info.consequent = curr;
+
+	if (has_flag(node, AstFlag::If_HasElse))
+	{
+		curr = next_sibling_of(curr);
+
+		info.alternative = some(curr);
+	}
+
+	ASSERT_OR_IGNORE(!has_next_sibling(curr));
+
+	return info;
+}
+
+ForInfo get_for_info(AstNode* node) noexcept
+{
+	ASSERT_OR_IGNORE(node->tag == AstTag::If);
+
+	AstNode* curr = first_child_of(node);
+
+	ForInfo info{};
+
+	info.condition = curr;
+
+	if (has_flag(node, AstFlag::For_HasStep))
+	{
+		info.step = some(curr);
+
+		curr = next_sibling_of(curr);
+	}
+
+	if (has_flag(node, AstFlag::For_HasWhere))
+	{
+		info.where = some(curr);
+
+		curr = next_sibling_of(curr);
+	}
+
+	info.body = curr;
+
+	if (has_flag(node, AstFlag::For_HasFinally))
+	{
+		curr = next_sibling_of(curr);
+
+		info.finally = some(curr);
+	}
+
+	ASSERT_OR_IGNORE(!has_next_sibling(curr));
+
+	return info;
+}
+
+ForEachInfo get_foreach_info(AstNode* node) noexcept
+{
+	ASSERT_OR_IGNORE(node->tag == AstTag::ForEach);
+
+	AstNode* curr = first_child_of(node);
+
+	ForEachInfo info{};
+
+	info.element = curr;
+
+	curr = next_sibling_of(curr);
+
+	if (has_flag(node, AstFlag::ForEach_HasIndex))
+	{
+		info.index = some(curr);
+
+		curr = next_sibling_of(curr);
+	}
+
+	info.iterated = curr;
+
+	curr = next_sibling_of(curr);
+
+	if (has_flag(node, AstFlag::ForEach_HasWhere))
+	{
+		info.where = some(curr);
+
+		curr = next_sibling_of(curr);
+	}
+
+	info.body = curr;
+
+	if (has_flag(node, AstFlag::ForEach_HasFinally))
+	{
+		curr = next_sibling_of(curr);
+
+		info.finally = some(curr);
+	}
+
+	ASSERT_OR_IGNORE(!has_next_sibling(curr));
+
+	return info;
+}
+
+
+
 const char8* tag_name(AstTag tag) noexcept
 {
 	static constexpr const char8* AST_TAG_NAMES[] = {

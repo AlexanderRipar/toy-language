@@ -1,7 +1,6 @@
 #include "pass_data.hpp"
 
 #include "../infra/container.hpp"
-#include "ast_helper.hpp"
 
 struct Interpreter
 {
