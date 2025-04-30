@@ -1465,7 +1465,7 @@ static Lexeme next(Lexer* lexer) noexcept
 
 	const RawLexeme raw = raw_next(lexer);
 
-	return { raw.token, lexer->peek.source_id, raw.integer_value };
+	return { raw.token, lexer->peek.source_id, { raw.integer_value } };
 }
 
 static Lexeme peek(Lexer* lexer) noexcept
