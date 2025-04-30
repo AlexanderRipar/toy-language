@@ -269,28 +269,58 @@ bool comp_integer_bit_or(CompIntegerValue lhs, CompIntegerValue rhs, CompInteger
 // Otherwise returns `true` and sets `*out` to the resulting value.
 bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
 
+// Creates a `CompFloatValue` representing the given double-precision float
+// value.
 CompFloatValue comp_float_from_f64(f64 value) noexcept;
 
+// Creates a `CompFloatValue` representing the given single-precision float
+// value.
 CompFloatValue comp_float_from_f32(f32 value) noexcept;
 
+// Attempts to crete a `CompFloatValue` representing the given 64-bit unsigned
+// integer. If the integer is not exactly representable, `false` is returned
+// and `*out` is left uninitialized.
+// Otherwise `true` is returned and `*out` receives the resulting value.
 bool comp_float_from_u64(u64 value, CompFloatValue* out) noexcept;
 
+// Attempts to crete a `CompFloatValue` representing the given 64-bit signed
+// integer. If the integer is not exactly representable, `false` is returned
+// and `*out` is left uninitialized.
+// Otherwise `true` is returned and `*out` receives the resulting value.
 bool comp_float_from_s64(s64 value, CompFloatValue* out) noexcept;
 
+// Attempts to crete a `CompFloatValue` representing the given
+// `CompIntegerValue`. If the integer is not exactly representable, `false`
+// is returned and `*out` is left uninitialized.
+// Otherwise `true` is returned and `*out` receives the resulting value.
 bool comp_float_from_comp_integer(CompIntegerValue value, CompFloatValue* out) noexcept;
 
+// Returns the value represented by the given `CompFloatValue` as a
+// double-precision float.
 f64 f64_from_comp_float(CompFloatValue value) noexcept;
 
+// Returns the value represented by the given `CompFloatValue` as a
+// single-precision float.
 f32 f32_from_comp_float(CompFloatValue value) noexcept;
 
+// Adds `lhs` and `rhs` together, returning a new `CompFloatValue` representing
+// the result.
 CompFloatValue comp_float_add(CompFloatValue lhs, CompFloatValue rhs) noexcept;
 
+// Subtracts `rhs` from `lhs`, returning a new `CompFloatValue` representing
+// the result.
 CompFloatValue comp_float_sub(CompFloatValue lhs, CompFloatValue rhs) noexcept;
 
+// Multiplies `lhs` with `rhs`, returning a new `CompFloatValue` representing
+// the result.
 CompFloatValue comp_float_mul(CompFloatValue lhs, CompFloatValue rhs) noexcept;
 
+// Divides `lhs` by `rhs`, returning a new `CompFloatValue` representing the
+// result.
 CompFloatValue comp_float_div(CompFloatValue lhs, CompFloatValue rhs) noexcept;
 
+// Takes the modulo of `lhs` by `rhs`, returning a new `CompFloatValue`
+// representing the result.
 CompFloatValue comp_float_neg(CompFloatValue value) noexcept;
 
 
