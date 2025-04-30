@@ -245,9 +245,11 @@ struct CompFloatValue
 
 
 
-static constexpr s32 MAX_AST_DEPTH = 128;
+
 
 struct AstPool;
+
+static constexpr s32 MAX_AST_DEPTH = 128;
 
 enum class AstTag : u8
 {
@@ -718,6 +720,8 @@ ForEachInfo get_foreach_info(AstNode* node) noexcept;
 
 
 
+
+
 struct SourceReader;
 
 struct SourceFile
@@ -781,6 +785,8 @@ void release_read(SourceReader* reader, SourceFileRead read) noexcept;
 
 
 
+
+
 struct ErrorSink;
 
 [[nodiscard]] ErrorSink* create_error_sink(AllocPool* pool, SourceReader* reader, IdentifierPool* identifiers) noexcept;
@@ -796,6 +802,8 @@ void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, 
 void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
 
 void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept;
+
+
 
 
 
@@ -1033,11 +1041,15 @@ void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_i
 
 
 
+
+
 struct Parser;
 
 [[nodiscard]] Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* errors, minos::FileHandle log_file) noexcept;
 
 [[nodiscard]] AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std, Range<char8> filepath) noexcept;
+
+
 
 
 
