@@ -44,7 +44,7 @@
 
 static constexpr u64 COMP_INTEGER_MAX = (static_cast<u64>(1) << 62) - 1;
 
-static constexpr s64 COMP_INTEGER_MIN = (static_cast<s64>(-1) << 62);
+static constexpr s64 COMP_INTEGER_MIN = static_cast<s64>((static_cast<u64>(static_cast<s64>(-1)) << 62));
 
 static bool is_inlined(CompIntegerValue value) noexcept
 {
@@ -81,7 +81,7 @@ bool comp_integer_from_comp_float(CompFloatValue value, bool round, CompIntegerV
 {
 	const f64 float_value = value.rep;
 
-	if (isnan(float_value) || isinf(float_value) || (!round && ceil(float_value) != float_value))
+	if (std::isnan(float_value) || std::isinf(float_value) || (!round && ceil(float_value) != float_value))
 		return false;
 
 	if ((float_value < 0 && static_cast<s64>(float_value) < COMP_INTEGER_MIN) || (float_value > 0 && static_cast<u64>(float_value) > COMP_INTEGER_MAX))
@@ -193,7 +193,7 @@ CompIntegerValue comp_integer_neg(CompIntegerValue value) noexcept
 	if (!is_inlined(value))
 		panic("Unexpected non-inlined `CompIntegerValue`.\n");
 
-	if (value.rep == COMP_INTEGER_MIN << 1)
+	if (value.rep == static_cast<u64>(COMP_INTEGER_MIN) << 1)
 		panic("Negation of most negative inlined `CompIntegerValue` not yet supported.\n");
 
 	return { static_cast<u64>(-static_cast<s64>(value.rep >> 1)) << 1 };
