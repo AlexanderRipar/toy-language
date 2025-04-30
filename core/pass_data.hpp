@@ -269,9 +269,6 @@ bool comp_integer_bit_or(CompIntegerValue lhs, CompIntegerValue rhs, CompInteger
 // Otherwise returns `true` and sets `*out` to the resulting value.
 bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
 
-
-bool comp_float_from_literal(Range<char8> literal, CompIntegerValue* out) noexcept;
-
 CompFloatValue comp_float_from_f64(f64 value) noexcept;
 
 CompFloatValue comp_float_from_f32(f32 value) noexcept;
