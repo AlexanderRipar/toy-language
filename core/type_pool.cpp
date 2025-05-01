@@ -330,12 +330,6 @@ template<typename T>
 	return reinterpret_cast<T*>(&entry->data);
 }
 
-template<typename T>
-[[nodiscard]] static const T* data(const TypeStructure* entry) noexcept
-{
-	return reinterpret_cast<const T*>(&entry->data);
-}
-
 static TypeBuilderHeader* type_builder_header_at_index(TypePool* types, s32 index) noexcept
 {
 	return reinterpret_cast<TypeBuilderHeader*>(types->builders.begin() + index);
@@ -1115,7 +1109,7 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 
 	ASSERT_OR_IGNORE(name->structure_index_kind == TypeName::STRUCTURE_INDEX_NORMAL);
 
-	const TypeStructure* const structure = types->structural_types.value_from(name->structure_index);
+	TypeStructure* const structure = types->structural_types.value_from(name->structure_index);
 
 	switch (structure->tag)
 	{
