@@ -19,6 +19,14 @@ struct TypeId
 	u32 rep;
 };
 
+// A `TypeId` with one bit used for indicating mutability.
+struct TypeIdWithAssignability
+{
+	u32 type_id : 31;
+
+	u32 is_mut : 1;
+};
+
 // Id used to identify a particular source code location.
 // This encodes the location's file, line and column. See `SourceReader` for
 // further information.
@@ -27,14 +35,10 @@ struct SourceId
 	u32 m_rep;
 };
 
-// Id that identifies a typechecker context so that it can be resumed to
-// complete typechecking.
-// A resumption only remains valid as long as typechecking has not
-// concluded for the context it identifies has not completed. Since these
-// context scoping rules are internal to `Interpreter`, this type can only be
-// meaningfully used therein, and only stored for later use by an `Interpreter`
-// otherwise.
-struct TypecheckerResumptionId
+// Id used to reference values with global lifetime.
+// This includes the values of global variables, as well as default values. See
+// `GlobalValuePool` for further information
+struct GlobalValueId
 {
 	u32 rep;
 };
@@ -483,7 +487,7 @@ struct AstNode
 
 	u32 next_sibling_offset;
 
-	TypeId type_id;
+	TypeIdWithAssignability type_id;
 
 	SourceId source_id;
 };
@@ -565,7 +569,7 @@ struct AstLitStringData
 {
 	static constexpr AstTag TAG = AstTag::LitString;
 
-	IdentifierId string_id;
+	GlobalValueId string_value_id;
 };
 
 struct AstDefinitionData
@@ -887,16 +891,6 @@ void print_error(const SourceLocation* location, const char8* format, va_list ar
 
 
 
-struct Parser;
-
-Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* errors, minos::FileHandle log_file) noexcept;
-
-AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std, Range<char8> filepath) noexcept;
-
-
-
-
-
 struct TypePool;
 
 enum class TypeTag : u8
@@ -907,7 +901,6 @@ enum class TypeTag : u8
 	Definition,
 	CompInteger,
 	CompFloat,
-	CompString,
 	Integer,
 	Float,
 	Boolean,
@@ -957,13 +950,29 @@ struct MemberIterator
 	TypeId type_id;
 };
 
+union DelayableTypeId
+{
+	TypeId complete;
+
+	AstNodeId pending;
+};
+
+union DelayableValueId
+{
+	GlobalValueId complete;
+
+	AstNodeId pending;
+};
+
 struct MemberInfo
 {
 	IdentifierId name;
 
-	TypeId opt_type;
-
 	SourceId source;
+
+	DelayableTypeId type;
+
+	DelayableValueId value;
 
 	bool is_global : 1;
 
@@ -971,31 +980,32 @@ struct MemberInfo
 
 	bool is_use : 1;
 
+	bool is_mut : 1;
+
+	bool has_pending_type : 1;
+
+	bool has_pending_value : 1;
+
 	u16 rank;
 
-	u64 offset_or_global_value;
+	TypeId completion_context_type_id;
 
 	TypeId surrounding_type_id;
 
-	AstNodeId opt_type_node_id;
-
-	AstNodeId opt_value_node_id;
-
-	TypecheckerResumptionId opt_type_resumption_id;
+	s64 offset;
 };
 
 struct MemberInit
 {
 	IdentifierId name;
 
-	union
-	{
-		TypeId id;
-
-		TypecheckerResumptionId resumption_id;
-	} type;
-
 	SourceId source;
+
+	DelayableTypeId type;
+
+	DelayableValueId value;
+
+	TypeId lexical_parent_type_id;
 
 	bool is_global : 1;
 
@@ -1003,13 +1013,13 @@ struct MemberInit
 
 	bool is_use : 1;
 
+	bool is_mut : 1;
+
 	bool has_pending_type : 1;
 
-	u64 offset_or_global_value;
+	bool has_pending_value : 1;
 
-	AstNodeId opt_type_node_id;
-
-	AstNodeId opt_value_node_id;
+	s64 offset;
 };
 
 struct ReferenceType
@@ -1020,7 +1030,9 @@ struct ReferenceType
 
 	bool is_multi;
 
-	u64 unused_ = 0;
+	bool is_mut;
+
+	u8 unused_ = 0;
 };
 
 struct NumericType
@@ -1054,30 +1066,9 @@ struct FuncType
 
 static constexpr TypeId INVALID_TYPE_ID = { 0 };
 
-static constexpr TypeId CHECKING_TYPE_ID = { 2 };
+static constexpr TypeId CHECKING_TYPE_ID = { 1 };
 
-static constexpr TypeId NO_TYPE_TYPE_ID = { 4 };
-
-static inline bool is_assignable(TypeId type_id) noexcept
-{
-	return (type_id.rep & 1) == 1;
-}
-
-static inline TypeId set_assignability(TypeId type_id, bool assignable) noexcept
-{
-	if (assignable)
-		return TypeId{ type_id.rep | 1 };
-
-	return TypeId{ type_id.rep & ~1 };
-}
-
-static inline TypeId mask_assignability(TypeId type_id, bool assignable) noexcept
-{
-	if (assignable)
-		return type_id;
-
-	return TypeId{ type_id.rep & ~1 };
-}
+static constexpr TypeId NO_TYPE_TYPE_ID = { 2 };
 
 TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept;
 
@@ -1093,15 +1084,17 @@ IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept;
 
 SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept;
 
-TypeId create_open_type(TypePool* types, SourceId source_id) noexcept;
+TypeId type_lexical_parent_from_id(const TypePool* types, TypeId type_id) noexcept;
+
+TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId source_id) noexcept;
 
 void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit member) noexcept;
 
 void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, u64 stride) noexcept;
 
-void set_incomplete_type_member_type_by_name(TypePool* types, TypeId open_type_id, IdentifierId member_name_id, TypeId member_type_id) noexcept;
-
 void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_id, u16 rank, TypeId member_type_id) noexcept;
+
+void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_id, u16 rank, GlobalValueId member_value_id) noexcept;
 
 TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
 
@@ -1133,6 +1126,32 @@ bool has_next(MemberIterator* it) noexcept;
 
 
 
+struct GlobalValuePool;
+
+static constexpr GlobalValueId INVALID_GLOBAL_VALUE_ID = { 0 };
+
+GlobalValuePool* create_global_value_pool(AllocPool* alloc, TypePool* types) noexcept;
+
+void release_global_value_pool(GlobalValuePool* globals) noexcept;
+
+GlobalValueId make_global_value(GlobalValuePool* globals, u64 size, u32 align, const void* opt_initial_value) noexcept;
+
+void* global_value_from_id(GlobalValuePool* globals, GlobalValueId value_id) noexcept;
+
+
+
+
+
+struct Parser;
+
+Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, ErrorSink* errors, minos::FileHandle log_file) noexcept;
+
+AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std, Range<char8> filepath) noexcept;
+
+
+
+
+
 struct Interpreter;
 
 enum class Builtin : u8
@@ -1140,12 +1159,6 @@ enum class Builtin : u8
 	INVALID = 0,
 	Integer,
 	Type,
-	Definition,
-	CompInteger,
-	CompFloat,
-	CompString,
-	TypeBuilder,
-	True,
 	Typeof,
 	Returntypeof,
 	Sizeof,
@@ -1160,9 +1173,22 @@ enum class Builtin : u8
 	MAX,
 };
 
-static constexpr TypecheckerResumptionId INVALID_RESUMPTION_ID = { 0 };
+static inline TypeIdWithAssignability with_assignability(TypeId type_id, bool is_assignable) noexcept
+{
+	return TypeIdWithAssignability{ type_id.rep, is_assignable };
+}
 
-Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, ErrorSink* errors) noexcept;
+static inline bool is_assignable(TypeIdWithAssignability id) noexcept
+{
+	return id.is_mut;
+}
+
+static inline TypeId type_id(TypeIdWithAssignability id) noexcept
+{
+	return TypeId{ id.type_id };
+}
+
+Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, ErrorSink* errors) noexcept;
 
 void release_interpreter([[maybe_unused]] Interpreter* interp) noexcept;
 

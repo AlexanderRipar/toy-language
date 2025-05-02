@@ -258,12 +258,6 @@ static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
 	range::from_literal_string("distinct", static_cast<u8>(Token::KwdDistinct)),
 	range::from_literal_string("_integer",             static_cast<u8>(Builtin::Integer)),
 	range::from_literal_string("_type",                static_cast<u8>(Builtin::Type)),
-	range::from_literal_string("_definition",          static_cast<u8>(Builtin::Definition)),
-	range::from_literal_string("_comp_integer",        static_cast<u8>(Builtin::CompInteger)),
-	range::from_literal_string("_comp_float",          static_cast<u8>(Builtin::CompFloat)),
-	range::from_literal_string("_comp_string",         static_cast<u8>(Builtin::CompString)),
-	range::from_literal_string("_type_builder",        static_cast<u8>(Builtin::TypeBuilder)),
-	range::from_literal_string("_true",                static_cast<u8>(Builtin::True)),
 	range::from_literal_string("_typeof",              static_cast<u8>(Builtin::Typeof)),
 	range::from_literal_string("_sizeof",              static_cast<u8>(Builtin::Sizeof)),
 	range::from_literal_string("_alignof",             static_cast<u8>(Builtin::Alignof)),
@@ -293,6 +287,8 @@ struct Lexeme
 		IdentifierId identifier_id;
 
 		AstFlag builtin_flags;
+
+		GlobalValueId string_value_id;
 	};
 };
 
@@ -311,6 +307,8 @@ struct RawLexeme
 		IdentifierId identifier_id;
 
 		Builtin builtin;
+
+		GlobalValueId string_value_id;
 	};
 
 	RawLexeme() noexcept = default;
@@ -326,6 +324,8 @@ struct RawLexeme
 	RawLexeme(Token token, IdentifierId identifier_id) noexcept : token{ token }, identifier_id{ identifier_id } {}
 
 	RawLexeme(Token token, Builtin builtin) noexcept : token{ token }, builtin{ builtin } {}
+
+	RawLexeme(Token token, GlobalValueId string_value_id) noexcept : token{ token }, string_value_id{ string_value_id } {}
 };
 
 // Operator Description Tuple. Consists of:
@@ -370,6 +370,8 @@ struct Lexer
 	bool is_std;
 
 	IdentifierPool* identifiers;
+
+	GlobalValuePool* globals;
 
 	ErrorSink* errors;
 };
@@ -928,7 +930,12 @@ static RawLexeme scan_char_token(Lexer* lexer) noexcept
 
 static RawLexeme scan_string_token(Lexer* lexer) noexcept
 {
-	char8 buffer[MAX_STRING_LITERAL_BYTES];
+	struct
+	{
+		u32 size;
+
+		char8 string[MAX_STRING_LITERAL_BYTES];
+	} buffer;
 
 	u32 buffer_index = 0;
 
@@ -945,7 +952,7 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 			if (buffer_index + bytes_to_copy > sizeof(buffer))
 					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
-			memcpy(buffer + buffer_index, copy_begin, bytes_to_copy);
+			memcpy(buffer.string + buffer_index, copy_begin, bytes_to_copy);
 
 			buffer_index += bytes_to_copy;
 
@@ -960,7 +967,7 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 				if (buffer_index + 1 > sizeof(buffer))
 					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
-				buffer[buffer_index] = static_cast<char8>(codepoint);
+				buffer.string[buffer_index] = static_cast<char8>(codepoint);
 
 				buffer_index += 1;
 			}
@@ -969,9 +976,9 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 				if (buffer_index + 2 > sizeof(buffer))
 					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
-				buffer[buffer_index] = static_cast<char8>((codepoint >> 6) | 0xC0);
+				buffer.string[buffer_index] = static_cast<char8>((codepoint >> 6) | 0xC0);
 
-				buffer[buffer_index + 1] = static_cast<char8>((codepoint & 0x3F) | 0x80);
+				buffer.string[buffer_index + 1] = static_cast<char8>((codepoint & 0x3F) | 0x80);
 
 				buffer_index += 2;
 			}
@@ -980,11 +987,11 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 				if (buffer_index + 3 > sizeof(buffer))
 					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
-				buffer[buffer_index] = static_cast<char8>((codepoint >> 12) | 0xE0);
+				buffer.string[buffer_index] = static_cast<char8>((codepoint >> 12) | 0xE0);
 
-				buffer[buffer_index + 1] = static_cast<char8>(((codepoint >> 6) & 0x3F) | 0x80);
+				buffer.string[buffer_index + 1] = static_cast<char8>(((codepoint >> 6) & 0x3F) | 0x80);
 
-				buffer[buffer_index + 2] = static_cast<char8>((codepoint & 0x3F) | 0x80);
+				buffer.string[buffer_index + 2] = static_cast<char8>((codepoint & 0x3F) | 0x80);
 
 				buffer_index += 3;
 			}
@@ -995,18 +1002,18 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 				if (buffer_index + 4 > sizeof(buffer))
 					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
-				buffer[buffer_index] = static_cast<char8>((codepoint >> 18) | 0xE0);
+				buffer.string[buffer_index] = static_cast<char8>((codepoint >> 18) | 0xE0);
 
-				buffer[buffer_index + 1] = static_cast<char8>(((codepoint >> 12) & 0x3F) | 0x80);
+				buffer.string[buffer_index + 1] = static_cast<char8>(((codepoint >> 12) & 0x3F) | 0x80);
 
-				buffer[buffer_index + 2] = static_cast<char8>(((codepoint >> 6) & 0x3F) | 0x80);
+				buffer.string[buffer_index + 2] = static_cast<char8>(((codepoint >> 6) & 0x3F) | 0x80);
 
-				buffer[buffer_index + 3] = static_cast<char8>((codepoint & 0x3F) | 0x80);
+				buffer.string[buffer_index + 3] = static_cast<char8>((codepoint & 0x3F) | 0x80);
 
 				buffer_index += 4;
 			}
 
-			copy_begin = buffer + buffer_index;
+			copy_begin = buffer.string + buffer_index;
 		}
 		else if (*curr == '\n')
 		{
@@ -1020,20 +1027,20 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 
 	const u32 bytes_to_copy = static_cast<u32>(curr - copy_begin);
 
-	if (buffer_index + bytes_to_copy > sizeof(buffer))
+	if (buffer_index + bytes_to_copy > sizeof(buffer.string))
 			source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
-	memcpy(buffer + buffer_index, copy_begin, bytes_to_copy);
+	memcpy(buffer.string + buffer_index, copy_begin, bytes_to_copy);
 
 	buffer_index += bytes_to_copy;
 
-	const Range<char8> string_bytes{ buffer, buffer_index };
+	buffer.size = buffer_index;
 
-	const IdentifierId string_index = id_from_identifier(lexer->identifiers, string_bytes);
+	const GlobalValueId string_value_id = make_global_value(lexer->globals, sizeof(buffer.size) + buffer_index, 4, &buffer);
 
 	lexer->curr = curr + 1;
 
-	return { Token::LitString, string_index.rep };
+	return { Token::LitString, string_value_id };
 }
 
 static RawLexeme raw_next(Lexer* lexer) noexcept
@@ -2268,7 +2275,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(parser->builder, AST_BUILDER_NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitStringData{ lexeme.identifier_id });
+				const AstBuilderToken value_token = push_node(parser->builder, AST_BUILDER_NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitStringData{ lexeme.string_value_id });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2703,11 +2710,12 @@ static void parse_file(Parser* parser) noexcept
 
 
 
-Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, ErrorSink* errors, minos::FileHandle log_file) noexcept
+Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, ErrorSink* errors, minos::FileHandle log_file) noexcept
 {
 	Parser* const parser = static_cast<Parser*>(alloc_from_pool(pool, sizeof(Parser), alignof(Parser)));
 
 	parser->lexer.identifiers = identifiers;
+	parser->lexer.globals = globals;
 	parser->lexer.errors = errors;
 	parser->log_file = log_file;
 

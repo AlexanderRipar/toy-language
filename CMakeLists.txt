@@ -35,6 +35,7 @@ set(CORE_SOURCES
 	core/comp_values.cpp
 	core/config.cpp
 	core/error_sink.cpp
+	core/global_value_pool.cpp
 	core/identifier_pool.cpp
 	core/interpreter.cpp
 	core/parse.cpp

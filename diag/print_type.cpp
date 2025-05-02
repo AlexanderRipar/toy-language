@@ -33,7 +33,6 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::Definition:
 	case TypeTag::CompInteger:
 	case TypeTag::CompFloat:
-	case TypeTag::CompString:
 	case TypeTag::Integer:
 	case TypeTag::Float:
 	case TypeTag::Boolean:
@@ -65,7 +64,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 		else
 			introducer = "*";
 
-		diag::buf_printf(ctx, " :: %s%s", introducer, is_assignable(reference->referenced_type_id) ? " mut " : "");
+		diag::buf_printf(ctx, " :: %s%s", introducer, reference->is_mut ? " mut " : "");
 
 		print_type_impl(ctx, identifiers, types, reference->referenced_type_id, indent + 1, true);
 
@@ -109,15 +108,15 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 			diag::buf_printf(ctx, "%s%*s%s%s%s\"%.*s\": ", has_members ? "" : "\n",
 				(indent + 1) * 2, "",
 				member.is_pub ? "pub " : "",
-				is_assignable(member.opt_type) ? "mut " : "",
+				member.is_mut ? "mut " : "",
 				member.is_global ? "global " : "",
 				static_cast<s32>(member_name.count()), member_name.begin()
 			);
 
 			if (!member.is_global)
-				diag::buf_printf(ctx, "@%" PRId64, member.offset_or_global_value);
+				diag::buf_printf(ctx, "@%" PRId64, member.offset);
 
-			print_type_impl(ctx, identifiers, types, member.opt_type, indent + 1, true);
+			print_type_impl(ctx, identifiers, types, member.type.complete, indent + 1, true);
 
 			has_members = true;
 		}

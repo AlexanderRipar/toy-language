@@ -63,13 +63,15 @@ s32 main(s32 argc, const char8** argv)
 
 		ErrorSink* const errors = create_error_sink(alloc, reader, identifiers);
 
-		Parser* const parser = create_parser(alloc, identifiers, errors, ast_log_file);
+		TypePool* const types = create_type_pool(alloc, errors);
+
+		GlobalValuePool* const globals = create_global_value_pool(alloc, types);
 
 		AstPool* const asts = create_ast_pool(alloc);
 
-		TypePool* const types = create_type_pool(alloc, errors);
+		Parser* const parser = create_parser(alloc, identifiers, globals, errors, ast_log_file);
 
-		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, errors);
+		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, globals, errors);
 
 		const TypeId main_file_type_id = import_file(interp, config->entrypoint.filepath, false);
 
