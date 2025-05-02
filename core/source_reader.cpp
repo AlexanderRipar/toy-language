@@ -170,15 +170,15 @@ static SourceLocation build_source_location(Range<char8> filepath, Range<char8> 
 
 	const u32 context_begin = line_begin + (column_number < 20 ? 0 : column_number - 20);
 
-	const u32 context_end = line_end - context_begin < sizeof(SourceLocation::context) ? line_end - context_begin : sizeof(SourceLocation::context);
+	const u32 context_chars = line_end - context_begin < sizeof(SourceLocation::context) ? line_end - context_begin : sizeof(SourceLocation::context);
 
 	SourceLocation location;
 	location.filepath = filepath;
 	location.line_number = line_number;
 	location.column_number = column_number + 1;
 	location.context_offset = context_begin - line_begin;
-	location.context_chars = context_end - context_begin;
-	memcpy(location.context, content.begin() + context_begin, context_end - context_begin);
+	location.context_chars = context_chars;
+	memcpy(location.context, content.begin() + context_begin, context_chars);
 
 	return location;
 }
