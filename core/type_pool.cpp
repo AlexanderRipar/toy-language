@@ -1207,9 +1207,92 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 	if (common_type(types, from_type_id, to_type_id).rep != INVALID_TYPE_ID.rep)
 		return true;
 
-	// TODO: Check for applicable implicit conversion rules from `from` to `to`.
+	const TypeTag from_type_tag = type_tag_from_id(types, from_type_id);
 
-	return false;
+	const TypeTag to_type_tag = type_tag_from_id(types, to_type_id);
+
+	switch (to_type_tag)
+	{
+	case TypeTag::Integer:
+	{
+		return from_type_tag == TypeTag::CompInteger;
+	}
+
+	case TypeTag::Float:
+	{
+		return from_type_tag == TypeTag::CompFloat;
+	}
+
+	case TypeTag::Slice:
+	{
+		const ReferenceType* const to_type = static_cast<const ReferenceType*>(primitive_type_structure(types, to_type_id));
+
+		if (from_type_tag == TypeTag::Array)
+		{
+			const ArrayType* const from_type = static_cast<const ArrayType*>(primitive_type_structure(types, from_type_id));
+
+			return common_type(types, to_type->referenced_type_id, from_type->element_type).rep != INVALID_TYPE_ID.rep;
+		}
+		else if (from_type_tag == TypeTag::Slice)
+		{
+			const ReferenceType* const from_type = static_cast<const ReferenceType*>(primitive_type_structure(types, from_type_id));
+
+			if (to_type->is_mut && !from_type->is_mut)
+				return false;
+
+			return common_type(types, to_type->referenced_type_id, from_type->referenced_type_id).rep != INVALID_TYPE_ID.rep;
+		}
+	}
+
+	case TypeTag::Ptr:
+	{
+		if (from_type_tag != TypeTag::Ptr)
+			return false;
+
+		const ReferenceType* const to_type = static_cast<const ReferenceType*>(primitive_type_structure(types, to_type_id));
+
+		const ReferenceType* const from_type = static_cast<const ReferenceType*>(primitive_type_structure(types, from_type_id));
+
+		if (to_type->is_mut && !from_type->is_mut)
+			return false;
+
+		if (!to_type->is_opt && from_type->is_opt)
+			return false;
+
+		if (to_type->is_multi && !from_type->is_multi)
+			return false;
+
+		return common_type(types, to_type->referenced_type_id, from_type->referenced_type_id).rep != INVALID_TYPE_ID.rep;
+	}
+
+	case TypeTag::Divergent:
+	case TypeTag::TypeInfo:
+	{
+		return true;
+	}
+
+	case TypeTag::Void:
+	case TypeTag::Type:
+	case TypeTag::Definition:
+	case TypeTag::CompInteger:
+	case TypeTag::CompFloat:
+	case TypeTag::Boolean:
+	case TypeTag::Array:
+	case TypeTag::Func:
+	case TypeTag::Builtin:
+	case TypeTag::Composite:
+	case TypeTag::CompositeLiteral:
+	case TypeTag::ArrayLiteral:
+	case TypeTag::TypeBuilder:
+	case TypeTag::Variadic:
+	case TypeTag::Trait:
+	{
+		return false;
+	}
+
+	default:
+		ASSERT_UNREACHABLE;
+	}
 }
 
 TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
