@@ -1461,7 +1461,7 @@ MemberInfo next(IncompleteMemberIterator* it) noexcept
 
 	const TypeBuilder* const builder = static_cast<const TypeBuilder*>(it->structure);
 
-	const u16 index = rank & (static_cast<u16>(array_count(builder->names)) - 1);
+	const u16 index = rank & static_cast<u16>(array_count(builder->names) - 1);
 
 	return member_info_from_builder_member(builder->members + index, it->type_id, builder->names[index], rank);
 }
@@ -1480,16 +1480,16 @@ bool has_next(IncompleteMemberIterator* it) noexcept
 
 	TypeBuilder* builder = static_cast<TypeBuilder*>(it->structure);
 
-	u32 curr = it->rank;
+	u16 rank = it->rank;
 
 	while (true)
 	{
-		while (curr != builder->used)
+		while (rank != builder->used)
 		{
-			if (builder->members[curr].has_pending_type)
+			if (builder->members[rank & static_cast<u16>(array_count(builder->names) - 1)].has_pending_type)
 				return true;
 
-			curr += 1;
+				rank += 1;
 		}
 
 		if (builder->next_offset == 0)
@@ -1582,7 +1582,9 @@ bool has_next(MemberIterator* it) noexcept
 
 		TypeBuilder* builder = static_cast<TypeBuilder*>(it->structure);
 
-		if (it->rank == builder->used)
+		const u16 index = it->rank & static_cast<u16>(array_count(builder->names) - 1);
+
+		if (index == builder->used)
 		{
 			if (builder->next_offset == 0)
 			{
@@ -1592,9 +1594,9 @@ bool has_next(MemberIterator* it) noexcept
 			}
 
 			it->structure = type_builder_at_offset(builder, builder->next_offset);
-
-			it->rank = 0;
 		}
+
+		it->rank += 1;
 
 		return true;
 	}
@@ -1604,7 +1606,7 @@ bool has_next(MemberIterator* it) noexcept
 
 		const u16 rank = it->rank;
 
-		ASSERT_OR_IGNORE(structure->header.member_count <= rank);
+		ASSERT_OR_IGNORE(rank <= structure->header.member_count);
 
 		if (structure->header.member_count == rank)
 		{
