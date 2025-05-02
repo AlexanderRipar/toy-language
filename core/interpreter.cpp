@@ -1120,7 +1120,6 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 				}
 			}
 		}
-		// TODO: Check missing arguments have a default value in the callee's signature.
 
 		return with_assignability(func_type->return_type_id, true);
 	}
