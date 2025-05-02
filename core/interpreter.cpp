@@ -969,7 +969,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 	case AstTag::LitFloat:
 	{
-		return with_assignability(primitive_type(interp->types, TypeTag::Float, {}), false);
+		return with_assignability(primitive_type(interp->types, TypeTag::CompFloat, {}), false);
 	}
 
 	case AstTag::LitChar:
