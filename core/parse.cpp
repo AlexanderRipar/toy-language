@@ -2711,11 +2711,12 @@ static void parse_file(Parser* parser) noexcept
 
 
 
-Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, ErrorSink* errors, minos::FileHandle log_file) noexcept
+Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, AstPool* asts, ErrorSink* errors, minos::FileHandle log_file) noexcept
 {
 	Parser* const parser = static_cast<Parser*>(alloc_from_pool(pool, sizeof(Parser), alignof(Parser)));
 
 	parser->lexer.identifiers = identifiers;
+	parser->builder = asts;
 	parser->lexer.globals = globals;
 	parser->lexer.errors = errors;
 	parser->log_file = log_file;

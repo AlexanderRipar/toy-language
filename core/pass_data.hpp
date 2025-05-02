@@ -1150,7 +1150,7 @@ void* global_value_from_id(GlobalValuePool* globals, GlobalValueId value_id) noe
 
 struct Parser;
 
-Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, ErrorSink* errors, minos::FileHandle log_file) noexcept;
+Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, AstPool* asts, ErrorSink* errors, minos::FileHandle log_file) noexcept;
 
 AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std, Range<char8> filepath) noexcept;
 
