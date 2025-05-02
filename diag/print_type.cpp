@@ -40,6 +40,10 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::CompositeLiteral:
 	case TypeTag::ArrayLiteral:
 	case TypeTag::TypeBuilder:
+	case TypeTag::Variadic:
+	case TypeTag::Divergent:
+	case TypeTag::Trait:
+	case TypeTag::TypeInfo:
 	{
 		diag::buf_printf(ctx, "\n");
 
