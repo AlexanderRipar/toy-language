@@ -2112,7 +2112,7 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 	return interp;
 }
 
-void release_interpreter([[maybe_unused]] Interpreter* interp) noexcept
+void release_interpreter(Interpreter* interp) noexcept
 {
 	// No-op
 }

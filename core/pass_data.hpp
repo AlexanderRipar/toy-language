@@ -1110,6 +1110,8 @@ bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberI
 
 const void* primitive_type_structure(TypePool* types, TypeId type_id) noexcept;
 
+
+
 IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) noexcept;
 
 MemberInfo next(IncompleteMemberIterator* it) noexcept;
@@ -1190,7 +1192,7 @@ static inline TypeId type_id(TypeIdWithAssignability id) noexcept
 
 Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, ErrorSink* errors) noexcept;
 
-void release_interpreter([[maybe_unused]] Interpreter* interp) noexcept;
+void release_interpreter(Interpreter* interp) noexcept;
 
 TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noexcept;
 
