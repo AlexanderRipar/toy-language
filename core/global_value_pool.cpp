@@ -30,7 +30,7 @@ GlobalValueId make_global_value(GlobalValuePool* globals, u64 size, u32 align, c
 
 	globals->values.pad_to_alignment(align);
 
-	u64* const value = static_cast<u64*>(globals->values.reserve_padded(size));
+	u64* const value = static_cast<u64*>(globals->values.reserve_padded(static_cast<u32>(size)));
 
 	if (opt_initial_value != nullptr)
 		memcpy(value, opt_initial_value, size);
