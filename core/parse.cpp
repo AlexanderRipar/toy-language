@@ -619,7 +619,7 @@ static RawLexeme scan_identifier_token(Lexer* lexer, bool is_builtin) noexcept
 	}
 	else
 	{
-		const Token token = identifier_attachment == 0 ? static_cast<Token>(identifier_attachment) : Token::Ident;
+		const Token token = identifier_attachment == 0 ? Token::Ident : static_cast<Token>(identifier_attachment);
 
 		return { token, token == Token::Ident ? identifier_id.rep : 0 };
 	}
