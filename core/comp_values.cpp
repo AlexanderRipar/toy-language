@@ -92,26 +92,40 @@ bool comp_integer_from_comp_float(CompFloatValue value, bool round, CompIntegerV
 	return true;
 }
 
-bool u64_from_comp_integer(CompIntegerValue value, u64* out) noexcept
+bool u64_from_comp_integer(CompIntegerValue value, u8 bits, u64* out) noexcept
 {
+	ASSERT_OR_IGNORE(bits <= 64);
+
 	if (!is_inlined(value))
 		panic("Unexpected non-inlined `CompIntegerValue`.\n");
 
 	if (is_negative(value))
 		return false;
 
-	*out = value.rep >> 1;
+	const u64 u64_value = value.rep >> 1;
+
+	if (bits != 64 && u64_value >= (static_cast<u64>(1) << bits))
+		return false;
+
+	*out = u64_value;
 
 	return true;
 }
 
-bool s64_from_comp_integer(CompIntegerValue value, s64* out) noexcept
+bool s64_from_comp_integer(CompIntegerValue value, u8 bits, s64* out) noexcept
 {
+	ASSERT_OR_IGNORE(bits <= 64);
+
 	if (!is_inlined(value))
 		panic("Unexpected non-inlined `CompIntegerValue`.\n");
 
-	*out = static_cast<s64>(value.rep) >> 1;
+	const s64 s64_value = static_cast<s64>(value.rep) >> 1;
 
+	if (s64_value < (static_cast<s64>(-1) << (bits - 1)) || s64_value >= (static_cast<s64>(1) << (bits - 1)))
+		return false;
+
+	*out = s64_value;
+	
 	return true;
 }
 
@@ -273,6 +287,14 @@ bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntege
 	*out = { lhs.rep ^ rhs.rep };
 
 	return true;
+}
+
+bool comp_integer_equal(CompIntegerValue lhs, CompIntegerValue rhs) noexcept
+{
+	if (!is_inlined(lhs) || !is_inlined(rhs))
+		panic("Unexpected non-inlined `CompIntegerValue`.\n");
+
+	return lhs.rep == rhs.rep;
 }
 
 

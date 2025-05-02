@@ -210,13 +210,13 @@ bool comp_integer_from_comp_float(CompFloatValue value, bool round, CompIntegerV
 // If the value is outside the range of a 64-bit unsigned integer, `false` is
 // returned and `*out` is left uninitialized. Otherwise `true` is returned and
 // `*out` contains the value of the given `CompIntegerValue`.
-bool u64_from_comp_integer(CompIntegerValue value, u64* out) noexcept;
+bool u64_from_comp_integer(CompIntegerValue value, u8 bits, u64* out) noexcept;
 
 // Attempts to extract the value of the given `CompIntegerValue` into a `s64`.
 // If the value is outside the range of a 64-bit signed integer, `false` is
 // returned and `*out` is left uninitialized. Otherwise `true` is returned and
 // `*out` contains the value of the given `CompIntegerValue`.
-bool s64_from_comp_integer(CompIntegerValue value, s64* out) noexcept;
+bool s64_from_comp_integer(CompIntegerValue value, u8 bits, s64* out) noexcept;
 
 // Adds `lhs` and `rhs` together, returning a new `CompIntegerValue`
 // representing the result.
@@ -272,6 +272,10 @@ bool comp_integer_bit_or(CompIntegerValue lhs, CompIntegerValue rhs, CompInteger
 // uninitialized.
 // Otherwise returns `true` and sets `*out` to the resulting value.
 bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+
+// Compares the values represented by two `CompIntegerValues`. Returns `true`
+// if they are equal, `false` otherwise.
+bool comp_integer_equal(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
 
 // Creates a `CompFloatValue` representing the given double-precision float
 // value.
