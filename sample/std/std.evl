@@ -2,13 +2,13 @@
 // This gets `use`d in the hard-coded prelude that is scoped around every
 // import.
 
-pub use prelude = std_import("prelude.evl")
+pub use prelude = _import("prelude.evl", false)
 
 
-
+/*
 // Composite type creation
 
-pub TypeBuilder: Type = _type_builder()
+pub TypeBuilder: Type = _returntypeof(_create_type_builder)
 
 pub create_type_builder = func() -> TypeBuilder = _create_type_builder()
 
@@ -32,3 +32,4 @@ pub complete_type = func(builder: TypeBuilder) -> Type = _complete_type(builder)
 // Internal helpers
 
 let std_import = func(path: []char8) -> Type = _import(path, true)
+*/
