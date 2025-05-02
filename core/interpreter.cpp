@@ -474,6 +474,8 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node) noexcept
 
 		u16 rank = 0;
 
+		u64 seen_argument_mask = 0;
+
 		while (has_next_sibling(argument))
 		{
 			argument = next_sibling_of(argument);
@@ -512,6 +514,18 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node) noexcept
 			memcpy(static_cast<byte*>(temp_activation_record) + member.offset, member_value, member_size);
 
 			pop_stack_value(interp);
+
+			seen_argument_mask |= static_cast<u64>(1) << member.rank;
+		}
+
+		for (u16 i = 0; i != func_type->param_count; ++i)
+		{
+			const u64 curr_argument_bit = static_cast<u64>(1) << i;
+
+			if ((seen_argument_mask & curr_argument_bit) != 0)
+				continue;
+
+			TODO("Copy default value to activation record.");
 		}
 
 		void* const activation_record = push_activation_record(interp, signature_type_id, true);
