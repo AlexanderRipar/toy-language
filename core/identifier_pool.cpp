@@ -111,6 +111,8 @@ void identifier_set_attachment(IdentifierPool* identifiers, Range<char8> identif
 	IdentifierEntry* const entry = identifiers->map.value_from(identifier, fnv1a(identifier.as_byte_range()));
 
 	ASSERT_OR_IGNORE(entry->m_attachment == 0);
+
+	entry->m_attachment = attachment;
 }
 
 Range<char8> identifier_name_from_id(const IdentifierPool* identifiers, IdentifierId id) noexcept
