@@ -2113,7 +2113,11 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 
 void release_interpreter(Interpreter* interp) noexcept
 {
-	// No-op
+	interp->value_stack.release();
+
+	interp->value_stack_inds.release();
+
+	interp->activation_records.release();
 }
 
 TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noexcept
