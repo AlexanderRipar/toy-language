@@ -1160,6 +1160,7 @@ enum class Builtin : u8
 {
 	INVALID = 0,
 	Integer,
+	Float,
 	Type,
 	Typeof,
 	Returntypeof,

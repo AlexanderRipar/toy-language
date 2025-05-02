@@ -1806,6 +1806,23 @@ static void* builtin_integer(Interpreter* interp) noexcept
 	return dst;
 }
 
+static void* builtin_float(Interpreter* interp) noexcept
+{
+	const u8 bits = *static_cast<u8*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("bits")), INVALID_SOURCE_ID));
+
+	NumericType float_type{};
+	float_type.bits = bits;
+	float_type.is_signed = true;
+
+	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
+
+	const TypeId float_type_id = primitive_type(interp->types, TypeTag::Float, range::from_object_bytes(&float_type));
+
+	*dst = float_type_id;
+
+	return dst;
+}
+
 static void* builtin_type(Interpreter* interp) noexcept
 {
 	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
@@ -1986,6 +2003,10 @@ static void init_builtin_types(Interpreter* interp) noexcept
 		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("is_signed")), bool_type_id }
 	);
 
+	interp->builtin_type_ids[static_cast<u8>(Builtin::Float)] = make_func_type(interp->types, type_type_id,
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("bits")), u8_type_id }
+	);
+
 	interp->builtin_type_ids[static_cast<u8>(Builtin::Type)] = make_func_type(interp->types, type_type_id);
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::Typeof)] = make_func_type(interp->types, type_type_id,
@@ -2037,6 +2058,7 @@ static void init_builtin_types(Interpreter* interp) noexcept
 static void init_builtin_values(Interpreter* interp) noexcept
 {
 	interp->builtin_values[static_cast<u8>(Builtin::Integer)] = &builtin_integer;
+	interp->builtin_values[static_cast<u8>(Builtin::Float)] = &builtin_float;
 	interp->builtin_values[static_cast<u8>(Builtin::Type)] = &builtin_type;
 	interp->builtin_values[static_cast<u8>(Builtin::Typeof)] = &builtin_typeof;
 	interp->builtin_values[static_cast<u8>(Builtin::Returntypeof)] = &builtin_returntypeof;
@@ -2147,6 +2169,7 @@ const char8* tag_name(Builtin builtin) noexcept
 	static constexpr const char8* BUILTIN_NAMES[] = {
 		"[Unknown]",
 		"_integer",
+		"_float",
 		"_type",
 		"_definition",
 		"_typeof",
