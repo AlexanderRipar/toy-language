@@ -2099,6 +2099,12 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 
 	push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstLitStringData{ std_filepath_value_id });
 
+	const AstBuilderToken literal_zero = push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstLitIntegerData{ comp_integer_from_u64(0) });
+
+	push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstLitIntegerData{ comp_integer_from_u64(0) });
+
+	push_node(asts, literal_zero, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::OpCmpEQ);
+
 	const AstBuilderToken import_call = push_node(asts, import_builtin, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::Call);
 
 	const AstBuilderToken std_definition = push_node(asts, import_call, INVALID_SOURCE_ID, AstFlag::EMPTY, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
