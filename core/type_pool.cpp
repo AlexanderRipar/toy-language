@@ -833,7 +833,6 @@ const char8* tag_name(TypeTag tag) noexcept
 		"Definition",
 		"CompInteger",
 		"CompFloat",
-		"CompString",
 		"Integer",
 		"Float",
 		"Boolean",
@@ -849,6 +848,7 @@ const char8* tag_name(TypeTag tag) noexcept
 		"Variadic",
 		"Divergent",
 		"Trait",
+		"TypeInfo",
 	};
 
 	u8 index = static_cast<u8>(tag);
