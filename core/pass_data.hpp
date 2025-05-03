@@ -1202,7 +1202,7 @@ static inline TypeId type_id(TypeIdWithAssignability id) noexcept
 	return TypeId{ id.type_id };
 }
 
-Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, ErrorSink* errors) noexcept;
+Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, ErrorSink* errors, minos::FileHandle log_file, bool log_prelude) noexcept;
 
 void release_interpreter(Interpreter* interp) noexcept;
 

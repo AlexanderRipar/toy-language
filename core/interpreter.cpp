@@ -1,5 +1,6 @@
 #include "pass_data.hpp"
 
+#include "../diag/diag.hpp"
 #include "../infra/container.hpp"
 
 using BuiltinFunc = void* (*) (Interpreter* interp) noexcept;
@@ -39,6 +40,10 @@ struct Interpreter
 	TypeId builtin_type_ids[static_cast<u8>(Builtin::MAX)];
 
 	BuiltinFunc builtin_values[static_cast<u8>(Builtin::MAX)];
+
+	minos::FileHandle log_file;
+
+	bool log_prelude;
 };
 
 struct alignas(8) ActivationRecordDesc
@@ -226,14 +231,10 @@ static ActivationRecordDesc* parent_activation_record(Interpreter* interp, Activ
 
 static MemberInfo lookup_identifier_definition(Interpreter* interp, IdentifierId identifier_id, SourceId lookup_source) noexcept
 {
-	s32 index = interp->context_top;
-
-	ASSERT_OR_IGNORE(index >= 0);
+	TypeId context = curr_typechecker_context(interp);
 
 	while (true)
 	{
-		const TypeId context = interp->contexts[index];
-
 		if (context.rep == INVALID_TYPE_ID.rep)
 			break;
 
@@ -242,7 +243,10 @@ static MemberInfo lookup_identifier_definition(Interpreter* interp, IdentifierId
 		if (type_member_info_by_name(interp->types, context, identifier_id, &info))
 			return info;
 
-		index -= 1;
+		context = type_lexical_parent_from_id(interp->types, context);
+
+		if (context.rep == INVALID_TYPE_ID.rep)
+			break;
 	}
 
 	const Range<char8> name = identifier_name_from_id(interp->identifiers, identifier_id);
@@ -827,8 +831,6 @@ static TypeIdWithAssignability force_member_type(Interpreter* interp, const Memb
 	}
 	else
 	{
-		ASSERT_OR_IGNORE(member->has_pending_value);
-
 		ASSERT_OR_IGNORE(member->value.pending != INVALID_AST_NODE_ID);
 
 		AstNode* const value = ast_node_from_id(interp->asts, member->value.pending);
@@ -2270,11 +2272,20 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 	AstNode* const prelude_ast = complete_ast(asts);
 
 	interp->prelude_type_id = type_from_file_ast(interp, prelude_ast, INVALID_SOURCE_ID);
+
+	if (interp->log_file.m_rep != nullptr && interp->log_prelude)
+	{
+		const SourceId file_type_source = type_source_from_id(interp->types, interp->prelude_type_id);
+
+		const SourceLocation file_type_location = source_location_from_source_id(interp->reader, file_type_source);
+
+		diag::print_type(interp->log_file, interp->identifiers, interp->types, interp->prelude_type_id, &file_type_location);
+	}
 }
 
 
 
-Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, ErrorSink* errors) noexcept
+Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, ErrorSink* errors, minos::FileHandle log_file, bool log_prelude) noexcept
 {
 	Interpreter* const interp = static_cast<Interpreter*>(alloc_from_pool(alloc, sizeof(Interpreter), alignof(Interpreter)));
 
@@ -2291,6 +2302,8 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 	interp->activation_record_top = 0;
 	interp->prelude_type_id = INVALID_TYPE_ID;
 	interp->context_top = -1;
+	interp->log_file = log_file;
+	interp->log_prelude = log_prelude;
 
 	init_builtin_types(interp);
 
@@ -2328,6 +2341,15 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 	}
 
 	const TypeId file_type_id = type_from_file_ast(interp, root, read.source_file->source_id_base);
+
+	if (interp->log_file.m_rep != nullptr)
+	{
+		const SourceId file_type_source = type_source_from_id(interp->types, file_type_id);
+
+		const SourceLocation file_type_location = source_location_from_source_id(interp->reader, file_type_source);
+
+		diag::print_type(interp->log_file, interp->identifiers, interp->types, file_type_id, &file_type_location);
+	}
 
 	return file_type_id;
 }
