@@ -1596,8 +1596,6 @@ bool has_next(MemberIterator* it) noexcept
 			it->structure = type_builder_at_offset(builder, builder->next_offset);
 		}
 
-		it->rank += 1;
-
 		return true;
 	}
 	else
