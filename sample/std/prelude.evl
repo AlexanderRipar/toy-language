@@ -22,25 +22,17 @@ pub f64: Type = _float(64)
 
 pub Type = _type()
 
-pub Definition: Type = _definition()
+pub Bool: Type = _typeof(1 == 1)
 
-pub CompInteger: Type = _comp_integer()
-
-pub CompFloat: Type = _comp_float()
-
-pub CompString: Type = _comp_string()
-
-pub Bool: Type = typeof(_true())
-
-pub Void: Type = typeof({})
+pub Void: Type = _typeof({})
 
 
 
 // Constants
 
-pub true: Bool = _true()
+pub true: Bool = 1 == 1
 
-pub false: Bool = !_true()
+pub false: Bool = !true
 
 
 
