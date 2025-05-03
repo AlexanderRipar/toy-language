@@ -1505,7 +1505,7 @@ bool has_next(IncompleteMemberIterator* it) noexcept
 
 MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 {
-	TypeName* name = types->named_types.value_from(type_id.rep >> 1);
+	TypeName* name = types->named_types.value_from(type_id.rep);
 
 	if (resolve_name_structure(types, name))
 	{
