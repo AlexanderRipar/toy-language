@@ -1880,7 +1880,7 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 	{
 		MemberInfo member = next(&member_it);
 
-		(void) force_member_type(interp, &member);
+		(void) force_member_value(interp, &member);
 	}
 
 	unset_typechecker_context(interp);
