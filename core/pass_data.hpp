@@ -78,6 +78,15 @@ struct Config
 		{
 			bool enable = false;
 
+			bool enable_prelude = false;
+
+			Range<char8> log_filepath = {};
+		} imports;
+
+		struct
+		{
+			bool enable = false;
+
 			Range<char8> log_filepath = {};
 		} config;
 	} logging;
