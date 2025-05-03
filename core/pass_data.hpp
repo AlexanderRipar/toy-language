@@ -701,8 +701,6 @@ AstPool* create_ast_pool(AllocPool* pool) noexcept;
 
 void release_ast_pool(AstPool* asts) noexcept;
 
-AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept;
-
 AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept;
 
 AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept;

@@ -10,6 +10,11 @@ struct AstPool
 	ReservedVec<u32> builder;
 };
 
+static AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept
+{
+	return static_cast<AstNode*>(asts->pool.reserve_exact(dwords * sizeof(u32)));
+}
+
 // Set FLAG_FIRST_SIBLING and FLAG_LAST_SIBLING (note that next_sibling_offset
 // holds the offset to the first child at this point):
 //
@@ -228,11 +233,6 @@ AstPool* create_ast_pool(AllocPool* pool) noexcept
 void release_ast_pool(AstPool* asts) noexcept
 {
 	asts->pool.release();
-}
-
-AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept
-{
-	return static_cast<AstNode*>(asts->pool.reserve_exact(dwords * sizeof(u32)));
 }
 
 AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept
