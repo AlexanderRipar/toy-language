@@ -554,7 +554,7 @@ static bool resolve_name_structure(TypePool* types, TypeName* name) noexcept
 	}
 	else if (name->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER)
 	{
-		return false; // TODO: Try to complete builder (?)
+		return false;
 	}
 	else
 	{
@@ -563,12 +563,12 @@ static bool resolve_name_structure(TypePool* types, TypeName* name) noexcept
 		TypeName* const indirect = types->named_types.value_from(name->structure_index);
 
 		if (indirect->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER)
-			return false; // TODO: Try to complete builder (?)
+			return false;
 
 		ASSERT_OR_IGNORE(indirect->structure_index_kind == TypeName::STRUCTURE_INDEX_NORMAL);
 
 		name->structure_index = indirect->structure_index;
-		name->structure_index_kind = indirect->structure_index_kind;
+		name->structure_index_kind = indirect->structure_index_kind; // Equal to `TypeName::STRUCTURE_INDEX_NORMAL`
 
 		return true;
 	}
@@ -1025,7 +1025,7 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init)
 
 	header->total_used += 1;
 
-	if (init.has_pending_type)
+	if (init.has_pending_type || init.has_pending_value)
 		header->incomplete_member_count += 1;
 }
 
@@ -1081,6 +1081,19 @@ void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_i
 
 	found.member.incomplete->has_pending_type = false;
 	found.member.incomplete->type.complete = member_type_id;
+
+	ASSERT_OR_IGNORE(header->incomplete_member_count != 0);
+
+	if (!found.member.incomplete->has_pending_value)
+	{
+		header->incomplete_member_count -= 1;
+
+		if (header->is_closed && header->incomplete_member_count == 0)
+		{
+			builder_name->structure_index = structure_index_from_complete_type_builder(types, header);
+			builder_name->structure_index_kind = TypeName::STRUCTURE_INDEX_NORMAL;
+		}
+	}
 }
 
 void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_id, u16 rank, GlobalValueId member_value_id) noexcept
@@ -1106,6 +1119,16 @@ void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_
 
 	found.member.incomplete->has_pending_value = false;
 	found.member.incomplete->value.complete = member_value_id;
+
+	ASSERT_OR_IGNORE(header->incomplete_member_count != 0);
+
+	header->incomplete_member_count -= 1;
+
+	if (header->is_closed && header->incomplete_member_count == 0)
+	{
+		builder_name->structure_index = structure_index_from_complete_type_builder(types, header);
+		builder_name->structure_index_kind = TypeName::STRUCTURE_INDEX_NORMAL;
+	}
 }
 
 TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
