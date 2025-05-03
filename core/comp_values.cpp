@@ -7,12 +7,12 @@
 
 	static bool add_overflow(s64 a, s64 b, s64* out) noexcept
 	{
-		return _addcarry_u64(0, static_cast<u64>(a), static_cast<u64>(b), reinterpret_cast<u64*>(out)) == 0;
+		return _addcarry_u64(0, static_cast<u64>(a), static_cast<u64>(b), reinterpret_cast<u64*>(out)) != 0;
 	}
 
 	static bool sub_overflow(s64 a, s64 b, s64* out) noexcept
 	{
-		return _subborrow_u64(0, static_cast<u64>(a), static_cast<u64>(b), reinterpret_cast<u64*>(out)) == 0;
+		return _subborrow_u64(0, static_cast<u64>(a), static_cast<u64>(b), reinterpret_cast<u64*>(out)) != 0;
 	}
 
 	static bool mul_overflow(s64 a, s64 b, s64* out) noexcept
@@ -21,7 +21,7 @@
 
 		*out = _mul128(a, b, &overflow);
 
-		return overflow == 0;
+		return overflow != 0;
 	}
 #elif defined(COMPILER_GCC) || defined(COMPILER_CLANG)
 	static bool add_overflow(s64 a, s64 b, s64* out) noexcept
