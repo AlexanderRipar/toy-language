@@ -3,7 +3,7 @@
 #include "../diag/diag.hpp"
 #include "../infra/container.hpp"
 
-using BuiltinFunc = void* (*) (Interpreter* interp) noexcept;
+using BuiltinFunc = void* (*) (Interpreter* interp, AstNode* call_node) noexcept;
 
 struct Interpreter
 {
@@ -641,7 +641,7 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node, TypeId target_typ
 		void* result;
 
 		if (callable.is_builtin)
-			result = interp->builtin_values[callable.code.ordinal](interp);
+			result = interp->builtin_values[callable.code.ordinal](interp, node);
 		else
 			result = evaluate_expr(interp, ast_node_from_id(interp->asts, callable.code.ast), target_type_id);
 
@@ -1951,7 +1951,9 @@ static TypeId make_func_type(TypePool* types, TypeId return_type_id, Params... p
 	}
 }
 
-static void* builtin_integer(Interpreter* interp) noexcept
+
+
+static void* builtin_integer(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
 	const u8 bits = *static_cast<u8*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("bits")), INVALID_SOURCE_ID));
 
@@ -1970,7 +1972,7 @@ static void* builtin_integer(Interpreter* interp) noexcept
 	return dst;
 }
 
-static void* builtin_float(Interpreter* interp) noexcept
+static void* builtin_float(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
 	const u8 bits = *static_cast<u8*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("bits")), INVALID_SOURCE_ID));
 
@@ -1987,7 +1989,7 @@ static void* builtin_float(Interpreter* interp) noexcept
 	return dst;
 }
 
-static void* builtin_type(Interpreter* interp) noexcept
+static void* builtin_type(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
 	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
 
@@ -1998,9 +2000,9 @@ static void* builtin_type(Interpreter* interp) noexcept
 	return dst;
 }
 
-static void* builtin_typeof(Interpreter* interp) noexcept
+static void* builtin_typeof(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
-	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("value")), INVALID_SOURCE_ID));
+	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), INVALID_SOURCE_ID));
 
 	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
 
@@ -2009,9 +2011,9 @@ static void* builtin_typeof(Interpreter* interp) noexcept
 	return dst;
 }
 
-static void* builtin_returntypeof(Interpreter* interp) noexcept
+static void* builtin_returntypeof(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
-	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("value")), INVALID_SOURCE_ID));
+	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), INVALID_SOURCE_ID));
 
 	const TypeTag arg_type_tag = type_tag_from_id(interp->types, arg_type_id);
 
@@ -2027,9 +2029,9 @@ static void* builtin_returntypeof(Interpreter* interp) noexcept
 	return dst;
 }
 
-static void* builtin_sizeof(Interpreter* interp) noexcept
+static void* builtin_sizeof(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
-	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("value")), INVALID_SOURCE_ID));
+	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), INVALID_SOURCE_ID));
 
 	const TypeMetrics metrics = type_metrics_from_id(interp->types, arg_type_id);
 
@@ -2040,9 +2042,9 @@ static void* builtin_sizeof(Interpreter* interp) noexcept
 	return dst;
 }
 
-static void* builtin_alignof(Interpreter* interp) noexcept
+static void* builtin_alignof(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
-	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("value")), INVALID_SOURCE_ID));
+	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), INVALID_SOURCE_ID));
 
 	const TypeMetrics metrics = type_metrics_from_id(interp->types, arg_type_id);
 
@@ -2053,9 +2055,9 @@ static void* builtin_alignof(Interpreter* interp) noexcept
 	return dst;
 }
 
-static void* builtin_strideof(Interpreter* interp) noexcept
+static void* builtin_strideof(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
-	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("value")), INVALID_SOURCE_ID));
+	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), INVALID_SOURCE_ID));
 
 	const TypeMetrics metrics = type_metrics_from_id(interp->types, arg_type_id);
 
@@ -2066,52 +2068,94 @@ static void* builtin_strideof(Interpreter* interp) noexcept
 	return dst;
 }
 
-static void* builtin_offsetof(Interpreter* interp) noexcept
+static void* builtin_offsetof(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
 	(void) interp;
 
 	TODO("Implement.");
 }
 
-static void* builtin_nameof(Interpreter* interp) noexcept
+static void* builtin_nameof(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
 	(void) interp;
 
 	TODO("Implement.");
 }
 
-static void* builtin_import(Interpreter* interp) noexcept
+static void* builtin_import(Interpreter* interp, AstNode* call_node) noexcept
 {
 	const Range<char8> path = *static_cast<Range<char8>*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("path")), INVALID_SOURCE_ID));
 
 	const bool is_std = *static_cast<bool*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("is_std")), INVALID_SOURCE_ID));
 
+	const SourceId from = *static_cast<SourceId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("from")), INVALID_SOURCE_ID));
+
 	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
 
-	*dst = import_file(interp, path, is_std);
+	char8 absolute_path_buf[8192];
+
+	Range<char8> absolute_path;
+
+	if (from != INVALID_SOURCE_ID)
+	{
+		SourceFile* const source_file = source_file_from_source_id(interp->reader, from);
+
+		const Range<char8> path_base = source_file_path(interp->reader, source_file);
+
+		char8 path_base_parent_buf[8192];
+
+		const u32 path_base_parent_chars = minos::path_to_absolute_directory(path_base, MutRange{ path_base_parent_buf });
+
+		if (path_base_parent_chars == 0 || path_base_parent_chars > array_count(path_base_parent_buf))
+			source_error(interp->errors, call_node->source_id, "Failed to make get parent directory from `from` source file (0x%X).\n", minos::last_error());
+
+		const u32 absolute_path_chars = minos::path_to_absolute_relative_to(path, Range{ path_base_parent_buf , path_base_parent_chars }, MutRange{ absolute_path_buf });
+
+		if (absolute_path_chars == 0 || absolute_path_chars > array_count(absolute_path_buf))
+			source_error(interp->errors, call_node->source_id, "Failed to make `path` %.*s absolute relative to `from` %.*s (0x%X).\n", static_cast<s32>(path.count()), path.begin(), static_cast<s32>(path_base.count()), path_base.begin(), minos::last_error());
+
+		absolute_path = Range{ absolute_path_buf, absolute_path_chars };
+	}
+	else
+	{
+		// This makes the prelude import of the configured standard library
+		// (which is an absolute path) work.
+		absolute_path = path;
+	}
+
+	*dst = import_file(interp, absolute_path, is_std);
 
 	return dst;
 }
 
-static void* builtin_create_type_builder(Interpreter* interp) noexcept
+static void* builtin_create_type_builder(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
 	(void) interp;
 
 	TODO("Implement.");
 }
 
-static void* builtin_add_type_member(Interpreter* interp) noexcept
+static void* builtin_add_type_member(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
 	(void) interp;
 
 	TODO("Implement.");
 }
 
-static void* builtin_complete_type(Interpreter* interp) noexcept
+static void* builtin_complete_type(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
 	(void) interp;
 
 	TODO("Implement.");
+}
+
+static void* builtin_source_id(Interpreter* interp, AstNode* call_node) noexcept
+{
+	SourceId* const dst = static_cast<SourceId*>(alloc_stack_value(interp, 4, 4));
+
+	*dst = call_node->source_id;
+
+	return dst;
 }
 
 
@@ -2160,6 +2204,12 @@ static void init_builtin_types(Interpreter* interp) noexcept
 
 	const TypeId slice_of_u8_type_id = primitive_type(interp->types, TypeTag::Slice, range::from_object_bytes(&slice_of_u8_type));
 
+	NumericType u32_type{};
+	u32_type.bits = 32;
+	u32_type.is_signed = false;
+
+	const TypeId u32_type_id = primitive_type(interp->types, TypeTag::Integer, range::from_object_bytes(&u32_type));
+
 
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::Integer)] = make_func_type(interp->types, type_type_id,
@@ -2203,7 +2253,8 @@ static void init_builtin_types(Interpreter* interp) noexcept
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::Import)] = make_func_type(interp->types, type_type_id,
 		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("path")), slice_of_u8_type_id },
-		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("is_std")), bool_type_id }
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("is_std")), bool_type_id },
+		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("from")), u32_type_id }
 	);
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::CreateTypeBuilder)] = make_func_type(interp->types, type_builder_type_id);
@@ -2217,6 +2268,8 @@ static void init_builtin_types(Interpreter* interp) noexcept
 	interp->builtin_type_ids[static_cast<u8>(Builtin::CompleteType)] = make_func_type(interp->types, type_type_id,
 		FuncTypeParamHelper{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_builder_type_id }
 	);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::SourceId)] = make_func_type(interp->types, u32_type_id);
 }
 
 static void init_builtin_values(Interpreter* interp) noexcept
@@ -2235,6 +2288,7 @@ static void init_builtin_values(Interpreter* interp) noexcept
 	interp->builtin_values[static_cast<u8>(Builtin::CreateTypeBuilder)] = &builtin_create_type_builder;
 	interp->builtin_values[static_cast<u8>(Builtin::AddTypeMember)] = &builtin_add_type_member;
 	interp->builtin_values[static_cast<u8>(Builtin::CompleteType)] = &builtin_complete_type;
+	interp->builtin_values[static_cast<u8>(Builtin::SourceId)] = &builtin_source_id;
 }
 
 static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPool* identifiers, AstPool* asts) noexcept
@@ -2254,6 +2308,10 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 	push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstLitIntegerData{ comp_integer_from_u64(0) });
 
 	push_node(asts, literal_zero, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::OpCmpEQ);
+
+	const AstBuilderToken source_id_builtin = push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, static_cast<AstFlag>(Builtin::SourceId), AstTag::Builtin);
+
+	push_node(asts, source_id_builtin, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::Call);
 
 	const AstBuilderToken import_call = push_node(asts, import_builtin, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::Call);
 
@@ -2373,6 +2431,7 @@ const char8* tag_name(Builtin builtin) noexcept
 		"_create_type_builder",
 		"_add_type_member",
 		"_complete_type",
+		"_source_id",
 	};
 
 	u8 ordinal = static_cast<u8>(builtin);

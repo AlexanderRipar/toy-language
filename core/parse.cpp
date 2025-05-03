@@ -270,6 +270,7 @@ static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
 	range::from_literal_string("_create_type_builder", static_cast<u8>(Builtin::CreateTypeBuilder)),
 	range::from_literal_string("_add_type_member",     static_cast<u8>(Builtin::AddTypeMember)),
 	range::from_literal_string("_complete_type",       static_cast<u8>(Builtin::CompleteType)),
+	range::from_literal_string("_source_id",           static_cast<u8>(Builtin::SourceId)),
 };
 
 struct Lexeme
