@@ -5,6 +5,22 @@
 #include <cstring>
 #include <cstdio>
 
+static minos::FileHandle log_file(bool enable, Range<char8> filepath) noexcept
+{
+	if (!enable)
+		return minos::FileHandle{};
+
+	if (filepath.count() == 0)
+		return minos::standard_file_handle(minos::StdFileName::StdOut);
+
+	minos::FileHandle log_file;
+
+	if (!minos::file_create(filepath, minos::Access::Write, minos::ExistsMode::Truncate, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &log_file))
+		panic("Failed to open log file %.*s (0x%X)\n", static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
+
+	return log_file;
+}
+
 s32 main(s32 argc, const char8** argv)
 {
 	if (argc == 0)
@@ -25,37 +41,18 @@ s32 main(s32 argc, const char8** argv)
 
 		Config* const config = create_config(alloc, range::from_cstring(argv[2]));
 
-		if (config->logging.config.enable)
-		{
-			minos::FileHandle config_log_file;
 
-			if (config->logging.config.log_filepath.count() == 0)
-			{
-				config_log_file = minos::standard_file_handle(minos::StdFileName::StdOut);
-			}
-			else
-			{
-				if (!minos::file_create(config->logging.config.log_filepath, minos::Access::Write, minos::ExistsMode::Truncate, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &config_log_file))
-					panic("Failed to open config log file %.*s (0x%X)\n", static_cast<s32>(config->logging.config.log_filepath.count()), config->logging.config.log_filepath.begin(), minos::last_error());
-			}
 
+		const minos::FileHandle config_log_file = log_file(config->logging.config.enable, config->logging.config.log_filepath);
+
+		if (config_log_file.m_rep != nullptr)
 			print_config(config_log_file, config);
-		}
 
-		minos::FileHandle ast_log_file{};
+		const minos::FileHandle ast_log_file = log_file(config->logging.asts.enable, config->logging.asts.log_filepath);
 
-		if (config->logging.asts.enable)
-		{
-			if (config->logging.asts.log_filepath.count() == 0)
-			{
-				ast_log_file = minos::standard_file_handle(minos::StdFileName::StdOut);
-			}
-			else
-			{
-				if (!minos::file_create(config->logging.asts.log_filepath, minos::Access::Write, minos::ExistsMode::Truncate, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &ast_log_file))
-					panic("Failed to open ast log file %.*s (0x%X)\n", static_cast<s32>(config->logging.asts.log_filepath.count()), config->logging.asts.log_filepath.begin(), minos::last_error());
-			}
-		}
+		const minos::FileHandle imports_log_file = log_file(config->logging.imports.enable, config->logging.imports.log_filepath);
+
+
 
 		IdentifierPool* const identifiers = create_identifier_pool(alloc);
 
@@ -71,7 +68,7 @@ s32 main(s32 argc, const char8** argv)
 
 		Parser* const parser = create_parser(alloc, identifiers, globals, asts, errors, ast_log_file);
 
-		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, globals, errors);
+		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, globals, errors, imports_log_file, config->logging.imports.enable_prelude);
 
 		const TypeId main_file_type_id = import_file(interp, config->entrypoint.filepath, false);
 
