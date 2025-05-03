@@ -1,5 +1,8 @@
 #include "diag.hpp"
 
+#include <cstdio>
+#include <cstdarg>
+
 void diag::buf_flush(PrintContext* ctx) noexcept
 {
 	if (ctx->curr == ctx->buf)

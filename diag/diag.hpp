@@ -1,9 +1,6 @@
 #ifndef DIAG_INCLUDE_GUARD
 #define DIAG_INCLUDE_GUARD
 
-#include <cstdio>
-#include <cstdarg>
-
 #include "../infra/common.hpp"
 #include "../core/pass_data.hpp"
 
