@@ -4,4 +4,5 @@ std.filepath = 'std/std.evl'
 
 logging.asts.enable = true
 
-logging.config.enable = true
+logging.imports.enable = true
+logging.imports.enable-prelude = true
