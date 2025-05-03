@@ -19,7 +19,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 	const char8 name_closer = name_id == INVALID_IDENTIFIER_ID ? '>' : '\"';
 
-	diag::buf_printf(ctx, "%*s%c%.*s%c = %s",
+	diag::buf_printf(ctx, "%*s%c%.*s%c %s",
 		skip_initial_indent ? 0 : indent * 2, "",
 		name_opener,
 		static_cast<s32>(name.count()), name.begin(),
@@ -109,9 +109,10 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 			const Range<char8> member_name = identifier_name_from_id(identifiers, member.name);
 
-			diag::buf_printf(ctx, "%s%*s%s%s%s\"%.*s\": ", has_members ? "" : "\n",
+			diag::buf_printf(ctx, "%s%*s%s%s%s%s\"%.*s\": ", has_members ? "" : "\n",
 				(indent + 1) * 2, "",
 				member.is_pub ? "pub " : "",
+				member.is_use ? "use " : "",
 				member.is_mut ? "mut " : "",
 				member.is_global ? "global " : "",
 				static_cast<s32>(member_name.count()), member_name.begin()
