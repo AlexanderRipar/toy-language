@@ -426,7 +426,7 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 		{
 			const CompIntegerValue v = *static_cast<CompIntegerValue*>(stack_top);
 
-			memset(stack_top, 0, sizeof(stack_top));
+			memset(stack_top, 0, sizeof(v));
 
 			const NumericType* const target_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, target_type_id));
 
@@ -465,7 +465,7 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 		{
 			const CompFloatValue v = *static_cast<CompFloatValue*>(stack_top);
 
-			memset(stack_top, 0, sizeof(stack_top));
+			memset(stack_top, 0, sizeof(v));
 
 			const NumericType* const target_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, target_type_id));
 
