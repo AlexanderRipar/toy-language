@@ -892,7 +892,7 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init)
 {
 	ASSERT_OR_IGNORE(init.name != INVALID_IDENTIFIER_ID);
 
-	ASSERT_OR_IGNORE(init.offset < (static_cast<s64>(1) << 59) && init.offset >= (static_cast<s64>(-1) << 59));
+	ASSERT_OR_IGNORE(init.offset < (static_cast<s64>(1) << 59) && init.offset >= -(static_cast<s64>(1) << 59));
 
 	ASSERT_OR_IGNORE(init.type.pending != INVALID_AST_NODE_ID || init.value.pending != INVALID_AST_NODE_ID);
 
