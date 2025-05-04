@@ -1141,6 +1141,10 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 
 			return common_type(types, to_type->referenced_type_id, from_type->referenced_type_id).rep != INVALID_TYPE_ID.rep;
 		}
+		else
+		{
+			return false;
+		}
 	}
 
 	case TypeTag::Ptr:
