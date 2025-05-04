@@ -1101,6 +1101,8 @@ void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_i
 void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_id, u16 rank, GlobalValueId member_value_id) noexcept;
 
 
+bool is_same_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
+
 bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept;
 
 TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;

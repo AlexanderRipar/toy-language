@@ -1077,6 +1077,30 @@ void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_
 }
 
 
+bool is_same_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
+{
+	if (type_id_a.rep == type_id_b.rep)
+		return true;
+
+	TypeName* const name_a = types->named_types.value_from(type_id_a.rep);
+
+	TypeName* const name_b = types->named_types.value_from(type_id_b.rep);
+
+	if (!resolve_name_structure(types, name_a) || !resolve_name_structure(types, name_b))
+		return false; // TODO: In this case we actually just don't know.
+
+	if (name_a->structure_index_kind != name_b->structure_index_kind && name_a->structure_index != name_b->structure_index && name_a->source_id == name_b->source_id)
+		return false;
+
+	if (name_a->distinct_root_type_id.rep == INVALID_TYPE_ID.rep && name_b->distinct_root_type_id.rep == INVALID_TYPE_ID.rep)
+		return true;
+
+	if (name_a->distinct_root_type_id.rep == INVALID_TYPE_ID.rep || name_b->distinct_root_type_id.rep == INVALID_TYPE_ID.rep)
+		return false;
+
+	return is_same_type(types, name_a->distinct_root_type_id, name_b->distinct_root_type_id);
+}
+
 bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept
 {
 	if (common_type(types, from_type_id, to_type_id).rep != INVALID_TYPE_ID.rep)
