@@ -1086,7 +1086,7 @@ TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept;
 void release_type_pool(TypePool* types) noexcept;
 
 
-TypeId primitive_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept;
+TypeId simple_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept;
 
 TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept;
 

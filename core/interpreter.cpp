@@ -1103,7 +1103,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 				}
 
 				if (!has_next_sibling(child))
-					result_type_id = with_assignability(primitive_type(interp->types, TypeTag::Definition, {}), false);
+					result_type_id = with_assignability(simple_type(interp->types, TypeTag::Definition, {}), false);
 			}
 			else
 			{
@@ -1129,7 +1129,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		// Empty blocks are of type `Void`.
 		if (type_id(result_type_id).rep == INVALID_TYPE_ID.rep)
-			result_type_id = with_assignability(primitive_type(interp->types, TypeTag::Void, {}), false);
+			result_type_id = with_assignability(simple_type(interp->types, TypeTag::Void, {}), false);
 
 		return result_type_id;
 	}
@@ -1237,17 +1237,17 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 	case AstTag::LitInteger:
 	{
-		return with_assignability(primitive_type(interp->types, TypeTag::CompInteger, {}), false);
+		return with_assignability(simple_type(interp->types, TypeTag::CompInteger, {}), false);
 	}
 
 	case AstTag::LitFloat:
 	{
-		return with_assignability(primitive_type(interp->types, TypeTag::CompFloat, {}), false);
+		return with_assignability(simple_type(interp->types, TypeTag::CompFloat, {}), false);
 	}
 
 	case AstTag::LitChar:
 	{
-		return with_assignability(primitive_type(interp->types, TypeTag::CompInteger, {}), false);
+		return with_assignability(simple_type(interp->types, TypeTag::CompInteger, {}), false);
 	}
 
 	case AstTag::LitString:
@@ -1406,7 +1406,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		tail_array_type.is_mut = true;
 		tail_array_type.referenced_type_id = operand_type_id;
 
-		return with_assignability(primitive_type(interp->types, TypeTag::Slice, range::from_object_bytes(&tail_array_type)), false);
+		return with_assignability(simple_type(interp->types, TypeTag::Slice, range::from_object_bytes(&tail_array_type)), false);
 	}
 
 	case AstTag::UOpTypeSlice:
@@ -1426,7 +1426,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		slice_type.is_mut = has_flag(node, AstFlag::Type_IsMut);
 		slice_type.referenced_type_id = operand_type_id;
 
-		return with_assignability(primitive_type(interp->types, TypeTag::Slice, range::from_object_bytes(&slice_type)), false);
+		return with_assignability(simple_type(interp->types, TypeTag::Slice, range::from_object_bytes(&slice_type)), false);
 	}
 
 	case AstTag::UOpEval:
@@ -1462,7 +1462,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		ptr_type.is_mut = is_assignable(operand_type_id);
 		ptr_type.referenced_type_id = type_id(operand_type_id);
 
-		return with_assignability(primitive_type(interp->types, TypeTag::Ptr, range::from_object_bytes(&ptr_type)), false);
+		return with_assignability(simple_type(interp->types, TypeTag::Ptr, range::from_object_bytes(&ptr_type)), false);
 	}
 
 	case AstTag::UOpDeref:
@@ -1526,7 +1526,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		variadic_type.is_mut = false;
 		variadic_type.referenced_type_id = operand_type_id;
 
-		return with_assignability(primitive_type(interp->types, TypeTag::Variadic, range::from_object_bytes(&variadic_type)), false);
+		return with_assignability(simple_type(interp->types, TypeTag::Variadic, range::from_object_bytes(&variadic_type)), false);
 	}
 
 	case AstTag::UOpTypePtr:
@@ -1549,7 +1549,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		ptr_type.is_mut = has_flag(node, AstFlag::Type_IsMut);
 		ptr_type.referenced_type_id = operand_type_id;
 
-		return with_assignability(primitive_type(interp->types, TypeTag::Ptr, range::from_object_bytes(&ptr_type)), false);
+		return with_assignability(simple_type(interp->types, TypeTag::Ptr, range::from_object_bytes(&ptr_type)), false);
 	}
 
 	case AstTag::UOpNegate:
@@ -1773,7 +1773,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		if (common_type_id.rep == INVALID_TYPE_ID.rep)
 			source_error(interp->errors, node->source_id, "Incompatible left-hand and right-hand side operands for `%s`.\n", tag_name(node->tag));
 
-		return with_assignability(primitive_type(interp->types, TypeTag::Boolean, {}), false);
+		return with_assignability(simple_type(interp->types, TypeTag::Boolean, {}), false);
 	}
 
 	case AstTag::OpSet:
@@ -1827,7 +1827,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		if (common_type_id.rep == INVALID_TYPE_ID.rep)
 			source_error(interp->errors, node->source_id, "Incompatible left-hand and right-hand side operands for `%s`.\n", tag_name(node->tag));
 
-		return with_assignability(primitive_type(interp->types, TypeTag::Void, {}), false);
+		return with_assignability(simple_type(interp->types, TypeTag::Void, {}), false);
 	}
 
 	case AstTag::OpSetShiftL:
@@ -1854,7 +1854,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		if (rhs_type_tag != TypeTag::Integer && rhs_type_tag != TypeTag::CompInteger)
 			source_error(interp->errors, lhs->source_id, "Right-hand-side of `%s` must be of integral type.\n", tag_name(node->tag));
 
-		return with_assignability(primitive_type(interp->types, TypeTag::Void, {}), false);
+		return with_assignability(simple_type(interp->types, TypeTag::Void, {}), false);
 	}
 
 	case AstTag::OpTypeArray:
@@ -1881,7 +1881,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		u64_type.bits = 64;
 		u64_type.is_signed = false;
 
-		const TypeId u64_type_id = primitive_type(interp->types, TypeTag::Integer, range::from_object_bytes(&u64_type));
+		const TypeId u64_type_id = simple_type(interp->types, TypeTag::Integer, range::from_object_bytes(&u64_type));
 
 		const u64 count_value = *static_cast<u64*>(evaluate_expr(interp, count, u64_type_id));
 
@@ -1891,7 +1891,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		result_type.element_type = type_type_id;
 		result_type.element_count = count_value;
 
-		return with_assignability(primitive_type(interp->types, TypeTag::Array, range::from_object_bytes(&result_type)), false);
+		return with_assignability(simple_type(interp->types, TypeTag::Array, range::from_object_bytes(&result_type)), false);
 	}
 
 	case AstTag::OpArrayIndex:
@@ -2060,7 +2060,7 @@ static TypeId make_func_type_from_array(TypePool* types, TypeId return_type_id, 
 	func_type.is_proc = false;
 	func_type.signature_type_id = signature_type_id;
 
-	return primitive_type(types, TypeTag::Func, range::from_object_bytes(&func_type));
+	return simple_type(types, TypeTag::Func, range::from_object_bytes(&func_type));
 }
 
 template<typename... Params>
@@ -2092,7 +2092,7 @@ static void* builtin_integer(Interpreter* interp, [[maybe_unused]] AstNode* call
 
 	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
 
-	const TypeId integer_type_id = primitive_type(interp->types, TypeTag::Integer, range::from_object_bytes(&integer_type));
+	const TypeId integer_type_id = simple_type(interp->types, TypeTag::Integer, range::from_object_bytes(&integer_type));
 
 	*dst = integer_type_id;
 
@@ -2109,7 +2109,7 @@ static void* builtin_float(Interpreter* interp, [[maybe_unused]] AstNode* call_n
 
 	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
 
-	const TypeId float_type_id = primitive_type(interp->types, TypeTag::Float, range::from_object_bytes(&float_type));
+	const TypeId float_type_id = simple_type(interp->types, TypeTag::Float, range::from_object_bytes(&float_type));
 
 	*dst = float_type_id;
 
@@ -2120,7 +2120,7 @@ static void* builtin_type(Interpreter* interp, [[maybe_unused]] AstNode* call_no
 {
 	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
 
-	const TypeId type_type_id = primitive_type(interp->types, TypeTag::Type, {});
+	const TypeId type_type_id = simple_type(interp->types, TypeTag::Type, {});
 
 	*dst = type_type_id;
 
@@ -2289,19 +2289,19 @@ static void* builtin_source_id(Interpreter* interp, AstNode* call_node) noexcept
 
 static void init_builtin_types(Interpreter* interp) noexcept
 {
-	const TypeId type_type_id = primitive_type(interp->types, TypeTag::Type, {});
+	const TypeId type_type_id = simple_type(interp->types, TypeTag::Type, {});
 
-	const TypeId comp_integer_type_id = primitive_type(interp->types, TypeTag::CompInteger, {});
+	const TypeId comp_integer_type_id = simple_type(interp->types, TypeTag::CompInteger, {});
 
-	const TypeId bool_type_id = primitive_type(interp->types, TypeTag::Boolean, {});
+	const TypeId bool_type_id = simple_type(interp->types, TypeTag::Boolean, {});
 
-	const TypeId definition_type_id = primitive_type(interp->types, TypeTag::Definition, {});
+	const TypeId definition_type_id = simple_type(interp->types, TypeTag::Definition, {});
 
-	const TypeId type_builder_type_id = primitive_type(interp->types, TypeTag::TypeBuilder, {});
+	const TypeId type_builder_type_id = simple_type(interp->types, TypeTag::TypeBuilder, {});
 
-	const TypeId void_type_id = primitive_type(interp->types, TypeTag::Void, {});
+	const TypeId void_type_id = simple_type(interp->types, TypeTag::Void, {});
 
-	const TypeId type_info_type_id = primitive_type(interp->types, TypeTag::TypeInfo, {});
+	const TypeId type_info_type_id = simple_type(interp->types, TypeTag::TypeInfo, {});
 
 	ReferenceType ptr_to_type_builder_type{};
 	ptr_to_type_builder_type.is_opt = false;
@@ -2309,19 +2309,19 @@ static void init_builtin_types(Interpreter* interp) noexcept
 	ptr_to_type_builder_type.is_mut = true;
 	ptr_to_type_builder_type.referenced_type_id = type_builder_type_id;
 
-	const TypeId ptr_to_mut_type_builder_type_id = primitive_type(interp->types, TypeTag::Ptr, range::from_object_bytes(&ptr_to_type_builder_type));
+	const TypeId ptr_to_mut_type_builder_type_id = simple_type(interp->types, TypeTag::Ptr, range::from_object_bytes(&ptr_to_type_builder_type));
 
 	NumericType s64_type{};
 	s64_type.bits = 64;
 	s64_type.is_signed = true;
 
-	const TypeId s64_type_id = primitive_type(interp->types, TypeTag::Integer, range::from_object_bytes(&s64_type));
+	const TypeId s64_type_id = simple_type(interp->types, TypeTag::Integer, range::from_object_bytes(&s64_type));
 
 	NumericType u8_type{};
 	u8_type.bits = 8;
 	u8_type.is_signed = false;
 
-	const TypeId u8_type_id = primitive_type(interp->types, TypeTag::Integer, range::from_object_bytes(&u8_type));
+	const TypeId u8_type_id = simple_type(interp->types, TypeTag::Integer, range::from_object_bytes(&u8_type));
 
 	ReferenceType slice_of_u8_type{};
 	slice_of_u8_type.is_opt = false;
@@ -2329,13 +2329,13 @@ static void init_builtin_types(Interpreter* interp) noexcept
 	slice_of_u8_type.is_mut = false;
 	slice_of_u8_type.referenced_type_id = u8_type_id;
 
-	const TypeId slice_of_u8_type_id = primitive_type(interp->types, TypeTag::Slice, range::from_object_bytes(&slice_of_u8_type));
+	const TypeId slice_of_u8_type_id = simple_type(interp->types, TypeTag::Slice, range::from_object_bytes(&slice_of_u8_type));
 
 	NumericType u32_type{};
 	u32_type.bits = 32;
 	u32_type.is_signed = false;
 
-	const TypeId u32_type_id = primitive_type(interp->types, TypeTag::Integer, range::from_object_bytes(&u32_type));
+	const TypeId u32_type_id = simple_type(interp->types, TypeTag::Integer, range::from_object_bytes(&u32_type));
 
 
 
@@ -2424,13 +2424,13 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 	u8_type.bits = 8;
 	u8_type.is_signed = false;
 
-	const TypeId u8_type_id = primitive_type(interp->types, TypeTag::Integer, range::from_object_bytes(&u8_type));
+	const TypeId u8_type_id = simple_type(interp->types, TypeTag::Integer, range::from_object_bytes(&u8_type));
 
 	ArrayType array_of_u8_type{};
 	array_of_u8_type.element_type = u8_type_id;
 	array_of_u8_type.element_count = config->std.filepath.count();
 
-	const TypeId array_of_u8_type_id = primitive_type(interp->types, TypeTag::Array, range::from_object_bytes(&array_of_u8_type));
+	const TypeId array_of_u8_type_id = simple_type(interp->types, TypeTag::Array, range::from_object_bytes(&array_of_u8_type));
 
 	const GlobalValueId std_filepath_value_id = make_global_value(interp->globals, with_assignability(array_of_u8_type_id, false), config->std.filepath.count(), 1, config->std.filepath.begin());
 

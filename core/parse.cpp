@@ -1040,7 +1040,7 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 	array_of_u8_type.element_type = lexer->u8_type_id;
 	array_of_u8_type.element_count = buffer_index;
 
-	const TypeId array_of_u8_type_id = primitive_type(lexer->types, TypeTag::Array, range::from_object_bytes(&array_of_u8_type));
+	const TypeId array_of_u8_type_id = simple_type(lexer->types, TypeTag::Array, range::from_object_bytes(&array_of_u8_type));
 
 	const GlobalValueId string_value_id = make_global_value(lexer->globals, with_assignability(array_of_u8_type_id, false), buffer_index, 1, buffer);
 
@@ -2725,7 +2725,7 @@ Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValueP
 	Parser* const parser = static_cast<Parser*>(alloc_from_pool(pool, sizeof(Parser), alignof(Parser)));
 
 	parser->builder = asts;
-	parser->lexer.u8_type_id = primitive_type(types, TypeTag::Integer, range::from_object_bytes(&u8_type));
+	parser->lexer.u8_type_id = simple_type(types, TypeTag::Integer, range::from_object_bytes(&u8_type));
 	parser->lexer.identifiers = identifiers;
 	parser->lexer.globals = globals;
 	parser->lexer.types = types;

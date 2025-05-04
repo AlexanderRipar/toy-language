@@ -825,7 +825,7 @@ void release_type_pool(TypePool* types) noexcept
 }
 
 
-TypeId primitive_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept
+TypeId simple_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept
 {
 	const u32 structure_index = types->structural_types.index_from(AttachmentRange{ data, tag }, fnv1a_step(fnv1a(data), static_cast<byte>(tag)));
 
