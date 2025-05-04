@@ -1122,7 +1122,7 @@ bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId memb
 
 bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberInfo* out) noexcept;
 
-const void* primitive_type_structure(TypePool* types, TypeId type_id) noexcept;
+const void* simple_type_structure_from_id(TypePool* types, TypeId type_id) noexcept;
 
 
 const char8* tag_name(TypeTag tag) noexcept;

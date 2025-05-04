@@ -53,7 +53,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::Slice:
 	case TypeTag::Ptr:
 	{
-		const ReferenceType* const reference = static_cast<const ReferenceType*>(primitive_type_structure(types, type_id));
+		const ReferenceType* const reference = static_cast<const ReferenceType*>(simple_type_structure_from_id(types, type_id));
 
 		const char8* introducer;
 
@@ -77,7 +77,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 	case TypeTag::Array:
 	{
-		const ArrayType* const array = static_cast<const ArrayType*>(primitive_type_structure(types, type_id));
+		const ArrayType* const array = static_cast<const ArrayType*>(simple_type_structure_from_id(types, type_id));
 
 		diag::buf_printf(ctx, " :: [%" PRIu64 "]", array->element_count);
 

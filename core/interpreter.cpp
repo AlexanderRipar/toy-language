@@ -428,7 +428,7 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 
 			memset(stack_top, 0, sizeof(v));
 
-			const NumericType* const target_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, target_type_id));
+			const NumericType* const target_type = static_cast<const NumericType*>(simple_type_structure_from_id(interp->types, target_type_id));
 
 			if (target_type->is_signed)
 			{
@@ -446,9 +446,9 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 		{
 			ASSERT_OR_IGNORE(source_type_tag == TypeTag::Integer);
 
-			const NumericType* const target_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, target_type_id));
+			const NumericType* const target_type = static_cast<const NumericType*>(simple_type_structure_from_id(interp->types, target_type_id));
 
-			const NumericType* const source_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, source_type_id));
+			const NumericType* const source_type = static_cast<const NumericType*>(simple_type_structure_from_id(interp->types, source_type_id));
 
 			ASSERT_OR_IGNORE(target_type->bits == source_type->bits && target_type->is_signed == source_type->is_signed);
 		}
@@ -467,7 +467,7 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 
 			memset(stack_top, 0, sizeof(v));
 
-			const NumericType* const target_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, target_type_id));
+			const NumericType* const target_type = static_cast<const NumericType*>(simple_type_structure_from_id(interp->types, target_type_id));
 
 			if (target_type->bits == 32)
 			{
@@ -485,9 +485,9 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 		{
 			ASSERT_OR_IGNORE(source_type_tag == TypeTag::Float);
 
-			const NumericType* const target_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, target_type_id));
+			const NumericType* const target_type = static_cast<const NumericType*>(simple_type_structure_from_id(interp->types, target_type_id));
 
-			const NumericType* const source_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, source_type_id));
+			const NumericType* const source_type = static_cast<const NumericType*>(simple_type_structure_from_id(interp->types, source_type_id));
 
 			ASSERT_OR_IGNORE(target_type->bits == source_type->bits);
 		}
@@ -502,7 +502,7 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 
 		if (source_type_tag == TypeTag::Array)
 		{
-			const ArrayType* const source_type = static_cast<const ArrayType*>(primitive_type_structure(interp->types, source_type_id));
+			const ArrayType* const source_type = static_cast<const ArrayType*>(simple_type_structure_from_id(interp->types, source_type_id));
 
 			const ArrayValue v = *static_cast<ArrayValue*>(stack_top);
 
@@ -522,9 +522,9 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 		{
 			ASSERT_OR_IGNORE(source_type_tag == TypeTag::Slice);
 
-			const ReferenceType* const target_type = static_cast<const ReferenceType*>(primitive_type_structure(interp->types, target_type_id));
+			const ReferenceType* const target_type = static_cast<const ReferenceType*>(simple_type_structure_from_id(interp->types, target_type_id));
 
-			const ReferenceType* const source_type = static_cast<const ReferenceType*>(primitive_type_structure(interp->types, source_type_id));
+			const ReferenceType* const source_type = static_cast<const ReferenceType*>(simple_type_structure_from_id(interp->types, source_type_id));
 
 			ASSERT_OR_IGNORE(is_same_type(interp->types, target_type->referenced_type_id, source_type->referenced_type_id));
 
@@ -672,7 +672,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		const TypeId func_type_id = TypeId{ callable.type_id_bits };
 
-		const FuncType* const func_type = static_cast<const FuncType*>(primitive_type_structure(interp->types, func_type_id));
+		const FuncType* const func_type = static_cast<const FuncType*>(simple_type_structure_from_id(interp->types, func_type_id));
 
 		const TypeId signature_type_id = func_type->signature_type_id;
 
@@ -1274,7 +1274,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		if (callee_type_tag != TypeTag::Func && callee_type_tag != TypeTag::Builtin)
 			source_error(interp->errors, callee->source_id, "Left-hand-side of call operator must be of function or builtin type.\n");
 
-		const FuncType* const func_type = static_cast<const FuncType*>(primitive_type_structure(interp->types, callee_type_id));
+		const FuncType* const func_type = static_cast<const FuncType*>(simple_type_structure_from_id(interp->types, callee_type_id));
 
 		const TypeId signature_type_id = func_type->signature_type_id;
 
@@ -1476,7 +1476,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		if (operand_type_tag != TypeTag::Ptr)
 			source_error(interp->errors, operand->source_id, "Operand of `%s` must be of pointer type.\n", tag_name(node->tag));
 
-		const ReferenceType* const reference = static_cast<const ReferenceType*>(primitive_type_structure(interp->types, operand_type_id));
+		const ReferenceType* const reference = static_cast<const ReferenceType*>(simple_type_structure_from_id(interp->types, operand_type_id));
 
 		return with_assignability(reference->referenced_type_id, reference->is_mut);
 	}
@@ -1566,7 +1566,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		if (node->tag == AstTag::UOpNegate && (operand_type_tag == TypeTag::Integer || operand_type_tag == TypeTag::CompInteger))
 		{
-			const NumericType* const integer_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, operand_type_id));
+			const NumericType* const integer_type = static_cast<const NumericType*>(simple_type_structure_from_id(interp->types, operand_type_id));
 
 			if (!integer_type->is_signed)
 				source_error(interp->errors, operand->source_id, "Operand of unary `%s` must be signed.\n");
@@ -1902,7 +1902,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		const TypeTag array_type_tag = type_tag_from_id(interp->types, arrayish_type_id);
 
-		const void* const structure = primitive_type_structure(interp->types, arrayish_type_id);
+		const void* const structure = simple_type_structure_from_id(interp->types, arrayish_type_id);
 
 		TypeId element_type_id;
 
@@ -2147,7 +2147,7 @@ static void* builtin_returntypeof(Interpreter* interp, [[maybe_unused]] AstNode*
 	if (arg_type_tag != TypeTag::Func && arg_type_tag != TypeTag::Builtin)
 		panic("Passed non-function, non-builtin argument to `_returntypeof`.\n");
 
-	const FuncType* const func_type = static_cast<const FuncType*>(primitive_type_structure(interp->types, arg_type_id));
+	const FuncType* const func_type = static_cast<const FuncType*>(simple_type_structure_from_id(interp->types, arg_type_id));
 
 	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
 

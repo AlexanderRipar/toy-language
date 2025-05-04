@@ -1124,17 +1124,17 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 
 	case TypeTag::Slice:
 	{
-		const ReferenceType* const to_type = static_cast<const ReferenceType*>(primitive_type_structure(types, to_type_id));
+		const ReferenceType* const to_type = static_cast<const ReferenceType*>(simple_type_structure_from_id(types, to_type_id));
 
 		if (from_type_tag == TypeTag::Array)
 		{
-			const ArrayType* const from_type = static_cast<const ArrayType*>(primitive_type_structure(types, from_type_id));
+			const ArrayType* const from_type = static_cast<const ArrayType*>(simple_type_structure_from_id(types, from_type_id));
 
 			return common_type(types, to_type->referenced_type_id, from_type->element_type).rep != INVALID_TYPE_ID.rep;
 		}
 		else if (from_type_tag == TypeTag::Slice)
 		{
-			const ReferenceType* const from_type = static_cast<const ReferenceType*>(primitive_type_structure(types, from_type_id));
+			const ReferenceType* const from_type = static_cast<const ReferenceType*>(simple_type_structure_from_id(types, from_type_id));
 
 			if (to_type->is_mut && !from_type->is_mut)
 				return false;
@@ -1152,9 +1152,9 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 		if (from_type_tag != TypeTag::Ptr)
 			return false;
 
-		const ReferenceType* const to_type = static_cast<const ReferenceType*>(primitive_type_structure(types, to_type_id));
+		const ReferenceType* const to_type = static_cast<const ReferenceType*>(simple_type_structure_from_id(types, to_type_id));
 
-		const ReferenceType* const from_type = static_cast<const ReferenceType*>(primitive_type_structure(types, from_type_id));
+		const ReferenceType* const from_type = static_cast<const ReferenceType*>(simple_type_structure_from_id(types, from_type_id));
 
 		if (to_type->is_mut && !from_type->is_mut)
 			return false;
@@ -1428,7 +1428,7 @@ bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberI
 	return true;
 }
 
-const void* primitive_type_structure(TypePool* types, TypeId type_id) noexcept
+const void* simple_type_structure_from_id(TypePool* types, TypeId type_id) noexcept
 {
 	TypeName* const name = types->named_types.value_from(type_id.rep);
 
@@ -1440,7 +1440,7 @@ const void* primitive_type_structure(TypePool* types, TypeId type_id) noexcept
 			return &structure->data;
 	}
 
-	panic("Called `primitive_type_structure` with non-primitive type.\n");
+	panic("Called `simple_type_structure_from_id` with non-primitive type.\n");
 }
 
 

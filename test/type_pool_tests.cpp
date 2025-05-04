@@ -58,7 +58,7 @@ static void primitive_type_with_integer_returns_integer_type_structure() noexcep
 
 	TEST_EQUAL(type_tag_from_id(dummy.types, u16_id), TypeTag::Integer);
 
-	const NumericType* const interned = static_cast<const NumericType*>(primitive_type_structure(dummy.types, u16_id));
+	const NumericType* const interned = static_cast<const NumericType*>(simple_type_structure_from_id(dummy.types, u16_id));
 
 	TEST_EQUAL(interned->bits, 16);
 
@@ -83,7 +83,7 @@ static void primitive_type_with_integer_and_float_with_same_bit_pattern_returns_
 
 	TEST_EQUAL(type_tag_from_id(dummy.types, u32_id), TypeTag::Integer);
 
-	const NumericType* const interned_u32 = static_cast<const NumericType*>(primitive_type_structure(dummy.types, u32_id));
+	const NumericType* const interned_u32 = static_cast<const NumericType*>(simple_type_structure_from_id(dummy.types, u32_id));
 
 	TEST_EQUAL(interned_u32->bits, 32);
 
@@ -97,7 +97,7 @@ static void primitive_type_with_integer_and_float_with_same_bit_pattern_returns_
 
 	TEST_EQUAL(type_tag_from_id(dummy.types, f32_id), TypeTag::Float);
 
-	const NumericType* const interned_f32 = static_cast<const NumericType*>(primitive_type_structure(dummy.types, f32_id));
+	const NumericType* const interned_f32 = static_cast<const NumericType*>(simple_type_structure_from_id(dummy.types, f32_id));
 
 	TEST_EQUAL(interned_f32->bits, 32);
 
@@ -130,7 +130,7 @@ static void primitive_type_with_array_returns_array_type() noexcept
 
 	TEST_EQUAL(type_tag_from_id(dummy.types, array_id), TypeTag::Array);
 
-	const ArrayType* const interned = static_cast<const ArrayType*>(primitive_type_structure(dummy.types, array_id));
+	const ArrayType* const interned = static_cast<const ArrayType*>(simple_type_structure_from_id(dummy.types, array_id));
 
 	TEST_EQUAL(interned->element_count, 128);
 
