@@ -1515,7 +1515,7 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 
 		rank += 1;
 
-		if (index + 1 == array_count(builder->members) - 1)
+		if (static_cast<u16>(index + 1) == array_count(builder->members) - 1)
 		{
 			if (builder->next_offset == 0)
 				return { nullptr, nullptr, 0, INVALID_TYPE_ID };
