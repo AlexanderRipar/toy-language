@@ -4,6 +4,8 @@
 #include "../infra/container.hpp"
 #include "../diag/diag.hpp"
 
+#include <cstdio>
+
 struct ConfigHeader;
 
 struct ConfigContainer
