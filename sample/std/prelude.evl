@@ -38,7 +38,7 @@ pub false: Bool = !true
 
 // Functions
 
-pub import = func(path: []u8) -> Type = _import(path, false)
+// pub import = func(path: []u8) -> Type = _import(path, false)
 
 /*
 pub typeof = func(value: T) where T = Type -> Type => _typeof(value)
