@@ -66,7 +66,7 @@ s32 main(s32 argc, const char8** argv)
 
 		AstPool* const asts = create_ast_pool(alloc);
 
-		Parser* const parser = create_parser(alloc, identifiers, globals, asts, errors, ast_log_file);
+		Parser* const parser = create_parser(alloc, identifiers, globals, types, asts, errors, ast_log_file);
 
 		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, globals, errors, imports_log_file, config->logging.imports.enable_prelude);
 

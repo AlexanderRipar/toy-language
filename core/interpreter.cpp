@@ -95,11 +95,20 @@ struct alignas(8) Callable
 	} code;
 };
 
+union ArrayValue
+{
+	void* value_ptr;
+
+	u64 padding_qwords;
+};
+
 
 
 static TypeIdWithAssignability force_member_type(Interpreter* interp, const MemberInfo* member) noexcept; 
 
 static GlobalValueId force_member_value(Interpreter* interp, const MemberInfo* member) noexcept; 
+
+static void* evaluate_expr(Interpreter* interp, AstNode* node, TypeId target_type_id) noexcept;
 
 static TypeIdWithAssignability typecheck_expr(Interpreter* interp, AstNode* node) noexcept;
 
@@ -303,7 +312,7 @@ static void* lookup_identifier_value(Interpreter* interp, IdentifierId identifie
 
 	const GlobalValueId member_value = force_member_value(interp, &member);
 
-	return global_value_from_id(interp->globals, member_value);
+	return global_value_from_id(interp->globals, member_value).address;
 }
 
 
@@ -369,7 +378,187 @@ static void pop_stack_value(Interpreter* interp) noexcept
 
 
 
-static void* evaluate_expr(Interpreter* interp, AstNode* node, TypeId target_type_id) noexcept
+static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId source_type_id, TypeId target_type_id, TypeTag target_type_tag, SourceId source_id) noexcept
+{
+	switch (target_type_tag)
+	{
+	case TypeTag::Type:
+	case TypeTag::Definition:
+	case TypeTag::CompInteger:
+	case TypeTag::CompFloat:
+	case TypeTag::Boolean:
+	case TypeTag::Ptr:
+	case TypeTag::Func:
+	case TypeTag::Builtin:
+	case TypeTag::CompositeLiteral:
+	case TypeTag::ArrayLiteral:
+	case TypeTag::TypeBuilder:
+	case TypeTag::Variadic:
+	case TypeTag::Trait:
+	{
+		ASSERT_OR_IGNORE(target_type_tag == type_tag_from_id(interp->types, source_type_id));
+
+		return stack_top;
+	}
+
+	case TypeTag::Void:
+	{
+		if (source_type_id.rep == target_type_id.rep)
+			return stack_top;
+
+		const TypeTag source_type_tag = type_tag_from_id(interp->types, source_type_id);
+
+		if (source_type_tag == TypeTag::Void)
+			return stack_top;
+
+		ASSERT_OR_IGNORE(source_type_tag == TypeTag::Definition);
+
+		pop_stack_value(interp);
+
+		return alloc_stack_value(interp, 0, 1);
+	}
+
+	case TypeTag::Integer:
+	{
+		const TypeTag source_type_tag = type_tag_from_id(interp->types, source_type_id);
+
+		if (source_type_tag == TypeTag::CompInteger)
+		{
+			const CompIntegerValue v = *static_cast<CompIntegerValue*>(stack_top);
+
+			memset(stack_top, 0, sizeof(stack_top));
+
+			const NumericType* const target_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, target_type_id));
+
+			if (target_type->is_signed)
+			{
+				if (!s64_from_comp_integer(v, static_cast<u8>(target_type->bits), static_cast<s64*>(stack_top)))
+					source_error(interp->errors, source_id, "`CompInteger` value does not fit into signed %u bit integer.\n", target_type->bits);
+			}
+			else
+			{
+				if (!u64_from_comp_integer(v, static_cast<u8>(target_type->bits), static_cast<u64*>(stack_top)))
+					source_error(interp->errors, source_id, "`CompInteger` value does not fit into unsigned %u bit integer.\n", target_type->bits);
+			}
+		}
+		#ifndef _NDEBUG
+		else
+		{
+			ASSERT_OR_IGNORE(source_type_tag == TypeTag::Integer);
+
+			const NumericType* const target_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, target_type_id));
+
+			const NumericType* const source_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, source_type_id));
+
+			ASSERT_OR_IGNORE(target_type->bits == source_type->bits && target_type->is_signed == source_type->is_signed);
+		}
+		#endif
+
+		return stack_top;
+	}
+
+	case TypeTag::Float:
+	{
+		const TypeTag source_type_tag = type_tag_from_id(interp->types, source_type_id);
+
+		if (source_type_tag == TypeTag::CompFloat)
+		{
+			const CompFloatValue v = *static_cast<CompFloatValue*>(stack_top);
+
+			memset(stack_top, 0, sizeof(stack_top));
+
+			const NumericType* const target_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, target_type_id));
+
+			if (target_type->bits == 32)
+			{
+				*static_cast<f32*>(stack_top) = f32_from_comp_float(v);
+			}
+			else
+			{
+				ASSERT_OR_IGNORE(target_type->bits == 64);
+
+				*static_cast<f64*>(stack_top) = f64_from_comp_float(v);
+			}
+		}
+		#ifndef _NDEBUG
+		else
+		{
+			ASSERT_OR_IGNORE(source_type_tag == TypeTag::Float);
+
+			const NumericType* const target_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, target_type_id));
+
+			const NumericType* const source_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, source_type_id));
+
+			ASSERT_OR_IGNORE(target_type->bits == source_type->bits);
+		}
+		#endif
+
+		return stack_top;
+	}
+
+	case TypeTag::Slice:
+	{
+		const TypeTag source_type_tag = type_tag_from_id(interp->types, source_type_id);
+
+		if (source_type_tag == TypeTag::Array)
+		{
+			const ArrayType* const source_type = static_cast<const ArrayType*>(primitive_type_structure(interp->types, source_type_id));
+
+			const ArrayValue v = *static_cast<ArrayValue*>(stack_top);
+
+			if ((v.padding_qwords & 1) == 1)
+				TODO("Implement implicit conversion of non-global");
+
+			pop_stack_value(interp);
+
+			Range<byte>* const new_stack_value = static_cast<Range<byte>*>(alloc_stack_value(interp, 16, 8));
+
+			*new_stack_value = Range{ static_cast<byte*>(v.value_ptr), source_type->element_count };
+
+			return new_stack_value;
+		}
+		#ifndef _NDEBUG
+		else
+		{
+			ASSERT_OR_IGNORE(source_type_tag == TypeTag::Slice);
+
+			const ReferenceType* const target_type = static_cast<const ReferenceType*>(primitive_type_structure(interp->types, target_type_id));
+
+			const ReferenceType* const source_type = static_cast<const ReferenceType*>(primitive_type_structure(interp->types, source_type_id));
+
+			ASSERT_OR_IGNORE(is_same_type(interp->types, target_type->referenced_type_id, source_type->referenced_type_id));
+
+			ASSERT_OR_IGNORE(!target_type->is_mut || source_type->is_mut);
+
+			ASSERT_OR_IGNORE(!target_type->is_multi || source_type->is_multi);
+
+			ASSERT_OR_IGNORE(target_type->is_opt || !source_type->is_opt);
+		}
+		#endif
+		
+		return stack_top;
+	}
+
+	case TypeTag::Array:
+	{
+		TODO("Implement literal-to-array conversion");
+	}
+
+	case TypeTag::Composite:
+	{
+		TODO("Implement literal-to-composite conversion");
+	}
+
+	case TypeTag::INVALID:
+	case TypeTag::Divergent:
+	case TypeTag::TypeInfo:
+		ASSERT_UNREACHABLE;
+	}
+
+	ASSERT_UNREACHABLE;
+}
+
+static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 {
 	ASSERT_OR_IGNORE(is_valid(node->type_id));
 
@@ -398,9 +587,9 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node, TypeId target_typ
 		pop_stack_value(interp);
 
 		if (condition_value)
-			return evaluate_expr(interp, info.consequent, target_type_id);
+			return evaluate_expr(interp, info.consequent, type_id(node->type_id));
 		else if (is_some(info.alternative))
-			return evaluate_expr(interp, get_ptr(info.alternative), target_type_id);
+			return evaluate_expr(interp, get_ptr(info.alternative), type_id(node->type_id));
 		else
 			return alloc_stack_value(interp, 0, 1); // Void
 	}
@@ -425,139 +614,52 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node, TypeId target_typ
 
 	case AstTag::LitInteger:
 	{
-		const TypeTag target_type_tag = type_tag_from_id(interp->types, target_type_id);
-
 		const CompIntegerValue value = attachment_of<AstLitIntegerData>(node)->value;
 
 		// We overallocate in case of non-64-bit integers. That's fine, as
 		// stack slots are 8-byte aligned anyways.
-		void* const stack_value = alloc_stack_value(interp, 8, 8);
+		CompIntegerValue* const stack_value = static_cast<CompIntegerValue*>(alloc_stack_value(interp, 8, 8));
 
-		if (target_type_tag == TypeTag::CompInteger)
-		{
-			*static_cast<CompIntegerValue*>(stack_value) = value;
-		}
-		else
-		{
-			ASSERT_OR_IGNORE(target_type_tag == TypeTag::Integer);
-
-			const NumericType* const integer_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, target_type_id));
-
-			if (integer_type->is_signed)
-			{
-				s64 signed_value;
-
-				if (!s64_from_comp_integer(value, static_cast<u8>(integer_type->bits), &signed_value))
-					source_error(interp->errors, node->source_id, "Value of compile-time integer exceeds value range of target type.\n");
-
-				*static_cast<s64*>(stack_value) = signed_value;
-			}
-			else
-			{
-				u64 unsigned_value;
-
-				if (!u64_from_comp_integer(value, static_cast<u8>(integer_type->bits), &unsigned_value))
-					source_error(interp->errors, node->source_id, "Value of compile-time integer exceeds value range of target type.\n");
-
-				*static_cast<u64*>(stack_value) = unsigned_value;
-			}
-		}
+		*stack_value = value;
 
 		return stack_value;
 	}
 
 	case AstTag::LitFloat:
 	{
-		const TypeTag target_type_tag = type_tag_from_id(interp->types, target_type_id);
-
 		const CompFloatValue value = attachment_of<AstLitFloatData>(node)->value;
 
 		// We overallocate in case of f32. That's fine, as stack slots are
 		// 8-byte aligned anyways.
-		void* const stack_value = alloc_stack_value(interp, 8, 8);
+		CompFloatValue* const stack_value = static_cast<CompFloatValue*>(alloc_stack_value(interp, 8, 8));
 
-		if (target_type_tag == TypeTag::CompFloat)
-		{
-			*static_cast<CompFloatValue*>(stack_value) = value;
-		}
-		else
-		{
-			ASSERT_OR_IGNORE(target_type_tag == TypeTag::Float);
-
-			const NumericType* const float_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, target_type_id));
-
-			if (float_type->bits == 32)
-			{
-				*static_cast<f32*>(stack_value) = f32_from_comp_float(value);
-			}
-			else
-			{
-				ASSERT_OR_IGNORE(float_type->bits == 64);
-
-				*static_cast<f64*>(stack_value) = f64_from_comp_float(value);
-			}
-		}
+		*stack_value = value;
 
 		return stack_value;
 	}
 
 	case AstTag::LitChar:
 	{
-		const TypeTag target_type_tag = type_tag_from_id(interp->types, target_type_id);
-
 		const u32 value = attachment_of<AstLitCharData>(node)->codepoint;
 
 		// We overallocate in case of non-64-bit integers. That's fine, as
 		// stack slots are 8-byte aligned anyways.
-		void* const stack_value = alloc_stack_value(interp, 8, 8);
+		CompIntegerValue* const stack_value = static_cast<CompIntegerValue*>(alloc_stack_value(interp, 8, 8));
 
-		if (target_type_tag == TypeTag::CompInteger)
-		{
-			*static_cast<CompIntegerValue*>(stack_value) = comp_integer_from_u64(value);
-		}
-		else
-		{
-			ASSERT_OR_IGNORE(target_type_tag == TypeTag::Integer);
-
-			const NumericType* const integer_type = static_cast<const NumericType*>(primitive_type_structure(interp->types, target_type_id));
-
-			if (integer_type->bits < 32 && value >= static_cast<u32>(1) << (integer_type->is_signed ? integer_type->bits - 1 : integer_type->bits))
-				source_error(interp->errors, node->source_id, "Codepoint of character literal exceeds value range of target type.\n");
-
-			*static_cast<u64*>(stack_value) = value;
-		}
+		*stack_value = comp_integer_from_u64(value);
 
 		return stack_value;
 	}
 
 	case AstTag::LitString:
 	{
-		const TypeTag target_type_tag = type_tag_from_id(interp->types, target_type_id);
+		ArrayValue* const stack_value = static_cast<ArrayValue*>(alloc_stack_value(interp, sizeof(ArrayValue), alignof(ArrayValue)));
 
-		const u32* const value = static_cast<u32*>(global_value_from_id(interp->globals, attachment_of<AstLitStringData>(node)->string_value_id));
+		stack_value->value_ptr = global_value_from_id(interp->globals, attachment_of<AstLitStringData>(node)->string_value_id).address;
 
-		if (target_type_tag == TypeTag::Array)
-		{
-			char8* const stack_value = static_cast<char8*>(alloc_stack_value(interp, *value, 1));
+		ASSERT_OR_IGNORE((reinterpret_cast<u64>(stack_value->value_ptr) & 1) == 0);
 
-			memcpy(stack_value, value + 1, *value);
-
-			return stack_value;
-		}
-		else
-		{
-			ASSERT_OR_IGNORE(target_type_tag == TypeTag::Slice);
-
-			const ReferenceType* const slice_type = static_cast<const ReferenceType*>(primitive_type_structure(interp->types, target_type_id));
-
-			ASSERT_OR_IGNORE(!slice_type->is_mut);
-
-			Range<char8>* const stack_value = static_cast<Range<char8>*>(alloc_stack_value(interp, 16, 8));
-
-			*stack_value = { reinterpret_cast<const char8*>(value + 1), *value };
-
-			return stack_value;
-		}
+		return stack_value;
 	}
 
 	case AstTag::Call:
@@ -643,11 +745,22 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node, TypeId target_typ
 		if (callable.is_builtin)
 			result = interp->builtin_values[callable.code.ordinal](interp, node);
 		else
-			result = evaluate_expr(interp, ast_node_from_id(interp->asts, callable.code.ast), target_type_id);
+			result = evaluate_expr(interp, ast_node_from_id(interp->asts, callable.code.ast), type_id(node->type_id));
 
 		pop_activation_record(interp);
 
 		return result;
+	}
+
+	case AstTag::UOpLogNot:
+	{
+		AstNode* const operand = first_child_of(node);
+
+		bool* const operand_value = static_cast<bool*>(evaluate_expr(interp, operand, type_id(node->type_id)));
+
+		*operand_value = !*operand_value;
+
+		return operand_value;
 	}
 
 	case AstTag::OpCmpEQ:
@@ -715,7 +828,6 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node, TypeId target_typ
 	case AstTag::UOpAddr:
 	case AstTag::UOpDeref:
 	case AstTag::UOpBitNot:
-	case AstTag::UOpLogNot:
 	case AstTag::UOpTypeOptPtr:
 	case AstTag::UOpTypeVar:
 	case AstTag::UOpImpliedMember:
@@ -767,6 +879,27 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node, TypeId target_typ
 	}
 }
 
+static void* evaluate_expr(Interpreter* interp, AstNode* node, TypeId target_type_id) noexcept
+{
+	const TypeTag target_type_tag = type_tag_from_id(interp->types, target_type_id);
+
+	if (target_type_tag == TypeTag::TypeInfo)
+	{
+		TypeId* stack_top = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
+
+		*stack_top = type_id(node->type_id);
+
+		return stack_top;
+	}
+	else
+	{
+		void* const stack_top = evaluate_expr_impl(interp, node);
+
+		return implicit_convert(interp, stack_top, type_id(node->type_id), target_type_id, target_type_tag, node->source_id);
+
+	}
+}
+
 static GlobalValueId force_member_value(Interpreter* interp, const MemberInfo* member) noexcept
 {
 	if (!member->has_pending_value)
@@ -780,7 +913,7 @@ static GlobalValueId force_member_value(Interpreter* interp, const MemberInfo* m
 
 	void* const src = evaluate_expr(interp, ast_node_from_id(interp->asts, member->value.pending), member_type_id);
 
-	const GlobalValueId value_id = make_global_value(interp->globals, member_metrics.size, member_metrics.align, src);
+	const GlobalValueId value_id = make_global_value(interp->globals, with_assignability(member_type_id, member->is_global? member->is_mut : false), member_metrics.size, member_metrics.align, src);
 
 	set_incomplete_type_member_value_by_rank(interp->types, member->surrounding_type_id, member->rank, value_id);
 
@@ -1121,19 +1254,11 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 	{
 		const GlobalValueId string_value_id = attachment_of<AstLitStringData>(node)->string_value_id;
 
-		NumericType u8_type{};
-		u8_type.bits = 8;
-		u8_type.is_signed = false;
+		const GlobalValue string_value = global_value_from_id(interp->globals, string_value_id);
 
-		const TypeId u8_type_id = primitive_type(interp->types, TypeTag::Integer, range::from_object_bytes(&u8_type));
+		ASSERT_OR_IGNORE(type_tag_from_id(interp->types, type_id(string_value.type)) == TypeTag::Array);
 
-		ArrayType array_type;
-		array_type.element_type = u8_type_id;
-		array_type.element_count = *static_cast<u32*>(global_value_from_id(interp->globals, string_value_id));
-
-		const TypeId array_type_id = primitive_type(interp->types, TypeTag::Array, range::from_object_bytes(&array_type));
-
-		return with_assignability(array_type_id, false);
+		return string_value.type;
 	}
 
 	case AstTag::Call:
@@ -1833,6 +1958,8 @@ static TypeIdWithAssignability typecheck_expr(Interpreter* interp, AstNode* node
 		return node->type_id;
 	}
 
+	node->type_id = with_assignability(CHECKING_TYPE_ID, false);
+
 	const TypeIdWithAssignability result = typecheck_expr_impl(interp, node);
 
 	ASSERT_OR_IGNORE(is_valid(result));
@@ -2293,11 +2420,19 @@ static void init_builtin_values(Interpreter* interp) noexcept
 
 static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPool* identifiers, AstPool* asts) noexcept
 {
-	const GlobalValueId std_filepath_value_id = make_global_value(interp->globals, config->std.filepath.count() + 4, 4, nullptr);
+	NumericType u8_type{};
+	u8_type.bits = 8;
+	u8_type.is_signed = false;
 
-	u32* const std_filepath_value = static_cast<u32*>(global_value_from_id(interp->globals, std_filepath_value_id));
-	*std_filepath_value = static_cast<u32>(config->std.filepath.count());
-	memcpy(std_filepath_value + 1, config->std.filepath.begin(), config->std.filepath.count());
+	const TypeId u8_type_id = primitive_type(interp->types, TypeTag::Integer, range::from_object_bytes(&u8_type));
+
+	ArrayType array_of_u8_type{};
+	array_of_u8_type.element_type = u8_type_id;
+	array_of_u8_type.element_count = config->std.filepath.count();
+
+	const TypeId array_of_u8_type_id = primitive_type(interp->types, TypeTag::Array, range::from_object_bytes(&array_of_u8_type));
+
+	const GlobalValueId std_filepath_value_id = make_global_value(interp->globals, with_assignability(array_of_u8_type_id, false), config->std.filepath.count(), 1, config->std.filepath.begin());
 
 	const AstBuilderToken import_builtin = push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, static_cast<AstFlag>(Builtin::Import), AstTag::Builtin);
 

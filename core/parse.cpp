@@ -372,9 +372,13 @@ struct Lexer
 
 	bool is_std;
 
+	TypeId u8_type_id;
+
 	IdentifierPool* identifiers;
 
 	GlobalValuePool* globals;
+
+	TypePool* types;
 
 	ErrorSink* errors;
 };
@@ -933,12 +937,7 @@ static RawLexeme scan_char_token(Lexer* lexer) noexcept
 
 static RawLexeme scan_string_token(Lexer* lexer) noexcept
 {
-	struct
-	{
-		u32 size;
-
-		char8 string[MAX_STRING_LITERAL_BYTES];
-	} buffer;
+	char8 buffer[MAX_STRING_LITERAL_BYTES];
 
 	u32 buffer_index = 0;
 
@@ -955,7 +954,7 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 			if (buffer_index + bytes_to_copy > sizeof(buffer))
 					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
-			memcpy(buffer.string + buffer_index, copy_begin, bytes_to_copy);
+			memcpy(buffer + buffer_index, copy_begin, bytes_to_copy);
 
 			buffer_index += bytes_to_copy;
 
@@ -970,7 +969,7 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 				if (buffer_index + 1 > sizeof(buffer))
 					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
-				buffer.string[buffer_index] = static_cast<char8>(codepoint);
+				buffer[buffer_index] = static_cast<char8>(codepoint);
 
 				buffer_index += 1;
 			}
@@ -979,9 +978,9 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 				if (buffer_index + 2 > sizeof(buffer))
 					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
-				buffer.string[buffer_index] = static_cast<char8>((codepoint >> 6) | 0xC0);
+				buffer[buffer_index] = static_cast<char8>((codepoint >> 6) | 0xC0);
 
-				buffer.string[buffer_index + 1] = static_cast<char8>((codepoint & 0x3F) | 0x80);
+				buffer[buffer_index + 1] = static_cast<char8>((codepoint & 0x3F) | 0x80);
 
 				buffer_index += 2;
 			}
@@ -990,11 +989,11 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 				if (buffer_index + 3 > sizeof(buffer))
 					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
-				buffer.string[buffer_index] = static_cast<char8>((codepoint >> 12) | 0xE0);
+				buffer[buffer_index] = static_cast<char8>((codepoint >> 12) | 0xE0);
 
-				buffer.string[buffer_index + 1] = static_cast<char8>(((codepoint >> 6) & 0x3F) | 0x80);
+				buffer[buffer_index + 1] = static_cast<char8>(((codepoint >> 6) & 0x3F) | 0x80);
 
-				buffer.string[buffer_index + 2] = static_cast<char8>((codepoint & 0x3F) | 0x80);
+				buffer[buffer_index + 2] = static_cast<char8>((codepoint & 0x3F) | 0x80);
 
 				buffer_index += 3;
 			}
@@ -1005,18 +1004,18 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 				if (buffer_index + 4 > sizeof(buffer))
 					source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
-				buffer.string[buffer_index] = static_cast<char8>((codepoint >> 18) | 0xE0);
+				buffer[buffer_index] = static_cast<char8>((codepoint >> 18) | 0xE0);
 
-				buffer.string[buffer_index + 1] = static_cast<char8>(((codepoint >> 12) & 0x3F) | 0x80);
+				buffer[buffer_index + 1] = static_cast<char8>(((codepoint >> 12) & 0x3F) | 0x80);
 
-				buffer.string[buffer_index + 2] = static_cast<char8>(((codepoint >> 6) & 0x3F) | 0x80);
+				buffer[buffer_index + 2] = static_cast<char8>(((codepoint >> 6) & 0x3F) | 0x80);
 
-				buffer.string[buffer_index + 3] = static_cast<char8>((codepoint & 0x3F) | 0x80);
+				buffer[buffer_index + 3] = static_cast<char8>((codepoint & 0x3F) | 0x80);
 
 				buffer_index += 4;
 			}
 
-			copy_begin = buffer.string + buffer_index;
+			copy_begin = buffer + buffer_index;
 		}
 		else if (*curr == '\n')
 		{
@@ -1030,16 +1029,20 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 
 	const u32 bytes_to_copy = static_cast<u32>(curr - copy_begin);
 
-	if (buffer_index + bytes_to_copy > sizeof(buffer.string))
+	if (buffer_index + bytes_to_copy > sizeof(buffer))
 			source_error(lexer->errors, lexer->peek.source_id, "String constant is longer than the supported maximum of %u bytes\n", MAX_STRING_LITERAL_BYTES);
 
-	memcpy(buffer.string + buffer_index, copy_begin, bytes_to_copy);
+	memcpy(buffer + buffer_index, copy_begin, bytes_to_copy);
 
 	buffer_index += bytes_to_copy;
 
-	buffer.size = buffer_index;
+	ArrayType array_of_u8_type{};
+	array_of_u8_type.element_type = lexer->u8_type_id;
+	array_of_u8_type.element_count = buffer_index;
 
-	const GlobalValueId string_value_id = make_global_value(lexer->globals, sizeof(buffer.size) + buffer_index, 4, &buffer);
+	const TypeId array_of_u8_type_id = primitive_type(lexer->types, TypeTag::Array, range::from_object_bytes(&array_of_u8_type));
+
+	const GlobalValueId string_value_id = make_global_value(lexer->globals, with_assignability(array_of_u8_type_id, false), buffer_index, 1, buffer);
 
 	lexer->curr = curr + 1;
 
@@ -2713,13 +2716,19 @@ static void parse_file(Parser* parser) noexcept
 
 
 
-Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, AstPool* asts, ErrorSink* errors, minos::FileHandle log_file) noexcept
+Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors, minos::FileHandle log_file) noexcept
 {
+	NumericType u8_type{};
+	u8_type.bits = 8;
+	u8_type.is_signed = false;
+
 	Parser* const parser = static_cast<Parser*>(alloc_from_pool(pool, sizeof(Parser), alignof(Parser)));
 
-	parser->lexer.identifiers = identifiers;
 	parser->builder = asts;
+	parser->lexer.u8_type_id = primitive_type(types, TypeTag::Integer, range::from_object_bytes(&u8_type));
+	parser->lexer.identifiers = identifiers;
 	parser->lexer.globals = globals;
+	parser->lexer.types = types;
 	parser->lexer.errors = errors;
 	parser->log_file = log_file;
 
