@@ -373,8 +373,12 @@ SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id)
 		}
 	}
 
-	// Unreachable, as we have previously checked that we do not exceed the last entry.
-	ASSERT_UNREACHABLE;
+	// We cannot have lo == hi == reader->source_file_count - 1, as we have
+	// already checked that we do not exceed the last entry's beginning before
+	// entering the search loop.
+	ASSERT_OR_IGNORE(lo == 0 && hi == 0);
+
+	return &entries->data;
 }
 
 Range<char8> source_file_path(SourceReader* reader, SourceFile* source_file) noexcept
