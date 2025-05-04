@@ -1496,7 +1496,31 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 	if (header->head_offset == 0)
 		return { nullptr, nullptr, 0, INVALID_TYPE_ID };
 
-	return { type_builder_at_offset(&header->unused_, header->head_offset), name, 0, type_id };
+	u16 rank = 0;
+
+	TypeBuilder* builder = type_builder_at_offset(&header->unused_, header->head_offset);
+
+	while (rank != header->total_used)
+	{
+		const u16 index = rank & (array_count(builder->members) - 1);
+
+		const BuilderMember* const member = builder->members + index;
+
+		if (member->has_pending_type || member->has_pending_value)
+			break;
+
+		rank += 1;
+
+		if (index + 1 == array_count(builder->members) - 1)
+		{
+			if (builder->next_offset == 0)
+				return { nullptr, nullptr, 0, INVALID_TYPE_ID };
+			else
+				builder = type_builder_at_offset(builder, builder->next_offset);
+		}
+	}
+
+	return { builder, name, rank, type_id };
 }
 
 MemberInfo next(IncompleteMemberIterator* it) noexcept
@@ -1507,50 +1531,26 @@ MemberInfo next(IncompleteMemberIterator* it) noexcept
 
 	const u16 rank = it->rank;
 
-	it->rank += rank + 1;
+	it->rank = rank + 1;
 
-	const TypeBuilder* const builder = static_cast<const TypeBuilder*>(it->structure);
+	TypeBuilder* const builder = static_cast<TypeBuilder*>(it->structure);
 
 	const u16 index = rank & static_cast<u16>(array_count(builder->names) - 1);
 
+	if (static_cast<u16>(index + 1) == builder->used)
+	{
+		if (builder->next_offset == 0)
+			it->structure = nullptr;
+		else
+			it->structure = type_builder_at_offset(builder, builder->next_offset);
+	}
 	return member_info_from_builder_member(builder->members + index, it->type_id, builder->names[index], rank);
 }
 
-bool has_next(IncompleteMemberIterator* it) noexcept
+bool has_next(const IncompleteMemberIterator* it) noexcept
 {
-	if (it->structure == nullptr)
-		return false;
-
-	if (static_cast<TypeName*>(it->name)->structure_index_kind != TypeName::STRUCTURE_INDEX_BUILDER)
-	{
-		it->structure = nullptr;
-
-		return false;
-	}
-
-	TypeBuilder* builder = static_cast<TypeBuilder*>(it->structure);
-
-	u16 rank = it->rank;
-
-	while (true)
-	{
-		while (rank != builder->used)
-		{
-			if (builder->members[rank & static_cast<u16>(array_count(builder->names) - 1)].has_pending_type)
-				return true;
-
-				rank += 1;
-		}
-
-		if (builder->next_offset == 0)
-		{
-			it->structure = nullptr;
-
-			return false;
-		}
-
-		builder = type_builder_at_offset(builder, builder->next_offset);
-	}
+	return static_cast<TypeName*>(it->name)->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER
+	    && it->structure != nullptr;
 }
 
 MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
@@ -1565,7 +1565,12 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 
 		ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
 
-		return { data<CompositeType>(structure), nullptr, 0, type_id };
+		CompositeType* const composite = data<CompositeType>(structure);
+
+		if (composite->header.member_count == 0)
+			return { nullptr, nullptr, 0, INVALID_TYPE_ID };
+
+		return { composite, nullptr, 0, type_id };
 	}
 	else
 	{
@@ -1601,7 +1606,19 @@ MemberInfo next(MemberIterator* it) noexcept
 
 		const u32 index = rank & (array_count(builder->names) - 1);
 
-		return member_info_from_builder_member(builder->members + index, it->type_id, builder->names[index], rank);
+		const BuilderMember* const member = builder->members + index;
+
+		const IdentifierId name = builder->names[index];
+
+		if (index + 1 == builder->used)
+		{
+			if (builder->next_offset == 0)
+				it->structure = nullptr;
+			else
+				it->structure = type_builder_at_offset(builder, builder->next_offset);
+		}
+
+		return member_info_from_builder_member(member, it->type_id, name, rank);
 	}
 	else
 	{
@@ -1609,62 +1626,16 @@ MemberInfo next(MemberIterator* it) noexcept
 
 		const CompositeMember* const members = composite_members(composite);
 
-		return member_info_from_composite_member(members + rank, it->type_id, composite->names[rank], rank);
+		const IdentifierId name = composite->names[rank];
+
+		if (static_cast<u16>(rank + 1) == composite->header.member_count)
+			it->structure = nullptr;
+
+		return member_info_from_composite_member(members + rank, it->type_id, name, rank);
 	}
 }
 
-bool has_next(MemberIterator* it) noexcept
+bool has_next(const MemberIterator* it) noexcept
 {
-	if (it->structure == nullptr)
-		return false;
-
-	if (it->name != nullptr)
-	{
-		if (static_cast<TypeName*>(it->name)->structure_index_kind == TypeName::STRUCTURE_INDEX_NORMAL)
-		{
-			// TODO: Switch to newly completed TypeStructure. This is
-			//       problematic due to `curr` becoming basically meaningless,
-			//       meaning that member sorting might have to happen either in
-			//       `complete_type_builder` or even in
-			//       `add_open_type_member` using insertion sort.
-			panic("TODO");
-		}
-
-		TypeBuilder* builder = static_cast<TypeBuilder*>(it->structure);
-
-		const u16 index = it->rank & static_cast<u16>(array_count(builder->names) - 1);
-
-		if (index == builder->used)
-		{
-			if (builder->next_offset == 0)
-			{
-				it->structure = nullptr;
-
-				return false;
-			}
-
-			it->structure = type_builder_at_offset(builder, builder->next_offset);
-		}
-
-		return true;
-	}
-	else
-	{
-		CompositeType* const structure = static_cast<CompositeType*>(it->structure);
-
-		const u16 rank = it->rank;
-
-		ASSERT_OR_IGNORE(rank <= structure->header.member_count);
-
-		if (structure->header.member_count == rank)
-		{
-			it->structure = nullptr;
-
-			return false;
-		}
-
-		it->rank = rank;
-
-		return true;
-	}
+	return it->structure != nullptr;
 }

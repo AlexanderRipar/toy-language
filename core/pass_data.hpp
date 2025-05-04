@@ -1132,13 +1132,13 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 
 MemberInfo next(IncompleteMemberIterator* it) noexcept;
 
-bool has_next(IncompleteMemberIterator* it) noexcept;
+bool has_next(const IncompleteMemberIterator* it) noexcept;
 
 MemberIterator members_of(TypePool* types, TypeId type_id) noexcept;
 
 MemberInfo next(MemberIterator* it) noexcept;
 
-bool has_next(MemberIterator* it) noexcept;
+bool has_next(const MemberIterator* it) noexcept;
 
 
 
