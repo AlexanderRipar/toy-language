@@ -824,40 +824,6 @@ void release_type_pool(TypePool* types) noexcept
 	types->builders.release();
 }
 
-const char8* tag_name(TypeTag tag) noexcept
-{
-	static constexpr const char8* TYPE_TAG_NAMES[] = {
-		"[Unknown]",
-		"Void",
-		"Type",
-		"Definition",
-		"CompInteger",
-		"CompFloat",
-		"Integer",
-		"Float",
-		"Boolean",
-		"Slice",
-		"Ptr",
-		"Array",
-		"Func",
-		"Builtin",
-		"Composite",
-		"CompositeLiteral",
-		"ArrayLiteral",
-		"TypeBuilder",
-		"Variadic",
-		"Divergent",
-		"Trait",
-		"TypeInfo",
-	};
-
-	u8 index = static_cast<u8>(tag);
-
-	if (index > array_count(TYPE_TAG_NAMES))
-		index = 0;
-
-	return TYPE_TAG_NAMES[index];
-}
 
 TypeId primitive_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept
 {
@@ -898,27 +864,6 @@ TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, Sou
 	}
 
 	return TypeId{ types->named_types.index_from(name, fnv1a(range::from_object_bytes(&name))) };
-}
-
-IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept
-{
-	const TypeName* const name = types->named_types.value_from(type_id.rep);
-
-	return name->name_id;
-}
-
-SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept
-{
-	const TypeName* const name = types->named_types.value_from(type_id.rep);
-
-	return name->source_id;
-}
-
-TypeId type_lexical_parent_from_id(const TypePool* types, TypeId type_id) noexcept
-{
-	const TypeName* const name = types->named_types.value_from(type_id.rep);
-
-	return name->lexical_parent_type_id;
 }
 
 TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId source_id) noexcept
@@ -1131,99 +1076,6 @@ void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_
 	}
 }
 
-TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
-{
-	TypeName* const name = types->named_types.value_from(type_id.rep);
-
-	if (!resolve_name_structure(types, name))
-	{
-		const TypeBuilderHeader* const header = get_deferred_type_builder(types, name);
-
-		if (!header->is_closed)
-			panic("Tried getting align of type that was not closed.\n");
-
-		return { header->size, header->stride, header->align };
-	}
-
-	ASSERT_OR_IGNORE(name->structure_index_kind == TypeName::STRUCTURE_INDEX_NORMAL);
-
-	TypeStructure* const structure = types->structural_types.value_from(name->structure_index);
-
-	switch (structure->tag)
-	{
-	case TypeTag::Void:
-	case TypeTag::Builtin:
-		return { 0, 0, 1 };
-
-	case TypeTag::Boolean:
-		return { 1, 1, 1 };
-
-	case TypeTag::TypeBuilder:
-	case TypeTag::Type:
-	case TypeTag::TypeInfo:
-	case TypeTag::Definition:
-		return { 4, 4, 4 };
-
-	case TypeTag::CompInteger:
-	case TypeTag::CompFloat:
-	case TypeTag::Ptr:
-	case TypeTag::Func:
-		return { 8, 8, 8 };
-
-	case TypeTag::Slice:
-		return { 16, 16, 8 };
-
-	case TypeTag::Integer:
-	case TypeTag::Float:
-	{
-		const u32 all = next_pow2((data<NumericType>(structure)->bits + 7) / 8);
-
-		return { all, all, all };
-	}
-
-	case TypeTag::Composite:
-	{
-		const CompositeTypeHeader* const header = &data<CompositeType>(structure)->header;
-
-		return { header->size, header->stride, header->align };
-	}
-
-	case TypeTag::Array:
-	{
-		const ArrayType* const array = data<ArrayType>(structure);
-
-		const TypeMetrics element = type_metrics_from_id(types, array->element_type);
-
-		const u64 size = array->element_count == 0 ? 0 : (array->element_count - 1) * element.stride + element.size;
-
-		const u64 stride = array->element_count * element.stride;
-
-		return { size, stride, element.align };
-	}
-
-	case TypeTag::CompositeLiteral:
-	case TypeTag::ArrayLiteral:
-	case TypeTag::Variadic:
-	case TypeTag::Divergent:
-	case TypeTag::Trait:
-		panic("`type_metrics_from_id` is not yet implemented for `%s`.\n", tag_name(structure->tag));
-
-	case TypeTag::INVALID:
-		ASSERT_UNREACHABLE;
-	}
-
-	ASSERT_UNREACHABLE;
-}
-
-TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept
-{
-	TypeName* const name = types->named_types.value_from(type_id.rep);
-
-	if (!resolve_name_structure(types, name))
-		return TypeTag::Composite;
-
-	return types->structural_types.value_from(name->structure_index)->tag;
-}
 
 bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept
 {
@@ -1402,6 +1254,122 @@ TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 	return INVALID_TYPE_ID;
 }
 
+
+IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept
+{
+	const TypeName* const name = types->named_types.value_from(type_id.rep);
+
+	return name->name_id;
+}
+
+SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept
+{
+	const TypeName* const name = types->named_types.value_from(type_id.rep);
+
+	return name->source_id;
+}
+
+TypeId type_lexical_parent_from_id(const TypePool* types, TypeId type_id) noexcept
+{
+	const TypeName* const name = types->named_types.value_from(type_id.rep);
+
+	return name->lexical_parent_type_id;
+}
+
+TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
+{
+	TypeName* const name = types->named_types.value_from(type_id.rep);
+
+	if (!resolve_name_structure(types, name))
+	{
+		const TypeBuilderHeader* const header = get_deferred_type_builder(types, name);
+
+		if (!header->is_closed)
+			panic("Tried getting align of type that was not closed.\n");
+
+		return { header->size, header->stride, header->align };
+	}
+
+	ASSERT_OR_IGNORE(name->structure_index_kind == TypeName::STRUCTURE_INDEX_NORMAL);
+
+	TypeStructure* const structure = types->structural_types.value_from(name->structure_index);
+
+	switch (structure->tag)
+	{
+	case TypeTag::Void:
+	case TypeTag::Builtin:
+		return { 0, 0, 1 };
+
+	case TypeTag::Boolean:
+		return { 1, 1, 1 };
+
+	case TypeTag::TypeBuilder:
+	case TypeTag::Type:
+	case TypeTag::TypeInfo:
+	case TypeTag::Definition:
+		return { 4, 4, 4 };
+
+	case TypeTag::CompInteger:
+	case TypeTag::CompFloat:
+	case TypeTag::Ptr:
+	case TypeTag::Func:
+		return { 8, 8, 8 };
+
+	case TypeTag::Slice:
+		return { 16, 16, 8 };
+
+	case TypeTag::Integer:
+	case TypeTag::Float:
+	{
+		const u32 all = next_pow2((data<NumericType>(structure)->bits + 7) / 8);
+
+		return { all, all, all };
+	}
+
+	case TypeTag::Composite:
+	{
+		const CompositeTypeHeader* const header = &data<CompositeType>(structure)->header;
+
+		return { header->size, header->stride, header->align };
+	}
+
+	case TypeTag::Array:
+	{
+		const ArrayType* const array = data<ArrayType>(structure);
+
+		const TypeMetrics element = type_metrics_from_id(types, array->element_type);
+
+		const u64 size = array->element_count == 0 ? 0 : (array->element_count - 1) * element.stride + element.size;
+
+		const u64 stride = array->element_count * element.stride;
+
+		return { size, stride, element.align };
+	}
+
+	case TypeTag::CompositeLiteral:
+	case TypeTag::ArrayLiteral:
+	case TypeTag::Variadic:
+	case TypeTag::Divergent:
+	case TypeTag::Trait:
+		panic("`type_metrics_from_id` is not yet implemented for `%s`.\n", tag_name(structure->tag));
+
+	case TypeTag::INVALID:
+		ASSERT_UNREACHABLE;
+	}
+
+	ASSERT_UNREACHABLE;
+}
+
+TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept
+{
+	TypeName* const name = types->named_types.value_from(type_id.rep);
+
+	if (!resolve_name_structure(types, name))
+		return TypeTag::Composite;
+
+	return types->structural_types.value_from(name->structure_index)->tag;
+}
+
 bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId name, MemberInfo* out) noexcept
 {
 	FindByNameResult found;
@@ -1447,6 +1415,41 @@ const void* primitive_type_structure(TypePool* types, TypeId type_id) noexcept
 	panic("Called `primitive_type_structure` with non-primitive type.\n");
 }
 
+
+const char8* tag_name(TypeTag tag) noexcept
+{
+	static constexpr const char8* TYPE_TAG_NAMES[] = {
+		"[Unknown]",
+		"Void",
+		"Type",
+		"Definition",
+		"CompInteger",
+		"CompFloat",
+		"Integer",
+		"Float",
+		"Boolean",
+		"Slice",
+		"Ptr",
+		"Array",
+		"Func",
+		"Builtin",
+		"Composite",
+		"CompositeLiteral",
+		"ArrayLiteral",
+		"TypeBuilder",
+		"Variadic",
+		"Divergent",
+		"Trait",
+		"TypeInfo",
+	};
+
+	u8 index = static_cast<u8>(tag);
+
+	if (index > array_count(TYPE_TAG_NAMES))
+		index = 0;
+
+	return TYPE_TAG_NAMES[index];
+}
 
 
 IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) noexcept

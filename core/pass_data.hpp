@@ -1085,17 +1085,10 @@ TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept;
 
 void release_type_pool(TypePool* types) noexcept;
 
-const char8* tag_name(TypeTag tag) noexcept;
 
 TypeId primitive_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept;
 
 TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept;
-
-IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept;
-
-SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept;
-
-TypeId type_lexical_parent_from_id(const TypePool* types, TypeId type_id) noexcept;
 
 TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId source_id) noexcept;
 
@@ -1107,13 +1100,21 @@ void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_i
 
 void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_id, u16 rank, GlobalValueId member_value_id) noexcept;
 
-TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
-
-TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept;
 
 bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept;
 
 TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
+
+
+IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept;
+
+SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept;
+
+TypeId type_lexical_parent_from_id(const TypePool* types, TypeId type_id) noexcept;
+
+TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
+
+TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept;
 
 bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId member_name_id, MemberInfo* out) noexcept;
 
@@ -1121,6 +1122,8 @@ bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberI
 
 const void* primitive_type_structure(TypePool* types, TypeId type_id) noexcept;
 
+
+const char8* tag_name(TypeTag tag) noexcept;
 
 
 IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) noexcept;
