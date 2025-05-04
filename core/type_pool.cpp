@@ -1293,7 +1293,7 @@ SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept
 	return name->source_id;
 }
 
-TypeId type_lexical_parent_from_id(const TypePool* types, TypeId type_id) noexcept
+TypeId lexical_parent_type_from_id(const TypePool* types, TypeId type_id) noexcept
 {
 	const TypeName* const name = types->named_types.value_from(type_id.rep);
 

@@ -139,7 +139,7 @@ static void push_typechecker_context(Interpreter* interp, TypeId context) noexce
 
 	ASSERT_OR_IGNORE(context.rep != INVALID_TYPE_ID.rep);
 
-	ASSERT_OR_IGNORE(interp->contexts[interp->context_top].rep == type_lexical_parent_from_id(interp->types, context).rep);
+	ASSERT_OR_IGNORE(interp->contexts[interp->context_top].rep == lexical_parent_type_from_id(interp->types, context).rep);
 
 	interp->contexts[interp->context_top] = context;
 }
@@ -152,7 +152,7 @@ static void pop_typechecker_context(Interpreter* interp) noexcept
 
 	ASSERT_OR_IGNORE(old_context.rep != INVALID_TYPE_ID.rep);
 
-	const TypeId new_context = type_lexical_parent_from_id(interp->types, old_context);
+	const TypeId new_context = lexical_parent_type_from_id(interp->types, old_context);
 
 	ASSERT_OR_IGNORE(new_context.rep != INVALID_TYPE_ID.rep);
 
@@ -252,7 +252,7 @@ static MemberInfo lookup_identifier_definition(Interpreter* interp, IdentifierId
 		if (type_member_info_by_name(interp->types, context, identifier_id, &info))
 			return info;
 
-		context = type_lexical_parent_from_id(interp->types, context);
+		context = lexical_parent_type_from_id(interp->types, context);
 
 		if (context.rep == INVALID_TYPE_ID.rep)
 			break;
@@ -298,7 +298,7 @@ static void* lookup_identifier_value(Interpreter* interp, IdentifierId identifie
 			record = parent_activation_record(interp, record);
 		}
 
-		static_context = type_lexical_parent_from_id(interp->types, record->type_id);
+		static_context = lexical_parent_type_from_id(interp->types, record->type_id);
 	}
 	else
 	{

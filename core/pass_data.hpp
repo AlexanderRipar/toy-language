@@ -1112,7 +1112,7 @@ IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept;
 
 SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept;
 
-TypeId type_lexical_parent_from_id(const TypePool* types, TypeId type_id) noexcept;
+TypeId lexical_parent_type_from_id(const TypePool* types, TypeId type_id) noexcept;
 
 TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
 
