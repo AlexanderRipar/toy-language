@@ -240,10 +240,8 @@ static ActivationRecordDesc* parent_activation_record(Interpreter* interp, Activ
 
 
 
-static MemberInfo lookup_identifier_definition(Interpreter* interp, IdentifierId identifier_id, SourceId lookup_source) noexcept
+static MemberInfo lookup_identifier_definition_in_context(Interpreter* interp, TypeId context, IdentifierId identifier_id, SourceId lookup_source) noexcept
 {
-	TypeId context = curr_typechecker_context(interp);
-
 	while (true)
 	{
 		if (context == TypeId::INVALID)
@@ -263,6 +261,13 @@ static MemberInfo lookup_identifier_definition(Interpreter* interp, IdentifierId
 	const Range<char8> name = identifier_name_from_id(interp->identifiers, identifier_id);
 
 	source_error(interp->errors, lookup_source, "Could not find definition for identifier %.*s\n", static_cast<s32>(name.count()), name.begin());
+}
+
+static MemberInfo lookup_identifier_definition(Interpreter* interp, IdentifierId identifier_id, SourceId lookup_source) noexcept
+{
+	TypeId context = curr_typechecker_context(interp);
+
+	return lookup_identifier_definition_in_context(interp, context, identifier_id, lookup_source);
 }
 
 static void* lookup_identifier_value(Interpreter* interp, IdentifierId identifier_id, SourceId lookup_source) noexcept
@@ -307,7 +312,7 @@ static void* lookup_identifier_value(Interpreter* interp, IdentifierId identifie
 		static_context = curr_typechecker_context(interp);
 	}
 
-	MemberInfo member = lookup_identifier_definition(interp, identifier_id, lookup_source);
+	MemberInfo member = lookup_identifier_definition_in_context(interp, static_context, identifier_id, lookup_source);
 
 	if (!member.is_global)
 		source_error(interp->errors, lookup_source, "Cannot reference non-global member of lexical parent scope.\n");
