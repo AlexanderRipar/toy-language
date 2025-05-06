@@ -104,11 +104,13 @@ union ArrayValue
 
 
 
-static TypeIdWithAssignability force_member_type(Interpreter* interp, const MemberInfo* member) noexcept; 
+static void force_member_type(Interpreter* interp, MemberInfo* member) noexcept; 
 
-static GlobalValueId force_member_value(Interpreter* interp, const MemberInfo* member) noexcept; 
+static void force_member_value(Interpreter* interp, MemberInfo* member) noexcept; 
 
 static void* evaluate_expr(Interpreter* interp, AstNode* node, TypeId target_type_id) noexcept;
+
+static void* address_expr(Interpreter* interp, AstNode* node) noexcept;
 
 static TypeIdWithAssignability typecheck_expr(Interpreter* interp, AstNode* node) noexcept;
 
@@ -305,14 +307,14 @@ static void* lookup_identifier_value(Interpreter* interp, IdentifierId identifie
 		static_context = curr_typechecker_context(interp);
 	}
 
-	const MemberInfo member = lookup_identifier_definition(interp, identifier_id, lookup_source);
+	MemberInfo member = lookup_identifier_definition(interp, identifier_id, lookup_source);
 
 	if (!member.is_global)
 		source_error(interp->errors, lookup_source, "Cannot reference non-global member of lexical parent scope.\n");
 
-	const GlobalValueId member_value = force_member_value(interp, &member);
+	force_member_value(interp, &member);
 
-	return global_value_from_id(interp->globals, member_value).address;
+	return global_value_from_id(interp->globals, member.value.complete).address;
 }
 
 
@@ -353,9 +355,12 @@ static MemberInit member_init_from_definition(Interpreter* interp, TypeId lexica
 
 
 
-static void* alloc_stack_value(Interpreter* interp, u32 bytes, u32 align) noexcept
+static void* alloc_stack_value(Interpreter* interp, u64 size, u32 align) noexcept
 {
 	ASSERT_OR_IGNORE(is_pow2(align));
+
+	if (size > UINT32_MAX)
+		panic("Temporary value exceeds maximum size.\n");
 
 	const u32 old_top = interp->value_stack.used();
 
@@ -364,7 +369,7 @@ static void* alloc_stack_value(Interpreter* interp, u32 bytes, u32 align) noexce
 	if (align > 8)
 		interp->value_stack.pad_to_alignment(align);
 
-	return interp->value_stack.reserve_padded(bytes);
+	return interp->value_stack.reserve_padded(static_cast<u32>(size));
 }
 
 static void pop_stack_value(Interpreter* interp) noexcept
@@ -602,10 +607,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		const TypeMetrics metrics = type_metrics_from_id(interp->types, type_id(node->type_id));
 
-		if (metrics.size > UINT32_MAX)
-			source_error(interp->errors, node->source_id, "Size %" PRIu64 " of type exceeds maximum interpreter-stack-allocatable size %u.\n", UINT32_MAX);
-
-		void* const stack_value = alloc_stack_value(interp, static_cast<u32>(metrics.size), metrics.align);
+		void* const stack_value = alloc_stack_value(interp, metrics.size, metrics.align);
 
 		memcpy(stack_value, identifier_value, metrics.size);
 
@@ -678,7 +680,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		const TypeMetrics signature_metrics = type_metrics_from_id(interp->types, signature_type_id);
 
-		void* const temp_activation_record = alloc_stack_value(interp, static_cast<u32>(signature_metrics.size), signature_metrics.align);
+		void* const temp_activation_record = alloc_stack_value(interp, signature_metrics.size, signature_metrics.align);
 
 		AstNode* argument = callee;
 
@@ -763,6 +765,84 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		return operand_value;
 	}
 
+	case AstTag::OpMember:
+	{
+		AstNode* const lhs = first_child_of(node);
+
+		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, type_id(lhs->type_id));
+
+		AstNode* const rhs = next_sibling_of(lhs);
+
+		ASSERT_OR_IGNORE(rhs->tag == AstTag::Identifer);
+
+		const IdentifierId member_name = attachment_of<AstIdentifierData>(rhs)->identifier_id;
+
+		const void* member_address;
+
+		TypeMetrics member_metrics;
+
+		if (lhs_type_tag == TypeTag::Type)
+		{
+			const TypeId defined_type_id = *static_cast<TypeId*>(evaluate_expr(interp, lhs, type_id(lhs->type_id)));
+
+			pop_stack_value(interp);
+
+			MemberInfo member;
+	
+			if (!type_member_info_by_name(interp->types, defined_type_id, member_name, &member))
+			{
+				const Range<char8> name = identifier_name_from_id(interp->identifiers, member_name);
+
+				source_error(interp->errors, node->source_id, "Left-hand-side of member operator has member named '%.*s'", static_cast<s32>(name.count()), name.begin());
+			}
+	
+			if (!member.is_global)
+			{
+				const Range<char8> name = identifier_name_from_id(interp->identifiers, member_name);
+
+				source_error(interp->errors, node->source_id, "'%.*s' is not a global member of type-valued left-hand-side of member operator\n", static_cast<s32>(name.count()), name.begin());
+			}
+
+			force_member_value(interp, &member);
+
+			member_metrics = type_metrics_from_id(interp->types, member.type.complete);
+
+			member_address = global_value_from_id(interp->globals, member.value.complete).address;
+		}
+		else
+		{
+			MemberInfo member;
+
+			if (!type_member_info_by_name(interp->types, type_id(lhs->type_id), member_name, &member))
+			{
+				const Range<char8> name = identifier_name_from_id(interp->identifiers, member_name);
+
+				source_error(interp->errors, node->source_id, "Left-hand-side of member operator has member named '%.*s'", static_cast<s32>(name.count()), name.begin());
+			}
+
+			member_metrics = type_metrics_from_id(interp->types, member.type.complete);
+
+			if (member.is_global)
+			{
+				force_member_value(interp, &member);
+
+				member_address = global_value_from_id(interp->globals, member.value.complete).address;
+			}
+			else
+			{
+				void* const base_address = address_expr(interp, lhs);
+	
+				member_address = static_cast<byte*>(base_address) + member.offset;
+			}
+		}
+
+		void* const stack_value = alloc_stack_value(interp, member_metrics.size, member_metrics.align);
+
+		memcpy(stack_value, member_address, member_metrics.size);
+
+		return stack_value;
+	}
+
 	case AstTag::OpCmpEQ:
 	{
 		AstNode* const lhs = first_child_of(node);
@@ -808,7 +888,6 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::For:
 	case AstTag::ForEach:
 	case AstTag::Switch:
-	case AstTag::Case:
 	case AstTag::Func:
 	case AstTag::Trait:
 	case AstTag::Impl:
@@ -816,7 +895,6 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::Return:
 	case AstTag::Leave:
 	case AstTag::Yield:
-	case AstTag::ParameterList:
 	case AstTag::UOpTypeTailArray:
 	case AstTag::UOpTypeSlice:
 	case AstTag::UOpTypeMultiPtr:
@@ -849,7 +927,6 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::OpShiftR:
 	case AstTag::OpLogAnd:
 	case AstTag::OpLogOr:
-	case AstTag::OpMember:
 	case AstTag::OpCmpLT:
 	case AstTag::OpCmpGT:
 	case AstTag::OpCmpLE:
@@ -873,14 +950,21 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::OpArrayIndex:
 		panic("Evaluation of AST node type %s is not yet implemented.\n", tag_name(node->tag));
 
+	case AstTag::INVALID:
+	case AstTag::MAX:
 	case AstTag::File:
-	default:
-		ASSERT_UNREACHABLE;
+	case AstTag::Case:
+	case AstTag::ParameterList:
+		; // fallthrough to unreachable.
 	}
+
+	ASSERT_UNREACHABLE;
 }
 
 static void* evaluate_expr(Interpreter* interp, AstNode* node, TypeId target_type_id) noexcept
 {
+	ASSERT_OR_IGNORE(is_valid(target_type_id));
+
 	const TypeTag target_type_tag = type_tag_from_id(interp->types, target_type_id);
 
 	if (target_type_tag == TypeTag::TypeInfo)
@@ -900,20 +984,240 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node, TypeId target_typ
 	}
 }
 
-static GlobalValueId force_member_value(Interpreter* interp, const MemberInfo* member) noexcept
+static void* address_expr(Interpreter* interp, AstNode* node) noexcept
+{
+	ASSERT_OR_IGNORE(is_valid(node->type_id));
+
+	switch (node->tag)
+	{
+	case AstTag::Identifer:
+	{
+		return lookup_identifier_value(interp, attachment_of<AstIdentifierData>(node)->identifier_id, node->source_id);
+	}
+	
+	case AstTag::OpMember:
+	{
+		AstNode* const lhs = first_child_of(node);
+
+		void* const base_address = address_expr(interp, lhs);
+
+		AstNode* const rhs = next_sibling_of(lhs);
+
+		ASSERT_OR_IGNORE(rhs->tag == AstTag::Identifer);
+
+		const IdentifierId member_name = attachment_of<AstIdentifierData>(rhs)->identifier_id;
+
+		MemberInfo member;
+
+		if (!type_member_info_by_name(interp->types, type_id(lhs->type_id), member_name, &member))
+		{
+			const Range<char8> name = identifier_name_from_id(interp->identifiers, member_name);
+			
+			source_error(interp->errors, node->source_id, "Left-hand-side of member operator has no member named '%.*s'.\n", static_cast<s32>(name.count()), name.begin());
+		}
+
+		if (member.is_global)
+		{
+			force_member_value(interp, &member);
+
+			return global_value_from_id(interp->globals, member.value.complete).address;
+		}
+		else
+		{
+			return static_cast<byte*>(base_address) + member.offset;
+		}
+	}
+
+	case AstTag::OpArrayIndex:
+	{
+		AstNode* const lhs = first_child_of(node);
+
+		const TypeId lhs_type_id = type_id(lhs->type_id);
+
+		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_type_id);
+
+		void* base_address;
+
+		u64 stride;
+
+		u64 index_limit;
+
+		if (lhs_type_tag == TypeTag::Array)
+		{
+			const ArrayType* const array_type = static_cast<const ArrayType*>(simple_type_structure_from_id(interp->types, lhs_type_id));
+
+			base_address = address_expr(interp, lhs);
+
+			stride = type_metrics_from_id(interp->types, array_type->element_type).stride;
+
+			index_limit = array_type->element_count;
+		}
+		else if (lhs_type_tag == TypeTag::Ptr)
+		{
+			const ReferenceType* const ptr_type = static_cast<const ReferenceType*>(simple_type_structure_from_id(interp->types, lhs_type_id));
+
+			ASSERT_OR_IGNORE(ptr_type->is_multi && !ptr_type->is_opt);
+
+			base_address = evaluate_expr(interp, lhs, type_id(lhs->type_id));
+
+			pop_stack_value(interp);
+
+			stride = type_metrics_from_id(interp->types, ptr_type->referenced_type_id).stride;
+
+			index_limit = UINT64_MAX;
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(lhs_type_tag == TypeTag::Slice);
+
+			const ReferenceType* const slice_type = static_cast<const ReferenceType*>(simple_type_structure_from_id(interp->types, lhs_type_id));
+
+			MutRange<byte> slice_value = *static_cast<MutRange<byte>*>(evaluate_expr(interp, lhs, type_id(lhs->type_id)));
+
+			pop_stack_value(interp);
+			
+			base_address = slice_value.begin();
+
+			stride = type_metrics_from_id(interp->types, slice_type->referenced_type_id).stride;
+
+			const u64 slice_bytes = (reinterpret_cast<u64>(slice_value.end()) - reinterpret_cast<u64>(slice_value.begin()));
+
+			ASSERT_OR_IGNORE(slice_bytes % stride == 0);
+
+			index_limit = slice_bytes / stride;
+		}
+
+		AstNode* const rhs = next_sibling_of(lhs);
+
+		NumericType u64_type{};
+		u64_type.bits = 64;
+		u64_type.is_signed = false;
+
+		const TypeId u64_type_id = simple_type(interp->types, TypeTag::Integer, range::from_object_bytes(&u64_type));
+
+		const u64 index = *static_cast<const u64*>(evaluate_expr(interp, rhs, u64_type_id));
+
+		pop_stack_value(interp);
+
+		if (index >= index_limit)
+			source_error(interp->errors, node->source_id, "Index %" PRIu64 " exceeds maximum of %" PRIu64 ".\n", index, index_limit);
+
+		u64 byte_offset;
+
+		u64 address;
+
+		if (mul_overflow(stride, index, &byte_offset) || add_overflow(reinterpret_cast<u64>(base_address), byte_offset, &address))
+			source_error(interp->errors, node->source_id, "Address calculation overflowed.\n");
+
+		return reinterpret_cast<void*>(address);
+	}
+
+	case AstTag::Builtin:
+	case AstTag::CompositeInitializer:
+	case AstTag::ArrayInitializer:
+	case AstTag::Wildcard:
+	case AstTag::Where:
+	case AstTag::Expects:
+	case AstTag::Ensures:
+	case AstTag::Definition:
+	case AstTag::Block:
+	case AstTag::If:
+	case AstTag::For:
+	case AstTag::ForEach:
+	case AstTag::Switch:
+	case AstTag::Func:
+	case AstTag::Trait:
+	case AstTag::Impl:
+	case AstTag::Catch:
+	case AstTag::LitInteger:
+	case AstTag::LitFloat:
+	case AstTag::LitChar:
+	case AstTag::LitString:
+	case AstTag::Return:
+	case AstTag::Leave:
+	case AstTag::Yield:
+	case AstTag::Call:
+	case AstTag::UOpTypeTailArray:
+	case AstTag::UOpTypeSlice:
+	case AstTag::UOpTypeMultiPtr:
+	case AstTag::UOpTypeOptMultiPtr:
+	case AstTag::UOpEval:
+	case AstTag::UOpTry:
+	case AstTag::UOpDefer:
+	case AstTag::UOpDistinct:
+	case AstTag::UOpAddr:
+	case AstTag::UOpDeref:
+	case AstTag::UOpBitNot:
+	case AstTag::UOpLogNot:
+	case AstTag::UOpTypeOptPtr:
+	case AstTag::UOpTypeVar:
+	case AstTag::UOpImpliedMember:
+	case AstTag::UOpTypePtr:
+	case AstTag::UOpNegate:
+	case AstTag::UOpPos:
+	case AstTag::OpAdd:
+	case AstTag::OpSub:
+	case AstTag::OpMul:
+	case AstTag::OpDiv:
+	case AstTag::OpAddTC:
+	case AstTag::OpSubTC:
+	case AstTag::OpMulTC:
+	case AstTag::OpMod:
+	case AstTag::OpBitAnd:
+	case AstTag::OpBitOr:
+	case AstTag::OpBitXor:
+	case AstTag::OpShiftL:
+	case AstTag::OpShiftR:
+	case AstTag::OpLogAnd:
+	case AstTag::OpLogOr:
+	case AstTag::OpCmpLT:
+	case AstTag::OpCmpGT:
+	case AstTag::OpCmpLE:
+	case AstTag::OpCmpGE:
+	case AstTag::OpCmpNE:
+	case AstTag::OpCmpEQ:
+	case AstTag::OpSet:
+	case AstTag::OpSetAdd:
+	case AstTag::OpSetSub:
+	case AstTag::OpSetMul:
+	case AstTag::OpSetDiv:
+	case AstTag::OpSetAddTC:
+	case AstTag::OpSetSubTC:
+	case AstTag::OpSetMulTC:
+	case AstTag::OpSetMod:
+	case AstTag::OpSetBitAnd:
+	case AstTag::OpSetBitOr:
+	case AstTag::OpSetBitXor:
+	case AstTag::OpSetShiftL:
+	case AstTag::OpSetShiftR:
+	case AstTag::OpTypeArray:
+		panic("Addressation of AST node type %s is not yet implemented.\n", tag_name(node->tag));
+
+	case AstTag::INVALID:
+	case AstTag::MAX:
+	case AstTag::File:
+	case AstTag::Case:
+	case AstTag::ParameterList:
+		; // fallthrough to unreachable.
+	}
+
+	ASSERT_UNREACHABLE;
+}
+
+static void force_member_value(Interpreter* interp, MemberInfo* member) noexcept
 {
 	if (!member->has_pending_value)
-		return member->value.complete;
+		return;
 
 	set_typechecker_context(interp, member->completion_context_type_id);
 
-	const TypeId member_type_id = type_id(force_member_type(interp, member));
+	force_member_type(interp, member);
 
-	const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member_type_id);
+	const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member->type.complete);
 
-	void* const src = evaluate_expr(interp, ast_node_from_id(interp->asts, member->value.pending), member_type_id);
+	void* const src = evaluate_expr(interp, ast_node_from_id(interp->asts, member->value.pending), member->type.complete);
 
-	const GlobalValueId value_id = make_global_value(interp->globals, with_assignability(member_type_id, member->is_global? member->is_mut : false), member_metrics.size, member_metrics.align, src);
+	const GlobalValueId value_id = make_global_value(interp->globals, with_assignability(member->type.complete, member->is_global? member->is_mut : false), member_metrics.size, member_metrics.align, src);
 
 	set_incomplete_type_member_value_by_rank(interp->types, member->surrounding_type_id, member->rank, value_id);
 
@@ -921,13 +1225,14 @@ static GlobalValueId force_member_value(Interpreter* interp, const MemberInfo* m
 
 	unset_typechecker_context(interp);
 
-	return value_id;
+	member->has_pending_value = false;
+	member->value.complete = value_id;
 }
 
-static TypeIdWithAssignability force_member_type(Interpreter* interp, const MemberInfo* member) noexcept
+static void force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 {
 	if (!member->has_pending_type)
-		return with_assignability(member->type.complete, member->is_mut);
+		return;
 
 	ASSERT_OR_IGNORE(member->has_pending_value);
 
@@ -975,7 +1280,8 @@ static TypeIdWithAssignability force_member_type(Interpreter* interp, const Memb
 
 	unset_typechecker_context(interp);
 
-	return with_assignability(defined_type_id, member->is_mut);
+	member->has_pending_type = false;
+	member->type.complete = defined_type_id;
 }
 
 static void typecheck_where(Interpreter* interp, AstNode* node) noexcept
@@ -994,6 +1300,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 	case AstTag::CompositeInitializer:
 	case AstTag::ArrayInitializer:
 	case AstTag::Wildcard:
+	case AstTag::Where:
 	case AstTag::Expects:
 	case AstTag::Ensures:
 	case AstTag::Definition:
@@ -1009,7 +1316,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 	case AstTag::UOpTry:
 	case AstTag::UOpDefer:
 	case AstTag::UOpImpliedMember:
-		panic("Typechecking of AST node type %s is not yet implemented.\n", tag_name(node->tag));
+		source_error(interp->errors, node->source_id, "Typechecking of AST node type %s is not yet implemented.\n", tag_name(node->tag));
 
 	case AstTag::Builtin:
 	{
@@ -1232,7 +1539,9 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		MemberInfo member = lookup_identifier_definition(interp, identifier_id, node->source_id);
 
-		return force_member_type(interp, &member);
+		force_member_type(interp, &member);
+
+		return with_assignability(member.type.complete, member.is_mut);
 	}
 
 	case AstTag::LitInteger:
@@ -1709,9 +2018,9 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 				source_error(interp->errors, node->source_id, "Left-hand-side of `.` has no member \"%.*s\"", static_cast<s32>(name.count()), name.begin());
 			}
 
-			const TypeIdWithAssignability member_type_id = force_member_type(interp, &member);
+			force_member_type(interp, &member);
 
-			return with_assignability(type_id(member_type_id), is_assignable(lhs_type_id) && is_assignable(member_type_id));
+			return with_assignability(member.type.complete, member.is_mut && is_assignable(lhs_type_id));
 		}
 		else
 		{
@@ -1737,9 +2046,9 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 				source_error(interp->errors, node->source_id, "Non-global member %.*s cannot be referenced by its parent type.\n", static_cast<s32>(name.count()), name.begin());
 			}
 
-			const TypeIdWithAssignability member_type_id = force_member_type(interp, &member);
+			force_member_type(interp, &member);
 
-			return with_assignability(type_id(member_type_id), is_assignable(lhs_type_id) && is_assignable(member_type_id));
+			return with_assignability(member.type.complete, member.is_mut && is_assignable(lhs_type_id));
 		}
 	}
 
@@ -1939,16 +2248,21 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		return with_assignability(element_type_id, result_is_assignable);
 	}
 
-	case AstTag::ParameterList:
-	case AstTag::Case:
+	case AstTag::INVALID:
+	case AstTag::MAX:
 	case AstTag::File:
-	default:
-		ASSERT_UNREACHABLE;
+	case AstTag::Case:
+	case AstTag::ParameterList:
+		; // fallthrough to unreachable.
 	}
+
+	ASSERT_UNREACHABLE;
 }
 
 static TypeIdWithAssignability typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 {
+	ASSERT_OR_IGNORE(type_id(node->type_id).rep != NO_TYPE_TYPE_ID.rep);
+
 	if (type_id(node->type_id).rep == CHECKING_TYPE_ID.rep)
 	{
 		source_error(interp->errors, node->source_id, "Cyclic type dependency detected.\n");
