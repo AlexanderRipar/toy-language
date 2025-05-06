@@ -921,12 +921,12 @@ inline bool operator!=(AstNodeId lhs, AstNodeId rhs) noexcept
 	return lhs.rep != rhs.rep;
 }
 
-static inline bool operator==(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
+inline bool operator==(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
 {
 	return lhs.rep == rhs.rep;
 }
 
-static inline bool operator!=(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
+inline bool operator!=(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
 {
 	return lhs.rep != rhs.rep;
 }
