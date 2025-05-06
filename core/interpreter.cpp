@@ -1761,7 +1761,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		if (operand_type_tag != TypeTag::Type)
 			source_error(interp->errors, operand->source_id, "Operand of `%s` must be of type `Type`.\n", tag_name(node->tag));
 
-		return with_assignability(alias_type(interp->types, operand_type_id, true, operand->source_id, INVALID_IDENTIFIER_ID), false);
+		return with_assignability(alias_type(interp->types, operand_type_id, true, operand->source_id, IdentifierId::INVALID), false);
 	}
 
 	case AstTag::UOpAddr:

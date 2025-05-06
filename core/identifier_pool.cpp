@@ -92,7 +92,7 @@ void release_identifier_pool(IdentifierPool* identifiers) noexcept
 
 IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept
 {
-	return { identifiers->map.index_from(identifier, fnv1a(identifier.as_byte_range())) };
+	return IdentifierId{ identifiers->map.index_from(identifier, fnv1a(identifier.as_byte_range())) };
 }
 
 IdentifierId id_and_attachment_from_identifier(IdentifierPool* identifiers, Range<char8> identifier, u8* out_token) noexcept
@@ -101,7 +101,7 @@ IdentifierId id_and_attachment_from_identifier(IdentifierPool* identifiers, Rang
 
 	*out_token = entry->m_attachment;
 
-	return { identifiers->map.index_from(entry) };
+	return IdentifierId{ identifiers->map.index_from(entry) };
 }
 
 void identifier_set_attachment(IdentifierPool* identifiers, Range<char8> identifier, u8 attachment) noexcept
@@ -117,9 +117,9 @@ void identifier_set_attachment(IdentifierPool* identifiers, Range<char8> identif
 
 Range<char8> identifier_name_from_id(const IdentifierPool* identifiers, IdentifierId id) noexcept
 {
-	ASSERT_OR_IGNORE(id != INVALID_IDENTIFIER_ID);
+	ASSERT_OR_IGNORE(id != IdentifierId::INVALID);
 
-	const IdentifierEntry* const entry = identifiers->map.value_from(id.rep);
+	const IdentifierEntry* const entry = identifiers->map.value_from(static_cast<u32>(id));
 
 	return { entry->m_chars, entry->m_hash };
 }

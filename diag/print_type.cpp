@@ -13,11 +13,11 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 	const IdentifierId name_id = type_name_from_id(types, type_id);
 
-	const Range<char8> name = name_id == INVALID_IDENTIFIER_ID ? range::from_literal_string("UNNAMED") : identifier_name_from_id(identifiers, name_id);
+	const Range<char8> name = name_id == IdentifierId::INVALID ? range::from_literal_string("UNNAMED") : identifier_name_from_id(identifiers, name_id);
 
-	const char8 name_opener = name_id == INVALID_IDENTIFIER_ID ? '<' : '\"';
+	const char8 name_opener = name_id == IdentifierId::INVALID ? '<' : '\"';
 
-	const char8 name_closer = name_id == INVALID_IDENTIFIER_ID ? '>' : '\"';
+	const char8 name_closer = name_id == IdentifierId::INVALID ? '>' : '\"';
 
 	diag::buf_printf(ctx, "%*s%c%.*s%c %s",
 		skip_initial_indent ? 0 : indent * 2, "",

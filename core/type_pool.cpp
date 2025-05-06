@@ -272,7 +272,7 @@ struct TypeName
 	SourceId source_id;
 
 	// Name under which the type is created. If the type has no name,
-	// `INVALID_IDENTIFIER_ID`.
+	// `IdentifierId::INVALID`.
 	//
 	// This is needed for diagnostics.
 	IdentifierId name_id;
@@ -531,9 +531,9 @@ static u32 structure_index_from_complete_type_builder(TypePool* types, const Typ
 
 	// In case there is an odd number of members, there is a padding
 	// `IdentifierId` before the `TypeMembers`.
-	// Set this to `INVALID_IDENTIFIER_ID` for consistent hashing.
+	// Set this to `IdentifierId::INVALID` for consistent hashing.
 	if ((header->total_used & 1) != 0)
-		composite->names[header->total_used] = INVALID_IDENTIFIER_ID;
+		composite->names[header->total_used] = IdentifierId::INVALID;
 
 	// Hash the created composite into `TypeBuilder.structural_types`.
 
@@ -852,7 +852,7 @@ TypeId simple_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept
 	name.structure_index = structure_index;
 	name.structure_index_kind = TypeName::STRUCTURE_INDEX_NORMAL;
 	name.source_id = SourceId::INVALID;
-	name.name_id = INVALID_IDENTIFIER_ID;
+	name.name_id = IdentifierId::INVALID;
 	name.lexical_parent_type_id = TypeId::INVALID;
 
 	return TypeId{ types->named_types.index_from(name, fnv1a(range::from_object_bytes(&name))) };
@@ -899,7 +899,7 @@ TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId
 	name.structure_index = type_builder_difference(reinterpret_cast<TypeBuilder*>(types->builders.begin()), &header->unused_);
 	name.structure_index_kind = TypeName::STRUCTURE_INDEX_BUILDER;
 	name.source_id = source_id;
-	name.name_id = INVALID_IDENTIFIER_ID;
+	name.name_id = IdentifierId::INVALID;
 	name.lexical_parent_type_id = lexical_parent_type_id;
 
 	return TypeId{ types->named_types.index_from(name, fnv1a(range::from_object_bytes(&name))) };
@@ -907,7 +907,7 @@ TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId
 
 void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init) noexcept
 {
-	ASSERT_OR_IGNORE(init.name != INVALID_IDENTIFIER_ID);
+	ASSERT_OR_IGNORE(init.name != IdentifierId::INVALID);
 
 	ASSERT_OR_IGNORE(init.offset < (static_cast<s64>(1) << 59) && init.offset >= -(static_cast<s64>(1) << 59));
 

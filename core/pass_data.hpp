@@ -123,24 +123,12 @@ struct IdentifierPool;
 // Id used to refer to an identifier. Obtained from `id_from_identifier` or
 // `id_and_attachment_from_identifier` and usable with
 // `identifier_name_from_id` to retrieve associated name.
-struct IdentifierId
+enum class IdentifierId : u32
 {
-	u32 rep;
+	// Used to indicate that there is no identifier associated with a
+	// construct. No valid identifier will ever map to this `IdentifierId`.
+	INVALID = 0,
 };
-
-// Used to indicate that there is no identifier associated with a construct. No
-// valid identifier will ever map to this `IdentifierId`.
-static constexpr IdentifierId INVALID_IDENTIFIER_ID = { 0 };
-
-static inline bool operator==(IdentifierId lhs, IdentifierId rhs) noexcept
-{
-	return lhs.rep == rhs.rep;
-}
-
-static inline bool operator!=(IdentifierId lhs, IdentifierId rhs) noexcept
-{
-	return lhs.rep != rhs.rep;
-}
 
 // Creates an `IdentifierPool`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `IdentifierPool` can be freed using
