@@ -72,10 +72,6 @@ s32 main(s32 argc, const char8** argv)
 
 		const TypeId main_file_type_id = import_file(interp, config->entrypoint.filepath, false);
 
-		SourceLocation main_file_type_location = source_location_from_source_id(reader, type_source_from_id(types, main_file_type_id));
-
-		diag::print_type(minos::standard_file_handle(minos::StdFileName::StdOut), identifiers, types, main_file_type_id, &main_file_type_location);
-
 		release_config(config);
 
 		fprintf(stderr, "\nCompleted successfully\n");
