@@ -340,6 +340,17 @@ CompFloatValue comp_float_div(CompFloatValue lhs, CompFloatValue rhs) noexcept;
 // representing the result.
 CompFloatValue comp_float_neg(CompFloatValue value) noexcept;
 
+bool add_overflow(s64 a, s64 b, s64* out) noexcept;
+
+bool sub_overflow(s64 a, s64 b, s64* out) noexcept;
+
+bool mul_overflow(s64 a, s64 b, s64* out) noexcept;
+
+bool add_overflow(u64 a, u64 b, u64* out) noexcept;
+
+bool sub_overflow(u64 a, u64 b, u64* out) noexcept;
+
+bool mul_overflow(u64 a, u64 b, u64* out) noexcept;
 
 
 
