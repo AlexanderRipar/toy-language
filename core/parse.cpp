@@ -2745,7 +2745,7 @@ AstNode* parse(Parser* parser, Range<char8> content, SourceId source_id_base, bo
 	parser->lexer.begin = content.begin();
 	parser->lexer.end = content.end() - 1;
 	parser->lexer.curr = content.begin();
-	parser->lexer.source_id_base = source_id_base.m_rep;
+	parser->lexer.source_id_base = static_cast<u32>(source_id_base);
 	parser->lexer.peek.token = Token::EMPTY;
 	parser->lexer.is_std = is_std;
 

@@ -27,10 +27,7 @@ struct TypeIdWithAssignability
 // Id used to identify a particular source code location.
 // This encodes the location's file, line and column. See `SourceReader` for
 // further information.
-struct SourceId
-{
-	u32 m_rep;
-};
+enum class SourceId : u32;
 
 // Id used to reference values with global lifetime.
 // This includes the values of global variables, as well as default values. See
@@ -1029,6 +1026,11 @@ ForEachInfo get_foreach_info(AstNode* node) noexcept;
 
 struct SourceReader;
 
+enum class SourceId : u32
+{
+	INVALID = 0,
+};
+
 struct SourceFile
 {
 	minos::FileHandle file;
@@ -1059,18 +1061,6 @@ struct SourceLocation
 
 	char8 context[512];
 };
-
-static inline bool operator==(SourceId lhs, SourceId rhs) noexcept
-{
-	return lhs.m_rep == rhs.m_rep;
-}
-
-static inline bool operator!=(SourceId lhs, SourceId rhs) noexcept
-{
-	return lhs.m_rep != rhs.m_rep;
-}
-
-static constexpr SourceId INVALID_SOURCE_ID = { 0 };
 
 SourceReader* create_source_reader(AllocPool* pool) noexcept;
 

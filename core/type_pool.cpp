@@ -851,7 +851,7 @@ TypeId simple_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept
 	name.distinct_root_type_id = TypeId::INVALID;
 	name.structure_index = structure_index;
 	name.structure_index_kind = TypeName::STRUCTURE_INDEX_NORMAL;
-	name.source_id = INVALID_SOURCE_ID;
+	name.source_id = SourceId::INVALID;
 	name.name_id = INVALID_IDENTIFIER_ID;
 	name.lexical_parent_type_id = TypeId::INVALID;
 

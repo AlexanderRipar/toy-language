@@ -2338,7 +2338,7 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 
 static TypeId make_func_type_from_array(TypePool* types, TypeId return_type_id, u16 param_count, const FuncTypeParamHelper* params) noexcept
 {
-	const TypeId signature_type_id = create_open_type(types, TypeId::INVALID, INVALID_SOURCE_ID);
+	const TypeId signature_type_id = create_open_type(types, TypeId::INVALID, SourceId::INVALID);
 
 	u64 offset = 0;
 
@@ -2354,7 +2354,7 @@ static TypeId make_func_type_from_array(TypePool* types, TypeId return_type_id, 
 		init.name = params[i].name;
 		init.type.complete = params[i].type;
 		init.value.complete = INVALID_GLOBAL_VALUE_ID;
-		init.source = INVALID_SOURCE_ID;
+		init.source = SourceId::INVALID;
 		init.is_global = false;
 		init.is_pub = false;
 		init.is_use = false;
@@ -2401,9 +2401,9 @@ static TypeId make_func_type(TypePool* types, TypeId return_type_id, Params... p
 
 static void* builtin_integer(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
-	const u8 bits = *static_cast<u8*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("bits")), INVALID_SOURCE_ID));
+	const u8 bits = *static_cast<u8*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("bits")), SourceId::INVALID));
 
-	const bool is_signed = *static_cast<bool*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("is_signed")), INVALID_SOURCE_ID));
+	const bool is_signed = *static_cast<bool*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("is_signed")), SourceId::INVALID));
 
 	NumericType integer_type{};
 	integer_type.bits = bits;
@@ -2420,7 +2420,7 @@ static void* builtin_integer(Interpreter* interp, [[maybe_unused]] AstNode* call
 
 static void* builtin_float(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
-	const u8 bits = *static_cast<u8*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("bits")), INVALID_SOURCE_ID));
+	const u8 bits = *static_cast<u8*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("bits")), SourceId::INVALID));
 
 	NumericType float_type{};
 	float_type.bits = bits;
@@ -2448,7 +2448,7 @@ static void* builtin_type(Interpreter* interp, [[maybe_unused]] AstNode* call_no
 
 static void* builtin_typeof(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
-	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), INVALID_SOURCE_ID));
+	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), SourceId::INVALID));
 
 	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
 
@@ -2459,7 +2459,7 @@ static void* builtin_typeof(Interpreter* interp, [[maybe_unused]] AstNode* call_
 
 static void* builtin_returntypeof(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
-	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), INVALID_SOURCE_ID));
+	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), SourceId::INVALID));
 
 	const TypeTag arg_type_tag = type_tag_from_id(interp->types, arg_type_id);
 
@@ -2477,7 +2477,7 @@ static void* builtin_returntypeof(Interpreter* interp, [[maybe_unused]] AstNode*
 
 static void* builtin_sizeof(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
-	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), INVALID_SOURCE_ID));
+	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), SourceId::INVALID));
 
 	const TypeMetrics metrics = type_metrics_from_id(interp->types, arg_type_id);
 
@@ -2490,7 +2490,7 @@ static void* builtin_sizeof(Interpreter* interp, [[maybe_unused]] AstNode* call_
 
 static void* builtin_alignof(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
-	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), INVALID_SOURCE_ID));
+	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), SourceId::INVALID));
 
 	const TypeMetrics metrics = type_metrics_from_id(interp->types, arg_type_id);
 
@@ -2503,7 +2503,7 @@ static void* builtin_alignof(Interpreter* interp, [[maybe_unused]] AstNode* call
 
 static void* builtin_strideof(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
-	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), INVALID_SOURCE_ID));
+	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), SourceId::INVALID));
 
 	const TypeMetrics metrics = type_metrics_from_id(interp->types, arg_type_id);
 
@@ -2530,11 +2530,11 @@ static void* builtin_nameof(Interpreter* interp, [[maybe_unused]] AstNode* call_
 
 static void* builtin_import(Interpreter* interp, AstNode* call_node) noexcept
 {
-	const Range<char8> path = *static_cast<Range<char8>*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("path")), INVALID_SOURCE_ID));
+	const Range<char8> path = *static_cast<Range<char8>*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("path")), SourceId::INVALID));
 
-	const bool is_std = *static_cast<bool*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("is_std")), INVALID_SOURCE_ID));
+	const bool is_std = *static_cast<bool*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("is_std")), SourceId::INVALID));
 
-	const SourceId from = *static_cast<SourceId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("from")), INVALID_SOURCE_ID));
+	const SourceId from = *static_cast<SourceId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("from")), SourceId::INVALID));
 
 	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
 
@@ -2542,7 +2542,7 @@ static void* builtin_import(Interpreter* interp, AstNode* call_node) noexcept
 
 	Range<char8> absolute_path;
 
-	if (from != INVALID_SOURCE_ID)
+	if (from != SourceId::INVALID)
 	{
 		SourceFile* const source_file = source_file_from_source_id(interp->reader, from);
 
@@ -2753,37 +2753,37 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 
 	const GlobalValueId std_filepath_value_id = make_global_value(interp->globals, with_assignability(array_of_u8_type_id, false), config->std.filepath.count(), 1, config->std.filepath.begin());
 
-	const AstBuilderToken import_builtin = push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, static_cast<AstFlag>(Builtin::Import), AstTag::Builtin);
+	const AstBuilderToken import_builtin = push_node(asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, static_cast<AstFlag>(Builtin::Import), AstTag::Builtin);
 
-	push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstLitStringData{ std_filepath_value_id });
+	push_node(asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstLitStringData{ std_filepath_value_id });
 
-	const AstBuilderToken literal_zero = push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstLitIntegerData{ comp_integer_from_u64(0) });
+	const AstBuilderToken literal_zero = push_node(asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstLitIntegerData{ comp_integer_from_u64(0) });
 
-	push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstLitIntegerData{ comp_integer_from_u64(0) });
+	push_node(asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstLitIntegerData{ comp_integer_from_u64(0) });
 
-	push_node(asts, literal_zero, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::OpCmpEQ);
+	push_node(asts, literal_zero, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpCmpEQ);
 
-	const AstBuilderToken source_id_builtin = push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, static_cast<AstFlag>(Builtin::SourceId), AstTag::Builtin);
+	const AstBuilderToken source_id_builtin = push_node(asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, static_cast<AstFlag>(Builtin::SourceId), AstTag::Builtin);
 
-	push_node(asts, source_id_builtin, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::Call);
+	push_node(asts, source_id_builtin, SourceId::INVALID, AstFlag::EMPTY, AstTag::Call);
 
-	const AstBuilderToken import_call = push_node(asts, import_builtin, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::Call);
+	const AstBuilderToken import_call = push_node(asts, import_builtin, SourceId::INVALID, AstFlag::EMPTY, AstTag::Call);
 
-	const AstBuilderToken std_definition = push_node(asts, import_call, INVALID_SOURCE_ID, AstFlag::EMPTY, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
+	const AstBuilderToken std_definition = push_node(asts, import_call, SourceId::INVALID, AstFlag::EMPTY, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
 
-	const AstBuilderToken std_identifier = push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
+	const AstBuilderToken std_identifier = push_node(asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
 
-	push_node(asts, AST_BUILDER_NO_CHILDREN, INVALID_SOURCE_ID, AstFlag::EMPTY, AstIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("prelude")) });
+	push_node(asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("prelude")) });
 
-	const AstBuilderToken prelude_member = push_node(asts, std_identifier, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::OpMember);
+	const AstBuilderToken prelude_member = push_node(asts, std_identifier, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpMember);
 
-	push_node(asts, prelude_member, INVALID_SOURCE_ID, AstFlag::Definition_IsUse, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("prelude"))} );
+	push_node(asts, prelude_member, SourceId::INVALID, AstFlag::Definition_IsUse, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("prelude"))} );
 
-	push_node(asts, std_definition, INVALID_SOURCE_ID, AstFlag::EMPTY, AstTag::File);
+	push_node(asts, std_definition, SourceId::INVALID, AstFlag::EMPTY, AstTag::File);
 
 	AstNode* const prelude_ast = complete_ast(asts);
 
-	interp->prelude_type_id = type_from_file_ast(interp, prelude_ast, INVALID_SOURCE_ID);
+	interp->prelude_type_id = type_from_file_ast(interp, prelude_ast, SourceId::INVALID);
 
 	if (interp->log_file.m_rep != nullptr && interp->log_prelude)
 	{
