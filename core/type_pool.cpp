@@ -378,6 +378,8 @@ struct TypePool
 
 	s32 first_free_builder_index;
 
+	GlobalValuePool* globals;
+
 	ErrorSink* errors;
 };
 
@@ -786,7 +788,7 @@ static bool find_member_by_rank(TypePool* types, TypeId type_id, u16 rank, FindB
 
 
 
-TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept
+TypePool* create_type_pool(AllocPool* alloc, GlobalValuePool* globals, ErrorSink* errors) noexcept
 {
 	TypePool* const types = static_cast<TypePool*>(alloc_from_pool(alloc, sizeof(TypePool), alignof(TypePool)));
 
@@ -794,6 +796,7 @@ TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept
 	types->named_types.init(1 << 26, 1 << 10, 1 << 26, 1 << 13);
 	types->builders.init(1 << 15, 1 << 11);
 	types->first_free_builder_index = -1;
+	types->globals = globals;
 	types->errors = errors;
 
 	// Reserve `0` as `INVALID_TYPE_ID`, `1` as `CHECKING_TYPE_ID` and `2` as

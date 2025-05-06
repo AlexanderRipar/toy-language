@@ -16,10 +16,9 @@ struct GlobalValuePool
 	ReservedVec<ValueInfo> values;
 };
 
-GlobalValuePool* create_global_value_pool(AllocPool* alloc, TypePool* types) noexcept
+GlobalValuePool* create_global_value_pool(AllocPool* alloc) noexcept
 {
 	GlobalValuePool* const globals = static_cast<GlobalValuePool*>(alloc_from_pool(alloc, sizeof(GlobalValuePool), alignof(GlobalValuePool)));
-	globals->types = types;
 	globals->values.init(1 << 28, 1 << 11);
 
 	(void) globals->values.reserve_exact(sizeof(u64));

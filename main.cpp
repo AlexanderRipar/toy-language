@@ -60,9 +60,9 @@ s32 main(s32 argc, const char8** argv)
 
 		ErrorSink* const errors = create_error_sink(alloc, reader, identifiers);
 
-		TypePool* const types = create_type_pool(alloc, errors);
+		GlobalValuePool* const globals = create_global_value_pool(alloc);
 
-		GlobalValuePool* const globals = create_global_value_pool(alloc, types);
+		TypePool* const types = create_type_pool(alloc, globals, errors);
 
 		AstPool* const asts = create_ast_pool(alloc);
 

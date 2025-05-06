@@ -9,6 +9,8 @@ struct DummyTypePool
 
 	IdentifierPool* identifiers;
 
+	GlobalValuePool* globals;
+
 	ErrorSink* errors;
 
 	AllocPool* alloc;
@@ -22,11 +24,13 @@ static DummyTypePool create_dummy_types() noexcept
 
 	IdentifierPool* identifiers = create_identifier_pool(alloc);
 
+	GlobalValuePool* globals = create_global_value_pool(alloc);
+
 	ErrorSink* errors = create_error_sink(alloc, reader, identifiers);
 
-	TypePool* const types = create_type_pool(alloc, errors);
+	TypePool* const types = create_type_pool(alloc, globals, errors);
 
-	return { types, reader, identifiers, errors, alloc };
+	return { types, reader, identifiers, globals, errors, alloc };
 
 }
 
@@ -39,6 +43,8 @@ static void release_dummy_types(DummyTypePool dummy) noexcept
 	release_source_reader(dummy.reader);
 
 	release_identifier_pool(dummy.identifiers);
+
+	release_global_value_pool(dummy.globals);
 
 	release_alloc_pool(dummy.alloc);
 }

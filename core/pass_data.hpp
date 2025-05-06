@@ -913,6 +913,41 @@ void print_error(const SourceLocation* location, const char8* format, va_list ar
 
 
 
+struct GlobalValuePool;
+
+struct GlobalValue
+{
+	TypeIdWithAssignability type;
+
+	u32 bytes;
+
+	void* address;
+};
+
+static constexpr GlobalValueId INVALID_GLOBAL_VALUE_ID = { 0 };
+
+static inline bool operator==(GlobalValueId lhs, GlobalValueId rhs) noexcept
+{
+	return lhs.rep == rhs.rep;
+}
+
+static inline bool operator!=(GlobalValueId lhs, GlobalValueId rhs) noexcept
+{
+	return lhs.rep != rhs.rep;
+}
+
+GlobalValuePool* create_global_value_pool(AllocPool* alloc) noexcept;
+
+void release_global_value_pool(GlobalValuePool* globals) noexcept;
+
+GlobalValueId make_global_value(GlobalValuePool* globals, TypeIdWithAssignability type, u64 size, u32 align, const void* opt_initial_value) noexcept;
+
+GlobalValue global_value_from_id(GlobalValuePool* globals, GlobalValueId value_id) noexcept;
+
+
+
+
+
 struct TypePool;
 
 enum class TypeTag : u8
@@ -1092,7 +1127,7 @@ static constexpr TypeId CHECKING_TYPE_ID = { 1 };
 
 static constexpr TypeId NO_TYPE_TYPE_ID = { 2 };
 
-TypePool* create_type_pool(AllocPool* alloc, ErrorSink* errors) noexcept;
+TypePool* create_type_pool(AllocPool* alloc, GlobalValuePool* globals, ErrorSink* errors) noexcept;
 
 void release_type_pool(TypePool* types) noexcept;
 
@@ -1150,41 +1185,6 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept;
 MemberInfo next(MemberIterator* it) noexcept;
 
 bool has_next(const MemberIterator* it) noexcept;
-
-
-
-
-
-struct GlobalValuePool;
-
-struct GlobalValue
-{
-	TypeIdWithAssignability type;
-
-	u32 bytes;
-
-	void* address;
-};
-
-static constexpr GlobalValueId INVALID_GLOBAL_VALUE_ID = { 0 };
-
-static inline bool operator==(GlobalValueId lhs, GlobalValueId rhs) noexcept
-{
-	return lhs.rep == rhs.rep;
-}
-
-static inline bool operator!=(GlobalValueId lhs, GlobalValueId rhs) noexcept
-{
-	return lhs.rep != rhs.rep;
-}
-
-GlobalValuePool* create_global_value_pool(AllocPool* alloc, TypePool* types) noexcept;
-
-void release_global_value_pool(GlobalValuePool* globals) noexcept;
-
-GlobalValueId make_global_value(GlobalValuePool* globals, TypeIdWithAssignability type, u64 size, u32 align, const void* opt_initial_value) noexcept;
-
-GlobalValue global_value_from_id(GlobalValuePool* globals, GlobalValueId value_id) noexcept;
 
 
 
