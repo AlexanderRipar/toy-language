@@ -1062,7 +1062,7 @@ void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_
 {
 	ASSERT_OR_IGNORE(open_type_id != TypeId::INVALID);
 
-	ASSERT_OR_IGNORE(member_value_id != INVALID_GLOBAL_VALUE_ID);
+	ASSERT_OR_IGNORE(member_value_id != GlobalValueId::INVALID);
 
 	TypeName* const builder_name = types->named_types.value_from(static_cast<u32>(open_type_id));
 

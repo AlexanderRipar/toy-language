@@ -62,9 +62,9 @@ GlobalValueId make_global_value(GlobalValuePool* globals, TypeIdWithAssignabilit
 
 GlobalValue global_value_from_id(GlobalValuePool* globals, GlobalValueId value_id) noexcept
 {
-	ASSERT_OR_IGNORE(value_id.rep < globals->values.used());
+	ASSERT_OR_IGNORE(static_cast<u32>(value_id) < globals->values.used());
 
-	ValueInfo* info = globals->values.begin() + value_id.rep;
+	ValueInfo* info = globals->values.begin() + static_cast<u32>(value_id);
 
 	void* value;
 

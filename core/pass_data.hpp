@@ -32,10 +32,7 @@ enum class SourceId : u32;
 // Id used to reference values with global lifetime.
 // This includes the values of global variables, as well as default values. See
 // `GlobalValuePool` for further information
-struct GlobalValueId
-{
-	u32 rep;
-};
+enum class GlobalValueId : u32;
 
 
 
@@ -1104,6 +1101,11 @@ void print_error(const SourceLocation* location, const char8* format, va_list ar
 
 struct GlobalValuePool;
 
+enum class GlobalValueId : u32
+{
+	INVALID = 0,
+};
+
 struct GlobalValue
 {
 	TypeIdWithAssignability type;
@@ -1112,18 +1114,6 @@ struct GlobalValue
 
 	void* address;
 };
-
-static constexpr GlobalValueId INVALID_GLOBAL_VALUE_ID = { 0 };
-
-static inline bool operator==(GlobalValueId lhs, GlobalValueId rhs) noexcept
-{
-	return lhs.rep == rhs.rep;
-}
-
-static inline bool operator!=(GlobalValueId lhs, GlobalValueId rhs) noexcept
-{
-	return lhs.rep != rhs.rep;
-}
 
 GlobalValuePool* create_global_value_pool(AllocPool* alloc) noexcept;
 

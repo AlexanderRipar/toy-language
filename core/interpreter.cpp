@@ -2353,7 +2353,7 @@ static TypeId make_func_type_from_array(TypePool* types, TypeId return_type_id, 
 		MemberInit init{};
 		init.name = params[i].name;
 		init.type.complete = params[i].type;
-		init.value.complete = INVALID_GLOBAL_VALUE_ID;
+		init.value.complete = GlobalValueId::INVALID;
 		init.source = SourceId::INVALID;
 		init.is_global = false;
 		init.is_pub = false;
