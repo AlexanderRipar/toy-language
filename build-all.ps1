@@ -25,13 +25,13 @@ if ($IsLinux)
 	$specs = @(
 		@{
 			jobname = 'build-clang-linux'
-			command = 'cmake -S . -B build_clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang' + 
-			      ' && cmake --build build_clang --target ' + $targets + ' 2>&1'
+			command = 'cmake -S . -B build/clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang' +
+			      ' && cmake --build build/clang --target ' + $targets + ' 2>&1'
 		},
 		@{
 			jobname = 'build-gcc-linux'
-			command = 'cmake -S . -B build_gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc' +
-			      ' && cmake --build build_gcc --target ' + $targets + ' 2>&1'
+			command = 'cmake -S . -B build/gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc' +
+			      ' && cmake --build build/gcc --target ' + $targets + ' 2>&1'
 		}
 	)
 }
@@ -40,18 +40,18 @@ elseif ($IsWindows)
 	$specs = @(
 		@{
 			jobname = 'build-clang-linux'
-			command = 'wsl -- cmake -S . -B build_clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang' + 
-			           ' `&`& cmake --build build_clang --target ' + $targets + ' 2`>`&1'
+			command = 'wsl -- cmake -S . -B build/clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang' +
+			           ' `&`& cmake --build build/clang --target ' + $targets + ' 2`>`&1'
 		},
 		@{
 			jobname = 'build-gcc-linux'
-			command = 'wsl -- cmake -S . -B build_gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc' +
-			           ' `&`& cmake --build build_gcc --target ' + $targets + ' 2`>`&1'
+			command = 'wsl -- cmake -S . -B build/gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc' +
+			           ' `&`& cmake --build build/gcc --target ' + $targets + ' 2`>`&1'
 		},
 		@{
 			jobname = 'build-msvc-windows'
-			command = 'cmake -S . -B build_msvc -DCMAKE_CXX_COMPILER=msvc -DCMAKE_C_COMPILER=msvc' +
-			      ' && cmake --build build_msvc --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
+			command = 'cmake -S . -B build/msvc -DCMAKE_CXX_COMPILER=msvc -DCMAKE_C_COMPILER=msvc' +
+			      ' && cmake --build build/msvc --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
 		}
 	)
 }
