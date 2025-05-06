@@ -1106,7 +1106,7 @@ static void* address_expr(Interpreter* interp, AstNode* node) noexcept
 
 		u64 address;
 
-		if (!mul_overflow(stride, index, &byte_offset) || add_overflow(reinterpret_cast<u64>(base_address), byte_offset, &address))
+		if (!mul_checked(stride, index, &byte_offset) || add_checked(reinterpret_cast<u64>(base_address), byte_offset, &address))
 			source_error(interp->errors, node->source_id, "Address calculation overflowed.\n");
 
 		return reinterpret_cast<void*>(address);

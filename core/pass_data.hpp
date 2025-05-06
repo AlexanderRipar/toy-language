@@ -347,32 +347,32 @@ CompFloatValue comp_float_neg(CompFloatValue value) noexcept;
 // Adds the signed 64-bit values `a` and `b`, returning `false` and
 // leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
 // the result and `true` is returned.
-bool add_overflow(s64 a, s64 b, s64* out) noexcept;
+bool add_checked(s64 a, s64 b, s64* out) noexcept;
 
 // Subtracts the signed 64-bit values `a` and `b`, returning `false` and
 // leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
 // the result and `true` is returned.
-bool sub_overflow(s64 a, s64 b, s64* out) noexcept;
+bool sub_checked(s64 a, s64 b, s64* out) noexcept;
 
 // Multiplies the signed 64-bit values `a` and `b`, returning `false` and
 // leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
 // the result and `true` is returned.
-bool mul_overflow(s64 a, s64 b, s64* out) noexcept;
+bool mul_checked(s64 a, s64 b, s64* out) noexcept;
 
 // Adds the unsigned 64-bit values `a` and `b`, returning `false` and
 // leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
 // the result and `true` is returned.
-bool add_overflow(u64 a, u64 b, u64* out) noexcept;
+bool add_checked(u64 a, u64 b, u64* out) noexcept;
 
 // Subtracts the unsigned 64-bit values `a` and `b`, returning `false` and
 // leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
 // the result and `true` is returned.
-bool sub_overflow(u64 a, u64 b, u64* out) noexcept;
+bool sub_checked(u64 a, u64 b, u64* out) noexcept;
 
 // Multiplies the unsigned 64-bit values `a` and `b`, returning `false` and
 // leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
 // the result and `true` is returned.
-bool mul_overflow(u64 a, u64 b, u64* out) noexcept;
+bool mul_checked(u64 a, u64 b, u64* out) noexcept;
 
 
 

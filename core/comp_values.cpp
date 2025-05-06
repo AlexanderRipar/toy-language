@@ -5,17 +5,17 @@
 #if defined(COMPILER_MSVC)
 	#include <intrin.h>
 
-	bool add_overflow(s64 a, s64 b, s64* out) noexcept
+	bool add_checked(s64 a, s64 b, s64* out) noexcept
 	{
 		return !_addcarry_u64(0, static_cast<u64>(a), static_cast<u64>(b), reinterpret_cast<u64*>(out)) != 0;
 	}
 
-	bool sub_overflow(s64 a, s64 b, s64* out) noexcept
+	bool sub_checked(s64 a, s64 b, s64* out) noexcept
 	{
 		return !_subborrow_u64(0, static_cast<u64>(a), static_cast<u64>(b), reinterpret_cast<u64*>(out)) != 0;
 	}
 
-	bool mul_overflow(s64 a, s64 b, s64* out) noexcept
+	bool mul_checked(s64 a, s64 b, s64* out) noexcept
 	{
 		s64 overflow;
 
@@ -24,17 +24,17 @@
 		return overflow == 0;
 	}
 
-	bool add_overflow(u64 a, u64 b, u64* out) noexcept
+	bool add_checked(u64 a, u64 b, u64* out) noexcept
 	{
 		return _addcarry_u64(0, a, b, out) == 0;
 	}
 
-	bool sub_overflow(u64 a, u64 b, u64* out) noexcept
+	bool sub_checked(u64 a, u64 b, u64* out) noexcept
 	{
 		return _subborrow_u64(0, a, b, out) == 0;
 	}
 
-	bool mul_overflow(u64 a, u64 b, u64* out) noexcept
+	bool mul_checked(u64 a, u64 b, u64* out) noexcept
 	{
 		u64 overflow;
 
@@ -43,32 +43,32 @@
 		return overflow == 0;
 	}
 #elif defined(COMPILER_GCC) || defined(COMPILER_CLANG)
-	bool add_overflow(s64 a, s64 b, s64* out) noexcept
+	bool add_checked(s64 a, s64 b, s64* out) noexcept
 	{
 		return !__builtin_add_overflow(a, b, out);
 	}
 
-	bool sub_overflow(s64 a, s64 b, s64* out) noexcept
+	bool sub_checked(s64 a, s64 b, s64* out) noexcept
 	{
 		return !__builtin_sub_overflow(a, b, out);
 	}
 
-	bool mul_overflow(s64 a, s64 b, s64* out) noexcept
+	bool mul_checked(s64 a, s64 b, s64* out) noexcept
 	{
 		return !__builtin_mul_overflow(a, b, out);
 	}
 
-	bool add_overflow(u64 a, u64 b, u64* out) noexcept
+	bool add_checked(u64 a, u64 b, u64* out) noexcept
 	{
 		return !__builtin_add_overflow(a, b, out);
 	}
 
-	bool sub_overflow(u64 a, u64 b, u64* out) noexcept
+	bool sub_checked(u64 a, u64 b, u64* out) noexcept
 	{
 		return !__builtin_sub_overflow(a, b, out);
 	}
 
-	bool mul_overflow(u64 a, u64 b, u64* out) noexcept
+	bool mul_checked(u64 a, u64 b, u64* out) noexcept
 	{
 		return !__builtin_mul_overflow(a, b, out);
 	}
@@ -170,7 +170,7 @@ CompIntegerValue comp_integer_add(CompIntegerValue lhs, CompIntegerValue rhs) no
 
 	s64 result;
 
-	if (!add_overflow(static_cast<s64>(lhs.rep), static_cast<s64>(rhs.rep), &result))
+	if (!add_checked(static_cast<s64>(lhs.rep), static_cast<s64>(rhs.rep), &result))
 		panic("Value of subtraction of `CompIntegerValue`s exceeds currently supported maximum value.\n");
 
 	return { static_cast<u64>(result) };
@@ -183,7 +183,7 @@ CompIntegerValue comp_integer_sub(CompIntegerValue lhs, CompIntegerValue rhs) no
 
 	s64 result;
 
-	if (!sub_overflow(static_cast<s64>(lhs.rep), static_cast<s64>(rhs.rep), &result))
+	if (!sub_checked(static_cast<s64>(lhs.rep), static_cast<s64>(rhs.rep), &result))
 		panic("Value of subtraction of `CompIntegerValue`s exceeds currently supported maximum value.\n");
 
 	return { static_cast<u64>(result) };
@@ -196,7 +196,7 @@ CompIntegerValue comp_integer_mul(CompIntegerValue lhs, CompIntegerValue rhs) no
 
 	s64 result;
 
-	if (!mul_overflow(static_cast<s64>(lhs.rep), static_cast<s64>(rhs.rep) >> 1, &result))
+	if (!mul_checked(static_cast<s64>(lhs.rep), static_cast<s64>(rhs.rep) >> 1, &result))
 		panic("Value of multiplication of `CompIntegerValue`s exceeds currently supported maximum value.\n");
 
 	return { static_cast<u64>(result) };
