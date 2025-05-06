@@ -544,6 +544,9 @@ struct AstNodeId
 // `preorder_ancestors_of` or `postorder_ancestors_of`) or via
 // `first_child_of`. The presence of children can be checked via the
 // `has_children` function.
+//
+// Following siblings should accessed via `next_sibling_of`. The presence of
+// additional siblings can be checked via the `has_next_sibling` function.
 struct AstNode
 {
 	// Values for `internal_flags`. See that for further information.
@@ -769,66 +772,120 @@ struct AstBlockData
 	TypeId scope_type_id;
 };
 
+// Neatly structured summary of the child structure of an `AstNode` with tag
+// `AstTag::Func`. To obtain this for a given node, call `get_func_info`.
 struct FuncInfo
 {
+	// `AstNode` with tag `AstTag::ParameterList` containing the function's
+	// argument definitions as its children.
 	AstNode* parameters;
 
+	// Optional `AstNode` containing the function's return type expression if
+	// it has one.
 	OptPtr<AstNode> return_type;
 
+	// Optional `AstNode` with tag `AstTag::Expects` containing the function's
+	// `expects` clause if it has one.
 	OptPtr<AstNode> expects;
 
+	// Optional `AstNode` with tag `AstTag::Ensures` containing the function's
+	// `ensures` clause if it has one.
 	OptPtr<AstNode> ensures;
 
+	// optional `AstNode` containing the function's body if it has one.
 	OptPtr<AstNode> body;
 };
 
+// Neatly structured summary of the child structure of an `AstNode` with tag
+// `AstTag::Definition`. To obtain this for a given node, call
+// `get_defintion_info`.
 struct DefinitionInfo
 {
+	// An optional `AstNode` containing the definition's explicit type
+	// expression if it has one.
 	OptPtr<AstNode> type;
 
+	// An optional `AstNode` containing the definition's value expression if it
+	// has one.
 	OptPtr<AstNode> value;
 };
 
+// Neatly structured summary of the child structure of an `AstNode` with tag
+// `AstTag::If`. To obtain this for a given node, call `get_if_info`.
 struct IfInfo
 {
+	// `AstNode` containing the if's condition.
 	AstNode* condition;
 
+	// `AstNode` containing the if's consequent, i.e., the expression that is
+	// executed if the condition evaluated to `true`. In other words, the
+	// `then` branch.
 	AstNode* consequent;
 
+	// Optional `AstNode` containing the if's alternative, i.e., the expression
+	// executed if the condition evaluted to `false`. In other words, the
+	// `else` branch. If there is no alternative, this is `none`.
 	OptPtr<AstNode> alternative;
 
+	// Optional `AstNode` with tag `AstTag::Where` containing the if's `where`
+	// clause if it has one.
 	OptPtr<AstNode> where;
 };
 
+// Neatly structured summary of the child structure of an `AstNode` with tag
+// `AstTag::For`. To obtain this for a given node, call `get_for_info`.
 struct ForInfo
 {
+	// `AstNode` containing the for's condition.
 	AstNode* condition;
 
+	// Optional `AstNode` containing the for's step if it has one.
 	OptPtr<AstNode> step;
 
+	// Optional `AstNode` with tag `AstTag::Where` containing the for's `where`
+	// clause if it has one.
 	OptPtr<AstNode> where;
 
+	// `AstNode` containing the for's body.
 	AstNode* body;
 
+	// Optional `AstNode` containing the for's `finally` clause if it has one.
 	OptPtr<AstNode> finally;
 };
 
+// Neatly structured summary of the child structure of an `AstNode` with tag
+// `AstTag::ForEach`. To obtain this for a given node, call `get_foreach_info`.
 struct ForEachInfo
 {
+	// `AstNode` with tag `AstTag::Definition` containing the foreach's element
+	// definition.
 	AstNode* element;
 
+	// Optional `AstNode` with tag `AstTag::Defintion` containing the foreach's
+	// index definition if it has one.
 	OptPtr<AstNode> index;
 
+	// `AstNode` containing the expression over which the foreach is iterating.
 	AstNode* iterated;
 
+	// Optional `AstNode` with tag `AstTag::Where` containing the foreach's
+	// `where` clause if it has one.
 	OptPtr<AstNode> where;
 
+	// `AstNode` containing the foreach's body.
 	AstNode* body;
 
+	// `AstNode` containing the foreach's `finally` clause if it has one.
 	OptPtr<AstNode> finally;
 };
 
+// `AstBuilderToken` value used to indicate that a node created by
+// `push_node` has no children. This will never be returned from `push_node`.
+// See `push_node` for further information.
 static constexpr AstBuilderToken AST_BUILDER_NO_CHILDREN = { ~0u };
+
+// `AstNodeId` value used to indicate that there is no `AstNode` to represent.
+static constexpr AstNodeId INVALID_AST_NODE_ID = { 0 };
 
 inline AstFlag operator|(AstFlag lhs, AstFlag rhs) noexcept
 {
@@ -873,8 +930,6 @@ static inline bool operator!=(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
 {
 	return lhs.rep != rhs.rep;
 }
-
-static constexpr AstNodeId INVALID_AST_NODE_ID = { 0 };
 
 AstPool* create_ast_pool(AllocPool* pool) noexcept;
 
