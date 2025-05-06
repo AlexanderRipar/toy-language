@@ -886,6 +886,7 @@ inline AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
 	return lhs;
 }
 
+
 AstPool* create_ast_pool(AllocPool* pool) noexcept;
 
 void release_ast_pool(AstPool* asts) noexcept;
@@ -893,6 +894,7 @@ void release_ast_pool(AstPool* asts) noexcept;
 AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept;
 
 AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept;
+
 
 static inline AstNode* apply_offset_(AstNode* node, ureg offset) noexcept
 {
@@ -950,6 +952,33 @@ static inline const T* attachment_of(const AstNode* node) noexcept
 	return reinterpret_cast<const T*>(node + 1);
 }
 
+
+AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag) noexcept;
+
+AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_dwords, const void* attachment) noexcept;
+
+template<typename T>
+static inline AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, T attachment) noexcept
+{
+	static_assert(sizeof(T) % sizeof(u32) == 0);
+
+	return push_node(asts, first_child, source_id, flags, T::TAG, sizeof(attachment) / sizeof(u32), &attachment);
+}
+
+AstNode* complete_ast(AstPool* asts) noexcept;
+
+
+FuncInfo get_func_info(AstNode* func) noexcept;
+
+DefinitionInfo get_definition_info(AstNode* definition) noexcept;
+
+IfInfo get_if_info(AstNode* node) noexcept;
+
+ForInfo get_for_info(AstNode* node) noexcept;
+
+ForEachInfo get_foreach_info(AstNode* node) noexcept;
+
+
 static inline bool is_valid(AstIterationResult result) noexcept
 {
 	return result.node != nullptr;
@@ -967,31 +996,8 @@ AstPostorderIterator postorder_ancestors_of(AstNode* node) noexcept;
 
 AstIterationResult next(AstPostorderIterator* iterator) noexcept;
 
-AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag) noexcept;
-
-AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_dwords, const void* attachment) noexcept;
-
-template<typename T>
-static inline AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, T attachment) noexcept
-{
-	static_assert(sizeof(T) % sizeof(u32) == 0);
-
-	return push_node(asts, first_child, source_id, flags, T::TAG, sizeof(attachment) / sizeof(u32), &attachment);
-}
-
-AstNode* complete_ast(AstPool* asts) noexcept;
 
 const char8* tag_name(AstTag tag) noexcept;
-
-FuncInfo get_func_info(AstNode* func) noexcept;
-
-DefinitionInfo get_definition_info(AstNode* definition) noexcept;
-
-IfInfo get_if_info(AstNode* node) noexcept;
-
-ForInfo get_for_info(AstNode* node) noexcept;
-
-ForEachInfo get_foreach_info(AstNode* node) noexcept;
 
 
 
