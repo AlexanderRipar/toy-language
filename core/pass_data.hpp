@@ -377,10 +377,19 @@ bool mul_checked(u64 a, u64 b, u64* out) noexcept;
 
 
 
+
+// Allocator for Abstract Syntax Trees (ASTs). These are created by parsing
+// source files and subsequently annotated with type. and other information.
 struct AstPool;
 
+// Maximum nesting depth of AST nodes. Anything beyond this will result in an
+// error during parsing.
+// Note that this is actually pretty generous, and should really only
+// potentially be a problem for changed `if ... else if ...` clauses or
+// expressions of the form `a + b + ...`.
 static constexpr s32 MAX_AST_DEPTH = 128;
 
+// Tag used to identify the kind of an `AstNode`.
 enum class AstTag : u8
 {
 	INVALID = 0,
@@ -472,6 +481,7 @@ enum class AstTag : u8
 	MAX,
 };
 
+// Flags specifying tag-specific information for an `AstNode`.
 enum class AstFlag : u8
 {
 	EMPTY                = 0,
@@ -512,49 +522,129 @@ enum class AstFlag : u8
 	Type_IsMut           = 0x02,
 };
 
+// Id used to refer to an `AstNode` in the `AstPool`.
+// The use of this is that it is smaller (4 instead of 8 bytes), and resistant
+// to serialization, as the pool's base address can be ignored.
 struct AstNodeId
 {
 	u32 rep;
 };
 
+// A node in an AST. This is really only the node's header, with potential
+// additional "attachment" data located directly after it, depending on the
+// node's `tag` value.
+// After this attachment, the node's children follow, if there are any.
+//
+// Attachment data should only be accessed via the templated `attachment_of`
+// function, which performs some sanity checks in debug builds.
+// See `Ast[tag-name]Data` for the layout of this data, in
+// dependence on the `tag`.
+//
+// Children should be accessed either via an iterator (`direct_children_of`,
+// `preorder_ancestors_of` or `postorder_ancestors_of`) or via
+// `first_child_of`. The presence of children can be checked via the
+// `has_children` function.
 struct AstNode
 {
+	// Values for `internal_flags`. See that for further information.
 	static constexpr u8 FLAG_LAST_SIBLING  = 0x01;
 	static constexpr u8 FLAG_FIRST_SIBLING = 0x02;
 	static constexpr u8 FLAG_NO_CHILDREN   = 0x04;
 
+	// Indicates what kind of AST node is represented. This determines the
+	// meaning of `flags` and the layout and semantics of the trailing data.
 	AstTag tag;
 
+	// Tag-dependent flags that contain additional information on the AST node.
+	// In particular, for `AstTag::Builtin`, this contains a `Builtin`
+	// enumerant instead of a combination of or'ed flags.
 	AstFlag flags;
 
+	// Number of four-byte units that this node and its trailing data encompasses.
 	u8 data_dwords;
 
+	// A combination of:
+	//
+	// - `FLAG_LAST_SIBLING`, meaning that this node has no further (following)
+	//   siblings.
+	// - `FLAG_FIRST_SIBLING`, meaning that this node has no preceding
+	//   siblings, i.e., it is the first child of its parent. Note that this
+	//   can be combined with `FLAG_LAST_SIBLING` for nodes with no siblings.
+	// - `FLAG_NO_CHILDREN`, meaning that this node has no children.
+	//
+	// These values should not be read directly, and are instead used by
+	// various helper functions and during AST construction.
 	u8 internal_flags;
 
+	// Number of four-byte units that are taken up by this node and its
+	// children. Note that this is thus still meaningful if the node has no
+	// next sibling (`internal_flags` contains `FLAG_LAST_SIBLING`). In this
+	// case, it indicates the offset to an ancestor's next sibling.
+	// This should not be read directly, and is instead used by various helper
+	// functions.
 	u32 next_sibling_offset;
 
+	// Type of the expression represented by this node. If `is_assibnable` is
+	// `true`, then the expression is assignable (i.e., is `mut` and has an
+	// address).
+	// Only contains a valid value after typechecking. Before that, it is set
+	// to `with_assignability(INVALID_TYP_ID, false)`. 
 	TypeIdWithAssignability type_id;
 
+	// `SourceId` of the node. See `SourceReader` and further details.
 	SourceId source_id;
 };
 
+// Token returned from and used by `push_node` to structure the created AST as
+// it is created. See `push_node` for further information.
 struct AstBuilderToken
 {
 	u32 rep;
 };
 
+// Result of a call to `next(AstPreorderIterator*)` or
+// `next(AstPostorderIterator)`. See those functions for further details.
+// Note that this must only be used after a call to
+// `is_valid(AstIterationResult)`, with a return value of `false` indicating
+// that the iterator is exhausted.
 struct AstIterationResult
 {
+	// `AstNode` at the iterator's position.
 	AstNode* node;
 
+	// Depth of the returned node, relative to the node from which this
+	// iterator was created. A direct child has a `depth` of `0`, a grandchild
+	// a of `1`, and so on.
 	u32 depth;
 };
 
+// Iterator over the direct children of an `AstNode`.
+// This is created by a call to `direct_children_of`, and can be iterated by
+// calling `next(AstDirectChildIterator*)`.
 struct AstDirectChildIterator
 {
 	AstNode* curr;
 };
 
+// Iterator over the ancestors of an `AstNode`, returning nodes in depth-first
+// preorder.
+//
+// For an AST of the shape
+//
+// ```
+// (R)
+//  + A
+//  | + X
+//  | | ` K
+//  | ` Y
+//  ` B
+//    ` Z
+// ```
+// 
+// where `R` is the root node and thus not iterated, this results in the
+// iteration sequence
+//
+// `A`, `X`, `K`, `Y`, `B`, `Z`.
 struct AstPreorderIterator
 {
 	AstNode* curr;
@@ -568,6 +658,25 @@ struct AstPreorderIterator
 	static_assert(MAX_AST_DEPTH <= UINT8_MAX);
 };
 
+// Iterator over the ancestors of an `AstNode`, returning nodes in depth-first
+// postorder.
+//
+// For an AST of the shape
+//
+// ```
+// (R)
+//  + A
+//  | + X
+//  | | ` K
+//  | ` Y
+//  ` B
+//    ` Z
+// ```
+// 
+// where `R` is the root node and thus not iterated, this results in the
+// iteration sequence
+//
+// `K`, `X`, `Y`, `A`, `Z`, `B`.
 struct AstPostorderIterator
 {
 	AstNode* base;
@@ -577,58 +686,86 @@ struct AstPostorderIterator
 	u32 offsets[MAX_AST_DEPTH];
 };
 
+// Attachment of an `AstNode` with tag `AstTag::LitInteger`.
 struct AstLitIntegerData
 {
+	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::LitInteger;
 
 	#pragma pack(push)
 	#pragma pack(4)
+	// `CompIntegerValue` representing this literal's value.
+	// This is under-aligned to 4 instead of 8 bytes since `AstNode`s - and
+	// thus their attachments - are 4-byte aligned.
 	CompIntegerValue value;
 	#pragma pack(pop)
 };
 
+// Attachment of an `AstNode` with tag `AstTag::LitFloat`.
 struct AstLitFloatData
 {
+	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::LitFloat;
 
 	#pragma pack(push)
 	#pragma pack(4)
+	// `CompFloatValue` representing this literal's value.
+	// This is under-aligned to 4 instead of 8 bytes since `AstNode`s - and
+	// thus their attachments - are 4-byte aligned.
 	CompFloatValue value;
 	#pragma pack(pop)
 };
 
+// Attachment of an `AstNode` with tag `AstTag::LitChar`.
 struct AstLitCharData
 {
+	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::LitChar;
 
+	// Unicode codepoint representing this character literal's value.
 	u32 codepoint;
 };
 
+// Attachment of an `AstNode` with tag `AstTag::Identifier`.
 struct AstIdentifierData
 {
+	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::Identifer;
 
+	// `IdentifierId` of the identifier represented by this node.
 	IdentifierId identifier_id;
 };
 
+// Attachment of an `AstNode` with tag `AstTag::LitString`.
 struct AstLitStringData
 {
+	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::LitString;
 
+	// `GlobalValueId` of the global `u8` array representing this string's
+	// value.
 	GlobalValueId string_value_id;
 };
 
+// Attachment of an `AstNode` with tag `AstTag::Definition`.
 struct AstDefinitionData
 {
+	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::Definition;
 
+	// `IdentifierId` of the definition.
 	IdentifierId identifier_id;
 };
 
+// Attachment of an `AstNode` with tag `AstTag::Block`.
 struct AstBlockData
 {
+	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::Block;
 
+	// `TypeId` of the type representing the scope introduced by this block.
+	// Only present after the AST has been typechecked, and `INVALID_TYPE_ID`
+	// before that.
 	TypeId scope_type_id;
 };
 
