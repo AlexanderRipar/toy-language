@@ -480,7 +480,7 @@ static void push_node_once_and_complete_appends_node() noexcept
 
 	MockedPools pools = create_mocked_pools();
 
-	push_node(pools.asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::File);
+	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::File);
 
 	AstNode* const root = complete_ast(pools.asts);
 
@@ -499,7 +499,7 @@ static void push_node_with_unary_op_and_complete_reverses_tree() noexcept
 
 	MockedPools pools = create_mocked_pools();
 
-	const AstBuilderToken token = push_node(pools.asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::Block);
+	const AstBuilderToken token = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::Block);
 
 	push_node(pools.asts, token, SourceId::INVALID, AstFlag::EMPTY, AstTag::File);
 
@@ -520,9 +520,9 @@ static void push_node_with_binary_op_and_complete_reverses_tree() noexcept
 
 	MockedPools pools = create_mocked_pools();
 
-	const AstBuilderToken token = push_node(pools.asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitChar);
+	const AstBuilderToken token = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitChar);
 
-	push_node(pools.asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::Identifer);
+	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::Identifer);
 
 	push_node(pools.asts, token, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpBitAnd);
 
@@ -543,17 +543,17 @@ static void push_node_with_complex_tree_and_complete_reverses_tree() noexcept
 
 	MockedPools pools = create_mocked_pools();
 
-	const AstBuilderToken t3 = push_node(pools.asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(3));
+	const AstBuilderToken t3 = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(3));
 
-	push_node(pools.asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(4));
+	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(4));
 
 	const AstBuilderToken t2 = push_node(pools.asts, t3, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(2));
 
-	const AstBuilderToken t7 = push_node(pools.asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(7));
+	const AstBuilderToken t7 = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(7));
 
 	const AstBuilderToken t6 = push_node(pools.asts, t7, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(6));
 
-	const AstBuilderToken t9 = push_node(pools.asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(9));
+	const AstBuilderToken t9 = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(9));
 
 	push_node(pools.asts, t9, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(8));
 
@@ -578,17 +578,17 @@ static void push_node_with_double_binary_tree_and_complete_reverses_tree() noexc
 
 	MockedPools pools = create_mocked_pools();
 
-	const AstBuilderToken add = push_node(pools.asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitChar);
+	const AstBuilderToken add = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitChar);
 
-	const AstBuilderToken mul = push_node(pools.asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitFloat);
+	const AstBuilderToken mul = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitFloat);
 
-	push_node(pools.asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitInteger);
+	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitInteger);
 
 	push_node(pools.asts, mul, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpMul);
 
 	const AstBuilderToken sub = push_node(pools.asts, add, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpAdd);
 
-	push_node(pools.asts, AST_BUILDER_NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitString);
+	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitString);
 
 	push_node(pools.asts, sub, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpSub);
 

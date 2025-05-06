@@ -580,9 +580,12 @@ struct AstNode
 
 // Token returned from and used by `push_node` to structure the created AST as
 // it is created. See `push_node` for further information.
-struct AstBuilderToken
+enum class AstBuilderToken : u32
 {
-	u32 rep;
+	// Value used to indicate that a node created by `push_node` has no
+	// children. This will never be returned from `push_node`. See `push_node`
+	// for further information.
+	NO_CHILDREN = ~0u,
 };
 
 // Result of a call to `next(AstPreorderIterator*)` or
@@ -859,11 +862,6 @@ struct ForEachInfo
 	OptPtr<AstNode> finally;
 };
 
-// `AstBuilderToken` value used to indicate that a node created by
-// `push_node` has no children. This will never be returned from `push_node`.
-// See `push_node` for further information.
-static constexpr AstBuilderToken AST_BUILDER_NO_CHILDREN = { ~0u };
-
 inline AstFlag operator|(AstFlag lhs, AstFlag rhs) noexcept
 {
 	return static_cast<AstFlag>(static_cast<u8>(lhs) | static_cast<u8>(rhs));
@@ -886,16 +884,6 @@ inline AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
 	lhs = lhs & rhs;
 
 	return lhs;
-}
-
-inline bool operator==(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
-{
-	return lhs.rep == rhs.rep;
-}
-
-inline bool operator!=(AstBuilderToken lhs, AstBuilderToken rhs) noexcept
-{
-	return lhs.rep != rhs.rep;
 }
 
 AstPool* create_ast_pool(AllocPool* pool) noexcept;

@@ -34,7 +34,7 @@ static void set_internal_flags(AstNode* begin, AstNode* end) noexcept
 	{
 		AstNode* const next = apply_offset_(curr, curr->data_dwords);
 
-		if (curr->next_sibling_offset != AST_BUILDER_NO_CHILDREN.rep)
+		if (curr->next_sibling_offset != static_cast<u32>(AstBuilderToken::NO_CHILDREN))
 		{
 			ASSERT_OR_IGNORE(prev != nullptr);
 
@@ -64,7 +64,7 @@ static AstNode* build_traversal_list(AstNode* begin, AstNode* end) noexcept
 {
 	sreg depth = -1;
 
-	u32 recursively_last_child = AST_BUILDER_NO_CHILDREN.rep;
+	u32 recursively_last_child = static_cast<u32>(AstBuilderToken::NO_CHILDREN);
 
 	u32 prev_sibling_inds[MAX_AST_DEPTH];
 
@@ -103,7 +103,7 @@ static AstNode* build_traversal_list(AstNode* begin, AstNode* end) noexcept
 
 			if ((curr->internal_flags & AstNode::FLAG_NO_CHILDREN) == 0)
 			{
-				ASSERT_OR_IGNORE(recursively_last_child != AST_BUILDER_NO_CHILDREN.rep);
+				ASSERT_OR_IGNORE(recursively_last_child != static_cast<u32>(AstBuilderToken::NO_CHILDREN));
 
 				prev_sibling_inds[depth] = recursively_last_child;
 			}
@@ -193,7 +193,7 @@ static AstNode* copy_postorder_to_preorder(const AstNode* begin, const AstNode* 
 
 		prev_sibling_inds[depth] = curr_ind;
 
-		if (src_curr->next_sibling_offset == AST_BUILDER_NO_CHILDREN.rep)
+		if (src_curr->next_sibling_offset == static_cast<u32>(AstBuilderToken::NO_CHILDREN))
 			break;
 
 		src_curr = reinterpret_cast<const AstNode*>(reinterpret_cast<const u32*>(begin) + src_curr->next_sibling_offset);
@@ -253,15 +253,15 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 
 	AstNode* const node = reinterpret_cast<AstNode*>(asts->builder.reserve_exact(sizeof(AstNode)));
 
-	node->next_sibling_offset = first_child.rep;
+	node->next_sibling_offset = static_cast<u32>(first_child);
 	node->tag = tag;
 	node->flags = flags;
 	node->data_dwords = sizeof(AstNode) / sizeof(u32);
-	node->internal_flags = first_child == AST_BUILDER_NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
+	node->internal_flags = first_child == AstBuilderToken::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
 	node->type_id = with_assignability(TypeId::INVALID, false);
 	node->source_id = source_id;
 
-	return { static_cast<u32>(reinterpret_cast<u32*>(node) - asts->builder.begin()) };
+	return AstBuilderToken{ static_cast<u32>(reinterpret_cast<u32*>(node) - asts->builder.begin()) };
 }
 
 AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_dwords, const void* attachment) noexcept
@@ -272,17 +272,17 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 
 	AstNode* const node = reinterpret_cast<AstNode*>(asts->builder.reserve_exact(required_dwords * sizeof(u32)));
 
-	node->next_sibling_offset = first_child.rep;
+	node->next_sibling_offset = static_cast<u32>(first_child);
 	node->tag = tag;
 	node->flags = flags;
 	node->data_dwords = required_dwords;
-	node->internal_flags = first_child == AST_BUILDER_NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
+	node->internal_flags = first_child == AstBuilderToken::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
 	node->type_id = with_assignability(TypeId::INVALID, false);
 	node->source_id = source_id;
 
 	memcpy(node + 1, attachment, attachment_dwords * sizeof(u32));
 
-	return { static_cast<u32>(reinterpret_cast<u32*>(node) - asts->builder.begin()) };
+	return AstBuilderToken{ static_cast<u32>(reinterpret_cast<u32*>(node) - asts->builder.begin()) };
 }
 
 AstNode* complete_ast(AstPool* asts) noexcept
