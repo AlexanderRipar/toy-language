@@ -525,9 +525,10 @@ enum class AstFlag : u8
 // Id used to refer to an `AstNode` in the `AstPool`.
 // The use of this is that it is smaller (4 instead of 8 bytes), and resistant
 // to serialization, as the pool's base address can be ignored.
-struct AstNodeId
+enum class AstNodeId : u32
 {
-	u32 rep;
+	// Value used to indicate that there is no `AstNode` to represent.
+	INVALID = 0,
 };
 
 // A node in an AST. This is really only the node's header, with potential
@@ -884,9 +885,6 @@ struct ForEachInfo
 // See `push_node` for further information.
 static constexpr AstBuilderToken AST_BUILDER_NO_CHILDREN = { ~0u };
 
-// `AstNodeId` value used to indicate that there is no `AstNode` to represent.
-static constexpr AstNodeId INVALID_AST_NODE_ID = { 0 };
-
 inline AstFlag operator|(AstFlag lhs, AstFlag rhs) noexcept
 {
 	return static_cast<AstFlag>(static_cast<u8>(lhs) | static_cast<u8>(rhs));
@@ -909,16 +907,6 @@ inline AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
 	lhs = lhs & rhs;
 
 	return lhs;
-}
-
-inline bool operator==(AstNodeId lhs, AstNodeId rhs) noexcept
-{
-	return lhs.rep == rhs.rep;
-}
-
-inline bool operator!=(AstNodeId lhs, AstNodeId rhs) noexcept
-{
-	return lhs.rep != rhs.rep;
 }
 
 inline bool operator==(AstBuilderToken lhs, AstBuilderToken rhs) noexcept

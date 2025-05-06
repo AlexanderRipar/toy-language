@@ -341,12 +341,12 @@ static MemberInit member_init_from_definition(Interpreter* interp, TypeId lexica
 	member.offset = offset;
 
 	if (has_pending_type)
-		member.type.pending = is_some(info.type) ? id_from_ast_node(interp->asts, get_ptr(info.type)) : INVALID_AST_NODE_ID;
+		member.type.pending = is_some(info.type) ? id_from_ast_node(interp->asts, get_ptr(info.type)) : AstNodeId::INVALID;
 	else
 		member.type.complete = type_id(definition->type_id);
 
 	if (has_pending_value)
-		member.value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : INVALID_AST_NODE_ID;
+		member.value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
 	else
 		TODO("Implement passing `ValueId` to `member_init_from_definition`.");
 
@@ -1240,7 +1240,7 @@ static void force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 
 	TypeId defined_type_id;
 
-	if (member->type.pending != INVALID_AST_NODE_ID)
+	if (member->type.pending != AstNodeId::INVALID)
 	{
 		AstNode* const type = ast_node_from_id(interp->asts, member->type.pending);
 
@@ -1257,7 +1257,7 @@ static void force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 
 		set_incomplete_type_member_type_by_rank(interp->types, member->surrounding_type_id, member->rank, defined_type_id);
 
-		if (member->value.pending != INVALID_AST_NODE_ID)
+		if (member->value.pending != AstNodeId::INVALID)
 		{
 			AstNode* const value = ast_node_from_id(interp->asts, member->value.pending);
 
@@ -1269,7 +1269,7 @@ static void force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 	}
 	else
 	{
-		ASSERT_OR_IGNORE(member->value.pending != INVALID_AST_NODE_ID);
+		ASSERT_OR_IGNORE(member->value.pending != AstNodeId::INVALID);
 
 		AstNode* const value = ast_node_from_id(interp->asts, member->value.pending);
 
@@ -1686,7 +1686,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 				if (!type_member_info_by_rank(interp->types, signature_type_id, i, &member))
 					ASSERT_UNREACHABLE;
 
-				if (member.value.pending == INVALID_AST_NODE_ID)
+				if (member.value.pending == AstNodeId::INVALID)
 				{
 					const Range<char8> name = identifier_name_from_id(interp->identifiers, member.name);
 
@@ -2836,7 +2836,7 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 
 	AstNode* root;
 
-	if (read.source_file->ast_root == INVALID_AST_NODE_ID)
+	if (read.source_file->ast_root == AstNodeId::INVALID)
 	{
 		root = parse(interp->parser, read.content, read.source_file->source_id_base, is_std, filepath);
 

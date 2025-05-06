@@ -242,7 +242,7 @@ AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept
 
 AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept
 {
-	return reinterpret_cast<AstNode*>(asts->pool.begin() + id.rep);
+	return reinterpret_cast<AstNode*>(asts->pool.begin() + static_cast<u32>(id));
 }
 
 

@@ -273,7 +273,7 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noe
 
 	id_entry->path_entry_index = reader->known_files_by_path.index_from(path_entry);
 	id_entry->data.file = file;
-	id_entry->data.ast_root = INVALID_AST_NODE_ID;
+	id_entry->data.ast_root = AstNodeId::INVALID;
 	id_entry->data.source_id_base = SourceId{ reader->curr_source_id_base };
 
 	if (fileinfo.bytes + reader->curr_source_id_base > UINT32_MAX)
