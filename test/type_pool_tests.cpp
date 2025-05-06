@@ -60,7 +60,7 @@ static void primitive_type_with_integer_returns_integer_type_structure() noexcep
 
 	TypeId u16_id = simple_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&u16_type));
 
-	TEST_UNEQUAL(u16_id.rep, INVALID_TYPE_ID.rep);
+	TEST_UNEQUAL(u16_id, TypeId::INVALID);
 
 	TEST_EQUAL(type_tag_from_id(dummy.types, u16_id), TypeTag::Integer);
 
@@ -85,7 +85,7 @@ static void primitive_type_with_integer_and_float_with_same_bit_pattern_returns_
 
 	const TypeId u32_id = simple_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&u32_type));
 
-	TEST_UNEQUAL(u32_id.rep, INVALID_TYPE_ID.rep);
+	TEST_UNEQUAL(u32_id, TypeId::INVALID);
 
 	TEST_EQUAL(type_tag_from_id(dummy.types, u32_id), TypeTag::Integer);
 
@@ -99,7 +99,7 @@ static void primitive_type_with_integer_and_float_with_same_bit_pattern_returns_
 
 	const TypeId f32_id = simple_type(dummy.types, TypeTag::Float, range::from_object_bytes(&f32_type));
 
-	TEST_UNEQUAL(f32_id.rep, INVALID_TYPE_ID.rep);
+	TEST_UNEQUAL(f32_id, TypeId::INVALID);
 
 	TEST_EQUAL(type_tag_from_id(dummy.types, f32_id), TypeTag::Float);
 
@@ -107,7 +107,7 @@ static void primitive_type_with_integer_and_float_with_same_bit_pattern_returns_
 
 	TEST_EQUAL(interned_f32->bits, 32);
 
-	TEST_UNEQUAL(u32_id.rep, f32_id.rep);
+	TEST_UNEQUAL(u32_id, f32_id);
 
 	TEST_UNEQUAL(interned_u32, interned_f32);
 
@@ -126,13 +126,13 @@ static void primitive_type_with_array_returns_array_type() noexcept
 
 	const TypeId s32_id = simple_type(dummy.types, TypeTag::Integer, range::from_object_bytes(&s32_type));
 
-	TEST_UNEQUAL(s32_id.rep, INVALID_TYPE_ID.rep);
+	TEST_UNEQUAL(s32_id, TypeId::INVALID);
 
 	ArrayType array_type{ 128, s32_id };
 
 	const TypeId array_id = simple_type(dummy.types, TypeTag::Array, range::from_object_bytes(&array_type));
 
-	TEST_UNEQUAL(array_id.rep, INVALID_TYPE_ID.rep);
+	TEST_UNEQUAL(array_id, TypeId::INVALID);
 
 	TEST_EQUAL(type_tag_from_id(dummy.types, array_id), TypeTag::Array);
 
@@ -140,7 +140,7 @@ static void primitive_type_with_array_returns_array_type() noexcept
 
 	TEST_EQUAL(interned->element_count, 128);
 
-	TEST_EQUAL(interned->element_type.rep, s32_id.rep);
+	TEST_EQUAL(interned->element_type, s32_id);
 
 	release_dummy_types(dummy);
 

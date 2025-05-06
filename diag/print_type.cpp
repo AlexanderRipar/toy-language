@@ -2,7 +2,7 @@
 
 static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers, TypePool* types, TypeId type_id, u32 indent, bool skip_initial_indent) noexcept
 {
-	if (type_id.rep == INVALID_TYPE_ID.rep)
+	if (type_id == TypeId::INVALID)
 	{
 		diag::buf_printf(ctx, "%*s<INVALID-TYPE-ID>\n", skip_initial_indent ? 0 : indent * 2, "");
 

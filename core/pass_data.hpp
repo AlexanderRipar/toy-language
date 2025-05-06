@@ -14,10 +14,7 @@
 
 // Id used to refer to a type in the `TypePool`. See `TypePool` for further
 // information.
-struct TypeId
-{
-	u32 rep;
-};
+enum class TypeId : u32;
 
 // A `TypeId` with one bit used for indicating mutability.
 struct TypeIdWithAssignability
@@ -1152,6 +1149,13 @@ GlobalValue global_value_from_id(GlobalValuePool* globals, GlobalValueId value_i
 
 struct TypePool;
 
+enum class TypeId : u32
+{
+	INVALID = 0,
+	CHECKING,
+	NO_TYPE,
+};
+
 enum class TypeTag : u8
 {
 	INVALID = 0,
@@ -1323,12 +1327,6 @@ struct FuncType
 	TypeId signature_type_id;
 };
 
-static constexpr TypeId INVALID_TYPE_ID = { 0 };
-
-static constexpr TypeId CHECKING_TYPE_ID = { 1 };
-
-static constexpr TypeId NO_TYPE_TYPE_ID = { 2 };
-
 TypePool* create_type_pool(AllocPool* alloc, GlobalValuePool* globals, ErrorSink* errors) noexcept;
 
 void release_type_pool(TypePool* types) noexcept;
@@ -1427,7 +1425,7 @@ enum class Builtin : u8
 
 static inline TypeIdWithAssignability with_assignability(TypeId type_id, bool is_assignable) noexcept
 {
-	return TypeIdWithAssignability{ type_id.rep, is_assignable };
+	return TypeIdWithAssignability{ static_cast<u32>(type_id), is_assignable };
 }
 
 static inline bool is_assignable(TypeIdWithAssignability id) noexcept

@@ -11,7 +11,7 @@ struct DummyTree
 
 static constexpr u8 NODE_DWORDS = sizeof(AstNode) / sizeof(u32);
 
-static constexpr TypeIdWithAssignability INVALID_TYPE_ID_WITH_ASGN = { INVALID_TYPE_ID.rep, false };
+static constexpr TypeIdWithAssignability INVALID_TYPE_ID_WITH_ASGN = { static_cast<u32>(TypeId::INVALID), false };
 
 static void push_node(DummyTree* tree, AstNode node, u8 data_dwords = 0, const void* data = nullptr) noexcept
 {

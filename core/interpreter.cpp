@@ -118,7 +118,7 @@ static TypeIdWithAssignability typecheck_expr(Interpreter* interp, AstNode* node
 
 static bool is_valid(TypeId id) noexcept
 {
-	return id.rep != INVALID_TYPE_ID.rep && id.rep != CHECKING_TYPE_ID.rep && id.rep != NO_TYPE_TYPE_ID.rep;
+	return id != TypeId::INVALID && id != TypeId::CHECKING && id != TypeId::NO_TYPE;
 }
 
 static bool is_valid(TypeIdWithAssignability id) noexcept
@@ -139,9 +139,9 @@ static void push_typechecker_context(Interpreter* interp, TypeId context) noexce
 {
 	ASSERT_OR_IGNORE(interp->context_top >= 0);
 
-	ASSERT_OR_IGNORE(context.rep != INVALID_TYPE_ID.rep);
+	ASSERT_OR_IGNORE(context != TypeId::INVALID);
 
-	ASSERT_OR_IGNORE(interp->contexts[interp->context_top].rep == lexical_parent_type_from_id(interp->types, context).rep);
+	ASSERT_OR_IGNORE(interp->contexts[interp->context_top] == lexical_parent_type_from_id(interp->types, context));
 
 	interp->contexts[interp->context_top] = context;
 }
@@ -152,11 +152,11 @@ static void pop_typechecker_context(Interpreter* interp) noexcept
 
 	const TypeId old_context = interp->contexts[interp->context_top];
 
-	ASSERT_OR_IGNORE(old_context.rep != INVALID_TYPE_ID.rep);
+	ASSERT_OR_IGNORE(old_context != TypeId::INVALID);
 
 	const TypeId new_context = lexical_parent_type_from_id(interp->types, old_context);
 
-	ASSERT_OR_IGNORE(new_context.rep != INVALID_TYPE_ID.rep);
+	ASSERT_OR_IGNORE(new_context != TypeId::INVALID);
 
 	interp->contexts[interp->context_top] = new_context;
 }
@@ -246,7 +246,7 @@ static MemberInfo lookup_identifier_definition(Interpreter* interp, IdentifierId
 
 	while (true)
 	{
-		if (context.rep == INVALID_TYPE_ID.rep)
+		if (context == TypeId::INVALID)
 			break;
 
 		MemberInfo info;
@@ -256,7 +256,7 @@ static MemberInfo lookup_identifier_definition(Interpreter* interp, IdentifierId
 
 		context = lexical_parent_type_from_id(interp->types, context);
 
-		if (context.rep == INVALID_TYPE_ID.rep)
+		if (context == TypeId::INVALID)
 			break;
 	}
 
@@ -408,7 +408,7 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 
 	case TypeTag::Void:
 	{
-		if (source_type_id.rep == target_type_id.rep)
+		if (source_type_id == target_type_id)
 			return stack_top;
 
 		const TypeTag source_type_tag = type_tag_from_id(interp->types, source_type_id);
@@ -574,7 +574,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		const u8 ordinal = static_cast<u8>(node->flags);
 
 		Callable* const dst = static_cast<Callable*>(alloc_stack_value(interp, 8, 8));
-		dst->type_id_bits = interp->builtin_type_ids[ordinal].rep;
+		dst->type_id_bits = static_cast<u32>(interp->builtin_type_ids[ordinal]);
 		dst->is_builtin = true;
 		dst->code.ordinal = ordinal;
 
@@ -1327,14 +1327,14 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		const u8 ordinal = static_cast<u8>(builtin);
 
-		ASSERT_OR_IGNORE(ordinal < array_count(interp->builtin_type_ids) && interp->builtin_type_ids[ordinal].rep != INVALID_TYPE_ID.rep);
+		ASSERT_OR_IGNORE(ordinal < array_count(interp->builtin_type_ids) && interp->builtin_type_ids[ordinal] != TypeId::INVALID);
 
 		return with_assignability(interp->builtin_type_ids[ordinal], false);
 	}
 
 	case AstTag::Block:
 	{
-		ASSERT_OR_IGNORE(attachment_of<AstBlockData>(node)->scope_type_id.rep == INVALID_TYPE_ID.rep);
+		ASSERT_OR_IGNORE(attachment_of<AstBlockData>(node)->scope_type_id == TypeId::INVALID);
 
 		const TypeId scope_type_id = create_open_type(interp->types, curr_typechecker_context(interp), node->source_id);
 
@@ -1348,7 +1348,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		u32 max_align = 1;
 
-		TypeIdWithAssignability result_type_id = with_assignability(INVALID_TYPE_ID, false);
+		TypeIdWithAssignability result_type_id = with_assignability(TypeId::INVALID, false);
 
 		for (OptPtr<AstNode> rst = next(&it); is_some(rst); rst = next(&it))
 		{
@@ -1435,7 +1435,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		close_open_type(interp->types, scope_type_id, offset, max_align, next_multiple(offset, static_cast<u64>(max_align)));
 
 		// Empty blocks are of type `Void`.
-		if (type_id(result_type_id).rep == INVALID_TYPE_ID.rep)
+		if (type_id(result_type_id) == TypeId::INVALID)
 			result_type_id = with_assignability(simple_type(interp->types, TypeTag::Void, {}), false);
 
 		return result_type_id;
@@ -1465,7 +1465,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 			const TypeId common_type_id = common_type(interp->types, type_id(consequent_type_id), type_id(alternative_type_id));
 
-			if (common_type_id.rep == INVALID_TYPE_ID.rep)
+			if (common_type_id == TypeId::INVALID)
 				source_error(interp->errors, node->source_id, "Consequent and alternative of `if` have incompatible types.\n");
 
 			return with_assignability(common_type_id, is_assignable(consequent_type_id) && is_assignable(alternative_type_id));
@@ -1517,7 +1517,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 			const TypeId common_type_id = common_type(interp->types, type_id(body_type_id), type_id(finally_type_id));
 
-			if (common_type_id.rep == INVALID_TYPE_ID.rep)
+			if (common_type_id == TypeId::INVALID)
 				source_error(interp->errors, node->source_id, "Body and finally of `for` have incompatible types.\n");
 
 			return with_assignability(common_type_id, is_assignable(body_type_id) && is_assignable(finally_type_id));
@@ -1928,7 +1928,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		const TypeId common_type_id = common_type(interp->types, lhs_type_id, rhs_type_id);
 
-		if (common_type_id.rep == INVALID_TYPE_ID.rep)
+		if (common_type_id == TypeId::INVALID)
 			source_error(interp->errors, node->source_id, "Incompatible left-hand and right-hand side operands for `%s`.\n", tag_name(node->tag));
 
 		return with_assignability(common_type_id, false);
@@ -1981,7 +1981,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		const TypeId common_type_id = common_type(interp->types, lhs_type_id, rhs_type_id);
 
-		if (common_type_id.rep == INVALID_TYPE_ID.rep)
+		if (common_type_id == TypeId::INVALID)
 			source_error(interp->errors, node->source_id, "Operands of `%s` are incompatible.\n", tag_name(node->tag));
 
 		return with_assignability(common_type_id, false);
@@ -2003,7 +2003,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		if (rhs->tag != AstTag::Identifer)
 			source_error(interp->errors, rhs->source_id, "Right-hand-side of `.` must be an identifier\n");
 
-		rhs->type_id = with_assignability(NO_TYPE_TYPE_ID, false);
+		rhs->type_id = with_assignability(TypeId::NO_TYPE, false);
 
 		const IdentifierId identifier_id = attachment_of<AstIdentifierData>(rhs)->identifier_id;
 
@@ -2079,7 +2079,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		const TypeId common_type_id = common_type(interp->types, lhs_type_id, rhs_type_id);
 
-		if (common_type_id.rep == INVALID_TYPE_ID.rep)
+		if (common_type_id == TypeId::INVALID)
 			source_error(interp->errors, node->source_id, "Incompatible left-hand and right-hand side operands for `%s`.\n", tag_name(node->tag));
 
 		return with_assignability(simple_type(interp->types, TypeTag::Boolean, {}), false);
@@ -2133,7 +2133,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		const TypeId common_type_id = common_type(interp->types, type_id(lhs_type_id), rhs_type_id);
 
-		if (common_type_id.rep == INVALID_TYPE_ID.rep)
+		if (common_type_id == TypeId::INVALID)
 			source_error(interp->errors, node->source_id, "Incompatible left-hand and right-hand side operands for `%s`.\n", tag_name(node->tag));
 
 		return with_assignability(simple_type(interp->types, TypeTag::Void, {}), false);
@@ -2261,18 +2261,18 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 static TypeIdWithAssignability typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 {
-	ASSERT_OR_IGNORE(type_id(node->type_id).rep != NO_TYPE_TYPE_ID.rep);
+	ASSERT_OR_IGNORE(type_id(node->type_id) != TypeId::NO_TYPE);
 
-	if (type_id(node->type_id).rep == CHECKING_TYPE_ID.rep)
+	if (type_id(node->type_id) == TypeId::CHECKING)
 	{
 		source_error(interp->errors, node->source_id, "Cyclic type dependency detected.\n");
 	}
-	else if (type_id(node->type_id).rep != INVALID_TYPE_ID.rep)
+	else if (type_id(node->type_id) != TypeId::INVALID)
 	{
 		return node->type_id;
 	}
 
-	node->type_id = with_assignability(CHECKING_TYPE_ID, false);
+	node->type_id = with_assignability(TypeId::CHECKING, false);
 
 	const TypeIdWithAssignability result = typecheck_expr_impl(interp, node);
 
@@ -2333,7 +2333,7 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 
 static TypeId make_func_type_from_array(TypePool* types, TypeId return_type_id, u16 param_count, const FuncTypeParamHelper* params) noexcept
 {
-	const TypeId signature_type_id = create_open_type(types, INVALID_TYPE_ID, INVALID_SOURCE_ID);
+	const TypeId signature_type_id = create_open_type(types, TypeId::INVALID, INVALID_SOURCE_ID);
 
 	u64 offset = 0;
 
@@ -2807,7 +2807,7 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 	interp->value_stack_inds.init(1 << 20, 1 << 10);
 	interp->activation_records.init(1 << 20, 1 << 9);
 	interp->activation_record_top = 0;
-	interp->prelude_type_id = INVALID_TYPE_ID;
+	interp->prelude_type_id = TypeId::INVALID;
 	interp->context_top = -1;
 	interp->log_file = log_file;
 	interp->log_prelude = log_prelude;

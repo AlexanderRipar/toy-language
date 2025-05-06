@@ -603,7 +603,7 @@ static MemberInfo member_info_from_composite_member(const CompositeMember* membe
 	info.has_pending_value = false;
 	info.rank = rank;
 	info.surrounding_type_id = surrounding_type_id;
-	info.completion_context_type_id = INVALID_TYPE_ID;
+	info.completion_context_type_id = TypeId::INVALID;
 	info.offset = member->offset;
 
 	return info;
@@ -694,7 +694,7 @@ static bool find_composite_member_by_name(TypePool* types, CompositeType* compos
 
 		const TypeId use_type_id = members[i].type_id;
 
-		ASSERT_OR_IGNORE(use_type_id.rep != INVALID_TYPE_ID.rep);
+		ASSERT_OR_IGNORE(use_type_id != TypeId::INVALID);
 
 		const TypeTag use_type_tag = type_tag_from_id(types, use_type_id);
 
@@ -719,7 +719,7 @@ static bool find_composite_member_by_name(TypePool* types, CompositeType* compos
 
 static bool find_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, bool include_use, FindByNameResult* out) noexcept
 {
-	TypeName* const type_name = types->named_types.value_from(type_id.rep);
+	TypeName* const type_name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	if (!resolve_name_structure(types, type_name))
 	{
@@ -781,7 +781,7 @@ static bool find_composite_member_by_rank(CompositeType* composite, u16 rank, Fi
 
 static bool find_member_by_rank(TypePool* types, TypeId type_id, u16 rank, FindByRankResult* out) noexcept
 {
-	TypeName* const name = types->named_types.value_from(type_id.rep);
+	TypeName* const name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	if (!resolve_name_structure(types, name))
 	{
@@ -813,8 +813,8 @@ TypePool* create_type_pool(AllocPool* alloc, GlobalValuePool* globals, ErrorSink
 	types->globals = globals;
 	types->errors = errors;
 
-	// Reserve `0` as `INVALID_TYPE_ID`, `1` as `CHECKING_TYPE_ID` and `2` as
-	// `NO_TYPE_TYPE_ID`.
+	// Reserve `0` as `TypeId::INVALID`, `1` as `TypeId::CHECKING` and `2` as
+	// `TypeId::NO_TYPE`.
 
 	TypeName dummy_name{};
 	dummy_name.structure_index_kind = TypeName::INVALID_STRUCTURE_INDEX;
@@ -847,31 +847,31 @@ TypeId simple_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept
 	const u32 structure_index = types->structural_types.index_from(AttachmentRange{ data, tag }, fnv1a_step(fnv1a(data), static_cast<byte>(tag)));
 
 	TypeName name;
-	name.parent_type_id = INVALID_TYPE_ID;
-	name.distinct_root_type_id = INVALID_TYPE_ID;
+	name.parent_type_id = TypeId::INVALID;
+	name.distinct_root_type_id = TypeId::INVALID;
 	name.structure_index = structure_index;
 	name.structure_index_kind = TypeName::STRUCTURE_INDEX_NORMAL;
 	name.source_id = INVALID_SOURCE_ID;
 	name.name_id = INVALID_IDENTIFIER_ID;
-	name.lexical_parent_type_id = INVALID_TYPE_ID;
+	name.lexical_parent_type_id = TypeId::INVALID;
 
 	return TypeId{ types->named_types.index_from(name, fnv1a(range::from_object_bytes(&name))) };
 }
 
 TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept
 {
-	TypeName* const aliased_ref = types->named_types.value_from(aliased_type_id.rep);
+	TypeName* const aliased_ref = types->named_types.value_from(static_cast<u32>(aliased_type_id));
 
 	TypeName name;
 	name.parent_type_id = aliased_type_id;
-	name.distinct_root_type_id = is_distinct ? INVALID_TYPE_ID : aliased_ref->distinct_root_type_id;
+	name.distinct_root_type_id = is_distinct ? TypeId::INVALID : aliased_ref->distinct_root_type_id;
 	name.source_id = source_id;
 	name.name_id = name_id;
 	name.lexical_parent_type_id = aliased_ref->lexical_parent_type_id;
 
 	if (aliased_ref->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER)
 	{
-		name.structure_index = aliased_type_id.rep;
+		name.structure_index = static_cast<u32>(aliased_type_id);
 		name.structure_index_kind = TypeName::STRUCTURE_INDEX_INDIRECT;
 	}
 	else
@@ -894,8 +894,8 @@ TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId
 	header->source_id = source_id;
 
 	TypeName name{};
-	name.parent_type_id = INVALID_TYPE_ID;
-	name.distinct_root_type_id = INVALID_TYPE_ID;
+	name.parent_type_id = TypeId::INVALID;
+	name.distinct_root_type_id = TypeId::INVALID;
 	name.structure_index = type_builder_difference(reinterpret_cast<TypeBuilder*>(types->builders.begin()), &header->unused_);
 	name.structure_index_kind = TypeName::STRUCTURE_INDEX_BUILDER;
 	name.source_id = source_id;
@@ -913,7 +913,7 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init)
 
 	ASSERT_OR_IGNORE(init.type.pending != AstNodeId::INVALID || init.value.pending != AstNodeId::INVALID);
 
-	TypeName* const builder_name = types->named_types.value_from(open_type_id.rep);
+	TypeName* const builder_name = types->named_types.value_from(static_cast<u32>(open_type_id));
 
 	if (resolve_name_structure(types, builder_name))
 		panic("Passed completed type to `add_open_type_member`.\n");
@@ -993,7 +993,7 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init)
 
 void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, u64 stride) noexcept
 {
-	TypeName* const builder_name = types->named_types.value_from(open_type_id.rep);
+	TypeName* const builder_name = types->named_types.value_from(static_cast<u32>(open_type_id));
 
 	if (resolve_name_structure(types, builder_name))
 		panic("Passed completed type to `add_open_type_member`.\n");
@@ -1022,11 +1022,11 @@ void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, 
 
 void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_id, u16 rank, TypeId member_type_id) noexcept
 {
-	ASSERT_OR_IGNORE(open_type_id.rep != INVALID_TYPE_ID.rep);
+	ASSERT_OR_IGNORE(open_type_id != TypeId::INVALID);
 
-	ASSERT_OR_IGNORE(member_type_id.rep != INVALID_TYPE_ID.rep);
+	ASSERT_OR_IGNORE(member_type_id != TypeId::INVALID);
 
-	TypeName* const builder_name = types->named_types.value_from(open_type_id.rep);
+	TypeName* const builder_name = types->named_types.value_from(static_cast<u32>(open_type_id));
 
 	if (resolve_name_structure(types, builder_name))
 		panic("Passed completed type to `add_open_type_member`.\n");
@@ -1060,11 +1060,11 @@ void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_i
 
 void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_id, u16 rank, GlobalValueId member_value_id) noexcept
 {
-	ASSERT_OR_IGNORE(open_type_id.rep != INVALID_TYPE_ID.rep);
+	ASSERT_OR_IGNORE(open_type_id != TypeId::INVALID);
 
-	ASSERT_OR_IGNORE(member_value_id.rep != INVALID_TYPE_ID.rep);
+	ASSERT_OR_IGNORE(member_value_id != INVALID_GLOBAL_VALUE_ID);
 
-	TypeName* const builder_name = types->named_types.value_from(open_type_id.rep);
+	TypeName* const builder_name = types->named_types.value_from(static_cast<u32>(open_type_id));
 
 	if (resolve_name_structure(types, builder_name))
 		panic("Passed completed type to `add_open_type_member`.\n");
@@ -1096,12 +1096,12 @@ void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_
 
 bool is_same_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 {
-	if (type_id_a.rep == type_id_b.rep)
+	if (type_id_a == type_id_b)
 		return true;
 
-	TypeName* const name_a = types->named_types.value_from(type_id_a.rep);
+	TypeName* const name_a = types->named_types.value_from(static_cast<u32>(type_id_a));
 
-	TypeName* const name_b = types->named_types.value_from(type_id_b.rep);
+	TypeName* const name_b = types->named_types.value_from(static_cast<u32>(type_id_b));
 
 	if (!resolve_name_structure(types, name_a) || !resolve_name_structure(types, name_b))
 		return false; // TODO: In this case we actually just don't know.
@@ -1109,10 +1109,10 @@ bool is_same_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 	if (name_a->structure_index_kind != name_b->structure_index_kind && name_a->structure_index != name_b->structure_index && name_a->source_id == name_b->source_id)
 		return false;
 
-	if (name_a->distinct_root_type_id.rep == INVALID_TYPE_ID.rep && name_b->distinct_root_type_id.rep == INVALID_TYPE_ID.rep)
+	if (name_a->distinct_root_type_id == TypeId::INVALID && name_b->distinct_root_type_id == TypeId::INVALID)
 		return true;
 
-	if (name_a->distinct_root_type_id.rep == INVALID_TYPE_ID.rep || name_b->distinct_root_type_id.rep == INVALID_TYPE_ID.rep)
+	if (name_a->distinct_root_type_id == TypeId::INVALID || name_b->distinct_root_type_id == TypeId::INVALID)
 		return false;
 
 	return is_same_type(types, name_a->distinct_root_type_id, name_b->distinct_root_type_id);
@@ -1120,7 +1120,7 @@ bool is_same_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 
 bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept
 {
-	if (common_type(types, from_type_id, to_type_id).rep != INVALID_TYPE_ID.rep)
+	if (common_type(types, from_type_id, to_type_id) != TypeId::INVALID)
 		return true;
 
 	const TypeTag from_type_tag = type_tag_from_id(types, from_type_id);
@@ -1147,7 +1147,7 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 		{
 			const ArrayType* const from_type = static_cast<const ArrayType*>(simple_type_structure_from_id(types, from_type_id));
 
-			return common_type(types, to_type->referenced_type_id, from_type->element_type).rep != INVALID_TYPE_ID.rep;
+			return common_type(types, to_type->referenced_type_id, from_type->element_type) != TypeId::INVALID;
 		}
 		else if (from_type_tag == TypeTag::Slice)
 		{
@@ -1156,7 +1156,7 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 			if (to_type->is_mut && !from_type->is_mut)
 				return false;
 
-			return common_type(types, to_type->referenced_type_id, from_type->referenced_type_id).rep != INVALID_TYPE_ID.rep;
+			return common_type(types, to_type->referenced_type_id, from_type->referenced_type_id) != TypeId::INVALID;
 		}
 		else
 		{
@@ -1182,7 +1182,7 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 		if (to_type->is_multi && !from_type->is_multi)
 			return false;
 
-		return common_type(types, to_type->referenced_type_id, from_type->referenced_type_id).rep != INVALID_TYPE_ID.rep;
+		return common_type(types, to_type->referenced_type_id, from_type->referenced_type_id) != TypeId::INVALID;
 	}
 
 	case TypeTag::Divergent:
@@ -1217,14 +1217,14 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 
 TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 {
-	ASSERT_OR_IGNORE(type_id_a.rep != INVALID_TYPE_ID.rep);
+	ASSERT_OR_IGNORE(type_id_a != TypeId::INVALID);
 
-	ASSERT_OR_IGNORE(type_id_b.rep != INVALID_TYPE_ID.rep);
+	ASSERT_OR_IGNORE(type_id_b != TypeId::INVALID);
 
 	// Check the common case. If the ids themselves are equal, we have a match
 	// already.
 
-	if (type_id_a.rep == type_id_b.rep)
+	if (type_id_a == type_id_b)
 		return type_id_a;
 
 	// Since the ids were not equal, there are a few cases left:
@@ -1237,34 +1237,34 @@ TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 
 	// Check for case 1.
 
-	TypeName* const name_a = types->named_types.value_from(type_id_a.rep);
+	TypeName* const name_a = types->named_types.value_from(static_cast<u32>(type_id_a));
 
 	if (!resolve_name_structure(types, name_a))
 		panic("Tried comparing incomplete type for compatibility\n"); // TODO: Figure out what to do here
 
-	TypeName* const name_b = types->named_types.value_from(type_id_b.rep);
+	TypeName* const name_b = types->named_types.value_from(static_cast<u32>(type_id_b));
 
 	if (!resolve_name_structure(types, name_b))
 		panic("Tried comparing incomplete type for compatibility\n"); // TODO: Figure out what to do here
 
-	const TypeId root_type_id_a = name_a->distinct_root_type_id.rep == INVALID_TYPE_ID.rep ? type_id_a : name_a->distinct_root_type_id;
+	const TypeId root_type_id_a = name_a->distinct_root_type_id == TypeId::INVALID ? type_id_a : name_a->distinct_root_type_id;
 
-	const TypeId root_type_id_b = name_b->distinct_root_type_id.rep == INVALID_TYPE_ID.rep ? type_id_b : name_b->distinct_root_type_id;
+	const TypeId root_type_id_b = name_b->distinct_root_type_id == TypeId::INVALID ? type_id_b : name_b->distinct_root_type_id;
 
-	if (root_type_id_a.rep == root_type_id_b.rep)
+	if (root_type_id_a == root_type_id_b)
 		return root_type_id_a;
 
 	// Check for case 2.
 
 	TypeName* root_name_a;
 
-	if (name_a->distinct_root_type_id.rep == INVALID_TYPE_ID.rep)
+	if (name_a->distinct_root_type_id == TypeId::INVALID)
 	{
 		root_name_a = name_a;
 	}
 	else
 	{
-		root_name_a = types->named_types.value_from(name_a->distinct_root_type_id.rep);
+		root_name_a = types->named_types.value_from(static_cast<u32>(name_a->distinct_root_type_id));
 
 		if (!resolve_name_structure(types, root_name_a))
 			panic("Tried comparing incomplete type for compatibility\n"); // TODO: Figure out what to do here
@@ -1272,13 +1272,13 @@ TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 
 	TypeName* root_name_b;
 
-	if (name_b->distinct_root_type_id.rep == INVALID_TYPE_ID.rep)
+	if (name_b->distinct_root_type_id == TypeId::INVALID)
 	{
 		root_name_b = name_b;
 	}
 	else
 	{
-		root_name_b = types->named_types.value_from(name_b->distinct_root_type_id.rep);
+		root_name_b = types->named_types.value_from(static_cast<u32>(name_b->distinct_root_type_id));
 
 		if (!resolve_name_structure(types, root_name_b))
 			panic("Tried comparing incomplete type for compatibility\n"); // TODO: Figure out what to do here
@@ -1289,41 +1289,41 @@ TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 	if (root_name_a->structure_index == root_name_b->structure_index && root_name_a->source_id == root_name_b->source_id)
 	{
 		// Just select the "minimal" id as the canonical one.
-		const TypeId min_id = root_type_id_a.rep < root_type_id_b.rep ? root_type_id_a : root_type_id_b;
+		const TypeId min_id = static_cast<u32>(root_type_id_a) < static_cast<u32>(root_type_id_b) ? root_type_id_a : root_type_id_b;
 
 		return min_id;
 	}
 
 	// We're in case 3. (Incompatible types)
 
-	return INVALID_TYPE_ID;
+	return TypeId::INVALID;
 }
 
 
 IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept
 {
-	const TypeName* const name = types->named_types.value_from(type_id.rep);
+	const TypeName* const name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	return name->name_id;
 }
 
 SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept
 {
-	const TypeName* const name = types->named_types.value_from(type_id.rep);
+	const TypeName* const name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	return name->source_id;
 }
 
 TypeId lexical_parent_type_from_id(const TypePool* types, TypeId type_id) noexcept
 {
-	const TypeName* const name = types->named_types.value_from(type_id.rep);
+	const TypeName* const name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	return name->lexical_parent_type_id;
 }
 
 TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 {
-	TypeName* const name = types->named_types.value_from(type_id.rep);
+	TypeName* const name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	if (!resolve_name_structure(types, name))
 	{
@@ -1407,7 +1407,7 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 
 TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept
 {
-	TypeName* const name = types->named_types.value_from(type_id.rep);
+	TypeName* const name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	if (!resolve_name_structure(types, name))
 		return TypeTag::Composite;
@@ -1447,7 +1447,7 @@ bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberI
 
 const void* simple_type_structure_from_id(TypePool* types, TypeId type_id) noexcept
 {
-	TypeName* const name = types->named_types.value_from(type_id.rep);
+	TypeName* const name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	if (resolve_name_structure(types, name))
 	{
@@ -1499,10 +1499,10 @@ const char8* tag_name(TypeTag tag) noexcept
 
 IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) noexcept
 {
-	TypeName* name = types->named_types.value_from(type_id.rep);
+	TypeName* name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	if (resolve_name_structure(types, name))
-		return { nullptr, nullptr, 0, INVALID_TYPE_ID };
+		return { nullptr, nullptr, 0, TypeId::INVALID };
 
 	if (name->structure_index_kind == TypeName::STRUCTURE_INDEX_INDIRECT)
 		name = types->named_types.value_from(name->structure_index);
@@ -1515,7 +1515,7 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 		panic("Passed open type to `incomplete_members_of`\n");
 
 	if (header->head_offset == 0)
-		return { nullptr, nullptr, 0, INVALID_TYPE_ID };
+		return { nullptr, nullptr, 0, TypeId::INVALID };
 
 	u16 rank = 0;
 
@@ -1535,7 +1535,7 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 		if (static_cast<u16>(index + 1) == array_count(builder->members) - 1)
 		{
 			if (builder->next_offset == 0)
-				return { nullptr, nullptr, 0, INVALID_TYPE_ID };
+				return { nullptr, nullptr, 0, TypeId::INVALID };
 			else
 				builder = type_builder_at_offset(builder, builder->next_offset);
 		}
@@ -1576,7 +1576,7 @@ bool has_next(const IncompleteMemberIterator* it) noexcept
 
 MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 {
-	TypeName* name = types->named_types.value_from(type_id.rep);
+	TypeName* name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	if (resolve_name_structure(types, name))
 	{
@@ -1589,7 +1589,7 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 		CompositeType* const composite = data<CompositeType>(structure);
 
 		if (composite->header.member_count == 0)
-			return { nullptr, nullptr, 0, INVALID_TYPE_ID };
+			return { nullptr, nullptr, 0, TypeId::INVALID };
 
 		return { composite, nullptr, 0, type_id };
 	}
@@ -1606,7 +1606,7 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 			panic("Passed open type to `incomplete_members_of`\n");
 
 		if (header->head_offset == 0)
-			return { nullptr, nullptr, 0, INVALID_TYPE_ID };
+			return { nullptr, nullptr, 0, TypeId::INVALID };
 
 		return { type_builder_at_offset(&header->unused_, header->tail_offset), name, 0, type_id };
 	}
