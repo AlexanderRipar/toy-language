@@ -696,8 +696,22 @@ static bool find_composite_member_by_name(TypePool* types, CompositeType* compos
 
 		ASSERT_OR_IGNORE(use_type_id.rep != INVALID_TYPE_ID.rep);
 
-		if (find_member_by_name(types, use_type_id, name, include_use, out))
-			return true;
+		const TypeTag use_type_tag = type_tag_from_id(types, use_type_id);
+
+		if (use_type_tag == TypeTag::Type)
+		{
+			const TypeId defined_type_id = *static_cast<TypeId*>(global_value_from_id(types->globals, members[i].value_id).address);
+
+			if (find_member_by_name(types, defined_type_id, name, true, out))
+				return true;
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(use_type_tag == TypeTag::Composite);
+
+			if (find_member_by_name(types, use_type_id, name, true, out))
+				return true;
+		}
 	}
 
 	return false;
