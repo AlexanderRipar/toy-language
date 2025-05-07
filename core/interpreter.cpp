@@ -1838,13 +1838,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		if (operand_type_tag != TypeTag::Type)
 			source_error(interp->errors, operand->source_id, "Operand of `%s` must be of type `Type`.\n", tag_name(node->tag));
 
-		ReferenceType slice_type{};
-		slice_type.is_multi = false;
-		slice_type.is_opt = false;
-		slice_type.is_mut = has_flag(node, AstFlag::Type_IsMut);
-		slice_type.referenced_type_id = operand_type_id;
-
-		return with_assignability(simple_type(interp->types, TypeTag::Slice, range::from_object_bytes(&slice_type)), false);
+		return with_assignability(simple_type(interp->types, TypeTag::Type, {}), false);
 	}
 
 	case AstTag::UOpEval:
