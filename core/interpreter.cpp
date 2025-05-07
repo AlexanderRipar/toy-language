@@ -83,7 +83,7 @@ struct FuncTypeParamHelper
 
 struct alignas(8) Callable
 {
-	u32 type_id_bits : 31;
+	u32 func_type_id_bits : 31;
 
 	u32 is_builtin : 1;
 
@@ -580,7 +580,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		const u8 ordinal = static_cast<u8>(node->flags);
 
 		Callable* const dst = static_cast<Callable*>(push_temporary(interp, 8, 8));
-		dst->type_id_bits = static_cast<u32>(interp->builtin_type_ids[ordinal]);
+		dst->func_type_id_bits = static_cast<u32>(interp->builtin_type_ids[ordinal]);
 		dst->is_builtin = true;
 		dst->code.ordinal = ordinal;
 
@@ -678,7 +678,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		pop_temporary(interp);
 
-		const TypeId func_type_id = TypeId{ callable.type_id_bits };
+		const TypeId func_type_id = TypeId{ callable.func_type_id_bits };
 
 		const FuncType* const func_type = static_cast<const FuncType*>(simple_type_structure_from_id(interp->types, func_type_id));
 
