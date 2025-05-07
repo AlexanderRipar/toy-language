@@ -1728,8 +1728,15 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		const TypeId return_type_id = type_id(typecheck_expr(interp, return_type));
 
+		if (type_tag_from_id(interp->types, return_type_id) != TypeTag::Type)
+			source_error(interp->errors, node->source_id, "Return type expression of function must be of type `Type`.\n");
+
+		const TypeId defined_return_type_id = *static_cast<TypeId*>(evaluate_expr(interp, return_type, type_id(return_type->type_id)));
+
+		pop_temporary(interp);
+
 		FuncType func_type{};
-		func_type.return_type_id = return_type_id;
+		func_type.return_type_id = defined_return_type_id;
 		func_type.param_count = param_count;
 		func_type.is_proc = has_flag(node, AstFlag::Func_IsProc);
 		func_type.signature_type_id = signature_type_id;
