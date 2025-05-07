@@ -121,5 +121,5 @@ Range<char8> identifier_name_from_id(const IdentifierPool* identifiers, Identifi
 
 	const IdentifierEntry* const entry = identifiers->map.value_from(static_cast<u32>(id));
 
-	return { entry->m_chars, entry->m_hash };
+	return { entry->m_chars, entry->m_length };
 }
