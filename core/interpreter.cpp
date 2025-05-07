@@ -1741,7 +1741,25 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		func_type.is_proc = has_flag(node, AstFlag::Func_IsProc);
 		func_type.signature_type_id = signature_type_id;
 
-		return with_assignability(simple_type(interp->types, TypeTag::Func, range::from_object_bytes(&func_type)), false);
+		const TypeId func_type_id = simple_type(interp->types, TypeTag::Func, range::from_object_bytes(&func_type));
+
+		attachment_of<AstFuncData>(node)->func_type_id = func_type_id;
+
+		if (is_some(info.body))
+		{
+			AstNode* const body = get_ptr(info.body);
+
+			const TypeId body_type_id = type_id(typecheck_expr(interp, body));
+
+			if (!type_can_implicitly_convert_from_to(interp->types, body_type_id, defined_return_type_id))
+				source_error(interp->errors, body->source_id, "Cannot implicitly convert type of function body to declared return type.\n");
+
+			return with_assignability(func_type_id, false);
+		}
+		else
+		{
+			return with_assignability(simple_type(interp->types, TypeTag::Type, {}), false);
+		}
 	}
 
 	case AstTag::Identifer:
