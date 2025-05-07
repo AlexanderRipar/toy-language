@@ -1751,6 +1751,8 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		AstNode* const return_type = get_ptr(info.return_type);
 
+		push_typechecker_context(interp, signature_type_id);
+
 		const TypeId return_type_id = type_id(typecheck_expr(interp, return_type));
 
 		if (type_tag_from_id(interp->types, return_type_id) != TypeTag::Type)
@@ -1779,10 +1781,14 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 			if (!type_can_implicitly_convert_from_to(interp->types, body_type_id, defined_return_type_id))
 				source_error(interp->errors, body->source_id, "Cannot implicitly convert type of function body to declared return type.\n");
 
+			pop_typechecker_context(interp);
+
 			return with_assignability(func_type_id, false);
 		}
 		else
 		{
+			pop_typechecker_context(interp);
+
 			return with_assignability(simple_type(interp->types, TypeTag::Type, {}), false);
 		}
 	}
