@@ -2395,22 +2395,18 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				const SourceId source_id = lexeme.source_id;
 
-				pop_to_precedence(parser, &stack, 2, false);
-
 				skip(&parser->lexer);
 
-				parse_expr(parser, false);
+				const AstBuilderToken count_token = parse_expr(parser, false);
 
 				lexeme = peek(&parser->lexer);
 
 				if (lexeme.token != Token::BracketR)
 					source_error(parser->lexer.errors, lexeme.source_id, "Expected ']' after array type's size expression, but got '%s'\n", token_name(lexeme.token));
 
-				// TODO: Work out how to make this into an infix operator or something
-				// Use pop_to_precedence and then manually replace top
-				const AstBuilderToken array_token = push_node(parser->builder, stack.operand_tokens[stack.operand_count - 1], source_id, AstFlag::EMPTY, AstTag::OpTypeArray);
+				push_operand(parser, &stack, count_token);
 
-				stack.operand_tokens[stack.operand_count - 1] = array_token;
+				push_operator(parser, &stack, OperatorDescWithSource{ { AstTag::OpTypeArray, AstFlag::EMPTY, 2, false, true }, source_id });
 			}
 			else if (lexeme.token == Token::CurlyL) // Block
 			{
