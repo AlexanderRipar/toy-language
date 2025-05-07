@@ -44,6 +44,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::Divergent:
 	case TypeTag::Trait:
 	case TypeTag::TypeInfo:
+	case TypeTag::TailArray:
 	{
 		diag::buf_printf(ctx, "\n");
 

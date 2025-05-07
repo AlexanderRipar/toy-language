@@ -405,6 +405,7 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 	case TypeTag::TypeBuilder:
 	case TypeTag::Variadic:
 	case TypeTag::Trait:
+	case TypeTag::TailArray:
 	{
 		ASSERT_OR_IGNORE(target_type_tag == type_tag_from_id(interp->types, source_type_id));
 

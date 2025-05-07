@@ -1206,6 +1206,7 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 	case TypeTag::TypeBuilder:
 	case TypeTag::Variadic:
 	case TypeTag::Trait:
+	case TypeTag::TailArray:
 	{
 		return false;
 	}
@@ -1396,10 +1397,11 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 	case TypeTag::Variadic:
 	case TypeTag::Divergent:
 	case TypeTag::Trait:
+	case TypeTag::TailArray:
 		panic("`type_metrics_from_id` is not yet implemented for `%s`.\n", tag_name(structure->tag));
 
 	case TypeTag::INVALID:
-		ASSERT_UNREACHABLE;
+		; // fallthrough to unreachable
 	}
 
 	ASSERT_UNREACHABLE;
@@ -1486,6 +1488,7 @@ const char8* tag_name(TypeTag tag) noexcept
 		"Divergent",
 		"Trait",
 		"TypeInfo",
+		"TailArray",
 	};
 
 	u8 index = static_cast<u8>(tag);

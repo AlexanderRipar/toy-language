@@ -1142,6 +1142,7 @@ enum class TypeTag : u8
 	Divergent,
 	Trait,
 	TypeInfo,
+	TailArray,
 };
 
 struct TypeMetrics
