@@ -1048,7 +1048,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::OpSetShiftR:
 	case AstTag::OpTypeArray:
 	case AstTag::OpArrayIndex:
-		panic("Evaluation of AST node type %s is not yet implemented.\n", tag_name(node->tag));
+		source_error(interp->errors, node->source_id, "Evaluation of AST node type %s is not yet implemented (%s:%u).\n", tag_name(node->tag), __FILE__, __LINE__);
 
 	case AstTag::INVALID:
 	case AstTag::MAX:
@@ -1291,7 +1291,7 @@ static void* address_expr(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::OpSetShiftL:
 	case AstTag::OpSetShiftR:
 	case AstTag::OpTypeArray:
-		panic("Addressation of AST node type %s is not yet implemented.\n", tag_name(node->tag));
+		source_error(interp->errors, node->source_id, "Addressation of AST node type %s is not yet implemented (%s:%u).\n", tag_name(node->tag), __FILE__, __LINE__);
 
 	case AstTag::INVALID:
 	case AstTag::MAX:
@@ -1415,7 +1415,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 	case AstTag::UOpTry:
 	case AstTag::UOpDefer:
 	case AstTag::UOpImpliedMember:
-		source_error(interp->errors, node->source_id, "Typechecking of AST node type %s is not yet implemented.\n", tag_name(node->tag));
+		source_error(interp->errors, node->source_id, "Typechecking of AST node type %s is not yet implemented (%s:%u).\n", tag_name(node->tag), __FILE__, __LINE__);
 
 	case AstTag::Builtin:
 	{
