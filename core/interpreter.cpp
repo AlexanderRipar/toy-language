@@ -377,7 +377,7 @@ static void* push_temporary(Interpreter* interp, u64 size, u32 align) noexcept
 	return interp->value_stack.reserve_padded(static_cast<u32>(size));
 }
 
-static void pop_stack_value(Interpreter* interp) noexcept
+static void pop_temporary(Interpreter* interp) noexcept
 {
 	const u32 new_top = interp->value_stack_inds.top();
 
@@ -423,7 +423,7 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 
 		ASSERT_OR_IGNORE(source_type_tag == TypeTag::Definition);
 
-		pop_stack_value(interp);
+		pop_temporary(interp);
 
 		return push_temporary(interp, 0, 1);
 	}
@@ -519,7 +519,7 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 			if ((v.padding_qwords & 1) == 1)
 				TODO("Implement implicit conversion of non-global");
 
-			pop_stack_value(interp);
+			pop_temporary(interp);
 
 			Range<byte>* const new_stack_value = static_cast<Range<byte>*>(push_temporary(interp, 16, 8));
 
@@ -594,7 +594,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		const bool condition_value = *static_cast<bool*>(evaluate_expr(interp, info.condition, type_id(info.condition->type_id)));
 
-		pop_stack_value(interp);
+		pop_temporary(interp);
 
 		if (condition_value)
 			return evaluate_expr(interp, info.consequent, type_id(node->type_id));
@@ -675,7 +675,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		const Callable callable = *static_cast<Callable*>(evaluate_expr(interp, callee, type_id(callee->type_id)));
 
-		pop_stack_value(interp);
+		pop_temporary(interp);
 
 		const TypeId func_type_id = TypeId{ callable.type_id_bits };
 
@@ -728,7 +728,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 			memcpy(static_cast<byte*>(temp_activation_record) + member.offset, member_value, member_metrics.size);
 
-			pop_stack_value(interp);
+			pop_temporary(interp);
 
 			seen_argument_mask |= static_cast<u64>(1) << member.rank;
 		}
@@ -767,7 +767,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		const TypeId defined_operand_type_id = *static_cast<TypeId*>(evaluate_expr(interp, operand, type_id(operand->type_id)));
 
-		pop_stack_value(interp);
+		pop_temporary(interp);
 
 		ReferenceType slice_type{};
 		slice_type.is_multi = false;
@@ -815,7 +815,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		{
 			const TypeId defined_type_id = *static_cast<TypeId*>(evaluate_expr(interp, lhs, type_id(lhs->type_id)));
 
-			pop_stack_value(interp);
+			pop_temporary(interp);
 
 			MemberInfo member;
 	
@@ -896,9 +896,9 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 			TODO("Implement `OpCmpEq` for non-`CompInteger` types.\n");
 		}
 
-		pop_stack_value(interp);
+		pop_temporary(interp);
 
-		pop_stack_value(interp);
+		pop_temporary(interp);
 
 		bool *const stack_value = static_cast<bool*>(push_temporary(interp, 1, 1));
 
@@ -1089,7 +1089,7 @@ static void* address_expr(Interpreter* interp, AstNode* node) noexcept
 
 			base_address = evaluate_expr(interp, lhs, type_id(lhs->type_id));
 
-			pop_stack_value(interp);
+			pop_temporary(interp);
 
 			stride = type_metrics_from_id(interp->types, ptr_type->referenced_type_id).stride;
 
@@ -1103,7 +1103,7 @@ static void* address_expr(Interpreter* interp, AstNode* node) noexcept
 
 			MutRange<byte> slice_value = *static_cast<MutRange<byte>*>(evaluate_expr(interp, lhs, type_id(lhs->type_id)));
 
-			pop_stack_value(interp);
+			pop_temporary(interp);
 			
 			base_address = slice_value.begin();
 
@@ -1126,7 +1126,7 @@ static void* address_expr(Interpreter* interp, AstNode* node) noexcept
 
 		const u64 index = *static_cast<const u64*>(evaluate_expr(interp, rhs, u64_type_id));
 
-		pop_stack_value(interp);
+		pop_temporary(interp);
 
 		if (index >= index_limit)
 			source_error(interp->errors, node->source_id, "Index %" PRIu64 " exceeds maximum of %" PRIu64 ".\n", index, index_limit);
@@ -1250,7 +1250,7 @@ static void force_member_value(Interpreter* interp, MemberInfo* member) noexcept
 
 	set_incomplete_type_member_value_by_rank(interp->types, member->surrounding_type_id, member->rank, value_id);
 
-	pop_stack_value(interp);
+	pop_temporary(interp);
 
 	unset_typechecker_context(interp);
 
@@ -1282,7 +1282,7 @@ static void force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 
 		defined_type_id = *static_cast<TypeId*>(evaluate_expr(interp, type, type_id(type_type_id)));
 
-		pop_stack_value(interp);
+		pop_temporary(interp);
 
 		set_incomplete_type_member_type_by_rank(interp->types, member->surrounding_type_id, member->rank, defined_type_id);
 
@@ -1401,7 +1401,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 					defined_type_id = *static_cast<TypeId*>(evaluate_expr(interp, type, type_id(type_type_id)));
 
-					pop_stack_value(interp);
+					pop_temporary(interp);
 				}
 				else
 				{
@@ -2155,7 +2155,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 			const TypeId defined_type_id = *static_cast<TypeId*>(evaluate_expr(interp, lhs, type_id(lhs_type_id)));
 
-			pop_stack_value(interp);
+			pop_temporary(interp);
 
 			MemberInfo member;
 
@@ -2321,7 +2321,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		const u64 count_value = *static_cast<u64*>(evaluate_expr(interp, count, u64_type_id));
 
-		pop_stack_value(interp);
+		pop_temporary(interp);
 
 		ArrayType result_type;
 		result_type.element_type = type_type_id;
