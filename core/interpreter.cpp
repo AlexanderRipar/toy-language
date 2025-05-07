@@ -1897,34 +1897,6 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		return with_assignability(func_type->return_type_id, true);
 	}
 
-	case AstTag::UOpTypeTailArray:
-	{
-		AstNode* const operand = first_child_of(node);
-
-		const TypeId operand_type_id = type_id(typecheck_expr(interp, operand));
-
-		const TypeTag operand_type_tag = type_tag_from_id(interp->types, operand_type_id);
-
-		if (operand_type_tag != TypeTag::Type)
-			source_error(interp->errors, operand->source_id, "Operand of `%s` must be of type `Type`.\n", tag_name(node->tag));
-
-		return with_assignability(simple_type(interp->types, TypeTag::Type, {}), false);
-	}
-
-	case AstTag::UOpTypeSlice:
-	{
-		AstNode* const operand = first_child_of(node);
-
-		const TypeId operand_type_id = type_id(typecheck_expr(interp, operand));
-
-		const TypeTag operand_type_tag = type_tag_from_id(interp->types, operand_type_id);
-
-		if (operand_type_tag != TypeTag::Type)
-			source_error(interp->errors, operand->source_id, "Operand of `%s` must be of type `Type`.\n", tag_name(node->tag));
-
-		return with_assignability(simple_type(interp->types, TypeTag::Type, {}), false);
-	}
-
 	case AstTag::UOpEval:
 	{
 		AstNode* const operand = first_child_of(node);
@@ -2005,20 +1977,9 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		return with_assignability(operand_type_id, false);
 	}
 
+	case AstTag::UOpTypeTailArray:
 	case AstTag::UOpTypeVar:
-	{
-		AstNode* const operand = first_child_of(node);
-
-		const TypeId operand_type_id = type_id(typecheck_expr(interp, operand));
-
-		const TypeTag operand_type_tag = type_tag_from_id(interp->types, operand_type_id);
-
-		if (operand_type_tag != TypeTag::Type)
-			source_error(interp->errors, operand->source_id, "Operand of `%s` must be of type `Type`.\n", tag_name(node->tag));
-
-		return with_assignability(simple_type(interp->types, TypeTag::Type, {}), false);
-	}
-
+	case AstTag::UOpTypeSlice:
 	case AstTag::UOpTypePtr:
 	case AstTag::UOpTypeOptPtr:
 	case AstTag::UOpTypeMultiPtr:
