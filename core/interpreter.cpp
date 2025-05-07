@@ -759,6 +759,31 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		return result;
 	}
 
+	case AstTag::UOpTypeSlice:
+	{
+		AstNode* const operand = first_child_of(node);
+
+		ASSERT_OR_IGNORE(type_tag_from_id(interp->types, type_id(operand->type_id)) == TypeTag::Type);
+
+		const TypeId defined_operand_type_id = *static_cast<TypeId*>(evaluate_expr(interp, operand, type_id(operand->type_id)));
+
+		pop_stack_value(interp);
+
+		ReferenceType slice_type{};
+		slice_type.is_multi = false;
+		slice_type.is_opt = false;
+		slice_type.is_mut = has_flag(node, AstFlag::Type_IsMut);
+		slice_type.referenced_type_id = defined_operand_type_id;
+
+		const TypeId defined_type_id = simple_type(interp->types, TypeTag::Slice, range::from_object_bytes(&slice_type));
+
+		TypeId* const stack_value = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
+
+		*stack_value = defined_type_id;
+
+		return stack_value;
+	}
+
 	case AstTag::UOpLogNot:
 	{
 		AstNode* const operand = first_child_of(node);
@@ -901,7 +926,6 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::Leave:
 	case AstTag::Yield:
 	case AstTag::UOpTypeTailArray:
-	case AstTag::UOpTypeSlice:
 	case AstTag::UOpTypeMultiPtr:
 	case AstTag::UOpTypeOptMultiPtr:
 	case AstTag::UOpEval:
