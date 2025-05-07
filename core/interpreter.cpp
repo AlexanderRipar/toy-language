@@ -2014,13 +2014,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		if (operand_type_tag != TypeTag::Type)
 			source_error(interp->errors, operand->source_id, "Operand of `%s` must be of type `Type`.\n", tag_name(node->tag));
 
-		ReferenceType ptr_type{};
-		ptr_type.is_multi = node->tag == AstTag::UOpTypeMultiPtr || node->tag == AstTag::UOpTypeOptMultiPtr;
-		ptr_type.is_opt = node->tag == AstTag::UOpTypeOptPtr || node->tag == AstTag::UOpTypeOptMultiPtr;
-		ptr_type.is_mut = has_flag(node, AstFlag::Type_IsMut);
-		ptr_type.referenced_type_id = operand_type_id;
-
-		return with_assignability(simple_type(interp->types, TypeTag::Ptr, range::from_object_bytes(&ptr_type)), false);
+		return with_assignability(simple_type(interp->types, TypeTag::Type, {}), false);
 	}
 
 	case AstTag::UOpNegate:
