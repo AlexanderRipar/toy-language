@@ -360,7 +360,7 @@ static MemberInit member_init_from_definition(Interpreter* interp, TypeId lexica
 
 
 
-static void* alloc_stack_value(Interpreter* interp, u64 size, u32 align) noexcept
+static void* push_temporary(Interpreter* interp, u64 size, u32 align) noexcept
 {
 	ASSERT_OR_IGNORE(is_pow2(align));
 
@@ -425,7 +425,7 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 
 		pop_stack_value(interp);
 
-		return alloc_stack_value(interp, 0, 1);
+		return push_temporary(interp, 0, 1);
 	}
 
 	case TypeTag::Integer:
@@ -521,7 +521,7 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 
 			pop_stack_value(interp);
 
-			Range<byte>* const new_stack_value = static_cast<Range<byte>*>(alloc_stack_value(interp, 16, 8));
+			Range<byte>* const new_stack_value = static_cast<Range<byte>*>(push_temporary(interp, 16, 8));
 
 			*new_stack_value = Range{ static_cast<byte*>(v.value_ptr), source_type->element_count };
 
@@ -578,7 +578,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 	{
 		const u8 ordinal = static_cast<u8>(node->flags);
 
-		Callable* const dst = static_cast<Callable*>(alloc_stack_value(interp, 8, 8));
+		Callable* const dst = static_cast<Callable*>(push_temporary(interp, 8, 8));
 		dst->type_id_bits = static_cast<u32>(interp->builtin_type_ids[ordinal]);
 		dst->is_builtin = true;
 		dst->code.ordinal = ordinal;
@@ -601,7 +601,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		else if (is_some(info.alternative))
 			return evaluate_expr(interp, get_ptr(info.alternative), type_id(node->type_id));
 		else
-			return alloc_stack_value(interp, 0, 1); // Void
+			return push_temporary(interp, 0, 1); // Void
 	}
 
 	case AstTag::Identifer:
@@ -612,7 +612,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		const TypeMetrics metrics = type_metrics_from_id(interp->types, type_id(node->type_id));
 
-		void* const stack_value = alloc_stack_value(interp, metrics.size, metrics.align);
+		void* const stack_value = push_temporary(interp, metrics.size, metrics.align);
 
 		memcpy(stack_value, identifier_value, metrics.size);
 
@@ -625,7 +625,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		// We overallocate in case of non-64-bit integers. That's fine, as
 		// stack slots are 8-byte aligned anyways.
-		CompIntegerValue* const stack_value = static_cast<CompIntegerValue*>(alloc_stack_value(interp, 8, 8));
+		CompIntegerValue* const stack_value = static_cast<CompIntegerValue*>(push_temporary(interp, 8, 8));
 
 		*stack_value = value;
 
@@ -638,7 +638,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		// We overallocate in case of f32. That's fine, as stack slots are
 		// 8-byte aligned anyways.
-		CompFloatValue* const stack_value = static_cast<CompFloatValue*>(alloc_stack_value(interp, 8, 8));
+		CompFloatValue* const stack_value = static_cast<CompFloatValue*>(push_temporary(interp, 8, 8));
 
 		*stack_value = value;
 
@@ -651,7 +651,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		// We overallocate in case of non-64-bit integers. That's fine, as
 		// stack slots are 8-byte aligned anyways.
-		CompIntegerValue* const stack_value = static_cast<CompIntegerValue*>(alloc_stack_value(interp, 8, 8));
+		CompIntegerValue* const stack_value = static_cast<CompIntegerValue*>(push_temporary(interp, 8, 8));
 
 		*stack_value = comp_integer_from_u64(value);
 
@@ -660,7 +660,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 	case AstTag::LitString:
 	{
-		ArrayValue* const stack_value = static_cast<ArrayValue*>(alloc_stack_value(interp, sizeof(ArrayValue), alignof(ArrayValue)));
+		ArrayValue* const stack_value = static_cast<ArrayValue*>(push_temporary(interp, sizeof(ArrayValue), alignof(ArrayValue)));
 
 		stack_value->value_ptr = global_value_from_id(interp->globals, attachment_of<AstLitStringData>(node)->string_value_id).address;
 
@@ -685,7 +685,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		const TypeMetrics signature_metrics = type_metrics_from_id(interp->types, signature_type_id);
 
-		void* const temp_activation_record = alloc_stack_value(interp, signature_metrics.size, signature_metrics.align);
+		void* const temp_activation_record = push_temporary(interp, signature_metrics.size, signature_metrics.align);
 
 		AstNode* argument = callee;
 
@@ -777,7 +777,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		const TypeId defined_type_id = simple_type(interp->types, TypeTag::Slice, range::from_object_bytes(&slice_type));
 
-		TypeId* const stack_value = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
+		TypeId* const stack_value = static_cast<TypeId*>(push_temporary(interp, 4, 4));
 
 		*stack_value = defined_type_id;
 
@@ -866,7 +866,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 			}
 		}
 
-		void* const stack_value = alloc_stack_value(interp, member_metrics.size, member_metrics.align);
+		void* const stack_value = push_temporary(interp, member_metrics.size, member_metrics.align);
 
 		memcpy(stack_value, member_address, member_metrics.size);
 
@@ -900,7 +900,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		pop_stack_value(interp);
 
-		bool *const stack_value = static_cast<bool*>(alloc_stack_value(interp, 1, 1));
+		bool *const stack_value = static_cast<bool*>(push_temporary(interp, 1, 1));
 
 		*stack_value = result;
 
@@ -998,7 +998,7 @@ static void* evaluate_expr(Interpreter* interp, AstNode* node, TypeId target_typ
 
 	if (target_type_tag == TypeTag::TypeInfo)
 	{
-		TypeId* stack_top = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
+		TypeId* stack_top = static_cast<TypeId*>(push_temporary(interp, 4, 4));
 
 		*stack_top = type_id(node->type_id);
 
@@ -2531,7 +2531,7 @@ static void* builtin_integer(Interpreter* interp, [[maybe_unused]] AstNode* call
 	integer_type.bits = bits;
 	integer_type.is_signed = is_signed;
 
-	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
+	TypeId* const dst = static_cast<TypeId*>(push_temporary(interp, 4, 4));
 
 	const TypeId integer_type_id = simple_type(interp->types, TypeTag::Integer, range::from_object_bytes(&integer_type));
 
@@ -2548,7 +2548,7 @@ static void* builtin_float(Interpreter* interp, [[maybe_unused]] AstNode* call_n
 	float_type.bits = bits;
 	float_type.is_signed = true;
 
-	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
+	TypeId* const dst = static_cast<TypeId*>(push_temporary(interp, 4, 4));
 
 	const TypeId float_type_id = simple_type(interp->types, TypeTag::Float, range::from_object_bytes(&float_type));
 
@@ -2559,7 +2559,7 @@ static void* builtin_float(Interpreter* interp, [[maybe_unused]] AstNode* call_n
 
 static void* builtin_type(Interpreter* interp, [[maybe_unused]] AstNode* call_node) noexcept
 {
-	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
+	TypeId* const dst = static_cast<TypeId*>(push_temporary(interp, 4, 4));
 
 	const TypeId type_type_id = simple_type(interp->types, TypeTag::Type, {});
 
@@ -2572,7 +2572,7 @@ static void* builtin_typeof(Interpreter* interp, [[maybe_unused]] AstNode* call_
 {
 	const TypeId arg_type_id = *static_cast<TypeId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("arg")), SourceId::INVALID));
 
-	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
+	TypeId* const dst = static_cast<TypeId*>(push_temporary(interp, 4, 4));
 
 	*dst = arg_type_id;
 
@@ -2590,7 +2590,7 @@ static void* builtin_returntypeof(Interpreter* interp, [[maybe_unused]] AstNode*
 
 	const FuncType* const func_type = static_cast<const FuncType*>(simple_type_structure_from_id(interp->types, arg_type_id));
 
-	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
+	TypeId* const dst = static_cast<TypeId*>(push_temporary(interp, 4, 4));
 
 	*dst = func_type->return_type_id;
 
@@ -2603,7 +2603,7 @@ static void* builtin_sizeof(Interpreter* interp, [[maybe_unused]] AstNode* call_
 
 	const TypeMetrics metrics = type_metrics_from_id(interp->types, arg_type_id);
 
-	CompIntegerValue* const dst = static_cast<CompIntegerValue*>(alloc_stack_value(interp, 8, 8));
+	CompIntegerValue* const dst = static_cast<CompIntegerValue*>(push_temporary(interp, 8, 8));
 
 	*dst = comp_integer_from_u64(metrics.size);
 
@@ -2616,7 +2616,7 @@ static void* builtin_alignof(Interpreter* interp, [[maybe_unused]] AstNode* call
 
 	const TypeMetrics metrics = type_metrics_from_id(interp->types, arg_type_id);
 
-	CompIntegerValue* const dst = static_cast<CompIntegerValue*>(alloc_stack_value(interp, 8, 8));
+	CompIntegerValue* const dst = static_cast<CompIntegerValue*>(push_temporary(interp, 8, 8));
 
 	*dst = comp_integer_from_u64(metrics.align);
 
@@ -2629,7 +2629,7 @@ static void* builtin_strideof(Interpreter* interp, [[maybe_unused]] AstNode* cal
 
 	const TypeMetrics metrics = type_metrics_from_id(interp->types, arg_type_id);
 
-	CompIntegerValue* const dst = static_cast<CompIntegerValue*>(alloc_stack_value(interp, 8, 8));
+	CompIntegerValue* const dst = static_cast<CompIntegerValue*>(push_temporary(interp, 8, 8));
 
 	*dst = comp_integer_from_u64(metrics.stride);
 
@@ -2658,7 +2658,7 @@ static void* builtin_import(Interpreter* interp, AstNode* call_node) noexcept
 
 	const SourceId from = *static_cast<SourceId*>(lookup_identifier_value(interp, id_from_identifier(interp->identifiers, range::from_literal_string("from")), SourceId::INVALID));
 
-	TypeId* const dst = static_cast<TypeId*>(alloc_stack_value(interp, 4, 4));
+	TypeId* const dst = static_cast<TypeId*>(push_temporary(interp, 4, 4));
 
 	char8 absolute_path_buf[8192];
 
@@ -2719,7 +2719,7 @@ static void* builtin_complete_type(Interpreter* interp, [[maybe_unused]] AstNode
 
 static void* builtin_source_id(Interpreter* interp, AstNode* call_node) noexcept
 {
-	SourceId* const dst = static_cast<SourceId*>(alloc_stack_value(interp, 4, 4));
+	SourceId* const dst = static_cast<SourceId*>(push_temporary(interp, 4, 4));
 
 	*dst = call_node->source_id;
 
