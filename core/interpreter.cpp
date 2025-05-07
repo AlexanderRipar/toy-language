@@ -1311,7 +1311,6 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 	case AstTag::Definition:
 	case AstTag::ForEach:
 	case AstTag::Switch:
-	case AstTag::Func:
 	case AstTag::Trait:
 	case AstTag::Impl:
 	case AstTag::Catch:
@@ -1536,6 +1535,111 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 			return body_type_id;
 		}
+	}
+
+	case AstTag::Func:
+	{
+		FuncInfo info = get_func_info(node);
+
+		// TODO: This is a throwaway type only used as a scope for type
+		//       checking, which is a bit silly. Maybe a version of
+		//       `create_open_type` that deletes the type as soon as it is
+		//       instructed to do so through an additional function could be
+		//       nice. In this case the type should also never be put into
+		//       `structural_types`, instead staying in `builders`.
+		const TypeId pseudo_signature_type_id = create_open_type(interp->types, curr_typechecker_context(interp), node->source_id);
+
+		AstDirectChildIterator parameters = direct_children_of(info.parameters);
+
+		u16 param_count = 0;
+
+		for (OptPtr<AstNode> rst = next(&parameters); is_some(rst); rst = next(&parameters))
+		{
+			AstNode* const parameter = get_ptr(rst);
+
+			if (param_count == 64)
+				source_error(interp->errors, parameter->source_id, "Exceeded maximum of 64 function parameters.\n");
+
+			param_count += 1;
+
+			ASSERT_OR_IGNORE(parameter->tag == AstTag::Definition);
+
+			MemberInit init = member_init_from_definition(interp, pseudo_signature_type_id, parameter, get_definition_info(parameter), 0);
+
+			add_open_type_member(interp->types, pseudo_signature_type_id, init);
+		}
+
+		close_open_type(interp->types, pseudo_signature_type_id, 0, 1, 0);
+
+		IncompleteMemberIterator incomplete_members = incomplete_members_of(interp->types, pseudo_signature_type_id);
+
+		push_typechecker_context(interp, pseudo_signature_type_id);
+
+		while (has_next(&incomplete_members))
+		{
+			MemberInfo member = next(&incomplete_members);
+
+			force_member_type(interp, &member);
+		}
+
+		pop_typechecker_context(interp);
+
+		const TypeId signature_type_id = create_open_type(interp->types, curr_typechecker_context(interp), node->source_id);
+
+		MemberIterator members = members_of(interp->types, pseudo_signature_type_id);
+
+		u64 offset = 0;
+
+		u32 max_align = 1;
+
+		while (has_next(&members))
+		{
+			MemberInfo member = next(&members);
+
+			ASSERT_OR_IGNORE(!member.has_pending_type);
+
+			const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member.type.complete);
+
+			offset = next_multiple(offset, static_cast<u64>(member_metrics.align));
+
+			MemberInit init;
+			init.name = member.name;
+			init.source = member.source;
+			init.type = member.type;
+			init.value = member.value;
+			init.lexical_parent_type_id = signature_type_id;
+			init.is_global = member.is_global;
+			init.is_pub = member.is_pub;
+			init.is_use = member.is_use;
+			init.is_mut = member.is_mut;
+			init.has_pending_type = member.has_pending_type;
+			init.has_pending_value = member.has_pending_value;
+			init.offset = offset;
+
+			offset += member_metrics.size;
+
+			if (max_align < member_metrics.align)
+				max_align = member_metrics.align;
+
+			add_open_type_member(interp->types, signature_type_id, init);
+		}
+
+		close_open_type(interp->types, signature_type_id, offset, max_align, next_multiple(offset, static_cast<u64>(max_align)));
+
+		if (is_none(info.return_type))
+			source_error(interp->errors, node->source_id, "Function definitions without an explicit return type are not yet supported.\n");
+
+		AstNode* const return_type = get_ptr(info.return_type);
+
+		const TypeId return_type_id = type_id(typecheck_expr(interp, return_type));
+
+		FuncType func_type{};
+		func_type.return_type_id = return_type_id;
+		func_type.param_count = param_count;
+		func_type.is_proc = has_flag(node, AstFlag::Func_IsProc);
+		func_type.signature_type_id = signature_type_id;
+
+		return with_assignability(simple_type(interp->types, TypeTag::Func, range::from_object_bytes(&func_type)), false);
 	}
 
 	case AstTag::Identifer:
