@@ -2135,7 +2135,7 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 		parse_expr(parser, true);
 	}
 
-	return push_node(parser->builder, first_child_token, func_source_id, flags, AstTag::Func);
+	return push_node(parser->builder, first_child_token, func_source_id, flags, AstFuncData{ TypeId::INVALID });
 }
 
 static AstBuilderToken parse_trait(Parser* parser) noexcept

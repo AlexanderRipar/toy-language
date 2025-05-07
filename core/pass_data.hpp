@@ -743,6 +743,19 @@ struct AstDefinitionData
 	IdentifierId identifier_id;
 };
 
+// Attachment of an `AstNode` with tag `AstTag::Func`.
+struct AstFuncData
+{
+	// Tag used for sanity checks in debug builds.
+	static constexpr AstTag TAG = AstTag::Func;
+
+	// `TypeId` of the function. This is important as a the `type_id` of a
+	// function signature without a body will be set to `Type`, meaning that
+	// the function type information would have to be recreated upon every
+	// evaluation without this additional attachment.
+	TypeId func_type_id;
+};
+
 // Attachment of an `AstNode` with tag `AstTag::Block`.
 struct AstBlockData
 {
