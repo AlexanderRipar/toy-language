@@ -844,6 +844,29 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		return stack_value;
 	}
 
+	case AstTag::UOpTypePtr:
+	case AstTag::UOpTypeOptPtr:
+	case AstTag::UOpTypeMultiPtr:
+	case AstTag::UOpTypeOptMultiPtr:
+	{
+		AstNode* const operand = first_child_of(node);
+
+		ASSERT_OR_IGNORE(type_tag_from_id(interp->types, type_id(operand->type_id)) == TypeTag::Type);
+
+		const TypeId defined_operand_type_id = *static_cast<TypeId*>(evaluate_expr(interp, operand, type_id(operand->type_id)));
+
+		pop_temporary(interp);
+
+		ReferenceType ptr_type{};
+		ptr_type.is_multi = node->tag == AstTag::UOpTypeMultiPtr || node->tag == AstTag::UOpTypeOptMultiPtr;
+		ptr_type.is_opt = node->tag == AstTag::UOpTypeOptPtr || node->tag == AstTag::UOpTypeOptMultiPtr;
+		ptr_type.is_mut = has_flag(node, AstFlag::Type_IsMut);
+		ptr_type.referenced_type_id = defined_operand_type_id;
+
+		const TypeId defined_type_id = simple_type(interp->types, TypeTag::Ptr, range::from_object_bytes(&ptr_type));
+
+	}
+
 	case AstTag::OpMember:
 	{
 		AstNode* const lhs = first_child_of(node);
@@ -974,8 +997,6 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::Return:
 	case AstTag::Leave:
 	case AstTag::Yield:
-	case AstTag::UOpTypeMultiPtr:
-	case AstTag::UOpTypeOptMultiPtr:
 	case AstTag::UOpEval:
 	case AstTag::UOpTry:
 	case AstTag::UOpDefer:
@@ -983,9 +1004,7 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::UOpAddr:
 	case AstTag::UOpDeref:
 	case AstTag::UOpBitNot:
-	case AstTag::UOpTypeOptPtr:
 	case AstTag::UOpImpliedMember:
-	case AstTag::UOpTypePtr:
 	case AstTag::UOpNegate:
 	case AstTag::UOpPos:
 	case AstTag::OpAdd:
