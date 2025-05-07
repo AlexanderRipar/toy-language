@@ -155,7 +155,7 @@ bool s64_from_comp_integer(CompIntegerValue value, u8 bits, s64* out) noexcept
 
 	const s64 s64_value = static_cast<s64>(value.rep) >> 1;
 
-	if (s64_value < -(static_cast<s64>(1) << (bits - 1)) || s64_value >= (static_cast<s64>(1) << (bits - 1)))
+	if (bits != 64 && (s64_value < -(static_cast<s64>(1) << (bits - 1)) || s64_value >= (static_cast<s64>(1) << (bits - 1))))
 		return false;
 
 	*out = s64_value;
