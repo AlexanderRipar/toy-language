@@ -865,6 +865,11 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		const TypeId defined_type_id = simple_type(interp->types, TypeTag::Ptr, range::from_object_bytes(&ptr_type));
 
+		TypeId* const stack_value = static_cast<TypeId*>(push_temporary(interp, 4, 4));
+
+		*stack_value = defined_type_id;
+
+		return stack_value;
 	}
 
 	case AstTag::OpMember:
