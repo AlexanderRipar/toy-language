@@ -605,6 +605,32 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 			return push_temporary(interp, 0, 1); // Void
 	}
 
+	case AstTag::Func:
+	{
+		FuncInfo info = get_func_info(node);
+
+		const TypeId func_type_id = attachment_of<AstFuncData>(node)->func_type_id;
+
+		if (is_some(info.body))
+		{
+			Callable* const stack_value = static_cast<Callable*>(push_temporary(interp, sizeof(Callable), alignof(Callable)));
+	
+			stack_value->func_type_id_bits = static_cast<u32>(func_type_id);
+			stack_value->is_builtin = false;
+			stack_value->code.ast = id_from_ast_node(interp->asts, get_ptr(info.body));
+
+			return stack_value;
+		}
+		else
+		{
+			TypeId* const stack_value = static_cast<TypeId*>(push_temporary(interp, 4, 4));
+
+			*stack_value = func_type_id;
+
+			return stack_value;
+		}
+	}
+
 	case AstTag::Identifer:
 	{
 		// TODO: Implicitly convert to target_type_id
@@ -995,7 +1021,6 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::For:
 	case AstTag::ForEach:
 	case AstTag::Switch:
-	case AstTag::Func:
 	case AstTag::Trait:
 	case AstTag::Impl:
 	case AstTag::Catch:
