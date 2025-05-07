@@ -819,6 +819,31 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 		return operand_value;
 	}
 
+	case AstTag::UOpTypeVar:
+	{
+		AstNode* const operand = first_child_of(node);
+
+		ASSERT_OR_IGNORE(type_tag_from_id(interp->types, type_id(operand->type_id)) == TypeTag::Type);
+
+		const TypeId defined_operand_type_id = *static_cast<TypeId*>(evaluate_expr(interp, operand, type_id(operand->type_id)));
+
+		pop_temporary(interp);
+
+		ReferenceType variadic_type{};
+		variadic_type.is_multi = false;
+		variadic_type.is_opt = false;
+		variadic_type.is_mut = false;
+		variadic_type.referenced_type_id = defined_operand_type_id;
+
+		const TypeId defined_type_id = simple_type(interp->types, TypeTag::Variadic, range::from_object_bytes(&variadic_type));
+
+		TypeId* const stack_value = static_cast<TypeId*>(push_temporary(interp, 4, 4));
+
+		*stack_value = defined_type_id;
+
+		return stack_value;
+	}
+
 	case AstTag::OpMember:
 	{
 		AstNode* const lhs = first_child_of(node);
@@ -959,7 +984,6 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::UOpDeref:
 	case AstTag::UOpBitNot:
 	case AstTag::UOpTypeOptPtr:
-	case AstTag::UOpTypeVar:
 	case AstTag::UOpImpliedMember:
 	case AstTag::UOpTypePtr:
 	case AstTag::UOpNegate:
