@@ -1563,8 +1563,8 @@ MemberInfo next(IncompleteMemberIterator* it) noexcept
 
 bool has_next(const IncompleteMemberIterator* it) noexcept
 {
-	return static_cast<TypeName*>(it->name)->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER
-	    && it->structure != nullptr;
+	return it->structure != nullptr
+	    && static_cast<TypeName*>(it->name)->structure_index_kind == TypeName::STRUCTURE_INDEX_BUILDER;
 }
 
 MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
