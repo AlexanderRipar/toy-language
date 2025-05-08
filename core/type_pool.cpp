@@ -1086,6 +1086,10 @@ void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_
 
 bool is_same_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 {
+	ASSERT_OR_IGNORE(type_id_a != TypeId::INVALID);
+
+	ASSERT_OR_IGNORE(type_id_b != TypeId::INVALID);
+
 	if (type_id_a == type_id_b)
 		return true;
 
@@ -1110,6 +1114,10 @@ bool is_same_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 
 bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept
 {
+	ASSERT_OR_IGNORE(from_type_id != TypeId::INVALID);
+
+	ASSERT_OR_IGNORE(to_type_id != TypeId::INVALID);
+
 	if (is_same_type(types, from_type_id, to_type_id))
 		return true;
 
