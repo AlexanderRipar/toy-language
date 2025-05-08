@@ -1636,11 +1636,13 @@ struct FuncType
 {
 	TypeId return_type_id;
 
+	TypeId signature_type_id;
+
 	u16 param_count;
 
 	bool is_proc;
 
-	TypeId signature_type_id;
+	u8 unused_ = 0;
 };
 
 TypePool* create_type_pool(AllocPool* alloc, GlobalValuePool* globals, ErrorSink* errors) noexcept;
