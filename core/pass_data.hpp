@@ -1158,8 +1158,6 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noe
 
 void release_read(SourceReader* reader, SourceFileRead read) noexcept;
 
-SourceLocation source_location_from_ast_node(SourceReader* reader, AstNode* node) noexcept;
-
 SourceLocation source_location_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
 
 SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id) noexcept;

@@ -306,11 +306,6 @@ void release_read([[maybe_unused]] SourceReader* reader, SourceFileRead read) no
 	free(const_cast<char8*>(read.content.begin()));
 }
 
-SourceLocation source_location_from_ast_node(SourceReader* reader, AstNode* node) noexcept
-{
-	return source_location_from_source_id(reader, node->source_id);
-}
-
 SourceLocation source_location_from_source_id(SourceReader* reader, SourceId source_id) noexcept
 {
 	if (source_id == SourceId::INVALID)
