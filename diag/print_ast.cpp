@@ -40,12 +40,9 @@ void diag::print_ast(minos::FileHandle out, IdentifierPool* identifiers, AstNode
 
 	print_node_header(&ctx, identifiers, root, -1);
 
-	while (true)
+	while (has_next(&it))
 	{
-		AstIterationResult result = next(&it);
-
-		if (!is_valid(result))
-			break;
+		const AstIterationResult result = next(&it);
 
 		while (prev_depth >= static_cast<s32>(result.depth))
 		{

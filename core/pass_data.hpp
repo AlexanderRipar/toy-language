@@ -1060,6 +1060,8 @@ AstPreorderIterator preorder_ancestors_of(AstNode* node) noexcept;
 
 AstIterationResult next(AstPreorderIterator* iterator) noexcept;
 
+bool has_next(const AstPreorderIterator* iterator) noexcept;
+
 AstPostorderIterator postorder_ancestors_of(AstNode* node) noexcept;
 
 AstIterationResult next(AstPostorderIterator* iterator) noexcept;

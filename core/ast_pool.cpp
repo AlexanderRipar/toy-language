@@ -363,6 +363,7 @@ bool has_next(const AstDirectChildIterator* iterator) noexcept
 	return iterator->curr != nullptr;
 }
 
+
 AstPreorderIterator preorder_ancestors_of(AstNode* node) noexcept
 {
 	AstPreorderIterator iterator;
@@ -385,10 +386,9 @@ AstPreorderIterator preorder_ancestors_of(AstNode* node) noexcept
 
 AstIterationResult next(AstPreorderIterator* iterator) noexcept
 {
-	if (iterator->curr == nullptr)
-		return { nullptr, 0 };
+	ASSERT_OR_IGNORE(iterator->curr != nullptr);
 
-	AstIterationResult result = { iterator->curr, iterator->depth };
+	const AstIterationResult result = { iterator->curr, iterator->depth };
 
 	AstNode* const curr = iterator->curr;
 
@@ -425,6 +425,12 @@ AstIterationResult next(AstPreorderIterator* iterator) noexcept
 
 	return result;
 }
+
+bool has_next(const AstPreorderIterator* iterator) noexcept
+{
+	return iterator->curr != nullptr;
+}
+
 
 AstPostorderIterator postorder_ancestors_of(AstNode* node) noexcept
 {

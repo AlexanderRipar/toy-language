@@ -300,7 +300,7 @@ static void preorder_iterator_with_0_children_has_0_entries() noexcept
 
 	AstPreorderIterator it = preorder_ancestors_of(reinterpret_cast<AstNode*>(tree.dwords));
 
-	TEST_EQUAL(is_valid(next(&it)), false);
+	TEST_EQUAL(has_next(&it), false);
 
 	TEST_END;
 }
@@ -313,15 +313,15 @@ static void preorder_iterator_with_1_child_has_1_entry() noexcept
 
 	AstPreorderIterator it = preorder_ancestors_of(reinterpret_cast<AstNode*>(tree.dwords));
 
-	const AstIterationResult result = next(&it);
+	TEST_EQUAL(has_next(&it), true);
 
-	TEST_EQUAL(is_valid(result), true);
+	const AstIterationResult result = next(&it);
 
 	TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.dwords) + 1);
 
 	TEST_EQUAL(result.depth, 0);
 
-	TEST_EQUAL(is_valid(next(&it)), false);
+	TEST_EQUAL(has_next(&it), false);
 
 	TEST_END;
 }
@@ -336,16 +336,16 @@ static void preorder_iterator_with_5_children_has_5_entries() noexcept
 
 	for (u32 i = 0; i != 5; ++i)
 	{
-		const AstIterationResult result = next(&it);
+		TEST_EQUAL(has_next(&it), true);
 
-		TEST_EQUAL(is_valid(result), true);
+		const AstIterationResult result = next(&it);
 
 		TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.dwords) + i + 1);
 
 		TEST_EQUAL(result.depth, 0);
 	}
 
-	TEST_EQUAL(is_valid(next(&it)), false);
+	TEST_EQUAL(has_next(&it), false);
 
 	TEST_END;
 }
@@ -362,16 +362,16 @@ static void preorder_iterator_with_grandchildren_iterates_grandchildren() noexce
 
 	for (u32 i = 0; i != 8; ++i)
 	{
-		const AstIterationResult result = next(&it);
+		TEST_EQUAL(has_next(&it), true);
 
-		TEST_EQUAL(is_valid(result), true);
+		const AstIterationResult result = next(&it);
 
 		TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.dwords) + i + 1);
 
 		TEST_EQUAL(result.depth, expected_depths[i]);
 	}
 
-	TEST_EQUAL(is_valid(next(&it)), false);
+	TEST_EQUAL(has_next(&it), false);
 
 	TEST_END;
 }
@@ -393,16 +393,16 @@ static void preorder_iterator_with_flat_tree_iterates_subtrees() noexcept
 
 	for (u32 i = 0; i != 8; ++i)
 	{
-		const AstIterationResult result = next(&it);
+		TEST_EQUAL(has_next(&it), true);
 
-		TEST_EQUAL(is_valid(result), true);
+		const AstIterationResult result = next(&it);
 
 		TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.dwords) + i + 1);
 
 		TEST_EQUAL(result.depth, expected_depths[i]);
 	}
 
-	TEST_EQUAL(is_valid(next(&it)), false);
+	TEST_EQUAL(has_next(&it), false);
 
 	TEST_END;
 }
