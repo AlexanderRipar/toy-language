@@ -589,10 +589,8 @@ enum class AstBuilderToken : u32
 };
 
 // Result of a call to `next(AstPreorderIterator*)` or
-// `next(AstPostorderIterator)`. See those functions for further details.
-// Note that this must only be used after a call to
-// `is_valid(AstIterationResult)`, with a return value of `false` indicating
-// that the iterator is exhausted.
+// `next(AstPostorderIterator)`. See `AstPreorderIterator` and
+// `AstPostorderIterator` for further details.
 struct AstIterationResult
 {
 	// `AstNode` at the iterator's position.
@@ -607,6 +605,23 @@ struct AstIterationResult
 // Iterator over the direct children of an `AstNode`.
 // This is created by a call to `direct_children_of`, and can be iterated by
 // calling `next(AstDirectChildIterator*)`.
+//
+// For an AST of the shape
+//
+// ```
+// (R)
+//  + A
+//  | + X
+//  | | ` K
+//  | ` Y
+//  ` B
+//    ` Z
+// ```
+//
+// where `R` is the root node and thus not iterated, this results in the
+// iteration sequence
+//
+// `A`, `B`
 struct AstDirectChildIterator
 {
 	AstNode* curr;
@@ -626,7 +641,7 @@ struct AstDirectChildIterator
 //  ` B
 //    ` Z
 // ```
-// 
+//
 // where `R` is the root node and thus not iterated, this results in the
 // iteration sequence
 //
@@ -658,7 +673,7 @@ struct AstPreorderIterator
 //  ` B
 //    ` Z
 // ```
-// 
+//
 // where `R` is the root node and thus not iterated, this results in the
 // iteration sequence
 //
@@ -1044,26 +1059,49 @@ ForInfo get_for_info(AstNode* node) noexcept;
 // `node`'s tag must be `AstTag::ForEach`.
 ForEachInfo get_foreach_info(AstNode* node) noexcept;
 
-
+// Creates an iterator over `node`'s direct children, skipping over more
+// removed ancestors.
+// See `AstDirectChildIterator` for further details.
 AstDirectChildIterator direct_children_of(AstNode* node) noexcept;
 
+// Retrieves the next element of `iterator`. This function may only be called
+// exactly once after `has_next` called on the same iterator has returned
+// `true`.
 AstNode* next(AstDirectChildIterator* iterator) noexcept;
 
+// Checks whether `iterator` has an element to be returned by a future call to
+// `next`. This call is idempotent.
 bool has_next(const AstDirectChildIterator* iterator) noexcept;
 
+// Creates an iterator over `node`'s ancestors, yielding them in preorder.
+// See `AstPreorderIterator` for further details.
 AstPreorderIterator preorder_ancestors_of(AstNode* node) noexcept;
 
+// Retrieves the next element of `iterator`. This function may only be called
+// exactly once after `has_next` called on the same iterator has returned
+// `true`.
 AstIterationResult next(AstPreorderIterator* iterator) noexcept;
 
+// Checks whether `iterator` has an element to be returned by a future call to
+// `next`. This call is idempotent.
 bool has_next(const AstPreorderIterator* iterator) noexcept;
 
+// Creates an iterator over `node`'s ancestors, yielding them in postorder.
+// See `AstPostorderIterator` for further details.
 AstPostorderIterator postorder_ancestors_of(AstNode* node) noexcept;
 
+// Retrieves the next element of `iterator`. This function may only be called
+// exactly once after `has_next` called on the same iterator has returned
+// `true`.
 AstIterationResult next(AstPostorderIterator* iterator) noexcept;
 
+// Checks whether `iterator` has an element to be returned by a future call to
+// `next`. This call is idempotent.
 bool has_next(const AstPostorderIterator* iterator) noexcept;
 
-
+// Retrieves a string representing the given `tag`.
+// If `tag` is not an enumerant of `AstTag`, it is treated as
+// `AstTag::INVALID`.
 const char8* tag_name(AstTag tag) noexcept;
 
 
