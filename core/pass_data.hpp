@@ -1848,36 +1848,95 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
 
 
+// Retrieves the name associated with `type_id`.
+// If there is no associated name, returns `IdentifierId::INVALID`.
+// Names are associated by calling `alias_type`.
 IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept;
 
+// Retrieves the `SourceId` associated with `type_id`.
+// If there is no associated `SourceId`, returns `SourceId::INVALID`. This is
+// only the case for unaliased primitive types.
 SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept;
 
+// Retrieves the lexical parent type associated with the composite type
+// referenced by `type_id`. If the type has no lexical parent,
+// `TypeId::INVALID` is returned. This is only the case for the top-level type
+// of the hard-coded prelude AST.
 TypeId lexical_parent_type_from_id(const TypePool* types, TypeId type_id) noexcept;
 
+// Retrieves the `size`, `stride` and `align` of the type referenced by
+// `type_id`. `size` and `alignment` may take any value, including `0`.
+// `align` is guaranteed to be non-zero.
+// This function must not be called on a composite type which has not received
+// a previous call to `close_open_type`.
 TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
 
+// Retrieves the `TypeTag` associated with the given `type_id`.
+// For types created by `simple_type`, this is the value of the `tag`
+// parameter.
+// For types craeted by `alias_type`, this is the same as the `tag` of the
+// aliased type.
+// For types created by `create_open_type`, this is `TypeTag::Composite`.
 TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept;
 
+// Attempts to retrieve information on a member of the composite type
+// referenced by `type_id` with the given `member_name_id`.
+// If there is no member with the given name, `false` is returned and the value
+// of `*out` is unspecified. Otherwise, `true` is returned, and `*out` receives
+// information on the member.
+// Note that this function takes `use`d members into account, searching them
+// for members with the given name as well.
 bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId member_name_id, MemberInfo* out) noexcept;
 
+// Attempts to retrieve information on a member of the composite type
+// referenced by `type_id` with the given `rank`.
+// If there is no member with the given rank, `false` is returned and the value
+// of `*out` is unspecified. Otherwise, `true` is returned, and `*out` receives
+// information on the member.
 bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberInfo* out) noexcept;
 
+// Retrieves the structural data associated with `type_id`, which must not
+// refer to a composite type.
+// The returned data is the same as that passed to the call to `simple_type`
+// that created `type_id`, chaining through calls to `alias_type`.
 const void* simple_type_structure_from_id(TypePool* types, TypeId type_id) noexcept;
 
 
+// Retrieves a string representing the given `tag`.
+// If `tag` is not an enumerant of `TypeTag`, it is treated as
+// `TypeTag::INVALID`.
 const char8* tag_name(TypeTag tag) noexcept;
 
 
+// Creates an iterator over `type_id`s incomplete members, i.e. members for
+// which at least one of `has_pending_type` or `has_pending_value` is true.
+// See `IncompleteMemberIterator` for further details.
 IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) noexcept;
 
+// Retrieves the next element of `iterator`. This function may only be called
+// exactly once after `has_next` called on the same iterator has returned
+// `true`.
 MemberInfo next(IncompleteMemberIterator* it) noexcept;
 
+// Checks whether `iterator` has an element to be returned by a future call to
+// `next`. This call is idempotent.
+// The call to `next` must be made immediately after this call, as the iterated
+// type's remaining incomplete members might otherwise be completed by code
+// running between the calls, meaning that their may no longer be incomplete
+// members, even if there were some at the time `has_next` was called.
 bool has_next(const IncompleteMemberIterator* it) noexcept;
 
+// Creates an iterator over `type_id`s members.
+// See `MemberIterator` for further details.
 MemberIterator members_of(TypePool* types, TypeId type_id) noexcept;
 
+// Retrieves the next element of `iterator`. This function may only be called
+// exactly once after `has_next` called on the same iterator has returned
+// `true`.
 MemberInfo next(MemberIterator* it) noexcept;
 
+// Checks whether `iterator` has an element to be returned by a future call to
+// `next`. This call is idempotent.
 bool has_next(const MemberIterator* it) noexcept;
 
 
