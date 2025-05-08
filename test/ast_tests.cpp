@@ -27,6 +27,9 @@ static void push_node(DummyTree* tree, AstNode node, u8 data_dwords = 0, const v
 	tree->index += required_dwords;
 }
 
+// Tree:
+//
+// File
 static DummyTree single_node_dummy_tree() noexcept
 {
 	DummyTree tree;
@@ -37,6 +40,10 @@ static DummyTree single_node_dummy_tree() noexcept
 	return tree;
 }
 
+// Tree:
+//
+// File
+// ` Block
 static DummyTree unary_dummy_tree() noexcept
 {
 	DummyTree tree;
@@ -49,6 +56,11 @@ static DummyTree unary_dummy_tree() noexcept
 	return tree;
 }
 
+// Tree:
+//
+// OpBitAnd
+// + LitChar
+// ` Identifier
 static DummyTree binary_dummy_tree() noexcept
 {
 	DummyTree tree;
@@ -63,6 +75,11 @@ static DummyTree binary_dummy_tree() noexcept
 	return tree;
 }
 
+// Tree:
+//
+// File
+// + Block ... `n` times
+// ` Block
 static DummyTree nary_dummy_tree(u32 n) noexcept
 {
 	ASSERT_OR_IGNORE(n != 0);
@@ -82,6 +99,17 @@ static DummyTree nary_dummy_tree(u32 n) noexcept
 	return tree;
 }
 
+// Tree:
+//
+// 1
+// + 2
+// | | 3
+// | ` 4
+// ` 5
+//   + 6
+//   | ` 7
+//   ` 8
+//     ` 9
 static DummyTree complex_dummy_tree() noexcept
 {
 	DummyTree tree;
@@ -108,6 +136,15 @@ static DummyTree complex_dummy_tree() noexcept
 	return tree;
 }
 
+// Tree:
+//
+// OpSub
+// + OpAdd
+// | + LitChar
+// | ` OpMul
+// |   + LitFloat
+// |   ` LitInteger
+// ` LitString 
 static DummyTree double_binary_dummy_tree() noexcept
 {
 	DummyTree tree;
@@ -130,6 +167,17 @@ static DummyTree double_binary_dummy_tree() noexcept
 	return tree;
 }
 
+// Tree:
+//
+// File
+// + Definition
+// | ` Identifier
+// + Definition
+// | ` LitChar
+// + Definition
+// | ` LitFloat
+// ` Definition
+//   ` LitString
 static DummyTree flat_dummy_tree() noexcept
 {
 	DummyTree tree;
