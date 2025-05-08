@@ -1110,7 +1110,7 @@ bool is_same_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 
 bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept
 {
-	if (common_type(types, from_type_id, to_type_id) != TypeId::INVALID)
+	if (is_same_type(types, from_type_id, to_type_id))
 		return true;
 
 	const TypeTag from_type_tag = type_tag_from_id(types, from_type_id);
