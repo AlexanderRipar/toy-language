@@ -924,16 +924,36 @@ AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept;
 // the same `AstPool`.
 AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept;
 
+// Checks whether `node` has any child nodes.
+// If it does, returns `true`, otherwise returns `false`.
 bool has_children(const AstNode* node) noexcept;
 
+// Checks whether `node` has a next sibling.
+// If it does, returns `true`, otherwise returns `false`.
 bool has_next_sibling(const AstNode* node) noexcept;
 
+// Checks whether the given `flag` is set in `node`s `flags` field.
+// If it does, returns `true`, otherwise returns `false`. 
 bool has_flag(AstNode* node, AstFlag flag) noexcept;
 
+// Returns the next sibling of `node`.
+// This function must only be called on `AstNode`s that have a next sibling.
+// This may be known from the context in which the function is called (e.g.,
+// the `condition` of an `AstTag::If` node will always have a next sibling,
+// namely a `where` or the `consequent`), or dynamically checked by a call to
+// `has_next_sibling` (e.g., in case of the child of an `AstTag::Block` node).
 AstNode* next_sibling_of(AstNode* node) noexcept;
 
+// Returns the first child of `node`.
+// This function must only be called on `AstNode`s that have children.
+// This may be known from the node's `tag` (e.g., an `AstTag::OpAdd` node will
+// always have exactly two children), or dynamically checked by a call to
+// `has_children` (e.g., for an `AstTag::Block` node, which may represent an
+// empty block).
 AstNode* first_child_of(AstNode* node) noexcept;
 
+// Retrieves a pointer to `node`'s attachment of type `T`, where `T` must be
+// the `Ast*Data` struct corresponding to `node`'s `tag`. 
 template<typename T>
 inline T* attachment_of(AstNode* node) noexcept
 {
@@ -944,6 +964,8 @@ inline T* attachment_of(AstNode* node) noexcept
 	return reinterpret_cast<T*>(node + 1);
 }
 
+// Retrieves a `const` pointer to `node`'s attachment of type `T`, where `T`
+// must be the `Ast*Data` struct corresponding to `node`'s `tag`.
 template<typename T>
 inline const T* attachment_of(const AstNode* node) noexcept
 {
@@ -954,11 +976,38 @@ inline const T* attachment_of(const AstNode* node) noexcept
 	return reinterpret_cast<const T*>(node + 1);
 }
 
-
+// Pushes a new `AstNode` with no attachment into `asts`'s ast builder.
+// Nodes are pushed in post-order, meaning that children are pushed before
+// parents, while siblings are pushed first to last.
+// The created node will have `first_child` as its first child node. To create
+// a node without children, pass `AstBuilderToken::NO_CHILDREN` for
+// `first_child`.
+// The node's `source_id`, `flags` and `tag` fields will be set to the given
+// values. The node will not have an attachment.
+// To complete the ast builder, call `complete_ast`.
 AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag) noexcept;
 
+// Pushes a new `AstNode` with the given attachment into `asts`'s ast builder.
+// Nodes are pushed in post-order, meaning that children are pushed before
+// parents, while siblings are pushed first to last.
+// The created node will have `first_child` as its first child node. To create
+// a node without children, pass `AstBuilderToken::NO_CHILDREN` for
+// `first_child`.
+// The node's `source_id`, `flags` and `tag` fields will be set to the given
+// values. The node will have an attachment of `attachment_dwords` four-byte
+// units allocated, which will be initialized by a copy from the `attachment`
+// argument. Note that the allocated attachment is four-byte aligned, so it is
+// not possible to have attachments requiring a higher alignment.
+// To complete the ast builder, call `complete_ast`.
 AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_dwords, const void* attachment) noexcept;
 
+// Templated helper version of `push_node`.
+// This makes it easier to create a node with a given `attachment`.
+// Nodes are pushed in post-order, meaning that children are pushed before
+// parents, while siblings are pushed first to last.
+// `attachment` must be one of the `Ast*Data` structs. The created node's `tag`
+// will be set to `T::TAG`.
+// See the non-templated versions of `push_node` for further details.
 template<typename T>
 static AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, T attachment) noexcept
 {
@@ -967,17 +1016,32 @@ static AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, Sou
 	return push_node(asts, first_child, source_id, flags, T::TAG, sizeof(attachment) / sizeof(u32), &attachment);
 }
 
+// Completes the builder of `asts`, returning a pointer to the root node of the
+// resulting ast.
+// To fill the builder, use one of the `push_node` functions.
+// After a call to this function, `asts`'s builder will be reset.
 AstNode* complete_ast(AstPool* asts) noexcept;
 
 
-FuncInfo get_func_info(AstNode* func) noexcept;
+// Retrieves a `FuncInfo` struct corresponding to `node`'s child structure.
+// `node`'s tag must be `AstTag::Func`.
+FuncInfo get_func_info(AstNode* node) noexcept;
 
-DefinitionInfo get_definition_info(AstNode* definition) noexcept;
+// Retrieves a `DefinitionInfo` struct corresponding to `node`'s child
+// structure.
+// `node`'s tag must be `AstTag::Definition`.
+DefinitionInfo get_definition_info(AstNode* node) noexcept;
 
+// Retrieves a `IfInfo` struct corresponding to `node`'s child structure.
+// `node`'s tag must be `AstTag::If`.
 IfInfo get_if_info(AstNode* node) noexcept;
 
+// Retrieves a `ForInfo` struct corresponding to `node`'s child structure.
+// `node`'s tag must be `AstTag::For`.
 ForInfo get_for_info(AstNode* node) noexcept;
 
+// Retrieves a `ForEachInfo` struct corresponding to `node`'s child structure.
+// `node`'s tag must be `AstTag::ForEach`.
 ForEachInfo get_foreach_info(AstNode* node) noexcept;
 
 
