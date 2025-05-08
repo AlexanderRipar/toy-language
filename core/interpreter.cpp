@@ -1486,9 +1486,9 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		TypeIdWithAssignability result_type_id = with_assignability(TypeId::INVALID, false);
 
-		for (OptPtr<AstNode> rst = next(&it); is_some(rst); rst = next(&it))
+		while (has_next(&it))
 		{
-			AstNode* const child = get_ptr(rst);
+			AstNode* const child = next(&it);
 
 			if (child->tag == AstTag::Definition)
 			{
@@ -1685,9 +1685,9 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 
 		u16 param_count = 0;
 
-		for (OptPtr<AstNode> rst = next(&parameters); is_some(rst); rst = next(&parameters))
+		while (has_next(&parameters))
 		{
-			AstNode* const parameter = get_ptr(rst);
+			AstNode* const parameter = next(&parameters);
 
 			if (param_count == 64)
 				source_error(interp->errors, parameter->source_id, "Exceeded maximum of 64 function parameters.\n");
@@ -2505,9 +2505,9 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 
 	AstDirectChildIterator ast_it = direct_children_of(file);
 
-	for (OptPtr<AstNode> rst = next(&ast_it); is_some(rst); rst = next(&ast_it))
+	while (has_next(&ast_it))
 	{
-		AstNode* const node = get_ptr(rst);
+		AstNode* const node = next(&ast_it);
 
 		if (node->tag != AstTag::Definition)
 			source_error(interp->errors, node->source_id, "Currently only definitions are supported on a file's top-level.\n");

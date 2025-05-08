@@ -1052,7 +1052,9 @@ inline bool is_valid(AstIterationResult result) noexcept
 
 AstDirectChildIterator direct_children_of(AstNode* node) noexcept;
 
-OptPtr<AstNode> next(AstDirectChildIterator* iterator) noexcept;
+AstNode* next(AstDirectChildIterator* iterator) noexcept;
+
+bool has_next(const AstDirectChildIterator* iterator) noexcept;
 
 AstPreorderIterator preorder_ancestors_of(AstNode* node) noexcept;
 

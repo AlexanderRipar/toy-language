@@ -227,7 +227,7 @@ static void child_iterator_with_0_children_has_0_entries() noexcept
 
 	AstDirectChildIterator it = direct_children_of(reinterpret_cast<AstNode*>(tree.dwords));
 
-	TEST_EQUAL(next(&it), none<AstNode>());
+	TEST_EQUAL(has_next(&it), false);
 
 	TEST_END;
 }
@@ -240,9 +240,11 @@ static void child_iterator_with_1_child_has_1_entry() noexcept
 
 	AstDirectChildIterator it = direct_children_of(reinterpret_cast<AstNode*>(tree.dwords));
 
-	TEST_EQUAL(next(&it), some(reinterpret_cast<AstNode*>(tree.dwords) + 1));
+	TEST_EQUAL(has_next(&it), true);
 
-	TEST_EQUAL(next(&it), none<AstNode>());
+	TEST_EQUAL(next(&it), reinterpret_cast<AstNode*>(tree.dwords) + 1);
+
+	TEST_EQUAL(has_next(&it), false);
 
 	TEST_END;
 }
@@ -256,9 +258,13 @@ static void child_iterator_with_5_children_has_5_entries() noexcept
 	AstDirectChildIterator it = direct_children_of(reinterpret_cast<AstNode*>(tree.dwords));
 
 	for (u32 i = 0; i != 5; ++i)
-		TEST_EQUAL(next(&it), some(reinterpret_cast<AstNode*>(tree.dwords) + i + 1));
+	{
+		TEST_EQUAL(has_next(&it), true);
 
-	TEST_EQUAL(next(&it), none<AstNode>());
+		TEST_EQUAL(next(&it), reinterpret_cast<AstNode*>(tree.dwords) + i + 1);
+	}
+
+	TEST_EQUAL(has_next(&it), false);
 
 	TEST_END;
 }
@@ -271,11 +277,15 @@ static void child_iterator_with_grandchildren_only_iterates_direct_children() no
 
 	AstDirectChildIterator it = direct_children_of(reinterpret_cast<AstNode*>(tree.dwords));
 
-	TEST_EQUAL(next(&it), some(reinterpret_cast<AstNode*>(tree.dwords) + 1));
+	TEST_EQUAL(has_next(&it), true);
 
-	TEST_EQUAL(next(&it), some(reinterpret_cast<AstNode*>(tree.dwords) + 4));
+	TEST_EQUAL(next(&it), reinterpret_cast<AstNode*>(tree.dwords) + 1);
 
-	TEST_EQUAL(next(&it), none<AstNode>());
+	TEST_EQUAL(has_next(&it), true);
+
+	TEST_EQUAL(next(&it), reinterpret_cast<AstNode*>(tree.dwords) + 4);
+
+	TEST_EQUAL(has_next(&it), false);
 
 	TEST_END;
 }

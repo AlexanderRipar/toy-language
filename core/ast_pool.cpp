@@ -347,16 +347,20 @@ AstDirectChildIterator direct_children_of(AstNode* node) noexcept
 	return { has_children(node) ? first_child_of(node) : nullptr };
 }
 
-OptPtr<AstNode> next(AstDirectChildIterator* iterator) noexcept
+AstNode* next(AstDirectChildIterator* iterator) noexcept
 {
-	if (iterator->curr == nullptr)
-		return none<AstNode>();
+	ASSERT_OR_IGNORE(iterator->curr != nullptr);
 
-	AstNode* const curr = iterator->curr;
+	AstNode* const result = iterator->curr;
 
-	iterator->curr = has_next_sibling(curr) ? next_sibling_of(curr) : nullptr;
+	iterator->curr = has_next_sibling(result) ? next_sibling_of(result) : nullptr;
+	
+	return result;
+}
 
-	return some(curr);
+bool has_next(const AstDirectChildIterator* iterator) noexcept
+{
+	return iterator->curr != nullptr;
 }
 
 AstPreorderIterator preorder_ancestors_of(AstNode* node) noexcept
