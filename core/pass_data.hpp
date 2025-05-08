@@ -1282,28 +1282,52 @@ void print_error(const SourceLocation* location, const char8* format, va_list ar
 
 
 
+// Pool for storing program values with global lifetime during compilation.
+// This includes the values of global definitions, as well as the default
+// values of non-global definitions.
 struct GlobalValuePool;
 
+// Id used to refer to a value in a `GlobalValuePool`.
+// The main purposes of this are that it allows storing a reference in 4
+// instead of 8 bytes, and also being resitant to serialization.
 enum class GlobalValueId : u32
 {
+	// Value reserved for indicating the absence of a `GlobalValue`.
+	// This will never be returned from `make_global_value` and must not be
+	// passed to `global_value_from_id`.
 	INVALID = 0,
 };
 
+// Metadata on a global value.
 struct GlobalValue
 {
+	// Type of the stored value. If `is_assignable`, the value is mutable.
+	// Otherwise it is an immutable constant.
 	TypeIdWithAssignability type;
 
+	// Size of the value in bytes.
 	u32 bytes;
 
+	// Base address at which the actual value can be found.
 	void* address;
 };
 
+// Creates a `GlobalValuePool`, allocating the necessary storage from `alloc`.
+// Resources associated with the created `GlobalValuePool` can be freed using
+// `release_global_value_pool`.
 GlobalValuePool* create_global_value_pool(AllocPool* alloc) noexcept;
 
+// Releases the resources associated with the given `GlobalValuePool`.
 void release_global_value_pool(GlobalValuePool* globals) noexcept;
 
+// Allocates a global value of the given `type`, `size` and `align` in
+// `globals`, optionally initializing it by copying `size` bytes from
+// `opt_initial_value` if it is not null.
+// Never returns `GlobalValueId::INVALID`.
 GlobalValueId make_global_value(GlobalValuePool* globals, TypeIdWithAssignability type, u64 size, u32 align, const void* opt_initial_value) noexcept;
 
+// Retrieves the global value referenced by `value_id` from `globals`.
+// `value_id` must not be `GlobalValueId::INVALID`.
 GlobalValue global_value_from_id(GlobalValuePool* globals, GlobalValueId value_id) noexcept;
 
 
