@@ -217,9 +217,9 @@ static AstNode* copy_postorder_to_preorder(const AstNode* begin, const AstNode* 
 
 
 
-AstPool* create_ast_pool(AllocPool* pool) noexcept
+AstPool* create_ast_pool(AllocPool* alloc) noexcept
 {
-	AstPool* const asts = static_cast<AstPool*>(alloc_from_pool(pool, sizeof(AstPool), alignof(AstPool)));
+	AstPool* const asts = static_cast<AstPool*>(alloc_from_pool(alloc, sizeof(AstPool), alignof(AstPool)));
 
 	asts->pool.init(1u << 30, 1u << 18);
 

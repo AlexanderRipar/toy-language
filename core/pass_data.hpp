@@ -900,7 +900,7 @@ inline AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
 }
 
 
-AstPool* create_ast_pool(AllocPool* pool) noexcept;
+AstPool* create_ast_pool(AllocPool* alloc) noexcept;
 
 void release_ast_pool(AstPool* asts) noexcept;
 
