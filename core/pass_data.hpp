@@ -875,16 +875,20 @@ struct ForEachInfo
 	OptPtr<AstNode> finally;
 };
 
+
+// Bitwise `or` of two `AstFlag`s
 inline AstFlag operator|(AstFlag lhs, AstFlag rhs) noexcept
 {
 	return static_cast<AstFlag>(static_cast<u8>(lhs) | static_cast<u8>(rhs));
 }
 
+// Bitwise `and` of two `AstFlag`s
 inline AstFlag operator&(AstFlag lhs, AstFlag rhs) noexcept
 {
 	return static_cast<AstFlag>(static_cast<u8>(lhs) & static_cast<u8>(rhs));
 }
 
+// Bitwise `set-or` of two `AstFlag`s
 inline AstFlag& operator|=(AstFlag& lhs, AstFlag rhs) noexcept
 {
 	lhs = lhs | rhs;
@@ -892,6 +896,7 @@ inline AstFlag& operator|=(AstFlag& lhs, AstFlag rhs) noexcept
 	return lhs;
 }
 
+// Bitwise `set-and` of two `AstFlag`s
 inline AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
 {
 	lhs = lhs & rhs;
@@ -900,12 +905,23 @@ inline AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
 }
 
 
+// Creates an `AstPool`, allocating the necessary storage from `alloc`.
+// Resources associated with the created `AstPool` can be freed using
+// `release_ast_pool`.
 AstPool* create_ast_pool(AllocPool* alloc) noexcept;
 
+// Releases the resources associated with the given `AstPool`.
 void release_ast_pool(AstPool* asts) noexcept;
 
+// Converts `node` to its corresponding `AstNodeId`.
+// `node` must be part of an AST created by a call to `complete_ast` on the
+// same `AstPool`.
+// Use `ast_node_from_id` to retrieve `node` from the returned `AstNodeId`.
 AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept;
 
+// Converts `id` to its corresponding `AstNode*`.
+// `id` must have been obtained from a previous call to `id_from_ast_node` on
+// the same `AstPool`.
 AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept;
 
 
