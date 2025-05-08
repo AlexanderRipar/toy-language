@@ -226,7 +226,7 @@ static void pop_activation_record(Interpreter* interp) noexcept
 	interp->activation_record_top = new_top;
 }
 
-static bool has_parent_activation_record(Interpreter* interp, ActivationRecordDesc* record) noexcept
+static bool has_parent_activation_record(const Interpreter* interp, ActivationRecordDesc* record) noexcept
 {
 	return !record->is_root && record->prev_top > interp->context_activation_record_limits[interp->activation_record_top];
 }
