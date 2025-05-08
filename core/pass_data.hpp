@@ -1235,20 +1235,47 @@ Range<char8> source_file_path_from_source_id(SourceReader* reader, SourceId sour
 
 
 
+// Sink for Compiler Errors and Warnings.
+// This takes care of the finicky bits of error reporting, providing a
+// convenient `SourceId`-based, printf-like interface.
 struct ErrorSink;
 
+// Creates a `ErrorSink`, allocating the necessary storage from `alloc`.
+// Resources associated with the created `ErrorSink` can be freed using
+// `release_error_sink`.
 ErrorSink* create_error_sink(AllocPool* pool, SourceReader* reader, IdentifierPool* identifiers) noexcept;
 
+// Releases the resources associated with the given `ErrorSink`.
 void release_error_sink(ErrorSink* errors) noexcept;
 
+// Prints the given `format` string alongside source information derived from
+// `source_id` to `stderr`, then exits the program with an exit code indicating
+// failure.
+// `format` supports the same syntax as `printf`.
 NORETURN void source_error(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
 
+// Prints the given `format` string alongside source information derived from
+// `source_id` to `stderr`, then exits the program with an exit code indicating
+// failure.
+// Instead of accepting variadic arguments, this version of the function
+// accepts a `va_list`, enabling nested variadic calls.
 NORETURN void vsource_error(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
 
+// Prints the given `format` string alongside source information derived from
+// `source_id` to `stderr`.
+// `format` supports the same syntax as `printf`.
 void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
 
+// Prints the given `format` string alongside source information derived from
+// `source_id` to `stderr`.
+// Instead of accepting variadic arguments, this version of the function
+// accepts a `va_list`, enabling nested variadic calls.
 void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
 
+// Helper for allowing printing in the same format as that provided by
+// `[v]source_[error|warning]` without an `ErrorSink`. This is mainly intended
+// for supporting error reporting from `Config` parsing, as `ErrorSink` is
+// necessarily created after the config has been parsed.
 void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept;
 
 
