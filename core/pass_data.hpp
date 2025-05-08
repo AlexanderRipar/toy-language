@@ -1543,132 +1543,308 @@ union DelayableValueId
 	AstNodeId pending;
 };
 
+// Summary of a composite type member.
+// This is obtained by calling `type_member_info_by_name`,
+// `type_member_info_by_rank`, or `next([Incomplete]MemberIterator*)`.
 struct MemberInfo
 {
+	// Name of the member.
 	IdentifierId name;
 
+	// `SourceId` of the member.
 	SourceId source;
 
+	// If `has_pending_type` is `true`, this contains an `AstNodeId`
+	// referencing the underlying definition's explicit type expression or
+	// `AstNodeId::INVALID` if it does not have one. In this case
+	// `completion_context_type_id` will contain the `TypeId` of the context in
+	// which the expression can be evaluated.
+	// If `has_pending_type` is `false`, this contains the member's `TypeId`.
 	DelayableTypeId type;
 
+	// If `has_pending_value` is `true`, this contains an `AstNodeId`
+	// referencing the underlying definition's value expression or
+	// `AstNodeId::INVALID` if it does not have one. In this case
+	// `completion_context_type_id` will contain the `TypeId` of the context in
+	// which the expression can be evaluated.
+	// If `has_pending_value` is `false`, this contains the `GlobalValueId`
+	// identifying the member's value, or `GlobalValueId::INVALID` if the
+	// member has no value.
 	DelayableValueId value;
 
+	// Whether the member is global. If this is `true`, the value of `offset`
+	// is undefined.
 	bool is_global : 1;
 
+	// Whether the member is public.
 	bool is_pub : 1;
 
+	// Whether the member is `use`d.
 	bool is_use : 1;
 
+	// Whether the member is mutable.
 	bool is_mut : 1;
 
+	// Indicates whether the member's type has been determined yet.
+	// See `type` for further information.
 	bool has_pending_type : 1;
 
+	// Indicates whether the member's value has been determined yet.
+	// See `value` for further information.
 	bool has_pending_value : 1;
 
+	// Rank of the member in the surrounding type. This is a `0`-based index
+	// uniquely identifying the member inside its surrounding type. This index is
+	// determined by the order of calls to `add_open_type_member`.
 	u16 rank;
 
+	// Context in which the member's `type` and `value` can be completed if
+	// `has_pending_type` or `has_pending_value` are `true` respectively.
+	// If both `has_pending_type` and `has_pending_value` are `false`, the
+	// value of this is undefined.
 	TypeId completion_context_type_id;
 
+	// `TypeId` of the type which the member is a part of.
 	TypeId surrounding_type_id;
 
+	// offset from the surrounding type's base. For global members, this value
+	// is undefined.
 	s64 offset;
 };
 
+// Initialization info for a composite type member.
+// Passed to `add_composite_type_member`.
 struct MemberInit
 {
+	// Name of the member to be created. This must not be the same as the name
+	// of any of the existing members of the surrounding type.
 	IdentifierId name;
 
+	// `SourceId` of the member to be created. This should be set to the
+	// `source_id` of the definition this member is derived from.
 	SourceId source;
 
+	// If `has_pending_type` is `true`, this must be set to the `AstNodeId`
+	// referencing the underlying definition's explicit type expression or to
+	// `AstNodeId::INVALID` if it does not have one. In this case
+	// `completion_context_type_id` must be set to the `TypeId` of the context
+	// in which the expression can be evaluated.
+	// If `has_pending_type` is `false`, must be set to the member's intended
+	// `TypeId`.
 	DelayableTypeId type;
 
+	// If `has_pending_value` is `true`, this must be set to the `AstNodeId`
+	// referencing the underlying definition's value expression or
+	// `AstNodeId::INVALID` if it does not have one. In this case
+	// `completion_context_type_id` must be set to the `TypeId` of the context
+	// in which the expression can be evaluated.
+	// If `has_pending_value` is `false`, this must be set to the
+	// `GlobalValueId` identifying the member's intended value, or
+	// `GlobalValueId::INVALID` if the member has no value.
 	DelayableValueId value;
 
+	// `TypeId` of the type lexically containing the definition underlying this
+	// member. This has to be set if either `has_pending_value` or
+	// `has_pending_type` is `true`. Otherwise it is ignored.
+	// The intent behind this member is to allow delayed typechecking and
+	// evaluation.
 	TypeId lexical_parent_type_id;
 
+	// Whether the member is to be global. If this is `true`, the value of
+	// `offset` will be ignored.
 	bool is_global : 1;
 
+	// Whether the member is to be public.
 	bool is_pub : 1;
 
+	// Whether the member is to be `use`d.
 	bool is_use : 1;
 
+	// Whether the member is to be mutable.
 	bool is_mut : 1;
 
+	// Indicates whether the member's type is pending.
+	// See `type` for further information.
+	// If this is `true`, `has_pending_value` must also be `true`.
 	bool has_pending_type : 1;
 
+	// Indicates whether the member's value is pending.
+	// See `value` for further information.
+	// If this is `false`, `has_pending_type` must also be false.
 	bool has_pending_value : 1;
 
+	// Offset of the member from the base of its surrounding type.
+	// This is ignored if the member is global.
 	s64 offset;
 };
 
+// Structural data for `Ptr`, `Slice` and `TailArray` types.
 struct ReferenceType
 {
+	// `TypeId` of the referenced (or, in the case of `TailArray`, arguably
+	// element) type.
 	TypeId referenced_type_id;
 
+	// For `Ptr`s, this indicates whether they are optional (`?` or `[?]`).
+	// Otherwise this is `false`.
 	bool is_opt;
 
+	// For `Ptr`s, this indicates whether they are multi-pointers (`[*]` or
+	// `[?]`). Otherwise this is `false`.
 	bool is_multi;
 
+	// Whether the referenced object(s) can be mutated through this reference.
+	// `false` for `TailArray`. 
 	bool is_mut;
 
+	// Explicit padding to allow consistent hashing without incurring undefined
+	// behaviour by accessing structure padding.
 	u8 unused_ = 0;
 };
 
+// Structural data for `Integer` and `Float` types.
 struct NumericType
 {
+	// Number of bits in the type. Currently, this must be `8`, `16`, `32` or
+	// `64` for `Integer` types, and `32` or `64` for `Float` types.
 	u16 bits;
 
+	// For `Integer` types, whether the value is signed. Always `true` for
+	// `Float` types.
 	bool is_signed;
 
+	// Explicit padding to allow consistent hashing without incurring undefined
+	// behaviour by accessing structure padding.
 	u8 unused_ = 0;
 };
 
+// Structural data for `Array` types.
 struct ArrayType
 {
+	// Number of elements in the array type.
 	u64 element_count;
 
+	// `TypeId` of the array's elements.
 	TypeId element_type;
 
+	// Explicit padding to allow consistent hashing without incurring undefined
+	// behaviour by accessing structure padding.
 	u32 unused_ = 0;
 };
 
+// Structural data for `Func` and `Builtin` types.
 struct FuncType
 {
+	// `TypeId` of the function's return type.
 	TypeId return_type_id;
 
+	// `TypeId` of the function's signature composite type.
 	TypeId signature_type_id;
 
+	// Number of parameters the function accepts. Currently this is limited to
+	// `64`.
 	u16 param_count;
 
+	// For `Func` types, `true` if the function is a `proc`, false if it is a
+	// `func`. Always `false` for `Builtin` types.
 	bool is_proc;
 
+	// Explicit padding to allow consistent hashing without incurring undefined
+	// behaviour by accessing structure padding.
 	u8 unused_ = 0;
 };
 
+
+// Creates a `TypePool`, allocating the necessary storage from `alloc`.
+// Resources associated with the created `TypePool` can be freed using
+// `release_type_pool`.
 TypePool* create_type_pool(AllocPool* alloc, GlobalValuePool* globals, ErrorSink* errors) noexcept;
 
+// Releases the resources associated with the given `TypePool`.
 void release_type_pool(TypePool* types) noexcept;
 
 
+// Creates a "simple" - meaning non-composite type. This takes a `tag`, along
+// with structural data further describing the type. The layout of this
+// structural data depends on the type. See `TypeTag` for details on this
+// relation.
 TypeId simple_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept;
 
+// Creates an "alias" for an existing type, given by `aliased_type_id`.
+// If `is_distinct` is true this alias follows the semantics of the `distinct`
+// keyword. Otherwise this function simply introduces a new name, given by
+// `name_id`, along with a new `SourceId` in `source_id`, for an existing type.
 TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept;
 
+// Creates a composite type with no members that can have members added by
+// calling `add_open_type_member` on it.
+//
+// `lexical_parent_source_id` indicates the type lexically surrounding the
+// newly created type, and is used during name lookup.
+// `source_id` indicates where the type was created from.
+//
+// Call `close_open_type` to stop the addition of further members.
+// Call `set_incomplete_type_member_type_by_rank` to set the type of a member
+// that was added with `has_pending_type` set to `true`.
+// Call `set_incomplete_type_member_value_by_rank` to set the value of a member
+// that was added with `has_pending_value` set to `true`.
 TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId source_id) noexcept;
 
+// Adds a member to the open composite type referenced by `open_type_id`.
+// The member is initialized with the data in `member`.
 void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit member) noexcept;
 
+// Close an open composite type, preventing the addition of further members and
+// setting the type's metrics (`size`, `align` and `stride`).
 void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, u64 stride) noexcept;
 
+// Set the type of a member that was created with `has_pending_type` set to
+// `true`.
+// `rank` indicates the type rank of the member in `open_type`, and
+// `member_type_id` is `TypeId` the member will have after this call returns.
+// This call must not be repeated on the same member. 
 void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_id, u16 rank, TypeId member_type_id) noexcept;
 
+// Set the value of a member that was created with `has_pending_value` set to
+// `true`.
+// `rank` indicates the type rank of the member in `open_type`, and
+// `member_value_id` is `GlobalValueId` the member will have after this call
+// returns. This call must not be repeated on the same member.
 void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_id, u16 rank, GlobalValueId member_value_id) noexcept;
 
 
+// Checks whether `type_id_a` and `type_id_b` refer to the same type or
+// non-distinct aliases of the same type.
 bool is_same_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
 
+// Checks whether `from_type_id` can be implicitly converted to `to_type_id`.
+// If `from_type_id` and `to_type_id` refer to the same type according to
+// `is_same_type`, implicit conversion is allowed.
+// Otherwise the allowed implicit conversion are as follows:
+//
+// |   `from`    |   `to`    |                    Notes & Semantics                    |
+// |-------------|-----------|---------------------------------------------------------|
+// | CompInteger | Integer   | Works for all `Integer` types, dynamic check for fit.   |
+// | CompFloat   | Float     | Works for all `Float` types.                            |
+// | Array       | Slice     | Creates a slice over the whole array.                   |
+// | mut Slice   | Slice     |                                                         |
+// | mut Ptr     | Ptr       |                                                         |
+// | multi Ptr   | Ptr       |                                                         |
+// | Ptr         | opt Ptr   |                                                         |
+// | Divergent   | Anything  | `Divergent` can be converted to any other type.         |
+// | Anything    | TypeInfo  | Any type can become a `TypeInfo` - this is its purpose. |
+//
+// Note that pointer conversions can occur together as one implicit conversion.
+// E.g., `[*]mut u32` can be converted to `?u32`.
 bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept;
 
+// Returns the common type of `type_id_a` and `type_id_b`.
+// If `type_id_a` and `type_id_b` are considered the equivalent by
+// `is_same_type`, the lower of the two is returned. This is done to ensure
+// repeatability regardless of operand order.
+// Otherwise, if one of the types is implicitly convertible to the other, the
+// converted-to type is returned. E.g., when `type_id_a` is a `CompInteger` and
+// `type_id_b` is an `Integer`, `type_id_b` is returned.
 TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
 
 
