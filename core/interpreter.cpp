@@ -2748,9 +2748,7 @@ static void* builtin_import(Interpreter* interp, AstNode* call_node) noexcept
 
 	if (from != SourceId::INVALID)
 	{
-		SourceFile* const source_file = source_file_from_source_id(interp->reader, from);
-
-		const Range<char8> path_base = source_file_path(interp->reader, source_file);
+		const Range<char8> path_base = source_file_path_from_source_id(interp->reader, from);
 
 		char8 path_base_parent_buf[8192];
 

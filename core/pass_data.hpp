@@ -1160,9 +1160,7 @@ void release_read(SourceReader* reader, SourceFileRead read) noexcept;
 
 SourceLocation source_location_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
 
-SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
-
-Range<char8> source_file_path(SourceReader* reader, SourceFile* source_file) noexcept;
+Range<char8> source_file_path_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
 
 
 

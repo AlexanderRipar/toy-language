@@ -144,6 +144,71 @@ struct SourceReader
 
 
 
+static SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id) noexcept
+{
+	ASSERT_OR_IGNORE(source_id != SourceId::INVALID);
+
+	ASSERT_OR_IGNORE(reader->source_file_count != 0);
+
+	ASSERT_OR_IGNORE(static_cast<u32>(source_id) < reader->curr_source_id_base);
+
+	SourceFileByIdEntry* const entries = reader->known_files_by_identity.value_from(0);;
+
+	// By handling the last entry as a special case, we can always index into
+	// `mid + 1`. This is necessary since `SourceFileByIdEntry` only stores the
+	// lowest source id present in the file. However, since entries are
+	// effectively ordered by their source id, the effective end index is the
+	// start id of the next entry.
+	if (static_cast<u32>(entries[reader->source_file_count - 1].data.source_id_base) <= static_cast<u32>(source_id))
+		return &entries[reader->source_file_count - 1].data;
+
+	u32 lo = 0;
+
+	// Ignore last entry, as described above.
+	u32 hi = reader->source_file_count - 2;
+
+	while (lo < hi)
+	{
+		// If we ever get to more than 2^31 source files, we should really
+		// already be over the 4gb source code limit, so no need to worry about
+		// arithmetic overflow here.
+		const u32 mid = (lo + hi) >> 1;
+
+		SourceFileByIdEntry* const curr = entries + mid;
+
+		SourceFileByIdEntry* const next = entries + mid + 1;
+
+		if (static_cast<u32>(source_id) < static_cast<u32>(curr->data.source_id_base))
+		{
+			hi = mid - 1;
+		}
+		else if (static_cast<u32>(source_id) >= static_cast<u32>(next->data.source_id_base))
+		{
+			lo = mid + 1;
+		}
+		else
+		{
+			return &curr->data;
+		}
+	}
+
+	// We cannot have lo == hi == reader->source_file_count - 1, as we have
+	// already checked that we do not exceed the last entry's beginning before
+	// entering the search loop.
+	ASSERT_OR_IGNORE(lo == 0 && hi == 0);
+
+	return &entries->data;
+}
+
+static Range<char8> source_file_path(SourceReader* reader, SourceFile* source_file) noexcept
+{
+	SourceFileByIdEntry* const id_entry = reinterpret_cast<SourceFileByIdEntry*>(reinterpret_cast<byte*>(source_file) - offsetof(SourceFileByIdEntry, data));
+
+	SourceFileByPathEntry* const path_entry = reader->known_files_by_path.value_from(id_entry->path_entry_index);
+
+	return Range{ path_entry->path, path_entry->path_bytes };
+}
+
 static SourceLocation build_source_location(Range<char8> filepath, Range<char8> content, u32 offset) noexcept
 {
 	u32 line_begin = 0;
@@ -320,64 +385,12 @@ SourceLocation source_location_from_source_id(SourceReader* reader, SourceId sou
 	}
 }
 
-SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id) noexcept
+Range<char8> source_file_path_from_source_id(SourceReader* reader, SourceId source_id) noexcept
 {
 	ASSERT_OR_IGNORE(source_id != SourceId::INVALID);
 
-	ASSERT_OR_IGNORE(reader->source_file_count != 0);
+	SourceFile* const source_file = source_file_from_source_id(reader, source_id);
 
-	ASSERT_OR_IGNORE(static_cast<u32>(source_id) < reader->curr_source_id_base);
-
-	SourceFileByIdEntry* const entries = reader->known_files_by_identity.value_from(0);;
-
-	// By handling the last entry as a special case, we can always index into
-	// `mid + 1`. This is necessary since `SourceFileByIdEntry` only stores the
-	// lowest source id present in the file. However, since entries are
-	// effectively ordered by their source id, the effective end index is the
-	// start id of the next entry.
-	if (static_cast<u32>(entries[reader->source_file_count - 1].data.source_id_base) <= static_cast<u32>(source_id))
-		return &entries[reader->source_file_count - 1].data;
-
-	u32 lo = 0;
-
-	// Ignore last entry, as described above.
-	u32 hi = reader->source_file_count - 2;
-
-	while (lo < hi)
-	{
-		// If we ever get to more than 2^31 source files, we should really
-		// already be over the 4gb source code limit, so no need to worry about
-		// arithmetic overflow here.
-		const u32 mid = (lo + hi) >> 1;
-
-		SourceFileByIdEntry* const curr = entries + mid;
-
-		SourceFileByIdEntry* const next = entries + mid + 1;
-
-		if (static_cast<u32>(source_id) < static_cast<u32>(curr->data.source_id_base))
-		{
-			hi = mid - 1;
-		}
-		else if (static_cast<u32>(source_id) >= static_cast<u32>(next->data.source_id_base))
-		{
-			lo = mid + 1;
-		}
-		else
-		{
-			return &curr->data;
-		}
-	}
-
-	// We cannot have lo == hi == reader->source_file_count - 1, as we have
-	// already checked that we do not exceed the last entry's beginning before
-	// entering the search loop.
-	ASSERT_OR_IGNORE(lo == 0 && hi == 0);
-
-	return &entries->data;
-}
-
-Range<char8> source_file_path(SourceReader* reader, SourceFile* source_file) noexcept
-{
 	SourceFileByIdEntry* const id_entry = reinterpret_cast<SourceFileByIdEntry*>(reinterpret_cast<byte*>(source_file) - offsetof(SourceFileByIdEntry, data));
 
 	SourceFileByPathEntry* const path_entry = reader->known_files_by_path.value_from(id_entry->path_entry_index);
