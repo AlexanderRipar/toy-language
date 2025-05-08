@@ -935,7 +935,7 @@ AstNode* next_sibling_of(AstNode* node) noexcept;
 AstNode* first_child_of(AstNode* node) noexcept;
 
 template<typename T>
-static inline T* attachment_of(AstNode* node) noexcept
+inline T* attachment_of(AstNode* node) noexcept
 {
 	ASSERT_OR_IGNORE(T::TAG == node->tag);
 
@@ -945,7 +945,7 @@ static inline T* attachment_of(AstNode* node) noexcept
 }
 
 template<typename T>
-static inline const T* attachment_of(const AstNode* node) noexcept
+inline const T* attachment_of(const AstNode* node) noexcept
 {
 	ASSERT_OR_IGNORE(T::TAG == node->tag);
 
@@ -960,7 +960,7 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_dwords, const void* attachment) noexcept;
 
 template<typename T>
-static inline AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, T attachment) noexcept
+static AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, T attachment) noexcept
 {
 	static_assert(sizeof(T) % sizeof(u32) == 0);
 
@@ -981,7 +981,7 @@ ForInfo get_for_info(AstNode* node) noexcept;
 ForEachInfo get_foreach_info(AstNode* node) noexcept;
 
 
-static inline bool is_valid(AstIterationResult result) noexcept
+inline bool is_valid(AstIterationResult result) noexcept
 {
 	return result.node != nullptr;
 }
@@ -1388,17 +1388,17 @@ enum class Builtin : u8
 	MAX,
 };
 
-static inline TypeIdWithAssignability with_assignability(TypeId type_id, bool is_assignable) noexcept
+inline TypeIdWithAssignability with_assignability(TypeId type_id, bool is_assignable) noexcept
 {
 	return TypeIdWithAssignability{ static_cast<u32>(type_id), is_assignable };
 }
 
-static inline bool is_assignable(TypeIdWithAssignability id) noexcept
+inline bool is_assignable(TypeIdWithAssignability id) noexcept
 {
 	return id.is_mut;
 }
 
-static inline TypeId type_id(TypeIdWithAssignability id) noexcept
+inline TypeId type_id(TypeIdWithAssignability id) noexcept
 {
 	return TypeId{ id.type_id };
 }
