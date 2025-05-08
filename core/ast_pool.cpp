@@ -15,6 +15,13 @@ static AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept
 	return static_cast<AstNode*>(asts->pool.reserve_exact(dwords * sizeof(u32)));
 }
 
+static AstNode* apply_offset_(AstNode* node, ureg offset) noexcept
+{
+	static_assert(sizeof(AstNode) % sizeof(u32) == 0 && alignof(AstNode) % sizeof(u32) == 0);
+
+	return reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(node) + offset);
+}
+
 // Set FLAG_FIRST_SIBLING and FLAG_LAST_SIBLING (note that next_sibling_offset
 // holds the offset to the first child at this point):
 //
@@ -243,6 +250,37 @@ AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept
 AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept
 {
 	return reinterpret_cast<AstNode*>(asts->pool.begin() + static_cast<u32>(id));
+}
+
+
+
+bool has_children(const AstNode* node) noexcept
+{
+	return (node->internal_flags & AstNode::FLAG_NO_CHILDREN) == 0;
+}
+
+bool has_next_sibling(const AstNode* node) noexcept
+{
+	return (node->internal_flags & AstNode::FLAG_LAST_SIBLING) == 0;
+}
+
+bool has_flag(AstNode* node, AstFlag flag) noexcept
+{
+	return (static_cast<u8>(node->flags) & static_cast<u8>(flag)) != 0;
+}
+
+AstNode* next_sibling_of(AstNode* node) noexcept
+{
+	ASSERT_OR_IGNORE(has_next_sibling(node));
+
+	return apply_offset_(node, node->next_sibling_offset);
+}
+
+AstNode* first_child_of(AstNode* node) noexcept
+{
+	ASSERT_OR_IGNORE(has_children(node));
+
+	return apply_offset_(node, node->data_dwords);
 }
 
 

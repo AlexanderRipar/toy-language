@@ -924,42 +924,15 @@ AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept;
 // the same `AstPool`.
 AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept;
 
+bool has_children(const AstNode* node) noexcept;
 
-static inline AstNode* apply_offset_(AstNode* node, ureg offset) noexcept
-{
-	static_assert(sizeof(AstNode) % sizeof(u32) == 0 && alignof(AstNode) % sizeof(u32) == 0);
+bool has_next_sibling(const AstNode* node) noexcept;
 
-	return reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(node) + offset);
-}
+bool has_flag(AstNode* node, AstFlag flag) noexcept;
 
-static inline bool has_children(const AstNode* node) noexcept
-{
-	return (node->internal_flags & AstNode::FLAG_NO_CHILDREN) == 0;
-}
+AstNode* next_sibling_of(AstNode* node) noexcept;
 
-static inline bool has_next_sibling(const AstNode* node) noexcept
-{
-	return (node->internal_flags & AstNode::FLAG_LAST_SIBLING) == 0;
-}
-
-static inline bool has_flag(AstNode* node, AstFlag flag) noexcept
-{
-	return (static_cast<u8>(node->flags) & static_cast<u8>(flag)) != 0;
-}
-
-static inline AstNode* next_sibling_of(AstNode* node) noexcept
-{
-	ASSERT_OR_IGNORE(has_next_sibling(node));
-
-	return apply_offset_(node, node->next_sibling_offset);
-}
-
-static inline AstNode* first_child_of(AstNode* node) noexcept
-{
-	ASSERT_OR_IGNORE(has_children(node));
-
-	return apply_offset_(node, node->data_dwords);
-}
+AstNode* first_child_of(AstNode* node) noexcept;
 
 template<typename T>
 static inline T* attachment_of(AstNode* node) noexcept
