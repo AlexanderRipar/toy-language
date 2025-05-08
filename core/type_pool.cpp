@@ -76,20 +76,7 @@ struct TypeStructure
 struct BuilderMember
 {
 	// Offset in the parent type. 0 for global members.
-	s64 offset : 60;
-
-	// `true` if this is a global member, `false` otherwise.
-	s64 is_global : 1;
-
-	// `true` if this is a public member, `false` otherwise.
-	s64 is_pub : 1;
-
-	// `true` if this member is defined with the `use` modifier, `false`
-	// otherwise.
-	s64 is_use : 1;
-
-	// `true` if this member is mutable, `false` otherwise.
-	s64 is_mut : 1;
+	s64 offset;
 
 	// Either a `TypeId` or an `AstNodeId` from which a type can be determined.
 	// See `has_pending_type`.
@@ -102,8 +89,18 @@ struct BuilderMember
 	// Source of the Definition from which this member is derived.
 	SourceId source;
 
-	// Name of this member.
-	IdentifierId name;
+	// `true` if this is a global member, `false` otherwise.
+	bool is_global : 1;
+
+	// `true` if this is a public member, `false` otherwise.
+	bool is_pub : 1;
+
+	// `true` if this member is defined with the `use` modifier, `false`
+	// otherwise.
+	bool is_use : 1;
+
+	// `true` if this member is mutable, `false` otherwise.
+	bool is_mut : 1;
 
 	// `true` if `type` holds an `AstNodeId` to be typechecked (with
 	// `lexical_parent_type_id` as the context), `false` if it holds a
@@ -123,20 +120,7 @@ struct BuilderMember
 struct CompositeMember
 {
 	// Offset in the parent type. 0 for global members.
-	s64 offset : 60;
-
-	// `true` if this is a global member, `false` otherwise.
-	s64 is_global : 1;
-
-	// `true` if this is a public member, `false` otherwise.
-	s64 is_pub : 1;
-
-	// `true` if this member is defined with the `use` modifier, `false`
-	// otherwise.
-	s64 is_use : 1;
-
-	// `true` if this member is mutable, `false` otherwise.
-	s64 is_mut : 1;
+	s64 offset;
 
 	// `TypeId` of this member.
 	TypeId type_id;
@@ -147,8 +131,18 @@ struct CompositeMember
 	// Source of the Definition from which this member is derived.
 	SourceId source;
 
-	// Name of this member.
-	IdentifierId name;
+	// `true` if this is a global member, `false` otherwise.
+	bool is_global : 1;
+
+	// `true` if this is a public member, `false` otherwise.
+	bool is_pub : 1;
+
+	// `true` if this member is defined with the `use` modifier, `false`
+	// otherwise.
+	bool is_use : 1;
+
+	// `true` if this member is mutable, `false` otherwise.
+	bool is_mut : 1;
 };
 
 struct FindByNameResult
@@ -509,14 +503,13 @@ static u32 structure_index_from_complete_type_builder(TypePool* types, const Typ
 			ASSERT_OR_IGNORE(!curr->members[i].has_pending_value);
 
 			members[curr_index  + i].offset = curr->members[i].offset;
+			members[curr_index  + i].type_id = curr->members[i].type.complete;
+			members[curr_index  + i].value_id = curr->members[i].value.complete;
+			members[curr_index  + i].source = curr->members[i].source;
 			members[curr_index  + i].is_global = curr->members[i].is_global;
 			members[curr_index  + i].is_pub = curr->members[i].is_pub;
 			members[curr_index  + i].is_use = curr->members[i].is_use;
 			members[curr_index  + i].is_mut = curr->members[i].is_mut;
-			members[curr_index  + i].type_id = curr->members[i].type.complete;
-			members[curr_index  + i].value_id = curr->members[i].value.complete;
-			members[curr_index  + i].source = curr->members[i].source;
-			members[curr_index  + i].name = curr->members[i].name;
 		}
 
 		curr_index += curr->used;
@@ -909,8 +902,6 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init)
 {
 	ASSERT_OR_IGNORE(init.name != IdentifierId::INVALID);
 
-	ASSERT_OR_IGNORE(init.offset < (static_cast<s64>(1) << 59) && init.offset >= -(static_cast<s64>(1) << 59));
-
 	ASSERT_OR_IGNORE(init.type.pending != AstNodeId::INVALID || init.value.pending != AstNodeId::INVALID);
 
 	TypeName* const builder_name = types->named_types.value_from(static_cast<u32>(open_type_id));
@@ -971,14 +962,13 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init)
 
 	BuilderMember* const member = tail->members + tail->used;
 	member->offset = init.offset;
+	member->type = init.type;
+	member->value = init.value;
+	member->source = init.source;
 	member->is_global = init.is_global;
 	member->is_pub = init.is_pub;
 	member->is_use = init.is_use;
 	member->is_mut = init.is_mut;
-	member->type = init.type;
-	member->value = init.value;
-	member->source = init.source;
-	member->name = init.name;
 	member->has_pending_type = init.has_pending_type;
 	member->has_pending_value = init.has_pending_value;
 	member->lexical_parent_type_id = init.lexical_parent_type_id;
