@@ -46,6 +46,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 	switch (tag)
 	{
+	case TypeTag::Void:
 	case TypeTag::Type:
 	case TypeTag::Definition:
 	case TypeTag::CompInteger:
@@ -172,6 +173,9 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 		return;
 	}
+
+	case TypeTag::INVALID:
+		; // fallthrough to unreachable.
 	}
 
 	ASSERT_UNREACHABLE;
