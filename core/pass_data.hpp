@@ -1112,7 +1112,7 @@ const char8* tag_name(AstTag tag) noexcept;
 
 
 
-// Source File Reader.
+// Source file reader.
 // This handles reading and deduplication of source files, associating them
 // with ASTs, and mapping `SourceId`s to files and concrete `SourceLocations`.
 struct SourceReader;
@@ -1235,7 +1235,7 @@ Range<char8> source_file_path_from_source_id(SourceReader* reader, SourceId sour
 
 
 
-// Sink for Compiler Errors and Warnings.
+// Sink for compiler errors and warnings.
 // This takes care of the finicky bits of error reporting, providing a
 // convenient `SourceId`-based, printf-like interface.
 struct ErrorSink;
@@ -1334,51 +1334,160 @@ GlobalValue global_value_from_id(GlobalValuePool* globals, GlobalValueId value_i
 
 
 
+// Pool managing type information.
+// This maps the structure of types to concise 32-bit `TypeId`s which can be
+// relatively cheaply operated upon, while handling the interweaving of type
+// creation and code evaluation, as well as circular type references, such as
+// those resulting from linked list elements containing a pointer of their own
+// type.
 struct TypePool;
 
+// Id used to refer to a type in a `TypePool`. 
 enum class TypeId : u32
 {
+	// Value reserved to indicate a missing type, e.g. in case it has not been
+	// typechecked yet.
 	INVALID = 0,
+
+	// Value reserved to indicate that a type is currently subject
+	// typechecking. This is used to avoid circular dependencies leading to
+	// nontermination during typechecking.
 	CHECKING,
+
+	// Value reserved to indicate that something has no type and, unlike
+	// `TypeId::INVALID`, never will have a type. This is e.g. used as the type
+	// of the right-hand-side identifier of an `AstNode` with tag
+	// `AstTag::OpMember`, since it truly is typeless (the type is stored in
+	// the member operator).
 	NO_TYPE,
 };
 
+// Tag for discriminating between different kinds of types.
+// The layout of the structural information stored for a type depends on its
+// tag. For all tags other than `TypeTag::Composite`, this data can accessed by
+// calling `simple_type_structure_from_id`.
 enum class TypeTag : u8
 {
+	// Should not be used, reserved for sanity checking in debug builds.
 	INVALID = 0,
+
+	// Tag of the `Void` type. No additional structural data is stored.
 	Void,
+
+	// Tag of the `Type` type, used for referring to other types. No additional
+	// structural data is stored.
 	Type,
+
+	// Tag of the `Definition` type, used for referring to definitions. No
+	// additional structural data is stored.
 	Definition,
+
+	// Tag of literal integers and results of computations upon them. No
+	// additional structural data is stored.
 	CompInteger,
+
+	// Tag of literal floating point numbers and results of computations upon
+	// them. No additional structural data is stored.
 	CompFloat,
+
+	// Tag of integer types. Its structure is represented by a `NumericType`.
 	Integer,
+
+	// Tag of integer types. Its structure is represented by a `NumericType`.
 	Float,
+
+	// Tag of the `Bool` type. No additional structural data is stored.
 	Boolean,
+
+	// Tag of slice types. Its structure is represented by a `ReferenceType`.
 	Slice,
+
+	// Tag of pointer types. Its structure is represented by a `ReferenceType`.
 	Ptr,
+
+	// Tag of array types. Its structure is represented by an `ArrayType`.
 	Array,
+
+	// Tag of function types. Its structure is represented by a `FuncType`.
 	Func,
+
+	// Tag of builtin types. Its structure is represented by a `FuncType`.
 	Builtin,
+
+	// Tag of composite types created via `create_open_type`. These have a
+	// more complex (and address-instable) representation, meaning that their
+	// structural information cannot be accessed directly. Instead their
+	// members can be looked up by name or rank, or iterated.
+	// See `create_open_type`, `add_open_type_member`, `close_open_type`,
+	// `set_incomplete_member_type_by_rank`,
+	// `set_incomplete_member_value_by_rank`, `type_member_info_by_name`,
+	// `type_member_info_by_rank`, `IncompleteMemberIterator` and
+	// `MemberIterator`, which all solely operate on composite types.
 	Composite,
+
+	// Tag of composite literal types.
+	// TODO: This is not used yet, and thus does not currently have an
+	//       associated structure. However, it will likely need one.
 	CompositeLiteral,
+
+	// Tag of array literal types.
+	// TODO: This is not used yet, and thus does not currently have an
+	// associated structure. However, it will likely need one.
 	ArrayLiteral,
+
+	// Tag of the `TypeBuilder` type returned from the `_create_type` builtin.
+	// No additional structural data is stored.
 	TypeBuilder,
+
+	// Tag of variadic function argument types.
+	// TODO: This is not used yet, and thus does not currently have an
+	//       associated structure. However, it will likely need one.
 	Variadic,
+
+	// Tag used to indicate that something diverges, effectively making its
+	// type irrelevant. This can be implicitly converted to anything else.
+	// No additional structural data is stored.
 	Divergent,
+
+	// Tag of trait types.
+	// TODO: This is not used yet, and thus does not currently have an
+	//       associated structure. However, it will likely need one.
 	Trait,
+
+	// Tag of the `TypeInfo` type. This type is used to implicitly convert
+	// anything to a `Type`, which is e.g. necessary for functions such as
+	// `typeof` or `sizeof`.
 	TypeInfo,
+
+	// Tag of tail array types. Its structure is represented by a
+	// `ReferenceType`.
 	TailArray,
 };
 
+// Allocation metrics returned by `type_metrics_by_id`, describing the size,
+// stride and alignment of a type.
 struct TypeMetrics
 {
+	// Size of the type, in bytes. Same as the value returned by `sizeof`
 	u64 size;
 
+	// Stride of the type, in bytes. Same as the value returned by `strideof`.
+	// This value comes into play with arrays, where the address of the `i`th
+	// element is calculated as `base_address + i * stride`.
 	u64 stride;
 
+	// Alignment of the type, in bytes. Same as the value returned by
+	// `alignof`. This is guaranteed to be a nonzero power of two. Values of
+	// the type must only be allocated at addresses that are multiples of this
+	// alignment (i.e., have the low `log2(align)` bits set to zero).
 	u32 align;
 };
 
+// Iterator over the incomplete members of a composite type.
+// To create an `IncompleteMemberIterator` call `incomplete_members_of`.
+// This iterator is resistant to the iterated type having its members or itself
+// completed during iteration. Members that are completed before the iterator
+// has iterated them are skipped, as one would expect.
 struct IncompleteMemberIterator
 {
 	void* structure;
@@ -1390,6 +1499,10 @@ struct IncompleteMemberIterator
 	TypeId type_id;
 };
 
+// Iterator over the members of a composite type.
+// To create a `MemberIterator` call `members_of`.
+// This iterator is resistant to the iterated type having its members or itself
+// completed during iteration.
 struct MemberIterator
 {
 	void* structure;
@@ -1401,17 +1514,32 @@ struct MemberIterator
 	TypeId type_id;
 };
 
+// Representation of either a `TypeId` or the `AstNodeId` of the expression
+// evaluating or typechecking to the type. Information about whether this
+// represents a complete or a pending type must be tracked externally. The same
+// applies to the typechecking or evaluation context required to complete the
+// pending type.
 union DelayableTypeId
 {
+	// Completed `TypeId`.
 	TypeId complete;
 
+	// `AstNodeId` from which the `TypeId` can be evaluated or typechecked,
+	// depending on the context in which this occurs. 
 	AstNodeId pending;
 };
 
+// Representation of either a `GlobalValueId` or the `AstNodeId` of the
+// expression evaluating to the value. Information about whether this
+// represents a complete or a pending value must be tracked externally. The
+// same applies to the evaluation context required to complete the pending
+// value.
 union DelayableValueId
 {
+	// Completed `GlobalValueId`.
 	GlobalValueId complete;
 
+	// `AstNodeId` from which the `GlobalValueId` can be evaluated.
 	AstNodeId pending;
 };
 
