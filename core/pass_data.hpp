@@ -1112,54 +1112,123 @@ const char8* tag_name(AstTag tag) noexcept;
 
 
 
+// Source File Reader.
+// This handles reading and deduplication of source files, associating them
+// with ASTs, and mapping `SourceId`s to files and concrete `SourceLocations`.
 struct SourceReader;
 
+// Id of a position in the program's source code. There is a one-to-one mapping
+// between `SourceId`s and bytes across all source files read by a given
+// `SourceReader`.
+// A `SourceId` is synthesized for every `AstNode` during parsing (see
+// `Parser`).
+// This can then be mapped back to a `SourceFile` by a call to
+// `source_file_from_source_id`, or to a `SourceLocation` by a call to
+// `source_location_from_source_id`.
 enum class SourceId : u32
 {
+	// Value reserved for constructs that cannot be meaningfully associated
+	// with a read `SourceLocation`. In particular, this is used for the
+	// builtin hard-coded prelude AST, which has no real source.
+	// This must *not* be used in calls to `source_file_from_source_id`.
+	// However, it *may* be used in calls to `source_location_from_source_id`.
+	// In this case, a dummy `SourceLocation` indicating the hard-coded prelude
+	// as its source is returned.
 	INVALID = 0,
 };
 
+// Stores data on a source code file that has been read for compilation.
 struct SourceFile
 {
+	// Handle to the file.
 	minos::FileHandle file;
 
+	// Id of the root of the associated AST. If the file has not yet been
+	// parsed, this is set to `AstNodeId::INVALID`.
 	AstNodeId ast_root;
 
+	// `SourceId` of the first byte in this file.
 	SourceId source_id_base;
 };
 
+// Combination of a `SourceFile` and its contents. This is returned by
+// `read_source_file` and must be freed by `release_read` as soon as the file's
+// contents are no longer needed. The `SourceFile` remains valid even after the
+// call to `release_read`.
 struct SourceFileRead
 {
+	// Pointer to the `SourceFile` associated with this read.
 	SourceFile* source_file;
 
+	// Content read from the file. This is only valid if
+	// `source_file->ast_root` is `AstNodeId::INVALID`.
+	// Otherwise, the file has already been parsed into the AST rooted at that
+	// id, meaning that its contents are not actually required.
 	Range<char8> content;
 };
 
+// Description of a location in the program source code.
+// This can be retrieved for a given `SourceId` by calling
+// `source_location_from_source_id`.
 struct SourceLocation
 {
+	// Path to the file. This is intended for diagnostics, and may not refer to
+	// an actual existing file. In particular, this is the case if
+	// `source_location_from_source_id` was called with `SourceId::INVALID`.
 	Range<char8> filepath;
 
+	// Line number, starting from `1` for the first line in a file.
 	u32 line_number;
 
+	// Column number, starting from `1` for the first character in a file.
 	u32 column_number;
 
+	// Byte offset of the first character in `context` from the first character
+	// in the column. This is usually `0`, and only becomes positive for very
+	// long columns, which might not fit into `context` and thus have their
+	// beginning cut off. 
 	u32 context_offset;
 
+	// Number of characters stored in `context`.
 	u32 context_chars;
 
+	// A copy of the text around the location.
 	char8 context[512];
 };
 
+// Creates a `SourceReader`, allocating the necessary storage from `alloc`.
+// Resources associated with the created `SourceReader` can be freed using
+// `release_source_reader`.
 SourceReader* create_source_reader(AllocPool* pool) noexcept;
 
+// Releases the resources associated with the given ``SourceReader`.
 void release_source_reader(SourceReader* reader) noexcept;
 
+// Reads the file specified by `filepath` if it has not been read by a previous
+// call. In case the file has already been read, the `source_file` member of
+// the return value points to the `SourceFile` returned from the previous call,
+// while the `content` member is empty.
+// Due to the way this function interacts with `parse` in `import_file`,
+// `source_file->ast_root` will be `AstNodeId::INVALID` if and only if this is
+// the first read of the file (meaning `content` contains the file's contents).
+// If this is a first read, `release_read` must be called once the file's
+// content is no longer needed.
 SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noexcept;
 
+// Releases the contents and other associated resources of a `SourceFileRead`.
+// The `SourceFile` pointed to by the `source_file` member is however left
+// untouched.
 void release_read(SourceReader* reader, SourceFileRead read) noexcept;
 
+// Converts `source_id` to a `SourceLocation`.
+// If `source_id` is `SourceId::INVALID`, a dummy location indicating the
+// hard-coded prelude is returned.
 SourceLocation source_location_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
 
+// Retrieves the path to the file to which the given `source_id` belongs.
+// This path may not be the same as that from which the file was imported, but
+// can be used to open the file.
+// `source_id` must not be `SourceId::INVALID`.
 Range<char8> source_file_path_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
 
 
