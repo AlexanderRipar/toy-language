@@ -226,6 +226,15 @@ static void pop_activation_record(Interpreter* interp) noexcept
 	interp->activation_record_top = new_top;
 }
 
+static void* alloc_in_activation_record(Interpreter* interp, u64 size, u32 align) noexcept
+{
+	ASSERT_OR_IGNORE(has_activation_record(interp));
+
+	interp->activation_records.pad_to_alignment(align);
+
+	return interp->activation_records.reserve_padded(size);
+}
+
 static bool has_parent_activation_record(const Interpreter* interp, ActivationRecordDesc* record) noexcept
 {
 	return !record->is_root && record->prev_top > interp->context_activation_record_limits[interp->activation_record_top];
