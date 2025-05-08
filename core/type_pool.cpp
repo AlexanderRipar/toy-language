@@ -1117,6 +1117,9 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 
 	const TypeTag to_type_tag = type_tag_from_id(types, to_type_id);
 
+	if (from_type_tag == TypeTag::Divergent)
+		return true;
+
 	switch (to_type_tag)
 	{
 	case TypeTag::Integer:
@@ -1175,7 +1178,6 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 		return common_type(types, to_type->referenced_type_id, from_type->referenced_type_id) != TypeId::INVALID;
 	}
 
-	case TypeTag::Divergent:
 	case TypeTag::TypeInfo:
 	{
 		return true;
@@ -1201,9 +1203,11 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 		return false;
 	}
 
-	default:
-		ASSERT_UNREACHABLE;
+	case TypeTag::Divergent:
+		; // Fallthrough to unreachable
 	}
+
+	ASSERT_UNREACHABLE;
 }
 
 TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
