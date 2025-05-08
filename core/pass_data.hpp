@@ -928,6 +928,7 @@ AstPool* create_ast_pool(AllocPool* alloc) noexcept;
 // Releases the resources associated with the given `AstPool`.
 void release_ast_pool(AstPool* asts) noexcept;
 
+
 // Converts `node` to its corresponding `AstNodeId`.
 // `node` must be part of an AST created by a call to `complete_ast` on the
 // same `AstPool`.
@@ -938,6 +939,54 @@ AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept;
 // `id` must have been obtained from a previous call to `id_from_ast_node` on
 // the same `AstPool`.
 AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept;
+
+
+// Pushes a new `AstNode` with no attachment into `asts`'s ast builder.
+// Nodes are pushed in post-order, meaning that children are pushed before
+// parents, while siblings are pushed first to last.
+// The created node will have `first_child` as its first child node. To create
+// a node without children, pass `AstBuilderToken::NO_CHILDREN` for
+// `first_child`.
+// The node's `source_id`, `flags` and `tag` fields will be set to the given
+// values. The node will not have an attachment.
+// To complete the ast builder, call `complete_ast`.
+AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag) noexcept;
+
+// Pushes a new `AstNode` with the given attachment into `asts`'s ast builder.
+// Nodes are pushed in post-order, meaning that children are pushed before
+// parents, while siblings are pushed first to last.
+// The created node will have `first_child` as its first child node. To create
+// a node without children, pass `AstBuilderToken::NO_CHILDREN` for
+// `first_child`.
+// The node's `source_id`, `flags` and `tag` fields will be set to the given
+// values. The node will have an attachment of `attachment_dwords` four-byte
+// units allocated, which will be initialized by a copy from the `attachment`
+// argument. Note that the allocated attachment is four-byte aligned, so it is
+// not possible to have attachments requiring a higher alignment.
+// To complete the ast builder, call `complete_ast`.
+AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_dwords, const void* attachment) noexcept;
+
+// Templated helper version of `push_node`.
+// This makes it easier to create a node with a given `attachment`.
+// Nodes are pushed in post-order, meaning that children are pushed before
+// parents, while siblings are pushed first to last.
+// `attachment` must be one of the `Ast*Data` structs. The created node's `tag`
+// will be set to `T::TAG`.
+// See the non-templated versions of `push_node` for further details.
+template<typename T>
+static AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, T attachment) noexcept
+{
+	static_assert(sizeof(T) % sizeof(u32) == 0);
+
+	return push_node(asts, first_child, source_id, flags, T::TAG, sizeof(attachment) / sizeof(u32), &attachment);
+}
+
+// Completes the builder of `asts`, returning a pointer to the root node of the
+// resulting ast.
+// To fill the builder, use one of the `push_node` functions.
+// After a call to this function, `asts`'s builder will be reset.
+AstNode* complete_ast(AstPool* asts) noexcept;
+
 
 // Checks whether `node` has any child nodes.
 // If it does, returns `true`, otherwise returns `false`.
@@ -990,52 +1039,6 @@ inline const T* attachment_of(const AstNode* node) noexcept
 
 	return reinterpret_cast<const T*>(node + 1);
 }
-
-// Pushes a new `AstNode` with no attachment into `asts`'s ast builder.
-// Nodes are pushed in post-order, meaning that children are pushed before
-// parents, while siblings are pushed first to last.
-// The created node will have `first_child` as its first child node. To create
-// a node without children, pass `AstBuilderToken::NO_CHILDREN` for
-// `first_child`.
-// The node's `source_id`, `flags` and `tag` fields will be set to the given
-// values. The node will not have an attachment.
-// To complete the ast builder, call `complete_ast`.
-AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag) noexcept;
-
-// Pushes a new `AstNode` with the given attachment into `asts`'s ast builder.
-// Nodes are pushed in post-order, meaning that children are pushed before
-// parents, while siblings are pushed first to last.
-// The created node will have `first_child` as its first child node. To create
-// a node without children, pass `AstBuilderToken::NO_CHILDREN` for
-// `first_child`.
-// The node's `source_id`, `flags` and `tag` fields will be set to the given
-// values. The node will have an attachment of `attachment_dwords` four-byte
-// units allocated, which will be initialized by a copy from the `attachment`
-// argument. Note that the allocated attachment is four-byte aligned, so it is
-// not possible to have attachments requiring a higher alignment.
-// To complete the ast builder, call `complete_ast`.
-AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_dwords, const void* attachment) noexcept;
-
-// Templated helper version of `push_node`.
-// This makes it easier to create a node with a given `attachment`.
-// Nodes are pushed in post-order, meaning that children are pushed before
-// parents, while siblings are pushed first to last.
-// `attachment` must be one of the `Ast*Data` structs. The created node's `tag`
-// will be set to `T::TAG`.
-// See the non-templated versions of `push_node` for further details.
-template<typename T>
-static AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, T attachment) noexcept
-{
-	static_assert(sizeof(T) % sizeof(u32) == 0);
-
-	return push_node(asts, first_child, source_id, flags, T::TAG, sizeof(attachment) / sizeof(u32), &attachment);
-}
-
-// Completes the builder of `asts`, returning a pointer to the root node of the
-// resulting ast.
-// To fill the builder, use one of the `push_node` functions.
-// After a call to this function, `asts`'s builder will be reset.
-AstNode* complete_ast(AstPool* asts) noexcept;
 
 
 // Retrieves a `FuncInfo` struct corresponding to `node`'s child structure.
@@ -1098,6 +1101,7 @@ AstIterationResult next(AstPostorderIterator* iterator) noexcept;
 // Checks whether `iterator` has an element to be returned by a future call to
 // `next`. This call is idempotent.
 bool has_next(const AstPostorderIterator* iterator) noexcept;
+
 
 // Retrieves a string representing the given `tag`.
 // If `tag` is not an enumerant of `AstTag`, it is treated as
