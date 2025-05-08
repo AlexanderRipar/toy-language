@@ -1233,22 +1233,25 @@ TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 	// Since the ids were not equal, there are a few cases left:
 	// 1. The types are aliases with the same `distinct_root_type_id`; In this
 	//    case, we have a match.
-	// 2. The types refer to different `distinct_root_type_id`s, but the two
+	// 2. The type ids have different `distinct_root_type_id`s, but the two
 	//    roots are really one. This happens when a partially complete type is
 	//    constructed twice before being completed and is a rare case.
-	// 3. The types are not compatible.
+	// 3. The type ids do not refer to different types but one can be
+	//    implicitly converted to the other.
+	// 4. The type ids do not refer to different types and there are no
+	//    applicable implicit conversions.
 
 	// Check for case 1.
 
 	TypeName* const name_a = types->named_types.value_from(static_cast<u32>(type_id_a));
 
 	if (!resolve_name_structure(types, name_a))
-		panic("Tried comparing incomplete type for compatibility\n"); // TODO: Figure out what to do here
+		panic("Tried comparing incomplete type\n"); // TODO: Figure out what to do here
 
 	TypeName* const name_b = types->named_types.value_from(static_cast<u32>(type_id_b));
 
 	if (!resolve_name_structure(types, name_b))
-		panic("Tried comparing incomplete type for compatibility\n"); // TODO: Figure out what to do here
+		panic("Tried comparing incomplete type\n"); // TODO: Figure out what to do here
 
 	const TypeId root_type_id_a = name_a->distinct_root_type_id == TypeId::INVALID ? type_id_a : name_a->distinct_root_type_id;
 
@@ -1287,8 +1290,6 @@ TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 			panic("Tried comparing incomplete type for compatibility\n"); // TODO: Figure out what to do here
 	}
 
-	// If this is `false` we are in case 3. (incompatible types)
-
 	if (root_name_a->structure_index == root_name_b->structure_index && root_name_a->source_id == root_name_b->source_id)
 	{
 		// Just select the "minimal" id as the canonical one.
@@ -1297,7 +1298,15 @@ TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 		return min_id;
 	}
 
-	// We're in case 3. (Incompatible types)
+	// Check for case 3.
+
+	if (type_can_implicitly_convert_from_to(types, type_id_a, type_id_b))
+		return type_id_b;
+
+	if (type_can_implicitly_convert_from_to(types, type_id_b, type_id_a))
+		return type_id_a;
+
+	// We're in case 4. (Incompatible types)
 
 	return TypeId::INVALID;
 }
