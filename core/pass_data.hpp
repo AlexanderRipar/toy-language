@@ -1045,11 +1045,6 @@ ForInfo get_for_info(AstNode* node) noexcept;
 ForEachInfo get_foreach_info(AstNode* node) noexcept;
 
 
-inline bool is_valid(AstIterationResult result) noexcept
-{
-	return result.node != nullptr;
-}
-
 AstDirectChildIterator direct_children_of(AstNode* node) noexcept;
 
 AstNode* next(AstDirectChildIterator* iterator) noexcept;
@@ -1065,6 +1060,8 @@ bool has_next(const AstPreorderIterator* iterator) noexcept;
 AstPostorderIterator postorder_ancestors_of(AstNode* node) noexcept;
 
 AstIterationResult next(AstPostorderIterator* iterator) noexcept;
+
+bool has_next(const AstPostorderIterator* iterator) noexcept;
 
 
 const char8* tag_name(AstTag tag) noexcept;

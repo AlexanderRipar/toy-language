@@ -455,8 +455,7 @@ AstPostorderIterator postorder_ancestors_of(AstNode* node) noexcept
 
 AstIterationResult next(AstPostorderIterator* iterator) noexcept
 {
-	if (iterator->depth < 0)
-		return { nullptr, 0 };
+	ASSERT_OR_IGNORE(iterator->depth >= 0);
 
 	AstNode* const ret_node = reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(iterator->base) + iterator->offsets[iterator->depth]);
 
@@ -490,6 +489,11 @@ AstIterationResult next(AstPostorderIterator* iterator) noexcept
 	}
 
 	return { ret_node, ret_depth };
+}
+
+bool has_next(const AstPostorderIterator* iterator) noexcept
+{
+	return iterator->depth >= 0;
 }
 
 
