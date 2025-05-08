@@ -230,9 +230,12 @@ static void* alloc_in_activation_record(Interpreter* interp, u64 size, u32 align
 {
 	ASSERT_OR_IGNORE(has_activation_record(interp));
 
+	if (size > UINT32_MAX)
+		panic("Tried allocating local storage exceeding allowed maximum size in activation record.\n");
+
 	interp->activation_records.pad_to_alignment(align);
 
-	return interp->activation_records.reserve_padded(size);
+	return interp->activation_records.reserve_padded(static_cast<u32>(size));
 }
 
 static bool has_parent_activation_record(const Interpreter* interp, ActivationRecordDesc* record) noexcept
