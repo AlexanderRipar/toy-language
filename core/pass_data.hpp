@@ -1966,41 +1966,114 @@ AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bo
 
 
 
+// Typechecks and interprets expressions. This is the component that exerts.
+// control flow over all the others, calling into them as required.
 struct Interpreter;
 
+// Builtin functions that the compiler needs to evaluate in a special way.
+// These include functions that expose type, type creation, as well as
+// introspection.
 enum class Builtin : u8
 {
+	// Should not be used, reserved for sanity checking in debug builds.
 	INVALID = 0,
+
+	// Returns an integer type with the given bit width and signedness.
+	// `let _integer = func(bits: CompInteger, is_signed: Bool) -> Type`
 	Integer,
+
+	// Returns a float type with the given bit width.
+	// `let _float = func(bits: CompInteger) -> Type`
 	Float,
+
+	// Returns the `Type` type.
+	// `let _type = func() -> Type`
 	Type,
+
+	// Returns the type of its argument, or the value of its argument if it is
+	// of type `Type`.
+	// `let _typeof = func(arg: TypeInfo) -> Type`
 	Typeof,
+
+	// Returns the return type of its argument, which must refer to a function
+	// or builtin type.
+	// `let _returntypeof = func(arg: TypeInfo) -> Type`
 	Returntypeof,
+
+	// Returns the size of its argument.
+	// `let _sizeof = func(arg: TypeInfo) -> Type`
 	Sizeof,
+
+	// Returns the alignment of its argument.
+	// `let _alignof = func(arg: TypeInfo) -> Type`
 	Alignof,
+
+	// Returns the stride of its argument.
+	// `let _strideof = func(arg: TypeInfo) -> Type`
 	Strideof,
+
+	// TODO: This is not yet specified.
 	Offsetof,
+
+	// TODO: This is not yet specified.
 	Nameof,
+
+	// Imports the file specified by `path`, resolved relative to the path of
+	// the file containing the `SourceId` `from`. If `is_std` is `true`,
+	// builtins are allowed in the imported file, otherwise they are
+	// disallowed.
+	// The imported file's type is returned.
+	// `let _import = func(path: []u8, is_std: Bool, from: u32) -> Type`
 	Import,
+
+	// TODO: This is not yet specified.
 	CreateTypeBuilder,
+
+	// TODO: This is not yet specified.
 	AddTypeMember,
+
+	// TODO: This is not yet specified.
 	CompleteType,
+
+	// Returns the `SourceId` of the call site as a `u32`.
+	// `let _source_id = func() -> u32`
 	SourceId,
+
+	// Number of `Builtin`s, used for sizing arrays. Should not be used
+	// otherwise.
 	MAX,
 };
 
+// Creates an `Interpreter`, allocating the necessary storage from `alloc`.
+// Resources associated with the created `Interpreter` can be freed using
+// `release_interpreter`.
 Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, ErrorSink* errors, minos::FileHandle log_file, bool log_prelude) noexcept;
 
+// Releases the resources associated with the given `Interpreter`.
 void release_interpreter(Interpreter* interp) noexcept;
 
+
+// Imports the source file specified by `filepath`, reading, parsing and
+// typechecking it as necessary (i.e., if it has not been done by a previous
+// import of the given file). If `is_std` is `true`, builtins are allowed,
+// if it is `false` they are disallowed.
+// Returns a `TypeId` referencing a type that contains all top-level
+//  definitions in the imported files as global members.
 TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noexcept;
 
+// Creates a `TypeIdWithAssignability` by combining the given `type_id` with
+// the given `is_assignable` value.
 TypeIdWithAssignability with_assignability(TypeId type_id, bool is_assignable) noexcept;
 
+// Checks whether `id` is assignable.
 bool is_assignable(TypeIdWithAssignability id) noexcept;
 
+// Extracts the `TypeId` from `id`.
 TypeId type_id(TypeIdWithAssignability id) noexcept;
 
+// Retrieves a string representing the given `tag`.
+// If `tag` is not an enumerant of `TypeTag`, it is treated as
+// `TypeTag::INVALID`.
 const char8* tag_name(Builtin builtin) noexcept;
 
 #endif // PASS_DATA_INCLUDE_GUARD
