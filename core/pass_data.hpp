@@ -1943,12 +1943,23 @@ bool has_next(const MemberIterator* it) noexcept;
 
 
 
+// Parser, structuring source code into an Abstract Syntax Tree for further
+// processing.
 struct Parser;
 
+// Creates a `Parser`, allocating the necessary storage from `alloc`.
+// Resources associated with the created `Parser` can be freed using
+// `release_parser`.
 Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors, minos::FileHandle log_file) noexcept;
 
+// Releases the resources associated with the given `Parser`.
 void release_parser(Parser* parser) noexcept;
 
+// Parses `content` into an AST, returning its root node.
+// `base_source_id` is the `SourceId` assigned to the first byte of `content`,
+// with subsequent bytes receiving subsequent `SourceId`s.
+// If `is_std` is `true`, builtins are allowed, otherwise they are disallowed.
+// `filepath` is used for logging.
 AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std, Range<char8> filepath) noexcept;
 
 
