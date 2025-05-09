@@ -384,7 +384,7 @@ bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_
 		native_createmode = OPEN_EXISTING;
 		native_flags |= FILE_FLAG_BACKUP_SEMANTICS;
 		break;
-	
+
 	case ExistsMode::Truncate:
 		ASSERT_OR_IGNORE(new_mode == NewMode::Fail || new_mode == NewMode::Create);
 		native_createmode = new_mode == NewMode::Fail ? TRUNCATE_EXISTING : CREATE_ALWAYS;
@@ -407,7 +407,7 @@ bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_
 	case AccessPattern::Unbuffered:
 		native_flags |= FILE_FLAG_NO_BUFFERING;
 		break;
-	
+
 	default:
 		ASSERT_UNREACHABLE;
 	}
@@ -437,6 +437,36 @@ void minos::file_close(FileHandle handle) noexcept
 {
 	if (!CloseHandle(handle.m_rep))
 		panic("CloseHandle(FileHandle) failed (0x%X)\n", last_error());
+}
+
+minos::FileHandle minos::standard_file_handle(StdFileName name) noexcept
+{
+	DWORD native_name;
+
+	switch (name)
+	{
+	case StdFileName::StdIn:
+		native_name = STD_INPUT_HANDLE;
+		break;
+
+	case StdFileName::StdOut:
+		native_name = STD_OUTPUT_HANDLE;
+		break;
+
+	case StdFileName::StdErr:
+		native_name = STD_ERROR_HANDLE;
+		break;
+
+	default:
+		ASSERT_UNREACHABLE;
+	}
+
+	const HANDLE handle = GetStdHandle(native_name);
+
+	if (handle == INVALID_HANDLE_VALUE)
+		panic("GetStdHandle failed (0x%X)\n", GetLastError());
+
+	return FileHandle{ handle };
 }
 
 bool minos::file_read(FileHandle handle, MutRange<byte> buffer, u64 offset, u32* out_bytes_read) noexcept
@@ -634,7 +664,7 @@ static bool construct_command_line(MutRange<char16> buffer, Range<char16> exe_pa
 	index += static_cast<u32>(exe_path.count());
 
 	buffer[index++] = '"';
-	
+
 	for (const Range<char8> argument : command_line)
 	{
 		if (index + 2 > buffer.count())
@@ -768,7 +798,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 		if (!InitializeProcThreadAttributeList(attribute_list, 1, 0, &proc_thread_attribute_list_bytes))
 		{
 			mem_unreserve(command_line_buffer, total_bytes);
-			
+
 			return false;
 		}
 
@@ -799,7 +829,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	if (exe_path.count() == 0)
 	{
 		exe_path_utf16_chars = GetModuleFileNameW(nullptr, exe_path_utf16, static_cast<u32>(array_count(exe_path_utf16)));
-	
+
 		if (exe_path_utf16_chars == array_count(exe_path_utf16))
 		{
 			mem_unreserve(command_line_buffer, total_bytes);
@@ -1168,7 +1198,7 @@ void minos::directory_enumeration_close(DirectoryEnumerationHandle handle) noexc
 bool minos::directory_create(Range<char8> path) noexcept
 {
 	char16 path_utf16[MAX_PATH_CHARS + 1];
-	
+
 	if (!map_path(path, MutRange{ path_utf16 }))
 		return false;
 
@@ -1253,7 +1283,7 @@ static u32 path_to_absolute_impl(Range<char8> path, MutRange<char8> out_buf, boo
 		return 0;
 
 	char16* trimmed_path;
-	
+
 	if (path_utf16[0] == '\\' && path_utf16[1] == '\\' && path_utf16[2] == '?' && path_utf16[3] == '\\')
 	{
 		trimmed_path = path_utf16 + 4;

@@ -149,7 +149,7 @@ public:
 	void reset(Index preserved_commit = std::numeric_limits<Index>::max()) noexcept
 	{
 		m_used = 0;
-		
+
 		if (preserved_commit > m_committed)
 			return;
 
@@ -351,7 +351,7 @@ private:
 			const V* const curr_value = reinterpret_cast<V*>(reinterpret_cast<byte*>(m_values) + offset_to_insert * V::stride());
 
 			reinsert_value_into_lookup(offset_to_insert, curr_value->hash());
-			
+
 			offset_to_insert += curr_value->used_strides();
 		}
 	}

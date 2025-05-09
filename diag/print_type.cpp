@@ -1,193 +1,199 @@
 #include "diag.hpp"
 
-#include <inttypes.h>
-
-static void print_type(FILE* out, IdentifierPool* identifiers, TypePool* types, TypeId type_id, u32 depth, bool continue_line) noexcept
+static const char8* optional_tag_name(TypeTag tag) noexcept
 {
-	if (type_id == INVALID_TYPE_ID)
+	if (tag == TypeTag::Composite
+	 || tag == TypeTag::Func
+	 || tag == TypeTag::Array
+	 || tag == TypeTag::Slice
+	 || tag == TypeTag::Ptr
+	 || tag == TypeTag::Integer
+	 || tag == TypeTag::Float)
+		return "";
+
+	return tag_name(tag);
+}
+
+static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers, TypePool* types, TypeId type_id, u32 indent, bool skip_initial_indent) noexcept
+{
+	if (type_id == TypeId::INVALID)
 	{
-		fprintf(out, "%*sINVALID_TYPE\n", continue_line ? 0 : depth * 2, "");
+		diag::buf_printf(ctx, "%*s<INVALID-TYPE-ID>\n", skip_initial_indent ? 0 : indent * 2, "");
 
 		return;
 	}
 
-	TypeEntry* const entry = type_entry_from_id(types, type_id);
+	const TypeTag tag = type_tag_from_id(types, type_id);
 
-	switch (entry->tag)
+	const IdentifierId name_id = type_name_from_id(types, type_id);
+
+	const Range<char8> name = name_id == IdentifierId::INVALID ? range::from_literal_string("UNNAMED") : identifier_name_from_id(identifiers, name_id);
+
+	const char8 name_opener = name_id == IdentifierId::INVALID ? '<' : '\"';
+
+	const char8 name_closer = name_id == IdentifierId::INVALID ? '>' : '\"';
+
+	const char8* tag_string = optional_tag_name(tag);
+
+	diag::buf_printf(ctx, "%*s%c%.*s%c%s%s",
+		skip_initial_indent ? 0 : indent * 2, "",
+		name_opener,
+		static_cast<s32>(name.count()), name.begin(),
+		name_closer,
+		*tag_string == '\0' ? "" : " ",
+		tag_string
+	);
+
+	switch (tag)
 	{
-		case TypeTag::Void:
-		{
-			fprintf(out, "%*svoid\n", continue_line ? 0 : depth * 2, "");
+	case TypeTag::Void:
+	case TypeTag::Type:
+	case TypeTag::Definition:
+	case TypeTag::CompInteger:
+	case TypeTag::CompFloat:
+	case TypeTag::Boolean:
+	case TypeTag::Builtin:
+	case TypeTag::CompositeLiteral:
+	case TypeTag::ArrayLiteral:
+	case TypeTag::TypeBuilder:
+	case TypeTag::Variadic:
+	case TypeTag::Divergent:
+	case TypeTag::Trait:
+	case TypeTag::TypeInfo:
+	case TypeTag::TailArray:
+	{
+		diag::buf_printf(ctx, "\n");
 
-			break;
-		}
-
-		case TypeTag::Type:
-		{
-			fprintf(out, "%*stype\n", continue_line ? 0 : depth * 2, "");
-
-			break;
-		}
-
-		case TypeTag::CompInteger:
-		{
-			fprintf(out, "%*scomp_integer\n", continue_line ? 0 : depth * 2, "");
-
-			break;
-		}
-
-		case TypeTag::CompFloat:
-		{
-			fprintf(out, "%*scomp_float\n", continue_line ? 0 : depth * 2, "");
-
-			break;
-		}
-
-		case TypeTag::CompString:
-		{
-			fprintf(out, "%*scomp_string\n", continue_line ? 0 : depth * 2, "");
-
-			break;
-		}
-
-		case TypeTag::Integer:
-		{
-			IntegerType* const integer_type = entry->data<IntegerType>();
-
-			fprintf(out, "%*s%c%u\n", continue_line ? 0 : depth * 2, "", (entry->flags & TypeFlag::Integer_IsSigned) == TypeFlag::Integer_IsSigned ? 's' : 'u', integer_type->bits);
-
-			break;
-		}
-
-		case TypeTag::Float:
-		{
-			FloatType* const float_type = entry->data<FloatType>();
-
-			fprintf(out, "%*sf%u\n", continue_line ? 0 : depth * 2, "", float_type->bits);
-
-			break;
-		}
-
-		case TypeTag::Boolean:
-		{
-			fprintf(out, "%*sbool\n", continue_line ? 0 : depth * 2, "");
-
-			break;
-		}
-
-		case TypeTag::Slice:
-		{
-			SliceType* const slice_type = entry->data<SliceType>();
-
-			fprintf(out, "%*s[]%s", continue_line ? 0 : depth * 2, "", (entry->flags & TypeFlag::SliceOrPtr_IsMut) == TypeFlag::SliceOrPtr_IsMut ? "mut " : "");
-
-			print_type(out, identifiers, types, slice_type->element_id, depth, true);
-
-			break;
-		}
-
-		case TypeTag::Ptr:
-		{
-			PtrType* const ptr_type = entry->data<PtrType>();
-
-			fprintf(out, "%*s%s%s", continue_line ? 0 : depth * 2, "",
-				(entry->flags & (TypeFlag::Ptr_IsMulti | TypeFlag::Ptr_IsOpt)) == (TypeFlag::Ptr_IsMulti | TypeFlag::Ptr_IsOpt)
-					? "[?]"
-					: (entry->flags & TypeFlag::Ptr_IsOpt) == TypeFlag::Ptr_IsOpt
-					? "?"
-					: (entry->flags & TypeFlag::Ptr_IsMulti) == TypeFlag::Ptr_IsMulti
-					?
-					"[*]"
-					: "*",
-				(entry->flags & TypeFlag::SliceOrPtr_IsMut) == TypeFlag::SliceOrPtr_IsMut
-					? "mut "
-					: "");
-
-			print_type(out, identifiers, types, ptr_type->pointee_id, depth, true);
-
-			break;
-		}
-
-		case TypeTag::Alias:
-		{
-			AliasType* const alias_type = entry->data<AliasType>();
-
-			fprintf(out, "%*s(alias) ", continue_line ? 0 : depth * 2, "");
-
-			print_type(out, identifiers, types, alias_type->aliased_id, depth, true);
-
-			break;
-		}
-
-		case TypeTag::Array:
-		{
-			ArrayType* const array_type = entry->data<ArrayType>();
-
-			fprintf(out, "%*s[%" PRIu64 "] ", continue_line ? 0 : depth * 2, "", array_type->count);
-	
-			print_type(out, identifiers, types, array_type->element_id, depth, true);
-
-			break;
-		}
-
-		case TypeTag::Func:
-		{
-			FuncType* const func_type = entry->data<FuncType>();
-
-			fprintf(out, "%*s%s(\n", continue_line ? 0 : depth * 2, "", func_type->header.is_proc ? "proc" : "func");
-
-			for (u32 i = 0; i != func_type->header.parameter_count; ++i)
-				print_type(out, identifiers, types, func_type->params[i].type, depth + 1, false);
-
-			fprintf(out, "%*s) -> ", depth * 2, "");
-
-			print_type(out, identifiers, types, func_type->header.return_type_id, depth, true);
-
-			break;
-		}
-
-		case TypeTag::Composite:
-		{
-			CompositeType* const composite_type = entry->data<CompositeType>();
-
-			fprintf(out, "%*scomposite (%u@%u) {\n", continue_line ? 0 : depth * 2, "", composite_type->header.size, composite_type->header.alignment);
-
-			for (u32 i = 0; i != composite_type->header.member_count; ++i)
-			{
-				CompositeTypeMember* const member = composite_type->members + i;
-
-				const Range<char8> member_name = identifier_entry_from_id(identifiers, member->identifier_id)->range();
-
-				fprintf(out, "%*s%.*s (%+" PRId64 "): ", (depth + 1) * 2, "", static_cast<s32>(member_name.count()), member_name.begin(), member->offset);
-
-				print_type(out, identifiers, types, member->type_id, depth + 1, true);
-			}
-
-			fprintf(out, "%*s}\n", depth * 2, "");
-
-			break;
-		}
-
-		case TypeTag::CompositeLiteral:
-		{
-			fprintf(out, "%*s.{literal}\n", continue_line ? 0 : depth * 2, "");
-
-			break;
-		}
-
-		case TypeTag::ArrayLiteral:
-		{
-			fprintf(out, "%*s.[literal]\n", continue_line ? 0 : depth * 2, "");
-
-			break;
-		}
-
-		default:
-			ASSERT_UNREACHABLE;
+		return;
 	}
+
+	case TypeTag::Integer:
+	case TypeTag::Float:
+	{
+		const NumericType* numeric_type = static_cast<const NumericType*>(simple_type_structure_from_id(types, type_id));
+
+		diag::buf_printf(ctx, " %s%u\n", tag == TypeTag::Integer ? numeric_type->is_signed ? "s" : "u" : "f", numeric_type->bits);
+
+		return;
+	}
+
+	case TypeTag::Slice:
+	case TypeTag::Ptr:
+	{
+		const ReferenceType* const reference = static_cast<const ReferenceType*>(simple_type_structure_from_id(types, type_id));
+
+		const char8* introducer;
+
+		if (tag == TypeTag::Slice)
+			introducer = "[]";
+		else if (reference->is_opt && reference->is_multi)
+			introducer = "[?]";
+		else if (reference->is_multi)
+			introducer = "[*]";
+		else if (reference->is_opt)
+			introducer = "?";
+		else
+			introducer = "*";
+
+		diag::buf_printf(ctx, " %s%s ", introducer, reference->is_mut ? " mut" : "");
+
+		print_type_impl(ctx, identifiers, types, reference->referenced_type_id, indent + 1, true);
+
+		return;
+	}
+
+	case TypeTag::Array:
+	{
+		const ArrayType* const array = static_cast<const ArrayType*>(simple_type_structure_from_id(types, type_id));
+
+		diag::buf_printf(ctx, " :: [%" PRIu64 "]", array->element_count);
+
+		print_type_impl(ctx, identifiers, types, array->element_type, indent + 1, true);
+
+		return;
+	}
+
+	case TypeTag::Func:
+	case TypeTag::Composite:
+	{
+		const FuncType* func_type;
+
+		TypeId composite_type_id;
+
+		if (tag == TypeTag::Func)
+		{
+			func_type = static_cast<const FuncType*>(simple_type_structure_from_id(types, type_id));
+
+			composite_type_id = func_type->signature_type_id;
+		}
+		else
+		{
+			func_type = nullptr;
+
+			composite_type_id = type_id;
+		}
+
+		const TypeMetrics metrics = type_metrics_from_id(types, composite_type_id);
+
+		diag::buf_printf(ctx, " %s (sz=%" PRIu64 ", al=%" PRIu32 ", st=%" PRIu64 ") {", tag == TypeTag::Func ? "Func" : "Composite", metrics.size, metrics.align, metrics.stride);
+
+		MemberIterator it = members_of(types, composite_type_id);
+
+		bool has_members = false;
+
+		while (has_next(&it))
+		{
+			MemberInfo member = next(&it);
+
+			const Range<char8> member_name = identifier_name_from_id(identifiers, member.name);
+
+			diag::buf_printf(ctx, "%s%*s%s%s%s%s\"%.*s\" ", has_members ? "" : "\n",
+				(indent + 1) * 2, "",
+				member.is_pub ? "pub " : "",
+				member.is_use ? "use " : "",
+				member.is_mut ? "mut " : "",
+				member.is_global ? "global " : "",
+				static_cast<s32>(member_name.count()), member_name.begin()
+			);
+
+			if (!member.is_global)
+				diag::buf_printf(ctx, "(%+" PRId64 ") :: ", member.offset);
+			else
+				diag::buf_printf(ctx, ":: ");
+
+			print_type_impl(ctx, identifiers, types, member.type.complete, indent + 1, true);
+
+			has_members = true;
+		}
+
+		diag::buf_printf(ctx, "%*s}%s", has_members ? indent * 2 : 1, "", tag == TypeTag::Func ? " -> " : "\n");
+
+		if (tag == TypeTag::Func)
+			print_type_impl(ctx, identifiers, types, func_type->return_type_id, indent + 1, true);
+
+		return;
+	}
+
+	case TypeTag::INVALID:
+		; // fallthrough to unreachable.
+	}
+
+	ASSERT_UNREACHABLE;
 }
 
-void diag::print_type(FILE* out, IdentifierPool* identifiers, TypePool* types, TypeId type_id) noexcept
+void diag::print_type(minos::FileHandle out, IdentifierPool* identifiers, TypePool* types, TypeId type_id, const SourceLocation* source) noexcept
 {
-	print_type(out, identifiers, types, type_id, 0, false);
+	PrintContext ctx;
+	ctx.curr = ctx.buf;
+	ctx.file = out;
+
+	diag::buf_printf(&ctx, "\n#### TYPE [%.*s:%u:%u] ####\n\n",
+		static_cast<s32>(source->filepath.count()), source->filepath.begin(),
+		source->line_number,
+		source->column_number
+	);
+
+	print_type_impl(&ctx, identifiers, types, type_id, 0, false);
+
+	diag::buf_flush(&ctx);
 }

@@ -90,4 +90,6 @@ NORETURN void panic(const char8* format, ...) noexcept;
 
 NORETURN void vpanic(const char8* format, va_list args) noexcept;
 
+#define TODO(message) panic("Encountered open TODO in %s at %s:%d: %s\n", __FUNCTION__, __FILE__, __LINE__, *(message) == '\0' ? "?" : (message))
+
 #endif // COMMON_INCLUDE_GUARD

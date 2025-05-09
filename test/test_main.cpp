@@ -15,9 +15,9 @@ bool g_ignore_debugbreaks;
 
 void minos_tests() noexcept;
 
-void ast2_tests() noexcept;
+void ast_tests() noexcept;
 
-void type_pool2_tests() noexcept;
+void type_pool_tests() noexcept;
 
 struct TimeDesc
 {
@@ -76,7 +76,7 @@ struct InvocationInfo
 		{
 			minos::EventHandle handle;
 		} event;
-		
+
 		struct
 		{
 			minos::SemaphoreHandle handle;
@@ -90,22 +90,22 @@ struct InvocationInfo
 		struct
 		{
 			minos::ShmHandle handle;
-		
+
 			u64 reserve_offset;
-		
+
 			u64 reserve_bytes;
-		
+
 			u64 commit_offset;
-		
+
 			u64 commit_bytes;
-		
+
 			u64 read_offset;
-		
+
 			u64 read_value;
-		
+
 			u64 write_offset;
-		
-			u64 write_value;		
+
+			u64 write_value;
 		} shm;
 	};
 	#if COMPILER_CLANG
@@ -589,9 +589,9 @@ s32 main(s32 argc, const char8** argv) noexcept
 
 	minos_tests();
 
-	ast2_tests();
+	ast_tests();
 
-	type_pool2_tests();
+	type_pool_tests();
 
 	const u64 duration = minos::exact_timestamp() - start;
 

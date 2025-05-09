@@ -1,0 +1,4 @@
+let V = Struct(
+	a: u32 = sizeof(V),
+	b: u32 = offsetof(V.b),
+)

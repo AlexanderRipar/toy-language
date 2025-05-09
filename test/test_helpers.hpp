@@ -20,7 +20,7 @@
 #elif COMPILER_GCC
 	#include <signal.h>
 
-	#define DEBUGBREAK raise(SIGTRAP) 
+	#define DEBUGBREAK raise(SIGTRAP)
 #endif
 
 struct TestResult

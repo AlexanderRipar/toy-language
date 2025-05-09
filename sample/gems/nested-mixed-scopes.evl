@@ -1,0 +1,23 @@
+let T = Struct
+( /* in (nothing) */
+	let U = Struct
+	( /* in T */
+		let pow = func(/* in U */ x: u32) -> u32 =>
+		{ /* in (procedural) */
+			mut r = 1
+
+			mut i: u32 = 0
+
+			for i < POW_N, i += 1 do
+			{ /* in (procedural) */
+				let f = x
+
+				r *= f
+			}
+
+			r
+		},
+	),
+
+	global POW_N = 4,
+)
