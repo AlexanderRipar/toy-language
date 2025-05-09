@@ -1211,6 +1211,7 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 		return false;
 	}
 
+	case TypeTag::INVALID:
 	case TypeTag::Divergent:
 		; // Fallthrough to unreachable
 	}
