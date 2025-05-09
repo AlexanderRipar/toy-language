@@ -1989,17 +1989,17 @@ enum class Builtin : u8
 	MAX,
 };
 
-TypeIdWithAssignability with_assignability(TypeId type_id, bool is_assignable) noexcept;
-
-bool is_assignable(TypeIdWithAssignability id) noexcept;
-
-TypeId type_id(TypeIdWithAssignability id) noexcept;
-
 Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, ErrorSink* errors, minos::FileHandle log_file, bool log_prelude) noexcept;
 
 void release_interpreter(Interpreter* interp) noexcept;
 
 TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noexcept;
+
+TypeIdWithAssignability with_assignability(TypeId type_id, bool is_assignable) noexcept;
+
+bool is_assignable(TypeIdWithAssignability id) noexcept;
+
+TypeId type_id(TypeIdWithAssignability id) noexcept;
 
 const char8* tag_name(Builtin builtin) noexcept;
 
