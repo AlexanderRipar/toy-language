@@ -772,8 +772,10 @@ const char8* tag_name(AstTag tag) noexcept
 		"OpArrayIndex",
 	};
 
-	if (static_cast<u8>(tag) < array_count(AST_TAG_NAMES))
-		return AST_TAG_NAMES[static_cast<u8>(tag)];
+	u8 ordinal = static_cast<u8>(tag);
+
+	if (ordinal >= array_count(AST_TAG_NAMES))
+		ordinal = 0;
 
 	return AST_TAG_NAMES[0];
 }
