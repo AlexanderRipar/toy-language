@@ -3097,3 +3097,18 @@ const char8* tag_name(Builtin builtin) noexcept
 
 	return BUILTIN_NAMES[ordinal];
 }
+
+TypeIdWithAssignability with_assignability(TypeId type_id, bool is_assignable) noexcept
+{
+	return TypeIdWithAssignability{ static_cast<u32>(type_id), is_assignable };
+}
+
+bool is_assignable(TypeIdWithAssignability id) noexcept
+{
+	return id.is_mut;
+}
+
+TypeId type_id(TypeIdWithAssignability id) noexcept
+{
+	return TypeId{ id.type_id };
+}

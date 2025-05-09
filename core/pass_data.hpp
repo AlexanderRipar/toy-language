@@ -1989,20 +1989,11 @@ enum class Builtin : u8
 	MAX,
 };
 
-inline TypeIdWithAssignability with_assignability(TypeId type_id, bool is_assignable) noexcept
-{
-	return TypeIdWithAssignability{ static_cast<u32>(type_id), is_assignable };
-}
+TypeIdWithAssignability with_assignability(TypeId type_id, bool is_assignable) noexcept;
 
-inline bool is_assignable(TypeIdWithAssignability id) noexcept
-{
-	return id.is_mut;
-}
+bool is_assignable(TypeIdWithAssignability id) noexcept;
 
-inline TypeId type_id(TypeIdWithAssignability id) noexcept
-{
-	return TypeId{ id.type_id };
-}
+TypeId type_id(TypeIdWithAssignability id) noexcept;
 
 Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, ErrorSink* errors, minos::FileHandle log_file, bool log_prelude) noexcept;
 
