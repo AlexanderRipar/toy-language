@@ -1502,12 +1502,12 @@ const char8* tag_name(TypeTag tag) noexcept
 		"TailArray",
 	};
 
-	u8 index = static_cast<u8>(tag);
+	u8 ordinal = static_cast<u8>(tag);
 
-	if (index >= array_count(TYPE_TAG_NAMES))
-		index = 0;
+	if (ordinal >= array_count(TYPE_TAG_NAMES))
+		ordinal = 0;
 
-	return TYPE_TAG_NAMES[index];
+	return TYPE_TAG_NAMES[ordinal];
 }
 
 
