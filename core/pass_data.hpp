@@ -1947,6 +1947,8 @@ struct Parser;
 
 Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors, minos::FileHandle log_file) noexcept;
 
+void release_parser(Parser* parser) noexcept;
+
 AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std, Range<char8> filepath) noexcept;
 
 

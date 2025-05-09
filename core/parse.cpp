@@ -2734,6 +2734,11 @@ Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValueP
 	return parser;
 }
 
+void release_parser([[maybe_unused]] Parser* parser) noexcept
+{
+	// No-op
+}
+
 AstNode* parse(Parser* parser, Range<char8> content, SourceId source_id_base, bool is_std, Range<char8> filepath) noexcept
 {
 	ASSERT_OR_IGNORE(content.count() != 0 && content.end()[-1] == '\0');
