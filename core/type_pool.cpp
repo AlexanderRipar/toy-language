@@ -1504,7 +1504,7 @@ const char8* tag_name(TypeTag tag) noexcept
 
 	u8 index = static_cast<u8>(tag);
 
-	if (index > array_count(TYPE_TAG_NAMES))
+	if (index >= array_count(TYPE_TAG_NAMES))
 		index = 0;
 
 	return TYPE_TAG_NAMES[index];
