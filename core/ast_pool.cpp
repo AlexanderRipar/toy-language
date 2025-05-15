@@ -777,5 +777,5 @@ const char8* tag_name(AstTag tag) noexcept
 	if (ordinal >= array_count(AST_TAG_NAMES))
 		ordinal = 0;
 
-	return AST_TAG_NAMES[0];
+	return AST_TAG_NAMES[ordinal];
 }
