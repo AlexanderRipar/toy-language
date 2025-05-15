@@ -5,9 +5,13 @@
 
 static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifiers, const AstNode* node, s32 depth) noexcept
 {
-	if (node->tag == AstTag::Identifer)
+	if (node->tag == AstTag::Identifer || node->tag == AstTag::Definition)
 	{
-		const Range<char8> name = identifier_name_from_id(identifiers, attachment_of<AstIdentifierData>(node)->identifier_id);
+		const IdentifierId identifier_id = node->tag == AstTag::Identifer
+			? attachment_of<AstIdentifierData>(node)->identifier_id
+			: attachment_of<AstDefinitionData>(node)->identifier_id;
+
+		const Range<char8> name = identifier_name_from_id(identifiers, identifier_id);
 
 		diag::buf_printf(ctx, "%*s%s [%.*s] {%s\n", (depth + 1) * 2, "", tag_name(node->tag), static_cast<s32>(name.count()), name.begin(), has_children(node) ? "" : "}");
 	}
