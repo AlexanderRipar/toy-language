@@ -305,8 +305,6 @@ static void* lookup_identifier_value(Interpreter* interp, IdentifierId identifie
 				}
 				else
 				{
-					ASSERT_OR_IGNORE(!member.has_pending_value);
-
 					return record->record + member.offset;
 				}
 			}
