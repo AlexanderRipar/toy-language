@@ -562,7 +562,28 @@ static void* implicit_convert(Interpreter* interp, void* stack_top, TypeId sourc
 
 	case TypeTag::Array:
 	{
-		TODO("Implement literal-to-array conversion");
+		const TypeTag source_type_tag = type_tag_from_id(interp->types, source_type_id);
+
+		if (source_type_tag == TypeTag::ArrayLiteral)
+		{
+			TODO("Implement literal-to-array conversion");
+		}
+		#ifndef _NDEBUG
+		else
+		{
+			ASSERT_OR_IGNORE(source_type_tag == TypeTag::Array);
+
+			const ArrayType* const target_type = static_cast<const ArrayType*>(simple_type_structure_from_id(interp->types, target_type_id));
+
+			const ArrayType* const source_type = static_cast<const ArrayType*>(simple_type_structure_from_id(interp->types, source_type_id));
+
+			ASSERT_OR_IGNORE(is_same_type(interp->types, target_type->element_type, source_type->element_type));
+
+			ASSERT_OR_IGNORE(target_type->element_count == source_type->element_count);
+		}
+		#endif
+
+		return stack_top;
 	}
 
 	case TypeTag::Composite:
