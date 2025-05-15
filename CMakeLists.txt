@@ -20,6 +20,7 @@ set(INFRA_SOURCES
 	infra/common.hpp
 	infra/common.cpp
 	infra/hash.hpp
+	infra/inplace_sort.hpp
 	infra/minos.hpp
 	infra/minos_win32.cpp
 	infra/minos_linux.cpp
@@ -29,28 +30,22 @@ set(INFRA_SOURCES
 )
 
 set(CORE_SOURCES
-	core/error_sink.cpp
-	core/config.hpp
-	core/config.cpp
+	core/pass_data.hpp
 	core/ast_pool.cpp
-	core/ast.cpp
+	core/comp_values.cpp
+	core/config.cpp
+	core/error_sink.cpp
+	core/global_value_pool.cpp
 	core/identifier_pool.cpp
 	core/interpreter.cpp
 	core/parse.cpp
-	core/pass_data.hpp
 	core/source_reader.cpp
-	core/scope_pool.cpp
-	core/token.cpp
 	core/type_pool.cpp
-	core/type_pool2.cpp
-	core/typechecker.cpp
-	core/value_pool.cpp
-	core/ast_attach.hpp
-	core/ast_helper.hpp
 )
 
 set(DIAG_SOURCES
 	diag/diag.hpp
+	diag/diag.cpp
 	diag/print_ast.cpp
 	diag/print_type.cpp
 )

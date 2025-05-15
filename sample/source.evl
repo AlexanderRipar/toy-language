@@ -1,7 +1,7 @@
 
 let char8 = u8
 
-let main = proc(args: [][]char8) -> ReturnType = f(3)
+let main = proc(args: [][]char8) -> s32 = 2
 
 /*
 let X = []mut char8

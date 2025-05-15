@@ -1,0 +1,1 @@
+let T = func(n: u32) -> Type => if n == 0 then u32 else T(n - 1)

@@ -1,48 +1,24 @@
-#include "core/config.hpp"
 #include "core/pass_data.hpp"
-#include "core/ast_helper.hpp"
 #include "diag/diag.hpp"
-#include "infra/hash.hpp"
 
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
 
-static TypeId find_entrypoint(Config* config, IdentifierPool* identifiers, TypeEntry* file_type) noexcept
+static minos::FileHandle log_file(bool enable, Range<char8> filepath) noexcept
 {
-	ASSERT_OR_IGNORE(file_type->tag == TypeTag::Composite);
+	if (!enable)
+		return minos::FileHandle{};
 
-	Scope* const file_scope = file_type->data<CompositeType>()->header.scope;
+	if (filepath.count() == 0)
+		return minos::standard_file_handle(minos::StdFileName::StdOut);
 
-	const IdentifierId entrypoint_identifier_id = id_from_identifier(identifiers, config->entrypoint.symbol);
+	minos::FileHandle log_file;
 
-	const OptPtr<AstNode> opt_entrypoint = lookup_identifier_local(file_scope, entrypoint_identifier_id);
+	if (!minos::file_create(filepath, minos::Access::Write, minos::ExistsMode::Truncate, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &log_file))
+		panic("Failed to open log file %.*s (0x%X)\n", static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
 
-	if (is_none(opt_entrypoint))
-		panic("Could not find definition for entrypoint symbol \"%.*s\" at top level of source file \"%.*s\"\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin(), static_cast<s32>(config->entrypoint.filepath.count()), config->entrypoint.filepath.begin());
-
-	AstNode* const entrypoint = get_ptr(opt_entrypoint);
-
-	ASSERT_OR_IGNORE(entrypoint->tag == AstTag::Definition);
-	
-	if (!has_children(entrypoint))
-		panic("Expected definition of entrypoint symbol \"%.*s\" to have a value\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());
-
-	const DefinitionInfo entrypoint_info = get_definition_info(entrypoint);
-
-	if (is_none(entrypoint_info.value))
-		panic("Expected definition of entrypoint symbol \"%.*s\" to have a value\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());
-
-	AstNode* const entrypoint_func = get_ptr(entrypoint_info.value);
-
-	if (!has_flag(entrypoint_func, AstFlag::Func_HasBody))
-		panic("Expected entrypoint \"%.*s\" to have a body", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());	
-
-	fprintf(stderr, "\n------------ %.*s AST ------------\n\n", static_cast<s32>(config->entrypoint.symbol.count()), config->entrypoint.symbol.begin());
-
-	diag::print_ast(stderr, identifiers, entrypoint_func);
-
-	return attachment_of<DefinitionData>(entrypoint)->type_id;
+	return log_file;
 }
 
 s32 main(s32 argc, const char8** argv)
@@ -61,39 +37,42 @@ s32 main(s32 argc, const char8** argv)
 	}
 	else if (argc == 3 && strcmp(argv[1] , "-config") == 0)
 	{
-		Config config = read_config(range::from_cstring(argv[2]));
-
-		print_config(&config);
-
 		AllocPool* const alloc = create_alloc_pool(1u << 24, 1u << 18);
+
+		Config* const config = create_config(alloc, range::from_cstring(argv[2]));
+
+
+
+		const minos::FileHandle config_log_file = log_file(config->logging.config.enable, config->logging.config.log_filepath);
+
+		if (config_log_file.m_rep != nullptr)
+			print_config(config_log_file, config);
+
+		const minos::FileHandle ast_log_file = log_file(config->logging.asts.enable, config->logging.asts.log_filepath);
+
+		const minos::FileHandle imports_log_file = log_file(config->logging.imports.enable, config->logging.imports.log_filepath);
+
+
 
 		IdentifierPool* const identifiers = create_identifier_pool(alloc);
 
 		SourceReader* const reader = create_source_reader(alloc);
 
-		ErrorSink* const errors = create_error_sink(alloc, reader);
+		ErrorSink* const errors = create_error_sink(alloc, reader, identifiers);
 
-		Parser* const parser = create_parser(alloc, identifiers, errors);
+		GlobalValuePool* const globals = create_global_value_pool(alloc);
 
-		TypePool* const types = create_type_pool(alloc);
+		TypePool* const types = create_type_pool(alloc, globals, errors);
 
 		AstPool* const asts = create_ast_pool(alloc);
 
-		ValuePool* const values = create_value_pool(alloc);
+		Parser* const parser = create_parser(alloc, identifiers, globals, types, asts, errors, ast_log_file);
 
-		ScopePool* const scopes = create_scope_pool(alloc);
+		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, globals, errors, imports_log_file, config->logging.imports.enable_prelude);
 
-		Interpreter* const interpreter = create_interpreter(alloc, reader, parser, asts, scopes, types, values, identifiers);
+		const TypeId main_file_type_id = import_file(interp, config->entrypoint.filepath, false);
 
-		Typechecker* const typechecker = create_typechecker(alloc, interpreter, scopes, types, identifiers, asts, get_ast_builder(parser));
-
-		set_interpreter_typechecker(interpreter, typechecker);
-
-		const TypeId main_file_type_id = import_file(interpreter, config.entrypoint.filepath, false);
-
-		find_entrypoint(&config, identifiers, type_entry_from_id(types, main_file_type_id));
-
-		deinit_config(&config);
+		release_config(config);
 
 		fprintf(stderr, "\nCompleted successfully\n");
 

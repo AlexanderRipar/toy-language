@@ -1,0 +1,55 @@
+// Primitive Types
+
+pub u8: Type = _integer(8, false)
+
+pub u16: Type = _integer(16, false)
+
+pub u32: Type = _integer(32, false)
+
+pub u64: Type = _integer(64, false)
+
+pub s8: Type = _integer(8, true)
+
+pub s16: Type = _integer(16, true)
+
+pub s32: Type = _integer(32, true)
+
+pub s64: Type = _integer(64, true)
+
+pub f32: Type = _float(32)
+
+pub f64: Type = _float(64)
+
+pub Type = _type()
+
+pub Bool: Type = _typeof(1 == 1)
+
+pub Void: Type = _typeof({})
+
+
+
+// Constants
+
+pub true: Bool = 1 == 1
+
+pub false: Bool = !true
+
+
+
+// Functions
+
+// pub import = func(path: []u8) -> Type = _import(path, false)
+
+/*
+pub typeof = func(value: T) where T = Type -> Type => _typeof(value)
+
+pub sizeof = func(value: T) where T = Type -> CompInteger => _sizeof(value)
+
+pub alignof = func(value: T) where T = Type -> CompInteger => _alignof(value)
+
+pub strideof = func(value: T) where T = Type -> CompInteger => _strideof(value)
+
+pub offsetof = func(value: T) where T = Type -> CompInteger => _offsetof(value)
+
+pub nameof = func(value: T) where T = Type -> CompInteger => if value == Type then _nameof(value) else _nameof(_typeof(value))
+*/

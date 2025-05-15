@@ -66,7 +66,7 @@ private:
 public:
 
 	constexpr MutRange() noexcept : m_begin{ nullptr }, m_end{ nullptr } {}
-	
+
 	constexpr MutRange(T* begin, T* end) : m_begin{ begin }, m_end{ end } {}
 
 	constexpr MutRange(T* begin, u64 count) : m_begin{ begin }, m_end{ begin + count } {}
@@ -212,7 +212,7 @@ public:
 
 	constexpr AttachmentRange(const T* begin, const T* end, Attach attachment) noexcept :
 		m_begin{ begin },
-		m_count{ end - begin },
+		m_count{ static_cast<u32>(end - begin) },
 		m_attachment{ attachment }
 	{
 		ASSERT_OR_IGNORE(end - begin <= UINT32_MAX);
@@ -333,7 +333,7 @@ public:
 		m_count{ count },
 		m_attachment{ attachment }
 	{}
-	
+
 	const T& operator[](u64 i) const noexcept
 	{
 		assert(i < count());
@@ -406,7 +406,7 @@ namespace range
 	{
 		return { reinterpret_cast<const byte*>(t), sizeof(T) };
 	}
-	
+
 	inline Range<char8> from_cstring(const char8* str) noexcept
 	{
 		u64 len = 0;
@@ -422,7 +422,7 @@ namespace range
 	{
 		return { arr, N - 1 };
 	}
-	
+
 	template<typename T, typename Attach>
 	inline AttachmentRange<byte, Attach> from_object_bytes(const T* t, Attach attachment) noexcept
 	{

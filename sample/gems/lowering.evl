@@ -1,0 +1,19 @@
+for e, i <- it where bla = blu, foo = bar do
+	x
+finally
+	y
+
+// Becomes:
+
+{
+	let bla = blu
+
+	let foo = bar
+
+	let iterator = iterator(it)
+
+	for has_next(iterator) do
+	{
+		e = blu
+	}
+}
