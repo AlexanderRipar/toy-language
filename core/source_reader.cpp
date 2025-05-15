@@ -211,6 +211,8 @@ static Range<char8> source_file_path(SourceReader* reader, SourceFile* source_fi
 
 static SourceLocation build_source_location(Range<char8> filepath, Range<char8> content, u32 offset) noexcept
 {
+	ASSERT_OR_IGNORE(offset <= content.count());
+
 	u32 line_begin = 0;
 
 	u32 line_number = 1;
@@ -248,7 +250,7 @@ static SourceLocation build_source_location(Range<char8> filepath, Range<char8> 
 	return location;
 }
 
-static SourceLocation source_location_from_source_file_and_ast_node(SourceReader* reader, SourceFile* source_file, SourceId source_id) noexcept
+static SourceLocation source_location_from_source_file_and_source_id(SourceReader* reader, SourceFile* source_file, SourceId source_id) noexcept
 {
 	minos::FileInfo fileinfo;
 
@@ -344,7 +346,9 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noe
 	if (fileinfo.bytes + reader->curr_source_id_base > UINT32_MAX)
 		panic("Could not read source file %.*s as the maximum total capacity of 4gb of source code was exceeded.\n", static_cast<s32>(filepath.count()), filepath.begin());
 
-	reader->curr_source_id_base += static_cast<u32>(fileinfo.bytes);
+	// Allow for one extra byte so `parse` can use one-past-end for
+	// `Token::END_OF_FILE` without extra work.
+	reader->curr_source_id_base += static_cast<u32>(fileinfo.bytes) + 1;
 
 	reader->source_file_count += 1;
 
@@ -381,7 +385,7 @@ SourceLocation source_location_from_source_id(SourceReader* reader, SourceId sou
 	{
 		SourceFile* const source_file = source_file_from_source_id(reader, source_id);
 
-		return source_location_from_source_file_and_ast_node(reader, source_file, source_id);
+		return source_location_from_source_file_and_source_id(reader, source_file, source_id);
 	}
 }
 
