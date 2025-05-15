@@ -2393,21 +2393,7 @@ static TypeIdWithAssignability typecheck_expr_impl(Interpreter* interp, AstNode*
 		if (type_type_tag != TypeTag::Type)
 			source_error(interp->errors, type->source_id, "Expected array type expression of be of type `Type`.\n");
 
-		NumericType u64_type{};
-		u64_type.bits = 64;
-		u64_type.is_signed = false;
-
-		const TypeId u64_type_id = simple_type(interp->types, TypeTag::Integer, range::from_object_bytes(&u64_type));
-
-		const u64 count_value = *static_cast<u64*>(evaluate_expr(interp, count, u64_type_id));
-
-		pop_temporary(interp);
-
-		ArrayType result_type;
-		result_type.element_type = type_type_id;
-		result_type.element_count = count_value;
-
-		return with_assignability(simple_type(interp->types, TypeTag::Array, range::from_object_bytes(&result_type)), false);
+		return with_assignability(simple_type(interp->types, TypeTag::Type, {}), false);
 	}
 
 	case AstTag::OpArrayIndex:
