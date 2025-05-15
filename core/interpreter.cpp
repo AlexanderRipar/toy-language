@@ -1019,6 +1019,58 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 
 		return stack_value;
 	}
+	
+	case AstTag::OpTypeArray:
+	{
+		AstNode* const count = first_child_of(node);
+
+		const TypeTag count_type_tag = type_tag_from_id(interp->types, type_id(count->type_id));
+
+		u64 element_count;
+
+		if (count_type_tag == TypeTag::CompInteger)
+		{
+			const CompIntegerValue count_value = *static_cast<CompIntegerValue*>(evaluate_expr(interp, count, type_id(count->type_id)));
+
+			pop_temporary(interp);
+
+			if (!u64_from_comp_integer(count_value, 64, &element_count))
+				source_error(interp->errors, count->source_id, "Array element count must fit into unsigned 64-bit integer.\n");
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(count_type_tag == TypeTag::Integer);
+
+			const NumericType* const integer_type = static_cast<const NumericType*>(simple_type_structure_from_id(interp->types, type_id(count->type_id)));
+
+			element_count = *static_cast<u64*>(evaluate_expr(interp, count, type_id(count->type_id)));
+
+			if (integer_type->is_signed && ((element_count >> (integer_type->bits - 1)) & 1) != 0)
+				source_error(interp->errors, count->source_id, "Array element count must be positive.\n");
+		}
+
+		const u64 count_value = *static_cast<u64*>(evaluate_expr(interp, count, type_id(count->type_id)));
+
+		pop_temporary(interp);
+
+		AstNode* const type = next_sibling_of(count);
+
+		const TypeId element_type_id = *static_cast<TypeId*>(evaluate_expr(interp, type, type_id(type->type_id)));
+
+		pop_temporary(interp);
+
+		ArrayType array_type{};
+		array_type.element_type = element_type_id;
+		array_type.element_count = count_value;
+
+		const TypeId defined_type_id = simple_type(interp->types, TypeTag::Array, range::from_object_bytes(&array_type));
+
+		TypeId* const stack_value = static_cast<TypeId*>(push_temporary(interp, 4, 4));
+
+		*stack_value = defined_type_id;
+
+		return stack_value;
+	}
 
 	case AstTag::CompositeInitializer:
 	case AstTag::ArrayInitializer:
@@ -1081,7 +1133,6 @@ static void* evaluate_expr_impl(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::OpSetBitXor:
 	case AstTag::OpSetShiftL:
 	case AstTag::OpSetShiftR:
-	case AstTag::OpTypeArray:
 	case AstTag::OpArrayIndex:
 		source_error(interp->errors, node->source_id, "Evaluation of AST node type %s is not yet implemented (%s:%u).\n", tag_name(node->tag), __FILE__, __LINE__);
 
