@@ -865,6 +865,8 @@ TypeId simple_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept
 
 TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept
 {
+	ASSERT_OR_IGNORE(aliased_type_id != TypeId::INVALID && aliased_type_id != TypeId::CHECKING && aliased_type_id != TypeId::DEPENDENT);
+
 	TypeName* const aliased_ref = types->named_types.value_from(static_cast<u32>(aliased_type_id));
 
 	TypeName name;
@@ -890,6 +892,10 @@ TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, Sou
 
 TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId source_id, bool is_user) noexcept
 {
+	// This may be `TypeId::INVALID`, to indicate the root of a lexical type
+	// hierarchy.
+	ASSERT_OR_IGNORE(lexical_parent_type_id != TypeId::CHECKING && lexical_parent_type_id != TypeId::DEPENDENT);
+
 	TypeBuilderHeader* const header = static_cast<TypeBuilderHeader*>(alloc_type_builder(types));
 	header->head_offset = 0;
 	header->tail_offset = 0;
@@ -913,6 +919,8 @@ TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId
 
 void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init) noexcept
 {
+	ASSERT_OR_IGNORE(open_type_id != TypeId::INVALID && open_type_id != TypeId::CHECKING && open_type_id != TypeId::DEPENDENT);
+
 	ASSERT_OR_IGNORE(init.name != IdentifierId::INVALID);
 
 	ASSERT_OR_IGNORE(init.type.pending != AstNodeId::INVALID || init.value.pending != AstNodeId::INVALID);
@@ -1000,6 +1008,8 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init)
 
 void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, u64 stride) noexcept
 {
+	ASSERT_OR_IGNORE(open_type_id != TypeId::INVALID && open_type_id != TypeId::CHECKING && open_type_id != TypeId::DEPENDENT);
+
 	TypeName* const builder_name = types->named_types.value_from(static_cast<u32>(open_type_id));
 
 	if (resolve_name_structure(types, builder_name))
@@ -1029,9 +1039,10 @@ void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, 
 
 void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_id, u16 rank, TypeId member_type_id) noexcept
 {
-	ASSERT_OR_IGNORE(open_type_id != TypeId::INVALID);
+	ASSERT_OR_IGNORE(open_type_id != TypeId::INVALID && open_type_id != TypeId::CHECKING && open_type_id != TypeId::DEPENDENT);
 
-	ASSERT_OR_IGNORE(member_type_id != TypeId::INVALID);
+	// This may be `TypeId::DEPENDENT`
+	ASSERT_OR_IGNORE(member_type_id != TypeId::INVALID && member_type_id != TypeId::CHECKING);
 
 	TypeName* const builder_name = types->named_types.value_from(static_cast<u32>(open_type_id));
 
@@ -1070,7 +1081,7 @@ void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_i
 
 void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_id, u16 rank, GlobalValueId member_value_id) noexcept
 {
-	ASSERT_OR_IGNORE(open_type_id != TypeId::INVALID);
+	ASSERT_OR_IGNORE(open_type_id != TypeId::INVALID && open_type_id != TypeId::CHECKING && open_type_id != TypeId::DEPENDENT);
 
 	ASSERT_OR_IGNORE(member_value_id != GlobalValueId::INVALID);
 
@@ -1108,9 +1119,9 @@ void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_
 
 bool is_same_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 {
-	ASSERT_OR_IGNORE(type_id_a != TypeId::INVALID);
+	ASSERT_OR_IGNORE(type_id_a != TypeId::INVALID && type_id_a != TypeId::CHECKING && type_id_a != TypeId::DEPENDENT);
 
-	ASSERT_OR_IGNORE(type_id_b != TypeId::INVALID);
+	ASSERT_OR_IGNORE(type_id_b != TypeId::INVALID && type_id_b != TypeId::CHECKING && type_id_b != TypeId::DEPENDENT);
 
 	if (type_id_a == type_id_b)
 		return true;
@@ -1160,9 +1171,9 @@ bool is_same_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 
 bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept
 {
-	ASSERT_OR_IGNORE(from_type_id != TypeId::INVALID);
+	ASSERT_OR_IGNORE(from_type_id != TypeId::INVALID && from_type_id != TypeId::CHECKING && from_type_id != TypeId::DEPENDENT);
 
-	ASSERT_OR_IGNORE(to_type_id != TypeId::INVALID);
+	ASSERT_OR_IGNORE(to_type_id != TypeId::INVALID && to_type_id != TypeId::CHECKING && to_type_id != TypeId::DEPENDENT);
 
 	if (is_same_type(types, from_type_id, to_type_id))
 		return true;
@@ -1267,9 +1278,9 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 
 TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 {
-	ASSERT_OR_IGNORE(type_id_a != TypeId::INVALID);
+	ASSERT_OR_IGNORE(type_id_a != TypeId::INVALID && type_id_a != TypeId::CHECKING && type_id_a != TypeId::DEPENDENT);
 
-	ASSERT_OR_IGNORE(type_id_b != TypeId::INVALID);
+	ASSERT_OR_IGNORE(type_id_b != TypeId::INVALID && type_id_b != TypeId::CHECKING && type_id_b != TypeId::DEPENDENT);
 
 	// Check the common case. If the ids themselves are equal, we have a match
 	// already.
@@ -1361,6 +1372,8 @@ TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 
 IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept
 {
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && type_id != TypeId::CHECKING && type_id != TypeId::DEPENDENT);
+
 	const TypeName* const name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	return name->name_id;
@@ -1368,6 +1381,8 @@ IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept
 
 SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept
 {
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && type_id != TypeId::CHECKING && type_id != TypeId::DEPENDENT);
+
 	const TypeName* const name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	return name->source_id;
@@ -1375,6 +1390,8 @@ SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept
 
 TypeId lexical_parent_type_from_id(const TypePool* types, TypeId type_id) noexcept
 {
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && type_id != TypeId::CHECKING && type_id != TypeId::DEPENDENT);
+
 	const TypeName* const name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	return name->lexical_parent_type_id;
@@ -1382,6 +1399,8 @@ TypeId lexical_parent_type_from_id(const TypePool* types, TypeId type_id) noexce
 
 TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 {
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && type_id != TypeId::CHECKING && type_id != TypeId::DEPENDENT);
+
 	TypeName* const name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	if (!resolve_name_structure(types, name))
@@ -1467,6 +1486,8 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 
 TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept
 {
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && type_id != TypeId::CHECKING && type_id != TypeId::DEPENDENT);
+
 	TypeName* const name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	if (!resolve_name_structure(types, name))
@@ -1477,6 +1498,8 @@ TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept
 
 bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId name, MemberInfo* out) noexcept
 {
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && type_id != TypeId::CHECKING && type_id != TypeId::DEPENDENT);
+
 	FindByNameResult found;
 
 	if (!find_member_by_name(types, type_id, name, true, &found))
@@ -1492,6 +1515,8 @@ bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId name
 
 bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberInfo* out) noexcept
 {
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && type_id != TypeId::CHECKING && type_id != TypeId::DEPENDENT);
+
 	FindByRankResult found;
 
 	if (!find_member_by_rank(types, type_id, rank, &found))
@@ -1507,6 +1532,8 @@ bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberI
 
 const void* simple_type_structure_from_id(TypePool* types, TypeId type_id) noexcept
 {
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && type_id != TypeId::CHECKING && type_id != TypeId::DEPENDENT);
+
 	TypeName* const name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	if (resolve_name_structure(types, name))
@@ -1560,6 +1587,8 @@ const char8* tag_name(TypeTag tag) noexcept
 
 IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) noexcept
 {
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && type_id != TypeId::CHECKING && type_id != TypeId::DEPENDENT);
+
 	TypeName* name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	if (resolve_name_structure(types, name))
@@ -1637,6 +1666,8 @@ bool has_next(const IncompleteMemberIterator* it) noexcept
 
 MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 {
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && type_id != TypeId::CHECKING && type_id != TypeId::DEPENDENT);
+
 	TypeName* name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	if (resolve_name_structure(types, name))
