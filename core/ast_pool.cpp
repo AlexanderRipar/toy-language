@@ -296,7 +296,7 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 	node->flags = flags;
 	node->data_dwords = sizeof(AstNode) / sizeof(u32);
 	node->internal_flags = first_child == AstBuilderToken::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
-	node->type_id = with_assignability(TypeId::INVALID, false);
+	node->type = TypeRef::INVALID;
 	node->source_id = source_id;
 
 	return AstBuilderToken{ static_cast<u32>(reinterpret_cast<u32*>(node) - asts->builder.begin()) };
@@ -315,7 +315,7 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 	node->flags = flags;
 	node->data_dwords = required_dwords;
 	node->internal_flags = first_child == AstBuilderToken::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
-	node->type_id = with_assignability(TypeId::INVALID, false);
+	node->type = TypeRef::INVALID;
 	node->source_id = source_id;
 
 	memcpy(node + 1, attachment, attachment_dwords * sizeof(u32));

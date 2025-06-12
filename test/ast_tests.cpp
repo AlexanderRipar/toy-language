@@ -11,8 +11,6 @@ struct DummyTree
 
 static constexpr u8 NODE_DWORDS = sizeof(AstNode) / sizeof(u32);
 
-static constexpr TypeIdWithAssignability INVALID_TYPE_ID_WITH_ASGN = { static_cast<u32>(TypeId::INVALID), false };
-
 static void push_node(DummyTree* tree, AstNode node, u8 data_dwords = 0, const void* data = nullptr) noexcept
 {
 	const u32 required_dwords = NODE_DWORDS + data_dwords;
@@ -35,7 +33,7 @@ static DummyTree single_node_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { AstTag::File, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::File, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
 	return tree;
 }
@@ -49,9 +47,9 @@ static DummyTree unary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { AstTag::File, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::File, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::Block, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::Block, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
 	return tree;
 }
@@ -66,11 +64,11 @@ static DummyTree binary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { AstTag::OpBitAnd, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING, 3 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::OpBitAnd, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING, 3 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::LitChar, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::LitChar, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::Identifer, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::Identifer, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
 	return tree;
 }
@@ -87,13 +85,13 @@ static DummyTree nary_dummy_tree(u32 n) noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { AstTag::File, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING, NODE_DWORDS * (n + 1), INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::File, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING, NODE_DWORDS * (n + 1), TypeRef::INVALID, SourceId::INVALID });
 
 	for (u32 i = 0; i != n; ++i)
 	{
 		const u8 internal_flags = static_cast<u8>((i == 0 ? AstNode::FLAG_FIRST_SIBLING : 0) | (i == n - 1 ? AstNode::FLAG_LAST_SIBLING : 0) | AstNode::FLAG_NO_CHILDREN);
 
-		push_node(&tree, { AstTag::Block, AstFlag::EMPTY, NODE_DWORDS, internal_flags, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+		push_node(&tree, { AstTag::Block, AstFlag::EMPTY, NODE_DWORDS, internal_flags, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 	}
 
 	return tree;
@@ -115,23 +113,23 @@ static DummyTree complex_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { static_cast<AstTag>(1), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING, 9 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(1), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING, 9 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { static_cast<AstTag>(2), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING, 3 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(2), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING, 3 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { static_cast<AstTag>(3), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(3), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { static_cast<AstTag>(4), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(4), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { static_cast<AstTag>(5), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING, 5 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(5), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING, 5 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { static_cast<AstTag>(6), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(6), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { static_cast<AstTag>(7), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(7), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { static_cast<AstTag>(8), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(8), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { static_cast<AstTag>(9), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(9), AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
 	return tree;
 }
@@ -150,19 +148,19 @@ static DummyTree double_binary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { AstTag::OpSub, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING, 7 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::OpSub, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING, 7 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::OpAdd, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING, 5 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::OpAdd, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING, 5 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::LitChar, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::LitChar, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::OpMul, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING, 3 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::OpMul, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING, 3 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::LitFloat, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::LitFloat, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::LitInteger, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::LitInteger, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::LitString, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::LitString, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
 	return tree;
 }
@@ -183,23 +181,23 @@ static DummyTree flat_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { AstTag::File, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING, 9 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::File, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING, 9 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING, 2 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::Identifer, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::Identifer, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_DWORDS, 0, 2 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_DWORDS, 0, 2 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::LitChar, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::LitChar, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_DWORDS, 0, 2 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_DWORDS, 0, 2 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::LitFloat, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::LitFloat, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_LAST_SIBLING, 2 * NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
-	push_node(&tree, { AstTag::LitString, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, INVALID_TYPE_ID_WITH_ASGN, SourceId::INVALID });
+	push_node(&tree, { AstTag::LitString, AstFlag::EMPTY, NODE_DWORDS, AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING | AstNode::FLAG_NO_CHILDREN, NODE_DWORDS, TypeRef::INVALID, SourceId::INVALID });
 
 	return tree;
 }

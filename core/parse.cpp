@@ -1042,7 +1042,9 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 
 	const TypeId array_of_u8_type_id = simple_type(lexer->types, TypeTag::Array, range::from_object_bytes(&array_of_u8_type));
 
-	const GlobalValueId string_value_id = make_global_value(lexer->globals, with_assignability(array_of_u8_type_id, false), buffer_index, 1, buffer);
+	const GlobalValueId string_value_id = alloc_global_value(lexer->globals, array_of_u8_type_id, buffer_index, 1);
+
+	global_value_set(lexer->globals, string_value_id, 0, Range{ reinterpret_cast<const byte*>(buffer), buffer_index });
 
 	lexer->curr = curr + 1;
 

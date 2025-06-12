@@ -32,7 +32,7 @@ pub Void: Type = _typeof({})
 
 pub true: Bool = 1 == 1
 
-pub false: Bool = !true
+pub false: Bool = 1 == 0
 
 
 

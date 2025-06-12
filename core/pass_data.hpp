@@ -16,12 +16,27 @@
 // information.
 enum class TypeId : u32;
 
-// A `TypeId` with one bit used for indicating mutability.
-struct TypeIdWithAssignability
+// Either a `TypeId` or an index into the pool of deferred types, alongside a
+// bit to indicate assignability.
+// Note that the assignability bit is only meaningful in case this directly
+// stores a `TypeId`. Otherwise, assignability information is stored in the
+// deferred entry, since it is not generally known up-front.
+// The bitwise layout of this type is as follows (with bit 0 being the least
+// significant bit, and bit 31 being the most significant bit):
+//    0..1 : A `TypeKind`.
+//       2 : Set to `1` if the typed expression is might require an implicit
+//           conversion, `0` otherwise.
+//       3 : Set to `1` if the typed expression's value depends on the
+//           surrounding function's argument values, `0` otherwise.
+//       4 : Set to `1` if the typed expression should be evaluated, `0`
+//           otherwise. This being `0` implies that the expression is bound to
+//           a `TypeInfo`, meaning that `evaluate_expr` should be skipped, with
+//           `impconv` doing the real work of copying the expression's `TypeId`
+//           into the unmapped destination.
+//   5..31 : A `TypeId`.
+enum class TypeRef: u32
 {
-	u32 type_id : 31;
-
-	u32 is_mut : 1;
+	INVALID = 0,
 };
 
 // Id used to identify a particular source code location.
@@ -571,8 +586,8 @@ struct AstNode
 	// `true`, then the expression is assignable (i.e., is `mut` and has an
 	// address).
 	// Only contains a valid value after typechecking. Before that, it is set
-	// to `with_assignability(INVALID_TYP_ID, false)`. 
-	TypeIdWithAssignability type_id;
+	// to `type_ref(TypeId::INVALID, false, false)`.
+	TypeRef type;
 
 	// `SourceId` of the node. See `SourceReader` and further details.
 	SourceId source_id;
@@ -756,6 +771,8 @@ struct AstDefinitionData
 
 	// `IdentifierId` of the definition.
 	IdentifierId identifier_id;
+
+	TypeId defined_type_id;
 };
 
 // Attachment of an `AstNode` with tag `AstTag::Func`.
@@ -1145,7 +1162,14 @@ struct SourceFile
 
 	// Id of the root of the associated AST. If the file has not yet been
 	// parsed, this is set to `AstNodeId::INVALID`.
-	AstNodeId ast_root;
+	AstNodeId root_ast;
+
+	// Id of the type representing the file. If the file has not yet started to
+	// be typechecked, this is set to `TypeId::INVALID`. As soon as
+	// typechecking starts, it is set to the relevant open type id, to allow
+	// pseudo-circular references (e.g., importing the file from inside
+	// itself).
+	TypeId root_type;
 
 	// `SourceId` of the first byte in this file.
 	SourceId source_id_base;
@@ -1161,7 +1185,7 @@ struct SourceFileRead
 	SourceFile* source_file;
 
 	// Content read from the file. This is only valid if
-	// `source_file->ast_root` is `AstNodeId::INVALID`.
+	// `source_file->root_ast` is `AstNodeId::INVALID`.
 	// Otherwise, the file has already been parsed into the AST rooted at that
 	// id, meaning that its contents are not actually required.
 	Range<char8> content;
@@ -1209,7 +1233,7 @@ void release_source_reader(SourceReader* reader) noexcept;
 // the return value points to the `SourceFile` returned from the previous call,
 // while the `content` member is empty.
 // Due to the way this function interacts with `parse` in `import_file`,
-// `source_file->ast_root` will be `AstNodeId::INVALID` if and only if this is
+// `source_file->root_ast` will be `AstNodeId::INVALID` if and only if this is
 // the first read of the file (meaning `content` contains the file's contents).
 // If this is a first read, `release_read` must be called once the file's
 // content is no longer needed.
@@ -1293,23 +1317,9 @@ struct GlobalValuePool;
 enum class GlobalValueId : u32
 {
 	// Value reserved for indicating the absence of a `GlobalValue`.
-	// This will never be returned from `make_global_value` and must not be
+	// This will never be returned from `alloc_global_value` and must not be
 	// passed to `global_value_from_id`.
 	INVALID = 0,
-};
-
-// Metadata on a global value.
-struct GlobalValue
-{
-	// Type of the stored value. If `is_assignable`, the value is mutable.
-	// Otherwise it is an immutable constant.
-	TypeIdWithAssignability type;
-
-	// Size of the value in bytes.
-	u32 bytes;
-
-	// Base address at which the actual value can be found.
-	void* address;
 };
 
 // Creates a `GlobalValuePool`, allocating the necessary storage from `alloc`.
@@ -1321,14 +1331,30 @@ GlobalValuePool* create_global_value_pool(AllocPool* alloc) noexcept;
 void release_global_value_pool(GlobalValuePool* globals) noexcept;
 
 // Allocates a global value of the given `type`, `size` and `align` in
-// `globals`, optionally initializing it by copying `size` bytes from
-// `opt_initial_value` if it is not null.
+// `globals`.
 // Never returns `GlobalValueId::INVALID`.
-GlobalValueId make_global_value(GlobalValuePool* globals, TypeIdWithAssignability type, u64 size, u32 align, const void* opt_initial_value) noexcept;
+GlobalValueId alloc_global_value(GlobalValuePool* globals, TypeId type_id, u64 size, u32 align) noexcept;
 
-// Retrieves the global value referenced by `value_id` from `globals`.
+// Retrieves the type of the global value identified by `value_id` from
+// `globals`.
 // `value_id` must not be `GlobalValueId::INVALID`.
-GlobalValue global_value_from_id(GlobalValuePool* globals, GlobalValueId value_id) noexcept;
+TypeId global_value_type(const GlobalValuePool* globals, GlobalValueId value_id) noexcept;
+
+// Retrieves a range over the data of the global value identified by `value_id`
+// from `globals`.
+// `value_id` must not be `GlobalValueId::INVALID`.
+Range<byte> global_value_get(const GlobalValuePool* globals, GlobalValueId value_id) noexcept;
+
+// Same as `global_value_get`, but retrieves a mutable range instead of an
+// immutable one.
+MutRange<byte> global_value_get_mut(GlobalValuePool* globals, GlobalValueId value_id) noexcept;
+
+// Sets all or part of the data of the global value identified by `value_id` in
+// `globals`. All bytes of `data` are copied into the destination at, starting
+// at `offset`. This means that `data.count() + offset` must be less than or
+// equal to the size of the value identified by `value_id`. Additionally
+// `value_id` must not be `GlobalValueId::INVALID`.
+void global_value_set(GlobalValuePool* globals, GlobalValueId value_id, u64 offset, Range<byte> data) noexcept;
 
 
 
@@ -1354,12 +1380,7 @@ enum class TypeId : u32
 	// nontermination during typechecking.
 	CHECKING,
 
-	// Value reserved to indicate that something has no type and, unlike
-	// `TypeId::INVALID`, never will have a type. This is e.g. used as the type
-	// of the right-hand-side identifier of an `AstNode` with tag
-	// `AstTag::OpMember`, since it truly is typeless (the type is stored in
-	// the member operator).
-	NO_TYPE,
+	DEPENDENT,
 };
 
 // Tag for discriminating between different kinds of types.
@@ -1601,8 +1622,16 @@ struct MemberInfo
 	// Context in which the member's `type` and `value` can be completed if
 	// `has_pending_type` or `has_pending_value` are `true` respectively.
 	// If both `has_pending_type` and `has_pending_value` are `false`, the
-	// value of this is undefined.
-	TypeId completion_context_type_id;
+	// value of this is field undefined.
+	TypeId completion_context;
+
+	// Index of the activation record in which the member's `type` and `value`
+	// can be completed if `has_pending_type` or `has_pending_value` are `true`
+	// respectively. If both `has_pending_type` and `has_pending_value` are
+	// `false`, the value of this field is undefined.
+	// If `completion_arec` is `-1`, there is no activation record for the
+	// completions, because they are at global scope.
+	s32 completion_arec;
 
 	// `TypeId` of the type which the member is a part of.
 	TypeId surrounding_type_id;
@@ -1648,7 +1677,16 @@ struct MemberInit
 	// `has_pending_type` is `true`. Otherwise it is ignored.
 	// The intent behind this member is to allow delayed typechecking and
 	// evaluation.
-	TypeId lexical_parent_type_id;
+	TypeId completion_context;
+
+	// Index of the activation record containing the definition underying this
+	// member. This has to be set if either `has_pending_value` or
+	// `has_pending_type` is `true`. Otherwise it is ignored.
+	// The intent behind this member is to allow delayed typechecking and
+	// evaluation.
+	// If the definition is not bound in an activation record (because it is at
+	// global scope) this field must be set to `-1`.
+	s32 completion_arec;
 
 	// Whether the member is to be global. If this is `true`, the value of
 	// `offset` will be ignored.
@@ -1782,13 +1820,16 @@ TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, Sou
 // `lexical_parent_source_id` indicates the type lexically surrounding the
 // newly created type, and is used during name lookup.
 // `source_id` indicates where the type was created from.
+// `is_user` indicates whether this is a user-defined type or a type used for
+// a scope, such as a function signature or a block. Members with type
+// `TypeId::DEPENDENT` may only be present in non-user-defined types.
 //
 // Call `close_open_type` to stop the addition of further members.
 // Call `set_incomplete_type_member_type_by_rank` to set the type of a member
 // that was added with `has_pending_type` set to `true`.
 // Call `set_incomplete_type_member_value_by_rank` to set the value of a member
 // that was added with `has_pending_value` set to `true`.
-TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId source_id) noexcept;
+TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId source_id, bool is_user) noexcept;
 
 // Adds a member to the open composite type referenced by `open_type_id`.
 // The member is initialized with the data in `member`.
@@ -1845,6 +1886,8 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 // Otherwise, if one of the types is implicitly convertible to the other, the
 // converted-to type is returned. E.g., when `type_id_a` is a `CompInteger` and
 // `type_id_b` is an `Integer`, `type_id_b` is returned.
+// If `type_id_a` and `type_id_b` do not share a common type, `TypeId::INVALID`
+// is returned.
 TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
 
 
@@ -2044,6 +2087,14 @@ enum class Builtin : u8
 	MAX,
 };
 
+enum class TypeKind : u8
+{
+	INVALID = 0,
+	Value,
+	ImmutLocation,
+	MutLocation,
+};
+
 // Creates an `Interpreter`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `Interpreter` can be freed using
 // `release_interpreter`.
@@ -2061,15 +2112,28 @@ void release_interpreter(Interpreter* interp) noexcept;
 //  definitions in the imported files as global members.
 TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noexcept;
 
-// Creates a `TypeIdWithAssignability` by combining the given `type_id` with
-// the given `is_assignable` value.
-TypeIdWithAssignability with_assignability(TypeId type_id, bool is_assignable) noexcept;
 
-// Checks whether `id` is assignable.
-bool is_assignable(TypeIdWithAssignability id) noexcept;
+TypeRef type_ref(TypeId id, TypeKind kind, bool has_dependent_value, bool requires_conversion, bool skip_evaluation) noexcept;
 
-// Extracts the `TypeId` from `id`.
-TypeId type_id(TypeIdWithAssignability id) noexcept;
+// Extracts the `TypeId` from `id`, which must not be a deferred type (i.e.,
+// `is_deferred(id)` must return `false`).
+TypeId type_id(TypeRef type) noexcept;
+
+// Retrieves `type`'s kind.
+TypeKind kind(TypeRef type) noexcept;
+
+// Checks whether the value of the expression typed by `type` depends on an
+// argument to the surrounding function.
+bool has_dependent_value(TypeRef type) noexcept;
+
+// Checks whether the result of evaluating the expression typed by `type` might
+// require an implicit conversion.
+bool requires_implicit_conversion(TypeRef type) noexcept;
+
+// Checks whether the expression typed by `type` must skipped by
+// `evaluate_expr`.
+bool skip_evaluation(TypeRef type) noexcept;
+
 
 // Retrieves a string representing the given `tag`.
 // If `tag` is not an enumerant of `TypeTag`, it is treated as

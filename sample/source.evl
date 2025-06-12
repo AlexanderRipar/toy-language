@@ -1,7 +1,38 @@
 
-let char8 = u8
+let X: u32 = 1
 
-let main = proc(args: [][]char8) -> s32 = 2
+let F = func(T: Type) -> Type = T
+
+let Blocku32: u32 = { 1 }
+
+let Fu32: F(u32) = 1
+
+// let char8 = u8
+
+// let main = proc(args: [][]char8) -> s32 = 2
+
+// let f = func(xoxo: u64) -> u64 = xoxo
+
+// let array = [f(2)]u32
+
+/*
+let T = func(sel: Bool) -> Type =
+{
+	let variable: (if sel then u32 else u8) = 1
+
+	variable
+}
+
+let CmpEq = trait(T: Type) = {
+	let eq = func(lhs: T, rhs: T) -> Bool
+}
+
+let X = T(true)
+
+let make_zero_int = func(T: Type) -> T = 0
+*/
+
+
 
 /*
 let X = []mut char8

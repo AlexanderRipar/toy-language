@@ -103,18 +103,22 @@ struct BuilderMember
 	bool is_mut : 1;
 
 	// `true` if `type` holds an `AstNodeId` to be typechecked (with
-	// `lexical_parent_type_id` as the context), `false` if it holds a
+	// `completion_context` as the context), `false` if it holds a
 	// `TypeId`.
 	bool has_pending_type : 1;
 
 	// `true` if `type` holds an `AstNodeId` to be evaluated (with
-	// `lexical_parent_type_id` as the context), `false` if it holds a
+	// `completion_context` as the context), `false` if it holds a
 	// `ValueId`.
 	bool has_pending_value : 1;
 
 	// `TypeId´ of the type in which the Definition from which this member is
 	// derived is located.
-	TypeId lexical_parent_type_id;
+	TypeId completion_context;
+
+	// Index of the activation record in which the Definition from which this
+	// member is derived is located.
+	s32 completion_arec;
 };
 
 struct CompositeMember
@@ -344,6 +348,8 @@ union TypeBuilderHeader
 		u32 incomplete_member_count;
 
 		bool is_closed;
+
+		bool is_user;
 
 		SourceId source_id;
 
@@ -596,7 +602,8 @@ static MemberInfo member_info_from_composite_member(const CompositeMember* membe
 	info.has_pending_value = false;
 	info.rank = rank;
 	info.surrounding_type_id = surrounding_type_id;
-	info.completion_context_type_id = TypeId::INVALID;
+	info.completion_context = TypeId::INVALID;
+	info.completion_arec = -1;
 	info.offset = member->offset;
 
 	return info;
@@ -617,7 +624,8 @@ static MemberInfo member_info_from_builder_member(const BuilderMember* member, T
 	info.has_pending_value = member->has_pending_value;
 	info.rank = rank;
 	info.surrounding_type_id = surrounding_type_id;
-	info.completion_context_type_id = member->lexical_parent_type_id;
+	info.completion_context = member->completion_context;
+	info.completion_arec = member->completion_arec;
 	info.offset = member->offset;
 
 	return info;
@@ -693,7 +701,11 @@ static bool find_composite_member_by_name(TypePool* types, CompositeType* compos
 
 		if (use_type_tag == TypeTag::Type)
 		{
-			const TypeId defined_type_id = *static_cast<TypeId*>(global_value_from_id(types->globals, members[i].value_id).address);
+			Range<byte> global_value = global_value_get(types->globals, members[i].value_id);
+
+			ASSERT_OR_IGNORE(global_value.count() == sizeof(TypeId));
+
+			const TypeId defined_type_id = *reinterpret_cast<const TypeId*>(global_value.begin());
 
 			if (find_member_by_name(types, defined_type_id, name, true, out))
 				return true;
@@ -876,7 +888,7 @@ TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, Sou
 	return TypeId{ types->named_types.index_from(name, fnv1a(range::from_object_bytes(&name))) };
 }
 
-TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId source_id) noexcept
+TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId source_id, bool is_user) noexcept
 {
 	TypeBuilderHeader* const header = static_cast<TypeBuilderHeader*>(alloc_type_builder(types));
 	header->head_offset = 0;
@@ -884,6 +896,7 @@ TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId
 	header->total_used = 0;
 	header->incomplete_member_count = 0;
 	header->is_closed = false;
+	header->is_user = is_user;
 	header->source_id = source_id;
 
 	TypeName name{};
@@ -916,6 +929,9 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init)
 
 	if (header->total_used + 1 == UINT16_MAX)
 		panic("Exceeded maximum of %u members in composite type.\n");
+
+	if (header->is_user && !init.has_pending_type && init.type.complete == TypeId::DEPENDENT)
+		panic("Tried setting type as user-defined type member to `TypeId::DEPENDENT`.\n");
 
 	FindByNameResult unused_found;
 
@@ -971,7 +987,8 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init)
 	member->is_mut = init.is_mut;
 	member->has_pending_type = init.has_pending_type;
 	member->has_pending_value = init.has_pending_value;
-	member->lexical_parent_type_id = init.lexical_parent_type_id;
+	member->completion_context = init.completion_context;
+	member->completion_arec = init.completion_arec;
 
 	tail->used += 1;
 
@@ -1023,6 +1040,9 @@ void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_i
 
 	TypeBuilderHeader* const header = get_deferred_type_builder(types, builder_name);
 
+	if (header->is_user && member_type_id == TypeId::DEPENDENT)
+		panic("Tried setting type as user-defined type member to `TypeId::DEPENDENT`.\n");
+
 	FindByRankResult found;
 
 	if (!find_builder_member_by_rank(header, rank, &found))
@@ -1069,6 +1089,8 @@ void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_
 	if (!found.member.incomplete->has_pending_value)
 		panic("Tried setting value of already evaluated member.\n");
 
+	ASSERT_OR_IGNORE(!found.member.incomplete->has_pending_type);
+
 	found.member.incomplete->has_pending_value = false;
 	found.member.incomplete->value.complete = member_value_id;
 
@@ -1098,18 +1120,42 @@ bool is_same_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 	TypeName* const name_b = types->named_types.value_from(static_cast<u32>(type_id_b));
 
 	if (!resolve_name_structure(types, name_a) || !resolve_name_structure(types, name_b))
-		return false; // TODO: In this case we actually just don't know.
+		TODO("Figure out how to handle equality of incomple types.\n");
 
-	if (name_a->structure_index_kind != name_b->structure_index_kind && name_a->structure_index != name_b->structure_index && name_a->source_id == name_b->source_id)
+	// TODO: This doesn't work when there are different but same-type member
+	// types, as that will lead to distinct hashes. Which is silly. This
+	// *should* be fixable in `close_open_type`, by somehow "canonicalizing"
+	// member types before hashing.
+	if (name_a->structure_index != name_b->structure_index)
 		return false;
 
-	if (name_a->distinct_root_type_id == TypeId::INVALID && name_b->distinct_root_type_id == TypeId::INVALID)
-		return true;
+	SourceId distinct_root_source_a;
 
-	if (name_a->distinct_root_type_id == TypeId::INVALID || name_b->distinct_root_type_id == TypeId::INVALID)
-		return false;
+	if (name_a->distinct_root_type_id != TypeId::INVALID)
+	{
+		TypeName* const root_name = types->named_types.value_from(static_cast<u32>(name_a->distinct_root_type_id));
 
-	return is_same_type(types, name_a->distinct_root_type_id, name_b->distinct_root_type_id);
+		distinct_root_source_a = root_name->source_id;
+	}
+	else
+	{
+		distinct_root_source_a = name_a->source_id;
+	}
+
+	SourceId distinct_root_source_b;
+
+	if (name_b->distinct_root_type_id != TypeId::INVALID)
+	{
+		TypeName* const root_name = types->named_types.value_from(static_cast<u32>(name_b->distinct_root_type_id));
+
+		distinct_root_source_b = root_name->source_id;
+	}
+	else
+	{
+		distinct_root_source_b = name_a->source_id;
+	}
+
+	return distinct_root_source_a == distinct_root_source_b;
 }
 
 bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept
