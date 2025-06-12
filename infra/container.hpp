@@ -548,11 +548,15 @@ public:
 
 	V* value_from(u32 index) noexcept
 	{
+		ASSERT_OR_IGNORE(index < m_value_used);
+
 		return reinterpret_cast<V*>(reinterpret_cast<byte*>(m_values) + index * V::stride());
 	}
 
 	const V* value_from(u32 index) const noexcept
 	{
+		ASSERT_OR_IGNORE(index < m_value_used);
+
 		return reinterpret_cast<const V*>(reinterpret_cast<const byte*>(m_values) + index * V::stride());
 	}
 
