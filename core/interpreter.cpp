@@ -1378,9 +1378,20 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 				scope_offset = next_multiple(scope_offset, static_cast<u64>(metrics.align));
 
-				add_open_type_member(interp->types, scope_type_id, member_init_from_definition(interp, curr_typechecker_context(interp), -1, stmt, get_definition_info(stmt), scope_offset));
+				// Manually remove the value from the created `MemberInit`,
+				// since block members are never global (?), and need no
+				// default value, as their value is set during block
+				// execution anyways.
+				MemberInit init = member_init_from_definition(interp, curr_typechecker_context(interp), -1, stmt, get_definition_info(stmt), scope_offset);
+				init.has_pending_value = false;
+				init.value.complete = GlobalValueId::INVALID;
 
-				set_incomplete_type_member_type_by_rank(interp->types, scope_type_id, scope_rank, defined_type_id);
+				if (init.is_global)
+					source_error(interp->errors, stmt->source_id, "Block-level globals are not currently supported.\n");
+
+				ASSERT_OR_IGNORE(!init.has_pending_type && !init.has_pending_value);
+
+				add_open_type_member(interp->types, scope_type_id, init);
 
 				scope_offset += metrics.size;
 
