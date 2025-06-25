@@ -1272,6 +1272,7 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 
 	case TypeTag::INVALID:
 	case TypeTag::Divergent:
+	case TypeTag::Dependent:
 		; // Fallthrough to unreachable
 	}
 
@@ -1438,6 +1439,7 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 	case TypeTag::CompFloat:
 	case TypeTag::Ptr:
 	case TypeTag::Func:
+	case TypeTag::Dependent:
 		return { 8, 8, 8 };
 
 	case TypeTag::Slice:

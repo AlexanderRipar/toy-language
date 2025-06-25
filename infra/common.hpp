@@ -159,7 +159,7 @@ inline u8 count_leading_ones_assume_zero(T n) noexcept
 }
 
 template<typename T>
-inline bool count_trailing_zeros(T n, u8* out) noexcept
+inline bool count_trailing_zeros(T n) noexcept
 {
 	#if defined(COMPILER_MSVC)
 		unsigned long index;

@@ -690,6 +690,7 @@ static void impconv(Interpreter* interp, MutRange<byte> dst, TypeId resolved_dst
 	}
 
 	case TypeTag::INVALID:
+	case TypeTag::Dependent:
 		ASSERT_UNREACHABLE;
 	}
 
@@ -2709,7 +2710,7 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 
 	const AstBuilderToken import_call = push_node(asts, import_builtin, SourceId::INVALID, AstFlag::EMPTY, AstTag::Call);
 
-	const AstBuilderToken std_definition = push_node(asts, import_call, SourceId::INVALID, AstFlag::EMPTY, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
+	const AstBuilderToken std_definition = push_node(asts, import_call, SourceId::INVALID, AstFlag::EMPTY, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")), DependentTypeId::INVALID });
 
 	const AstBuilderToken std_identifier = push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
 
@@ -2717,7 +2718,7 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 
 	const AstBuilderToken prelude_member = push_node(asts, std_identifier, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpMember);
 
-	push_node(asts, prelude_member, SourceId::INVALID, AstFlag::Definition_IsUse, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("prelude"))} );
+	push_node(asts, prelude_member, SourceId::INVALID, AstFlag::Definition_IsUse, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("prelude")), DependentTypeId::INVALID });
 
 	push_node(asts, std_definition, SourceId::INVALID, AstFlag::EMPTY, AstTag::File);
 
