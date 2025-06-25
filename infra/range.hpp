@@ -113,6 +113,11 @@ public:
 		return m_end - m_begin;
 	}
 
+	Range<T> immut() const noexcept
+	{
+		return { m_begin, m_end };
+	}
+
 	Range<T> subrange(u64 begin) const noexcept
 	{
 		ASSERT_OR_IGNORE(begin <= count());
@@ -405,6 +410,12 @@ namespace range
 	inline Range<byte> from_object_bytes(const T* t) noexcept
 	{
 		return { reinterpret_cast<const byte*>(t), sizeof(T) };
+	}
+
+	template<typename T>
+	inline MutRange<byte> from_object_bytes_mut(T* t) noexcept
+	{
+		return { reinterpret_cast<byte*>(t), sizeof(T) };
 	}
 
 	inline Range<char8> from_cstring(const char8* str) noexcept

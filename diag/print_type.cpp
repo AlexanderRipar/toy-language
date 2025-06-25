@@ -14,14 +14,22 @@ static const char8* optional_tag_name(TypeTag tag) noexcept
 	return tag_name(tag);
 }
 
-static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers, TypePool* types, TypeId type_id, u32 indent, bool skip_initial_indent) noexcept
+static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers, TypePool* types, DependentTypeId type, u32 indent, bool skip_initial_indent) noexcept
 {
-	if (type_id == TypeId::INVALID)
+	if (type == DependentTypeId::INVALID)
 	{
 		diag::buf_printf(ctx, "%*s<INVALID-TYPE-ID>\n", skip_initial_indent ? 0 : indent * 2, "");
 
 		return;
 	}
+	else if (is_dependent(type))
+	{
+		diag::buf_printf(ctx, "%*s<DEPENDENT>\n", skip_initial_indent ? 0 : indent * 2, "");
+
+		return;
+	}
+
+	const TypeId type_id = completed(type);
 
 	const TypeTag tag = type_tag_from_id(types, type_id);
 
@@ -61,6 +69,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::Trait:
 	case TypeTag::TypeInfo:
 	case TypeTag::TailArray:
+	case TypeTag::Dependent:
 	{
 		diag::buf_printf(ctx, "\n");
 
@@ -97,7 +106,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 		diag::buf_printf(ctx, " %s%s ", introducer, reference->is_mut ? " mut" : "");
 
-		print_type_impl(ctx, identifiers, types, reference->referenced_type_id, indent + 1, true);
+		print_type_impl(ctx, identifiers, types, completed_type_id(reference->referenced_type_id), indent + 1, true);
 
 		return;
 	}
@@ -108,7 +117,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 		diag::buf_printf(ctx, " :: [%" PRIu64 "]", array->element_count);
 
-		print_type_impl(ctx, identifiers, types, array->element_type, indent + 1, true);
+		print_type_impl(ctx, identifiers, types, completed_type_id(array->element_type), indent + 1, true);
 
 		return;
 	}
@@ -181,7 +190,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	ASSERT_UNREACHABLE;
 }
 
-void diag::print_type(minos::FileHandle out, IdentifierPool* identifiers, TypePool* types, TypeId type_id, const SourceLocation* source) noexcept
+void diag::print_type(minos::FileHandle out, IdentifierPool* identifiers, TypePool* types, DependentTypeId type_id, const SourceLocation* source) noexcept
 {
 	PrintContext ctx;
 	ctx.curr = ctx.buf;

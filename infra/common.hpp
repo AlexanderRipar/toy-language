@@ -86,6 +86,142 @@ inline u64 align_to(u64 n, u64 alignment) noexcept
 	return (n + alignment - 1) & ~(alignment - 1);
 }
 
+template<typename T>
+inline u8 count_trailing_zeros_assume_one(T n) noexcept
+{
+	ASSERT_OR_IGNORE(n != 0);
+
+	#if defined(COMPILER_MSVC)
+		unsigned long index;
+
+		(void) _BitScanForward64(&index, static_cast<u64>(n));
+
+		return static_cast<u8>(index);
+	#elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
+		return static_cast<u8>(__builtin_ctz(n));
+	#else
+		#error("Unsupported compiler")
+	#endif
+}
+
+template<typename T>
+inline u8 count_trailing_ones_assume_zero(T n) noexcept
+{
+	ASSERT_OR_IGNORE(~n != 0);
+
+	#if defined(COMPILER_MSVC)
+		unsigned long index;
+
+		(void) _BitScanForward64(&index, ~static_cast<u64>(n));
+
+		return static_cast<u8>(index);
+	#elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
+		return static_cast<u8>(__builtin_ctz(~n));
+	#else
+		#error("Unsupported compiler")
+	#endif
+}
+
+template<typename T>
+inline u8 count_leading_zeros_assume_one(T n) noexcept
+{
+	ASSERT_OR_IGNORE(n != 0);
+
+	#if defined(COMPILER_MSVC)
+		unsigned long index;
+
+		(void) _BitScanReverse64(&index, static_cast<u64>(n));
+
+		return static_cast<u8>(index);
+	#elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
+		return static_cast<u8>(__builtin_clz(n));
+	#else
+		#error("Unsupported compiler")
+	#endif
+}
+
+template<typename T>
+inline u8 count_leading_ones_assume_zero(T n) noexcept
+{
+	ASSERT_OR_IGNORE(~n != 0);
+
+	#if defined(COMPILER_MSVC)
+		unsigned long index;
+
+		(void) _BitScanReverse64(&index, ~static_cast<u64>(n));
+
+		return static_cast<u8>(index);
+	#elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
+		return static_cast<u8>(__builtin_clz(~n));
+	#else
+		#error("Unsupported compiler")
+	#endif
+}
+
+template<typename T>
+inline bool count_trailing_zeros(T n, u8* out) noexcept
+{
+	#if defined(COMPILER_MSVC)
+		unsigned long index;
+
+		const bool ok = _BitScanForward64(&index, static_cast<u64>(n)) != 0;
+
+		return ok ? static_cast<u8>(index) : sizeof(T) * 8;
+	#elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
+		return n == 0 ? sizeof(T) * 8 : static_cast<u8>(__builtin_ctz(n));
+	#else
+		#error("Unsupported compiler")
+	#endif
+}
+
+template<typename T>
+inline u8 count_trailing_ones(T n) noexcept
+{
+	#if defined(COMPILER_MSVC)
+		unsigned long index;
+
+		const bool ok = _BitScanForward64(&index, static_cast<u64>(~n)) != 0;
+
+		return ok ? static_cast<u8>(index) : sizeof(T) * 8;
+	#elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
+		return ~n == 0 ? sizeof(T) * 8 : static_cast<u8>(__builtin_ctz(~n));
+	#else
+		#error("Unsupported compiler")
+	#endif
+}
+
+template<typename T>
+inline u8 count_leading_zeros(T n) noexcept
+{
+	#if defined(COMPILER_MSVC)
+		unsigned long index;
+
+		const bool ok = _BitScanReverse64(&index, static_cast<u64>(n)) != 0;
+
+		return ok ? static_cast<u8>(index) : sizeof(T) * 8;
+	#elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
+		return n == 0 ? sizeof(T) * 8 : static_cast<u8>(__builtin_clz(n));
+	#else
+		#error("Unsupported compiler")
+	#endif
+}
+
+template<typename T>
+inline u8 count_leading_ones(T n) noexcept
+{
+	#if defined(COMPILER_MSVC)
+		unsigned long index;
+
+		const bool ok = _BitScanReverse64(&index, static_cast<u64>(~n)) != 0;
+
+		return ok ? static_cast<u8>(index) : sizeof(T) * 8;
+	#elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
+		return ~n == 0 ? sizeof(T) * 8 : static_cast<u8>(__builtin_clz(~n));
+	#else
+		#error("Unsupported compiler")
+	#endif
+}
+
 NORETURN void panic(const char8* format, ...) noexcept;
 
 NORETURN void vpanic(const char8* format, va_list args) noexcept;

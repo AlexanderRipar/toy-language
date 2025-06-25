@@ -29,7 +29,7 @@ static AstNode* apply_offset_(AstNode* node, ureg offset) noexcept
 //     if next_sibling_offset != NO_CHILDREN then
 //         direct predecessor gets FLAG_LAST_SIBLING
 //         predecessor at next_sibling_offset gets FLAG_FIRST_SIBLING
-static void set_internal_flags(AstNode* begin, AstNode* end) noexcept
+static void set_flags(AstNode* begin, AstNode* end) noexcept
 {
 	ASSERT_OR_IGNORE(begin != end);
 
@@ -47,13 +47,13 @@ static void set_internal_flags(AstNode* begin, AstNode* end) noexcept
 
 			AstNode* const first_child = reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(begin) + curr->next_sibling_offset);
 
-			ASSERT_OR_IGNORE((first_child->internal_flags & AstNode::FLAG_FIRST_SIBLING) == 0);
+			ASSERT_OR_IGNORE((first_child->flags & AstFlag::INTERNAL_FirstSibling) == AstFlag::EMPTY);
 
-			first_child->internal_flags |= AstNode::FLAG_FIRST_SIBLING;
+			first_child->flags |= AstFlag::INTERNAL_FirstSibling;
 
-			ASSERT_OR_IGNORE((prev->internal_flags & AstNode::FLAG_LAST_SIBLING) == 0);
+			ASSERT_OR_IGNORE((prev->flags & AstFlag::INTERNAL_LastSibling) == AstFlag::EMPTY);
 
-			prev->internal_flags |= AstNode::FLAG_LAST_SIBLING;
+			prev->flags |= AstFlag::INTERNAL_LastSibling;
 		}
 
 		prev = curr;
@@ -61,9 +61,9 @@ static void set_internal_flags(AstNode* begin, AstNode* end) noexcept
 		curr = next;
 	}
 
-	ASSERT_OR_IGNORE((prev->internal_flags & (AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING)) == 0);
+	ASSERT_OR_IGNORE((prev->flags & (AstFlag::INTERNAL_FirstSibling | AstFlag::INTERNAL_LastSibling)) == AstFlag::EMPTY);
 
-	prev->internal_flags |= AstNode::FLAG_FIRST_SIBLING | AstNode::FLAG_LAST_SIBLING;
+	prev->flags |= AstFlag::INTERNAL_FirstSibling | AstFlag::INTERNAL_LastSibling;
 }
 
 // Create a linked list modelling a preorder traversal of all nodes.
@@ -83,7 +83,7 @@ static AstNode* build_traversal_list(AstNode* begin, AstNode* end) noexcept
 
 		// Connect predecessor
 
-		if ((curr->internal_flags & AstNode::FLAG_FIRST_SIBLING) == 0)
+		if ((curr->flags & AstFlag::INTERNAL_FirstSibling) == AstFlag::EMPTY)
 		{
 			ASSERT_OR_IGNORE(depth >= 0);
 
@@ -96,9 +96,9 @@ static AstNode* build_traversal_list(AstNode* begin, AstNode* end) noexcept
 
 		// Push something
 
-		if ((curr->internal_flags & AstNode::FLAG_LAST_SIBLING) == 0)
+		if ((curr->flags & AstFlag::INTERNAL_LastSibling) == AstFlag::EMPTY)
 		{
-			if ((curr->internal_flags & AstNode::FLAG_FIRST_SIBLING) == AstNode::FLAG_FIRST_SIBLING)
+			if ((curr->flags & AstFlag::INTERNAL_FirstSibling) == AstFlag::INTERNAL_FirstSibling)
 			{
 				if (depth + 1 >= MAX_AST_DEPTH)
 					panic("Maximum parse tree depth of %u exceeded.\n", MAX_AST_DEPTH);
@@ -108,7 +108,7 @@ static AstNode* build_traversal_list(AstNode* begin, AstNode* end) noexcept
 
 			ASSERT_OR_IGNORE(depth >= 0);
 
-			if ((curr->internal_flags & AstNode::FLAG_NO_CHILDREN) == 0)
+			if ((curr->flags & AstFlag::INTERNAL_NoChildren) == AstFlag::EMPTY)
 			{
 				ASSERT_OR_IGNORE(recursively_last_child != static_cast<u32>(AstBuilderToken::NO_CHILDREN));
 
@@ -121,14 +121,14 @@ static AstNode* build_traversal_list(AstNode* begin, AstNode* end) noexcept
 		}
 		else // last sibling
 		{
-			if ((curr->internal_flags & AstNode::FLAG_FIRST_SIBLING) == 0)
+			if ((curr->flags & AstFlag::INTERNAL_FirstSibling) == AstFlag::EMPTY)
 			{
 				ASSERT_OR_IGNORE(depth >= 0);
 
 				depth -= 1;
 			}
 
-			if ((curr->internal_flags & AstNode::FLAG_NO_CHILDREN) == AstNode::FLAG_NO_CHILDREN)
+			if ((curr->flags & AstFlag::INTERNAL_NoChildren) == AstFlag::INTERNAL_NoChildren)
 				recursively_last_child = curr_ind;
 		}
 
@@ -175,7 +175,7 @@ static AstNode* copy_postorder_to_preorder(const AstNode* begin, const AstNode* 
 
 		const u32 curr_ind = static_cast<u32>(reinterpret_cast<u32*>(dst_node) - reinterpret_cast<u32*>(dst_root));
 
-		if ((src_curr->internal_flags & AstNode::FLAG_FIRST_SIBLING) == 0)
+		if ((src_curr->flags & AstFlag::INTERNAL_FirstSibling) == AstFlag::EMPTY)
 		{
 			while (true)
 			{
@@ -189,7 +189,7 @@ static AstNode* copy_postorder_to_preorder(const AstNode* begin, const AstNode* 
 
 				prev_sibling->next_sibling_offset = curr_ind - prev_sibling_ind;
 
-				if ((prev_sibling->internal_flags & AstNode::FLAG_LAST_SIBLING) == 0)
+				if ((prev_sibling->flags & AstFlag::INTERNAL_LastSibling) == AstFlag::EMPTY)
 					break;
 			}
 		}
@@ -256,15 +256,15 @@ AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept
 
 bool has_children(const AstNode* node) noexcept
 {
-	return (node->internal_flags & AstNode::FLAG_NO_CHILDREN) == 0;
+	return (node->flags & AstFlag::INTERNAL_NoChildren) == AstFlag::EMPTY;
 }
 
 bool has_next_sibling(const AstNode* node) noexcept
 {
-	return (node->internal_flags & AstNode::FLAG_LAST_SIBLING) == 0;
+	return (node->flags & AstFlag::INTERNAL_LastSibling) == AstFlag::EMPTY;
 }
 
-bool has_flag(AstNode* node, AstFlag flag) noexcept
+bool has_flag(const AstNode* node, AstFlag flag) noexcept
 {
 	return (static_cast<u8>(node->flags) & static_cast<u8>(flag)) != 0;
 }
@@ -291,12 +291,15 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 
 	AstNode* const node = reinterpret_cast<AstNode*>(asts->builder.reserve_exact(sizeof(AstNode)));
 
+	if (first_child == AstBuilderToken::NO_CHILDREN)
+		flags |= AstFlag::INTERNAL_NoChildren;
+
 	node->next_sibling_offset = static_cast<u32>(first_child);
 	node->tag = tag;
-	node->flags = flags;
 	node->data_dwords = sizeof(AstNode) / sizeof(u32);
-	node->internal_flags = first_child == AstBuilderToken::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
-	node->type = TypeRef::INVALID;
+	node->type_kind = 0;
+	node->flags = flags;
+	node->type = DependentTypeId::INVALID;
 	node->source_id = source_id;
 
 	return AstBuilderToken{ static_cast<u32>(reinterpret_cast<u32*>(node) - asts->builder.begin()) };
@@ -310,12 +313,15 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 
 	AstNode* const node = reinterpret_cast<AstNode*>(asts->builder.reserve_exact(required_dwords * sizeof(u32)));
 
+	if (first_child == AstBuilderToken::NO_CHILDREN)
+		flags |= AstFlag::INTERNAL_NoChildren;
+
 	node->next_sibling_offset = static_cast<u32>(first_child);
 	node->tag = tag;
-	node->flags = flags;
 	node->data_dwords = required_dwords;
-	node->internal_flags = first_child == AstBuilderToken::NO_CHILDREN ? AstNode::FLAG_NO_CHILDREN : 0;
-	node->type = TypeRef::INVALID;
+	node->type_kind = 0;
+	node->flags = flags;
+	node->type = DependentTypeId::INVALID;
 	node->source_id = source_id;
 
 	memcpy(node + 1, attachment, attachment_dwords * sizeof(u32));
@@ -329,7 +335,7 @@ AstNode* complete_ast(AstPool* asts) noexcept
 
 	AstNode* const end = reinterpret_cast<AstNode*>(asts->builder.end());
 
-	set_internal_flags(begin, end);
+	set_flags(begin, end);
 
 	AstNode* const src_root = build_traversal_list(begin, end);
 
@@ -394,9 +400,9 @@ AstIterationResult next(AstPreorderIterator* iterator) noexcept
 
 	iterator->curr = apply_offset_(curr, curr->data_dwords);
 
-	if ((curr->internal_flags & AstNode::FLAG_NO_CHILDREN) == 0)
+	if ((curr->flags & AstFlag::INTERNAL_NoChildren) == AstFlag::EMPTY)
 	{
-		if ((curr->internal_flags & AstNode::FLAG_LAST_SIBLING) == 0)
+		if ((curr->flags & AstFlag::INTERNAL_LastSibling) == AstFlag::EMPTY)
 		{
 			ASSERT_OR_IGNORE(iterator->top + 1 < MAX_AST_DEPTH);
 
@@ -409,7 +415,7 @@ AstIterationResult next(AstPreorderIterator* iterator) noexcept
 
 		iterator->depth += 1;
 	}
-	else if ((curr->internal_flags & AstNode::FLAG_LAST_SIBLING) == AstNode::FLAG_LAST_SIBLING)
+	else if ((curr->flags & AstFlag::INTERNAL_LastSibling) == AstFlag::INTERNAL_LastSibling)
 	{
 		if (iterator->top == -1)
 		{

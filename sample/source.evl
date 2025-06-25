@@ -5,3 +5,10 @@ let F = func(T: Type) -> Type = T
 let Blocku32: u32 = { 1 }
 
 let Fu32: F(u32) = 1
+
+let Screwed = func(T: Type) -> T = {
+	let x: u32 = 1
+	1
+}
+
+let v = Screwed(u32)

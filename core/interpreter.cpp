@@ -135,14 +135,13 @@ struct alignas(8) Callable
 	} code;
 };
 
-struct DeferredTypeValue
+struct alignas(8) DependentValue
 {
-	TypeRef type;
+	TypeId resolved_type_id;
 
-	u32 unused_;
-
-	void* actual_value;
+	u32 value_offset;
 };
+
 
 
 
@@ -150,6 +149,10 @@ struct DeferredTypeValue
 static bool force_member_type(Interpreter* interp, MemberInfo* member) noexcept; 
 
 static bool force_member_value(Interpreter* interp, MemberInfo* member) noexcept; 
+
+static TypeId resolve_type_id(Interpreter* interp, DependentTypeId type) noexcept;
+
+static TypeId typecheck_dependent_expr(Interpreter* interp, AstNode* node) noexcept;
 
 
 
@@ -282,11 +285,11 @@ static MutRange<byte> stack_alloc_temporary(Interpreter* interp, u64 size, u32 a
 	return MutRange{ static_cast<byte*>(interp->arecs.reserve_padded(static_cast<u32>(size))), size };
 }
 
-static void stack_free_temporary(Interpreter* interp, MutRange<byte> temporary)
+static void stack_free_temporary(Interpreter* interp, Range<byte> temporary)
 {
-	ASSERT_OR_IGNORE(reinterpret_cast<u64*>(temporary.begin()) > interp->arecs.begin() + interp->arec_top || (reinterpret_cast<u64*>(temporary.begin()) == interp->arecs.begin() && interp->arec_top == 0));
+	ASSERT_OR_IGNORE(reinterpret_cast<const u64*>(temporary.begin()) > interp->arecs.begin() + interp->arec_top || (reinterpret_cast<const u64*>(temporary.begin()) == interp->arecs.begin() && interp->arec_top == 0));
 
-	interp->arecs.pop_to(static_cast<u32>(reinterpret_cast<u64*>(temporary.begin()) - interp->arecs.begin()));
+	interp->arecs.pop_to(static_cast<u32>(reinterpret_cast<const u64*>(temporary.begin()) - interp->arecs.begin()));
 }
 
 static bool has_parent_arec(Arec* arec) noexcept
@@ -325,9 +328,15 @@ static MutRange<byte> lookup_identifier_location_in_arec(Interpreter* interp, Ar
 	ASSERT_OR_IGNORE(!info.has_pending_type);
 
 	if (info.is_global)
+	{
 		return global_value_get_mut(interp->globals, info.value.complete);
+	}
 	else
-		return MutRange{ arec->attachment + info.offset, type_metrics_from_id(interp->types, info.type.complete).size };
+	{
+		const TypeId type_id = resolve_type_id(interp, info.type.complete);
+
+		return MutRange{ arec->attachment + info.offset, type_metrics_from_id(interp->types, type_id).size };
+	}
 }
 
 static bool lookup_identifier_info_and_arec(Interpreter* interp, IdentifierId identifier, MemberInfo* out_info, OptPtr<Arec>* out_arec) noexcept
@@ -392,54 +401,17 @@ static MutRange<byte> lookup_identifier_location(Interpreter* interp, Identifier
 
 		return global_value_get_mut(interp->globals, info.value.complete);
 	}
-	else if (is_some(arec))
-		return MutRange{ get_ptr(arec)->attachment + info.offset, type_metrics_from_id(interp->types, info.type.complete).size };
 	else
-		ASSERT_UNREACHABLE;
+	{
+		ASSERT_OR_IGNORE(is_some(arec));
+
+		ASSERT_OR_IGNORE(!info.has_pending_type);
+
+		return MutRange{ get_ptr(arec)->attachment + info.offset, type_metrics_from_id(interp->types, resolve_type_id(interp, info.type.complete)).size };
+	}
 }
 
 
-
-static MemberInit member_init_from_definition(Interpreter* interp, TypeId completion_context, s32 completion_arec, AstNode* definition, DefinitionInfo info, u64 offset) noexcept
-{
-	ASSERT_OR_IGNORE(definition->tag == AstTag::Definition);
-
-	ASSERT_OR_IGNORE(type_id(definition->type) != TypeId::CHECKING);
-
-	const TypeId defined_type_id = attachment_of<AstDefinitionData>(definition)->defined_type_id;
-
-	const bool has_pending_type = defined_type_id == TypeId::INVALID;
-
-	// TODO
-	const bool has_pending_value = is_some(info.value);
-
-	MemberInit member;
-	member.name = attachment_of<AstDefinitionData>(definition)->identifier_id;
-	member.source = definition->source_id;
-	member.completion_context = completion_context;
-	member.completion_arec = completion_arec;
-	member.is_global = has_flag(definition, AstFlag::Definition_IsGlobal);
-	member.is_pub = has_flag(definition, AstFlag::Definition_IsPub);
-	member.is_use = has_flag(definition, AstFlag::Definition_IsUse);
-	member.is_mut = has_flag(definition, AstFlag::Definition_IsMut);
-	member.has_pending_type = has_pending_type;
-	member.has_pending_value = has_pending_value;
-	member.offset = offset;
-
-	if (has_pending_type)
-		member.type.pending = is_some(info.type) ? id_from_ast_node(interp->asts, get_ptr(info.type)) : AstNodeId::INVALID;
-	else
-		member.type.complete = defined_type_id;
-
-	if (is_none(info.value))
-		member.value.complete = GlobalValueId::INVALID;
-	else if (has_pending_value)
-		member.value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
-	else
-		TODO("Implement passing `ValueId` to `member_init_from_definition`.");
-
-	return member;
-}
 
 
 
@@ -452,11 +424,36 @@ static T* bytes_as(MutRange<byte> bytes) noexcept
 }
 
 template<typename T>
+static const T* bytes_as(Range<byte> bytes) noexcept
+{
+	ASSERT_OR_IGNORE(bytes.count() == sizeof(T));
+
+	return reinterpret_cast<const T*>(bytes.begin());
+}
+
+template<typename T>
 static T load_as(bool load, MutRange<byte> src) noexcept
 {
 	if (load)
 	{
 		MutRange<byte> loaded_src = *bytes_as<MutRange<byte>>(src);
+
+		return *bytes_as<T>(loaded_src);
+	}
+	else
+	{
+		ASSERT_OR_IGNORE(src.count() == sizeof(T));
+
+		return *bytes_as<T>(src);
+	}
+}
+
+template<typename T>
+static T load_as(bool load, Range<byte> src) noexcept
+{
+	if (load)
+	{
+		Range<byte> loaded_src = *bytes_as<Range<byte>>(src);
 
 		return *bytes_as<T>(loaded_src);
 	}
@@ -477,226 +474,32 @@ void store(MutRange<byte> dst, Range<byte> src) noexcept
 
 
 
-static void impconv_load(Interpreter* interp, MutRange<byte> src, MutRange<byte> dst, TypeId dst_type_id) noexcept
+static TypeMetrics dependent_member_metrics(Interpreter* interp, DependentTypeId type) noexcept
 {
-	ASSERT_OR_IGNORE(src.count() == sizeof(MutRange<byte>));
-
-	ASSERT_OR_IGNORE(dst.count() == type_metrics_from_id(interp->types, dst_type_id).size);
-
-	MutRange<byte> loaded_src = *bytes_as<MutRange<byte>>(src);
-
-	ASSERT_OR_IGNORE(loaded_src.count() == dst.count());
-
-	memcpy(dst.begin(), loaded_src.begin(), dst.count());
+	return is_dependent(type)
+		? TypeMetrics{ 8, 8, 8 }
+		: type_metrics_from_id(interp->types, completed(type));
 }
 
-static void impconv(Interpreter* interp, MutRange<byte> src, TypeId src_type_id, MutRange<byte> dst, TypeId dst_type_id, bool load, SourceId source_id) noexcept
+static TypeId resolve_type_id(Interpreter* interp, DependentTypeId type) noexcept
 {
-	const TypeTag src_type_tag = type_tag_from_id(interp->types, src_type_id);
-
-	const TypeTag dst_type_tag = type_tag_from_id(interp->types, dst_type_id);
-
-	switch (dst_type_tag)
+	if (is_dependent(type))
 	{
-	case TypeTag::Slice:
-	{
-		if (src_type_tag == TypeTag::Array)
-		{
-			// Only dereference arrays once, instead of twice as would be done
-			// on a normal load. This allows us to directly get a range over
-			// the array, which is already a slice, so the conversion is done
-			// at this point.
-			MutRange<byte> src_value = load ? *bytes_as<MutRange<byte>>(src) : src;
-
-			ASSERT_OR_IGNORE(src_value.count() == type_metrics_from_id(interp->types, src_type_id).size);
-
-			*bytes_as<Range<byte>>(dst) = src_value.as_byte_range();
-		}
-		else
-		{
-			ASSERT_OR_IGNORE(src_type_tag == TypeTag::Slice);
-
-			ASSERT_OR_IGNORE(load);
-
-			impconv_load(interp, src, dst, dst_type_id);
-		}
-
-		break;
-	}
-
-	case TypeTag::Integer:
-	{
-		if (src_type_tag == TypeTag::CompInteger)
-		{
-			const CompIntegerValue src_value = load_as<CompIntegerValue>(load, src);
-
-			const NumericType dst_type = *static_cast<const NumericType*>(simple_type_structure_from_id(interp->types, dst_type_id));
-
-			ASSERT_OR_IGNORE((dst_type.bits & 7) == 0 && dst_type.bits <= 64 && dst_type.bits != 0);
-
-			if (dst_type.is_signed)
-			{
-				s64 signed_value;
-
-				if (!s64_from_comp_integer(src_value, static_cast<u8>(dst_type.bits), &signed_value))
-					source_error(interp->errors, source_id, "Compile-time integer constant exceeds range of signed %u bit integer.\n", dst_type.bits);
-
-				ASSERT_OR_IGNORE(dst_type.bits / 8 == dst.count());
-
-				store(dst, Range{ reinterpret_cast<byte*>(&signed_value), static_cast<u64>(dst_type.bits / 8) });
-			}
-			else
-			{
-				u64 unsigned_value;
-
-				if (!u64_from_comp_integer(src_value, static_cast<u8>(dst_type.bits), &unsigned_value))
-					source_error(interp->errors, source_id, "Compile-time integer constant exceeds range of unsigned %u bit integer.\n", dst_type.bits);
-
-				ASSERT_OR_IGNORE(dst_type.bits / 8 == dst.count());
-
-				store(dst, Range{ reinterpret_cast<byte*>(&unsigned_value), static_cast<u64>(dst_type.bits / 8) });
-			}
-		}
-		else
-		{
-			ASSERT_OR_IGNORE(src_type_tag == TypeTag::Integer);
-
-			ASSERT_OR_IGNORE(load);
-
-			impconv_load(interp, src, dst, dst_type_id);
-		}
-
-		break;
-	}
-
-	case TypeTag::Float:
-	{
-		if (src_type_tag == TypeTag::CompFloat)
-		{
-			const CompFloatValue src_value = load_as<CompFloatValue>(load, src);
-
-			const NumericType dst_type = *static_cast<const NumericType*>(simple_type_structure_from_id(interp->types, dst_type_id));
-
-			if (dst_type.bits == 32)
-			{
-				const f32 f32_value = f32_from_comp_float(src_value);
-
-				store(dst, range::from_object_bytes(&f32_value));
-			}
-			else
-			{
-				ASSERT_OR_IGNORE(dst_type.bits == 64);
-
-				const f64 f64_value = f64_from_comp_float(src_value);
-
-				store(dst, range::from_object_bytes(&f64_value));
-			}
-		}
-		else
-		{
-			ASSERT_OR_IGNORE(src_type_tag == TypeTag::Float);
-
-			ASSERT_OR_IGNORE(load);
-
-			impconv_load(interp, src, dst, dst_type_id);
-		}
-
-		break;
-	}
-
-	case TypeTag::TypeInfo:
-	{
-		store(dst, range::from_object_bytes(&src_type_id));
-
-		break;
-	}
-
-	case TypeTag::Void:
-	case TypeTag::Type:
-	case TypeTag::Definition:
-	case TypeTag::CompInteger:
-	case TypeTag::CompFloat:
-	case TypeTag::Boolean:
-	case TypeTag::Ptr:
-	case TypeTag::Array:
-	case TypeTag::Func:
-	case TypeTag::Builtin:
-	case TypeTag::Composite:
-	case TypeTag::CompositeLiteral:
-	case TypeTag::ArrayLiteral:
-	case TypeTag::TypeBuilder:
-	case TypeTag::Variadic:
-	case TypeTag::Divergent:
-	case TypeTag::Trait:
-	case TypeTag::TailArray:
-	{
-		if (load)
-			impconv_load(interp, src, dst, dst_type_id);
-
-		break;
-	}
-
-	case TypeTag::INVALID:
-		ASSERT_UNREACHABLE;
-	}
-
-	stack_free_temporary(interp, src);
-}
-
-static MutRange<byte> map_into_for_impconv(Interpreter* interp, TypeRef type, MutRange<byte> unmapped_into) noexcept
-{
-	if (!requires_implicit_conversion(type))
-		return unmapped_into;
-
-	u64 required_bytes;
-
-	u32 required_align;
-
-	if (kind(type) == TypeKind::Value)
-	{
-		const TypeMetrics metrics = type_metrics_from_id(interp->types, type_id(type));
-
-		required_bytes = metrics.size;
-
-		required_align = metrics.align;
+		AstNode* const type_node = ast_node_from_id(interp->asts, delayed(type));
+	
+		return typecheck_dependent_expr(interp, type_node);
 	}
 	else
 	{
-		ASSERT_OR_IGNORE(kind(type) == TypeKind::MutLocation || kind(type) == TypeKind::ImmutLocation);
-
-		required_bytes = 16;
-
-		required_align = 16;
+		return completed(type);
 	}
-
-	return stack_alloc_temporary(interp, required_bytes, required_align);
 }
 
-static bool check_and_set_impconv(Interpreter* interp, TypeRef* inout_type, TypeId expected_type_id, TypeKind expected_kind) noexcept
+static bool kind_is_convertible_to_from(TypeKind dst, TypeKind src) noexcept
 {
-	ASSERT_OR_IGNORE(kind(*inout_type) != TypeKind::INVALID && expected_kind != TypeKind::INVALID);
+	ASSERT_OR_IGNORE(dst != TypeKind::INVALID && src != TypeKind::INVALID);
 
-	ASSERT_OR_IGNORE(type_id(*inout_type) != TypeId::INVALID && type_id(*inout_type) != TypeId::CHECKING && expected_type_id != TypeId::INVALID && expected_type_id != TypeId::CHECKING);
-
-	const TypeRef type = *inout_type;
-
-	if (static_cast<u8>(kind(type)) < static_cast<u32>(expected_kind))
-		return false;
-
-	bool requires_conversion = kind(type) != TypeKind::Value && expected_kind == TypeKind::Value;
-
-	if (type_id(type) == TypeId::DEPENDENT || expected_type_id == TypeId::DEPENDENT)
-		requires_conversion = true;
-	else if (type_can_implicitly_convert_from_to(interp->types, type_id(type), expected_type_id))
-		requires_conversion |= !is_same_type(interp->types, type_id(type), expected_type_id);
-	else
-		return false;
-
-	const bool skip_evaluation = type_tag_from_id(interp->types, expected_type_id) == TypeTag::TypeInfo;
-
-	*inout_type = type_ref(type_id(type), kind(type), has_dependent_value(type), requires_conversion, skip_evaluation);
-
-	return true;
+	return static_cast<u8>(dst) <= static_cast<u8>(src);
 }
 
 static bool any_integer_to_u64(Interpreter* interp, TypeId type_id, const void* value, u64* out) noexcept
@@ -725,19 +528,255 @@ static bool any_integer_to_u64(Interpreter* interp, TypeId type_id, const void* 
 	return true;
 }
 
-
-
-static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> into) noexcept
+static void impconv_load(Interpreter* interp, MutRange<byte> dst, Range<byte> src, TypeId resolved_dst_type_id) noexcept
 {
-	ASSERT_OR_IGNORE(type_id(node->type) != TypeId::INVALID && type_id(node->type) != TypeId::CHECKING);
+	ASSERT_OR_IGNORE(src.count() == sizeof(MutRange<byte>));
 
-	if (type_id(node->type) == TypeId::DEPENDENT)
+	ASSERT_OR_IGNORE(dst.count() == type_metrics_from_id(interp->types, resolved_dst_type_id).size);
+
+	Range<byte> loaded_src = *bytes_as<Range<byte>>(src);
+
+	ASSERT_OR_IGNORE(loaded_src.count() == dst.count());
+
+	memcpy(dst.begin(), loaded_src.begin(), dst.count());
+}
+
+static void impconv(Interpreter* interp, MutRange<byte> dst, TypeId resolved_dst_type_id, Range<byte> src, TypeId resolved_src_type_id, const AstNode* src_node) noexcept
+{
+	const TypeTag dst_type_tag = type_tag_from_id(interp->types, resolved_dst_type_id);
+
+	const TypeTag src_type_tag = type_tag_from_id(interp->types, resolved_src_type_id);
+
+	const bool load = has_flag(src_node, AstFlag::Any_LoadResult);
+
+	switch (dst_type_tag)
 	{
+	case TypeTag::Slice:
+	{
+		if (src_type_tag == TypeTag::Array)
+		{
+			// Only dereference arrays once, instead of twice as would be done
+			// on a normal load. This allows us to directly get a range over
+			// the array, which is already a slice, so the conversion is done
+			// at this point.
+			Range<byte> src_value = load ? *bytes_as<Range<byte>>(src) : src;
+
+			ASSERT_OR_IGNORE(src_value.count() == type_metrics_from_id(interp->types, resolved_src_type_id).size);
+
+			*bytes_as<Range<byte>>(dst) = src_value.as_byte_range();
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(src_type_tag == TypeTag::Slice);
+
+			ASSERT_OR_IGNORE(load);
+
+			impconv_load(interp, dst, src, resolved_dst_type_id);
+		}
+
+		break;
+	}
+
+	case TypeTag::Integer:
+	{
+		if (src_type_tag == TypeTag::CompInteger)
+		{
+			const CompIntegerValue src_value = load_as<CompIntegerValue>(load, src);
+
+			const NumericType dst_type = *static_cast<const NumericType*>(simple_type_structure_from_id(interp->types, resolved_dst_type_id));
+
+			ASSERT_OR_IGNORE((dst_type.bits & 7) == 0 && dst_type.bits <= 64 && dst_type.bits != 0);
+
+			if (dst_type.is_signed)
+			{
+				s64 signed_value;
+
+				if (!s64_from_comp_integer(src_value, static_cast<u8>(dst_type.bits), &signed_value))
+					source_error(interp->errors, src_node->source_id, "Compile-time integer constant exceeds range of signed %u bit integer.\n", dst_type.bits);
+
+				ASSERT_OR_IGNORE(dst_type.bits / 8 == dst.count());
+
+				store(dst, Range{ reinterpret_cast<byte*>(&signed_value), static_cast<u64>(dst_type.bits / 8) });
+			}
+			else
+			{
+				u64 unsigned_value;
+
+				if (!u64_from_comp_integer(src_value, static_cast<u8>(dst_type.bits), &unsigned_value))
+					source_error(interp->errors, src_node->source_id, "Compile-time integer constant exceeds range of unsigned %u bit integer.\n", dst_type.bits);
+
+				ASSERT_OR_IGNORE(dst_type.bits / 8 == dst.count());
+
+				store(dst, Range{ reinterpret_cast<byte*>(&unsigned_value), static_cast<u64>(dst_type.bits / 8) });
+			}
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(src_type_tag == TypeTag::Integer);
+
+			ASSERT_OR_IGNORE(load);
+
+			impconv_load(interp, dst, src, resolved_dst_type_id);
+		}
+
+		break;
+	}
+
+	case TypeTag::Float:
+	{
+		if (src_type_tag == TypeTag::CompFloat)
+		{
+			const CompFloatValue src_value = load_as<CompFloatValue>(load, src);
+
+			const NumericType dst_type = *static_cast<const NumericType*>(simple_type_structure_from_id(interp->types, resolved_dst_type_id));
+
+			if (dst_type.bits == 32)
+			{
+				const f32 f32_value = f32_from_comp_float(src_value);
+
+				store(dst, range::from_object_bytes(&f32_value));
+			}
+			else
+			{
+				ASSERT_OR_IGNORE(dst_type.bits == 64);
+
+				const f64 f64_value = f64_from_comp_float(src_value);
+
+				store(dst, range::from_object_bytes(&f64_value));
+			}
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(src_type_tag == TypeTag::Float);
+
+			ASSERT_OR_IGNORE(load);
+
+			impconv_load(interp, dst, src, resolved_dst_type_id);
+		}
+
+		break;
+	}
+
+	case TypeTag::TypeInfo:
+	{
+		store(dst, range::from_object_bytes(&resolved_src_type_id));
+
+		break;
+	}
+
+	case TypeTag::Void:
+	case TypeTag::Type:
+	case TypeTag::Definition:
+	case TypeTag::CompInteger:
+	case TypeTag::CompFloat:
+	case TypeTag::Boolean:
+	case TypeTag::Ptr:
+	case TypeTag::Array:
+	case TypeTag::Func:
+	case TypeTag::Builtin:
+	case TypeTag::Composite:
+	case TypeTag::CompositeLiteral:
+	case TypeTag::ArrayLiteral:
+	case TypeTag::TypeBuilder:
+	case TypeTag::Variadic:
+	case TypeTag::Divergent:
+	case TypeTag::Trait:
+	case TypeTag::TailArray:
+	{
+		if (load)
+			impconv_load(interp, dst, src, resolved_dst_type_id);
+
+		break;
+	}
+
+	case TypeTag::INVALID:
 		ASSERT_UNREACHABLE;
 	}
 
-	if (skip_evaluation(node->type))
-		return;
+	stack_free_temporary(interp, src);
+}
+
+static MutRange<byte> map_into_for_impconv(Interpreter* interp, const AstNode* node, TypeId resolved_type_id, MutRange<byte> unmapped_into) noexcept
+{
+	if (has_flag(node, AstFlag::Any_SkipConversion))
+		return unmapped_into;
+
+	const TypeKind kind = static_cast<TypeKind>(node->type_kind);
+
+	u64 required_bytes;
+
+	u32 required_align;
+
+	if (kind == TypeKind::Value)
+	{
+		const TypeMetrics metrics = type_metrics_from_id(interp->types, resolved_type_id);
+
+		required_bytes = metrics.size;
+
+		required_align = metrics.align;
+	}
+	else
+	{
+		ASSERT_OR_IGNORE(kind == TypeKind::MutLocation || kind == TypeKind::ImmutLocation);
+
+		required_bytes = 16;
+
+		required_align = 16;
+	}
+
+	return stack_alloc_temporary(interp, required_bytes, required_align);
+}
+
+static void ensure_load(AstNode* node) noexcept
+{
+	ASSERT_OR_IGNORE(static_cast<TypeKind>(node->type_kind) != TypeKind::INVALID);
+
+	if (static_cast<TypeKind>(node->type_kind) != TypeKind::Value)
+		node->flags |= AstFlag::Any_LoadResult;
+}
+
+// Checks whether `node`'s type requires an implicit conversion to conform to
+// `expected_type_id` and `expected_kind`, and stores this information in
+// `node`'s flags (`AstFlag::Any_NoConversion`).
+// In case `expected_type` is dependent, `TypeId::INVALID` is passed for
+// `expected_type_id`.
+// Returns `false` if the conversion is illegal, `true` otherwise.
+// In particular, even when `true` is returned, the conversion may still be
+// illegal if dependent types are involved.
+static bool check_and_set_impconv(Interpreter* interp, AstNode* node, DependentTypeId expected_type, TypeKind expected_kind) noexcept
+{
+	const TypeKind kind = static_cast<TypeKind>(node->type_kind);
+
+	ASSERT_OR_IGNORE(kind != TypeKind::INVALID && expected_kind != TypeKind::INVALID);
+
+	ASSERT_OR_IGNORE(is_dependent(expected_type) || completed(expected_type) != TypeId::CHECKING);
+
+	if (!kind_is_convertible_to_from(expected_kind, kind))
+		return false;
+
+	bool skip_conversion = kind == TypeKind::Value || expected_kind != TypeKind::Value;
+
+	if (is_dependent(node->type) || is_dependent(expected_type))
+		skip_conversion = false;
+	else if (type_can_implicitly_convert_from_to(interp->types, completed(node->type), completed(expected_type)))
+		skip_conversion &= is_same_type(interp->types, completed(node->type), completed(expected_type));
+	else
+		return false;
+
+	if (skip_conversion)
+		node->flags |= AstFlag::Any_SkipConversion;
+	
+	if (kind != TypeKind::Value && expected_kind == TypeKind::Value)
+		node->flags |= AstFlag::Any_LoadResult;
+
+	return true;
+}
+
+
+
+static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId resolved_type_id, MutRange<byte> into) noexcept
+{
+	ASSERT_OR_IGNORE(node->type != DependentTypeId::INVALID && static_cast<TypeKind>(node->type_kind) != TypeKind::INVALID);
 
 	switch (node->tag)
 	{
@@ -757,14 +796,24 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> int
 
 	case AstTag::Definition:
 	{
-		const MemberInit init = member_init_from_definition(
-			interp,
-			curr_typechecker_context(interp),
-			selected_arec_index(interp),
-			node,
-			get_definition_info(node),
-			0
-		);
+		const DefinitionInfo info = get_definition_info(node);
+
+		const AstDefinitionData* const attachment = attachment_of<AstDefinitionData>(node);
+
+		MemberInit init{};
+		init.name = attachment->identifier_id;
+		init.source = node->source_id;
+		init.type.complete = attachment->defined_type;
+		init.value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
+		init.completion_context = curr_typechecker_context(interp);
+		init.completion_arec = selected_arec_index(interp);
+		init.is_global = has_flag(node, AstFlag::Definition_IsGlobal);
+		init.is_pub = has_flag(node, AstFlag::Definition_IsPub);
+		init.is_use = has_flag(node, AstFlag::Definition_IsUse);
+		init.is_mut = has_flag(node, AstFlag::Definition_IsMut);
+		init.has_pending_type = attachment->defined_type == DependentTypeId::INVALID;
+		init.has_pending_value = is_some(info.value);
+		init.offset = 0;
 
 		store(into, range::from_object_bytes(&init));
 
@@ -785,12 +834,9 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> int
 
 			if (!has_next_sibling(stmt))
 			{
-				MutRange<byte> mapped_into = map_into_for_impconv(interp, stmt->type, into);
+				const TypeId resolved_stmt_type_id = resolve_type_id(interp, stmt->type);
 
-				evaluate_expr(interp, stmt, mapped_into);
-
-				if (mapped_into.begin() != into.begin())
-					impconv(interp, mapped_into, type_id(stmt->type), into, type_id(node->type), kind(stmt->type) != TypeKind::Value && kind(node->type) == TypeKind::Value, stmt->source_id);
+				evaluate_expr(interp, stmt, resolved_stmt_type_id, into);
 			}
 			else if (stmt->tag == AstTag::Definition)
 			{
@@ -800,26 +846,26 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> int
 
 				AstNode* const value = get_ptr(info.value);
 
-				MutRange<byte> location = lookup_identifier_location_in_arec(interp, block_arec, attachment_of<AstDefinitionData>(stmt)->identifier_id);
+				MutRange<byte> unmapped_location = lookup_identifier_location_in_arec(interp, block_arec, attachment_of<AstDefinitionData>(stmt)->identifier_id);
 
-				const TypeId defined_type_id = attachment_of<AstDefinitionData>(stmt)->defined_type_id;
+				const DependentTypeId defined_type = attachment_of<AstDefinitionData>(stmt)->defined_type;
 
-				const TypeRef defined_type_ref = type_ref(defined_type_id, TypeKind::Value, false, is_same_type(interp->types, defined_type_id, type_id(value->type)), type_tag_from_id(interp->types, defined_type_id) == TypeTag::TypeInfo);
+				const TypeId resolved_value_type_id = resolve_type_id(interp, stmt->type);
 
-				MutRange<byte> definition_into = map_into_for_impconv(interp, defined_type_ref, location);
+				MutRange<byte> mapped_location = map_into_for_impconv(interp, value, resolved_value_type_id, unmapped_location);
 
-				evaluate_expr(interp, value, definition_into);
+				evaluate_expr(interp, value, resolved_value_type_id, mapped_location);
 
-				if (definition_into.begin() != location.begin())
-					impconv(interp, definition_into, type_id(value->type), location, defined_type_id, kind(value->type) != TypeKind::Value, value->source_id);
+				if (mapped_location.begin() != unmapped_location.begin())
+					impconv(interp, unmapped_location, resolve_type_id(interp, defined_type), mapped_location.immut(), resolved_value_type_id, value);
 			}
 			else
 			{
-				ASSERT_OR_IGNORE(type_tag_from_id(interp->types, type_id(stmt->type)) == TypeTag::Void || type_tag_from_id(interp->types, type_id(stmt->type)) == TypeTag::Definition);
+				const TypeId resolved_stmt_type_id = resolve_type_id(interp, stmt->type);
 
-				MemberInit unused;
+				ASSERT_OR_IGNORE(type_tag_from_id(interp->types, resolved_stmt_type_id) == TypeTag::Void);
 
-				evaluate_expr(interp, stmt, MutRange{ &unused, 1 }.as_mut_byte_range());
+				evaluate_expr(interp, stmt, resolved_stmt_type_id, MutRange<byte>{});
 			}
 		}
 
@@ -838,7 +884,7 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> int
 		{
 			Callable callable{};
 			callable.is_builtin = false;
-			callable.func_type_id_bits = static_cast<u32>(type_id(node->type));
+			callable.func_type_id_bits = static_cast<u32>(resolve_type_id(interp, node->type));
 			callable.code.ast = id_from_ast_node(interp->asts, get_ptr(info.body));
 
 			store(into, range::from_object_bytes(&callable));
@@ -853,9 +899,7 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> int
 
 	case AstTag::Identifer:
 	{
-		MutRange<byte> location = lookup_identifier_location(interp, attachment_of<AstIdentifierData>(node)->identifier_id);
-
-		ASSERT_OR_IGNORE(type_metrics_from_id(interp->types, type_id(node->type)).size == location.count());
+		Range<byte> location = lookup_identifier_location(interp, attachment_of<AstIdentifierData>(node)->identifier_id).immut();
 
 		store(into, range::from_object_bytes(&location));
 
@@ -888,24 +932,30 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> int
 
 		AstNode* const callee = next(&args);
 
+		const TypeKind kind = static_cast<TypeKind>(callee->type_kind);
+
+		const TypeId resolved_callee_type_id = resolve_type_id(interp, callee->type);
+
 		Callable callee_value;
 
-		if (kind(callee->type) == TypeKind::Value)
+		// We sidestep impconv here, as callables cannot undergo implicit
+		// conversions other than loads, which are directly implemented here.
+		if (kind == TypeKind::Value)
 		{
-			evaluate_expr(interp, callee, MutRange{ &callee_value, 1 }.as_mut_byte_range());
+			evaluate_expr(interp, callee, resolved_callee_type_id, MutRange{ &callee_value, 1 }.as_mut_byte_range());
 		}
 		else
 		{
-			ASSERT_OR_IGNORE(kind(callee->type) == TypeKind::ImmutLocation || kind(callee->type) == TypeKind::MutLocation);
+			ASSERT_OR_IGNORE(kind == TypeKind::ImmutLocation || kind == TypeKind::MutLocation);
 
 			MutRange<byte> callee_location{};
 
-			evaluate_expr(interp, callee, MutRange{ &callee_location, 1 }.as_mut_byte_range());
+			evaluate_expr(interp, callee, resolved_callee_type_id, MutRange{ &callee_location, 1 }.as_mut_byte_range());
 
 			callee_value = *bytes_as<Callable>(callee_location);
 		}
 
-		const FuncType* const callee_structure = static_cast<const FuncType*>(simple_type_structure_from_id(interp->types, type_id(callee->type)));
+		const FuncType* const callee_structure = static_cast<const FuncType*>(simple_type_structure_from_id(interp->types, resolved_callee_type_id));
 
 		ASSERT_OR_IGNORE(callee_structure->param_count < 64);
 
@@ -965,75 +1015,73 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> int
 
 			ASSERT_OR_IGNORE(!arg_info.is_global && !arg_info.has_pending_type && !arg_info.has_pending_value);
 
-			const u64 arg_size = type_metrics_from_id(interp->types, arg_info.type.complete).size;
+			const TypeId resolved_arg_slot_type_id = resolve_type_id(interp, arg_info.type.complete);
 
-			MutRange<byte> arg_slot = MutRange{ signature_arec->attachment + arg_info.offset, arg_size };
+			const TypeId resolved_arg_value_type_id = resolve_type_id(interp, arg->type);
 
-			MutRange<byte> arg_into = map_into_for_impconv(interp, arg->type, arg_slot);
+			const u64 arg_slot_size = type_metrics_from_id(interp->types, resolved_arg_slot_type_id).size;
 
-			evaluate_expr(interp, arg, arg_into);
+			MutRange<byte> unmapped_arg_slot = MutRange{ signature_arec->attachment + arg_info.offset, arg_slot_size };
 
-			if (arg_into.begin() != arg_slot.begin())
-				impconv(interp, arg_into, type_id(arg->type), arg_slot, arg_info.type.complete, kind(arg->type) != TypeKind::Value, arg->source_id);
+			MutRange<byte> mapped_arg_slot = map_into_for_impconv(interp, arg, resolved_arg_value_type_id, unmapped_arg_slot);
+
+			evaluate_expr(interp, arg, resolved_arg_value_type_id, mapped_arg_slot);
+
+			if (mapped_arg_slot.begin() != unmapped_arg_slot.begin())
+				impconv(interp, unmapped_arg_slot, resolved_arg_slot_type_id, mapped_arg_slot.immut(), resolved_arg_value_type_id, arg);
 		}
 
-		if (seen_args != (static_cast<u64>(1) << (callee_structure->param_count & 63)) - 1)
+		const u64 expected_args = (static_cast<u64>(1) << (callee_structure->param_count & 63)) - 1;
+
+		while (seen_args != expected_args)
 		{
-			for (u16 i = 0; i != callee_structure->param_count; ++i)
+			const u16 missing_arg_rank = count_trailing_ones(seen_args);
+
+			MemberInfo arg_info;
+
+			if (!type_member_info_by_rank(interp->types, signature_type_id, missing_arg_rank, &arg_info))
+				ASSERT_UNREACHABLE;
+
+			ASSERT_OR_IGNORE(!arg_info.is_global && !arg_info.has_pending_type && !arg_info.has_pending_value);
+
+			if (arg_info.value.complete == GlobalValueId::INVALID)
 			{
-				if ((seen_args & (static_cast<u64>(1) << i)) != 0)
-					continue;
+				const Range<char8> name = identifier_name_from_id(interp->identifiers, arg_info.name);
 
-				MemberInfo arg_info;
-				
-				if (!type_member_info_by_rank(interp->types, signature_type_id, i, &arg_info))
-					ASSERT_UNREACHABLE;
-
-				ASSERT_OR_IGNORE(!arg_info.has_pending_value && !arg_info.is_global);
-
-				if (arg_info.value.complete == GlobalValueId::INVALID)
-				{
-					const Range<char8> name = identifier_name_from_id(interp->identifiers, arg_info.name);
-
-					source_error(interp->errors, node->source_id, "Missing value for mandatory parameter `%.*s` at position `%u`\n", static_cast<s32>(name.count()), name.begin(), arg_info.rank + 1);
-				}
-
-				Range<byte> default_value = global_value_get(interp->globals, arg_info.value.complete);
-
-				const u64 arg_size = type_metrics_from_id(interp->types, arg_info.type.complete).size;
-
-				store(MutRange{ signature_arec->attachment + arg_info.offset, arg_size }, default_value);
+				source_error(interp->errors, node->source_id, "Missing value for mandatory parameter `%.*s` at position `%u`\n", static_cast<s32>(name.count()), name.begin(), arg_info.rank + 1);
 			}
+
+			const TypeId resolved_arg_slot_type_id = resolve_type_id(interp, arg_info.type.complete);
+
+			Range<byte> default_value = global_value_get(interp->globals, arg_info.value.complete);
+
+			const u64 arg_size = type_metrics_from_id(interp->types, resolved_arg_slot_type_id).size;
+
+			store(MutRange{ signature_arec->attachment + arg_info.offset, arg_size }, default_value);
+
+			seen_args |= static_cast<u64>(1) << missing_arg_rank;
 		}
 
 		const s32 restore_arec = select_arec(interp, arec_index(interp, signature_arec));
 
 		if (callee_value.is_builtin)
 		{
-			// TODO: This is missing e.g. conversion from `CompInteger` to
-			//       other integer types.
 			interp->builtin_values[callee_value.code.ordinal](interp, signature_arec, node, into);
 		}
 		else
 		{
 			AstNode* const body = ast_node_from_id(interp->asts, callee_value.code.ast);
 
-			TypeRef mapped_type = body->type;
+			const TypeId resolved_body_type_id = resolve_type_id(interp, body->type);
 
-			// TODO: This is a really weird use of `check_and_set_impconv`. It
-			//       is really intended to run during typechking, but this is a
-			//       bit of a weird case. Maybe `AstTag::Call` nodes should
-			//       have an attachment storing this? That would also make it
-			//       safe with builtin calls, which are currently scuffed.
-			if (!check_and_set_impconv(interp, &mapped_type, type_id(node->type), kind(node->type)))
-				ASSERT_UNREACHABLE;
+			// We need to map `into` here, to model the conversion from the
+			// body's type to the declared return type.
+			MutRange<byte> mapped_into = map_into_for_impconv(interp, body, resolved_body_type_id, into);
 
-			MutRange<byte> mapped_into = map_into_for_impconv(interp, mapped_type, into);
-
-			evaluate_expr(interp, body, mapped_into);
+			evaluate_expr(interp, body, resolved_type_id, mapped_into);
 
 			if (mapped_into.begin() != into.begin())
-				impconv(interp, mapped_into, type_id(body->type), into, type_id(node->type), kind(node->type) == TypeKind::Value && kind(body->type) != TypeKind::Value, node->source_id);
+				impconv(interp, into, resolved_type_id, mapped_into.immut(), resolved_body_type_id, body);
 		}
 
 		pop_arec(interp);
@@ -1047,7 +1095,11 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> int
 	{
 		AstNode* const lhs = first_child_of(node);
 
-		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, type_id(lhs->type));
+		const TypeKind lhs_kind = static_cast<TypeKind>(lhs->type_kind);
+
+		const TypeId resolved_lhs_type_id = resolve_type_id(interp, lhs->type);
+
+		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, resolved_lhs_type_id);
 
 		AstNode* const rhs = next_sibling_of(lhs);
 
@@ -1059,15 +1111,16 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> int
 		{
 			TypeId lhs_defined_type_id;
 
-			if (kind(lhs->type) == TypeKind::Value)
+			// Load without impconv, since no other conversion can happen here.
+			if (lhs_kind == TypeKind::Value)
 			{
-				evaluate_expr(interp, lhs, MutRange{ &lhs_defined_type_id, 1 }.as_mut_byte_range());
+				evaluate_expr(interp, lhs, resolved_lhs_type_id, range::from_object_bytes_mut(&lhs_defined_type_id));
 			}
 			else
 			{
 				MutRange<byte> lhs_defined_type_id_location;
 
-				evaluate_expr(interp, lhs, MutRange{ &lhs_defined_type_id_location, 1 }.as_mut_byte_range());
+				evaluate_expr(interp, lhs, resolved_lhs_type_id, range::from_object_bytes_mut(&lhs_defined_type_id_location));
 
 				ASSERT_OR_IGNORE(lhs_defined_type_id_location.count() == sizeof(lhs_defined_type_id));
 
@@ -1096,7 +1149,7 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> int
 
 			MemberInfo info;
 
-			const bool member_found = type_member_info_by_name(interp->types, type_id(lhs->type), member_identifier, &info);
+			const bool member_found = type_member_info_by_name(interp->types, resolved_lhs_type_id, member_identifier, &info);
 
 			ASSERT_OR_IGNORE(member_found);
 
@@ -1120,9 +1173,9 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> int
 
 				u32 lhs_into_align;
 
-				if (kind(lhs->type) == TypeKind::Value)
+				if (lhs_kind == TypeKind::Value)
 				{
-					const TypeMetrics metrics = type_metrics_from_id(interp->types, type_id(lhs->type));
+					const TypeMetrics metrics = type_metrics_from_id(interp->types, resolved_lhs_type_id);
 
 					lhs_into_size = metrics.size;
 
@@ -1139,11 +1192,11 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> int
 
 				MutRange<byte> lhs_into = stack_alloc_temporary(interp, lhs_into_size, lhs_into_align);
 
-				evaluate_expr(interp, lhs, lhs_into);
+				evaluate_expr(interp, lhs, resolved_lhs_type_id, lhs_into);
 
 				MutRange<byte> lhs_value;
 
-				if (kind(lhs->type) == TypeKind::Value)
+				if (lhs_kind == TypeKind::Value)
 				{
 					lhs_value = lhs_into;
 				}
@@ -1152,9 +1205,9 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> int
 					lhs_value = *bytes_as<MutRange<byte>>(lhs_value);
 				}
 
-				store(into, lhs_value.subrange(info.offset, type_metrics_from_id(interp->types, info.type.complete).size));
+				store(into, lhs_value.subrange(info.offset, type_metrics_from_id(interp->types, resolved_type_id).size));
 
-				stack_free_temporary(interp, lhs_into);
+				stack_free_temporary(interp, lhs_into.immut());
 			}
 		}
 
@@ -1255,27 +1308,33 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, MutRange<byte> int
 	ASSERT_UNREACHABLE;
 }
 
+static TypeId typecheck_dependent_expr(Interpreter* interp, AstNode* node) noexcept
+{
+	(void) interp;
 
+	(void) node;
 
-// Sets the `type` field of `node` and all its children.
-// Returns `true` if `node` or any of its children has a dependent type or
-// value, `false` otherwise.
+	TODO("Implement typecheck_dependent_expr.");
+}
+
 static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 {
-	const TypeId prev_type_id = type_id(node->type);
+	const DependentTypeId prev_type_id = node->type;
 
-	if (prev_type_id == TypeId::CHECKING)
+	if (!is_dependent(prev_type_id) && completed(prev_type_id) == TypeId::CHECKING)
 		source_error(interp->errors, node->source_id, "Cyclic type dependency detected during typechecking.\n");
-	else if (prev_type_id != TypeId::INVALID)
-		return has_dependent_value(node->type) || type_id(node->type) == TypeId::DEPENDENT;
+	
+	if (prev_type_id != DependentTypeId::INVALID)
+		return has_flag(node, AstFlag::Any_HasDependentValue) || is_dependent(node->type);
 
-	node->type = type_ref(TypeId::CHECKING, TypeKind::INVALID, false, false, false);
+	node->type = completed_type_id(TypeId::CHECKING);
 
 	switch (node->tag)
 	{
 	case AstTag::Builtin:
 	{
-		node->type = type_ref(interp->builtin_type_ids[static_cast<u8>(node->flags)], TypeKind::Value, false, false, false);
+		node->type = completed_type_id(interp->builtin_type_ids[static_cast<u8>(node->flags)]);
+		node->type_kind = static_cast<u8>(TypeKind::Value);
 
 		return false;
 	}
@@ -1284,9 +1343,9 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 	{
 		DefinitionInfo info = get_definition_info(node);
 
-		TypeId annotated_type_id = TypeId::INVALID;
+		DependentTypeId defined_type = DependentTypeId::INVALID;
 
-		bool is_dependent = false;
+		bool dependent = false;
 
 		if (is_some(info.type))
 		{
@@ -1294,29 +1353,33 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 			const bool type_is_dependent = typecheck_expr(interp, type);
 
-			if (!check_and_set_impconv(interp, &type->type, simple_type(interp->types, TypeTag::Type, {}), TypeKind::Value))
+			const TypeKind kind = static_cast<TypeKind>(type->type_kind);
+
+			const TypeId type_type_id = simple_type(interp->types, TypeTag::Type, {});
+
+			if (!check_and_set_impconv(interp, type, completed_type_id(type_type_id), TypeKind::Value))
 				source_error(interp->errors, type->source_id, "Type annotation must be of type `Type`.\n");
 
 			if (type_is_dependent)
 			{
-				annotated_type_id = TypeId::DEPENDENT;
+				defined_type = dependent_type_id(id_from_ast_node(interp->asts, type));
 			}
-			else if (kind(type->type) == TypeKind::Value)
+			else if (kind == TypeKind::Value)
 			{
-				evaluate_expr(interp, type, MutRange{ &annotated_type_id, 1 }.as_mut_byte_range());
+				evaluate_expr(interp, type, type_type_id, range::from_object_bytes_mut(&defined_type));
 			}
 			else
 			{
 				MutRange<byte> annotated_type_id_location{};
 
-				evaluate_expr(interp, type, MutRange{ &annotated_type_id_location, 1 }.as_mut_byte_range());
+				evaluate_expr(interp, type, type_type_id, range::from_object_bytes_mut(&annotated_type_id_location));
 
-				annotated_type_id = *bytes_as<TypeId>(annotated_type_id_location);
+				defined_type = *bytes_as<DependentTypeId>(annotated_type_id_location);
 			}
 
-			attachment_of<AstDefinitionData>(node)->defined_type_id = annotated_type_id;
+			attachment_of<AstDefinitionData>(node)->defined_type = defined_type;
 
-			is_dependent |= type_is_dependent;
+			dependent |= type_is_dependent;
 		}
 
 		if (is_some(info.value))
@@ -1326,30 +1389,31 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 			const bool value_is_dependent = typecheck_expr(interp, value);
 
 			if (is_none(info.type))
-				attachment_of<AstDefinitionData>(node)->defined_type_id = type_id(value->type);
-
-			else if (!check_and_set_impconv(interp, &value->type, annotated_type_id, TypeKind::Value))
+				attachment_of<AstDefinitionData>(node)->defined_type = value->type;
+			else if (!check_and_set_impconv(interp, value, defined_type, TypeKind::Value))
 				source_error(interp->errors, value->source_id, "Cannot convert definition value to explicitly annotated type.\n");
 
-			is_dependent |= value_is_dependent;
+			dependent |= value_is_dependent;
 		}
 
-		node->type = type_ref(simple_type(interp->types, TypeTag::Definition, {}), TypeKind::Value, is_dependent, false, false);
+		node->type = completed_type_id(simple_type(interp->types, TypeTag::Definition, {}));
+		node->type_kind = static_cast<u8>(TypeKind::Value);
 
-		return is_dependent;
+		if (dependent)
+			node->flags |= AstFlag::Any_HasDependentValue;
+
+		return dependent;
 	}
 
 	case AstTag::Block:
 	{
-		bool is_dependent = false;
-
-		AstNode* last_stmt = nullptr;
+		bool dependent = false;
 
 		const TypeId scope_type_id = create_open_type(interp->types, curr_typechecker_context(interp), node->source_id, false);
 
 		attachment_of<AstBlockData>(node)->scope_type_id = scope_type_id;
 
-		u64 scope_offset = 0;
+		u64 offset_in_scope = 0;
 
 		// Initial alignment is 8, since scopes are allocated in
 		// `Interpreter.arecs`, where they are always aligned to 8 bytes.
@@ -1364,27 +1428,47 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 		AstDirectChildIterator stmts = direct_children_of(node);
 
+		AstNode* last_stmt = nullptr;
+
 		while (has_next(&stmts))
 		{
 			AstNode* const stmt = next(&stmts);
 
-			is_dependent |= typecheck_expr(interp, stmt);
+			dependent |= typecheck_expr(interp, stmt);
+
+			if (!has_next_sibling(stmt))
+			{
+				last_stmt = stmt;
+
+				break;
+			}
 
 			if (stmt->tag == AstTag::Definition)
 			{
-				const TypeId defined_type_id = attachment_of<AstDefinitionData>(stmt)->defined_type_id;
+				const AstDefinitionData* const attachment = attachment_of<AstDefinitionData>(stmt);
 
-				const TypeMetrics metrics = type_metrics_from_id(interp->types, defined_type_id);
+				ASSERT_OR_IGNORE(attachment->defined_type != DependentTypeId::INVALID);
 
-				scope_offset = next_multiple(scope_offset, static_cast<u64>(metrics.align));
+				const TypeMetrics metrics = dependent_member_metrics(interp, attachment->defined_type);
 
-				// Manually remove the value from the created `MemberInit`,
-				// since block members are never global (?), and need no
-				// default value, as their value is set during block
-				// execution anyways.
-				MemberInit init = member_init_from_definition(interp, curr_typechecker_context(interp), -1, stmt, get_definition_info(stmt), scope_offset);
-				init.has_pending_value = false;
+				offset_in_scope = next_multiple(offset_in_scope, static_cast<u64>(metrics.align));
+
+				MemberInit init{};
+				init.name = attachment->identifier_id;
+				init.source = node->source_id;
+				init.type.complete = is_dependent(attachment->defined_type)
+					? completed_type_id(simple_type(interp->types, TypeTag::Dependent, {}))
+					: attachment->defined_type;
 				init.value.complete = GlobalValueId::INVALID;
+				init.completion_context = curr_typechecker_context(interp);
+				init.completion_arec = selected_arec_index(interp);
+				init.is_global = has_flag(node, AstFlag::Definition_IsGlobal);
+				init.is_pub = has_flag(node, AstFlag::Definition_IsPub);
+				init.is_use = has_flag(node, AstFlag::Definition_IsUse);
+				init.is_mut = has_flag(node, AstFlag::Definition_IsMut);
+				init.has_pending_type = false;
+				init.has_pending_value = false;
+				init.offset = offset_in_scope;
 
 				if (init.is_global)
 					source_error(interp->errors, stmt->source_id, "Block-level globals are not currently supported.\n");
@@ -1393,7 +1477,7 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 				add_open_type_member(interp->types, scope_type_id, init);
 
-				scope_offset += metrics.size;
+				offset_in_scope += metrics.size;
 
 				if (metrics.align > scope_align)
 					scope_align = metrics.align;
@@ -1404,43 +1488,35 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 				scope_rank += 1;
 			}
 
-			if (has_next_sibling(stmt))
+			if (!is_dependent(stmt->type))
 			{
-				const TypeTag stmt_result_tag = type_tag_from_id(interp->types, type_id(stmt->type));
+				const TypeTag stmt_result_tag = type_tag_from_id(interp->types, completed(stmt->type));
 
 				if (stmt_result_tag != TypeTag::Void && stmt_result_tag != TypeTag::Definition)
-					source_error(interp->errors, stmt->source_id, "Non-trailing expression in block must be of type `Void` or `Definition`.\n");
+					source_error(interp->errors, stmt->source_id, "All but the last expression in a block must be of type `Void` or `Definition`.\n");
 			}
-
-			last_stmt = stmt;
 		}
 
-		close_open_type(interp->types, scope_type_id, scope_offset, scope_align, next_multiple(scope_offset, static_cast<u64>(scope_align)));
+		close_open_type(interp->types, scope_type_id, offset_in_scope, scope_align, next_multiple(offset_in_scope, static_cast<u64>(scope_align)));
 
-		if (last_stmt == nullptr)
-		{
-			node->type = type_ref(simple_type(interp->types, TypeTag::Void, {}), TypeKind::Value, false, false, false);
-		}
-		else
-		{
-			const TypeRef last_stmt_type = last_stmt->type;
+		node->type = last_stmt == nullptr
+			? completed_type_id(simple_type(interp->types, TypeTag::Void, {}))
+			: last_stmt->type;
+		node->type_kind = static_cast<u8>(TypeKind::Value);
 
-			node->type = type_ref(type_id(last_stmt_type), TypeKind::Value, has_dependent_value(last_stmt_type), false, false);
+		ensure_load(last_stmt);
 
-			// This will always succeed, since we are casting to the same type,
-			// only potentially weakening it from a location to a value.
-			if (!check_and_set_impconv(interp, &last_stmt->type, type_id(last_stmt->type), TypeKind::Value))
-				ASSERT_UNREACHABLE;
-		}
+		if (dependent)
+			node->flags |= AstFlag::Any_HasDependentValue;
 
 		pop_typechecker_context(interp);
 
-		return is_dependent;
+		return dependent;
 	}
 
 	case AstTag::Func:
 	{
-		bool is_dependent = false;
+		bool dependent = false;
 
 		FuncInfo info = get_func_info(node);
 
@@ -1461,12 +1537,38 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 			ASSERT_OR_IGNORE(param->tag == AstTag::Definition);
 
-			MemberInit init = member_init_from_definition(interp, curr_typechecker_context(interp), selected_arec_index(interp), param, get_definition_info(param), 0);
+			if (has_flag(param, AstFlag::Definition_IsGlobal))
+				source_error(interp->errors, param->source_id, "Function parameter cannot be `global`.\n");
+
+			if (has_flag(param, AstFlag::Definition_IsPub))
+				source_error(interp->errors, param->source_id, "Function parameter cannot be `pub`.\n");
+
+			if (has_flag(param, AstFlag::Definition_IsUse))
+				source_error(interp->errors, param->source_id, "Function parameter cannot be `use`.\n");
+
+			const AstDefinitionData* const attachment = attachment_of<AstDefinitionData>(param);
+
+			const DefinitionInfo param_info = get_definition_info(param);
+
+			MemberInit init{};
+			init.name = attachment->identifier_id;
+			init.source = param->source_id;
+			init.type.pending = id_from_ast_node(interp->asts, is_some(param_info.type) ? get_ptr(param_info.type) : get_ptr(param_info.value));
+			init.value.pending = is_some(param_info.value) ? id_from_ast_node(interp->asts, get_ptr(param_info.value)) : AstNodeId::INVALID;
+			init.completion_context = curr_typechecker_context(interp);
+			init.completion_arec = selected_arec_index(interp);
+			init.is_global = false;
+			init.is_pub = false;
+			init.is_use = false;
+			init.is_mut = has_flag(param, AstFlag::Definition_IsMut);
+			init.has_pending_type = true;
+			init.has_pending_value = is_some(param_info.value);
+			init.offset = 0;
 
 			add_open_type_member(interp->types, unsized_signature_type_id, init);
 
-			if (param_count == 64)
-				source_error(interp->errors, param->source_id, "Exceeded maximum of 64 parameters in function definition.\n");
+			if (param_count == 63)
+				source_error(interp->errors, param->source_id, "Exceeded maximum of 63 parameters in function definition.\n");
 
 			param_count += 1;
 		}
@@ -1489,13 +1591,30 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 		{
 			AstNode* const param = next(&params);
 
-			is_dependent |= typecheck_expr(interp, param);
+			dependent |= typecheck_expr(interp, param);
 
-			const TypeMetrics metrics = type_metrics_from_id(interp->types, type_id(param->type));
+			const TypeMetrics metrics = dependent_member_metrics(interp, param->type);
 
 			signature_offset = next_multiple(signature_offset, static_cast<u64>(metrics.align));
 
-			MemberInit init = member_init_from_definition(interp, curr_typechecker_context(interp), selected_arec_index(interp), param, get_definition_info(param), signature_offset);
+			const AstDefinitionData* const attachment = attachment_of<AstDefinitionData>(param);
+
+			const DefinitionInfo param_info = get_definition_info(param);
+
+			MemberInit init{};
+			init.name = attachment->identifier_id;
+			init.source = param->source_id;
+			init.type.complete = param->type;
+			init.value.pending = is_some(param_info.value) ? id_from_ast_node(interp->asts, get_ptr(param_info.value)) : AstNodeId::INVALID;
+			init.completion_context = curr_typechecker_context(interp);
+			init.completion_arec = selected_arec_index(interp);
+			init.is_global = false;
+			init.is_pub = false;
+			init.is_use = false;
+			init.is_mut = has_flag(param, AstFlag::Definition_IsMut);
+			init.has_pending_type = false;
+			init.has_pending_value = is_some(param_info.value);
+			init.offset = signature_offset;
 
 			signature_offset += metrics.size;
 
@@ -1504,9 +1623,7 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 		close_open_type(interp->types, signature_type_id, signature_offset, signature_align, next_multiple(signature_offset, static_cast<u64>(signature_align)));
 
-		pop_typechecker_context(interp);
-
-		TypeId return_type_id;
+		DependentTypeId return_type_id;
 
 		if (is_some(info.return_type))
 		{
@@ -1516,29 +1633,38 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 			if (return_type_is_dependent)
 			{
-				return_type_id = TypeId::DEPENDENT;
+				return_type_id = dependent_type_id(id_from_ast_node(interp->asts, return_type));
 			}
-			else if (type_tag_from_id(interp->types, type_id(return_type->type)) != TypeTag::Type)
+			else if (type_tag_from_id(interp->types, completed(return_type->type)) != TypeTag::Type)
 			{
 				source_error(interp->errors, return_type->source_id, "Return type declaration must be of type `Type`.\n");
 			}
-			else if (kind(return_type->type) == TypeKind::Value)
-			{
-				evaluate_expr(interp, return_type, MutRange{ &return_type_id, 1 }.as_mut_byte_range());
-			}
 			else
 			{
-				MutRange<byte> return_type_id_location{};
+				const TypeKind kind = static_cast<TypeKind>(return_type->type_kind);
 
-				evaluate_expr(interp, return_type, MutRange{ &return_type_id_location, 1}.as_mut_byte_range());
+				if (kind == TypeKind::Value)
+				{
+					evaluate_expr(interp, return_type, completed(return_type->type), range::from_object_bytes_mut(&return_type_id));
+				}
+				else
+				{
+					ASSERT_OR_IGNORE(kind == TypeKind::ImmutLocation || kind == TypeKind::MutLocation);
 
-				return_type_id = *bytes_as<TypeId>(return_type_id_location);
+					MutRange<byte> return_type_id_location{};
+
+					evaluate_expr(interp, return_type, completed(return_type->type), range::from_object_bytes_mut(&return_type_id_location));
+
+					return_type_id = *bytes_as<DependentTypeId>(return_type_id_location);
+				}
 			}
 		}
 		else
 		{
 			TODO("Implement return type deduction.");
 		}
+
+		pop_typechecker_context(interp);
 
 		if (is_some(info.body))
 		{
@@ -1554,7 +1680,7 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 			pop_typechecker_context(interp);
 
-			if (!check_and_set_impconv(interp, &body->type, return_type_id, TypeKind::Value))
+			if (!check_and_set_impconv(interp, body, return_type_id, TypeKind::Value))
 				source_error(interp->errors, body->source_id, "Cannot convert type of function body to declared return type.\n");
 
 			FuncType func_type{};
@@ -1563,14 +1689,19 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 			func_type.return_type_id = return_type_id;
 			func_type.signature_type_id = signature_type_id;
 
-			node->type = type_ref(simple_type(interp->types, TypeTag::Func, range::from_object_bytes(&func_type)), TypeKind::Value, is_dependent, false, false);
+			node->type = completed_type_id(simple_type(interp->types, TypeTag::Func, range::from_object_bytes(&func_type)));
 		}
 		else
 		{
-			node->type = type_ref(simple_type(interp->types, TypeTag::Type, {}), TypeKind::Value, is_dependent, false, false);
+			node->type = completed_type_id(simple_type(interp->types, TypeTag::Type, {}));
 		}
 
-		return is_dependent;
+		node->type_kind = static_cast<u8>(TypeKind::Value);
+
+		if (dependent)
+			node->flags |= AstFlag::Any_HasDependentValue;
+
+		return dependent;
 	}
 
 	case AstTag::Identifer:
@@ -1588,23 +1719,29 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 		const bool member_is_dependent = force_member_type(interp, &info);
 
-		const bool is_dependent = member_is_dependent || !info.is_global;
+		const bool dependent = member_is_dependent || !info.is_global;
 
-		node->type = type_ref(info.type.complete, info.is_mut ? TypeKind::MutLocation : TypeKind::ImmutLocation, is_dependent, false, false);
+		node->type = info.type.complete;
+		node->type_kind = static_cast<u8>(info.is_mut ? TypeKind::MutLocation : TypeKind::ImmutLocation);
 
-		return is_dependent;
+		if (dependent)
+			node->flags |= AstFlag::Any_HasDependentValue;
+
+		return dependent;
 	}
 
 	case AstTag::LitInteger:
 	{
-		node->type = type_ref(simple_type(interp->types, TypeTag::CompInteger, {}), TypeKind::Value, false, false, false);
+		node->type = completed_type_id(simple_type(interp->types, TypeTag::CompInteger, {}));
+		node->type_kind = static_cast<u8>(TypeKind::Value);
 
 		return false;
 	}
 
 	case AstTag::LitString:
 	{
-		node->type = type_ref(global_value_type(interp->globals, attachment_of<AstLitStringData>(node)->string_value_id), TypeKind::ImmutLocation, false, false, false);
+		node->type = completed_type_id(global_value_type(interp->globals, attachment_of<AstLitStringData>(node)->string_value_id));
+		node->type_kind = static_cast<u8>(TypeKind::ImmutLocation);
 
 		return false;
 	}
@@ -1619,21 +1756,21 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 		AstNode* const callee = next(&args);
 
-		bool is_dependent = typecheck_expr(interp, callee);
+		bool dependent = typecheck_expr(interp, callee);
 
-		if (is_dependent)
+		if (is_dependent(callee->type))
 		{
-			TODO("Implement typechecking for calls on dependent callee.");
+			TODO("Implement typechecking for calls on callee of dependent type");
 		}
 		else
 		{
-			const TypeTag callee_type_tag = type_tag_from_id(interp->types, type_id(callee->type));
+			const TypeTag callee_type_tag = type_tag_from_id(interp->types, completed(callee->type));
 
 			if (callee_type_tag != TypeTag::Func && callee_type_tag != TypeTag::Builtin)
 				source_error(interp->errors, node->source_id, "Expected `Function` or `Builtin` as left-hand-side of call.\n");
 
-			const FuncType* const callee_structure = static_cast<const FuncType*>(simple_type_structure_from_id(interp->types, type_id(callee->type)));
-
+			const FuncType* const callee_structure = static_cast<const FuncType*>(simple_type_structure_from_id(interp->types, completed(callee->type)));
+	
 			u16 arg_rank = 0;
 
 			u64 seen_args = 0;
@@ -1695,16 +1832,21 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 				const bool arg_is_dependent = typecheck_expr(interp, arg);
 
-				is_dependent |= param_is_dependent | arg_is_dependent;
+				dependent |= param_is_dependent | arg_is_dependent;
 
-				if (!check_and_set_impconv(interp, &arg->type, param_info.type.complete, TypeKind::Value))
+				if (!check_and_set_impconv(interp, arg, param_info.type.complete, TypeKind::Value))
 					source_error(interp->errors, arg->source_id, "Cannot convert function argument to declared parameter type.\n");
 			}
 
-			node->type = type_ref(callee_structure->return_type_id, TypeKind::Value, is_dependent, false, false);
+			node->type = callee_structure->return_type_id;
 		}
 
-		return is_dependent;
+		node->type_kind = static_cast<u8>(TypeKind::Value);
+
+		if (dependent)
+			node->flags |= AstFlag::Any_HasDependentValue;
+
+		return dependent;
 	}
 
 	case AstTag::OpMember:
@@ -1713,14 +1855,25 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 		const bool lhs_is_dependent = typecheck_expr(interp, lhs);
 
-		bool is_dependent = lhs_is_dependent;
-
-		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, type_id(lhs->type));
-
 		AstNode* const rhs = next_sibling_of(lhs);
 
 		if (rhs->tag != AstTag::Identifer)
 			source_error(interp->errors, rhs->source_id, "Right-hand-side of `.` must be an identifier.\n");
+
+		if (is_dependent(lhs->type))
+		{
+			node->type = dependent_type_id(id_from_ast_node(interp->asts, node));
+			node->type_kind = static_cast<u8>(TypeKind::MutLocation);
+			node->flags |= AstFlag::Any_HasDependentValue;
+
+			return true;
+		}
+
+		bool dependent = lhs_is_dependent;
+
+		const TypeId lhs_type_id = completed(lhs->type);
+
+		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_type_id);
 
 		const IdentifierId member_identifier = attachment_of<AstIdentifierData>(rhs)->identifier_id;
 
@@ -1728,21 +1881,27 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 		{
 			if (lhs_is_dependent)
 			{
-				node->type = type_ref(TypeId::DEPENDENT, TypeKind::MutLocation, true, false, false);
+				node->type = dependent_type_id(id_from_ast_node(interp->asts, node));
+				node->type_kind = static_cast<u8>(TypeKind::MutLocation);
+				node->flags |= AstFlag::Any_HasDependentValue;
+
+				return true;
 			}
 			else
 			{
+				const TypeId type_type_id = simple_type(interp->types, TypeTag::Type, {});
+
 				TypeId lhs_defined_type_id;
 
-				if (kind(lhs->type) == TypeKind::Value)
+				if (static_cast<TypeKind>(lhs->type_kind) == TypeKind::Value)
 				{
-					evaluate_expr(interp, lhs, MutRange{ &lhs_defined_type_id, 1 }.as_mut_byte_range());
+					evaluate_expr(interp, lhs, type_type_id, range::from_object_bytes_mut(&lhs_defined_type_id));
 				}
 				else
 				{
 					MutRange<byte> lhs_defined_type_id_location;
 
-					evaluate_expr(interp, lhs, MutRange{ &lhs_defined_type_id_location, 1 }.as_mut_byte_range());
+					evaluate_expr(interp, lhs, type_type_id, range::from_object_bytes_mut(&lhs_defined_type_id_location));
 
 					lhs_defined_type_id = *bytes_as<TypeId>(lhs_defined_type_id_location);
 				}
@@ -1765,16 +1924,20 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 				const bool member_is_dependent = force_member_type(interp, &info);
 
-				is_dependent |= member_is_dependent;
+				dependent |= member_is_dependent;
 
-				node->type = type_ref(info.type.complete, info.is_mut ? TypeKind::MutLocation : TypeKind::ImmutLocation, member_is_dependent, false, false);
+				node->type = info.type.complete;
+				node->type_kind = static_cast<u8>(info.is_mut ? TypeKind::MutLocation : TypeKind::ImmutLocation);
+
+				if (dependent)
+					node->flags |= AstFlag::Any_HasDependentValue;
 			}
 		}
 		else if (lhs_type_tag == TypeTag::Composite)
 		{
 			MemberInfo info;
 
-			if (!type_member_info_by_name(interp->types, type_id(lhs->type), member_identifier, &info))
+			if (!type_member_info_by_name(interp->types, completed(lhs->type), member_identifier, &info))
 			{
 				const Range<char8> name = identifier_name_from_id(interp->identifiers, member_identifier);
 
@@ -1783,40 +1946,51 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 			const bool member_is_dependent = force_member_type(interp, &info);
 
-			is_dependent |= member_is_dependent;
+			dependent |= member_is_dependent;
 
-			node->type = type_ref(info.type.complete, info.is_mut ? TypeKind::MutLocation : TypeKind::ImmutLocation, member_is_dependent, false, false);
+			node->type = info.type.complete;
+			node->type_kind = static_cast<u8>(info.is_mut ? TypeKind::MutLocation : TypeKind::ImmutLocation);
+			
+			if (dependent)
+				node->flags |= AstFlag::Any_HasDependentValue;
 		}
 		else
 		{
 			source_error(interp->errors, lhs->source_id, "Left-hand-side of `.` must be of `Type` or `Composite `type.\n");
 		}
 
-		return is_dependent;
+		return dependent;
 	}
 
 	case AstTag::OpCmpEQ:
 	{
-		bool is_dependent = false;
+		bool dependent = false;
 
 		AstNode* const lhs = first_child_of(node);
 
-		is_dependent |= typecheck_expr(interp, lhs);
+		dependent |= typecheck_expr(interp, lhs);
 
 		AstNode* const rhs = next_sibling_of(lhs);
 
-		is_dependent |= typecheck_expr(interp, rhs);
+		dependent |= typecheck_expr(interp, rhs);
 
-		const TypeId common_type_id = common_type(interp->types, type_id(lhs->type), type_id(rhs->type));
+		if (!is_dependent(lhs->type) && !is_dependent(rhs->type))
+		{
+			const TypeId common_type_id = common_type(interp->types, completed(lhs->type), completed(rhs->type));
 
-		if (common_type_id == TypeId::INVALID)
-			source_error(interp->errors, node->source_id, "Incompatible operands for `==`\n");
+			if (common_type_id == TypeId::INVALID)
+				source_error(interp->errors, node->source_id, "Incompatible operands for `==`\n");
+		}
 
 		// TODO: Check if there is an `impl CmpEq(common_type_id)`.
 
-		node->type = type_ref(simple_type(interp->types, TypeTag::Boolean, {}), TypeKind::Value, is_dependent, false, false);
+		node->type = completed_type_id(simple_type(interp->types, TypeTag::Boolean, {}));
+		node->type_kind = static_cast<u8>(TypeKind::Value);
+		
+		if (dependent)
+			node->flags |= AstFlag::Any_HasDependentValue;
 
-		return is_dependent;
+		return dependent;
 	}
 
 	case AstTag::File:
@@ -1924,14 +2098,29 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 		if (node->tag != AstTag::Definition)
 			source_error(interp->errors, node->source_id, "Currently only definitions are supported on a file's top-level.\n");
 
-		MemberInit member = member_init_from_definition(interp, file_type_id, -1, node, get_definition_info(node), 0);
-
-		if (member.is_global)
+		if (has_flag(node, AstFlag::Definition_IsGlobal))
 			source_warning(interp->errors, node->source_id, "Redundant 'global' modifier. Top-level definitions are implicitly global.\n");
-		else
-			member.is_global = true;
 
-		add_open_type_member(interp->types, file_type_id, member);
+		const AstDefinitionData* const attachment = attachment_of<AstDefinitionData>(node);
+
+		const DefinitionInfo info = get_definition_info(node);
+
+		MemberInit init{};
+		init.name = attachment->identifier_id;
+		init.source = node->source_id;
+		init.type.pending = id_from_ast_node(interp->asts, node);
+		init.value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
+		init.completion_context = curr_typechecker_context(interp);
+		init.completion_arec = -1;
+		init.is_global = true;
+		init.is_pub = has_flag(node, AstFlag::Definition_IsPub);
+		init.is_use = false;
+		init.is_mut = has_flag(node, AstFlag::Definition_IsMut);
+		init.has_pending_type = true;
+		init.has_pending_value = is_some(info.value);
+		init.offset = 0;
+
+		add_open_type_member(interp->types, file_type_id, init);
 	}
 
 	close_open_type(interp->types, file_type_id, 0, 1, 0);
@@ -1955,7 +2144,7 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 static bool force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 {
 	if (!member->has_pending_type)
-		return member->type.complete == TypeId::DEPENDENT;
+		return is_dependent(member->type.complete);
 
 	ASSERT_OR_IGNORE(member->has_pending_value);
 
@@ -1963,7 +2152,7 @@ static bool force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 
 	const s32 restore_arec = select_arec(interp, member->completion_arec);
 
-	TypeId defined_type_id;
+	DependentTypeId defined_type;
 
 	bool is_dependent = false;
 
@@ -1975,24 +2164,24 @@ static bool force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 
 		is_dependent |= type_is_dependent;
 
-		if (!check_and_set_impconv(interp, &type->type, simple_type(interp->types, TypeTag::Type, {}), TypeKind::Value))
+		if (!check_and_set_impconv(interp, type, completed_type_id(simple_type(interp->types, TypeTag::Type, {})), TypeKind::Value))
 			source_error(interp->errors, type->source_id, "Explicit type annotation of definition must be of type `Type`.\n");
 
 		if (type_is_dependent)
 		{
-			defined_type_id = TypeId::DEPENDENT;
+			defined_type = dependent_type_id(id_from_ast_node(interp->asts, type));
 		}
-		else if (kind(type->type) == TypeKind::Value)
+		else if (static_cast<TypeKind>(type->type_kind) == TypeKind::Value)
 		{
-			evaluate_expr(interp, type, MutRange{ &defined_type_id, 1 }.as_mut_byte_range());
+			evaluate_expr(interp, type, completed(type->type), range::from_object_bytes_mut(&defined_type));
 		}
 		else
 		{
 			MutRange<byte> defined_type_location;
 
-			evaluate_expr(interp, type, MutRange{ &defined_type_location, 1 }.as_mut_byte_range());
+			evaluate_expr(interp, type, completed(type->type), range::from_object_bytes_mut(&defined_type_location));
 
-			defined_type_id = *bytes_as<TypeId>(defined_type_location);
+			defined_type = *bytes_as<DependentTypeId>(defined_type_location);
 		}
 
 		if (member->value.pending != AstNodeId::INVALID)
@@ -2001,7 +2190,7 @@ static bool force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 
 			is_dependent |= typecheck_expr(interp, value);
 
-			if (!check_and_set_impconv(interp, &value->type, defined_type_id, TypeKind::Value))
+			if (!check_and_set_impconv(interp, value, defined_type, TypeKind::Value))
 				source_error(interp->errors, value->source_id, "Definition value cannot be implicitly converted to type of explicit type annotation.\n");
 		}
 	}
@@ -2013,17 +2202,17 @@ static bool force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 
 		is_dependent |= typecheck_expr(interp, value);
 
-		defined_type_id = type_id(value->type);
+		defined_type = value->type;
 	}
 
 	select_arec(interp, restore_arec);
 
 	unset_typechecker_context(interp);
 
-	set_incomplete_type_member_type_by_rank(interp->types, member->surrounding_type_id, member->rank, defined_type_id);
+	set_incomplete_type_member_type_by_rank(interp->types, member->surrounding_type_id, member->rank, defined_type);
 
 	member->has_pending_type = false;
-	member->type.complete = defined_type_id;
+	member->type.complete = defined_type;
 
 	return is_dependent;
 }
@@ -2035,7 +2224,10 @@ static bool force_member_value(Interpreter* interp, MemberInfo* member) noexcept
 
 	const bool type_is_dependent = force_member_type(interp, member);
 
-	ASSERT_OR_IGNORE(!type_is_dependent);
+	if (type_is_dependent)
+		TODO("Handle (default) values of dependently typed members.");
+
+	const TypeId member_type_id = completed(member->type.complete);
 
 	AstNode* const value = ast_node_from_id(interp->asts, member->value.pending);
 
@@ -2043,16 +2235,16 @@ static bool force_member_value(Interpreter* interp, MemberInfo* member) noexcept
 
 	ASSERT_OR_IGNORE(!value_is_dependent);
 
-	if (!check_and_set_impconv(interp, &value->type, member->type.complete, TypeKind::Value))
+	if (!check_and_set_impconv(interp, value, member->type.complete, TypeKind::Value))
 		source_error(interp->errors, member->source, "Definition value cannot be implicitly converted to type of explicit type annotation.\n");
 
-	const TypeMetrics metrics = type_metrics_from_id(interp->types, member->type.complete);
+	const TypeMetrics metrics = type_metrics_from_id(interp->types, member_type_id);
 
-	const GlobalValueId value_id = alloc_global_value(interp->globals, member->type.complete, metrics.size, metrics.align);
+	const GlobalValueId value_id = alloc_global_value(interp->globals, member_type_id, metrics.size, metrics.align);
 
 	MutRange<byte> global_value = global_value_get_mut(interp->globals, value_id);
 
-	MutRange<byte> value_into = map_into_for_impconv(interp, value->type, global_value);
+	MutRange<byte> value_into = map_into_for_impconv(interp, value, member_type_id, global_value);
 
 
 
@@ -2060,10 +2252,10 @@ static bool force_member_value(Interpreter* interp, MemberInfo* member) noexcept
 
 	const s32 restore_arec = select_arec(interp, member->completion_arec);
 
-	if (has_dependent_value(value->type))
-		TODO("Handle dependent default member values.");
+	if (has_flag(value, AstFlag::Any_HasDependentValue))
+		TODO("Handle (default) values of dependently valued members.");
 	else
-		evaluate_expr(interp, value, value_into);
+		evaluate_expr(interp, value, member_type_id, value_into);
 
 	select_arec(interp, restore_arec);
 
@@ -2072,7 +2264,7 @@ static bool force_member_value(Interpreter* interp, MemberInfo* member) noexcept
 
 
 	if (value_into.begin() != global_value.begin())
-		impconv(interp, value_into, type_id(value->type), global_value, member->type.complete, kind(value->type) != TypeKind::Value, value->source_id);
+		impconv(interp, global_value, member_type_id, value_into.immut(), completed(value->type), value);
 
 	set_incomplete_type_member_value_by_rank(interp->types, member->surrounding_type_id, member->rank, value_id);
 
@@ -2100,7 +2292,7 @@ static TypeId make_func_type_from_array(TypePool* types, TypeId return_type_id, 
 
 		MemberInit init{};
 		init.name = params[i].name;
-		init.type.complete = params[i].type;
+		init.type.complete = completed_type_id(params[i].type);
 		init.value.complete = GlobalValueId::INVALID;
 		init.source = SourceId::INVALID;
 		init.is_global = false;
@@ -2122,7 +2314,7 @@ static TypeId make_func_type_from_array(TypePool* types, TypeId return_type_id, 
 	close_open_type(types, signature_type_id, offset, max_align, next_multiple(offset, static_cast<u64>(max_align)));
 
 	FuncType func_type{};
-	func_type.return_type_id = return_type_id;
+	func_type.return_type_id = completed_type_id(return_type_id);
 	func_type.param_count = param_count;
 	func_type.is_proc = false;
 	func_type.signature_type_id = signature_type_id;
@@ -2157,7 +2349,7 @@ static T get_builtin_arg(Interpreter* interp, Arec* arec, IdentifierId identfier
 
 	ASSERT_OR_IGNORE(!info.is_global);
 
-	ASSERT_OR_IGNORE(type_metrics_from_id(interp->types, info.type.complete).size == sizeof(T));
+	ASSERT_OR_IGNORE(type_metrics_from_id(interp->types, completed(info.type.complete)).size == sizeof(T));
 
 	return *reinterpret_cast<T*>(arec->attachment + info.offset);
 }
@@ -2539,7 +2731,7 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 
 		const SourceLocation file_type_location = source_location_from_source_id(interp->reader, file_type_source);
 
-		diag::print_type(interp->log_file, interp->identifiers, interp->types, interp->prelude_type_id, &file_type_location);
+		diag::print_type(interp->log_file, interp->identifiers, interp->types, completed_type_id(interp->prelude_type_id), &file_type_location);
 	}
 }
 
@@ -2607,7 +2799,7 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 
 		const SourceLocation file_type_location = source_location_from_source_id(interp->reader, file_type_source);
 
-		diag::print_type(interp->log_file, interp->identifiers, interp->types, file_type_id, &file_type_location);
+		diag::print_type(interp->log_file, interp->identifiers, interp->types, completed_type_id(file_type_id), &file_type_location);
 	}
 
 	read.source_file->root_type = file_type_id;
@@ -2643,42 +2835,4 @@ const char8* tag_name(Builtin builtin) noexcept
 		ordinal = 0;
 
 	return BUILTIN_NAMES[ordinal];
-}
-
-TypeRef type_ref(TypeId id, TypeKind kind, bool is_dependent_value, bool requires_conversion, bool skip_evaluation) noexcept
-{
-	ASSERT_OR_IGNORE(static_cast<u32>(id) < (static_cast<u32>(1) << (32 - 5)));
-
-	return static_cast<TypeRef>(
-		static_cast<u32>(id) << 5
-	  | static_cast<u32>(skip_evaluation) << 4
-	  | static_cast<u32>(is_dependent_value) << 3
-	  | static_cast<u32>(requires_conversion) << 2
-	  | static_cast<u32>(kind)
-	);
-}
-
-TypeId type_id(TypeRef type) noexcept
-{
-	return TypeId{ static_cast<u32>(type) >> 5 };
-}
-
-TypeKind kind(TypeRef type) noexcept
-{
-	return static_cast<TypeKind>(static_cast<u32>(type) & 3);
-}
-
-bool has_dependent_value(TypeRef type) noexcept
-{
-	return (static_cast<u32>(type) & 8) != 0;
-}
-
-bool requires_implicit_conversion(TypeRef type) noexcept
-{
-	return (static_cast<u32>(type) & 4) != 0;
-}
-
-bool skip_evaluation(TypeRef type) noexcept
-{
-	return (static_cast<u32>(type) & 16) != 0;
 }

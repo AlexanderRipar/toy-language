@@ -21,7 +21,7 @@ namespace diag
 
 	void print_ast(minos::FileHandle out, IdentifierPool* identifiers, AstNode* root, Range<char8> source) noexcept;
 
-	void print_type(minos::FileHandle out, IdentifierPool* identifiers, TypePool* types, TypeId type_id, const SourceLocation* source) noexcept;
+	void print_type(minos::FileHandle out, IdentifierPool* identifiers, TypePool* types, DependentTypeId type_id, const SourceLocation* source) noexcept;
 }
 
 #endif // DIAG_INCLUDE_GUARD

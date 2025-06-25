@@ -16,29 +16,6 @@
 // information.
 enum class TypeId : u32;
 
-// Either a `TypeId` or an index into the pool of deferred types, alongside a
-// bit to indicate assignability.
-// Note that the assignability bit is only meaningful in case this directly
-// stores a `TypeId`. Otherwise, assignability information is stored in the
-// deferred entry, since it is not generally known up-front.
-// The bitwise layout of this type is as follows (with bit 0 being the least
-// significant bit, and bit 31 being the most significant bit):
-//    0..1 : A `TypeKind`.
-//       2 : Set to `1` if the typed expression is might require an implicit
-//           conversion, `0` otherwise.
-//       3 : Set to `1` if the typed expression's value depends on the
-//           surrounding function's argument values, `0` otherwise.
-//       4 : Set to `1` if the typed expression should be evaluated, `0`
-//           otherwise. This being `0` implies that the expression is bound to
-//           a `TypeInfo`, meaning that `evaluate_expr` should be skipped, with
-//           `impconv` doing the real work of copying the expression's `TypeId`
-//           into the unmapped destination.
-//   5..31 : A `TypeId`.
-enum class TypeRef: u32
-{
-	INVALID = 0,
-};
-
 // Id used to identify a particular source code location.
 // This encodes the location's file, line and column. See `SourceReader` for
 // further information.
@@ -48,6 +25,12 @@ enum class SourceId : u32;
 // This includes the values of global variables, as well as default values. See
 // `GlobalValuePool` for further information
 enum class GlobalValueId : u32;
+
+// Representation of either a `TypeId` or the `AstNodeId` of the expression
+// evaluating or typechecking to the type. Access to the contained ids is
+// performed via `is_dependent`, `get_type_id`, `get_ast_node_id`,
+// `is_typecheck`, and `is_evaluate`.
+enum class DependentTypeId : u32;
 
 
 
@@ -476,44 +459,53 @@ enum class AstTag : u8
 };
 
 // Flags specifying tag-specific information for an `AstNode`.
-enum class AstFlag : u8
+enum class AstFlag : u16
 {
 	EMPTY                = 0,
 
-	Definition_IsPub     = 0x01,
-	Definition_IsMut     = 0x02,
-	Definition_IsGlobal  = 0x04,
-	Definition_IsAuto    = 0x08,
-	Definition_IsUse     = 0x10,
-	Definition_HasType   = 0x20,
+	Definition_IsPub            = 0x00'01,
+	Definition_IsMut            = 0x00'02,
+	Definition_IsGlobal         = 0x00'04,
+	Definition_IsAuto           = 0x00'08,
+	Definition_IsUse            = 0x00'10,
+	Definition_HasType          = 0x00'20,
+	Definition_HasDependentType = 0x00'40,
 
-	If_HasWhere          = 0x20,
-	If_HasElse           = 0x01,
+	If_HasWhere                 = 0x00'01,
+	If_HasElse                  = 0x00'02,
 
-	For_HasCondition     = 0x01,
-	For_HasWhere         = 0x20,
-	For_HasStep          = 0x02,
-	For_HasFinally       = 0x04,
+	For_HasWhere                = 0x00'01,
+	For_HasCondition            = 0x00'02,
+	For_HasStep                 = 0x00'04,
+	For_HasFinally              = 0x00'08,
 
-	ForEach_HasWhere     = 0x20,
-	ForEach_HasIndex     = 0x01,
-	ForEach_HasFinally   = 0x02,
+	ForEach_HasWhere            = 0x00'01,
+	ForEach_HasIndex            = 0x00'02,
+	ForEach_HasFinally          = 0x00'04,
 
-	Switch_HasWhere      = 0x20,
+	Switch_HasWhere             = 0x00'20,
 
-	Func_HasExpects      = 0x01,
-	Func_HasEnsures      = 0x02,
-	Func_IsProc          = 0x04,
-	Func_HasReturnType   = 0x08,
-	Func_HasBody         = 0x10,
+	Func_HasExpects             = 0x00'01,
+	Func_HasEnsures             = 0x00'02,
+	Func_IsProc                 = 0x00'04,
+	Func_HasReturnType          = 0x00'08,
+	Func_HasBody                = 0x00'10,
 
-	Trait_HasExpects     = 0x01,
+	Trait_HasExpects            = 0x00'01,
 
-	Impl_HasExpects      = 0x01,
+	Impl_HasExpects             = 0x00'01,
 
-	Catch_HasDefinition  = 0x01,
+	Catch_HasDefinition         = 0x00'01,
 
-	Type_IsMut           = 0x02,
+	Type_IsMut                  = 0x00'02,
+
+	Any_HasDependentValue       = 0x01'00,
+	Any_SkipConversion          = 0x02'00,
+	Any_LoadResult              = 0x04'00,
+
+	INTERNAL_LastSibling        = 0x20'00,
+	INTERNAL_FirstSibling       = 0x40'00,
+	INTERNAL_NoChildren         = 0x80'00,
 };
 
 // Id used to refer to an `AstNode` in the `AstPool`.
@@ -544,35 +536,20 @@ enum class AstNodeId : u32
 // additional siblings can be checked via the `has_next_sibling` function.
 struct AstNode
 {
-	// Values for `internal_flags`. See that for further information.
-	static constexpr u8 FLAG_LAST_SIBLING  = 0x01;
-	static constexpr u8 FLAG_FIRST_SIBLING = 0x02;
-	static constexpr u8 FLAG_NO_CHILDREN   = 0x04;
-
 	// Indicates what kind of AST node is represented. This determines the
 	// meaning of `flags` and the layout and semantics of the trailing data.
 	AstTag tag;
+
+	// Number of four-byte units that this node and its trailing data encompasses.
+	u8 data_dwords : 6;
+
+	// Kind of the node's type. This is really a `TypeKind` enumerant.
+	u8 type_kind : 2;
 
 	// Tag-dependent flags that contain additional information on the AST node.
 	// In particular, for `AstTag::Builtin`, this contains a `Builtin`
 	// enumerant instead of a combination of or'ed flags.
 	AstFlag flags;
-
-	// Number of four-byte units that this node and its trailing data encompasses.
-	u8 data_dwords;
-
-	// A combination of:
-	//
-	// - `FLAG_LAST_SIBLING`, meaning that this node has no further (following)
-	//   siblings.
-	// - `FLAG_FIRST_SIBLING`, meaning that this node has no preceding
-	//   siblings, i.e., it is the first child of its parent. Note that this
-	//   can be combined with `FLAG_LAST_SIBLING` for nodes with no siblings.
-	// - `FLAG_NO_CHILDREN`, meaning that this node has no children.
-	//
-	// These values should not be read directly, and are instead used by
-	// various helper functions and during AST construction.
-	u8 internal_flags;
 
 	// Number of four-byte units that are taken up by this node and its
 	// children. Note that this is thus still meaningful if the node has no
@@ -587,7 +564,7 @@ struct AstNode
 	// address).
 	// Only contains a valid value after typechecking. Before that, it is set
 	// to `type_ref(TypeId::INVALID, false, false)`.
-	TypeRef type;
+	DependentTypeId type;
 
 	// `SourceId` of the node. See `SourceReader` and further details.
 	SourceId source_id;
@@ -772,7 +749,7 @@ struct AstDefinitionData
 	// `IdentifierId` of the definition.
 	IdentifierId identifier_id;
 
-	TypeId defined_type_id;
+	DependentTypeId defined_type;
 };
 
 // Attachment of an `AstNode` with tag `AstTag::Func`.
@@ -911,13 +888,13 @@ struct ForEachInfo
 // Bitwise `or` of two `AstFlag`s
 inline AstFlag operator|(AstFlag lhs, AstFlag rhs) noexcept
 {
-	return static_cast<AstFlag>(static_cast<u8>(lhs) | static_cast<u8>(rhs));
+	return static_cast<AstFlag>(static_cast<u16>(lhs) | static_cast<u16>(rhs));
 }
 
 // Bitwise `and` of two `AstFlag`s
 inline AstFlag operator&(AstFlag lhs, AstFlag rhs) noexcept
 {
-	return static_cast<AstFlag>(static_cast<u8>(lhs) & static_cast<u8>(rhs));
+	return static_cast<AstFlag>(static_cast<u16>(lhs) & static_cast<u16>(rhs));
 }
 
 // Bitwise `set-or` of two `AstFlag`s
@@ -1015,7 +992,7 @@ bool has_next_sibling(const AstNode* node) noexcept;
 
 // Checks whether the given `flag` is set in `node`s `flags` field.
 // If it does, returns `true`, otherwise returns `false`. 
-bool has_flag(AstNode* node, AstFlag flag) noexcept;
+bool has_flag(const AstNode* node, AstFlag flag) noexcept;
 
 // Returns the next sibling of `node`.
 // This function must only be called on `AstNode`s that have a next sibling.
@@ -1379,8 +1356,6 @@ enum class TypeId : u32
 	// typechecking. This is used to avoid circular dependencies leading to
 	// nontermination during typechecking.
 	CHECKING,
-
-	DEPENDENT,
 };
 
 // Tag for discriminating between different kinds of types.
@@ -1483,6 +1458,10 @@ enum class TypeTag : u8
 	// Tag of tail array types. Its structure is represented by a
 	// `ReferenceType`.
 	TailArray,
+
+	// Tag used when calling `type_tag_from_id` with `TypeId::DEPDENDENT`. This
+	// is just a dummy, and must never be passed to `simple_type`.
+	Dependent,
 };
 
 // Allocation metrics returned by `type_metrics_by_id`, describing the size,
@@ -1542,8 +1521,8 @@ struct MemberIterator
 // pending type.
 union DelayableTypeId
 {
-	// Completed `TypeId`.
-	TypeId complete;
+	// Completed `DependentTypeId`.
+	DependentTypeId complete;
 
 	// `AstNodeId` from which the `TypeId` can be evaluated or typechecked,
 	// depending on the context in which this occurs. 
@@ -1774,7 +1753,7 @@ struct ArrayType
 struct FuncType
 {
 	// `TypeId` of the function's return type.
-	TypeId return_type_id;
+	DependentTypeId return_type_id;
 
 	// `TypeId` of the function's signature composite type.
 	TypeId signature_type_id;
@@ -1844,7 +1823,7 @@ void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, 
 // `rank` indicates the type rank of the member in `open_type`, and
 // `member_type_id` is `TypeId` the member will have after this call returns.
 // This call must not be repeated on the same member. 
-void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_id, u16 rank, TypeId member_type_id) noexcept;
+void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_id, u16 rank, DependentTypeId member_type_id) noexcept;
 
 // Set the value of a member that was created with `has_pending_value` set to
 // `true`.
@@ -2095,6 +2074,11 @@ enum class TypeKind : u8
 	MutLocation,
 };
 
+enum class DependentTypeId : u32
+{
+	INVALID = 0,
+};
+
 // Creates an `Interpreter`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `Interpreter` can be freed using
 // `release_interpreter`.
@@ -2113,31 +2097,43 @@ void release_interpreter(Interpreter* interp) noexcept;
 TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noexcept;
 
 
-TypeRef type_ref(TypeId id, TypeKind kind, bool has_dependent_value, bool requires_conversion, bool skip_evaluation) noexcept;
-
-// Extracts the `TypeId` from `id`, which must not be a deferred type (i.e.,
-// `is_deferred(id)` must return `false`).
-TypeId type_id(TypeRef type) noexcept;
-
-// Retrieves `type`'s kind.
-TypeKind kind(TypeRef type) noexcept;
-
-// Checks whether the value of the expression typed by `type` depends on an
-// argument to the surrounding function.
-bool has_dependent_value(TypeRef type) noexcept;
-
-// Checks whether the result of evaluating the expression typed by `type` might
-// require an implicit conversion.
-bool requires_implicit_conversion(TypeRef type) noexcept;
-
-// Checks whether the expression typed by `type` must skipped by
-// `evaluate_expr`.
-bool skip_evaluation(TypeRef type) noexcept;
-
-
 // Retrieves a string representing the given `tag`.
 // If `tag` is not an enumerant of `TypeTag`, it is treated as
 // `TypeTag::INVALID`.
 const char8* tag_name(Builtin builtin) noexcept;
+
+
+inline DependentTypeId dependent_type_id(AstNodeId id) noexcept
+{
+	ASSERT_OR_IGNORE(static_cast<u32>(id) < (static_cast<u32>(1) << 31));
+
+	return static_cast<DependentTypeId>(-static_cast<s32>(id));
+}
+
+inline DependentTypeId completed_type_id(TypeId id) noexcept
+{
+	ASSERT_OR_IGNORE(static_cast<u32>(id) < (static_cast<u32>(1) << 31));
+
+	return static_cast<DependentTypeId>(id);
+}
+
+inline bool is_dependent(DependentTypeId id) noexcept
+{
+	return static_cast<s32>(id) < 0;
+}
+
+inline AstNodeId delayed(DependentTypeId id) noexcept
+{
+	ASSERT_OR_IGNORE(is_dependent(id));
+
+	return static_cast<AstNodeId>(-static_cast<s32>(id));
+}
+
+inline TypeId completed(DependentTypeId id) noexcept
+{
+	ASSERT_OR_IGNORE(!is_dependent(id));
+
+	return static_cast<TypeId>(id);
+}
 
 #endif // PASS_DATA_INCLUDE_GUARD
