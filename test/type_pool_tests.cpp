@@ -1,5 +1,5 @@
 #include "test_helpers.hpp"
-#include "../core/pass_data.hpp"
+#include "../core/core.hpp"
 
 struct DummyTypePool
 {

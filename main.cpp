@@ -1,4 +1,4 @@
-#include "core/pass_data.hpp"
+#include "core/core.hpp"
 #include "diag/diag.hpp"
 
 #include <cstdlib>

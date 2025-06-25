@@ -1,7 +1,7 @@
 #include "diag.hpp"
 
 #include "../infra/minos.hpp"
-#include "../core/pass_data.hpp"
+#include "../core/core.hpp"
 
 static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifiers, const AstNode* node, s32 depth) noexcept
 {

@@ -44,6 +44,6 @@
 - Create a concrete plan of how to implement the interplay between interpreter
   and typechecker.
 - Discuss potential of unified memory pool with the data for all handles
-  currently defined in pass_data.hpp stored at the beginning. The remainder of
+  currently defined in core.hpp stored at the beginning. The remainder of
   the pool can then be uniformly indexed (either as 4- or 8-byte units).
   Maybe this also opens up additional opportunities for simplification.

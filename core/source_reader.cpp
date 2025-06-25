@@ -1,12 +1,13 @@
-#include <cstdlib>
-#include <atomic>
+#include "core.hpp"
 
 #include "../infra/common.hpp"
 #include "../infra/container.hpp"
 #include "../infra/threading.hpp"
 #include "../infra/minos.hpp"
 #include "../infra/hash.hpp"
-#include "pass_data.hpp"
+
+#include <cstdlib>
+#include <atomic>
 
 static u32 hash_file_identity(u64 file_id, u32 device_id) noexcept
 {

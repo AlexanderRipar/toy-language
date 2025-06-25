@@ -637,7 +637,7 @@ intended to avoid useless refactorings.
 - Member functions are only used in container templates (and will eventually be
   eliminated there as well).
 - Constructors are never used.
-- All declarations that are required across modules are put in `pass_data.hpp`
+- All declarations that are required across modules are put in `core.hpp`
 - Each module forward-declares a struct of its name, which is instantiated once
   and acts as a pseudo-global. This struct's definition is kept in the module's
   implementation to avoid over-entangled dependencies.

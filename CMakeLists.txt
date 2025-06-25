@@ -30,7 +30,7 @@ set(INFRA_SOURCES
 )
 
 set(CORE_SOURCES
-	core/pass_data.hpp
+	core/core.hpp
 	core/ast_pool.cpp
 	core/comp_values.cpp
 	core/config.cpp

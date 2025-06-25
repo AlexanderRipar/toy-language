@@ -2,7 +2,7 @@
 #define DIAG_INCLUDE_GUARD
 
 #include "../infra/common.hpp"
-#include "../core/pass_data.hpp"
+#include "../core/core.hpp"
 
 namespace diag
 {

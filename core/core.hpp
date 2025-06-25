@@ -1,5 +1,5 @@
-#ifndef PASS_DATA_INCLUDE_GUARD
-#define PASS_DATA_INCLUDE_GUARD
+#ifndef CORE_INCLUDE_GUARD
+#define CORE_INCLUDE_GUARD
 
 #include "../infra/common.hpp"
 #include "../infra/alloc_pool.hpp"
@@ -2136,4 +2136,4 @@ inline TypeId completed(DependentTypeId id) noexcept
 	return static_cast<TypeId>(id);
 }
 
-#endif // PASS_DATA_INCLUDE_GUARD
+#endif // CORE_INCLUDE_GUARD
