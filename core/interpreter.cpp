@@ -1560,7 +1560,7 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 			MemberInit init{};
 			init.name = attachment->identifier_id;
 			init.source = param->source_id;
-			init.type.pending = id_from_ast_node(interp->asts, is_some(param_info.type) ? get_ptr(param_info.type) : get_ptr(param_info.value));
+			init.type.pending = is_some(param_info.type) ? id_from_ast_node(interp->asts, get_ptr(param_info.type)) : AstNodeId::INVALID;
 			init.value.pending = is_some(param_info.value) ? id_from_ast_node(interp->asts, get_ptr(param_info.value)) : AstNodeId::INVALID;
 			init.completion_context = curr_typechecker_context(interp);
 			init.completion_arec = selected_arec_index(interp);
@@ -2115,7 +2115,7 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 		MemberInit init{};
 		init.name = attachment->identifier_id;
 		init.source = node->source_id;
-		init.type.pending = id_from_ast_node(interp->asts, node);
+		init.type.pending = is_some(info.type) ? id_from_ast_node(interp->asts, get_ptr(info.type)) : AstNodeId::INVALID;
 		init.value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
 		init.completion_context = curr_typechecker_context(interp);
 		init.completion_arec = -1;
