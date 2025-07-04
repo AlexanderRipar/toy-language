@@ -1682,7 +1682,7 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 			// The body being dependent does not make the function itself
 			// dependent, so the return value of typechecking the body is
 			// simply discarded instead of being incorporated into
-			// `is_dependent`.
+			// `dependent`.
 			(void) typecheck_expr(interp, body);
 
 			pop_typechecker_context(interp);
@@ -2161,7 +2161,7 @@ static bool force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 
 	DependentTypeId defined_type;
 
-	bool is_dependent = false;
+	bool dependent = false;
 
 	if (member->type.pending != AstNodeId::INVALID)
 	{
@@ -2169,7 +2169,7 @@ static bool force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 
 		const bool type_is_dependent = typecheck_expr(interp, type);
 
-		is_dependent |= type_is_dependent;
+		dependent |= type_is_dependent;
 
 		if (!check_and_set_impconv(interp, type, completed_type_id(simple_type(interp->types, TypeTag::Type, {})), TypeKind::Value))
 			source_error(interp->errors, type->source_id, "Explicit type annotation of definition must be of type `Type`.\n");
@@ -2195,7 +2195,7 @@ static bool force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 		{
 			AstNode* const value = ast_node_from_id(interp->asts, member->value.pending);
 
-			is_dependent |= typecheck_expr(interp, value);
+			dependent |= typecheck_expr(interp, value);
 
 			if (!check_and_set_impconv(interp, value, defined_type, TypeKind::Value))
 				source_error(interp->errors, value->source_id, "Definition value cannot be implicitly converted to type of explicit type annotation.\n");
@@ -2207,7 +2207,7 @@ static bool force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 
 		AstNode* const value = ast_node_from_id(interp->asts, member->value.pending);
 
-		is_dependent |= typecheck_expr(interp, value);
+		dependent |= typecheck_expr(interp, value);
 
 		defined_type = value->type;
 	}
@@ -2221,7 +2221,7 @@ static bool force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 	member->has_pending_type = false;
 	member->type.complete = defined_type;
 
-	return is_dependent;
+	return dependent;
 }
 
 static bool force_member_value(Interpreter* interp, MemberInfo* member) noexcept
