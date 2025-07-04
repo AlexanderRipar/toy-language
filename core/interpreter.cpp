@@ -2251,13 +2251,15 @@ static bool force_member_value(Interpreter* interp, MemberInfo* member) noexcept
 
 	MutRange<byte> global_value = global_value_get_mut(interp->globals, value_id);
 
-	MutRange<byte> value_into = map_into_for_impconv(interp, value, member_type_id, global_value);
-
 
 
 	set_typechecker_context(interp, member->completion_context);
 
 	const s32 restore_arec = select_arec(interp, member->completion_arec);
+
+	const TypeId resolved_value_type_id = resolve_type_id(interp, value->type);
+
+	MutRange<byte> value_into = map_into_for_impconv(interp, value, resolved_value_type_id, global_value);
 
 	if (has_flag(value, AstFlag::Any_HasDependentValue))
 		TODO("Handle (default) values of dependently valued members.");
