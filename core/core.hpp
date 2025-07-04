@@ -2103,11 +2103,17 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 const char8* tag_name(Builtin builtin) noexcept;
 
 
-inline DependentTypeId dependent_type_id(AstNodeId id) noexcept
+enum class DependentTypePosition : bool
 {
-	ASSERT_OR_IGNORE(static_cast<u32>(id) < (static_cast<u32>(1) << 31));
+	Type,
+	Value,
+};
 
-	return static_cast<DependentTypeId>(-static_cast<s32>(id));
+inline DependentTypeId dependent_type_id(AstNodeId id, DependentTypePosition position) noexcept
+{
+	ASSERT_OR_IGNORE(static_cast<u32>(id) < (static_cast<u32>(1) << 30));
+
+	return static_cast<DependentTypeId>((-static_cast<s32>(id) << 1) | static_cast<s32>(position));
 }
 
 inline DependentTypeId completed_type_id(TypeId id) noexcept
@@ -2126,7 +2132,7 @@ inline AstNodeId delayed(DependentTypeId id) noexcept
 {
 	ASSERT_OR_IGNORE(is_dependent(id));
 
-	return static_cast<AstNodeId>(-static_cast<s32>(id));
+	return static_cast<AstNodeId>(-static_cast<s32>(id) >> 1);
 }
 
 inline TypeId completed(DependentTypeId id) noexcept
@@ -2134,6 +2140,13 @@ inline TypeId completed(DependentTypeId id) noexcept
 	ASSERT_OR_IGNORE(!is_dependent(id));
 
 	return static_cast<TypeId>(id);
+}
+
+inline DependentTypePosition position(DependentTypeId id) noexcept
+{
+	ASSERT_OR_IGNORE(is_dependent(id));
+
+	return static_cast<DependentTypePosition>(static_cast<s32>(id) & 1);
 }
 
 #endif // CORE_INCLUDE_GUARD

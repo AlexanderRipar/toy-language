@@ -1363,7 +1363,7 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 			if (type_is_dependent)
 			{
-				defined_type = dependent_type_id(id_from_ast_node(interp->asts, type));
+				defined_type = dependent_type_id(id_from_ast_node(interp->asts, type), DependentTypePosition::Type);
 			}
 			else if (kind == TypeKind::Value)
 			{
@@ -1634,7 +1634,7 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 			if (return_type_is_dependent)
 			{
-				return_type_id = dependent_type_id(id_from_ast_node(interp->asts, return_type));
+				return_type_id = dependent_type_id(id_from_ast_node(interp->asts, return_type), DependentTypePosition::Type);
 			}
 			else if (type_tag_from_id(interp->types, completed(return_type->type)) != TypeTag::Type)
 			{
@@ -1863,7 +1863,7 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 		if (is_dependent(lhs->type))
 		{
-			node->type = dependent_type_id(id_from_ast_node(interp->asts, node));
+			node->type = dependent_type_id(id_from_ast_node(interp->asts, node), DependentTypePosition::Value);
 			node->type_kind = static_cast<u8>(TypeKind::MutLocation);
 			node->flags |= AstFlag::Any_HasDependentValue;
 
@@ -1882,7 +1882,7 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 		{
 			if (lhs_is_dependent)
 			{
-				node->type = dependent_type_id(id_from_ast_node(interp->asts, node));
+				node->type = dependent_type_id(id_from_ast_node(interp->asts, node), DependentTypePosition::Value);
 				node->type_kind = static_cast<u8>(TypeKind::MutLocation);
 				node->flags |= AstFlag::Any_HasDependentValue;
 
@@ -2170,7 +2170,7 @@ static bool force_member_type(Interpreter* interp, MemberInfo* member) noexcept
 
 		if (type_is_dependent)
 		{
-			defined_type = dependent_type_id(id_from_ast_node(interp->asts, type));
+			defined_type = dependent_type_id(id_from_ast_node(interp->asts, type), DependentTypePosition::Type);
 		}
 		else if (static_cast<TypeKind>(type->type_kind) == TypeKind::Value)
 		{
