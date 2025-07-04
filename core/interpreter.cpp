@@ -1611,7 +1611,7 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 			MemberInit init{};
 			init.name = attachment->identifier_id;
 			init.source = param->source_id;
-			init.type.complete = param->type;
+			init.type.complete = attachment->defined_type;
 			init.value.pending = is_some(param_info.value) ? id_from_ast_node(interp->asts, get_ptr(param_info.value)) : AstNodeId::INVALID;
 			init.completion_context = curr_typechecker_context(interp);
 			init.completion_arec = selected_arec_index(interp);
