@@ -289,7 +289,7 @@ struct Lexeme
 
 		IdentifierId identifier_id;
 
-		AstFlag builtin_flags;
+		Builtin builtin;
 
 		GlobalValueId string_value_id;
 	};
@@ -2517,7 +2517,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(parser->builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, lexeme.builtin_flags, AstTag::Builtin);
+				const AstBuilderToken value_token = push_node(parser->builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, static_cast<AstFlag>(lexeme.builtin), AstTag::Builtin);
 
 				push_operand(parser, &stack, value_token);
 			}
