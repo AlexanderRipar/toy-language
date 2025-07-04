@@ -266,7 +266,7 @@ bool has_next_sibling(const AstNode* node) noexcept
 
 bool has_flag(const AstNode* node, AstFlag flag) noexcept
 {
-	return (static_cast<u8>(node->flags) & static_cast<u8>(flag)) != 0;
+	return (static_cast<u16>(node->flags) & static_cast<u16>(flag)) != 0;
 }
 
 AstNode* next_sibling_of(AstNode* node) noexcept
