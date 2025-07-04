@@ -99,14 +99,6 @@ struct alignas(8) Arec
 	#endif
 };
 
-// Utility for creating built-in functions types.
-struct BuiltinParamInfo
-{
-	IdentifierId name;
-
-	TypeId type;
-};
-
 // Representation of a callable, meaning either a builtin or a user-defined
 // function or procedure.
 struct alignas(8) Callable
@@ -140,6 +132,14 @@ struct alignas(8) DependentValue
 	TypeId resolved_type_id;
 
 	u32 value_offset;
+};
+
+// Utility for creating built-in functions types.
+struct BuiltinParamInfo
+{
+	IdentifierId name;
+
+	TypeId type;
 };
 
 
