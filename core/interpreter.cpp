@@ -2121,7 +2121,7 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 		init.completion_arec = -1;
 		init.is_global = true;
 		init.is_pub = has_flag(node, AstFlag::Definition_IsPub);
-		init.is_use = false;
+		init.is_use = has_flag(node, AstFlag::Definition_IsUse);
 		init.is_mut = has_flag(node, AstFlag::Definition_IsMut);
 		init.has_pending_type = true;
 		init.has_pending_value = is_some(info.value);
