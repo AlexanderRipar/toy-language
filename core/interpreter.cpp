@@ -1500,12 +1500,18 @@ static bool typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 		close_open_type(interp->types, scope_type_id, offset_in_scope, scope_align, next_multiple(offset_in_scope, static_cast<u64>(scope_align)));
 
-		node->type = last_stmt == nullptr
-			? completed_type_id(simple_type(interp->types, TypeTag::Void, {}))
-			: last_stmt->type;
-		node->type_kind = static_cast<u8>(TypeKind::Value);
+		if (last_stmt == nullptr)
+		{
+			node->type = completed_type_id(simple_type(interp->types, TypeTag::Void, {}));
+		}
+		else
+		{
+			node->type = last_stmt->type;
 
-		ensure_load(last_stmt);
+			ensure_load(last_stmt);
+		}
+
+		node->type_kind = static_cast<u8>(TypeKind::Value);
 
 		if (dependent)
 			node->flags |= AstFlag::Any_HasDependentValue;
