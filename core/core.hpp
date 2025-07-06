@@ -886,19 +886,19 @@ struct ForEachInfo
 
 
 // Bitwise `or` of two `AstFlag`s
-inline AstFlag operator|(AstFlag lhs, AstFlag rhs) noexcept
+inline constexpr AstFlag operator|(AstFlag lhs, AstFlag rhs) noexcept
 {
 	return static_cast<AstFlag>(static_cast<u16>(lhs) | static_cast<u16>(rhs));
 }
 
 // Bitwise `and` of two `AstFlag`s
-inline AstFlag operator&(AstFlag lhs, AstFlag rhs) noexcept
+inline constexpr AstFlag operator&(AstFlag lhs, AstFlag rhs) noexcept
 {
 	return static_cast<AstFlag>(static_cast<u16>(lhs) & static_cast<u16>(rhs));
 }
 
 // Bitwise `set-or` of two `AstFlag`s
-inline AstFlag& operator|=(AstFlag& lhs, AstFlag rhs) noexcept
+inline constexpr AstFlag& operator|=(AstFlag& lhs, AstFlag rhs) noexcept
 {
 	lhs = lhs | rhs;
 
@@ -906,7 +906,7 @@ inline AstFlag& operator|=(AstFlag& lhs, AstFlag rhs) noexcept
 }
 
 // Bitwise `set-and` of two `AstFlag`s
-inline AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
+inline constexpr AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
 {
 	lhs = lhs & rhs;
 
