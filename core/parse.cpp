@@ -1614,13 +1614,20 @@ static bool is_definition_start(Token token) noexcept
 
 static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept;
 
-static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool is_optional_value) noexcept
+static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool is_optional_value, bool is_param) noexcept
 {
 	AstFlag flags = AstFlag::EMPTY;
 
 	Lexeme lexeme = next(&parser->lexer);
 
 	const SourceId source_id = lexeme.source_id;
+
+	if (is_param && lexeme.token == Token::KwdEval)
+	{
+		flags |= AstFlag::Parameter_IsEval;
+
+		lexeme = next(&parser->lexer);
+	}
 
 	if (lexeme.token == Token::KwdLet)
 	{
@@ -1632,36 +1639,42 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 		{
 			if (lexeme.token == Token::KwdPub)
 			{
+				if (is_param)
+					source_error(parser->lexer.errors, lexeme.source_id, "Function parameters must not be 'pub'.\n");
+
 				if ((flags & AstFlag::Definition_IsPub) != AstFlag::EMPTY)
-					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'pub' encountered more than once\n");
+					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'pub' encountered more than once.\n");
 
 				flags |= AstFlag::Definition_IsPub;
 			}
 			else if (lexeme.token == Token::KwdMut)
 			{
 				if ((flags & AstFlag::Definition_IsMut) != AstFlag::EMPTY)
-					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'mut' encountered more than once\n");
+					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'mut' encountered more than once.\n");
 
 				flags |= AstFlag::Definition_IsMut;
 			}
 			else if (lexeme.token == Token::KwdGlobal)
 			{
+				if (is_param)
+					source_error(parser->lexer.errors, lexeme.source_id, "Function parameters must not be 'global'.\n");
+
 				if ((flags & AstFlag::Definition_IsGlobal) != AstFlag::EMPTY)
-					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'global' encountered more than once\n");
+					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'global' encountered more than once.\n");
 
 				flags |= AstFlag::Definition_IsGlobal;
 			}
 			else if (lexeme.token == Token::KwdAuto)
 			{
 				if ((flags & AstFlag::Definition_IsAuto) != AstFlag::EMPTY)
-					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'auto' encountered more than once\n");
+					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'auto' encountered more than once.\n");
 
 				flags |= AstFlag::Definition_IsAuto;
 			}
 			else if (lexeme.token == Token::KwdUse)
 			{
 				if ((flags & AstFlag::Definition_IsUse) != AstFlag::EMPTY)
-					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'use' encountered more than once\n");
+					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'use' encountered more than once.\n");
 
 				flags |= AstFlag::Definition_IsUse;
 			}
@@ -1674,11 +1687,11 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 		}
 
 		if (flags == AstFlag::EMPTY && !is_implicit)
-			source_error(parser->lexer.errors, lexeme.source_id, "Missing 'let' or at least one of 'pub', 'mut' or 'global' at start of definition\n");
+			source_error(parser->lexer.errors, lexeme.source_id, "Missing 'let' or at least one of 'pub', 'mut' or 'global' at start of definition.\n");
 	}
 
 	if (lexeme.token != Token::Ident)
-		source_error(parser->lexer.errors, lexeme.source_id, "Expected 'Identifier' after Definition modifiers but got '%s'\n", token_name(lexeme.token));
+		source_error(parser->lexer.errors, lexeme.source_id, "Expected 'Identifier' after Definition modifiers but got '%s'.\n", token_name(lexeme.token));
 
 	const IdentifierId identifier_id = lexeme.identifier_id;
 
@@ -1711,7 +1724,10 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 		source_error(parser->lexer.errors, lexeme.source_id, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 	}
 
-	return push_node(parser->builder, first_child_token, source_id, flags, AstDefinitionData{ identifier_id, DependentTypeId::INVALID });
+	if (is_param)
+		return push_node(parser->builder, first_child_token, source_id, flags, AstParameterData{ identifier_id, DependentTypeId::INVALID });
+	else
+		return push_node(parser->builder, first_child_token, source_id, flags, AstDefinitionData{ identifier_id, DependentTypeId::INVALID });
 }
 
 static AstBuilderToken parse_return(Parser* parser) noexcept
@@ -1754,7 +1770,7 @@ static AstBuilderToken parse_top_level_expr(Parser* parser, bool is_definition_o
 	*out_is_definition = is_definition;
 
 	if (is_definition)
-		return parse_definition(parser, false, is_definition_optional_value);
+		return parse_definition(parser, false, is_definition_optional_value, false);
 	else if (lexeme.token == Token::KwdReturn)
 		return parse_return(parser);
 	else if (lexeme.token == Token::KwdLeave)
@@ -1771,7 +1787,7 @@ static AstBuilderToken parse_where(Parser* parser) noexcept
 
 	const SourceId source_id = next(&parser->lexer).source_id;
 
-	const AstBuilderToken first_child_token = parse_definition(parser, true, false);
+	const AstBuilderToken first_child_token = parse_definition(parser, true, false, false);
 
 	while (true)
 	{
@@ -1780,7 +1796,7 @@ static AstBuilderToken parse_where(Parser* parser) noexcept
 
 		skip(&parser->lexer);
 
-		parse_definition(parser, true, false);
+		parse_definition(parser, true, false, false);
 	}
 
 	return push_node(parser->builder, first_child_token, source_id, AstFlag::EMPTY, AstTag::Where);
@@ -1851,7 +1867,7 @@ static AstBuilderToken try_parse_foreach(Parser* parser, SourceId source_id) noe
 
 	AstFlag flags = AstFlag::EMPTY;
 
-	const AstBuilderToken first_child_token = parse_definition(parser, true, true);
+	const AstBuilderToken first_child_token = parse_definition(parser, true, true, false);
 
 	Lexeme lexeme = peek(&parser->lexer);
 
@@ -1861,7 +1877,7 @@ static AstBuilderToken try_parse_foreach(Parser* parser, SourceId source_id) noe
 
 		skip(&parser->lexer);
 
-		parse_definition(parser, true, true);
+		parse_definition(parser, true, true, false);
 
 		lexeme = peek(&parser->lexer);
 	}
@@ -2076,7 +2092,7 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 
 	while (lexeme.token != Token::ParenR)
 	{
-		const AstBuilderToken parameter_token = parse_definition(parser, true, true);
+		const AstBuilderToken parameter_token = parse_definition(parser, true, true, true);
 
 		if (first_parameter_token == AstBuilderToken::NO_CHILDREN)
 			first_parameter_token = parameter_token;
@@ -2159,7 +2175,7 @@ static AstBuilderToken parse_trait(Parser* parser) noexcept
 
 	while (lexeme.token != Token::ParenR)
 	{
-		const AstBuilderToken parameter_token = parse_definition(parser, true, true);
+		const AstBuilderToken parameter_token = parse_definition(parser, true, true, false);
 
 		if (first_child_token == AstBuilderToken::NO_CHILDREN)
 			first_child_token = parameter_token;
@@ -2249,7 +2265,7 @@ static AstBuilderToken parse_definition_or_impl(Parser* parser, bool* out_is_def
 	*out_is_definition = is_definition;
 
 	if (is_definition)
-		return parse_definition(parser, false, false);
+		return parse_definition(parser, false, false, false);
 	else if (lexeme.token == Token::KwdImpl)
 		return parse_impl(parser);
 	else
@@ -2645,7 +2661,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 				{
 					flags |= AstFlag::Catch_HasDefinition;
 
-					parse_definition(parser, true, true);
+					parse_definition(parser, true, true, false);
 
 					lexeme = next(&parser->lexer);
 

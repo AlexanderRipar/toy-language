@@ -249,6 +249,8 @@ AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept
 
 AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept
 {
+	ASSERT_OR_IGNORE(id != AstNodeId::INVALID);
+
 	return reinterpret_cast<AstNode*>(asts->pool.begin() + static_cast<u32>(id));
 }
 
@@ -267,6 +269,22 @@ bool has_next_sibling(const AstNode* node) noexcept
 bool has_flag(const AstNode* node, AstFlag flag) noexcept
 {
 	return (static_cast<u16>(node->flags) & static_cast<u16>(flag)) != 0;
+}
+
+TypeKind type_kind_of(const AstNode* node) noexcept
+{
+	const TypeKind kind = static_cast<TypeKind>(static_cast<u16>(node->flags) >> 14);
+
+	ASSERT_OR_IGNORE(kind != TypeKind::INVALID);
+
+	return kind;
+}
+
+void set_type_kind(AstNode* node, TypeKind kind) noexcept
+{
+	ASSERT_OR_IGNORE(static_cast<TypeKind>(static_cast<u16>(node->flags) >> 14) == TypeKind::INVALID);
+
+	node->flags |= static_cast<AstFlag>(static_cast<u16>(kind) << 14);
 }
 
 AstNode* next_sibling_of(AstNode* node) noexcept
@@ -297,7 +315,6 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 	node->next_sibling_offset = static_cast<u32>(first_child);
 	node->tag = tag;
 	node->data_dwords = sizeof(AstNode) / sizeof(u32);
-	node->type_kind = 0;
 	node->flags = flags;
 	node->type = DependentTypeId::INVALID;
 	node->source_id = source_id;
@@ -319,7 +336,6 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 	node->next_sibling_offset = static_cast<u32>(first_child);
 	node->tag = tag;
 	node->data_dwords = required_dwords;
-	node->type_kind = 0;
 	node->flags = flags;
 	node->type = DependentTypeId::INVALID;
 	node->source_id = source_id;
@@ -555,7 +571,7 @@ FuncInfo get_func_info(AstNode* func) noexcept
 
 DefinitionInfo get_definition_info(AstNode* definition) noexcept
 {
-	ASSERT_OR_IGNORE(definition->tag == AstTag::Definition);
+	ASSERT_OR_IGNORE(definition->tag == AstTag::Definition || definition->tag == AstTag::Parameter);
 
 	if (!has_children(definition))
 		return {};
@@ -700,6 +716,7 @@ const char8* tag_name(AstTag tag) noexcept
 		"Expects",
 		"Ensures",
 		"Definition",
+		"Parameter",
 		"Block",
 		"If",
 		"For",

@@ -29,7 +29,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 		return;
 	}
 
-	const TypeId type_id = completed(type);
+	const TypeId type_id = independent(type);
 
 	const TypeTag tag = type_tag_from_id(types, type_id);
 
@@ -69,7 +69,6 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::Trait:
 	case TypeTag::TypeInfo:
 	case TypeTag::TailArray:
-	case TypeTag::Dependent:
 	{
 		diag::buf_printf(ctx, "\n");
 
@@ -106,7 +105,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 		diag::buf_printf(ctx, " %s%s ", introducer, reference->is_mut ? " mut" : "");
 
-		print_type_impl(ctx, identifiers, types, completed_type_id(reference->referenced_type_id), indent + 1, true);
+		print_type_impl(ctx, identifiers, types, independent_type_id(reference->referenced_type_id), indent + 1, true);
 
 		return;
 	}
@@ -117,7 +116,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 		diag::buf_printf(ctx, " :: [%" PRIu64 "]", array->element_count);
 
-		print_type_impl(ctx, identifiers, types, completed_type_id(array->element_type), indent + 1, true);
+		print_type_impl(ctx, identifiers, types, independent_type_id(array->element_type), indent + 1, true);
 
 		return;
 	}

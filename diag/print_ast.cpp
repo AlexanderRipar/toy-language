@@ -5,9 +5,9 @@
 
 static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifiers, const AstNode* node, s32 depth) noexcept
 {
-	if (node->tag == AstTag::Identifer || node->tag == AstTag::Definition)
+	if (node->tag == AstTag::Identifier || node->tag == AstTag::Definition)
 	{
-		const IdentifierId identifier_id = node->tag == AstTag::Identifer
+		const IdentifierId identifier_id = node->tag == AstTag::Identifier
 			? attachment_of<AstIdentifierData>(node)->identifier_id
 			: attachment_of<AstDefinitionData>(node)->identifier_id;
 

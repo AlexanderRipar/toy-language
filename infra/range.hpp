@@ -296,6 +296,8 @@ private:
 
 public:
 
+	constexpr MutAttachmentRange() noexcept = default;
+
 	constexpr MutAttachmentRange(MutRange<T> range, Attach attachment) noexcept :
 		m_begin{ range.begin() },
 		m_count{ static_cast<u32>(range.count()) },

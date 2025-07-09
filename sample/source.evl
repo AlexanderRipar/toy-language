@@ -1,14 +1,37 @@
-let X: u32 = 1
+let x = 1
 
-let F = func(T: Type) -> Type = T
+let y: u32 = 1
 
-let Blocku32: u32 = { 1 }
 
-let Fu32: F(u32) = 1
 
-let Screwed = func(T: Type) -> T = {
-	let x: u32 = 1
-	1
+let f = func(a: u32) -> u32 = 1
+
+let f1 = func(a: u32) -> u32 = a
+
+
+
+let g = func(a: u32) -> Bool = a == 1
+
+let g1 = func(a: u32, b: u32) -> Bool = a == b
+
+
+
+let h = func() -> Void = {}
+
+let h1 = func(a: u32) -> u32 = { a }
+
+let h2 = func(a: u32) -> u32 = {
+	let n = a
+
+	a
 }
 
-let v = Screwed(u32)
+let h3 = func(a: u32) -> u32 = {
+	let b = a
+
+	let c = b
+
+	c
+}
+
+

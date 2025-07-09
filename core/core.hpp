@@ -16,6 +16,10 @@
 // information.
 enum class TypeId : u32;
 
+enum class TypeKind : u8;
+
+enum class ArecId : s32;
+
 // Id used to identify a particular source code location.
 // This encodes the location's file, line and column. See `SourceReader` for
 // further information.
@@ -379,6 +383,7 @@ enum class AstTag : u8
 	Expects,
 	Ensures,
 	Definition,
+	Parameter,
 	Block,
 	If,
 	For,
@@ -389,7 +394,7 @@ enum class AstTag : u8
 	Trait,
 	Impl,
 	Catch,
-	Identifer,
+	Identifier,
 	LitInteger,
 	LitFloat,
 	LitChar,
@@ -466,10 +471,15 @@ enum class AstFlag : u16
 	Definition_IsPub            = 0x00'01,
 	Definition_IsMut            = 0x00'02,
 	Definition_IsGlobal         = 0x00'04,
-	Definition_IsAuto           = 0x00'08,
-	Definition_IsUse            = 0x00'10,
+	Definition_IsUse            = 0x00'08,
+	Definition_IsAuto           = 0x00'10,
 	Definition_HasType          = 0x00'20,
-	Definition_HasDependentType = 0x00'40,
+
+	Parameter_IsEval            = 0x00'01,
+	Parameter_IsMut             = 0x00'02,
+	Parameter_IsUse             = 0x00'08,
+	Parameter_IsAuto            = 0x00'10,
+	Parameter_HasType           = 0x00'20,
 
 	If_HasWhere                 = 0x00'01,
 	If_HasElse                  = 0x00'02,
@@ -499,13 +509,16 @@ enum class AstFlag : u16
 
 	Type_IsMut                  = 0x00'02,
 
-	Any_HasDependentValue       = 0x01'00,
-	Any_SkipConversion          = 0x02'00,
-	Any_LoadResult              = 0x04'00,
+	INTERNAL_LastSibling        = 0x00'80,
+	INTERNAL_FirstSibling       = 0x01'00,
+	INTERNAL_NoChildren         = 0x02'00,
 
-	INTERNAL_LastSibling        = 0x20'00,
-	INTERNAL_FirstSibling       = 0x40'00,
-	INTERNAL_NoChildren         = 0x80'00,
+	Any_SkipEvaluation          = 0x04'00,
+	Any_ConvertResult           = 0x08'00,
+	Any_LoadResult              = 0x10'00,
+	Any_IsComptimeKnown         = 0x20'00,
+	Any_TypeKindLoBit           = 0x40'00,
+	Any_TypeKindHiBit           = 0x80'00,
 };
 
 // Id used to refer to an `AstNode` in the `AstPool`.
@@ -541,10 +554,7 @@ struct AstNode
 	AstTag tag;
 
 	// Number of four-byte units that this node and its trailing data encompasses.
-	u8 data_dwords : 6;
-
-	// Kind of the node's type. This is really a `TypeKind` enumerant.
-	u8 type_kind : 2;
+	u8 data_dwords;
 
 	// Tag-dependent flags that contain additional information on the AST node.
 	// In particular, for `AstTag::Builtin`, this contains a `Builtin`
@@ -723,7 +733,7 @@ struct AstLitCharData
 struct AstIdentifierData
 {
 	// Tag used for sanity checks in debug builds.
-	static constexpr AstTag TAG = AstTag::Identifer;
+	static constexpr AstTag TAG = AstTag::Identifier;
 
 	// `IdentifierId` of the identifier represented by this node.
 	IdentifierId identifier_id;
@@ -747,6 +757,16 @@ struct AstDefinitionData
 	static constexpr AstTag TAG = AstTag::Definition;
 
 	// `IdentifierId` of the definition.
+	IdentifierId identifier_id;
+
+	DependentTypeId defined_type;
+};
+
+// Attachment of an `AstNode` with tag `AstTag::Parameter`.
+struct AstParameterData
+{
+	static constexpr AstTag TAG = AstTag::Parameter;
+
 	IdentifierId identifier_id;
 
 	DependentTypeId defined_type;
@@ -993,6 +1013,10 @@ bool has_next_sibling(const AstNode* node) noexcept;
 // Checks whether the given `flag` is set in `node`s `flags` field.
 // If it does, returns `true`, otherwise returns `false`. 
 bool has_flag(const AstNode* node, AstFlag flag) noexcept;
+
+TypeKind type_kind_of(const AstNode* node) noexcept;
+
+void set_type_kind(AstNode* node, TypeKind kind) noexcept;
 
 // Returns the next sibling of `node`.
 // This function must only be called on `AstNode`s that have a next sibling.
@@ -1458,10 +1482,14 @@ enum class TypeTag : u8
 	// Tag of tail array types. Its structure is represented by a
 	// `ReferenceType`.
 	TailArray,
+};
 
-	// Tag used when calling `type_tag_from_id` with `TypeId::DEPDENDENT`. This
-	// is just a dummy, and must never be passed to `simple_type`.
-	Dependent,
+enum class TypeDisposition : u8
+{
+	INVALID = 0,
+	User,
+	Signature,
+	Block,
 };
 
 // Allocation metrics returned by `type_metrics_by_id`, describing the size,
@@ -1585,6 +1613,8 @@ struct MemberInfo
 	// Whether the member is mutable.
 	bool is_mut : 1;
 
+	bool is_comptime_known : 1;
+
 	// Indicates whether the member's type has been determined yet.
 	// See `type` for further information.
 	bool has_pending_type : 1;
@@ -1679,6 +1709,8 @@ struct MemberInit
 
 	// Whether the member is to be mutable.
 	bool is_mut : 1;
+
+	bool is_comptime_known : 1;
 
 	// Indicates whether the member's type is pending.
 	// See `type` for further information.
@@ -1798,17 +1830,29 @@ TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, Sou
 //
 // `lexical_parent_source_id` indicates the type lexically surrounding the
 // newly created type, and is used during name lookup.
+//
 // `source_id` indicates where the type was created from.
-// `is_user` indicates whether this is a user-defined type or a type used for
-// a scope, such as a function signature or a block. Members with type
-// `TypeId::DEPENDENT` may only be present in non-user-defined types.
+//
+// `disposition` indicates what sort of type is being created.
+// - `TypeDisposition::User` indicates a user-defined type, including e.g. the
+//   result of `import`. These types support calls to `_sizeof`, `_alignof`,
+//   etc. However, all their members must be of concrete types - otherwise
+//   layout queries would not generally make sense.
+// - `TypeDisposition::Signature` indicates that the type corresponds to a
+//   function signature. These types do not support layout queries, but may
+//   contain dependently typed members - i.e., parameters.
+// - `TypeDisposition::Block` indicates that the type corresponds to a block.
+//   These types behave similarly to `TypeDisposition::Signature`, apart from
+//   an additional constraint on accessing their members: Since blocks are
+//   ordered, members - corresponding to definitions - may only be referred to
+//   from points in the source after they are defined.
 //
 // Call `close_open_type` to stop the addition of further members.
 // Call `set_incomplete_type_member_type_by_rank` to set the type of a member
 // that was added with `has_pending_type` set to `true`.
 // Call `set_incomplete_type_member_value_by_rank` to set the value of a member
 // that was added with `has_pending_value` set to `true`.
-TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId source_id, bool is_user) noexcept;
+TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId source_id, TypeDisposition disposition) noexcept;
 
 // Adds a member to the open composite type referenced by `open_type_id`.
 // The member is initialized with the data in `member`.
@@ -1880,6 +1924,8 @@ IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept;
 // only the case for unaliased primitive types.
 SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept;
 
+TypeDisposition type_disposition_from_id(TypePool* types, TypeId type_id) noexcept;
+
 // Retrieves the lexical parent type associated with the composite type
 // referenced by `type_id`. If the type has no lexical parent,
 // `TypeId::INVALID` is returned. This is only the case for the top-level type
@@ -1908,14 +1954,12 @@ TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept;
 // information on the member.
 // Note that this function takes `use`d members into account, searching them
 // for members with the given name as well.
-bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId member_name_id, MemberInfo* out) noexcept;
+bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId member_name_id, SourceId source, MemberInfo* out) noexcept;
 
 // Attempts to retrieve information on a member of the composite type
 // referenced by `type_id` with the given `rank`.
-// If there is no member with the given rank, `false` is returned and the value
-// of `*out` is unspecified. Otherwise, `true` is returned, and `*out` receives
-// information on the member.
-bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberInfo* out) noexcept;
+// `*out` receives information on the member.
+void type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberInfo* out) noexcept;
 
 // Retrieves the structural data associated with `type_id`, which must not
 // refer to a composite type.
@@ -2074,10 +2118,23 @@ enum class TypeKind : u8
 	MutLocation,
 };
 
+enum class ArecId : s32
+{
+	INVALID = -1,
+};
+
 enum class DependentTypeId : u32
 {
 	INVALID = 0,
 };
+
+enum class DependentTypePosition : bool
+{
+	Type,
+	Value,
+};
+
+
 
 // Creates an `Interpreter`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `Interpreter` can be freed using
@@ -2102,12 +2159,8 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 // `TypeTag::INVALID`.
 const char8* tag_name(Builtin builtin) noexcept;
 
+const char8* tag_name(TypeKind type_kind) noexcept;
 
-enum class DependentTypePosition : bool
-{
-	Type,
-	Value,
-};
 
 inline DependentTypeId dependent_type_id(AstNodeId id, DependentTypePosition position) noexcept
 {
@@ -2116,7 +2169,7 @@ inline DependentTypeId dependent_type_id(AstNodeId id, DependentTypePosition pos
 	return static_cast<DependentTypeId>((-static_cast<s32>(id) << 1) | static_cast<s32>(position));
 }
 
-inline DependentTypeId completed_type_id(TypeId id) noexcept
+inline DependentTypeId independent_type_id(TypeId id) noexcept
 {
 	ASSERT_OR_IGNORE(static_cast<u32>(id) < (static_cast<u32>(1) << 31));
 
@@ -2135,7 +2188,7 @@ inline AstNodeId delayed(DependentTypeId id) noexcept
 	return static_cast<AstNodeId>(-static_cast<s32>(id) >> 1);
 }
 
-inline TypeId completed(DependentTypeId id) noexcept
+inline TypeId independent(DependentTypeId id) noexcept
 {
 	ASSERT_OR_IGNORE(!is_dependent(id));
 
