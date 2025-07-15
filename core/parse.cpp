@@ -1725,9 +1725,9 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 	}
 
 	if (is_param)
-		return push_node(parser->builder, first_child_token, source_id, flags, AstParameterData{ identifier_id, DependentTypeId::INVALID });
+		return push_node(parser->builder, first_child_token, source_id, flags, AstParameterData{ identifier_id, TypeId::INVALID });
 	else
-		return push_node(parser->builder, first_child_token, source_id, flags, AstDefinitionData{ identifier_id, DependentTypeId::INVALID });
+		return push_node(parser->builder, first_child_token, source_id, flags, AstDefinitionData{ identifier_id, TypeId::INVALID });
 }
 
 static AstBuilderToken parse_return(Parser* parser) noexcept

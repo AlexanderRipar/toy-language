@@ -104,6 +104,8 @@ struct BuilderMember
 
 	bool is_comptime_known : 1;
 
+	bool has_arg_dependency : 1;
+
 	// `true` if `type` holds an `AstNodeId` to be typechecked (with
 	// `completion_context` as the context), `false` if it holds a
 	// `TypeId`.
@@ -129,7 +131,7 @@ struct CompositeMember
 	s64 offset;
 
 	// `TypeId` of this member.
-	DependentTypeId type_id;
+	TypeId type_id;
 
 	// `GlobalValueId` of the (default) value of this member.
 	GlobalValueId value_id;
@@ -149,8 +151,10 @@ struct CompositeMember
 
 	// `true` if this member is mutable, `false` otherwise.
 	bool is_mut : 1;
-	
+
 	bool is_comptime_known : 1;
+
+	bool has_arg_dependency : 1;
 };
 
 struct FindByNameResult
@@ -163,6 +167,8 @@ struct FindByNameResult
 	} member;
 
 	bool is_complete;
+
+	TypeDisposition disposition;
 
 	u16 rank;
 
@@ -179,6 +185,8 @@ struct FindByRankResult
 	} member;
 
 	bool is_complete;
+
+	TypeDisposition disposition;
 
 	IdentifierId name;
 };
@@ -491,6 +499,7 @@ static u32 structure_index_from_complete_type_builder(TypePool* types, const Typ
 	composite->header.stride = header->stride;
 	composite->header.align = header->align;
 	composite->header.member_count = static_cast<u16>(header->total_used);
+	composite->header.disposition = header->disposition;
 
 	// Initialize `composite->members`
 
@@ -523,6 +532,7 @@ static u32 structure_index_from_complete_type_builder(TypePool* types, const Typ
 			members[curr_index  + i].is_use = curr->members[i].is_use;
 			members[curr_index  + i].is_mut = curr->members[i].is_mut;
 			members[curr_index  + i].is_comptime_known = curr->members[i].is_comptime_known;
+			members[curr_index  + i].has_arg_dependency = curr->members[i].has_arg_dependency;
 		}
 
 		curr_index += curr->used;
@@ -594,7 +604,7 @@ static TypeBuilderHeader* get_deferred_type_builder(TypePool* types, TypeName* n
 	return type_builder_header_at_index(types, name->structure_index);
 }
 
-static MemberInfo member_info_from_composite_member(const CompositeMember* member, TypeId surrounding_type_id, IdentifierId name, u16 rank) noexcept
+static MemberInfo member_info_from_composite_member(const CompositeMember* member, TypeId surrounding_type_id, IdentifierId name, u16 rank, TypeDisposition disposition) noexcept
 {
 	MemberInfo info;
 	info.name = name;
@@ -606,8 +616,10 @@ static MemberInfo member_info_from_composite_member(const CompositeMember* membe
 	info.is_use = member->is_use;
 	info.is_mut = member->is_mut;
 	info.is_comptime_known = member->is_comptime_known;
+	info.has_arg_dependency = member->has_arg_dependency;
 	info.has_pending_type = false;
 	info.has_pending_value = false;
+	info.is_param = disposition == TypeDisposition::Signature;
 	info.rank = rank;
 	info.surrounding_type_id = surrounding_type_id;
 	info.completion_context = TypeId::INVALID;
@@ -617,7 +629,7 @@ static MemberInfo member_info_from_composite_member(const CompositeMember* membe
 	return info;
 }
 
-static MemberInfo member_info_from_builder_member(const BuilderMember* member, TypeId surrounding_type_id, IdentifierId name, u16 rank) noexcept
+static MemberInfo member_info_from_builder_member(const BuilderMember* member, TypeId surrounding_type_id, IdentifierId name, u16 rank, TypeDisposition disposition) noexcept
 {
 	MemberInfo info;
 	info.name = name;
@@ -629,8 +641,10 @@ static MemberInfo member_info_from_builder_member(const BuilderMember* member, T
 	info.is_use = member->is_use;
 	info.is_mut = member->is_mut;
 	info.is_comptime_known = member->is_comptime_known;
+	info.has_arg_dependency = member->has_arg_dependency;
 	info.has_pending_type = member->has_pending_type;
 	info.has_pending_value = member->has_pending_value;
+	info.is_param = disposition == TypeDisposition::Signature;
 	info.rank = rank;
 	info.surrounding_type_id = surrounding_type_id;
 	info.completion_context = member->completion_context;
@@ -662,6 +676,7 @@ static bool find_builder_member_by_name(TypeBuilderHeader* header, IdentifierId 
 
 				out->member.incomplete = curr->members + i;
 				out->is_complete = false;
+				out->disposition = header->disposition;
 				out->rank = static_cast<u16>(rank + i);
 				out->surrounding_type_id = type_id;
 
@@ -691,6 +706,7 @@ static bool find_composite_member_by_name(TypePool* types, CompositeType* compos
 
 			out->member.complete = members + i;
 			out->is_complete = true;
+			out->disposition = composite->header.disposition;
 			out->rank = static_cast<u16>(i);
 			out->surrounding_type_id = type_id;
 
@@ -708,14 +724,9 @@ static bool find_composite_member_by_name(TypePool* types, CompositeType* compos
 		if (composite->header.disposition == TypeDisposition::Block && members[i].source > source)
 			return false;
 
-		const DependentTypeId use_type = members[i].type_id;
+		const TypeId use_type_id = members[i].type_id;
 
-		ASSERT_OR_IGNORE(use_type != DependentTypeId::INVALID);
-
-		if (is_dependent(use_type))
-			continue; // TODO: Typecheck somehow I guess?
-
-		const TypeId use_type_id = independent(use_type);
+		ASSERT_OR_IGNORE(use_type_id != TypeId::INVALID);
 
 		const TypeTag use_type_tag = type_tag_from_id(types, use_type_id);
 
@@ -787,6 +798,7 @@ static void find_builder_member_by_rank(TypeBuilderHeader* header, u16 rank, Fin
 
 	out->member.incomplete = curr->members + index_in_builder;
 	out->is_complete = false;
+	out->disposition = header->disposition;
 	out->name = curr->names[index_in_builder];
 }
 
@@ -796,6 +808,7 @@ static void find_composite_member_by_rank(CompositeType* composite, u16 rank, Fi
 
 	out->member.complete = composite_members(composite) + rank;
 	out->is_complete = true;
+	out->disposition = composite->header.disposition;
 	out->name = composite->names[rank];
 }
 
@@ -811,7 +824,7 @@ static void find_member_by_rank(TypePool* types, TypeId type_id, u16 rank, FindB
 	}
 	else
 	{
-		TypeStructure* const structure = types->structural_types.value_from (name->structure_index);
+		TypeStructure* const structure = types->structural_types.value_from(name->structure_index);
 
 		if (structure->tag != TypeTag::Composite)
 			panic("Tried getting member of non-composite type by rank.\n");
@@ -841,6 +854,10 @@ TypePool* create_type_pool(AllocPool* alloc, GlobalValuePool* globals, ErrorSink
 	(void) types->named_types.index_from(dummy_name, fnv1a(range::from_object_bytes(&dummy_name)));
 
 	dummy_name.parent_type_id = TypeId{ 1 };
+
+	(void) types->named_types.index_from(dummy_name, fnv1a(range::from_object_bytes(&dummy_name)));
+
+	dummy_name.parent_type_id = TypeId{ 2 };
 
 	(void) types->named_types.index_from(dummy_name, fnv1a(range::from_object_bytes(&dummy_name)));
 
@@ -918,6 +935,8 @@ TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId
 	header->is_closed = false;
 	header->disposition = disposition;
 	header->source_id = source_id;
+	header->align = 1;
+	header->size = 0;
 
 	TypeName name{};
 	name.parent_type_id = TypeId::INVALID;
@@ -946,14 +965,13 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init)
 
 	TypeBuilderHeader* const header = get_deferred_type_builder(types, builder_name);
 
+	ASSERT_OR_IGNORE(header->disposition != TypeDisposition::Signature || init.offset == 0);
+
 	if (header->is_closed)
 		panic("Passed non-open type to `add_open_type_member`.\n");
 
 	if (header->total_used + 1 == UINT16_MAX)
 		panic("Exceeded maximum of %u members in composite type.\n");
-
-	if (header->disposition == TypeDisposition::User && !init.has_pending_type && is_dependent(init.type.complete))
-		panic("Tried setting type as user-defined type member to `TypeId::DEPENDENT`.\n");
 
 	FindByNameResult unused_found;
 
@@ -1008,10 +1026,27 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init)
 	member->is_use = init.is_use;
 	member->is_mut = init.is_mut;
 	member->is_comptime_known = init.is_comptime_known;
+	member->has_arg_dependency = init.has_arg_dependency;
 	member->has_pending_type = init.has_pending_type;
 	member->has_pending_value = init.has_pending_value;
 	member->completion_context = init.completion_context;
 	member->completion_arec = init.completion_arec;
+
+	if (!init.has_pending_type && header->disposition == TypeDisposition::Signature)
+	{
+		ASSERT_OR_IGNORE(init.offset == 0);
+
+		const TypeMetrics member_metrics = type_metrics_from_id(types, init.type.complete);
+
+		header->size = next_multiple(header->size, static_cast<u64>(member_metrics.align));
+
+		member->offset = header->size;
+
+		header->size += member_metrics.size;
+
+		if (header->align < member_metrics.align)
+			header->align = member_metrics.align;
+	}
 
 	tail->used += 1;
 
@@ -1035,9 +1070,18 @@ void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, 
 	if (header->is_closed)
 		panic("Passed non-open type to `close_open_type`\n");
 
-	header->size = size;
-	header->stride = stride;
-	header->align = align;
+	if (header->disposition == TypeDisposition::Signature)
+	{
+		ASSERT_OR_IGNORE(size == 0 && align == 0 && stride == 0);
+
+		header->stride = next_multiple(header->size, static_cast<u64>(header->align));
+	}
+	else
+	{
+		header->size = size;
+		header->stride = stride;
+		header->align = align;
+	}
 
 	if (header->incomplete_member_count == 0)
 	{
@@ -1052,12 +1096,11 @@ void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, 
 	}
 }
 
-void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_id, u16 rank, DependentTypeId member_type) noexcept
+void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_id, u16 rank, TypeId member_type_id) noexcept
 {
 	ASSERT_OR_IGNORE(open_type_id != TypeId::INVALID && open_type_id != TypeId::CHECKING);
 
-	// This may be `TypeId::DEPENDENT`
-	ASSERT_OR_IGNORE(member_type != DependentTypeId::INVALID && (is_dependent(member_type) || independent(member_type) != TypeId::CHECKING));
+	ASSERT_OR_IGNORE(member_type_id != TypeId::INVALID);
 
 	TypeName* const builder_name = types->named_types.value_from(static_cast<u32>(open_type_id));
 
@@ -1065,9 +1108,6 @@ void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_i
 		panic("Passed completed type to `add_open_type_member`.\n");
 
 	TypeBuilderHeader* const header = get_deferred_type_builder(types, builder_name);
-
-	if (header->disposition == TypeDisposition::User && is_dependent(member_type))
-		panic("Tried setting type of user-defined type member to dependent type.\n");
 
 	FindByRankResult found;
 
@@ -1077,7 +1117,23 @@ void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_i
 		panic("Tried setting type of already typed member.\n");
 
 	found.member.incomplete->has_pending_type = false;
-	found.member.incomplete->type.complete = member_type;
+	found.member.incomplete->type.complete = member_type_id;
+
+	if (header->disposition == TypeDisposition::Signature)
+	{
+		ASSERT_OR_IGNORE(found.member.incomplete->offset == 0);
+
+		const TypeMetrics member_metrics = type_metrics_from_id(types, member_type_id);
+
+		header->size = next_multiple(header->size, static_cast<u64>(member_metrics.align));
+
+		found.member.incomplete->offset = header->size;
+
+		header->size += member_metrics.size;
+
+		if (header->align < member_metrics.align)
+			header->align = member_metrics.align;
+	}
 
 	ASSERT_OR_IGNORE(header->incomplete_member_count != 0);
 
@@ -1117,6 +1173,39 @@ void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_
 
 	found.member.incomplete->has_pending_value = false;
 	found.member.incomplete->value.complete = member_value;
+
+	ASSERT_OR_IGNORE(header->incomplete_member_count != 0);
+
+	header->incomplete_member_count -= 1;
+
+	if (header->is_closed && header->incomplete_member_count == 0)
+	{
+		builder_name->structure_index = structure_index_from_complete_type_builder(types, header);
+		builder_name->structure_index_kind = TypeName::STRUCTURE_INDEX_NORMAL;
+	}
+}
+
+void set_incomplete_type_member_has_arg_dependency_by_rank(TypePool* types, TypeId open_type_id, u16 rank, bool has_arg_dependency) noexcept
+{
+	ASSERT_OR_IGNORE(open_type_id != TypeId::INVALID && open_type_id != TypeId::CHECKING);
+
+	TypeName* const builder_name = types->named_types.value_from(static_cast<u32>(open_type_id));
+
+	if (resolve_name_structure(types, builder_name))
+		panic("Passed completed type to `add_open_type_member`.\n");
+
+	TypeBuilderHeader* const header = get_deferred_type_builder(types, builder_name);
+
+	FindByRankResult found;
+
+	find_builder_member_by_rank(header, rank, &found);
+
+	if (!found.member.incomplete->has_pending_value)
+		panic("Tried setting value of already evaluated member.\n");
+
+	ASSERT_OR_IGNORE(!found.member.incomplete->has_pending_type);
+
+	found.member.incomplete->has_arg_dependency = has_arg_dependency;
 
 	ASSERT_OR_IGNORE(header->incomplete_member_count != 0);
 
@@ -1535,9 +1624,9 @@ bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId name
 		return false;
 
 	if (found.is_complete)
-		*out = member_info_from_composite_member(found.member.complete, found.surrounding_type_id, name, found.rank);
+		*out = member_info_from_composite_member(found.member.complete, found.surrounding_type_id, name, found.rank, found.disposition);
 	else
-		*out = member_info_from_builder_member(found.member.incomplete, found.surrounding_type_id, name, found.rank);
+		*out = member_info_from_builder_member(found.member.incomplete, found.surrounding_type_id, name, found.rank, found.disposition);
 
 	return true;
 }
@@ -1551,9 +1640,9 @@ void type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberI
 	find_member_by_rank(types, type_id, rank, &found);
 
 	if (found.is_complete)
-		*out = member_info_from_composite_member(found.member.complete, type_id, found.name, rank);
+		*out = member_info_from_composite_member(found.member.complete, type_id, found.name, rank, found.disposition);
 	else
-		*out = member_info_from_builder_member(found.member.incomplete, type_id, found.name, rank);
+		*out = member_info_from_builder_member(found.member.incomplete, type_id, found.name, rank, found.disposition);
 }
 
 const void* simple_type_structure_from_id(TypePool* types, TypeId type_id) noexcept
@@ -1619,7 +1708,7 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 	TypeName* name = types->named_types.value_from(static_cast<u32>(type_id));
 
 	if (resolve_name_structure(types, name))
-		return { nullptr, nullptr, 0, TypeId::INVALID };
+		return { nullptr, nullptr, 0, TypeDisposition::INVALID, TypeId::INVALID };
 
 	if (name->structure_index_kind == TypeName::STRUCTURE_INDEX_INDIRECT)
 		name = types->named_types.value_from(name->structure_index);
@@ -1632,7 +1721,7 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 		panic("Passed open type to `incomplete_members_of`\n");
 
 	if (header->head_offset == 0)
-		return { nullptr, nullptr, 0, TypeId::INVALID };
+		return { nullptr, nullptr, 0, TypeDisposition::INVALID, TypeId::INVALID };
 
 	u16 rank = 0;
 
@@ -1652,13 +1741,13 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 		if (static_cast<u16>(index + 1) == array_count(builder->members) - 1)
 		{
 			if (builder->next_offset == 0)
-				return { nullptr, nullptr, 0, TypeId::INVALID };
+				return { nullptr, nullptr, 0, TypeDisposition::INVALID, TypeId::INVALID };
 			else
 				builder = type_builder_at_offset(builder, builder->next_offset);
 		}
 	}
 
-	return { builder, name, rank, type_id };
+	return { builder, name, rank, header->disposition, type_id };
 }
 
 MemberInfo next(IncompleteMemberIterator* it) noexcept
@@ -1682,7 +1771,7 @@ MemberInfo next(IncompleteMemberIterator* it) noexcept
 		else
 			it->structure = type_builder_at_offset(builder, builder->next_offset);
 	}
-	return member_info_from_builder_member(builder->members + index, it->type_id, builder->names[index], rank);
+	return member_info_from_builder_member(builder->members + index, it->type_id, builder->names[index], rank, it->disposition);
 }
 
 bool has_next(const IncompleteMemberIterator* it) noexcept
@@ -1708,9 +1797,9 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 		CompositeType* const composite = data<CompositeType>(structure);
 
 		if (composite->header.member_count == 0)
-			return { nullptr, nullptr, 0, TypeId::INVALID };
+			return { nullptr, nullptr, 0, TypeDisposition::INVALID, TypeId::INVALID };
 
-		return { composite, nullptr, 0, type_id };
+		return { composite, nullptr, 0, composite->header.disposition, type_id };
 	}
 	else
 	{
@@ -1725,9 +1814,9 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 			panic("Passed open type to `incomplete_members_of`\n");
 
 		if (header->head_offset == 0)
-			return { nullptr, nullptr, 0, TypeId::INVALID };
+			return { nullptr, nullptr, 0, TypeDisposition::INVALID, TypeId::INVALID };
 
-		return { type_builder_at_offset(&header->unused_, header->tail_offset), name, 0, type_id };
+		return { type_builder_at_offset(&header->unused_, header->tail_offset), name, 0, header->disposition, type_id };
 	}
 
 }
@@ -1758,7 +1847,7 @@ MemberInfo next(MemberIterator* it) noexcept
 				it->structure = type_builder_at_offset(builder, builder->next_offset);
 		}
 
-		return member_info_from_builder_member(member, it->type_id, name, rank);
+		return member_info_from_builder_member(member, it->type_id, name, rank, it->disposition);
 	}
 	else
 	{
@@ -1771,7 +1860,7 @@ MemberInfo next(MemberIterator* it) noexcept
 		if (static_cast<u16>(rank + 1) == composite->header.member_count)
 			it->structure = nullptr;
 
-		return member_info_from_composite_member(members + rank, it->type_id, name, rank);
+		return member_info_from_composite_member(members + rank, it->type_id, name, rank, it->disposition);
 	}
 }
 

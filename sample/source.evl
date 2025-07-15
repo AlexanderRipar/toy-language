@@ -34,4 +34,6 @@ let h3 = func(a: u32) -> u32 = {
 	c
 }
 
+let i = func(T: Type) -> Type = T
 
+let z: i(Bool) = 1 == 1

@@ -30,12 +30,6 @@ enum class SourceId : u32;
 // `GlobalValuePool` for further information
 enum class GlobalValueId : u32;
 
-// Representation of either a `TypeId` or the `AstNodeId` of the expression
-// evaluating or typechecking to the type. Access to the contained ids is
-// performed via `is_dependent`, `get_type_id`, `get_ast_node_id`,
-// `is_typecheck`, and `is_evaluate`.
-enum class DependentTypeId : u32;
-
 
 
 
@@ -509,14 +503,15 @@ enum class AstFlag : u16
 
 	Type_IsMut                  = 0x00'02,
 
-	INTERNAL_LastSibling        = 0x00'80,
-	INTERNAL_FirstSibling       = 0x01'00,
-	INTERNAL_NoChildren         = 0x02'00,
+	INTERNAL_NoChildren         = 0x00'80,
+	INTERNAL_LastSibling        = 0x01'00,
+	INTERNAL_FirstSibling       = 0x02'00,
 
-	Any_SkipEvaluation          = 0x04'00,
-	Any_ConvertResult           = 0x08'00,
-	Any_LoadResult              = 0x10'00,
-	Any_IsComptimeKnown         = 0x20'00,
+	Any_HasArgDependency        = 0x02'00,
+	Any_IsComptimeKnown         = 0x04'00,
+	Any_SkipEvaluation          = 0x08'00,
+	Any_ConvertResult           = 0x10'00,
+	Any_LoadResult              = 0x20'00,
 	Any_TypeKindLoBit           = 0x40'00,
 	Any_TypeKindHiBit           = 0x80'00,
 };
@@ -573,8 +568,8 @@ struct AstNode
 	// `true`, then the expression is assignable (i.e., is `mut` and has an
 	// address).
 	// Only contains a valid value after typechecking. Before that, it is set
-	// to `type_ref(TypeId::INVALID, false, false)`.
-	DependentTypeId type;
+	// to `TypeId::INVALID`.
+	TypeId type;
 
 	// `SourceId` of the node. See `SourceReader` and further details.
 	SourceId source_id;
@@ -759,7 +754,7 @@ struct AstDefinitionData
 	// `IdentifierId` of the definition.
 	IdentifierId identifier_id;
 
-	DependentTypeId defined_type;
+	TypeId defined_type;
 };
 
 // Attachment of an `AstNode` with tag `AstTag::Parameter`.
@@ -769,7 +764,7 @@ struct AstParameterData
 
 	IdentifierId identifier_id;
 
-	DependentTypeId defined_type;
+	TypeId defined_type;
 };
 
 // Attachment of an `AstNode` with tag `AstTag::Func`.
@@ -1380,6 +1375,8 @@ enum class TypeId : u32
 	// typechecking. This is used to avoid circular dependencies leading to
 	// nontermination during typechecking.
 	CHECKING,
+
+	DELAYED,
 };
 
 // Tag for discriminating between different kinds of types.
@@ -1524,6 +1521,8 @@ struct IncompleteMemberIterator
 
 	u16 rank;
 
+	TypeDisposition disposition;
+
 	TypeId type_id;
 };
 
@@ -1539,6 +1538,8 @@ struct MemberIterator
 
 	u16 rank;
 
+	TypeDisposition disposition;
+
 	TypeId type_id;
 };
 
@@ -1550,7 +1551,7 @@ struct MemberIterator
 union DelayableTypeId
 {
 	// Completed `DependentTypeId`.
-	DependentTypeId complete;
+	TypeId complete;
 
 	// `AstNodeId` from which the `TypeId` can be evaluated or typechecked,
 	// depending on the context in which this occurs. 
@@ -1615,6 +1616,8 @@ struct MemberInfo
 
 	bool is_comptime_known : 1;
 
+	bool has_arg_dependency : 1;
+
 	// Indicates whether the member's type has been determined yet.
 	// See `type` for further information.
 	bool has_pending_type : 1;
@@ -1622,6 +1625,8 @@ struct MemberInfo
 	// Indicates whether the member's value has been determined yet.
 	// See `value` for further information.
 	bool has_pending_value : 1;
+
+	bool is_param : 1;
 
 	// Rank of the member in the surrounding type. This is a `0`-based index
 	// uniquely identifying the member inside its surrounding type. This index is
@@ -1712,6 +1717,8 @@ struct MemberInit
 
 	bool is_comptime_known : 1;
 
+	bool has_arg_dependency : 1;
+
 	// Indicates whether the member's type is pending.
 	// See `type` for further information.
 	// If this is `true`, `has_pending_value` must also be `true`.
@@ -1785,7 +1792,7 @@ struct ArrayType
 struct FuncType
 {
 	// `TypeId` of the function's return type.
-	DependentTypeId return_type_id;
+	TypeId return_type_id;
 
 	// `TypeId` of the function's signature composite type.
 	TypeId signature_type_id;
@@ -1798,9 +1805,9 @@ struct FuncType
 	// `func`. Always `false` for `Builtin` types.
 	bool is_proc;
 
-	// Explicit padding to allow consistent hashing without incurring undefined
-	// behaviour by accessing structure padding.
-	u8 unused_ = 0;
+	bool has_delayed_signature : 1;
+
+	bool has_delayed_return_type : 1;
 };
 
 
@@ -1867,7 +1874,7 @@ void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, 
 // `rank` indicates the type rank of the member in `open_type`, and
 // `member_type_id` is `TypeId` the member will have after this call returns.
 // This call must not be repeated on the same member. 
-void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_id, u16 rank, DependentTypeId member_type_id) noexcept;
+void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_id, u16 rank, TypeId member_type_id) noexcept;
 
 // Set the value of a member that was created with `has_pending_value` set to
 // `true`.
@@ -2123,17 +2130,6 @@ enum class ArecId : s32
 	INVALID = -1,
 };
 
-enum class DependentTypeId : u32
-{
-	INVALID = 0,
-};
-
-enum class DependentTypePosition : bool
-{
-	Type,
-	Value,
-};
-
 
 
 // Creates an `Interpreter`, allocating the necessary storage from `alloc`.
@@ -2160,46 +2156,5 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 const char8* tag_name(Builtin builtin) noexcept;
 
 const char8* tag_name(TypeKind type_kind) noexcept;
-
-
-inline DependentTypeId dependent_type_id(AstNodeId id, DependentTypePosition position) noexcept
-{
-	ASSERT_OR_IGNORE(static_cast<u32>(id) < (static_cast<u32>(1) << 30));
-
-	return static_cast<DependentTypeId>((-static_cast<s32>(id) << 1) | static_cast<s32>(position));
-}
-
-inline DependentTypeId independent_type_id(TypeId id) noexcept
-{
-	ASSERT_OR_IGNORE(static_cast<u32>(id) < (static_cast<u32>(1) << 31));
-
-	return static_cast<DependentTypeId>(id);
-}
-
-inline bool is_dependent(DependentTypeId id) noexcept
-{
-	return static_cast<s32>(id) < 0;
-}
-
-inline AstNodeId delayed(DependentTypeId id) noexcept
-{
-	ASSERT_OR_IGNORE(is_dependent(id));
-
-	return static_cast<AstNodeId>(-static_cast<s32>(id) >> 1);
-}
-
-inline TypeId independent(DependentTypeId id) noexcept
-{
-	ASSERT_OR_IGNORE(!is_dependent(id));
-
-	return static_cast<TypeId>(id);
-}
-
-inline DependentTypePosition position(DependentTypeId id) noexcept
-{
-	ASSERT_OR_IGNORE(is_dependent(id));
-
-	return static_cast<DependentTypePosition>(static_cast<s32>(id) & 1);
-}
 
 #endif // CORE_INCLUDE_GUARD

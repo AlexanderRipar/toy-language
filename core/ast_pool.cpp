@@ -173,6 +173,8 @@ static AstNode* copy_postorder_to_preorder(const AstNode* begin, const AstNode* 
 
 		memcpy(dst_node, src_curr, src_curr->data_dwords * sizeof(u32));
 
+		dst_node->flags &= static_cast<AstFlag>(~static_cast<u16>(AstFlag::INTERNAL_FirstSibling));
+
 		const u32 curr_ind = static_cast<u32>(reinterpret_cast<u32*>(dst_node) - reinterpret_cast<u32*>(dst_root));
 
 		if ((src_curr->flags & AstFlag::INTERNAL_FirstSibling) == AstFlag::EMPTY)
@@ -316,7 +318,7 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 	node->tag = tag;
 	node->data_dwords = sizeof(AstNode) / sizeof(u32);
 	node->flags = flags;
-	node->type = DependentTypeId::INVALID;
+	node->type = TypeId::INVALID;
 	node->source_id = source_id;
 
 	return AstBuilderToken{ static_cast<u32>(reinterpret_cast<u32*>(node) - asts->builder.begin()) };
@@ -337,7 +339,7 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 	node->tag = tag;
 	node->data_dwords = required_dwords;
 	node->flags = flags;
-	node->type = DependentTypeId::INVALID;
+	node->type = TypeId::INVALID;
 	node->source_id = source_id;
 
 	memcpy(node + 1, attachment, attachment_dwords * sizeof(u32));
