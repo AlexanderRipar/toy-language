@@ -65,8 +65,6 @@ struct ArecRestoreInfo
 
 struct LocationHeader
 {
-	bool is_dependent;
-
 	bool is_mut;
 };
 
@@ -177,69 +175,26 @@ static void complete_independent_member_value(Interpreter* interp, MemberInfo* m
 
 
 
-static DependentValue* dependent_value_from_dependent_loc(Location loc) noexcept
-{
-	ASSERT_OR_IGNORE(loc.attachment().is_dependent);
-
-	ASSERT_OR_IGNORE(loc.count() == sizeof(DependentValue));
-
-	DependentValue* const indirection = reinterpret_cast<DependentValue*>(loc.begin());
-
-	ASSERT_OR_IGNORE(indirection->value_offset != 0);
-
-	ASSERT_OR_IGNORE(indirection->resolved_type_id != TypeId::INVALID);
-
-	return indirection;
-}
-
-static MutRange<byte> bytes_from_dependent_loc(Location loc) noexcept
-{
-	const DependentValue* const indirection = dependent_value_from_dependent_loc(loc);
-
-	return MutRange{ loc.begin() + indirection->value_offset, indirection->value_size };
-}
-
-static TypeId type_id_from_dependent_loc(Location loc) noexcept
-{
-	return dependent_value_from_dependent_loc(loc)->resolved_type_id;
-}
-
 static void copy_loc(Location dst, Location src) noexcept
 {
-	MutRange<byte> dst_bytes = dst.attachment().is_dependent
-		? bytes_from_dependent_loc(dst)
-		: dst.as_mut_byte_range();
-		
-	MutRange<byte> src_bytes = src.attachment().is_dependent
-		? bytes_from_dependent_loc(src)
-		: src.as_mut_byte_range();
+	ASSERT_OR_IGNORE(dst.count() == src.count());
 
-	ASSERT_OR_IGNORE(dst_bytes.count() == src_bytes.count());
-
-	memcpy(dst_bytes.begin(), src_bytes.begin(), dst_bytes.count());
+	memcpy(dst.begin(), src.begin(), dst.count());
 }
 
 template<typename T>
 static T load_loc(Location src) noexcept
 {
-	MutRange<byte> src_bytes = src.attachment().is_dependent
-		? bytes_from_dependent_loc(src)
-		: src.as_mut_byte_range();
+	ASSERT_OR_IGNORE(src.count() == sizeof(T));
 
-	ASSERT_OR_IGNORE(src_bytes.count() == sizeof(T));
-
-	return *reinterpret_cast<T*>(src_bytes.begin());
+	return *reinterpret_cast<T*>(src.begin());
 }
 
 static void store_loc_raw(Location dst, Range<byte> src_bytes) noexcept
 {
-	MutRange<byte> dst_bytes = dst.attachment().is_dependent
-		? bytes_from_dependent_loc(dst)
-		: dst.as_mut_byte_range();
+	ASSERT_OR_IGNORE(dst.count() == src_bytes.count());
 
-	ASSERT_OR_IGNORE(dst_bytes.count() == src_bytes.count());
-
-	memcpy(dst_bytes.begin(), src_bytes.begin(), src_bytes.count());
+	memcpy(dst.begin(), src_bytes.begin(), src_bytes.count());
 }
 
 template<typename T>
@@ -251,7 +206,7 @@ static void store_loc(Location dst, T src) noexcept
 template<typename T>
 static Location make_loc(T* t) noexcept
 {
-	return Location{ range::from_object_bytes_mut(t), LocationHeader{ false, true } };
+	return Location{ range::from_object_bytes_mut(t), LocationHeader{ true } };
 }
 
 
@@ -409,7 +364,7 @@ static void location_from_member_info_and_arec(Interpreter* interp, OptPtr<Arec>
 		if (info->has_pending_value)
 			complete_independent_member_value(interp, info);
 
-		*out_location = Location{ global_value_get_mut(interp->globals, info->value.complete), LocationHeader{ false, info->is_mut } };
+		*out_location = Location{ global_value_get_mut(interp->globals, info->value.complete), LocationHeader{ info->is_mut } };
 
 		*out_resolved_type_id = global_value_type(interp->globals, info->value.complete);
 	}
@@ -420,7 +375,7 @@ static void location_from_member_info_and_arec(Interpreter* interp, OptPtr<Arec>
 		if (size > UINT32_MAX)
 			source_error(interp->errors, info->source, "Size of dependent type instance must not exceed 2^32 - 1 bytes.\n");
 
-		*out_location = Location{ get_ptr(arec)->attachment + info->offset, static_cast<u32>(size), LocationHeader{ false, info->is_mut } };
+		*out_location = Location{ get_ptr(arec)->attachment + info->offset, static_cast<u32>(size), LocationHeader{ info->is_mut } };
 
 		*out_resolved_type_id = info->type.complete;
 	}
@@ -494,13 +449,13 @@ static Location prepare_load_and_convert(Interpreter* interp, AstNode* src_node,
 {
 	if (has_flag(src_node, AstFlag::Any_LoadResult))
 	{
-		return Location{ arec_alloc_temp(interp, sizeof(Location), alignof(Location)), LocationHeader{ false, true } };
+		return Location{ arec_alloc_temp(interp, sizeof(Location), alignof(Location)), LocationHeader{ true } };
 	}
 	else if (has_flag(src_node, AstFlag::Any_ConvertResult))
 	{
 		const TypeMetrics metrics = type_metrics_from_id(interp->types, src_node->type);
 
-		return Location{ arec_alloc_temp(interp, metrics.size, metrics.align), LocationHeader{ false, true } };
+		return Location{ arec_alloc_temp(interp, metrics.size, metrics.align), LocationHeader{ true } };
 	}
 	else
 	{
@@ -762,7 +717,7 @@ static void complete_independent_member_value(Interpreter* interp, MemberInfo* m
 
 	MutRange<byte> value_bytes = global_value_get_mut(interp->globals, value_id);
 
-	Location value_loc = Location{ value_bytes, LocationHeader{ false, member->is_mut } };
+	Location value_loc = Location{ value_bytes, LocationHeader{ member->is_mut } };
 
 	AstNode* const value = ast_node_from_id(interp->asts, member->value.pending);
 
@@ -869,7 +824,7 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId context, bo
 	{
 		const GlobalValueId global_value_id = attachment_of<AstLitStringData>(node)->string_value_id;
 
-		store_loc(into, Location{ global_value_get_mut(interp->globals, global_value_id), LocationHeader{ false, false } });
+		store_loc(into, Location{ global_value_get_mut(interp->globals, global_value_id), LocationHeader{ false } });
 
 		return;
 	}
@@ -995,13 +950,13 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId context, bo
 					if (member.has_pending_value)
 						complete_independent_member_value(interp, &member);
 
-					store_loc(into, Location{ global_value_get_mut(interp->globals, member.value.complete), LocationHeader{ false, member.is_mut } });
+					store_loc(into, Location{ global_value_get_mut(interp->globals, member.value.complete), LocationHeader{ member.is_mut } });
 				}
 				else
 				{
 					const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member.type.complete); 
 
-					store_loc(into, Location{ evaluated_lhs.as_mut_byte_range().mut_subrange(member.offset, member_metrics.size), LocationHeader{ false, evaluated_lhs.attachment().is_mut && member.is_mut } });
+					store_loc(into, Location{ evaluated_lhs.as_mut_byte_range().mut_subrange(member.offset, member_metrics.size), LocationHeader{ evaluated_lhs.attachment().is_mut && member.is_mut } });
 				}
 			}
 		}
@@ -1030,7 +985,7 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId context, bo
 			if (member.has_pending_value)
 				complete_independent_member_value(interp, &member);
 
-			store_loc(into, Location{ global_value_get_mut(interp->globals, member.value.complete), LocationHeader{ false, member.is_mut } });
+			store_loc(into, Location{ global_value_get_mut(interp->globals, member.value.complete), LocationHeader{ member.is_mut } });
 		}
 
 		return;
