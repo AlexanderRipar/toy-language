@@ -32,7 +32,9 @@ struct alignas(8) Arec
 	// a valid `TypeId` referencing a composite type.
 	TypeId type_id;
 
-	u32 end_index;
+	u32 size : 31;
+
+	u32 is_static : 1;
 
 	#if COMPILER_MSVC
 	#pragma warning(push)
@@ -161,11 +163,9 @@ struct Interpreter
 
 
 
-static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId context, bool in_call, Location into) noexcept;
+static void evaluate_expr(Interpreter* interp, AstNode* node, Location into) noexcept;
 
-static TypeId delayed_typecheck_expr(Interpreter* interp, AstNode* node) noexcept;
-
-static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) noexcept;
+static void typecheck_expr(Interpreter* interp, AstNode* node) noexcept;
 
 static void complete_independent_member_type(Interpreter* interp, MemberInfo* member) noexcept;
 
@@ -213,7 +213,7 @@ static Location make_loc(T* t) noexcept
 
 static ArecRestoreInfo activate_arec_id(Interpreter* interp, ArecId arec_id) noexcept
 {
-	ASSERT_OR_IGNORE(arec_id != ArecId::INVALID && arec_id < interp->top_arec_id);
+	ASSERT_OR_IGNORE(arec_id != ArecId::INVALID && arec_id <= interp->top_arec_id);
 
 	const ArecId old_selected = interp->active_arec_id;
 
@@ -238,6 +238,11 @@ static ArecId active_arec_id(Interpreter* interp) noexcept
 	return interp->active_arec_id;
 }
 
+static TypeId active_arec_type_id(Interpreter* interp) noexcept
+{
+	return active_arec(interp)->type_id;
+}
+
 static void restore_arec(Interpreter* interp, ArecRestoreInfo info) noexcept
 {
 	ASSERT_OR_IGNORE(info.old_selected <= interp->top_arec_id);
@@ -256,11 +261,16 @@ static Arec* arec_from_id(Interpreter* interp, ArecId arec_id) noexcept
 	return reinterpret_cast<Arec*>(interp->arecs.begin() + static_cast<s32>(arec_id));
 }
 
-static ArecId arec_push(Interpreter* interp, TypeId record_type_id, ArecId lexical_parent) noexcept
+static ArecId arec_push(Interpreter* interp, TypeId record_type_id, ArecId local_parent, bool is_static) noexcept
 {
 	ASSERT_OR_IGNORE(type_tag_from_id(interp->types, record_type_id) == TypeTag::Composite);
 
-	const TypeMetrics record_metrics = type_metrics_from_id(interp->types, record_type_id);
+	const TypeMetrics record_metrics = is_static
+		? TypeMetrics{ 0, 0, 1 }
+		: type_metrics_from_id(interp->types, record_type_id);
+
+	if (record_metrics.size >= (static_cast<u32>(1) << 31))
+		panic("Arec too large.\n");
 
 	// TODO: Make this properly aligned for over-aligned types.
 	// That also needs to account for the 8-byte skew created by the
@@ -268,15 +278,16 @@ static ArecId arec_push(Interpreter* interp, TypeId record_type_id, ArecId lexic
 
 	Arec* const arec = static_cast<Arec*>(interp->arecs.reserve_padded(static_cast<u32>(sizeof(Arec) + record_metrics.size)));
 	arec->prev_top_id = interp->top_arec_id;
-	arec->surrounding_arec_id = lexical_parent;
+	arec->surrounding_arec_id = local_parent;
 	arec->type_id = record_type_id;
-	arec->end_index = interp->arecs.used();
+	arec->size = record_metrics.size;
+	arec->is_static = is_static;
 
 	const ArecId arec_id = static_cast<ArecId>(reinterpret_cast<const u64*>(arec) - interp->arecs.begin());
 
 	interp->top_arec_id = arec_id;
 
-	ASSERT_OR_IGNORE(lexical_parent == ArecId::INVALID || interp->active_arec_id == lexical_parent);
+	ASSERT_OR_IGNORE(local_parent == ArecId::INVALID || interp->active_arec_id == local_parent);
 
 	interp->active_arec_id = arec_id;
 
@@ -302,11 +313,13 @@ static void arec_grow(Interpreter* interp, ArecId arec_id, u32 new_size) noexcep
 
 	Arec* const arec = reinterpret_cast<Arec*>(interp->arecs.begin() + static_cast<s32>(arec_id));
 
-	ASSERT_OR_IGNORE(interp->arecs.used() == arec->end_index);
+	ASSERT_OR_IGNORE(!arec->is_static);
 
-	ASSERT_OR_IGNORE(arec->end_index <= static_cast<u32>(arec_id)  + new_size);
+	ASSERT_OR_IGNORE(reinterpret_cast<u64>(interp->arecs.end()) == (reinterpret_cast<u64>(arec->attachment + arec->size + 7) & ~static_cast<u64>(7)));
 
-	arec->end_index = static_cast<u32>(arec_id) + new_size;
+	ASSERT_OR_IGNORE(arec->size <= new_size);
+
+	arec->size = new_size;
 }
 
 static MutRange<byte> arec_alloc_temp(Interpreter* interp, u64 size, u32 align) noexcept
@@ -321,7 +334,7 @@ static MutRange<byte> arec_alloc_temp(Interpreter* interp, u64 size, u32 align) 
 
 static void arec_dealloc_temp(Interpreter* interp, MutRange<byte> bytes) noexcept
 {
-	const u64 expected_end = (reinterpret_cast<u64>(bytes.end()) + 7) & ~7;
+	const u64 expected_end = (reinterpret_cast<u64>(bytes.end()) + 7) & ~static_cast<u64>(7);
 
 	const u64 actual_end = reinterpret_cast<u64>(interp->arecs.end());
 
@@ -336,74 +349,36 @@ static void arec_dealloc_temp(Interpreter* interp, MutRange<byte> bytes) noexcep
 
 
 
-static bool lookup_identifier(Interpreter* interp, TypeId context, IdentifierId name, SourceId source, MemberInfo* out) noexcept
+static Location location_from_global_info(Interpreter* interp, MemberInfo* info) noexcept
 {
-	while (true)
-	{
-		if (type_member_info_by_name(interp->types, context, name, source, out))
-			return true;
+	if (info->has_pending_type)
+		complete_independent_member_type(interp, info);
 
-		context = lexical_parent_type_from_id(interp->types, context);
+	if (info->has_pending_value)
+		complete_independent_member_value(interp, info);
 
-		if (context == TypeId::INVALID)
-			return false;
-	}
+	ASSERT_OR_IGNORE(info->value.complete != GlobalValueId::INVALID);
+
+	return Location{ global_value_get_mut(interp->globals, info->value.complete), LocationHeader{ info->is_mut } };
 }
 
-
-
-static void location_from_member_info_and_arec(Interpreter* interp, OptPtr<Arec> arec, MemberInfo* info, Location* out_location, TypeId* out_resolved_type_id) noexcept
+static Location location_from_arec_and_info(Interpreter* interp, Arec* arec, MemberInfo* info) noexcept
 {
-	ASSERT_OR_IGNORE(info->is_global || is_none(arec) || !info->has_pending_type);
-
 	if (info->is_global)
-	{
-		if (info->has_pending_type)
-			complete_independent_member_type(interp, info);
+		return location_from_global_info(interp, info);
 
-		if (info->has_pending_value)
-			complete_independent_member_value(interp, info);
+	ASSERT_OR_IGNORE(!arec->is_static);
 
-		*out_location = Location{ global_value_get_mut(interp->globals, info->value.complete), LocationHeader{ info->is_mut } };
+	const u64 size = type_metrics_from_id(interp->types, info->type.complete).size;
 
-		*out_resolved_type_id = global_value_type(interp->globals, info->value.complete);
-	}
-	else
-	{
-		const u64 size = type_metrics_from_id(interp->types, info->type.complete).size;
+	if (size > UINT32_MAX)
+		source_error(interp->errors, info->source, "Size of stack-based location must not exceed 2^32 - 1 bytes.\n");
 
-		if (size > UINT32_MAX)
-			source_error(interp->errors, info->source, "Size of dependent type instance must not exceed 2^32 - 1 bytes.\n");
-
-		*out_location = Location{ get_ptr(arec)->attachment + info->offset, static_cast<u32>(size), LocationHeader{ info->is_mut } };
-
-		*out_resolved_type_id = info->type.complete;
-	}
+	return Location{ arec->attachment + info->offset, static_cast<u32>(size), LocationHeader{ info->is_mut } };
 }
 
-static void lookup_location_local(Interpreter* interp, Arec* arec, IdentifierId name, SourceId source, Location* out_location, TypeId* out_resolved_type_id) noexcept
+static bool lookup_identifier_arec_and_info(Interpreter* interp, IdentifierId name, SourceId source, OptPtr<Arec>* out_arec, MemberInfo* out_info) noexcept
 {
-	MemberInfo info;
-
-	if (!type_member_info_by_name(interp->types, arec->type_id, name, source, &info))
-		ASSERT_UNREACHABLE;
-
-	location_from_member_info_and_arec(interp, some(arec), &info, out_location, out_resolved_type_id);
-}
-
-static void lookup_location_local_by_rank(Interpreter* interp, Arec* arec, u16 rank, Location* out_location, TypeId* out_resolved_type_id) noexcept
-{
-	MemberInfo info;
-
-	type_member_info_by_rank(interp->types, arec->type_id, rank, &info);
-
-	location_from_member_info_and_arec(interp, some(arec), &info, out_location, out_resolved_type_id);
-}
-
-static bool lookup_location(Interpreter* interp, IdentifierId name, SourceId source, Location* out_location, TypeId* out_resolved_type_id) noexcept
-{
-	MemberInfo info;
-
 	ASSERT_OR_IGNORE(interp->active_arec_id != ArecId::INVALID);
 
 	ArecId curr = interp->active_arec_id;
@@ -412,9 +387,9 @@ static bool lookup_location(Interpreter* interp, IdentifierId name, SourceId sou
 
 	while (true)
 	{
-		if (type_member_info_by_name(interp->types, arec->type_id, name, source, &info))
+		if (type_member_info_by_name(interp->types, arec->type_id, name, source, out_info))
 		{
-			location_from_member_info_and_arec(interp, some(arec), &info, out_location, out_resolved_type_id);
+			*out_arec = some(arec);
 
 			return true;
 		}
@@ -429,18 +404,76 @@ static bool lookup_location(Interpreter* interp, IdentifierId name, SourceId sou
 
 	for (TypeId lex_scope = lexical_parent_type_from_id(interp->types, arec->type_id); lex_scope != TypeId::INVALID; lex_scope = lexical_parent_type_from_id(interp->types, lex_scope))
 	{
-		if (type_member_info_by_name(interp->types, lex_scope, name, source, &info))
+		if (type_member_info_by_name(interp->types, lex_scope, name, source, out_info))
 		{
-			if (!info.is_global)
-				return false;
-
-			location_from_member_info_and_arec(interp, none<Arec>(), &info, out_location, out_resolved_type_id);
+			*out_arec = none<Arec>();
 
 			return true;
 		}
 	}
 
-	return false;
+	return false;	
+}
+
+static Location lookup_local_identifier_location(Interpreter* interp, Arec* arec, IdentifierId name, SourceId source) noexcept
+{
+	MemberInfo info;
+
+	if (!type_member_info_by_name(interp->types, arec->type_id, name, source, &info))
+		ASSERT_UNREACHABLE;
+
+	return location_from_arec_and_info(interp, arec, &info);
+}
+
+static void lookup_local_location_by_rank(Interpreter* interp, Arec* arec, u16 rank, Location* out_loc, TypeId* out_type_id) noexcept
+{
+	MemberInfo info;
+
+	type_member_info_by_rank(interp->types, arec->type_id, rank, &info);
+
+	*out_loc = location_from_arec_and_info(interp, arec, &info);
+
+	ASSERT_OR_IGNORE(!info.has_pending_type);
+
+	*out_type_id = info.type.complete;
+}
+
+static bool lookup_identifier_location(Interpreter* interp, IdentifierId name, SourceId source, Location* out) noexcept
+{
+	OptPtr<Arec> arec;
+
+	MemberInfo info;
+
+	if (!lookup_identifier_arec_and_info(interp, name, source, &arec, &info))
+		ASSERT_UNREACHABLE;
+
+	if (is_some(arec) && !get_ptr(arec)->is_static)
+	{
+		*out = location_from_arec_and_info(interp, get_ptr(arec), &info);
+	}
+	else if (info.is_global)
+	{
+		*out = location_from_global_info(interp, &info);
+	}
+	else if (info.is_comptime_known && !info.has_arg_dependency && !info.is_param)
+	{
+		ASSERT_OR_IGNORE(!info.has_pending_type && !info.has_pending_value && info.value.complete != GlobalValueId::INVALID);
+
+		*out = location_from_global_info(interp, &info);
+	}
+	else
+	{
+		return false;
+	}
+
+	return true;
+}
+
+static bool lookup_identifier_info(Interpreter* interp, IdentifierId name, SourceId source, MemberInfo* info) noexcept
+{
+	OptPtr<Arec> unused_arec;
+
+	return lookup_identifier_arec_and_info(interp, name, source, &unused_arec, info);
 }
 
 
@@ -652,7 +685,11 @@ static void complete_independent_member_type(Interpreter* interp, MemberInfo* me
 
 		if (value->type == TypeId::INVALID)
 		{
-			typecheck_expr(interp, value, member->completion_context);
+			const ArecRestoreInfo restore_info = activate_arec_id(interp, member->completion_arec_id);
+
+			typecheck_expr(interp, value);
+
+			restore_arec(interp, restore_info);
 
 			set_load_only(interp, value, TypeKind::Value);
 		}
@@ -665,7 +702,11 @@ static void complete_independent_member_type(Interpreter* interp, MemberInfo* me
 
 		if (type->type == TypeId::INVALID)
 		{
-			typecheck_expr(interp, type, member->completion_context);
+			const ArecRestoreInfo type_restore_info = activate_arec_id(interp, member->completion_arec_id);
+
+			typecheck_expr(interp, type);
+
+			restore_arec(interp, type_restore_info);
 
 			if (!has_flag(type, AstFlag::Any_IsComptimeKnown))
 				source_error(interp->errors, type->source_id, "Explicit type annotation must have compile-time known value.\n");
@@ -680,18 +721,11 @@ static void complete_independent_member_type(Interpreter* interp, MemberInfo* me
 
 		Location mapped_member_type_id_loc = prepare_load_and_convert(interp, type, member_type_id_loc);
 
-		if (static_cast<ArecId>(member->completion_arec) == ArecId::INVALID)
-		{
-			evaluate_expr(interp, type, member->completion_context, false, mapped_member_type_id_loc);
-		}
-		else
-		{
-			const ArecRestoreInfo restore_info = activate_arec_id(interp, static_cast<ArecId>(member->completion_arec));
+		const ArecRestoreInfo restore_info = activate_arec_id(interp, static_cast<ArecId>(member->completion_arec_id));
 
-			evaluate_expr(interp, type, active_arec(interp)->type_id, true, mapped_member_type_id_loc);
+		evaluate_expr(interp, type, mapped_member_type_id_loc);
 
-			restore_arec(interp, restore_info);
-		}
+		restore_arec(interp, restore_info);
 
 		load_and_convert(interp, type->source_id, member_type_id_loc, simple_type(interp->types, TypeTag::Type, {}), mapped_member_type_id_loc, type->type, type->flags);
 	}
@@ -706,6 +740,19 @@ static void complete_independent_member_value(Interpreter* interp, MemberInfo* m
 {
 	ASSERT_OR_IGNORE(!member->has_pending_type && member->has_pending_value && member->is_comptime_known);
 
+	AstNode* const value = ast_node_from_id(interp->asts, member->value.pending);
+
+	if (value->type == TypeId::INVALID)
+	{
+		const ArecRestoreInfo restore_info = activate_arec_id(interp, member->completion_arec_id);
+
+		typecheck_expr(interp, value);
+
+		restore_arec(interp, restore_info);
+
+		set_load_only(interp, value, TypeKind::Value);
+	}
+
 	const TypeId member_type_id = member->type.complete;
 
 	if (member_type_id == TypeId::DELAYED)
@@ -719,31 +766,15 @@ static void complete_independent_member_value(Interpreter* interp, MemberInfo* m
 
 	Location value_loc = Location{ value_bytes, LocationHeader{ member->is_mut } };
 
-	AstNode* const value = ast_node_from_id(interp->asts, member->value.pending);
+	Location mapped_value_loc = prepare_load_and_convert(interp, value, value_loc);
 
-	if (value->type == TypeId::INVALID)
-	{
-		typecheck_expr(interp, value, member->completion_context);
+	const ArecRestoreInfo restore_info = activate_arec_id(interp, static_cast<ArecId>(member->completion_arec_id));
 
-		set_load_only(interp, value, TypeKind::Value);
-	}
+	evaluate_expr(interp, value, mapped_value_loc);
 
-	if (static_cast<ArecId>(member->completion_arec) == ArecId::INVALID)
-	{
-		Location mapped_value_loc = prepare_load_and_convert(interp, value, value_loc);
+	restore_arec(interp, restore_info);
 
-		evaluate_expr(interp, value, member->completion_context, false, mapped_value_loc);
-
-		load_and_convert(interp, value->source_id, value_loc, member_type_id, mapped_value_loc, value->type, value->flags);
-	}
-	else
-	{
-		const ArecRestoreInfo restore_info = activate_arec_id(interp, static_cast<ArecId>(member->completion_arec));
-
-		evaluate_expr(interp, value, active_arec(interp)->type_id, true, value_loc);
-
-		restore_arec(interp, restore_info);
-	}
+	load_and_convert(interp, value->source_id, value_loc, member_type_id, mapped_value_loc, value->type, value->flags);
 
 	member->value.complete = value_id;
 	member->has_pending_value = false;
@@ -753,7 +784,16 @@ static void complete_independent_member_value(Interpreter* interp, MemberInfo* m
 
 
 
-static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId context, bool in_call, Location into) noexcept
+static TypeId delayed_typecheck_expr(Interpreter* interp, AstNode* node) noexcept
+{
+	(void) interp;
+
+	(void) node;
+
+	TODO("Implement delayed_typecheck_expr.");
+}
+
+static void evaluate_expr(Interpreter* interp, AstNode* node, Location into) noexcept
 {
 	ASSERT_OR_IGNORE(node->type != TypeId::INVALID && node->type != TypeId::CHECKING);
 
@@ -793,7 +833,7 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId context, bo
 		}
 		else
 		{
-			TODO("(Later) Implement evaluation of function signatures to their type");
+			store_loc(into, attachment_of<AstFuncData>(node)->func_type_id);
 		}
 
 		return;
@@ -801,11 +841,9 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId context, bo
 
 	case AstTag::Identifier:
 	{
-		TypeId unused;
-
 		Location loc;
 
-		if (!lookup_location(interp, attachment_of<AstIdentifierData>(node)->identifier_id, node->source_id, &loc, &unused))
+		if (!lookup_identifier_location(interp, attachment_of<AstIdentifierData>(node)->identifier_id, node->source_id, &loc))
 			ASSERT_UNREACHABLE;
 
 		store_loc(into, loc);
@@ -839,7 +877,7 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId context, bo
 
 		Location mapped_callee_loc = prepare_load_and_convert(interp, callee, callee_loc);
 
-		evaluate_expr(interp, callee, context, in_call, mapped_callee_loc);
+		evaluate_expr(interp, callee, mapped_callee_loc);
 
 		load_and_convert(interp, callee->source_id, callee_loc, callee->type, mapped_callee_loc, callee->type, callee->flags);
 
@@ -847,7 +885,7 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId context, bo
 
 		const ArecId old_arec_id = active_arec_id(interp);
 
-		const ArecId signature_arec_id = arec_push(interp, callee_structure->signature_type_id, ArecId::INVALID);
+		const ArecId signature_arec_id = arec_push(interp, callee_structure->signature_type_id, ArecId::INVALID, false);
 
 		Arec* const signature_arec = arec_from_id(interp, signature_arec_id);
 
@@ -870,12 +908,12 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId context, bo
 				Location param_loc;
 
 				TypeId param_type_id;
-
-				lookup_location_local_by_rank(interp, signature_arec, arg_rank, &param_loc, &param_type_id);
+	
+				lookup_local_location_by_rank(interp, signature_arec, arg_rank, &param_loc, &param_type_id);
 
 				Location mapped_param_loc = prepare_load_and_convert(interp, arg, param_loc);
 
-				evaluate_expr(interp, arg, context, in_call, mapped_param_loc);
+				evaluate_expr(interp, arg, mapped_param_loc);
 
 				load_and_convert(interp, arg->source_id, param_loc, param_type_id, mapped_param_loc, arg->type, arg->flags);
 
@@ -895,7 +933,7 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId context, bo
 
 			Location mapped_into = prepare_load_and_convert(interp, body, into);
 
-			evaluate_expr(interp, body, signature_arec->type_id, true, mapped_into);
+			evaluate_expr(interp, body, mapped_into);
 
 			load_and_convert(interp, body->source_id, into, node->type, mapped_into, callee_structure->return_type_id, body->flags);
 		}
@@ -933,7 +971,7 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId context, bo
 
 				Location mapped_evaluated_lhs_loc = prepare_load_and_convert(interp, lhs, evaluated_lhs_loc);
 
-				evaluate_expr(interp, lhs, context, in_call, mapped_evaluated_lhs_loc);
+				evaluate_expr(interp, lhs, mapped_evaluated_lhs_loc);
 
 				load_and_convert(interp, lhs->source_id, evaluated_lhs_loc, lhs->type, mapped_evaluated_lhs_loc, lhs->type, lhs->flags);
 
@@ -968,7 +1006,7 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId context, bo
 
 			Location mapped_evaluated_lhs_type_loc = prepare_load_and_convert(interp, lhs, evaluated_lhs_type_loc);
 
-			evaluate_expr(interp, lhs, context, in_call, mapped_evaluated_lhs_type_loc);
+			evaluate_expr(interp, lhs, mapped_evaluated_lhs_type_loc);
 
 			load_and_convert(interp, lhs->source_id, evaluated_lhs_type_loc, lhs->type, mapped_evaluated_lhs_type_loc, lhs->type, lhs->flags);
 
@@ -1085,16 +1123,7 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, TypeId context, bo
 	ASSERT_UNREACHABLE;
 }
 
-static TypeId delayed_typecheck_expr(Interpreter* interp, AstNode* node) noexcept
-{
-	(void) interp;
-
-	(void) node;
-
-	TODO("Implement delayed_typecheck_expr.");
-}
-
-static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) noexcept
+static void typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 {
 	const TypeId prev_type_id = node->type;
 
@@ -1134,7 +1163,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 		{
 			AstNode* const type = get_ptr(info.type);
 
-			typecheck_expr(interp, type, context);
+			typecheck_expr(interp, type);
 
 			if (!has_flag(type, AstFlag::Any_IsComptimeKnown))
 				source_error(interp->errors, type->source_id, "Explicit type annotation must have compile-time known value.\n");
@@ -1148,7 +1177,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 
 			Location mapped_defined_type_loc = prepare_load_and_convert(interp, type, defined_type_loc);
 
-			evaluate_expr(interp, type, context, false, mapped_defined_type_loc);
+			evaluate_expr(interp, type, mapped_defined_type_loc);
 
 			load_and_convert(interp, type->source_id, defined_type_loc, simple_type(interp->types, TypeTag::Type, {}), mapped_defined_type_loc, type->type, type->flags);
 
@@ -1156,7 +1185,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 			{
 				AstNode* const value = get_ptr(info.value);
 
-				typecheck_expr(interp, value, context);
+				typecheck_expr(interp, value);
 
 				set_load_and_convert(interp, value, TypeKind::Value, attach->defined_type);
 			}
@@ -1165,7 +1194,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 		{
 			AstNode* const value = get_ptr(info.value);
 
-			typecheck_expr(interp, value, context);
+			typecheck_expr(interp, value);
 
 			set_load_only(interp, value, TypeKind::Value);
 
@@ -1186,7 +1215,9 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 
 	case AstTag::Block:
 	{
-		const TypeId block_type_id = create_open_type(interp->types, context, node->source_id, TypeDisposition::Block);
+		const TypeId block_type_id = create_open_type(interp->types, active_arec_type_id(interp), node->source_id, TypeDisposition::Block);
+
+		const ArecId block_arec_id = arec_push(interp, block_type_id, active_arec_id(interp), true);
 
 		u64 block_member_offset = 0;
 
@@ -1206,7 +1237,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 		{
 			stmt = next(&stmts);
 
-			typecheck_expr(interp, stmt, block_type_id);
+			typecheck_expr(interp, stmt);
 
 			is_comptime_known &= has_flag(stmt, AstFlag::Any_IsComptimeKnown);
 
@@ -1234,8 +1265,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 				init.source = stmt->source_id;
 				init.type.complete = attach->defined_type;
 				init.value.pending = include_value ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
-				init.completion_context = block_type_id;
-				init.completion_arec = static_cast<s32>(ArecId::INVALID);
+				init.completion_arec_id = block_arec_id;
 				init.is_global = has_flag(stmt, AstFlag::Definition_IsGlobal);
 				init.is_pub = has_flag(stmt, AstFlag::Definition_IsPub);
 				init.is_use = has_flag(stmt, AstFlag::Definition_IsUse);
@@ -1262,6 +1292,8 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 				definition_rank += 1;
 			}
 		}
+
+		arec_pop(interp, block_arec_id);
 
 		close_open_type(interp->types, block_type_id, block_member_offset, block_align, next_multiple(block_member_offset, static_cast<u64>(block_align)));
 
@@ -1291,7 +1323,9 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 
 		bool has_arg_dependency = false;
 
-		const TypeId signature_type_id = create_open_type(interp->types, context, node->source_id, TypeDisposition::Signature);
+		const TypeId signature_type_id = create_open_type(interp->types, active_arec_type_id(interp), node->source_id, TypeDisposition::Signature);
+
+		const ArecId signature_arec_id = arec_push(interp, signature_type_id, active_arec_id(interp), true);
 
 		AstDirectChildIterator params = direct_children_of(info.parameters);
 
@@ -1308,8 +1342,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 			init.source = param->source_id;
 			init.type.pending = is_some(param_info.type) ? id_from_ast_node(interp->asts, get_ptr(param_info.type)) : AstNodeId::INVALID;
 			init.value.pending = is_some(param_info.value) ? id_from_ast_node(interp->asts, get_ptr(param_info.value)) : AstNodeId::INVALID;
-			init.completion_context = signature_type_id;
-			init.completion_arec = static_cast<s32>(ArecId::INVALID);
+			init.completion_arec_id = signature_arec_id;
 			init.is_global = false;
 			init.is_pub = false;
 			init.is_use = has_flag(param, AstFlag::Parameter_IsMut);
@@ -1359,7 +1392,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 		{
 			AstNode* const return_type = get_ptr(info.return_type);
 
-			typecheck_expr(interp, return_type, signature_type_id);
+			typecheck_expr(interp, return_type);
 
 			set_load_only(interp, return_type, TypeKind::Value);
 
@@ -1373,7 +1406,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 			
 			Location mapped_evaluated_return_type_loc = prepare_load_and_convert(interp, return_type, evaluated_return_type_loc);
 
-			evaluate_expr(interp, return_type, signature_type_id, false, mapped_evaluated_return_type_loc);
+			evaluate_expr(interp, return_type, mapped_evaluated_return_type_loc);
 
 			load_and_convert(interp, return_type->source_id, evaluated_return_type_loc, return_type->type, mapped_evaluated_return_type_loc, return_type->type, return_type->flags);
 		}
@@ -1398,7 +1431,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 		{
 			AstNode* const body = get_ptr(info.body);
 
-			typecheck_expr(interp, body, signature_type_id);
+			typecheck_expr(interp, body);
 
 			set_load_and_convert(interp, body, TypeKind::Value, evaluated_return_type);
 
@@ -1408,6 +1441,8 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 		{
 			result_type = simple_type(interp->types, TypeTag::Type, {});
 		}
+
+		arec_pop(interp, signature_arec_id);
 
 		store_typecheck_result(node, result_type, TypeKind::Value, true, has_arg_dependency);
 
@@ -1420,7 +1455,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 
 		MemberInfo info;
 
-		if (!lookup_identifier(interp, context, attach->identifier_id, node->source_id, &info))
+		if (!lookup_identifier_info(interp, attach->identifier_id, node->source_id, &info))
 		{
 			const Range<char8> name = identifier_name_from_id(interp->identifiers, attach->identifier_id);
 
@@ -1457,7 +1492,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 	{
 		AstNode* const callee = first_child_of(node);
 
-		typecheck_expr(interp, callee, context);
+		typecheck_expr(interp, callee);
 
 		set_load_only(interp, callee, TypeKind::Value);
 
@@ -1488,7 +1523,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 			}
 			else
 			{
-				typecheck_expr(interp, arg, context);
+				typecheck_expr(interp, arg);
 			}
 
 			is_comptime_known &= has_flag(arg, AstFlag::Any_IsComptimeKnown);
@@ -1532,7 +1567,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 
 		AstNode* const rhs = next_sibling_of(lhs);
 
-		typecheck_expr(interp, lhs, context);
+		typecheck_expr(interp, lhs);
 
 		const TypeId lhs_type_id = lhs->type;
 
@@ -1578,7 +1613,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 
 			Location mapped_evaluated_lhs_type_id_loc = prepare_load_and_convert(interp, lhs, evaluated_lhs_type_id_loc);
 
-			evaluate_expr(interp, lhs, context, false, mapped_evaluated_lhs_type_id_loc);
+			evaluate_expr(interp, lhs, mapped_evaluated_lhs_type_id_loc);
 
 			load_and_convert(interp, lhs->source_id, evaluated_lhs_type_id_loc, simple_type(interp->types, TypeTag::Type, {}), mapped_evaluated_lhs_type_id_loc, lhs->type, lhs->flags);
 
@@ -1621,9 +1656,9 @@ static void typecheck_expr(Interpreter* interp, AstNode* node, TypeId context) n
 
 		AstNode* const rhs = next_sibling_of(lhs);
 
-		typecheck_expr(interp, lhs, context);
+		typecheck_expr(interp, lhs);
 
-		typecheck_expr(interp, rhs, context);
+		typecheck_expr(interp, rhs);
 
 		const TypeId common_type_id = common_type(interp->types, lhs->type, rhs->type);
 
@@ -1737,6 +1772,8 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 	// parent.
 	const TypeId file_type_id = create_open_type(interp->types, interp->prelude_type_id, file_type_source_id, TypeDisposition::User);
 
+	const ArecId file_arec_id = arec_push(interp, file_type_id, ArecId::INVALID, true);
+
 	AstDirectChildIterator ast_it = direct_children_of(file);
 
 	while (has_next(&ast_it))
@@ -1758,8 +1795,7 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 		init.source = node->source_id;
 		init.type.pending = is_some(info.type) ? id_from_ast_node(interp->asts, get_ptr(info.type)) : AstNodeId::INVALID;
 		init.value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
-		init.completion_context = file_type_id;
-		init.completion_arec = static_cast<s32>(ArecId::INVALID);
+		init.completion_arec_id = file_arec_id;
 		init.is_global = true;
 		init.is_pub = has_flag(node, AstFlag::Definition_IsPub);
 		init.is_use = has_flag(node, AstFlag::Definition_IsUse);
@@ -1775,15 +1811,13 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 
 	close_open_type(interp->types, file_type_id, 0, 1, 0);
 
-	const ArecId file_arec_id = arec_push(interp, file_type_id, ArecId::INVALID);
-
 	ast_it = direct_children_of(file);
 
 	while (has_next(&ast_it))
 	{
 		AstNode* const node = next(&ast_it);
 
-		typecheck_expr(interp, node, file_type_id);
+		typecheck_expr(interp, node);
 	}
 
 	IncompleteMemberIterator member_it = incomplete_members_of(interp->types, file_type_id);
@@ -1865,11 +1899,7 @@ static TypeId make_func_type(TypePool* types, TypeId return_type_id, Params... p
 template<typename T>
 static T get_builtin_arg(Interpreter* interp, Arec* arec, IdentifierId name) noexcept
 {
-	Location loc;
-
-	TypeId unused;
-
-	lookup_location_local(interp, arec, name, SourceId::INVALID, &loc, &unused);
+	Location loc = lookup_local_identifier_location(interp, arec, name, SourceId::INVALID);
 
 	return load_loc<T>(loc);
 }

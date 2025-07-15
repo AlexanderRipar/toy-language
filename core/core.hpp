@@ -1633,19 +1633,11 @@ struct MemberInfo
 	// determined by the order of calls to `add_open_type_member`.
 	u16 rank;
 
-	// Context in which the member's `type` and `value` can be completed if
-	// `has_pending_type` or `has_pending_value` are `true` respectively.
-	// If both `has_pending_type` and `has_pending_value` are `false`, the
-	// value of this is field undefined.
-	TypeId completion_context;
-
 	// Index of the activation record in which the member's `type` and `value`
 	// can be completed if `has_pending_type` or `has_pending_value` are `true`
 	// respectively. If both `has_pending_type` and `has_pending_value` are
 	// `false`, the value of this field is undefined.
-	// If `completion_arec` is `-1`, there is no activation record for the
-	// completions, because they are at global scope.
-	s32 completion_arec;
+	ArecId completion_arec_id;
 
 	// `TypeId` of the type which the member is a part of.
 	TypeId surrounding_type_id;
@@ -1686,21 +1678,12 @@ struct MemberInit
 	// `GlobalValueId::INVALID` if the member has no value.
 	DelayableValueId value;
 
-	// `TypeId` of the type lexically containing the definition underlying this
-	// member. This has to be set if either `has_pending_value` or
-	// `has_pending_type` is `true`. Otherwise it is ignored.
-	// The intent behind this member is to allow delayed typechecking and
-	// evaluation.
-	TypeId completion_context;
-
 	// Index of the activation record containing the definition underying this
 	// member. This has to be set if either `has_pending_value` or
 	// `has_pending_type` is `true`. Otherwise it is ignored.
 	// The intent behind this member is to allow delayed typechecking and
 	// evaluation.
-	// If the definition is not bound in an activation record (because it is at
-	// global scope) this field must be set to `-1`.
-	s32 completion_arec;
+	ArecId completion_arec_id;
 
 	// Whether the member is to be global. If this is `true`, the value of
 	// `offset` will be ignored.

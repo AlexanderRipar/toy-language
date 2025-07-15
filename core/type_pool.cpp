@@ -122,7 +122,7 @@ struct BuilderMember
 
 	// Index of the activation record in which the Definition from which this
 	// member is derived is located.
-	s32 completion_arec;
+	ArecId completion_arec_id;
 };
 
 struct CompositeMember
@@ -622,8 +622,7 @@ static MemberInfo member_info_from_composite_member(const CompositeMember* membe
 	info.is_param = disposition == TypeDisposition::Signature;
 	info.rank = rank;
 	info.surrounding_type_id = surrounding_type_id;
-	info.completion_context = TypeId::INVALID;
-	info.completion_arec = -1;
+	info.completion_arec_id = ArecId::INVALID;
 	info.offset = member->offset;
 
 	return info;
@@ -647,8 +646,7 @@ static MemberInfo member_info_from_builder_member(const BuilderMember* member, T
 	info.is_param = disposition == TypeDisposition::Signature;
 	info.rank = rank;
 	info.surrounding_type_id = surrounding_type_id;
-	info.completion_context = member->completion_context;
-	info.completion_arec = member->completion_arec;
+	info.completion_arec_id = member->completion_arec_id;
 	info.offset = member->offset;
 
 	return info;
@@ -958,6 +956,8 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init)
 
 	ASSERT_OR_IGNORE(init.type.pending != AstNodeId::INVALID || init.value.pending != AstNodeId::INVALID);
 
+	ASSERT_OR_IGNORE(!init.has_pending_type || init.completion_arec_id != ArecId::INVALID);
+
 	TypeName* const builder_name = types->named_types.value_from(static_cast<u32>(open_type_id));
 
 	if (resolve_name_structure(types, builder_name))
@@ -1029,8 +1029,7 @@ void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit init)
 	member->has_arg_dependency = init.has_arg_dependency;
 	member->has_pending_type = init.has_pending_type;
 	member->has_pending_value = init.has_pending_value;
-	member->completion_context = init.completion_context;
-	member->completion_arec = init.completion_arec;
+	member->completion_arec_id = init.completion_arec_id;
 
 	if (!init.has_pending_type && header->disposition == TypeDisposition::Signature)
 	{
