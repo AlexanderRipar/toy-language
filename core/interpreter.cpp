@@ -80,11 +80,17 @@ struct alignas(8) Callable
 {
 	// `TypeId` of the type of the function being called. Always references a
 	// `FuncType`.
-	u32 func_type_id_bits : 31;
+	TypeId func_type_id : 31;
 
 	// `1` when referring to a builtin, `0` otherwise.
 	// See `code.ordinal` and `code.ast` for further information.
-	u32 is_builtin : 1;
+	bool is_builtin : 1;
+
+	bool has_delayed_signature : 1;
+
+	bool has_delayed_return_type : 1;
+
+	bool has_delayed_body : 1;
 
 	// Reference to the function implementation. The representation depends on
 	// the value of `is_builtin`.
@@ -100,7 +106,11 @@ struct alignas(8) Callable
 		// `Interpreter.builtin_values`.
 		u8 ordinal;
 	} code;
+
+	u32 unused_;
 };
+
+static_assert(sizeof(Callable) == 16);
 
 // Representation of an instance of a dependent type in an `Arec`.
 // Stores the resolved `TypeId` along with the offset in quad-words from this
@@ -143,8 +153,6 @@ struct Interpreter
 	ErrorSink* errors;
 
 	ReservedVec<u64> arecs;
-
-	ReservedVec<u64> conversion_temps;
 
 	ArecId top_arec_id;
 
@@ -784,6 +792,15 @@ static void complete_independent_member_value(Interpreter* interp, MemberInfo* m
 
 
 
+static bool is_arg_dependent_expr(Interpreter* interp, AstNode* node) noexcept
+{
+	(void) interp;
+
+	(void) node;
+
+	TODO("Implement");
+}
+
 static TypeId delayed_typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 {
 	(void) interp;
@@ -809,8 +826,11 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, Location into) noe
 		ASSERT_OR_IGNORE(ordinal < static_cast<u8>(Builtin::MAX));
 
 		Callable result{};
+		result.func_type_id = interp->builtin_type_ids[ordinal];
 		result.is_builtin = true;
-		result.func_type_id_bits = static_cast<u32>(interp->builtin_type_ids[ordinal]);
+		result.has_delayed_signature = false;
+		result.has_delayed_return_type = false;
+		result.has_delayed_body = false;
 		result.code.ordinal = ordinal;
 
 		store_loc(into, result);
@@ -822,18 +842,30 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, Location into) noe
 	{
 		FuncInfo info = get_func_info(node);
 
+		const TypeId func_type_id = attachment_of<AstFuncData>(node)->func_type_id;
+
 		if (is_some(info.body))
 		{
 			Callable result{};
 			result.is_builtin = false;
-			result.func_type_id_bits = static_cast<u32>(node->type);
-			result.code.ast = id_from_ast_node(interp->asts, get_ptr(info.body));
+
+			const FuncType func_type = *static_cast<const FuncType*>(simple_type_structure_from_id(interp->types, func_type_id));
+
+			if (func_type.has_delayed_signature || func_type.has_delayed_return_type)
+			{
+				TODO("Implement delayed typechecking of argument-dependent functions");
+			}
+			else
+			{
+				result.func_type_id = node->type;
+				result.code.ast = id_from_ast_node(interp->asts, get_ptr(info.body));
+			}
 
 			store_loc(into, result);
 		}
 		else
 		{
-			store_loc(into, attachment_of<AstFuncData>(node)->func_type_id);
+			store_loc(into, func_type_id);
 		}
 
 		return;
@@ -881,11 +913,11 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, Location into) noe
 
 		load_and_convert(interp, callee->source_id, callee_loc, callee->type, mapped_callee_loc, callee->type, callee->flags);
 
-		const FuncType* callee_structure = static_cast<const FuncType*>(simple_type_structure_from_id(interp->types, static_cast<TypeId>(callee_value.func_type_id_bits)));
+		const FuncType* callee_structure = static_cast<const FuncType*>(simple_type_structure_from_id(interp->types, callee_value.func_type_id));
 
 		const ArecId old_arec_id = active_arec_id(interp);
 
-		const ArecId signature_arec_id = arec_push(interp, callee_structure->signature_type_id, ArecId::INVALID, false);
+		const ArecId signature_arec_id = arec_push(interp, callee_structure->signature_type_id.complete, ArecId::INVALID, false);
 
 		Arec* const signature_arec = arec_from_id(interp, signature_arec_id);
 
@@ -935,7 +967,7 @@ static void evaluate_expr(Interpreter* interp, AstNode* node, Location into) noe
 
 			evaluate_expr(interp, body, mapped_into);
 
-			load_and_convert(interp, body->source_id, into, node->type, mapped_into, callee_structure->return_type_id, body->flags);
+			load_and_convert(interp, body->source_id, into, node->type, mapped_into, callee_structure->return_type_id.complete, body->flags);
 		}
 
 		arec_pop(interp, signature_arec_id);
@@ -1363,17 +1395,40 @@ static void typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 		close_open_type(interp->types, signature_type_id, 0, 0, 0);
 
-		IncompleteMemberIterator members = incomplete_members_of(interp->types, signature_type_id);
+		bool signature_has_arg_dependency = false;
 
-		while (has_next(&members))
+		params = direct_children_of(info.parameters);
+
+		while (has_next(&params))
 		{
-			MemberInfo member = next(&members);
+			AstNode* const param = next(&params);
 
-			if (member.has_pending_type)
-				complete_independent_member_type(interp, &member);
+			if (is_arg_dependent_expr(interp, param))
+				signature_has_arg_dependency = true;
+		}
 
-			if (member.has_pending_value)
-				complete_independent_member_value(interp, &member);
+		DelayableTypeId opt_signature_type;
+
+		if (signature_has_arg_dependency)
+		{
+			opt_signature_type.pending = id_from_ast_node(interp->asts, info.parameters);
+		}
+		else
+		{
+			IncompleteMemberIterator members = incomplete_members_of(interp->types, signature_type_id);
+
+			while (has_next(&members))
+			{
+				MemberInfo member = next(&members);
+
+				if (member.has_pending_type)
+					complete_independent_member_type(interp, &member);
+
+				if (member.has_pending_value)
+					complete_independent_member_value(interp, &member);
+			}
+
+			opt_signature_type.complete = signature_type_id;
 		}
 
 		if (is_some(info.expects))
@@ -1386,9 +1441,21 @@ static void typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 			TODO("(Later) Implement ensures");
 		}
 
-		TypeId evaluated_return_type;
+		DelayableTypeId opt_return_type;
 
-		if (is_some(info.return_type))
+		bool return_type_has_arg_dependency;
+
+		if (is_none(info.return_type))
+		{
+			TODO("(Later) Implement return type deduction");
+		}
+		else if (is_arg_dependent_expr(interp, get_ptr(info.return_type)))
+		{
+			opt_return_type.pending = id_from_ast_node(interp->asts, get_ptr(info.return_type));
+
+			return_type_has_arg_dependency = true;
+		}
+		else
 		{
 			AstNode* const return_type = get_ptr(info.return_type);
 
@@ -1402,24 +1469,24 @@ static void typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 			if (type_tag_from_id(interp->types, return_type->type) != TypeTag::Type)
 				source_error(interp->errors, return_type->source_id, "Return type annotation must be of type `Type`\n");
 
-			Location evaluated_return_type_loc = make_loc(&evaluated_return_type);
-			
+			Location evaluated_return_type_loc = make_loc(&opt_return_type.complete);
+
 			Location mapped_evaluated_return_type_loc = prepare_load_and_convert(interp, return_type, evaluated_return_type_loc);
 
 			evaluate_expr(interp, return_type, mapped_evaluated_return_type_loc);
 
 			load_and_convert(interp, return_type->source_id, evaluated_return_type_loc, return_type->type, mapped_evaluated_return_type_loc, return_type->type, return_type->flags);
-		}
-		else
-		{
-			TODO("(Later) Implement return type deduction");
+
+			return_type_has_arg_dependency = false;
 		}
 
 		FuncType func_type{};
-		func_type.return_type_id = evaluated_return_type;
-		func_type.signature_type_id = signature_type_id;
+		func_type.return_type_id = opt_return_type;
+		func_type.signature_type_id = opt_signature_type;
 		func_type.param_count = param_count;
 		func_type.is_proc = has_flag(node, AstFlag::Func_IsProc);
+		func_type.has_delayed_signature = signature_has_arg_dependency;
+		func_type.has_delayed_return_type = return_type_has_arg_dependency;
 
 		const TypeId func_type_id = simple_type(interp->types, TypeTag::Func, range::from_object_bytes(&func_type));
 
@@ -1433,7 +1500,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 			typecheck_expr(interp, body);
 
-			set_load_and_convert(interp, body, TypeKind::Value, evaluated_return_type);
+			set_load_and_convert(interp, body, TypeKind::Value, opt_return_type.complete);
 
 			result_type = func_type_id;
 		}
@@ -1544,7 +1611,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 
 			MemberInfo param_info;
 
-			type_member_info_by_rank(interp->types, callee_structure.signature_type_id, arg_rank, &param_info);
+			type_member_info_by_rank(interp->types, callee_structure.signature_type_id.complete, arg_rank, &param_info);
 
 			ASSERT_OR_IGNORE(!param_info.has_pending_type);
 
@@ -1556,7 +1623,7 @@ static void typecheck_expr(Interpreter* interp, AstNode* node) noexcept
 		if (arg_rank != callee_structure.param_count)
 			source_error(interp->errors, node->source_id, "Too few arguments in call (Expected %u, found %u).\n", callee_structure.param_count, arg_rank);
 
-		store_typecheck_result(node, callee_structure.return_type_id, TypeKind::Value, is_comptime_known, has_arg_dependency);
+		store_typecheck_result(node, callee_structure.return_type_id.complete, TypeKind::Value, is_comptime_known, has_arg_dependency);
 
 		return;
 	}
@@ -1869,12 +1936,12 @@ static TypeId make_func_type_from_array(TypePool* types, TypeId return_type_id, 
 	close_open_type(types, signature_type_id, 0, 0, 0);
 
 	FuncType func_type{};
-	func_type.return_type_id = return_type_id;
+	func_type.return_type_id.complete = return_type_id;
+	func_type.signature_type_id.complete = signature_type_id;
 	func_type.param_count = param_count;
 	func_type.is_proc = false;
 	func_type.has_delayed_signature = false;
 	func_type.has_delayed_return_type = false;
-	func_type.signature_type_id = signature_type_id;
 
 	return simple_type(types, TypeTag::Func, range::from_object_bytes(&func_type));
 }

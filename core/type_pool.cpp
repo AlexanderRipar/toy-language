@@ -1552,10 +1552,10 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 	case TypeTag::CompInteger:
 	case TypeTag::CompFloat:
 	case TypeTag::Ptr:
-	case TypeTag::Func:
 		return { 8, 8, 8 };
 
 	case TypeTag::Slice:
+	case TypeTag::Func:
 		return { 16, 16, 8 };
 
 	case TypeTag::Integer:

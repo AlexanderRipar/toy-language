@@ -1775,10 +1775,10 @@ struct ArrayType
 struct FuncType
 {
 	// `TypeId` of the function's return type.
-	TypeId return_type_id;
+	DelayableTypeId return_type_id;
 
 	// `TypeId` of the function's signature composite type.
-	TypeId signature_type_id;
+	DelayableTypeId signature_type_id;
 
 	// Number of parameters the function accepts. Currently this is limited to
 	// `64`.
