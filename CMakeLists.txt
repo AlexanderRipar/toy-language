@@ -40,6 +40,7 @@ set(CORE_SOURCES
 	core/interpreter.cpp
 	core/parse.cpp
 	core/source_reader.cpp
+	core/type_list_pool.cpp
 	core/type_pool.cpp
 )
 

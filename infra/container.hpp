@@ -574,4 +574,143 @@ public:
 	}
 };
 
+template<u32 MinSizeLog2, u32 MaxSizeLog2>
+struct ReservedHeap
+{
+private:
+
+	static constexpr u32 CategoryCount = MaxSizeLog2 - MinSizeLog2;
+
+	static_assert(MinSizeLog2 >= 2);
+
+	static_assert(MaxSizeLog2 <= 31);
+
+	static_assert(MinSizeLog2 < MaxSizeLog2);
+
+	void* m_memory;
+
+	s32 m_first_frees[CategoryCount];
+
+	u32 m_ends[CategoryCount];
+
+	u32 m_heads[CategoryCount];
+
+	u32 m_commit_increment_bytes[CategoryCount];
+
+public:
+
+	void init(Range<u32> capacities, Range<u32> commits) noexcept
+	{
+		ASSERT_OR_IGNORE(capacities.count() == CategoryCount && commits.count() == CategoryCount);
+
+		u64 total_bytes = 0;
+
+		for (u32 i = 0; i != CategoryCount; ++i)
+		{
+			const u32 unit_bytes = static_cast<u32>(1) << (i + MinSizeLog2);
+
+			ASSERT_OR_IGNORE(capacities[i] != 0 && is_pow2(capacities[i]));
+
+			ASSERT_OR_IGNORE(commits[i] != 0 && commits[i] <= capacities[i] && is_pow2(commits[i]));
+
+			const u64 curr_bytes = static_cast<u64>(unit_bytes) * capacities[i];
+
+			if (curr_bytes > static_cast<u32>(INT32_MAX) || total_bytes + curr_bytes > static_cast<u32>(INT32_MAX))
+				panic("Exceeded maximum size of ReservedHeap (2^32 - 1).\n");
+
+			m_first_frees[i] = -1;
+
+			m_ends[i] = static_cast<u32>((total_bytes + curr_bytes) / sizeof(u32));
+
+			m_heads[i] = static_cast<u32>(total_bytes / sizeof(u32));
+
+			m_commit_increment_bytes[i] = commits[i] * unit_bytes;
+
+			total_bytes += curr_bytes;
+		}
+
+		void* const memory = minos::mem_reserve(total_bytes);
+
+		if (memory == nullptr)
+			panic("Could not allocate memory for ReservedHeap (0x%X).\n", minos::last_error());
+
+		m_memory = memory;
+	}
+
+	void release() noexcept
+	{
+		minos::mem_unreserve(m_memory, m_ends[CategoryCount - 1]);
+	}
+
+	MutRange<byte> alloc(u32 bytes) noexcept
+	{
+		ASSERT_OR_IGNORE(bytes != 0 && bytes <= (static_cast<u32>(1) << MaxSizeLog2));
+
+		const u8 leading_zeros = count_leading_zeros_assume_one(bytes);
+
+		const u8 category = (32 - MinSizeLog2) < leading_zeros
+			? 0
+			: (32 - MinSizeLog2) - leading_zeros;
+
+		s32 free_index = m_first_frees[category];
+
+		if (free_index < 0)
+		{
+			if (m_heads[category] == m_ends[category])
+				panic("Exceeded storage for %u byte entries in ReservedHeap.\n", static_cast<u32>(1) << (category + MinSizeLog2));
+
+			void* const head = static_cast<byte*>(m_memory) + m_heads[category] * sizeof(u32);
+
+			if (!minos::mem_commit(head, m_commit_increment_bytes[category]))
+				panic("Failed to allocate additional storage for %u byte entries in ReservedHead.\n", static_cast<u32>(1) << (category + MinSizeLog2));
+
+			free_index = m_heads[category];
+
+			m_heads[category] += m_commit_increment_bytes[category] / sizeof(u32);
+		}
+		else
+		{
+			m_first_frees[category] = static_cast<s32*>(m_memory)[free_index];
+		}
+
+		byte* const begin = static_cast<byte*>(m_memory) + free_index * sizeof(u32);
+
+		return MutRange<byte>{ begin, bytes };
+	}
+
+	void dealloc(MutRange<byte> memory) noexcept
+	{
+		ASSERT_OR_IGNORE(memory.count() <= (static_cast<u64>(1) << MaxSizeLog2));
+
+		const u64 bytes = static_cast<u32>(memory.count());
+
+		const u8 leading_zeros = count_leading_zeros_assume_one(bytes);
+
+		const u8 category = (32 - MinSizeLog2) < leading_zeros
+			? 0
+			: (32 - MinSizeLog2) - leading_zeros;
+
+		ASSERT_OR_IGNORE(memory.begin() >= (category == 0 ? static_cast<byte*>(m_memory) : reinterpret_cast<byte*>(static_cast<u32*>(m_memory) + m_ends[category - 1])));
+
+		ASSERT_OR_IGNORE(memory.end() <= reinterpret_cast<byte*>(static_cast<u32*>(m_memory) + m_ends[category]));
+
+		if (m_first_frees[category] >= 0)
+			*reinterpret_cast<s32*>(memory.begin()) = m_first_frees[category];
+
+		m_first_frees[category] = static_cast<s32>(reinterpret_cast<u32*>(memory.begin()) - static_cast<u32*>(m_memory));
+
+		ASSERT_OR_IGNORE(m_first_frees[category] >= 0);
+	}
+
+	void* begin() noexcept
+	{
+		return m_memory;
+	}
+
+	const void* begin() const noexcept
+	{
+		return m_memory;
+	}
+};
+
 #endif // CONTAINER_INCLUDE_GUARD

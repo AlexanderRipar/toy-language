@@ -64,11 +64,13 @@ s32 main(s32 argc, const char8** argv)
 
 		TypePool* const types = create_type_pool(alloc, globals, errors);
 
+		TypeListPool* const lists = create_type_list_pool(alloc);
+
 		AstPool* const asts = create_ast_pool(alloc);
 
 		Parser* const parser = create_parser(alloc, identifiers, globals, types, asts, errors, ast_log_file);
 
-		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, globals, errors, imports_log_file, config->logging.imports.enable_prelude);
+		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, globals, lists, errors, imports_log_file, config->logging.imports.enable_prelude);
 
 		const TypeId main_file_type_id = import_file(interp, config->entrypoint.filepath, false);
 

@@ -351,6 +351,34 @@ bool mul_checked(u64 a, u64 b, u64* out) noexcept;
 
 
 
+enum class TypeListId : s32
+{
+	INVALID = 0,
+};
+
+struct TypeListPool;
+
+using TypeList = MutAttachmentRange<TypeId, bool>;
+
+
+TypeListPool* create_type_list_pool(AllocPool* alloc) noexcept;
+
+void release_type_list_pool(TypeListPool* lists) noexcept;
+
+TypeList create_permanent_type_list(TypeListPool* lists, u32 count) noexcept;
+
+TypeList create_transient_type_list(TypeListPool* lists, u32 count) noexcept;
+
+TypeList make_type_list_permanent(TypeListPool* lists,TypeList transient) noexcept;
+
+void release_transient_type_list(TypeListPool* lists, TypeList transient) noexcept;
+
+TypeList type_list_from_id(TypeListPool* lists, TypeListId id) noexcept;
+
+TypeListId id_from_type_list(TypeListPool* lists, TypeList list) noexcept;
+
+
+
 
 
 // Allocator for Abstract Syntax Trees (ASTs). These are created by parsing
@@ -2117,7 +2145,7 @@ enum class ArecId : s32
 // Creates an `Interpreter`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `Interpreter` can be freed using
 // `release_interpreter`.
-Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, ErrorSink* errors, minos::FileHandle log_file, bool log_prelude) noexcept;
+Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, TypeListPool* lists, ErrorSink* errors, minos::FileHandle log_file, bool log_prelude) noexcept;
 
 // Releases the resources associated with the given `Interpreter`.
 void release_interpreter(Interpreter* interp) noexcept;
