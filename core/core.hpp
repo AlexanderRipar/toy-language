@@ -471,7 +471,6 @@ enum class AstFlag : u16
 
 	Parameter_IsEval            = 0x00'01,
 	Parameter_IsMut             = 0x00'02,
-	Parameter_IsUse             = 0x00'08,
 	Parameter_IsAuto            = 0x00'10,
 	Parameter_HasType           = 0x00'20,
 

@@ -1673,6 +1673,9 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 			}
 			else if (lexeme.token == Token::KwdUse)
 			{
+				if (is_param)
+					source_error(parser->lexer.errors, lexeme.source_id, "Function parameters must not be 'use'.\n");
+
 				if ((flags & AstFlag::Definition_IsUse) != AstFlag::EMPTY)
 					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'use' encountered more than once.\n");
 
