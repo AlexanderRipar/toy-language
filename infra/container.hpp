@@ -150,7 +150,7 @@ public:
 	{
 		m_used = 0;
 
-		if (preserved_commit > m_committed)
+		if (preserved_commit >= m_committed)
 			return;
 
 		const u32 page_bytes = minos::page_bytes();
