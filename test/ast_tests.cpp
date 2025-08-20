@@ -5,24 +5,26 @@ struct DummyTree
 {
 	u32 index;
 
-	u32 dwords[64];
+	u32 unused_;
+
+	AstNode nodes[64];
 
 };
 
-static constexpr u8 NODE_DWORDS = sizeof(AstNode) / sizeof(u32);
+static constexpr u8 NODE_QWORDS = sizeof(AstNode) / sizeof(u64);
 
-static void push_node(DummyTree* tree, AstNode node, u8 data_dwords = 0, const void* data = nullptr) noexcept
+static void push_node(DummyTree* tree, AstNode node, u8 data_qwords = 0, const void* data = nullptr) noexcept
 {
-	const u32 required_dwords = NODE_DWORDS + data_dwords;
+	const u32 required_qwords = NODE_QWORDS + data_qwords;
 
-	if (tree->index + required_dwords > array_count(tree->dwords))
+	if (tree->index + required_qwords > array_count(tree->nodes))
 		panic("Testing dummy tree too large");
 
-	memcpy(tree->dwords + tree->index, &node, sizeof(AstNode));
+	memcpy(tree->nodes + tree->index, &node, sizeof(AstNode));
 
-	memcpy(tree->dwords + tree->index + NODE_DWORDS, data, data_dwords * sizeof(u32));
+	memcpy(tree->nodes + tree->index + NODE_QWORDS, data, data_qwords * sizeof(u32));
 
-	tree->index += required_dwords;
+	tree->index += required_qwords;
 }
 
 // Tree:
@@ -33,7 +35,7 @@ static DummyTree single_node_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { AstTag::File, NODE_DWORDS, AstFlag::INTERNAL_LastSibling | AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::OpAdd, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
 	return tree;
 }
@@ -47,9 +49,9 @@ static DummyTree unary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { AstTag::File, NODE_DWORDS, AstFlag::INTERNAL_LastSibling, 2 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::File, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING, 2 * NODE_QWORDS });
 
-	push_node(&tree, { AstTag::Block, NODE_DWORDS, AstFlag::INTERNAL_LastSibling | AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::Block, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
 	return tree;
 }
@@ -64,11 +66,11 @@ static DummyTree binary_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { AstTag::OpBitAnd, NODE_DWORDS, AstFlag::INTERNAL_LastSibling, 3 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::OpAdd, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING, 3 * NODE_QWORDS });
 
-	push_node(&tree, { AstTag::LitChar, NODE_DWORDS, AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::OpSub, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
-	push_node(&tree, { AstTag::Identifier, NODE_DWORDS, AstFlag::INTERNAL_LastSibling | AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::OpMul, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
 	return tree;
 }
@@ -85,13 +87,20 @@ static DummyTree nary_dummy_tree(u32 n) noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { AstTag::File, NODE_DWORDS, AstFlag::INTERNAL_LastSibling, NODE_DWORDS * (n + 1), TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::File, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING, NODE_QWORDS * (n + 1) });
 
 	for (u32 i = 0; i != n; ++i)
 	{
-		const AstFlag flags = i == n - 1 ? AstFlag::INTERNAL_LastSibling | AstFlag::INTERNAL_NoChildren : AstFlag::INTERNAL_NoChildren;
+		u8 structure_flags;
 
-		push_node(&tree, { AstTag::Block, NODE_DWORDS, flags, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+		if (i == 0)
+			structure_flags = AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN;
+		else if (i == n - 1)
+			structure_flags = AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN;
+		else
+			structure_flags = AstNode::STRUCTURE_NO_CHILDREN;
+
+		push_node(&tree, { AstTag::OpAdd, AstFlag::EMPTY, NODE_QWORDS, structure_flags, NODE_QWORDS });
 	}
 
 	return tree;
@@ -113,54 +122,54 @@ static DummyTree complex_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { static_cast<AstTag>(1), NODE_DWORDS, AstFlag::INTERNAL_LastSibling, 9 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(1), AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING, 9 * NODE_QWORDS });
 
-	push_node(&tree, { static_cast<AstTag>(2), NODE_DWORDS, AstFlag::EMPTY, 3 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(2), AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING, 3 * NODE_QWORDS });
 
-	push_node(&tree, { static_cast<AstTag>(3), NODE_DWORDS, AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(3), AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
-	push_node(&tree, { static_cast<AstTag>(4), NODE_DWORDS, AstFlag::INTERNAL_LastSibling | AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(4), AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
-	push_node(&tree, { static_cast<AstTag>(5), NODE_DWORDS, AstFlag::INTERNAL_LastSibling, 5 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(5), AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_LAST_SIBLING, 5 * NODE_QWORDS });
 
-	push_node(&tree, { static_cast<AstTag>(6), NODE_DWORDS, AstFlag::EMPTY, 2 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(6), AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING, 2 * NODE_QWORDS });
 
-	push_node(&tree, { static_cast<AstTag>(7), NODE_DWORDS, AstFlag::INTERNAL_LastSibling | AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(7), AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
-	push_node(&tree, { static_cast<AstTag>(8), NODE_DWORDS, AstFlag::INTERNAL_LastSibling, 2 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(8), AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_LAST_SIBLING, 2 * NODE_QWORDS });
 
-	push_node(&tree, { static_cast<AstTag>(9), NODE_DWORDS, AstFlag::INTERNAL_LastSibling | AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { static_cast<AstTag>(9), AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
 	return tree;
 }
 
 // Tree:
 //
-// OpSub
-// + OpAdd
+// OpAdd
+// + OpSub
 // | + LitChar
-// | ` OpMul
+// | ` OpDiv
 // |   + LitFloat
-// |   ` LitInteger
-// ` LitString 
+// |   ` Identifier
+// ` LitInteger
 static DummyTree double_binary_dummy_tree() noexcept
 {
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { AstTag::OpSub, NODE_DWORDS, AstFlag::INTERNAL_LastSibling, 7 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::OpAdd, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING, 7 * NODE_QWORDS });
 
-	push_node(&tree, { AstTag::OpAdd, NODE_DWORDS, AstFlag::EMPTY, 5 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::OpSub, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING, 5 * NODE_QWORDS });
 
-	push_node(&tree, { AstTag::LitChar, NODE_DWORDS, AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::LitChar, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
-	push_node(&tree, { AstTag::OpMul, NODE_DWORDS, AstFlag::INTERNAL_LastSibling, 3 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::OpDiv, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_LAST_SIBLING, 3 * NODE_QWORDS });
 
-	push_node(&tree, { AstTag::LitFloat, NODE_DWORDS, AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::LitFloat, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
-	push_node(&tree, { AstTag::LitInteger, NODE_DWORDS, AstFlag::INTERNAL_LastSibling | AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::Identifier, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN | AstNode::STRUCTURE_VALUE_KIND_BITS, NODE_QWORDS });
 
-	push_node(&tree, { AstTag::LitString, NODE_DWORDS, AstFlag::INTERNAL_LastSibling | AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::LitInteger, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
 	return tree;
 }
@@ -181,23 +190,23 @@ static DummyTree flat_dummy_tree() noexcept
 	DummyTree tree;
 	tree.index = 0;
 
-	push_node(&tree, { AstTag::File, NODE_DWORDS, AstFlag::INTERNAL_LastSibling, 9 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::File, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING, 9 * NODE_QWORDS });
 
-	push_node(&tree, { AstTag::Definition, NODE_DWORDS, AstFlag::EMPTY, 2 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING, 2 * NODE_QWORDS });
 
-	push_node(&tree, { AstTag::Identifier, NODE_DWORDS, AstFlag::INTERNAL_LastSibling | AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::Identifier, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
-	push_node(&tree, { AstTag::Definition, NODE_DWORDS, AstFlag::EMPTY, 2 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_QWORDS, 0, 2 * NODE_QWORDS });
 
-	push_node(&tree, { AstTag::LitChar, NODE_DWORDS, AstFlag::INTERNAL_LastSibling | AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::LitChar, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
-	push_node(&tree, { AstTag::Definition, NODE_DWORDS, AstFlag::EMPTY, 2 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_QWORDS, 0, 2 * NODE_QWORDS });
 
-	push_node(&tree, { AstTag::LitFloat, NODE_DWORDS, AstFlag::INTERNAL_LastSibling | AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::LitFloat, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
-	push_node(&tree, { AstTag::Definition, NODE_DWORDS, AstFlag::INTERNAL_LastSibling, 2 * NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::Definition, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_LAST_SIBLING, 2 * NODE_QWORDS });
 
-	push_node(&tree, { AstTag::LitString, NODE_DWORDS, AstFlag::INTERNAL_LastSibling | AstFlag::INTERNAL_NoChildren, NODE_DWORDS, TypeId::INVALID, SourceId::INVALID });
+	push_node(&tree, { AstTag::LitString, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
 	return tree;
 }
@@ -236,7 +245,7 @@ static void has_children_on_single_node_is_false() noexcept
 
 	DummyTree tree = single_node_dummy_tree();
 
-	TEST_EQUAL(has_children(reinterpret_cast<AstNode*>(&tree.dwords)), false);
+	TEST_EQUAL(has_children(reinterpret_cast<AstNode*>(&tree.nodes)), false);
 
 	TEST_END;
 }
@@ -247,7 +256,7 @@ static void has_children_with_single_child_is_true() noexcept
 
 	DummyTree tree = unary_dummy_tree();
 
-	TEST_EQUAL(has_children(reinterpret_cast<AstNode*>(tree.dwords)), true);
+	TEST_EQUAL(has_children(reinterpret_cast<AstNode*>(tree.nodes)), true);
 
 	TEST_END;
 }
@@ -258,7 +267,7 @@ static void has_children_with_two_children_is_true() noexcept
 
 	DummyTree tree = binary_dummy_tree();
 
-	TEST_EQUAL(has_children(reinterpret_cast<AstNode*>(tree.dwords)), true);
+	TEST_EQUAL(has_children(reinterpret_cast<AstNode*>(tree.nodes)), true);
 
 	TEST_END;
 }
@@ -271,7 +280,7 @@ static void child_iterator_with_0_children_has_0_entries() noexcept
 
 	DummyTree tree = single_node_dummy_tree();
 
-	AstDirectChildIterator it = direct_children_of(reinterpret_cast<AstNode*>(tree.dwords));
+	AstDirectChildIterator it = direct_children_of(reinterpret_cast<AstNode*>(tree.nodes));
 
 	TEST_EQUAL(has_next(&it), false);
 
@@ -284,11 +293,11 @@ static void child_iterator_with_1_child_has_1_entry() noexcept
 
 	DummyTree tree = unary_dummy_tree();
 
-	AstDirectChildIterator it = direct_children_of(reinterpret_cast<AstNode*>(tree.dwords));
+	AstDirectChildIterator it = direct_children_of(reinterpret_cast<AstNode*>(tree.nodes));
 
 	TEST_EQUAL(has_next(&it), true);
 
-	TEST_EQUAL(next(&it), reinterpret_cast<AstNode*>(tree.dwords) + 1);
+	TEST_EQUAL(next(&it), reinterpret_cast<AstNode*>(tree.nodes) + 1);
 
 	TEST_EQUAL(has_next(&it), false);
 
@@ -301,13 +310,13 @@ static void child_iterator_with_5_children_has_5_entries() noexcept
 
 	DummyTree tree = nary_dummy_tree(5);
 
-	AstDirectChildIterator it = direct_children_of(reinterpret_cast<AstNode*>(tree.dwords));
+	AstDirectChildIterator it = direct_children_of(reinterpret_cast<AstNode*>(tree.nodes));
 
 	for (u32 i = 0; i != 5; ++i)
 	{
 		TEST_EQUAL(has_next(&it), true);
 
-		TEST_EQUAL(next(&it), reinterpret_cast<AstNode*>(tree.dwords) + i + 1);
+		TEST_EQUAL(next(&it), reinterpret_cast<AstNode*>(tree.nodes) + i + 1);
 	}
 
 	TEST_EQUAL(has_next(&it), false);
@@ -321,15 +330,15 @@ static void child_iterator_with_grandchildren_only_iterates_direct_children() no
 
 	DummyTree tree = complex_dummy_tree();
 
-	AstDirectChildIterator it = direct_children_of(reinterpret_cast<AstNode*>(tree.dwords));
+	AstDirectChildIterator it = direct_children_of(reinterpret_cast<AstNode*>(tree.nodes));
 
 	TEST_EQUAL(has_next(&it), true);
 
-	TEST_EQUAL(next(&it), reinterpret_cast<AstNode*>(tree.dwords) + 1);
+	TEST_EQUAL(next(&it), reinterpret_cast<AstNode*>(tree.nodes) + 1);
 
 	TEST_EQUAL(has_next(&it), true);
 
-	TEST_EQUAL(next(&it), reinterpret_cast<AstNode*>(tree.dwords) + 4);
+	TEST_EQUAL(next(&it), reinterpret_cast<AstNode*>(tree.nodes) + 4);
 
 	TEST_EQUAL(has_next(&it), false);
 
@@ -344,7 +353,7 @@ static void preorder_iterator_with_0_children_has_0_entries() noexcept
 
 	DummyTree tree = single_node_dummy_tree();
 
-	AstPreorderIterator it = preorder_ancestors_of(reinterpret_cast<AstNode*>(tree.dwords));
+	AstPreorderIterator it = preorder_ancestors_of(reinterpret_cast<AstNode*>(tree.nodes));
 
 	TEST_EQUAL(has_next(&it), false);
 
@@ -357,13 +366,13 @@ static void preorder_iterator_with_1_child_has_1_entry() noexcept
 
 	DummyTree tree = unary_dummy_tree();
 
-	AstPreorderIterator it = preorder_ancestors_of(reinterpret_cast<AstNode*>(tree.dwords));
+	AstPreorderIterator it = preorder_ancestors_of(reinterpret_cast<AstNode*>(tree.nodes));
 
 	TEST_EQUAL(has_next(&it), true);
 
 	const AstIterationResult result = next(&it);
 
-	TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.dwords) + 1);
+	TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.nodes) + 1);
 
 	TEST_EQUAL(result.depth, 0);
 
@@ -378,7 +387,7 @@ static void preorder_iterator_with_5_children_has_5_entries() noexcept
 
 	DummyTree tree = nary_dummy_tree(5);
 
-	AstPreorderIterator it = preorder_ancestors_of(reinterpret_cast<AstNode*>(tree.dwords));
+	AstPreorderIterator it = preorder_ancestors_of(reinterpret_cast<AstNode*>(tree.nodes));
 
 	for (u32 i = 0; i != 5; ++i)
 	{
@@ -386,7 +395,7 @@ static void preorder_iterator_with_5_children_has_5_entries() noexcept
 
 		const AstIterationResult result = next(&it);
 
-		TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.dwords) + i + 1);
+		TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.nodes) + i + 1);
 
 		TEST_EQUAL(result.depth, 0);
 	}
@@ -402,7 +411,7 @@ static void preorder_iterator_with_grandchildren_iterates_grandchildren() noexce
 
 	DummyTree tree = complex_dummy_tree();
 
-	AstPreorderIterator it = preorder_ancestors_of(reinterpret_cast<AstNode*>(tree.dwords));
+	AstPreorderIterator it = preorder_ancestors_of(reinterpret_cast<AstNode*>(tree.nodes));
 
 	static constexpr u32 expected_depths[] = { 0, 1, 1, 0, 1, 2, 1, 2 };
 
@@ -412,7 +421,7 @@ static void preorder_iterator_with_grandchildren_iterates_grandchildren() noexce
 
 		const AstIterationResult result = next(&it);
 
-		TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.dwords) + i + 1);
+		TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.nodes) + i + 1);
 
 		TEST_EQUAL(result.depth, expected_depths[i]);
 	}
@@ -428,7 +437,7 @@ static void preorder_iterator_with_flat_tree_iterates_subtrees() noexcept
 
 	DummyTree tree = flat_dummy_tree();
 
-	AstPreorderIterator it = preorder_ancestors_of(reinterpret_cast<AstNode*>(tree.dwords));
+	AstPreorderIterator it = preorder_ancestors_of(reinterpret_cast<AstNode*>(tree.nodes));
 
 	static constexpr u32 expected_depths[] = {
 		0, 1,
@@ -443,7 +452,7 @@ static void preorder_iterator_with_flat_tree_iterates_subtrees() noexcept
 
 		const AstIterationResult result = next(&it);
 
-		TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.dwords) + i + 1);
+		TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.nodes) + i + 1);
 
 		TEST_EQUAL(result.depth, expected_depths[i]);
 	}
@@ -461,7 +470,7 @@ static void postorder_iterator_with_0_children_has_0_entries() noexcept
 
 	DummyTree tree = single_node_dummy_tree();
 
-	AstPostorderIterator it = postorder_ancestors_of(reinterpret_cast<AstNode*>(tree.dwords));
+	AstPostorderIterator it = postorder_ancestors_of(reinterpret_cast<AstNode*>(tree.nodes));
 
 	TEST_EQUAL(has_next(&it), false);
 
@@ -474,13 +483,13 @@ static void postorder_iterator_with_1_child_has_1_entry() noexcept
 
 	DummyTree tree = unary_dummy_tree();
 
-	AstPostorderIterator it = postorder_ancestors_of(reinterpret_cast<AstNode*>(tree.dwords));
+	AstPostorderIterator it = postorder_ancestors_of(reinterpret_cast<AstNode*>(tree.nodes));
 
 	TEST_EQUAL(has_next(&it), true);
 
 	const AstIterationResult result = next(&it);
 
-	TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.dwords) + 1);
+	TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.nodes) + 1);
 
 	TEST_EQUAL(result.depth, 0);
 
@@ -495,7 +504,7 @@ static void postorder_iterator_with_5_children_has_5_entries() noexcept
 
 	DummyTree tree = nary_dummy_tree(5);
 
-	AstPostorderIterator it = postorder_ancestors_of(reinterpret_cast<AstNode*>(tree.dwords));
+	AstPostorderIterator it = postorder_ancestors_of(reinterpret_cast<AstNode*>(tree.nodes));
 
 	for (u32 i = 0; i != 5; ++i)
 	{
@@ -503,7 +512,7 @@ static void postorder_iterator_with_5_children_has_5_entries() noexcept
 
 		const AstIterationResult result = next(&it);
 
-		TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.dwords) + i + 1);
+		TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.nodes) + i + 1);
 
 		TEST_EQUAL(result.depth, 0);
 	}
@@ -527,7 +536,7 @@ static void postorder_iterator_with_grandchildren_iterates_grandchildren() noexc
 
 	DummyTree tree = complex_dummy_tree();
 
-	AstPostorderIterator it = postorder_ancestors_of(reinterpret_cast<AstNode*>(tree.dwords));
+	AstPostorderIterator it = postorder_ancestors_of(reinterpret_cast<AstNode*>(tree.nodes));
 
 	for (u32 i = 0; i != 8; ++i)
 	{
@@ -535,7 +544,7 @@ static void postorder_iterator_with_grandchildren_iterates_grandchildren() noexc
 
 		const AstIterationResult result = next(&it);
 
-		TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.dwords) + expected_offsets[i]);
+		TEST_EQUAL(result.node, reinterpret_cast<AstNode*>(tree.nodes) + expected_offsets[i]);
 
 		TEST_EQUAL(result.depth, expected_depths[i]);
 	}
@@ -553,13 +562,13 @@ static void push_node_once_and_complete_appends_node() noexcept
 
 	MockedPools pools = create_mocked_pools();
 
-	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::File);
+	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpAdd);
 
 	AstNode* const root = complete_ast(pools.asts);
 
 	DummyTree expected = single_node_dummy_tree();
 
-	TEST_MEM_EQUAL(root, expected.dwords, sizeof(AstNode));
+	TEST_MEM_EQUAL(root, expected.nodes, sizeof(AstNode));
 
 	release_mocked_pools(pools);
 
@@ -580,7 +589,7 @@ static void push_node_with_unary_op_and_complete_reverses_tree() noexcept
 
 	DummyTree expected = unary_dummy_tree();
 
-	TEST_MEM_EQUAL(root, expected.dwords, 2 * sizeof(AstNode));
+	TEST_MEM_EQUAL(root, expected.nodes, 2 * sizeof(AstNode));
 
 	release_mocked_pools(pools);
 
@@ -593,17 +602,17 @@ static void push_node_with_binary_op_and_complete_reverses_tree() noexcept
 
 	MockedPools pools = create_mocked_pools();
 
-	const AstBuilderToken token = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitChar);
+	const AstBuilderToken token = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpSub);
 
-	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::Identifier);
+	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpMul);
 
-	push_node(pools.asts, token, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpBitAnd);
+	push_node(pools.asts, token, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpAdd);
 
 	AstNode* const root = complete_ast(pools.asts);
 
 	DummyTree expected = binary_dummy_tree();
 
-	TEST_MEM_EQUAL(root, expected.dwords, 3 * sizeof(AstNode));
+	TEST_MEM_EQUAL(root, expected.nodes, 3 * sizeof(AstNode));
 
 	release_mocked_pools(pools);
 
@@ -638,7 +647,7 @@ static void push_node_with_complex_tree_and_complete_reverses_tree() noexcept
 
 	DummyTree expected = complex_dummy_tree();
 
-	TEST_MEM_EQUAL(root, expected.dwords, 9 * sizeof(AstNode));
+	TEST_MEM_EQUAL(root, expected.nodes, 9 * sizeof(AstNode));
 
 	release_mocked_pools(pools);
 
@@ -651,25 +660,32 @@ static void push_node_with_double_binary_tree_and_complete_reverses_tree() noexc
 
 	MockedPools pools = create_mocked_pools();
 
-	const AstBuilderToken add = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitChar);
+// OpAdd
+// + OpSub
+// | + LitChar
+// | ` OpDiv
+// |   + LitFloat
+// |   ` Identifier
+// ` LitInteger
+	const AstBuilderToken lit_char = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitChar);
 
-	const AstBuilderToken mul = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitFloat);
+	const AstBuilderToken lit_float = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitFloat);
+
+	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::Identifier);
+
+	push_node(pools.asts, lit_float, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpDiv);
+
+	const AstBuilderToken sub = push_node(pools.asts, lit_char, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpSub);
 
 	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitInteger);
 
-	push_node(pools.asts, mul, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpMul);
-
-	const AstBuilderToken sub = push_node(pools.asts, add, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpAdd);
-
-	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitString);
-
-	push_node(pools.asts, sub, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpSub);
+	push_node(pools.asts, sub, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpAdd);
 
 	AstNode* const root = complete_ast(pools.asts);
 
 	DummyTree expected = double_binary_dummy_tree();
 
-	TEST_MEM_EQUAL(root, expected.dwords, 7 * sizeof(AstNode));
+	TEST_MEM_EQUAL(root, expected.nodes, 7 * sizeof(AstNode));
 
 	release_mocked_pools(pools);
 

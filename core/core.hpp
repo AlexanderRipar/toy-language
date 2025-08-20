@@ -16,7 +16,7 @@
 // information.
 enum class TypeId : u32;
 
-enum class TypeKind : u8;
+enum class ValueKind : bool;
 
 enum class ArecId : s32;
 
@@ -351,34 +351,6 @@ bool mul_checked(u64 a, u64 b, u64* out) noexcept;
 
 
 
-enum class TypeListId : s32
-{
-	INVALID = 0,
-};
-
-struct TypeListPool;
-
-using TypeList = MutAttachmentRange<TypeId, bool>;
-
-
-TypeListPool* create_type_list_pool(AllocPool* alloc) noexcept;
-
-void release_type_list_pool(TypeListPool* lists) noexcept;
-
-TypeList create_permanent_type_list(TypeListPool* lists, u32 count) noexcept;
-
-TypeList create_transient_type_list(TypeListPool* lists, u32 count) noexcept;
-
-TypeList make_type_list_permanent(TypeListPool* lists,TypeList transient) noexcept;
-
-void release_transient_type_list(TypeListPool* lists, TypeList transient) noexcept;
-
-TypeList type_list_from_id(TypeListPool* lists, TypeListId id) noexcept;
-
-TypeListId id_from_type_list(TypeListPool* lists, TypeList list) noexcept;
-
-
-
 
 
 // Allocator for Abstract Syntax Trees (ASTs). These are created by parsing
@@ -413,6 +385,7 @@ enum class AstTag : u8
 	Switch,
 	Case,
 	Func,
+	Signature,
 	Trait,
 	Impl,
 	Catch,
@@ -459,7 +432,7 @@ enum class AstTag : u8
 	OpShiftR,
 	OpLogAnd,
 	OpLogOr,
-	OpMember,
+	Member,
 	OpCmpLT,
 	OpCmpGT,
 	OpCmpLE,
@@ -486,61 +459,48 @@ enum class AstTag : u8
 };
 
 // Flags specifying tag-specific information for an `AstNode`.
-enum class AstFlag : u16
+enum class AstFlag : u8
 {
 	EMPTY                = 0,
 
-	Definition_IsPub            = 0x00'01,
-	Definition_IsMut            = 0x00'02,
-	Definition_IsGlobal         = 0x00'04,
-	Definition_IsUse            = 0x00'08,
-	Definition_IsAuto           = 0x00'10,
-	Definition_HasType          = 0x00'20,
+	Definition_IsPub            = 0x01,
+	Definition_IsMut            = 0x02,
+	Definition_IsGlobal         = 0x04,
+	Definition_IsUse            = 0x08,
+	Definition_IsAuto           = 0x10,
+	Definition_HasType          = 0x20,
 
-	Parameter_IsEval            = 0x00'01,
-	Parameter_IsMut             = 0x00'02,
-	Parameter_IsAuto            = 0x00'10,
-	Parameter_HasType           = 0x00'20,
+	Parameter_IsEval            = 0x01,
+	Parameter_IsMut             = 0x02,
+	Parameter_IsAuto            = 0x10,
+	Parameter_HasType           = 0x20,
 
-	If_HasWhere                 = 0x00'01,
-	If_HasElse                  = 0x00'02,
+	If_HasWhere                 = 0x01,
+	If_HasElse                  = 0x02,
 
-	For_HasWhere                = 0x00'01,
-	For_HasCondition            = 0x00'02,
-	For_HasStep                 = 0x00'04,
-	For_HasFinally              = 0x00'08,
+	For_HasWhere                = 0x01,
+	For_HasCondition            = 0x02,
+	For_HasStep                 = 0x04,
+	For_HasFinally              = 0x08,
 
-	ForEach_HasWhere            = 0x00'01,
-	ForEach_HasIndex            = 0x00'02,
-	ForEach_HasFinally          = 0x00'04,
+	ForEach_HasWhere            = 0x01,
+	ForEach_HasIndex            = 0x02,
+	ForEach_HasFinally          = 0x04,
 
-	Switch_HasWhere             = 0x00'20,
+	Switch_HasWhere             = 0x20,
 
-	Func_HasExpects             = 0x00'01,
-	Func_HasEnsures             = 0x00'02,
-	Func_IsProc                 = 0x00'04,
-	Func_HasReturnType          = 0x00'08,
-	Func_HasBody                = 0x00'10,
+	Signature_HasExpects        = 0x01,
+	Signature_HasEnsures        = 0x02,
+	Signature_IsProc            = 0x04,
+	Signature_HasReturnType     = 0x08,
 
-	Trait_HasExpects            = 0x00'01,
+	Trait_HasExpects            = 0x01,
 
-	Impl_HasExpects             = 0x00'01,
+	Impl_HasExpects             = 0x01,
 
-	Catch_HasDefinition         = 0x00'01,
+	Catch_HasDefinition         = 0x01,
 
-	Type_IsMut                  = 0x00'02,
-
-	INTERNAL_NoChildren         = 0x00'80,
-	INTERNAL_LastSibling        = 0x01'00,
-	INTERNAL_FirstSibling       = 0x02'00,
-
-	Any_HasArgDependency        = 0x02'00,
-	Any_IsComptimeKnown         = 0x04'00,
-	Any_SkipEvaluation          = 0x08'00,
-	Any_ConvertResult           = 0x10'00,
-	Any_LoadResult              = 0x20'00,
-	Any_TypeKindLoBit           = 0x40'00,
-	Any_TypeKindHiBit           = 0x80'00,
+	Type_IsMut                  = 0x02,
 };
 
 // Id used to refer to an `AstNode` in the `AstPool`.
@@ -569,19 +529,28 @@ enum class AstNodeId : u32
 //
 // Following siblings should accessed via `next_sibling_of`. The presence of
 // additional siblings can be checked via the `has_next_sibling` function.
-struct AstNode
+struct alignas(8) AstNode
 {
+	static constexpr u8 STRUCTURE_VALUE_KIND_BITS = 0x01;
+
+	static constexpr u8 STRUCTURE_FIRST_SIBLING = 0x02;
+
+	static constexpr u8 STRUCTURE_LAST_SIBLING = 0x04;
+
+	static constexpr u8 STRUCTURE_NO_CHILDREN = 0x08;
+
 	// Indicates what kind of AST node is represented. This determines the
 	// meaning of `flags` and the layout and semantics of the trailing data.
 	AstTag tag;
-
-	// Number of four-byte units that this node and its trailing data encompasses.
-	u8 data_dwords;
 
 	// Tag-dependent flags that contain additional information on the AST node.
 	// In particular, for `AstTag::Builtin`, this contains a `Builtin`
 	// enumerant instead of a combination of or'ed flags.
 	AstFlag flags;
+
+	u8 own_qwords;
+
+	u8 structure_flags;
 
 	// Number of four-byte units that are taken up by this node and its
 	// children. Note that this is thus still meaningful if the node has no
@@ -590,16 +559,6 @@ struct AstNode
 	// This should not be read directly, and is instead used by various helper
 	// functions.
 	u32 next_sibling_offset;
-
-	// Type of the expression represented by this node. If `is_assibnable` is
-	// `true`, then the expression is assignable (i.e., is `mut` and has an
-	// address).
-	// Only contains a valid value after typechecking. Before that, it is set
-	// to `TypeId::INVALID`.
-	TypeId type;
-
-	// `SourceId` of the node. See `SourceReader` and further details.
-	SourceId source_id;
 };
 
 // Token returned from and used by `push_node` to structure the created AST as
@@ -712,57 +671,66 @@ struct AstPostorderIterator
 };
 
 // Attachment of an `AstNode` with tag `AstTag::LitInteger`.
-struct AstLitIntegerData
+struct alignas(8) AstLitIntegerData
 {
 	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::LitInteger;
 
-	#pragma pack(push)
-	#pragma pack(4)
 	// `CompIntegerValue` representing this literal's value.
 	// This is under-aligned to 4 instead of 8 bytes since `AstNode`s - and
 	// thus their attachments - are 4-byte aligned.
 	CompIntegerValue value;
-	#pragma pack(pop)
 };
 
 // Attachment of an `AstNode` with tag `AstTag::LitFloat`.
-struct AstLitFloatData
+struct alignas(8) AstLitFloatData
 {
 	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::LitFloat;
 
-	#pragma pack(push)
-	#pragma pack(4)
 	// `CompFloatValue` representing this literal's value.
 	// This is under-aligned to 4 instead of 8 bytes since `AstNode`s - and
 	// thus their attachments - are 4-byte aligned.
 	CompFloatValue value;
-	#pragma pack(pop)
 };
 
 // Attachment of an `AstNode` with tag `AstTag::LitChar`.
-struct AstLitCharData
+struct alignas(8) AstLitCharData
 {
 	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::LitChar;
 
 	// Unicode codepoint representing this character literal's value.
 	u32 codepoint;
+
+	u32 unused_ = 0;
 };
 
 // Attachment of an `AstNode` with tag `AstTag::Identifier`.
-struct AstIdentifierData
+struct alignas(8) AstIdentifierData
 {
 	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::Identifier;
 
 	// `IdentifierId` of the identifier represented by this node.
 	IdentifierId identifier_id;
+
+	u32 unused_ = 0;
+};
+
+struct alignas(8) AstMemberData
+{
+	// Tag used for sanity checks in debug builds.
+	static constexpr AstTag TAG = AstTag::Member;
+
+	// `IdentifierId` of the member represented by this node.
+	IdentifierId identifier_id;
+
+	u32 unused_ = 0;
 };
 
 // Attachment of an `AstNode` with tag `AstTag::LitString`.
-struct AstLitStringData
+struct alignas(8) AstLitStringData
 {
 	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::LitString;
@@ -770,10 +738,12 @@ struct AstLitStringData
 	// `GlobalValueId` of the global `u8` array representing this string's
 	// value.
 	GlobalValueId string_value_id;
+
+	TypeId string_type_id;
 };
 
 // Attachment of an `AstNode` with tag `AstTag::Definition`.
-struct AstDefinitionData
+struct alignas(8) AstDefinitionData
 {
 	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::Definition;
@@ -781,47 +751,22 @@ struct AstDefinitionData
 	// `IdentifierId` of the definition.
 	IdentifierId identifier_id;
 
-	TypeId defined_type;
+	u32 unused_ = 0;
 };
 
 // Attachment of an `AstNode` with tag `AstTag::Parameter`.
-struct AstParameterData
+struct alignas(8) AstParameterData
 {
 	static constexpr AstTag TAG = AstTag::Parameter;
 
 	IdentifierId identifier_id;
 
-	TypeId defined_type;
-};
-
-// Attachment of an `AstNode` with tag `AstTag::Func`.
-struct AstFuncData
-{
-	// Tag used for sanity checks in debug builds.
-	static constexpr AstTag TAG = AstTag::Func;
-
-	// `TypeId` of the function. This is important as a the `type_id` of a
-	// function signature without a body will be set to `Type`, meaning that
-	// the function type information would have to be recreated upon every
-	// evaluation without this additional attachment.
-	TypeId func_type_id;
-};
-
-// Attachment of an `AstNode` with tag `AstTag::Block`.
-struct AstBlockData
-{
-	// Tag used for sanity checks in debug builds.
-	static constexpr AstTag TAG = AstTag::Block;
-
-	// `TypeId` of the type representing the scope introduced by this block.
-	// Only present after the AST has been typechecked, and `INVALID_TYPE_ID`
-	// before that.
-	TypeId scope_type_id;
+	u32 unused_ = 0;
 };
 
 // Neatly structured summary of the child structure of an `AstNode` with tag
 // `AstTag::Func`. To obtain this for a given node, call `get_func_info`.
-struct FuncInfo
+struct SignatureInfo
 {
 	// `AstNode` with tag `AstTag::ParameterList` containing the function's
 	// argument definitions as its children.
@@ -838,9 +783,6 @@ struct FuncInfo
 	// Optional `AstNode` with tag `AstTag::Ensures` containing the function's
 	// `ensures` clause if it has one.
 	OptPtr<AstNode> ensures;
-
-	// optional `AstNode` containing the function's body if it has one.
-	OptPtr<AstNode> body;
 };
 
 // Neatly structured summary of the child structure of an `AstNode` with tag
@@ -927,16 +869,17 @@ struct ForEachInfo
 };
 
 
+
 // Bitwise `or` of two `AstFlag`s
 inline constexpr AstFlag operator|(AstFlag lhs, AstFlag rhs) noexcept
 {
-	return static_cast<AstFlag>(static_cast<u16>(lhs) | static_cast<u16>(rhs));
+	return static_cast<AstFlag>(static_cast<u8>(lhs) | static_cast<u8>(rhs));
 }
 
 // Bitwise `and` of two `AstFlag`s
 inline constexpr AstFlag operator&(AstFlag lhs, AstFlag rhs) noexcept
 {
-	return static_cast<AstFlag>(static_cast<u16>(lhs) & static_cast<u16>(rhs));
+	return static_cast<AstFlag>(static_cast<u8>(lhs) & static_cast<u8>(rhs));
 }
 
 // Bitwise `set-or` of two `AstFlag`s
@@ -956,6 +899,7 @@ inline constexpr AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
 }
 
 
+
 // Creates an `AstPool`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `AstPool` can be freed using
 // `release_ast_pool`.
@@ -963,6 +907,7 @@ AstPool* create_ast_pool(AllocPool* alloc) noexcept;
 
 // Releases the resources associated with the given `AstPool`.
 void release_ast_pool(AstPool* asts) noexcept;
+
 
 
 // Converts `node` to its corresponding `AstNodeId`.
@@ -975,6 +920,7 @@ AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept;
 // `id` must have been obtained from a previous call to `id_from_ast_node` on
 // the same `AstPool`.
 AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept;
+
 
 
 // Pushes a new `AstNode` with no attachment into `asts`'s ast builder.
@@ -1012,9 +958,9 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 template<typename T>
 static AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, T attachment) noexcept
 {
-	static_assert(sizeof(T) % sizeof(u32) == 0);
+	static_assert(sizeof(T) % sizeof(u64) == 0);
 
-	return push_node(asts, first_child, source_id, flags, T::TAG, sizeof(attachment) / sizeof(u32), &attachment);
+	return push_node(asts, first_child, source_id, flags, T::TAG, sizeof(attachment) / sizeof(u64), &attachment);
 }
 
 // Completes the builder of `asts`, returning a pointer to the root node of the
@@ -1022,6 +968,7 @@ static AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, Sou
 // To fill the builder, use one of the `push_node` functions.
 // After a call to this function, `asts`'s builder will be reset.
 AstNode* complete_ast(AstPool* asts) noexcept;
+
 
 
 // Checks whether `node` has any child nodes.
@@ -1036,9 +983,9 @@ bool has_next_sibling(const AstNode* node) noexcept;
 // If it does, returns `true`, otherwise returns `false`. 
 bool has_flag(const AstNode* node, AstFlag flag) noexcept;
 
-TypeKind type_kind_of(const AstNode* node) noexcept;
+bool is_descendant_of(const AstNode* parent, const AstNode* child) noexcept;
 
-void set_type_kind(AstNode* node, TypeKind kind) noexcept;
+ValueKind value_kind_of(const AstNode* node) noexcept;
 
 // Returns the next sibling of `node`.
 // This function must only be called on `AstNode`s that have a next sibling.
@@ -1061,9 +1008,11 @@ AstNode* first_child_of(AstNode* node) noexcept;
 template<typename T>
 inline T* attachment_of(AstNode* node) noexcept
 {
+	static_assert(sizeof(AstNode) == sizeof(u64));
+
 	ASSERT_OR_IGNORE(T::TAG == node->tag);
 
-	ASSERT_OR_IGNORE(sizeof(T) + sizeof(AstNode) == node->data_dwords * sizeof(u32));
+	ASSERT_OR_IGNORE(sizeof(AstNode) + sizeof(T) == node->own_qwords * sizeof(u64));
 
 	return reinterpret_cast<T*>(node + 1);
 }
@@ -1075,15 +1024,18 @@ inline const T* attachment_of(const AstNode* node) noexcept
 {
 	ASSERT_OR_IGNORE(T::TAG == node->tag);
 
-	ASSERT_OR_IGNORE(sizeof(T) + sizeof(AstNode) == node->data_dwords * sizeof(u32));
+	ASSERT_OR_IGNORE(sizeof(T) + sizeof(AstNode) == node->own_qwords * sizeof(u64));
 
 	return reinterpret_cast<const T*>(node + 1);
 }
 
+SourceId source_id_of(const AstPool* asts, const AstNode* node) noexcept;
+
+
 
 // Retrieves a `FuncInfo` struct corresponding to `node`'s child structure.
 // `node`'s tag must be `AstTag::Func`.
-FuncInfo get_func_info(AstNode* node) noexcept;
+SignatureInfo get_signature_info(AstNode* node) noexcept;
 
 // Retrieves a `DefinitionInfo` struct corresponding to `node`'s child
 // structure.
@@ -1143,10 +1095,65 @@ AstIterationResult next(AstPostorderIterator* iterator) noexcept;
 bool has_next(const AstPostorderIterator* iterator) noexcept;
 
 
+
 // Retrieves a string representing the given `tag`.
 // If `tag` is not an enumerant of `AstTag`, it is treated as
 // `AstTag::INVALID`.
 const char8* tag_name(AstTag tag) noexcept;
+
+
+
+
+
+struct PartialValuePool;
+
+enum class PartialValueBuilderId : u32
+{
+	INVALID = 0,
+};
+
+enum class PartialValueId : u32
+{
+	INVALID = 0,
+};
+
+struct PartialValue
+{
+	AstNode* node;
+
+	TypeId type_id;
+
+	Range<byte> data;
+};
+
+struct PartialValueIterator
+{
+	const void* partial;
+
+	const void* curr;
+
+	const void* end;
+};
+
+PartialValuePool* create_partial_value_pool(AllocPool* alloc, AstPool* asts) noexcept;
+
+void release_partial_value_pool(PartialValuePool* partials) noexcept;
+
+PartialValueBuilderId create_partial_value_builder(PartialValuePool* partials, AstNode* root) noexcept;
+
+MutRange<byte> partial_value_builder_add_value(PartialValuePool* partials, PartialValueBuilderId id, AstNode* node, TypeId typeId, u64 size, u32 align) noexcept;
+
+PartialValueId complete_partial_value_builder(PartialValuePool* partials, PartialValueBuilderId id) noexcept;
+
+
+
+AstNode* root_of(PartialValuePool* partials, PartialValueId id) noexcept;
+
+PartialValueIterator values_of(PartialValuePool* partials, PartialValueId id) noexcept;
+
+bool has_next(const PartialValueIterator* it) noexcept;
+
+PartialValue next(PartialValueIterator* it) noexcept;
 
 
 
@@ -1356,12 +1363,7 @@ void release_global_value_pool(GlobalValuePool* globals) noexcept;
 // Allocates a global value of the given `type`, `size` and `align` in
 // `globals`.
 // Never returns `GlobalValueId::INVALID`.
-GlobalValueId alloc_global_value(GlobalValuePool* globals, TypeId type_id, u64 size, u32 align) noexcept;
-
-// Retrieves the type of the global value identified by `value_id` from
-// `globals`.
-// `value_id` must not be `GlobalValueId::INVALID`.
-TypeId global_value_type(const GlobalValuePool* globals, GlobalValueId value_id) noexcept;
+GlobalValueId alloc_global_value(GlobalValuePool* globals, u64 size, u32 align) noexcept;
 
 // Retrieves a range over the data of the global value identified by `value_id`
 // from `globals`.
@@ -1397,13 +1399,6 @@ enum class TypeId : u32
 	// Value reserved to indicate a missing type, e.g. in case it has not been
 	// typechecked yet.
 	INVALID = 0,
-
-	// Value reserved to indicate that a type is currently subject
-	// typechecking. This is used to avoid circular dependencies leading to
-	// nontermination during typechecking.
-	CHECKING,
-
-	DELAYED,
 };
 
 // Tag for discriminating between different kinds of types.
@@ -1583,6 +1578,12 @@ union DelayableTypeId
 	// `AstNodeId` from which the `TypeId` can be evaluated or typechecked,
 	// depending on the context in which this occurs. 
 	AstNodeId pending;
+
+	DelayableTypeId() noexcept = default;
+	
+	DelayableTypeId(TypeId complete) noexcept : complete{ complete } {}
+	
+	DelayableTypeId(AstNodeId pending) noexcept : pending{ pending } {}
 };
 
 // Representation of either a `GlobalValueId` or the `AstNodeId` of the
@@ -1599,33 +1600,42 @@ union DelayableValueId
 	AstNodeId pending;
 };
 
-// Summary of a composite type member.
-// This is obtained by calling `type_member_info_by_name`,
-// `type_member_info_by_rank`, or `next([Incomplete]MemberIterator*)`.
-struct MemberInfo
+struct Definition
 {
-	// Name of the member.
 	IdentifierId name;
 
-	// `SourceId` of the member.
 	SourceId source;
 
-	// If `has_pending_type` is `true`, this contains an `AstNodeId`
-	// referencing the underlying definition's explicit type expression or
-	// `AstNodeId::INVALID` if it does not have one. In this case
-	// `completion_context_type_id` will contain the `TypeId` of the context in
-	// which the expression can be evaluated.
-	// If `has_pending_type` is `false`, this contains the member's `TypeId`.
 	DelayableTypeId type;
 
-	// If `has_pending_value` is `true`, this contains an `AstNodeId`
-	// referencing the underlying definition's value expression or
-	// `AstNodeId::INVALID` if it does not have one. In this case
-	// `completion_context_type_id` will contain the `TypeId` of the context in
-	// which the expression can be evaluated.
-	// If `has_pending_value` is `false`, this contains the `GlobalValueId`
-	// identifying the member's value, or `GlobalValueId::INVALID` if the
-	// member has no value.
+	DelayableValueId default_or_global_value;
+
+	// Whether the member is global. If this is `true`, the value of `offset`
+	// is undefined.
+	bool is_global : 1;
+
+	// Whether the member is public.
+	bool is_pub : 1;
+
+	// Whether the member is `use`d.
+	bool is_use : 1;
+
+	// Whether the member is mutable.
+	bool is_mut : 1;
+
+	bool has_pending_type : 1;
+
+	bool has_pending_value : 1;
+};
+
+struct Member
+{
+	IdentifierId name;
+
+	SourceId source;
+
+	DelayableTypeId type;
+
 	DelayableValueId value;
 
 	// Whether the member is global. If this is `true`, the value of `offset`
@@ -1641,107 +1651,34 @@ struct MemberInfo
 	// Whether the member is mutable.
 	bool is_mut : 1;
 
-	bool is_comptime_known : 1;
-
-	bool has_arg_dependency : 1;
-
-	// Indicates whether the member's type has been determined yet.
-	// See `type` for further information.
-	bool has_pending_type : 1;
-
-	// Indicates whether the member's value has been determined yet.
-	// See `value` for further information.
-	bool has_pending_value : 1;
-
 	bool is_param : 1;
 
-	// Rank of the member in the surrounding type. This is a `0`-based index
-	// uniquely identifying the member inside its surrounding type. This index is
-	// determined by the order of calls to `add_open_type_member`.
+	bool has_pending_type : 1;
+
+	bool has_pending_value : 1;
+
+	bool is_comptime_known : 1;
+
+	bool is_arg_independent : 1;
+
 	u16 rank;
 
-	// Index of the activation record in which the member's `type` and `value`
-	// can be completed if `has_pending_type` or `has_pending_value` are `true`
-	// respectively. If both `has_pending_type` and `has_pending_value` are
-	// `false`, the value of this field is undefined.
-	ArecId completion_arec_id;
+	ArecId type_completion_arec_id;
 
-	// `TypeId` of the type which the member is a part of.
-	TypeId surrounding_type_id;
+	ArecId value_completion_arec_id;
 
-	// offset from the surrounding type's base. For global members, this value
-	// is undefined.
 	s64 offset;
 };
 
-// Initialization info for a composite type member.
-// Passed to `add_composite_type_member`.
-struct MemberInit
+struct MemberCompletionInfo
 {
-	// Name of the member to be created. This must not be the same as the name
-	// of any of the existing members of the surrounding type.
-	IdentifierId name;
+	bool has_type_id : 1;
 
-	// `SourceId` of the member to be created. This should be set to the
-	// `source_id` of the definition this member is derived from.
-	SourceId source;
+	bool has_value_id : 1;
 
-	// If `has_pending_type` is `true`, this must be set to the `AstNodeId`
-	// referencing the underlying definition's explicit type expression or to
-	// `AstNodeId::INVALID` if it does not have one. In this case
-	// `completion_context_type_id` must be set to the `TypeId` of the context
-	// in which the expression can be evaluated.
-	// If `has_pending_type` is `false`, must be set to the member's intended
-	// `TypeId`.
-	DelayableTypeId type;
+	TypeId type_id;
 
-	// If `has_pending_value` is `true`, this must be set to the `AstNodeId`
-	// referencing the underlying definition's value expression or
-	// `AstNodeId::INVALID` if it does not have one. In this case
-	// `completion_context_type_id` must be set to the `TypeId` of the context
-	// in which the expression can be evaluated.
-	// If `has_pending_value` is `false`, this must be set to the
-	// `GlobalValueId` identifying the member's intended value, or
-	// `GlobalValueId::INVALID` if the member has no value.
-	DelayableValueId value;
-
-	// Index of the activation record containing the definition underying this
-	// member. This has to be set if either `has_pending_value` or
-	// `has_pending_type` is `true`. Otherwise it is ignored.
-	// The intent behind this member is to allow delayed typechecking and
-	// evaluation.
-	ArecId completion_arec_id;
-
-	// Whether the member is to be global. If this is `true`, the value of
-	// `offset` will be ignored.
-	bool is_global : 1;
-
-	// Whether the member is to be public.
-	bool is_pub : 1;
-
-	// Whether the member is to be `use`d.
-	bool is_use : 1;
-
-	// Whether the member is to be mutable.
-	bool is_mut : 1;
-
-	bool is_comptime_known : 1;
-
-	bool has_arg_dependency : 1;
-
-	// Indicates whether the member's type is pending.
-	// See `type` for further information.
-	// If this is `true`, `has_pending_value` must also be `true`.
-	bool has_pending_type : 1;
-
-	// Indicates whether the member's value is pending.
-	// See `value` for further information.
-	// If this is `false`, `has_pending_type` must also be false.
-	bool has_pending_value : 1;
-
-	// Offset of the member from the base of its surrounding type.
-	// This is ignored if the member is global.
-	s64 offset;
+	GlobalValueId value_id;
 };
 
 // Structural data for `Ptr`, `Slice` and `TailArray` types.
@@ -1799,26 +1736,44 @@ struct ArrayType
 };
 
 // Structural data for `Func` and `Builtin` types.
-struct FuncType
+struct SignatureType
 {
-	// `TypeId` of the function's return type.
-	DelayableTypeId return_type_id;
+	// If `parameter_list_is_unbound` is `true`, this identifies a closed,
+	// incomplete type, which can be copied and completed using per-callsite
+	// argument values to obtain a complete parameter list record.
+	// Otherwise it identifies the signature's parameter list record.
+	TypeId parameter_list_type_id;
 
-	// `TypeId` of the function's signature composite type.
-	DelayableTypeId signature_type_id;
+	// If `return_type_is_unbound` is `true`, this is identifies the root AST
+	// node from which the return type can be evaluated given per-callsite
+	// argument values.
+	// Otherwise it identifies the signature's return type.
+	union
+	{
+		TypeId complete;
 
-	// Number of parameters the function accepts. Currently this is limited to
-	// `64`.
-	u16 param_count;
+		AstNodeId partial_root;
+	} return_type;
 
-	// For `Func` types, `true` if the function is a `proc`, false if it is a
-	// `func`. Always `false` for `Builtin` types.
+	// If `parameter_list_is_unbound` or `return_type_is_unbound` is `true`,
+	// this refers to a partial value which is used while completing
+	// `return_type_id` and `parameter_list_type_id`.
+	PartialValueId partial_value_id;
+
+	// Number of parameters accepted by the function. This is at most 64.
+	u8 param_count;
+
+	// `true` if this is a `proc` signature, `false` otherwise (i.e., if this
+	// is a `func` signature).
 	bool is_proc;
 
-	bool has_delayed_signature : 1;
+	// See `parameter_list_type_id`.
+	bool parameter_list_is_unbound;
 
-	bool has_delayed_return_type : 1;
+	// See `return_type_id`.
+	bool return_type_is_unbound;
 };
+
 
 
 // Creates a `TypePool`, allocating the necessary storage from `alloc`.
@@ -1873,26 +1828,15 @@ TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId
 
 // Adds a member to the open composite type referenced by `open_type_id`.
 // The member is initialized with the data in `member`.
-void add_open_type_member(TypePool* types, TypeId open_type_id, MemberInit member) noexcept;
+void add_open_type_member(TypePool* types, TypeId open_type_id, Member member) noexcept;
 
 // Close an open composite type, preventing the addition of further members and
 // setting the type's metrics (`size`, `align` and `stride`).
 void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, u64 stride) noexcept;
 
-// Set the type of a member that was created with `has_pending_type` set to
-// `true`.
-// `rank` indicates the type rank of the member in `open_type`, and
-// `member_type_id` is `TypeId` the member will have after this call returns.
-// This call must not be repeated on the same member. 
-void set_incomplete_type_member_type_by_rank(TypePool* types, TypeId open_type_id, u16 rank, TypeId member_type_id) noexcept;
+void set_incomplete_type_member_info_by_rank(TypePool* types, TypeId open_type_id, u16 rank, MemberCompletionInfo info) noexcept;
 
-// Set the value of a member that was created with `has_pending_value` set to
-// `true`.
-// `rank` indicates the type rank of the member in `open_type`, and
-// `member_value_id` is `GlobalValueId` the member will have after this call
-// returns. This call must not be repeated on the same member.
-void set_incomplete_type_member_value_by_rank(TypePool* types, TypeId open_type_id, u16 rank, GlobalValueId member_value_id) noexcept;
-
+TypeId copy_incomplete_type(TypePool* types, TypeId incomplete_type_id) noexcept;
 
 // Checks whether `type_id_a` and `type_id_b` refer to the same type or
 // non-distinct aliases of the same type.
@@ -1964,19 +1908,9 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
 // For types created by `create_open_type`, this is `TypeTag::Composite`.
 TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept;
 
-// Attempts to retrieve information on a member of the composite type
-// referenced by `type_id` with the given `member_name_id`.
-// If there is no member with the given name, `false` is returned and the value
-// of `*out` is unspecified. Otherwise, `true` is returned, and `*out` receives
-// information on the member.
-// Note that this function takes `use`d members into account, searching them
-// for members with the given name as well.
-bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId member_name_id, SourceId source, MemberInfo* out) noexcept;
+const Member* type_member_by_rank(TypePool* types, TypeId type_id, u16 rank);
 
-// Attempts to retrieve information on a member of the composite type
-// referenced by `type_id` with the given `rank`.
-// `*out` receives information on the member.
-void type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberInfo* out) noexcept;
+const bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, SourceId source, const Member** out) noexcept;
 
 // Retrieves the structural data associated with `type_id`, which must not
 // refer to a composite type.
@@ -1999,7 +1933,7 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 // Retrieves the next element of `iterator`. This function may only be called
 // exactly once after `has_next` called on the same iterator has returned
 // `true`.
-MemberInfo next(IncompleteMemberIterator* it) noexcept;
+const Member* next(IncompleteMemberIterator* it) noexcept;
 
 // Checks whether `iterator` has an element to be returned by a future call to
 // `next`. This call is idempotent.
@@ -2016,7 +1950,7 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept;
 // Retrieves the next element of `iterator`. This function may only be called
 // exactly once after `has_next` called on the same iterator has returned
 // `true`.
-MemberInfo next(MemberIterator* it) noexcept;
+const Member* next(MemberIterator* it) noexcept;
 
 // Checks whether `iterator` has an element to be returned by a future call to
 // `next`. This call is idempotent.
@@ -2127,12 +2061,10 @@ enum class Builtin : u8
 	MAX,
 };
 
-enum class TypeKind : u8
+enum class ValueKind : bool
 {
-	INVALID = 0,
-	Value,
-	ImmutLocation,
-	MutLocation,
+	Value = false,
+	Location = true,
 };
 
 enum class ArecId : s32
@@ -2145,7 +2077,7 @@ enum class ArecId : s32
 // Creates an `Interpreter`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `Interpreter` can be freed using
 // `release_interpreter`.
-Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, TypeListPool* lists, ErrorSink* errors, minos::FileHandle log_file, bool log_prelude) noexcept;
+Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, PartialValuePool* partials, ErrorSink* errors, minos::FileHandle log_file, bool log_prelude) noexcept;
 
 // Releases the resources associated with the given `Interpreter`.
 void release_interpreter(Interpreter* interp) noexcept;
@@ -2165,6 +2097,6 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 // `TypeTag::INVALID`.
 const char8* tag_name(Builtin builtin) noexcept;
 
-const char8* tag_name(TypeKind type_kind) noexcept;
+const char8* tag_name(ValueKind type_kind) noexcept;
 
 #endif // CORE_INCLUDE_GUARD

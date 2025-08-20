@@ -236,7 +236,7 @@ static SourceLocation build_source_location(Range<char8> filepath, Range<char8> 
 
 	const u32 column_number = offset - line_begin;
 
-	const u32 context_begin = line_begin + (column_number < 20 ? 0 : column_number - 20);
+	const u32 context_begin = line_begin + (column_number < 200 ? 0 : column_number - 200);
 
 	const u32 context_chars = line_end - context_begin < sizeof(SourceLocation::context) ? line_end - context_begin : sizeof(SourceLocation::context);
 

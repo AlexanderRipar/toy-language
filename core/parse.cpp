@@ -291,7 +291,12 @@ struct Lexeme
 
 		Builtin builtin;
 
-		GlobalValueId string_value_id;
+		struct
+		{
+			GlobalValueId value_id;
+			
+			TypeId type_id;
+		} string;
 	};
 };
 
@@ -311,7 +316,13 @@ struct RawLexeme
 
 		Builtin builtin;
 
-		GlobalValueId string_value_id;
+		struct
+		{
+			GlobalValueId value_id;
+
+			TypeId type_id;
+		} string;
+		
 	};
 
 	RawLexeme() noexcept = default;
@@ -328,7 +339,7 @@ struct RawLexeme
 
 	RawLexeme(Token token, Builtin builtin) noexcept : token{ token }, builtin{ builtin } {}
 
-	RawLexeme(Token token, GlobalValueId string_value_id) noexcept : token{ token }, string_value_id{ string_value_id } {}
+	RawLexeme(Token token, GlobalValueId string_value_id, TypeId string_type_id) noexcept : token{ token }, string{ string_value_id, string_type_id } {}
 };
 
 // Operator Description Tuple. Consists of:
@@ -427,7 +438,6 @@ static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
 };
 
 static constexpr OperatorDesc BINARY_OPERATOR_DESCS[] = {
-	{ AstTag::OpMember,    AstFlag::EMPTY, 1, true,  true  }, // .
 	{ AstTag::OpMul,       AstFlag::EMPTY, 2, true,  true  }, // *
 	{ AstTag::OpSub,       AstFlag::EMPTY, 3, true,  true  }, // -
 	{ AstTag::OpAdd,       AstFlag::EMPTY, 3, true,  true  }, // +
@@ -1040,15 +1050,15 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 	array_of_u8_type.element_type = lexer->u8_type_id;
 	array_of_u8_type.element_count = buffer_index;
 
-	const TypeId array_of_u8_type_id = simple_type(lexer->types, TypeTag::Array, range::from_object_bytes(&array_of_u8_type));
+	const TypeId string_type_id = simple_type(lexer->types, TypeTag::Array, range::from_object_bytes(&array_of_u8_type));
 
-	const GlobalValueId string_value_id = alloc_global_value(lexer->globals, array_of_u8_type_id, buffer_index, 1);
+	const GlobalValueId string_value_id = alloc_global_value(lexer->globals, buffer_index, 1);
 
 	global_value_set(lexer->globals, string_value_id, 0, Range{ reinterpret_cast<const byte*>(buffer), buffer_index });
 
 	lexer->curr = curr + 1;
 
-	return { Token::LitString, string_value_id };
+	return { Token::LitString, string_value_id, string_type_id };
 }
 
 static RawLexeme raw_next(Lexer* lexer) noexcept
@@ -1727,10 +1737,9 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 		source_error(parser->lexer.errors, lexeme.source_id, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 	}
 
-	if (is_param)
-		return push_node(parser->builder, first_child_token, source_id, flags, AstParameterData{ identifier_id, TypeId::INVALID });
-	else
-		return push_node(parser->builder, first_child_token, source_id, flags, AstDefinitionData{ identifier_id, TypeId::INVALID });
+	return is_param
+		? push_node(parser->builder, first_child_token, source_id, flags, AstParameterData{ identifier_id })
+		: push_node(parser->builder, first_child_token, source_id, flags, AstDefinitionData{ identifier_id });
 }
 
 static AstBuilderToken parse_return(Parser* parser) noexcept
@@ -1813,7 +1822,7 @@ static AstBuilderToken parse_if(Parser* parser) noexcept
 
 	const SourceId source_id = next(&parser->lexer).source_id;
 
-	const AstBuilderToken condition_token = parse_expr(parser, false);
+	const AstBuilderToken first_child_token = parse_expr(parser, false);
 
 	Lexeme lexeme = peek(&parser->lexer);
 
@@ -1842,7 +1851,7 @@ static AstBuilderToken parse_if(Parser* parser) noexcept
 		parse_expr(parser, true);
 	}
 
-	return push_node(parser->builder, condition_token, source_id, flags, AstTag::If);
+	return push_node(parser->builder, first_child_token, source_id, flags, AstTag::If);
 }
 
 static AstBuilderToken try_parse_foreach(Parser* parser, SourceId source_id) noexcept
@@ -1985,8 +1994,6 @@ static AstBuilderToken parse_case(Parser* parser) noexcept
 	if (lexeme.token != Token::ThinArrowR)
 		source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' after case label expression but got '%s'\n", token_name(Token::ThinArrowR), token_name(lexeme.token));
 
-	parse_expr(parser, true);
-
 	return push_node(parser->builder, first_child_token, source_id, AstFlag::EMPTY, AstTag::Case);
 }
 
@@ -2069,7 +2076,7 @@ static AstBuilderToken parse_ensures(Parser* parser) noexcept
 	return push_node(parser->builder, first_child_token, source_id, AstFlag::EMPTY, AstTag::Ensures);
 }
 
-static AstBuilderToken parse_func(Parser* parser) noexcept
+static AstBuilderToken parse_signature(Parser* parser) noexcept
 {
 	AstFlag flags = AstFlag::EMPTY;
 
@@ -2078,7 +2085,7 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 	const SourceId func_source_id = lexeme.source_id;
 
 	if (lexeme.token == Token::KwdProc)
-		flags |= AstFlag::Func_IsProc;
+		flags |= AstFlag::Signature_IsProc;
 	else if (lexeme.token != Token::KwdFunc)
 		source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' or '%s' but got '%s'\n", token_name(Token::KwdFunc), token_name(Token::KwdProc), token_name(lexeme.token));
 
@@ -2087,7 +2094,7 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 	const SourceId parameter_list_source_id = lexeme.source_id;
 
 	if (lexeme.token != Token::ParenL)
-		source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' after '%s' but got '%s'\n", token_name(Token::ParenL), token_name(flags == AstFlag::Func_IsProc ? Token::KwdProc : Token::KwdFunc), token_name(lexeme.token));
+		source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' after '%s' but got '%s'\n", token_name(Token::ParenL), token_name(flags == AstFlag::Signature_IsProc ? Token::KwdProc : Token::KwdFunc), token_name(lexeme.token));
 
 	lexeme = peek(&parser->lexer);
 
@@ -2108,7 +2115,7 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 			source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' or '%s' after function parameter definition but got '%s'", token_name(Token::Comma), token_name(Token::ParenR), token_name(lexeme.token));
 	}
 
-	const AstBuilderToken first_child_token = push_node(parser->builder, first_parameter_token, parameter_list_source_id, AstFlag::EMPTY, AstTag::ParameterList);
+	const AstBuilderToken parameter_list_token = push_node(parser->builder, first_parameter_token, parameter_list_source_id, AstFlag::EMPTY, AstTag::ParameterList);
 
 	skip(&parser->lexer);
 
@@ -2116,7 +2123,7 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 
 	if (lexeme.token == Token::ThinArrowR)
 	{
-		flags |= AstFlag::Func_HasReturnType;
+		flags |= AstFlag::Signature_HasReturnType;
 
 		skip(&parser->lexer);
 
@@ -2128,7 +2135,7 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 
 	if (lexeme.token == Token::KwdExpects)
 	{
-		flags |= AstFlag::Func_HasExpects;
+		flags |= AstFlag::Signature_HasExpects;
 
 		// Expects
 		parse_expects(parser);
@@ -2138,25 +2145,35 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 
 	if (lexeme.token == Token::KwdEnsures)
 	{
-		flags |= AstFlag::Func_HasEnsures;
+		flags |= AstFlag::Signature_HasEnsures;
 
 		// Ensures
 		parse_ensures(parser);
-
-		lexeme = peek(&parser->lexer);
 	}
 
-	if (lexeme.token == Token::OpSet)
-	{
-		flags |= AstFlag::Func_HasBody;
+	return push_node(parser->builder, parameter_list_token, func_source_id, flags, AstTag::Signature);
+}
 
-		skip(&parser->lexer);
+static AstBuilderToken parse_func(Parser* parser) noexcept
+{
+	AstFlag flags = AstFlag::EMPTY;
 
-		// Body
-		parse_expr(parser, true);
-	}
+	Lexeme lexeme = peek(&parser->lexer);
 
-	return push_node(parser->builder, first_child_token, func_source_id, flags, AstFuncData{ TypeId::INVALID });
+	const SourceId func_source_id = lexeme.source_id;
+
+	const AstBuilderToken signature_token = parse_signature(parser);
+
+	lexeme = peek(&parser->lexer);
+
+	if (lexeme.token != Token::OpSet)
+		return signature_token;
+
+	skip(&parser->lexer);
+
+	parse_expr(parser, true);
+
+	return push_node(parser->builder, signature_token, func_source_id, flags, AstTag::Func);
 }
 
 static AstBuilderToken parse_trait(Parser* parser) noexcept
@@ -2302,7 +2319,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(parser->builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitStringData{ lexeme.string_value_id });
+				const AstBuilderToken value_token = push_node(parser->builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitStringData{ lexeme.string.value_id, lexeme.string.type_id });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2456,7 +2473,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 						break;
 				}
 
-				const AstBuilderToken block_token = push_node(parser->builder, first_child_token, source_id, AstFlag::EMPTY, AstBlockData{ TypeId::INVALID });
+				const AstBuilderToken block_token = push_node(parser->builder, first_child_token, source_id, AstFlag::EMPTY, AstTag::Block);
 
 				push_operand(parser, &stack, block_token);
 			}
@@ -2622,7 +2639,9 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 				{
 					ASSERT_OR_IGNORE(stack.operand_count == 1);
 
-					return stack.operand_tokens[stack.operand_count - 1]; // No need for stack.pop_remaining; pop_to_lparen already popped everything
+					// No need for stack.pop_remaining; pop_to_precedence already
+					// popped everything.
+					return stack.operand_tokens[stack.operand_count - 1];
 				}
 
 				remove_lparen(&stack);
@@ -2682,11 +2701,28 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 
 				continue;
 			}
+			else if (lexeme.token == Token::OpMemberOrRef)
+			{
+				const SourceId source_id = lexeme.source_id;
+
+				pop_to_precedence(parser, &stack, 1, true);
+
+				skip(&parser->lexer);
+
+				lexeme = peek(&parser->lexer);
+
+				if (lexeme.token != Token::Ident)
+					source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' after infix '.' operator but got '%s'.\n", token_name(Token::Ident), token_name(lexeme.token));
+
+				const AstBuilderToken member_token = push_node(parser->builder, stack.operand_tokens[stack.operand_count - 1], source_id, AstFlag::EMPTY, AstMemberData{ lexeme.identifier_id });
+
+				stack.operand_tokens[stack.operand_count - 1] = member_token;
+			}
 			else // Binary operator
 			{
 				const u8 token_ordinal = static_cast<u8>(lexeme.token);
 
-				const u8 lo_ordinal = static_cast<u8>(Token::OpMemberOrRef);
+				const u8 lo_ordinal = static_cast<u8>(Token::OpMulOrTypPtr);
 
 				const u8 hi_ordinal = static_cast<u8>(Token::OpSetShr);
 

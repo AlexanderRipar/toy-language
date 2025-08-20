@@ -9,6 +9,259 @@
 #include "minos.hpp"
 
 template<typename T, typename Index = u32>
+struct ReservedVec2
+{
+private:
+
+	T* m_memory;
+
+	Index m_used;
+
+	Index m_committed;
+
+	Index m_commit_increment;
+
+	Index m_reserved;
+
+	void ensure_capacity(Index extra_used) noexcept
+	{
+		const u64 required_commit = m_used + extra_used;
+
+		if (required_commit <= m_committed)
+			return;
+
+		if (required_commit > m_reserved)
+			panic("Could not allocate additional memory, as the required memory (%llu bytes) exceeds the reserve of %llu bytes\n", required_commit * sizeof(T), m_reserved * sizeof(T));
+
+		const Index new_commit = next_multiple(static_cast<Index>(required_commit), m_commit_increment);
+
+		if (!minos::mem_commit(m_memory + m_committed, (new_commit - m_committed) * sizeof(T)))
+			panic("Could not allocate additional memory (%llu bytes - error 0x%X)\n", (new_commit - m_committed) * sizeof(T), minos::last_error());
+
+		m_committed = new_commit;
+	}
+
+public:
+
+	void init(MutRange<byte> memory, Index commit_increment) noexcept
+	{
+		const u32 page_bytes = minos::page_bytes();
+
+		ASSERT_OR_IGNORE(reinterpret_cast<u64>(memory.begin()) % alignof(T) == 0 && memory.count() % sizeof(T) == 0);
+
+		ASSERT_OR_IGNORE((reinterpret_cast<u64>(memory.begin()) & (page_bytes - 1)) == 0 && (memory.count() & (page_bytes - 1)) == 0);
+
+		ASSERT_OR_IGNORE(memory.count() >= commit_increment * sizeof(T));
+
+		m_memory = reinterpret_cast<T*>(memory.begin());
+
+		if (!minos::mem_commit(m_memory, commit_increment * sizeof(T)))
+			panic("Could not commit initial memory (%llu bytes - error 0x%X)\n", commit_increment * sizeof(T), minos::last_error());
+
+		m_used = 0;
+
+		m_committed = commit_increment;
+
+		m_commit_increment = commit_increment;
+
+		ASSERT_OR_IGNORE(memory.count() % sizeof(T) == 0 && memory.count() / sizeof(T) <= std::numeric_limits<Index>::max());
+
+		m_reserved = static_cast<Index>(memory.count() / sizeof(T));
+	}
+
+	void append(const T& data) noexcept
+	{
+		append(&data, 1);
+	}
+
+	void append(const T* data, Index count) noexcept
+	{
+		ensure_capacity(count);
+
+		memcpy(m_memory + m_used, data, count * sizeof(T));
+
+		m_used += count;
+	}
+
+	void append_exact(const void* data, Index bytes) noexcept
+	{
+		ASSERT_OR_IGNORE(bytes % sizeof(T) == 0);
+
+		const Index count = bytes / sizeof(T);
+
+		ensure_capacity(count);
+
+		memcpy(m_memory + m_used, data, count * sizeof(T));
+
+		m_used += count;
+	}
+
+	void append_padded(const void* data, Index bytes) noexcept
+	{
+		const Index count = (bytes + sizeof(T) - 1) / sizeof(T);
+
+		ensure_capacity(count);
+
+		memcpy(m_memory + m_used, data, count * sizeof(T));
+
+		m_used += count;
+	}
+
+	T* reserve() noexcept
+	{
+		ensure_capacity(1);
+
+		m_used += 1;
+
+		return m_memory + m_used - 1;
+	}
+
+	T* reserve(Index count) noexcept
+	{
+		ensure_capacity(count);
+
+		m_used += count;
+
+		return m_memory + m_used - count;
+	}
+
+	void* reserve_exact(Index bytes) noexcept
+	{
+		ASSERT_OR_IGNORE(bytes % sizeof(T) == 0);
+
+		const Index count = bytes / sizeof(T);
+
+		ensure_capacity(count);
+
+		void* const result = m_memory + m_used;
+
+		m_used += count;
+
+		return result;
+	}
+
+	void* reserve_padded(Index bytes) noexcept
+	{
+		const Index count = (bytes + sizeof(T) - 1) / sizeof(T);
+
+		ensure_capacity(count);
+
+		void* const result = m_memory + m_used;
+
+		m_used += count;
+
+		return result;
+	}
+
+	void pad_to_alignment(u32 alignment) noexcept
+	{
+		static_assert(is_pow2(sizeof(T)));
+
+		ASSERT_OR_IGNORE(is_pow2(alignment));
+
+		if (alignment < sizeof(T))
+			return;
+
+		const u32 new_used = next_multiple(m_used, static_cast<Index>(alignment / sizeof(T)));
+
+		ensure_capacity(new_used - m_used);
+
+		m_used = new_used;
+	}
+
+	void reset(Index preserved_commit = std::numeric_limits<Index>::max()) noexcept
+	{
+		m_used = 0;
+
+		if (preserved_commit >= m_committed)
+			return;
+
+		const u32 page_bytes = minos::page_bytes();
+
+		const u32 target_commit = (preserved_commit + page_bytes - 1) & ~(page_bytes - 1);
+
+		minos::mem_decommit(reinterpret_cast<byte*>(m_memory) + target_commit, m_committed - target_commit);
+
+		m_committed = target_commit;
+	}
+
+	T& top() noexcept
+	{
+		ASSERT_OR_IGNORE(m_used != 0);
+
+		return m_memory[m_used - 1];
+	}
+
+	const T& top() const noexcept
+	{
+		ASSERT_OR_IGNORE(m_used != 0);
+
+		return m_memory[m_used - 1];
+	}
+
+	void pop_by(Index count) noexcept
+	{
+		ASSERT_OR_IGNORE(count <= m_used);
+
+		m_used -= count;
+	}
+
+	void pop_to(Index count) noexcept
+	{
+		ASSERT_OR_IGNORE(count <= m_used);
+
+		m_used = count;
+	}
+
+	void free_region(void* begin, Index count) noexcept
+	{
+		ASSERT_OR_IGNORE(begin >= m_memory && static_cast<byte*>(begin) + count < m_memory + m_committed);
+
+		minos::mem_decommit(begin, count);
+	}
+
+	void free_region(void* begin, void* end) noexcept
+	{
+		free_region(begin, static_cast<Index>(static_cast<byte*>(end) - static_cast<byte*>(begin)));
+	}
+
+	T* begin() noexcept
+	{
+		return m_memory;
+	}
+
+	const T* begin() const noexcept
+	{
+		return m_memory;
+	}
+
+	T* end() noexcept
+	{
+		return m_memory + m_used;
+	}
+
+	const T* end() const noexcept
+	{
+		return m_memory + m_used;
+	}
+
+	Index used() const noexcept
+	{
+		return m_used;
+	}
+
+	Index committed() const noexcept
+	{
+		return m_committed;
+	}
+
+	Index reserved() const noexcept
+	{
+		return m_reserved;
+	}
+};
+
+template<typename T, typename Index = u32>
 struct ReservedVec
 {
 private:
@@ -575,17 +828,17 @@ public:
 };
 
 template<u32 MinSizeLog2, u32 MaxSizeLog2>
-struct ReservedHeap
+struct ReservedHeap2
 {
 private:
 
-	static constexpr u32 CategoryCount = MaxSizeLog2 - MinSizeLog2;
+	static constexpr u32 CategoryCount = MaxSizeLog2 - MinSizeLog2 + 1;
 
 	static_assert(MinSizeLog2 >= 2);
 
 	static_assert(MaxSizeLog2 <= 31);
 
-	static_assert(MinSizeLog2 < MaxSizeLog2);
+	static_assert(MinSizeLog2 <= MaxSizeLog2);
 
 	void* m_memory;
 
@@ -599,47 +852,39 @@ private:
 
 public:
 
-	void init(Range<u32> capacities, Range<u32> commits) noexcept
+	void init(MutRange<byte> memory, Range<u32> capacities, Range<u32> commits) noexcept
 	{
 		ASSERT_OR_IGNORE(capacities.count() == CategoryCount && commits.count() == CategoryCount);
 
-		u64 total_bytes = 0;
+		u64 total_size = 0;
 
 		for (u32 i = 0; i != CategoryCount; ++i)
 		{
-			const u32 unit_bytes = static_cast<u32>(1) << (i + MinSizeLog2);
+			const u32 unit_size = static_cast<u32>(1) << (i + MinSizeLog2);
 
 			ASSERT_OR_IGNORE(capacities[i] != 0 && is_pow2(capacities[i]));
 
 			ASSERT_OR_IGNORE(commits[i] != 0 && commits[i] <= capacities[i] && is_pow2(commits[i]));
 
-			const u64 curr_bytes = static_cast<u64>(unit_bytes) * capacities[i];
+			const u64 curr_bytes = static_cast<u64>(unit_size) * capacities[i];
 
-			if (curr_bytes > static_cast<u32>(INT32_MAX) || total_bytes + curr_bytes > static_cast<u32>(INT32_MAX))
+			if (curr_bytes > static_cast<u32>(INT32_MAX) || total_size + curr_bytes > static_cast<u32>(INT32_MAX))
 				panic("Exceeded maximum size of ReservedHeap (2^32 - 1).\n");
 
 			m_first_frees[i] = -1;
 
-			m_ends[i] = static_cast<u32>((total_bytes + curr_bytes) / sizeof(u32));
+			m_ends[i] = static_cast<u32>((total_size + curr_bytes) / sizeof(u32));
 
-			m_heads[i] = static_cast<u32>(total_bytes / sizeof(u32));
+			m_heads[i] = static_cast<u32>(total_size / sizeof(u32));
 
-			m_commit_increment_bytes[i] = commits[i] * unit_bytes;
+			m_commit_increment_bytes[i] = commits[i] * unit_size;
 
-			total_bytes += curr_bytes;
+			total_size += curr_bytes;
 		}
 
-		void* const memory = minos::mem_reserve(total_bytes);
+		ASSERT_OR_IGNORE(memory.count() == total_size);
 
-		if (memory == nullptr)
-			panic("Could not allocate memory for ReservedHeap (0x%X).\n", minos::last_error());
-
-		m_memory = memory;
-	}
-
-	void release() noexcept
-	{
-		minos::mem_unreserve(m_memory, m_ends[CategoryCount - 1]);
+		m_memory = memory.begin();
 	}
 
 	MutRange<byte> alloc(u32 bytes) noexcept
@@ -662,16 +907,27 @@ public:
 			void* const head = static_cast<byte*>(m_memory) + m_heads[category] * sizeof(u32);
 
 			if (!minos::mem_commit(head, m_commit_increment_bytes[category]))
-				panic("Failed to allocate additional storage for %u byte entries in ReservedHead.\n", static_cast<u32>(1) << (category + MinSizeLog2));
+				panic("Failed to allocate additional storage for %u byte entries in ReservedHead (0x%X).\n", static_cast<u32>(1) << (category + MinSizeLog2), minos::last_error());
+
+			s32* curr = reinterpret_cast<s32*>(head);
+
+			const u32 unit_dwords = (static_cast<u32>(1) << (category + MinSizeLog2 - 2));
+
+			const u32 committed_dwords = m_commit_increment_bytes[category] / sizeof(u32);
+
+			const u32 next_unit_offset_dwords = m_heads[category] + unit_dwords;
+
+			for (u32 i = 0; i != committed_dwords; i += unit_dwords)
+				curr[i] = static_cast<s32>(i + next_unit_offset_dwords);
+
+			curr[committed_dwords - unit_dwords] = -1;
 
 			free_index = m_heads[category];
 
 			m_heads[category] += m_commit_increment_bytes[category] / sizeof(u32);
 		}
-		else
-		{
-			m_first_frees[category] = static_cast<s32*>(m_memory)[free_index];
-		}
+		
+		m_first_frees[category] = static_cast<s32*>(m_memory)[free_index];
 
 		byte* const begin = static_cast<byte*>(m_memory) + free_index * sizeof(u32);
 

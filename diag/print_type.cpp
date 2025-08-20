@@ -22,12 +22,6 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 		return;
 	}
-	else if (type_id == TypeId::DELAYED)
-	{
-		diag::buf_printf(ctx, "%*s<DELAYED>\n", skip_initial_indent ? 0 : indent * 2, "");
-
-		return;
-	}
 
 	const TypeTag tag = type_tag_from_id(types, type_id);
 
@@ -122,32 +116,37 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::Func:
 	case TypeTag::Composite:
 	{
-		const FuncType* func_type;
+		const SignatureType* signature_type;
 
 		TypeId composite_type_id;
 
 		if (tag == TypeTag::Func)
 		{
-			func_type = static_cast<const FuncType*>(simple_type_structure_from_id(types, type_id));
+			signature_type = static_cast<const SignatureType*>(simple_type_structure_from_id(types, type_id));
 
-			composite_type_id = func_type->has_delayed_signature ? TypeId::INVALID : func_type->signature_type_id.complete;
+			composite_type_id = signature_type->parameter_list_type_id;
 		}
 		else
 		{
-			func_type = nullptr;
+			signature_type = nullptr;
 
 			composite_type_id = type_id;
 		}
 
 		const TypeMetrics metrics = type_metrics_from_id(types, composite_type_id);
 
-		diag::buf_printf(ctx, " %s (sz=%" PRIu64 ", al=%" PRIu32 ", st=%" PRIu64 ") {", tag == TypeTag::Func ? "Func" : "Composite", metrics.size, metrics.align, metrics.stride);
+		diag::buf_printf(ctx, " %s (sz=%" PRIu64 ", al=%" PRIu32 ", st=%" PRIu64 ") {",
+			tag == TypeTag::Func ? "Func" : "Composite",
+			metrics.size,
+			metrics.align,
+			metrics.stride
+		);
 
 		bool has_members = false;
 
 		if (composite_type_id == TypeId::INVALID)
 		{
-			diag::buf_printf(ctx, "%*s<DELAYED>",
+			diag::buf_printf(ctx, "%*s<INCOMPLETE>",
 				(indent + 1) * 2, ""
 			);
 		}
@@ -157,26 +156,33 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 			while (has_next(&it))
 			{
-				MemberInfo member = next(&it);
+				const Member* member = next(&it);
 
-				const Range<char8> member_name = identifier_name_from_id(identifiers, member.name);
+				const Range<char8> member_name = identifier_name_from_id(identifiers, member->name);
 
 				diag::buf_printf(ctx, "%s%*s%s%s%s%s\"%.*s\" ",
 					has_members ? "" : "\n",
 					(indent + 1) * 2, "",
-					member.is_pub ? "pub " : "",
-					member.is_use ? "use " : "",
-					member.is_mut ? "mut " : "",
-					member.is_global ? "global " : "",
+					member->is_pub ? "pub " : "",
+					member->is_use ? "use " : "",
+					member->is_mut ? "mut " : "",
+					member->is_global ? "global " : "",
 					static_cast<s32>(member_name.count()), member_name.begin()
 				);
 
-				if (member.is_global)
+				if (member->is_global)
 					diag::buf_printf(ctx, ":: ");
 				else
-					diag::buf_printf(ctx, "(%+" PRId64 ") :: ", member.offset);
+					diag::buf_printf(ctx, "(%+" PRId64 ") :: ", member->offset);
 
-				print_type_impl(ctx, identifiers, types, member.type.complete, indent + 1, true);
+				if (member->has_pending_type)
+				{
+					diag::buf_printf(ctx, "<INCOMPLETE>\n");
+				}
+				else
+				{
+					print_type_impl(ctx, identifiers, types, member->type.complete, indent + 1, true);
+				}
 
 				has_members = true;
 			}
@@ -186,10 +192,10 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 		if (tag == TypeTag::Func)
 		{
-			if (func_type->has_delayed_return_type)
-				diag::buf_printf(ctx, "<DELAYED>\n");
+			if (signature_type->return_type_is_unbound)
+				diag::buf_printf(ctx, "<INCOMPLETE>\n");
 			else
-				print_type_impl(ctx, identifiers, types, func_type->return_type_id.complete, indent + 1, true);
+				print_type_impl(ctx, identifiers, types, signature_type->return_type.complete, indent + 1, true);
 		}
 
 		return;

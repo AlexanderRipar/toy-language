@@ -32,6 +32,7 @@ set(INFRA_SOURCES
 set(CORE_SOURCES
 	core/core.hpp
 	core/ast_pool.cpp
+	core/partial_value_pool.cpp
 	core/comp_values.cpp
 	core/config.cpp
 	core/error_sink.cpp
@@ -40,7 +41,6 @@ set(CORE_SOURCES
 	core/interpreter.cpp
 	core/parse.cpp
 	core/source_reader.cpp
-	core/type_list_pool.cpp
 	core/type_pool.cpp
 )
 

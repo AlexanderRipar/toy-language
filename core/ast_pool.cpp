@@ -5,21 +5,43 @@
 
 struct AstPool
 {
-	ReservedVec<u32> pool;
+	ReservedVec2<AstNode> nodes;
 
-	ReservedVec<u32> builder;
+	ReservedVec2<SourceId> sources;
+
+	ReservedVec2<AstNode> node_builder;
+
+	ReservedVec2<SourceId> source_builder;
+
+	MutRange<byte> memory;
 };
 
-static AstNode* alloc_ast(AstPool* asts, u32 dwords) noexcept
+struct AstAllocation
 {
-	return static_cast<AstNode*>(asts->pool.reserve_exact(dwords * sizeof(u32)));
+	AstNode* nodes;
+
+	SourceId* sources;
+};
+
+static AstAllocation alloc_ast(AstPool* asts, u32 qwords) noexcept
+{
+	AstNode* const nodes = static_cast<AstNode*>(asts->nodes.reserve_exact(qwords * sizeof(u64)));
+
+	SourceId* const sources = static_cast<SourceId*>(asts->sources.reserve_exact(qwords * sizeof(SourceId)));
+
+	return AstAllocation{ nodes, sources };
 }
 
-static AstNode* apply_offset_(AstNode* node, ureg offset) noexcept
+static constexpr u8 pack_value_kinds(ValueKind v0, ValueKind v1, ValueKind v2, ValueKind v3, ValueKind v4, ValueKind v5, ValueKind v6, ValueKind v7) noexcept
 {
-	static_assert(sizeof(AstNode) % sizeof(u32) == 0 && alignof(AstNode) % sizeof(u32) == 0);
-
-	return reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(node) + offset);
+	return static_cast<u8>(v0)
+	     | static_cast<u8>(v1) << 1
+	     | static_cast<u8>(v2) << 2
+	     | static_cast<u8>(v3) << 3
+	     | static_cast<u8>(v4) << 4
+	     | static_cast<u8>(v5) << 5
+	     | static_cast<u8>(v6) << 6
+	     | static_cast<u8>(v7) << 7;
 }
 
 // Set FLAG_FIRST_SIBLING and FLAG_LAST_SIBLING (note that next_sibling_offset
@@ -29,9 +51,11 @@ static AstNode* apply_offset_(AstNode* node, ureg offset) noexcept
 //     if next_sibling_offset != NO_CHILDREN then
 //         direct predecessor gets FLAG_LAST_SIBLING
 //         predecessor at next_sibling_offset gets FLAG_FIRST_SIBLING
-static void set_flags(AstNode* begin, AstNode* end) noexcept
+static void set_flags(AstPool* asts) noexcept
 {
-	ASSERT_OR_IGNORE(begin != end);
+	AstNode* const begin = asts->node_builder.begin();
+
+	AstNode* const end = asts->node_builder.end();
 
 	AstNode* prev = nullptr;
 
@@ -39,21 +63,21 @@ static void set_flags(AstNode* begin, AstNode* end) noexcept
 
 	while (curr != end)
 	{
-		AstNode* const next = apply_offset_(curr, curr->data_dwords);
+		AstNode* const next = curr + curr->own_qwords;
 
 		if (curr->next_sibling_offset != static_cast<u32>(AstBuilderToken::NO_CHILDREN))
 		{
 			ASSERT_OR_IGNORE(prev != nullptr);
 
-			AstNode* const first_child = reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(begin) + curr->next_sibling_offset);
+			AstNode* const first_child = begin + curr->next_sibling_offset;
 
-			ASSERT_OR_IGNORE((first_child->flags & AstFlag::INTERNAL_FirstSibling) == AstFlag::EMPTY);
+			ASSERT_OR_IGNORE((first_child->structure_flags & AstNode::STRUCTURE_FIRST_SIBLING) == 0);
 
-			first_child->flags |= AstFlag::INTERNAL_FirstSibling;
+			first_child->structure_flags |= AstNode::STRUCTURE_FIRST_SIBLING;
 
-			ASSERT_OR_IGNORE((prev->flags & AstFlag::INTERNAL_LastSibling) == AstFlag::EMPTY);
+			ASSERT_OR_IGNORE((first_child->structure_flags & AstNode::STRUCTURE_LAST_SIBLING) == 0);
 
-			prev->flags |= AstFlag::INTERNAL_LastSibling;
+			prev->structure_flags |= AstNode::STRUCTURE_LAST_SIBLING;
 		}
 
 		prev = curr;
@@ -61,44 +85,48 @@ static void set_flags(AstNode* begin, AstNode* end) noexcept
 		curr = next;
 	}
 
-	ASSERT_OR_IGNORE((prev->flags & (AstFlag::INTERNAL_FirstSibling | AstFlag::INTERNAL_LastSibling)) == AstFlag::EMPTY);
+	ASSERT_OR_IGNORE((prev->structure_flags & (AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING)) == 0);
 
-	prev->flags |= AstFlag::INTERNAL_FirstSibling | AstFlag::INTERNAL_LastSibling;
+	prev->structure_flags |= AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING;
 }
 
 // Create a linked list modelling a preorder traversal of all nodes.
-static AstNode* build_traversal_list(AstNode* begin, AstNode* end) noexcept
+static u32 build_traversal_list(AstPool* asts) noexcept
 {
 	sreg depth = -1;
 
 	u32 recursively_last_child = static_cast<u32>(AstBuilderToken::NO_CHILDREN);
 
-	u32 prev_sibling_inds[MAX_AST_DEPTH];
+	u32 prev_sibling_indices[MAX_AST_DEPTH];
+
+	AstNode* const begin = asts->node_builder.begin();
+
+	AstNode* const end = asts->node_builder.end();
 
 	AstNode* curr = begin;
 
 	while (true)
 	{
-		const u32 curr_ind = static_cast<u32>(reinterpret_cast<u32*>(curr) - reinterpret_cast<u32*>(begin));
+		const u32 curr_ind = static_cast<u32>(curr - begin);
 
 		// Connect predecessor
 
-		if ((curr->flags & AstFlag::INTERNAL_FirstSibling) == AstFlag::EMPTY)
+		if ((curr->structure_flags & AstNode::STRUCTURE_FIRST_SIBLING) == 0)
 		{
 			ASSERT_OR_IGNORE(depth >= 0);
 
-			const u32 prev_sibling_ind = prev_sibling_inds[depth];
+			const u32 prev_sibling_ind = prev_sibling_indices[depth];
 
-			AstNode* prev_sibling = reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(begin) + prev_sibling_ind);
+			AstNode* prev_sibling = begin + prev_sibling_ind;
 
 			prev_sibling->next_sibling_offset = curr_ind;
 		}
 
 		// Push something
 
-		if ((curr->flags & AstFlag::INTERNAL_LastSibling) == AstFlag::EMPTY)
+		if ((curr->structure_flags & AstNode::STRUCTURE_LAST_SIBLING) == 0)
 		{
-			if ((curr->flags & AstFlag::INTERNAL_FirstSibling) == AstFlag::INTERNAL_FirstSibling)
+			if ((curr->structure_flags & AstNode::STRUCTURE_FIRST_SIBLING) != 0)
 			{
 				if (depth + 1 >= MAX_AST_DEPTH)
 					panic("Maximum parse tree depth of %u exceeded.\n", MAX_AST_DEPTH);
@@ -108,31 +136,31 @@ static AstNode* build_traversal_list(AstNode* begin, AstNode* end) noexcept
 
 			ASSERT_OR_IGNORE(depth >= 0);
 
-			if ((curr->flags & AstFlag::INTERNAL_NoChildren) == AstFlag::EMPTY)
+			if ((curr->structure_flags & AstNode::STRUCTURE_NO_CHILDREN) == 0)
 			{
 				ASSERT_OR_IGNORE(recursively_last_child != static_cast<u32>(AstBuilderToken::NO_CHILDREN));
 
-				prev_sibling_inds[depth] = recursively_last_child;
+				prev_sibling_indices[depth] = recursively_last_child;
 			}
 			else
 			{
-				prev_sibling_inds[depth] = curr_ind;
+				prev_sibling_indices[depth] = curr_ind;
 			}
 		}
 		else // last sibling
 		{
-			if ((curr->flags & AstFlag::INTERNAL_FirstSibling) == AstFlag::EMPTY)
+			if ((curr->structure_flags & AstNode::STRUCTURE_FIRST_SIBLING) == 0)
 			{
 				ASSERT_OR_IGNORE(depth >= 0);
 
 				depth -= 1;
 			}
 
-			if ((curr->flags & AstFlag::INTERNAL_NoChildren) == AstFlag::INTERNAL_NoChildren)
+			if ((curr->structure_flags & AstNode::STRUCTURE_NO_CHILDREN) != 0)
 				recursively_last_child = curr_ind;
 		}
 
-		AstNode* const next = apply_offset_(curr, curr->data_dwords);
+		AstNode* const next = curr + curr->own_qwords;
 
 		if (next == end)
 			break;
@@ -142,56 +170,68 @@ static AstNode* build_traversal_list(AstNode* begin, AstNode* end) noexcept
 
 	ASSERT_OR_IGNORE(depth == -1);
 
-	ASSERT_OR_IGNORE(reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(curr) + curr->data_dwords) == end);
+	ASSERT_OR_IGNORE(curr + curr->own_qwords == end);
 
-	return curr;
+	return static_cast<u32>(curr - begin);
 }
 
 // Traverse the linked list created by build_traversal_list, pushing nodes into
-// dst.
-static AstNode* copy_postorder_to_preorder(const AstNode* begin, const AstNode* end, const AstNode* src_root, AstPool* dst) noexcept
+// `asts`.
+static AstNode* copy_postorder_to_preorder(AstPool* asts, u32 src_root_index) noexcept
 {
-	u32 prev_sibling_inds[MAX_AST_DEPTH];
+	u32 prev_sibling_indices[MAX_AST_DEPTH];
 
 	s32 depth = -1;
 
-	const u32 end_ind = static_cast<u32>(reinterpret_cast<const u32*>(end) - reinterpret_cast<const u32*>(begin));
+	const AstAllocation allocation = alloc_ast(asts, asts->node_builder.used());
 
-	AstNode* const dst_root = alloc_ast(dst, end_ind);
+	const AstNode* const src_nodes = asts->node_builder.begin();
 
-	AstNode* dst_curr = dst_root;
+	const SourceId* const src_sources = asts->source_builder.begin();
 
-	const AstNode* src_curr = src_root;
+	AstNode* const dst_nodes = allocation.nodes;
+
+	SourceId* const dst_sources = allocation.sources;
+
+	u32 src_index = src_root_index;
+
+	u32 dst_index = 0;
 
 	while (true)
 	{
 		// Copy node
 
-		AstNode* const dst_node = dst_curr;
+		const AstNode* const curr_src_node = src_nodes + src_index;
 
-		dst_curr = apply_offset_(dst_curr, src_curr->data_dwords);
+		const SourceId* const curr_src_source = src_sources + src_index;
 
-		memcpy(dst_node, src_curr, src_curr->data_dwords * sizeof(u32));
+		AstNode* const curr_dst_node = dst_nodes + dst_index;
 
-		dst_node->flags &= static_cast<AstFlag>(~static_cast<u16>(AstFlag::INTERNAL_FirstSibling));
+		SourceId* const curr_dst_source = dst_sources + dst_index;
 
-		const u32 curr_ind = static_cast<u32>(reinterpret_cast<u32*>(dst_node) - reinterpret_cast<u32*>(dst_root));
+		const u8 src_data_qwords = curr_src_node->own_qwords;
 
-		if ((src_curr->flags & AstFlag::INTERNAL_FirstSibling) == AstFlag::EMPTY)
+		memcpy(curr_dst_node, curr_src_node, src_data_qwords * sizeof(u64));
+
+		*curr_dst_source = *curr_src_source;
+
+		if ((curr_src_node->structure_flags & AstNode::STRUCTURE_FIRST_SIBLING) == 0)
 		{
 			while (true)
 			{
-				ASSERT_OR_IGNORE(depth > 0); // Actually greater than and *not* equal to 0; root node should never be popped here
+				// Actually greater than and *not* equal to 0; root node should
+				// never be popped here.
+				ASSERT_OR_IGNORE(depth > 0);
 
-				const u32 prev_sibling_ind = prev_sibling_inds[depth];
+				const u32 prev_sibling_index = prev_sibling_indices[depth];
 
 				depth -= 1;
 
-				AstNode* const prev_sibling = reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(dst_root) + prev_sibling_ind);
+				AstNode* const prev_sibling = dst_nodes + prev_sibling_index;
 
-				prev_sibling->next_sibling_offset = curr_ind - prev_sibling_ind;
+				prev_sibling->next_sibling_offset = dst_index - prev_sibling_index;
 
-				if ((prev_sibling->flags & AstFlag::INTERNAL_LastSibling) == AstFlag::EMPTY)
+				if ((prev_sibling->structure_flags & AstNode::STRUCTURE_LAST_SIBLING) == 0)
 					break;
 			}
 		}
@@ -200,28 +240,58 @@ static AstNode* copy_postorder_to_preorder(const AstNode* begin, const AstNode* 
 
 		depth += 1;
 
-		prev_sibling_inds[depth] = curr_ind;
+		prev_sibling_indices[depth] = dst_index;
 
-		if (src_curr->next_sibling_offset == static_cast<u32>(AstBuilderToken::NO_CHILDREN))
+		if (curr_src_node->next_sibling_offset == static_cast<u32>(AstBuilderToken::NO_CHILDREN))
 			break;
 
-		src_curr = reinterpret_cast<const AstNode*>(reinterpret_cast<const u32*>(begin) + src_curr->next_sibling_offset);
+		dst_index += src_data_qwords;
+
+		src_index = src_nodes[src_index].next_sibling_offset;
 	}
 
 	ASSERT_OR_IGNORE(depth != -1);
 
 	while (depth >= 0)
 	{
-		const u32 prev_sibling_ind = prev_sibling_inds[depth];
+		const u32 prev_sibling_index = prev_sibling_indices[depth];
 
 		depth -= 1;
 
-		AstNode* const prev_sibling = reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(dst_root) + prev_sibling_ind);
+		AstNode* const prev_sibling = dst_nodes + prev_sibling_index;
 
-		prev_sibling->next_sibling_offset = end_ind - prev_sibling_ind;
+		prev_sibling->next_sibling_offset = asts->node_builder.used() - prev_sibling_index;
 	}
 
-	return dst_root;
+	return allocation.nodes;
+}
+
+static void set_value_kinds(AstNode* root) noexcept
+{
+	ValueKind first_child_value_kind = ValueKind::Value;
+
+	AstPostorderIterator it = postorder_ancestors_of(root);
+
+	while (has_next(&it))
+	{
+		AstNode* const curr = next(&it).node;
+
+		const AstTag tag = curr->tag;
+
+		ValueKind curr_value_kind;
+
+		if (tag == AstTag::Identifier || tag == AstTag::OpArrayIndex || tag == AstTag::UOpDeref)
+			curr_value_kind = ValueKind::Location;
+		else if (tag == AstTag::Member)
+			curr_value_kind = first_child_value_kind;
+		else
+			curr_value_kind = ValueKind::Value;
+
+		if ((curr->structure_flags & AstNode::STRUCTURE_FIRST_SIBLING) != 0)
+			first_child_value_kind = curr_value_kind;
+
+		curr->structure_flags |= static_cast<u8>(curr_value_kind);
+	}
 }
 
 
@@ -230,136 +300,167 @@ AstPool* create_ast_pool(AllocPool* alloc) noexcept
 {
 	AstPool* const asts = static_cast<AstPool*>(alloc_from_pool(alloc, sizeof(AstPool), alignof(AstPool)));
 
-	asts->pool.init(1u << 30, 1u << 18);
+	const u64 nodes_reserve_size = (static_cast<u64>(1) << 30) * sizeof(AstNode);
 
-	asts->builder.init(1u << 31, 1u << 18);
+	const u64 sources_reserve_size = (static_cast<u64>(1) << 30) * sizeof(SourceId);
 
-	(void) asts->pool.reserve_exact(sizeof(*asts->pool.begin()));
+	const u64 node_builder_reserve_size = (static_cast<u64>(1) << 26) * sizeof(AstNode);
+
+	const u64 source_builder_reserve_size = (static_cast<u64>(1) << 26) * sizeof(SourceId);
+
+	const u64 partial_signatures_reserve_size = (static_cast<u64>(1) << 28) * sizeof(u64);
+
+	const u64 total_size = nodes_reserve_size + sources_reserve_size + node_builder_reserve_size + source_builder_reserve_size + partial_signatures_reserve_size;
+
+	byte* const memory = static_cast<byte*>(minos::mem_reserve(total_size));
+
+	if (memory == nullptr)
+		panic("Could not reserve memory for AstPool (0x%X).\n", minos::last_error());
+
+	u64 byte_offset = 0;
+
+	asts->nodes.init({ memory + byte_offset, nodes_reserve_size }, static_cast<u32>(1) << 18);
+	byte_offset += nodes_reserve_size;
+
+	asts->sources.init({ memory + byte_offset, sources_reserve_size }, static_cast<u32>(1) << 18);
+	byte_offset += sources_reserve_size;
+
+	asts->node_builder.init({ memory + byte_offset, node_builder_reserve_size }, static_cast<u32>(1) << 16);
+	byte_offset += node_builder_reserve_size;
+
+	asts->source_builder.init({ memory + byte_offset, source_builder_reserve_size }, static_cast<u32>(1) << 16);
+	byte_offset += source_builder_reserve_size;
+
+	asts->memory = { memory, total_size };
+
+	(void) asts->nodes.reserve();
+
+	(void) asts->sources.reserve();
 
 	return asts;
 }
 
 void release_ast_pool(AstPool* asts) noexcept
 {
-	asts->pool.release();
+	minos::mem_unreserve(asts->memory.begin(), asts->memory.count());
 }
 
 AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept
 {
-	return AstNodeId{ static_cast<u32>(reinterpret_cast<u32*>(node) - asts->pool.begin()) };
+	return AstNodeId{ static_cast<u32>(node - asts->nodes.begin()) };
 }
 
 AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept
 {
 	ASSERT_OR_IGNORE(id != AstNodeId::INVALID);
 
-	return reinterpret_cast<AstNode*>(asts->pool.begin() + static_cast<u32>(id));
+	return asts->nodes.begin() + static_cast<u32>(id);
 }
 
 
 
 bool has_children(const AstNode* node) noexcept
 {
-	return (node->flags & AstFlag::INTERNAL_NoChildren) == AstFlag::EMPTY;
+	return (node->structure_flags & AstNode::STRUCTURE_NO_CHILDREN) == 0;
 }
 
 bool has_next_sibling(const AstNode* node) noexcept
 {
-	return (node->flags & AstFlag::INTERNAL_LastSibling) == AstFlag::EMPTY;
+	return (node->structure_flags & AstNode::STRUCTURE_LAST_SIBLING) == 0;
 }
 
 bool has_flag(const AstNode* node, AstFlag flag) noexcept
 {
-	return (static_cast<u16>(node->flags) & static_cast<u16>(flag)) != 0;
+	return (node->flags & flag) != AstFlag::EMPTY;
 }
 
-TypeKind type_kind_of(const AstNode* node) noexcept
+bool is_descendant_of(const AstNode* parent, const AstNode* child) noexcept
 {
-	const TypeKind kind = static_cast<TypeKind>(static_cast<u16>(node->flags) >> 14);
-
-	ASSERT_OR_IGNORE(kind != TypeKind::INVALID);
-
-	return kind;
+	return child >= parent && child < parent + parent->next_sibling_offset;
 }
 
-void set_type_kind(AstNode* node, TypeKind kind) noexcept
+ValueKind value_kind_of(const AstNode* node) noexcept
 {
-	ASSERT_OR_IGNORE(static_cast<TypeKind>(static_cast<u16>(node->flags) >> 14) == TypeKind::INVALID);
-
-	node->flags |= static_cast<AstFlag>(static_cast<u16>(kind) << 14);
+	return static_cast<ValueKind>(node->structure_flags & (AstNode::STRUCTURE_VALUE_KIND_BITS));
 }
 
 AstNode* next_sibling_of(AstNode* node) noexcept
 {
 	ASSERT_OR_IGNORE(has_next_sibling(node));
 
-	return apply_offset_(node, node->next_sibling_offset);
+	return node + node->next_sibling_offset;
 }
 
 AstNode* first_child_of(AstNode* node) noexcept
 {
 	ASSERT_OR_IGNORE(has_children(node));
 
-	return apply_offset_(node, node->data_dwords);
+	return node + node->own_qwords;
 }
+
+SourceId source_id_of(const AstPool* asts, const AstNode* node) noexcept
+{
+	const u64 index = node - asts->nodes.begin();
+
+	ASSERT_OR_IGNORE(index <= static_cast<u64>(asts->sources.used()));
+
+	return asts->sources.begin()[index];
+}
+
 
 
 
 AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag) noexcept
 {
-	static_assert(sizeof(AstNode) % sizeof(u32) == 0);
+	static_assert(sizeof(AstNode) == sizeof(u64));
 
-	AstNode* const node = reinterpret_cast<AstNode*>(asts->builder.reserve_exact(sizeof(AstNode)));
-
-	if (first_child == AstBuilderToken::NO_CHILDREN)
-		flags |= AstFlag::INTERNAL_NoChildren;
-
-	node->next_sibling_offset = static_cast<u32>(first_child);
+	AstNode* const node = static_cast<AstNode*>(asts->node_builder.reserve_exact(sizeof(AstNode)));
 	node->tag = tag;
-	node->data_dwords = sizeof(AstNode) / sizeof(u32);
 	node->flags = flags;
-	node->type = TypeId::INVALID;
-	node->source_id = source_id;
+	node->own_qwords = 1;
+	node->structure_flags = first_child == AstBuilderToken::NO_CHILDREN ? AstNode::STRUCTURE_NO_CHILDREN : 0;
+	node->next_sibling_offset = static_cast<u32>(first_child);
 
-	return AstBuilderToken{ static_cast<u32>(reinterpret_cast<u32*>(node) - asts->builder.begin()) };
+	SourceId* const node_source = static_cast<SourceId*>(asts->source_builder.reserve_exact(sizeof(SourceId)));
+	*node_source = source_id;
+
+	return static_cast<AstBuilderToken>(node - asts->node_builder.begin());
 }
 
-AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_dwords, const void* attachment) noexcept
+AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_qwords, const void* attachment) noexcept
 {
-	static_assert(sizeof(AstNode) % sizeof(u32) == 0);
+	static_assert(sizeof(AstNode) == sizeof(u64));
 
-	const u8 required_dwords = static_cast<u8>(sizeof(AstNode) / sizeof(u32) + attachment_dwords);
+	const u8 required_qwords = static_cast<u8>(1 + attachment_qwords);
 
-	AstNode* const node = reinterpret_cast<AstNode*>(asts->builder.reserve_exact(required_dwords * sizeof(u32)));
-
-	if (first_child == AstBuilderToken::NO_CHILDREN)
-		flags |= AstFlag::INTERNAL_NoChildren;
-
-	node->next_sibling_offset = static_cast<u32>(first_child);
+	AstNode* const node = static_cast<AstNode*>(asts->node_builder.reserve_exact(required_qwords * sizeof(u64)));
 	node->tag = tag;
-	node->data_dwords = required_dwords;
 	node->flags = flags;
-	node->type = TypeId::INVALID;
-	node->source_id = source_id;
+	node->own_qwords = required_qwords;
+	node->structure_flags = first_child == AstBuilderToken::NO_CHILDREN ? AstNode::STRUCTURE_NO_CHILDREN : 0;
+	node->next_sibling_offset = static_cast<u32>(first_child);
 
-	memcpy(node + 1, attachment, attachment_dwords * sizeof(u32));
+	SourceId* const node_source = static_cast<SourceId*>(asts->source_builder.reserve_exact(required_qwords * sizeof(SourceId)));
+	*node_source = source_id;
 
-	return AstBuilderToken{ static_cast<u32>(reinterpret_cast<u32*>(node) - asts->builder.begin()) };
+	memcpy(node + 1, attachment, attachment_qwords * sizeof(u64));
+
+	return static_cast<AstBuilderToken>(node - asts->node_builder.begin());
 }
 
 AstNode* complete_ast(AstPool* asts) noexcept
 {
-	AstNode* const begin = reinterpret_cast<AstNode*>(asts->builder.begin());
+	set_flags(asts);
 
-	AstNode* const end = reinterpret_cast<AstNode*>(asts->builder.end());
+	const u32 src_root_index = build_traversal_list(asts);
 
-	set_flags(begin, end);
+	AstNode* const dst_root = copy_postorder_to_preorder(asts, src_root_index);
 
-	AstNode* const src_root = build_traversal_list(begin, end);
+	set_value_kinds(dst_root);
 
-	AstNode* const dst_root = copy_postorder_to_preorder(begin, end, src_root, asts);
+	asts->node_builder.reset(1 << 17);
 
-	asts->builder.reset(1 << 20);
+	asts->source_builder.reset(1 << 17);
 
 	return dst_root;
 }
@@ -416,11 +517,11 @@ AstIterationResult next(AstPreorderIterator* iterator) noexcept
 
 	AstNode* const curr = iterator->curr;
 
-	iterator->curr = apply_offset_(curr, curr->data_dwords);
+	iterator->curr = curr + curr->own_qwords;
 
-	if ((curr->flags & AstFlag::INTERNAL_NoChildren) == AstFlag::EMPTY)
+	if ((curr->structure_flags & AstNode::STRUCTURE_NO_CHILDREN) == 0)
 	{
-		if ((curr->flags & AstFlag::INTERNAL_LastSibling) == AstFlag::EMPTY)
+		if ((curr->structure_flags & AstNode::STRUCTURE_LAST_SIBLING) == 0)
 		{
 			ASSERT_OR_IGNORE(iterator->top + 1 < MAX_AST_DEPTH);
 
@@ -433,7 +534,7 @@ AstIterationResult next(AstPreorderIterator* iterator) noexcept
 
 		iterator->depth += 1;
 	}
-	else if ((curr->flags & AstFlag::INTERNAL_LastSibling) == AstFlag::INTERNAL_LastSibling)
+	else if ((curr->structure_flags & AstNode::STRUCTURE_LAST_SIBLING) != 0)
 	{
 		if (iterator->top == -1)
 		{
@@ -471,7 +572,7 @@ AstPostorderIterator postorder_ancestors_of(AstNode* node) noexcept
 
 		iterator.depth += 1;
 
-		iterator.offsets[iterator.depth] = static_cast<u32>(reinterpret_cast<u32*>(node) - reinterpret_cast<u32*>(iterator.base));
+		iterator.offsets[iterator.depth] = static_cast<u32>(node - iterator.base);
 	}
 
 	return iterator;
@@ -481,7 +582,7 @@ AstIterationResult next(AstPostorderIterator* iterator) noexcept
 {
 	ASSERT_OR_IGNORE(iterator->depth >= 0);
 
-	AstNode* const ret_node = reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(iterator->base) + iterator->offsets[iterator->depth]);
+	AstNode* const ret_node = iterator->base + iterator->offsets[iterator->depth];
 
 	const u32 ret_depth = static_cast<u32>(iterator->depth);
 
@@ -491,7 +592,7 @@ AstIterationResult next(AstPostorderIterator* iterator) noexcept
 	{
 		curr = next_sibling_of(curr);
 
-		iterator->offsets[iterator->depth] = static_cast<u32>(reinterpret_cast<u32*>(curr) - reinterpret_cast<u32*>(iterator->base));
+		iterator->offsets[iterator->depth] = static_cast<u32>(curr - iterator->base);
 
 		while (has_children(curr))
 		{
@@ -501,7 +602,7 @@ AstIterationResult next(AstPostorderIterator* iterator) noexcept
 
 			ASSERT_OR_IGNORE(iterator->depth < MAX_AST_DEPTH);
 
-			iterator->offsets[iterator->depth] = static_cast<u32>(reinterpret_cast<u32*>(curr) - reinterpret_cast<u32*>(iterator->base));
+			iterator->offsets[iterator->depth] = static_cast<u32>(curr - iterator->base);
 		}
 	}
 	else
@@ -509,7 +610,7 @@ AstIterationResult next(AstPostorderIterator* iterator) noexcept
 		iterator->depth -= 1;
 
 		if (iterator->depth >= 0)
-			curr = reinterpret_cast<AstNode*>(reinterpret_cast<u32*>(iterator->base) + iterator->offsets[iterator->depth]);
+			curr = iterator->base + iterator->offsets[iterator->depth];
 	}
 
 	return { ret_node, ret_depth };
@@ -522,28 +623,26 @@ bool has_next(const AstPostorderIterator* iterator) noexcept
 
 
 
-FuncInfo get_func_info(AstNode* func) noexcept
+SignatureInfo get_signature_info(AstNode* signature) noexcept
 {
-	ASSERT_OR_IGNORE(func->tag == AstTag::Func);
+	ASSERT_OR_IGNORE(signature->tag == AstTag::Signature);
 
-	ASSERT_OR_IGNORE(has_children(func));
+	SignatureInfo desc{};
 
-	AstNode* curr = first_child_of(func);
+	AstNode* curr = first_child_of(signature);
 
 	ASSERT_OR_IGNORE(curr->tag == AstTag::ParameterList);
 
-	FuncInfo desc{};
-
 	desc.parameters = curr;
 
-	if (has_flag(func, AstFlag::Func_HasReturnType))
+	if (has_flag(signature, AstFlag::Signature_HasReturnType))
 	{
 		curr = next_sibling_of(curr);
 
 		desc.return_type = some(curr);
 	}
 
-	if (has_flag(func, AstFlag::Func_HasExpects))
+	if (has_flag(signature, AstFlag::Signature_HasExpects))
 	{
 		curr = next_sibling_of(curr);
 
@@ -552,7 +651,7 @@ FuncInfo get_func_info(AstNode* func) noexcept
 		desc.expects = some(curr);
 	}
 
-	if (has_flag(func, AstFlag::Func_HasEnsures))
+	if (has_flag(signature, AstFlag::Signature_HasEnsures))
 	{
 		curr = next_sibling_of(curr);
 
@@ -561,12 +660,7 @@ FuncInfo get_func_info(AstNode* func) noexcept
 		desc.ensures = some(curr);
 	}
 
-	if (has_flag(func, AstFlag::Func_HasBody))
-	{
-		curr = next_sibling_of(curr);
-
-		desc.body = some(curr);
-	}
+	ASSERT_OR_IGNORE(!has_next_sibling(curr));
 
 	return desc;
 }
@@ -726,6 +820,7 @@ const char8* tag_name(AstTag tag) noexcept
 		"Switch",
 		"Case",
 		"Func",
+		"Signature",
 		"Trait",
 		"Impl",
 		"Catch",
@@ -772,7 +867,7 @@ const char8* tag_name(AstTag tag) noexcept
 		"OpShiftR",
 		"OpLogAnd",
 		"OpLogOr",
-		"OpMember",
+		"Member",
 		"OpCmpLT",
 		"OpCmpGT",
 		"OpCmpLE",

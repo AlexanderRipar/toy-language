@@ -5,15 +5,27 @@
 
 static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifiers, const AstNode* node, s32 depth) noexcept
 {
-	if (node->tag == AstTag::Identifier || node->tag == AstTag::Definition)
+	if (node->tag == AstTag::Identifier || node->tag == AstTag::Definition || node->tag == AstTag::Parameter || node->tag == AstTag::Member)
 	{
-		const IdentifierId identifier_id = node->tag == AstTag::Identifier
-			? attachment_of<AstIdentifierData>(node)->identifier_id
-			: attachment_of<AstDefinitionData>(node)->identifier_id;
+		IdentifierId identifier_id;
+
+		if (node->tag == AstTag::Identifier)
+			identifier_id = attachment_of<AstIdentifierData>(node)->identifier_id;
+		else if (node->tag == AstTag::Definition)
+			identifier_id = attachment_of<AstDefinitionData>(node)->identifier_id;
+		else if (node->tag == AstTag::Parameter)
+			identifier_id = attachment_of<AstParameterData>(node)->identifier_id;
+		else
+			identifier_id = attachment_of<AstMemberData>(node)->identifier_id;
 
 		const Range<char8> name = identifier_name_from_id(identifiers, identifier_id);
 
-		diag::buf_printf(ctx, "%*s%s [%.*s] {%s\n", (depth + 1) * 2, "", tag_name(node->tag), static_cast<s32>(name.count()), name.begin(), has_children(node) ? "" : "}");
+		diag::buf_printf(ctx, "%*s%s [%.*s] {%s\n",
+			(depth + 1) * 2, "",
+			tag_name(node->tag),
+			static_cast<s32>(name.count()), name.begin(),
+			has_children(node) ? "" : "}"
+		);
 	}
 	else if (node->tag == AstTag::LitInteger)
 	{
@@ -22,11 +34,20 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 		if (!s64_from_comp_integer(attachment_of<AstLitIntegerData>(node)->value, 64, &value))
 			value = 0; // TODO: Print something nicer here.
 
-		diag::buf_printf(ctx, "%*s%s [%" PRId64 "] {%s\n", (depth + 1) * 2, "", tag_name(node->tag), value, has_children(node) ? "" : "}");
+		diag::buf_printf(ctx, "%*s%s [%" PRId64 "] {%s\n",
+			(depth + 1) * 2, "",
+			tag_name(node->tag),
+			value,
+			has_children(node) ? "" : "}"
+		);
 	}
 	else
 	{
-		diag::buf_printf(ctx, "%*s%s {%s\n", (depth + 1) * 2, "", tag_name(node->tag), has_children(node) ? "" : "}");
+		diag::buf_printf(ctx, "%*s%s {%s\n",
+			(depth + 1) * 2, "",
+			tag_name(node->tag),
+			has_children(node) ? "" : "}"
+		);
 	}
 }
 

@@ -1,3 +1,4 @@
+/*
 let v0 = 1
 
 let v1: u32 = 1
@@ -55,3 +56,14 @@ let j1 = func() -> Void = {
 
 	{}
 }
+*/
+
+
+
+let k = func(eval TheType: Type, t: TheType) -> TheType = t
+
+let l = func(eval AType: Type, t: AType, tf: func(x: AType) -> AType) -> AType = tf(t)
+
+let v = k(u32, 1)
+
+let w = k(Bool, false)
