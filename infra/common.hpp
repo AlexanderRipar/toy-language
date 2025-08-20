@@ -132,7 +132,11 @@ inline u8 count_leading_zeros_assume_one(T n) noexcept
 
 		(void) _BitScanReverse64(&index, static_cast<u64>(n));
 
-		return static_cast<u8>(index);
+		const u8 leading_zeros_64 = static_cast<u8>(63 - index);
+
+		const u8 leading_zeros_t = leading_zeros_64 - (64 - sizeof(T) * 8);
+
+		return leading_zeros_t;
 	#elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 		return static_cast<u8>(__builtin_clz(n));
 	#else
