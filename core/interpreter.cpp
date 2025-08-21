@@ -78,6 +78,14 @@ using BuiltinFunc = void (*) (Interpreter* interp, Arec* arec, AstNode* call_nod
 // function or procedure.
 struct alignas(8) CallableValue
 {
+	#if COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wnested-anon-types" // anonymous types declared in an anonymous union are an extension
+	#pragma clang diagnostic ignored "-Wgnu-anonymous-struct" // anonymous structs are a GNU extension
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ prohibits anonymous structs
+	#endif
 	union
 	{
 		struct
@@ -101,6 +109,11 @@ struct alignas(8) CallableValue
 			u32 ast_node_id_bits : 31;
 		} function;
 	};
+	#if COMPILER_CLANG
+	#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic pop
+	#endif
 
 	TypeId signature_type_id;
 
@@ -149,6 +162,13 @@ struct EvalSpec
 {
 	EvalTag tag;
 
+	#if COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wnested-anon-types" // anonymous types declared in an anonymous union are an extension
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ prohibits anonymous structs
+	#endif
 	union
 	{
 		struct
@@ -165,6 +185,11 @@ struct EvalSpec
 			Arec* source;
 		} unbound;
 	};
+	#if COMPILER_CLANG
+	#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic pop
+	#endif
 
 	EvalSpec() noexcept : tag{}, success{} {}
 
@@ -200,6 +225,13 @@ struct IdentifierInfo
 {
 	IdentifierInfoTag tag;
 
+	#if COMPILER_CLANG
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wnested-anon-types" // anonymous types declared in an anonymous union are an extension
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ prohibits anonymous structs
+	#endif
 	union
 	{
 		struct
@@ -216,6 +248,11 @@ struct IdentifierInfo
 			Arec* source;
 		} unbound;
 	};
+	#if COMPILER_CLANG
+	#pragma clang diagnostic pop
+	#elif COMPILER_GCC
+	#pragma GCC diagnostic pop
+	#endif
 
 	IdentifierInfo() noexcept : tag{}, found{} {}
 
@@ -309,7 +346,7 @@ struct Interpreter
 
 
 
-static [[nodiscard]] EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noexcept;
+static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noexcept;
 
 static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept;
 
@@ -1111,7 +1148,7 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 	return { return_type_id, parameter_list_arec_id };
 }
 
-static [[nodiscard]] EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noexcept
+static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noexcept
 {
 	ASSERT_OR_IGNORE(into.tag == EvalTag::Success);
 
@@ -2105,7 +2142,7 @@ static [[nodiscard]] EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalS
 	case AstTag::MAX:
 		; // Fallthrough to unreachable.
 	}
-	
+
 	ASSERT_UNREACHABLE;
 }
 

@@ -1424,7 +1424,7 @@ const Member* type_member_by_rank(TypePool* types, TypeId type_id, u16 rank)
 	return found.member;
 }
 
-const bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, SourceId source, const Member** out) noexcept
+bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, SourceId source, const Member** out) noexcept
 {
 	FindResult found;
 

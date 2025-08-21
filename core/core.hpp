@@ -1910,7 +1910,7 @@ TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept;
 
 const Member* type_member_by_rank(TypePool* types, TypeId type_id, u16 rank);
 
-const bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, SourceId source, const Member** out) noexcept;
+bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, SourceId source, const Member** out) noexcept;
 
 // Retrieves the structural data associated with `type_id`, which must not
 // refer to a composite type.
