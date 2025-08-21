@@ -1330,6 +1330,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	}
 	else switch (node->tag)
 	{
+		// MEAT + POTATOES
 	case AstTag::Builtin:
 	{
 		const u8 ordinal = static_cast<u8>(node->flags);
@@ -2714,8 +2715,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpTry:
 	case AstTag::UOpDefer:
 	case AstTag::UOpDistinct:
-	case AstTag::UOpAddr:
-	case AstTag::UOpDeref:
 	case AstTag::UOpBitNot:
 	case AstTag::UOpLogNot:
 	case AstTag::UOpNegate:
@@ -2754,7 +2753,12 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpSetShiftL:
 	case AstTag::OpSetShiftR:
 		panic("evaluate(%s) not yet implemented.\n", tag_name(node->tag));
-
+	case AstTag::UOpAddr:
+		TODO("pls gibe me mem addr");
+		break;
+	case AstTag::UOpDeref:
+		TODO("pls deref me");
+		break;
 	case AstTag::INVALID:
 	case AstTag::File:
 	case AstTag::Parameter:
