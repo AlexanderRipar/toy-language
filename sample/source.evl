@@ -5,29 +5,29 @@ let v1: u32 = 1
 
 
 
-let f = func(a: u32) -> u32 = 1
+let f = func(a: u32) -> u32 => 1
 
-let f1 = func(a: u32) -> u32 = a
-
-
-
-let g = func(a: u32) -> Bool = a == 1
-
-let g1 = func(a: u32, b: u32) -> Bool = a == b
+let f1 = func(a: u32) -> u32 => a
 
 
 
-let h = func() -> Void = {}
+let g = func(a: u32) -> Bool => a == 1
 
-let h1 = func(a: u32) -> u32 = { a }
+let g1 = func(a: u32, b: u32) -> Bool => a == b
 
-let h2 = func(a: u32) -> u32 = {
+
+
+let h = func() -> Void => {}
+
+let h1 = func(a: u32) -> u32 => { a }
+
+let h2 = func(a: u32) -> u32 => {
 	let n = a
 
 	a
 }
 
-let h3 = func(a: u32) -> u32 = {
+let h3 = func(a: u32) -> u32 => {
 	let b = a
 
 	let c = b
@@ -37,19 +37,19 @@ let h3 = func(a: u32) -> u32 = {
 
 
 
-let i = func(T: Type) -> Type = T
+let i = func(T: Type) -> Type => T
 
 let v_i: i(Bool) = 1 == 1
 
 
 
-let j = func() -> Void = {
+let j = func() -> Void => {
 	let Tj: Type = u32
 
 	{}
 }
 
-let j1 = func() -> Void = {
+let j1 = func() -> Void => {
 	let Tj: Type = u32
 
 	let tj: Tj = 1
@@ -60,9 +60,9 @@ let j1 = func() -> Void = {
 
 
 
-let k = func(eval TheType: Type, t: TheType) -> TheType = t
+let k = func(eval TheType: Type, t: TheType) -> TheType => t
 
-let l = func(eval AType: Type, t: AType, tf: func(x: AType) -> AType) -> AType = tf(t)
+let l = func(eval AType: Type, t: AType, tf: func(x: AType) -> AType) -> AType => tf(t)
 
 let v = k(u32, 1)
 
