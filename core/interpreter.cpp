@@ -367,17 +367,12 @@ static T load_loc(MutRange<byte> src) noexcept
 	return *reinterpret_cast<T*>(src.begin());
 }
 
-static void store_loc_raw(MutRange<byte> dst, Range<byte> src_bytes) noexcept
-{
-	ASSERT_OR_IGNORE(dst.count() == src_bytes.count());
-
-	memcpy(dst.begin(), src_bytes.begin(), src_bytes.count());
-}
-
 template<typename T>
 static void store_loc(MutRange<byte> dst, T src) noexcept
 {
-	store_loc_raw(dst, range::from_object_bytes(&src));
+	ASSERT_OR_IGNORE(dst.count() == sizeof(T));
+
+	memcpy(dst.begin(), &src, sizeof(T));
 }
 
 
@@ -993,7 +988,7 @@ static EvalSpec evaluate_global_member(Interpreter* interp, AstNode* node, EvalS
 		}
 		else
 		{
-			store_loc_raw(into.success.location, value.immut());
+			copy_loc(into.success.location, value.immut());
 		}
 	}
 	else if (into.success.kind == ValueKind::Value)
@@ -1049,7 +1044,7 @@ static EvalSpec evaluate_local_member(Interpreter* interp, AstNode* node, EvalSp
 		}
 		else
 		{
-			store_loc_raw(into.success.location, Range<byte>{ lhs_value.begin() + member->offset, metrics.size });
+			copy_loc(into.success.location, Range<byte>{ lhs_value.begin() + member->offset, metrics.size });
 		}
 	}
 	else if (into.success.kind == ValueKind::Value)
@@ -1571,10 +1566,10 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 
 		if (is_same_type(interp->types, info.found.type_id, into.success.type_id))
 		{
-			if (into.success.kind == ValueKind::Value)
-				store_loc_raw(into.success.location, info.found.location.as_byte_range());
-			else
+			if (into.success.kind == ValueKind::Location)
 				store_loc(into.success.location, info.found.location);
+			else
+				copy_loc(into.success.location, info.found.location.immut());
 		}
 		else if (into.success.kind == ValueKind::Value)
 		{
