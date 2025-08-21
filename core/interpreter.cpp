@@ -1176,6 +1176,7 @@ static [[nodiscard]] EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalS
 	}
 	else switch (node->tag)
 	{
+		// MEAT + POTATOES
 	case AstTag::Builtin:
 	{
 		ASSERT_OR_IGNORE(into.success.kind == ValueKind::Value);
@@ -2050,8 +2051,6 @@ static [[nodiscard]] EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalS
 	case AstTag::UOpTry:
 	case AstTag::UOpDefer:
 	case AstTag::UOpDistinct:
-	case AstTag::UOpAddr:
-	case AstTag::UOpDeref:
 	case AstTag::UOpBitNot:
 	case AstTag::UOpLogNot:
 	case AstTag::UOpTypeOptPtr:
@@ -2097,7 +2096,12 @@ static [[nodiscard]] EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalS
 	case AstTag::OpTypeArray:
 	case AstTag::OpArrayIndex:
 		panic("evaluate(%s) not yet implemented.\n", tag_name(node->tag));
-
+	case AstTag::UOpAddr:
+		TODO("pls gibe me mem addr");
+		break;
+	case AstTag::UOpDeref:
+		TODO("pls deref me");
+		break;
 	case AstTag::INVALID:
 	case AstTag::File:
 	case AstTag::Parameter:
