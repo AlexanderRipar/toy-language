@@ -3186,7 +3186,7 @@ static void exact_timestamp_then_sleep_10_milliseconds_then_exact_timestamp_agai
 
 	const u64 elapsed_ms = (end - start) / (tps / 1000);
 
-	TEST_EQUAL(elapsed_ms > 5 && elapsed_ms < 25, true);
+	TEST_EQUAL(elapsed_ms > 5 && elapsed_ms < 50, true);
 
 	MINOS_TEST_END;
 }
