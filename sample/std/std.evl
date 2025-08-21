@@ -8,9 +8,9 @@ pub use prelude = _import("prelude.evl", 1 == 1, _source_id())
 /*
 // Composite type creation
 
-pub TypeBuilder: Type = _returntypeof(_create_type_builder)
+pub TypeBuilder: Type => _returntypeof(_create_type_builder)
 
-pub create_type_builder = func() -> TypeBuilder = _create_type_builder()
+pub create_type_builder = func() -> TypeBuilder => _create_type_builder()
 
 pub add_type_member = func(
 	builder: *mut TypeBuilder,
@@ -23,13 +23,13 @@ pub add_type_member = func(
 	is_use: Bool,
 	is_global: Bool,
 	default_value: ?Typ
-) -> Void = _add_type_member(builder, name, Typ, offset, is_mut, is_pub, is_global, is_use, default_value)
+) -> Void => _add_type_member(builder, name, Typ, offset, is_mut, is_pub, is_global, is_use, default_value)
 
-pub complete_type = func(builder: TypeBuilder) -> Type = _complete_type(builder)
+pub complete_type => func(builder: TypeBuilder) -> Type = _complete_type(builder)
 
 
 
 // Internal helpers
 
-let std_import = func(path: []char8) -> Type = _import(path, true)
+let std_import = func(path: []char8) -> Type => _import(path, true)
 */

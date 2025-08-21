@@ -2166,7 +2166,7 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 
 	lexeme = peek(&parser->lexer);
 
-	if (lexeme.token != Token::OpSet)
+	if (lexeme.token != Token::WideArrowR)
 		return signature_token;
 
 	skip(&parser->lexer);
