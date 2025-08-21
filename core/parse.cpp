@@ -1723,7 +1723,7 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 		lexeme = peek(&parser->lexer);
 	}
 
-	if (lexeme.token == Token::WideArrowR)
+	if (lexeme.token == Token::OpSet)
 	{
 		skip(&parser->lexer);
 
@@ -1734,7 +1734,7 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 	}
 	else if (!is_optional_value)
 	{
-		source_error(parser->lexer.errors, lexeme.source_id, "Expected '=>' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
+		source_error(parser->lexer.errors, lexeme.source_id, "Expected '=' after Definition identifier and type, but got '%s'\n", token_name(lexeme.token));
 	}
 
 	return is_param
@@ -2166,7 +2166,7 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 
 	lexeme = peek(&parser->lexer);
 
-	if (lexeme.token != Token::OpSet)
+	if (lexeme.token != Token::WideArrowR)
 		return signature_token;
 
 	skip(&parser->lexer);
