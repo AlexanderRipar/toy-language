@@ -402,6 +402,8 @@ AstNode* root_of(PartialValuePool* partials, PartialValueId id) noexcept
 
 PartialValueIterator values_of(PartialValuePool* partials, PartialValueId id) noexcept
 {
+	ASSERT_OR_IGNORE(id != PartialValueId::INVALID);
+
 	ClosedValue* const partial = partials->closed.value_from(static_cast<u32>(id));
 
 	return iterator_from_ptr(partial);
