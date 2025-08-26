@@ -1,3 +1,9 @@
+let f = func(eval AType: Type, t: AType, tf: func(x: AType) -> AType) -> AType => tf(t)
+
+let k = f(u32, 1, func(x: u32) -> u32 => x)
+
+
+
 /*
 let v0 = 1
 
@@ -56,7 +62,6 @@ let j1 = func() -> Void => {
 
 	{}
 }
-*/
 
 
 
@@ -67,3 +72,4 @@ let l = func(eval AType: Type, t: AType, tf: func(x: AType) -> AType) -> AType =
 let v = k(u32, 1)
 
 let w = k(Bool, false)
+*/
