@@ -517,6 +517,8 @@ static MutRange<byte> add_partial_value_to_builder(Interpreter* interp, AstNode*
 
 static void push_partial_value(Interpreter* interp, PartialValueId id) noexcept
 {
+	ASSERT_OR_IGNORE(id != PartialValueId::INVALID);
+
 	PeekablePartialValueIterator* const it = interp->active_partial_values.reserve();
 
 	it->it = values_of(interp->partials, id);
