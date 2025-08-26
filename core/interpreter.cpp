@@ -1409,11 +1409,7 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 			{
 				AstNode* const value = ast_node_from_id(interp->asts, member->value.pending);
 
-				if (type_is_unbound)
-				{
-					TODO("Handle default value for unbound parameter");
-				}
-				else if (member_type_id == TypeId::INVALID)
+				if (member_type_id == TypeId::INVALID)
 				{
 					const u32 mark = stack_mark(interp);
 
@@ -1423,7 +1419,15 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 
 					if (value_spec.tag == EvalTag::Unbound)
 					{
-						TODO("Handle unbound explicitly typed default values");
+						ASSERT_OR_IGNORE(value_spec.unbound.source != parameter_list_arec);
+
+						has_unbound_parameter = true;
+					}
+					else if (type_is_unbound)
+					{
+						const TypeMetrics metrics = type_metrics_from_id(interp->types, value_spec.success.type_id);
+
+						add_partial_value_to_builder(interp, value, value_spec.success.type_id, metrics.size, metrics.align);
 					}
 					else
 					{
