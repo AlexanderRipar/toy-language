@@ -1351,6 +1351,9 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 
 			ASSERT_OR_IGNORE(param->tag == AstTag::Parameter);
 
+			if (param_count == 63)
+				source_error(interp->errors, source_id_of(interp->asts, param), "Exceeded maximum of 64 function parameters.\n");
+
 			Member param_member = delayed_member_from(interp, param);
 			param_member.is_global = false;
 			param_member.is_use = false;
