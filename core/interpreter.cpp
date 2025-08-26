@@ -1343,6 +1343,8 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 
 		const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, 0, 1, active_arec_id(interp), ArecKind::Unbound);
 
+		Arec* const parameter_list_arec = arec_from_id(interp, parameter_list_arec_id);
+
 		u8 param_count = 0;
 
 		while (has_next(&params))
@@ -1366,6 +1368,8 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 		close_open_type(interp->types, parameter_list_type_id, 0, 0, 0);
 
 		push_partial_value_builder(interp, node);
+
+		Arec* outermost_unbound = parameter_list_arec + 1;
 
 		bool has_unbound_parameter = false;
 
@@ -1402,6 +1406,9 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 					type_is_unbound = true;
 
 					has_unbound_parameter = true;
+
+					if (type_spec.unbound.source < outermost_unbound)
+						outermost_unbound = type_spec.unbound.source;
 				}
 			}
 
@@ -1422,6 +1429,9 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 						ASSERT_OR_IGNORE(value_spec.unbound.source != parameter_list_arec);
 
 						has_unbound_parameter = true;
+
+						if (value_spec.unbound.source < outermost_unbound)
+							outermost_unbound = value_spec.unbound.source;
 					}
 					else if (type_is_unbound)
 					{
@@ -1465,6 +1475,18 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 				}
 			}
 
+			if (member_type_id != TypeId::INVALID)
+			{
+				const TypeTag member_type_tag = type_tag_from_id(interp->types, member_type_id);
+
+				if (member_type_tag == TypeTag::Func || member_type_tag == TypeTag::Builtin)
+				{
+					const SignatureType member_type = *static_cast<const SignatureType*>(simple_type_structure_from_id(interp->types, member_type_id));
+
+					// TODO
+				}
+			}
+
 			set_incomplete_type_member_info_by_rank(interp->types, parameter_list_type_id, member->rank, MemberCompletionInfo{
 				member->has_pending_type && member_type_id != TypeId::INVALID,
 				member->has_pending_value && member_value_id != GlobalValueId::INVALID,
@@ -1488,6 +1510,9 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 			});
 
 			has_unbound_return_type = return_type_spec.tag == EvalTag::Unbound;
+
+			if (has_unbound_return_type && return_type_spec.unbound.source < outermost_unbound)
+				outermost_unbound = return_type_spec.unbound.source;
 		}
 		else
 		{
@@ -1508,19 +1533,27 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 
 		const PartialValueId partial_value_id = pop_partial_value_builder(interp);
 
+		if (outermost_unbound < parameter_list_arec)
+			return EvalSpec{ outermost_unbound };
+
+		ASSERT_OR_IGNORE(outermost_unbound == parameter_list_arec || outermost_unbound == parameter_list_arec + 1);
+
 		SignatureType signature_type{};
 		signature_type.parameter_list_type_id = parameter_list_type_id;
-		if (has_unbound_return_type)
-			signature_type.return_type.partial_root = id_from_ast_node(interp->asts, get_ptr(info.return_type));
-		else
-			signature_type.return_type.complete = return_type_id;
-		signature_type.partial_value_id = has_unbound_parameter || has_unbound_return_type
-			? partial_value_id
-			: PartialValueId::INVALID;
 		signature_type.param_count = param_count;
 		signature_type.is_proc = has_flag(node, AstFlag::Signature_IsProc);
 		signature_type.parameter_list_is_unbound = has_unbound_parameter;
 		signature_type.return_type_is_unbound = has_unbound_return_type;
+
+		if (has_unbound_parameter || has_unbound_return_type)
+			signature_type.partial_value_id = partial_value_id;
+		else
+			signature_type.partial_value_id = PartialValueId::INVALID;
+
+		if (has_unbound_return_type)
+			signature_type.return_type.partial_root = id_from_ast_node(interp->asts, get_ptr(info.return_type));
+		else
+			signature_type.return_type.complete = return_type_id;
 
 		const TypeId signature_type_id = simple_type(interp->types, TypeTag::Func, range::from_object_bytes(&signature_type));
 
