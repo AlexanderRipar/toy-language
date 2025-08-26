@@ -1957,7 +1957,8 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot implicitly convert pointer to desired type.\n");
 		}
 
-
+		store_loc(into.success.location, location);
+		
 		return into;
 	}
 
