@@ -123,7 +123,7 @@ struct PartialValuePool
 
 	u32 first_free_open_value_index;
 
-	ReservedHeap2<MIN_ELEM_SIZE_LOG2, MAX_ELEM_SIZE_LOG2> open_data;
+	ReservedHeap<MIN_ELEM_SIZE_LOG2, MAX_ELEM_SIZE_LOG2> open_data;
 
 	MutRange<byte> memory;
 };

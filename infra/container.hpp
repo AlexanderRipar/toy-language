@@ -589,7 +589,7 @@ public:
 };
 
 template<u32 MinSizeLog2, u32 MaxSizeLog2>
-struct ReservedHeap2
+struct ReservedHeap
 {
 private:
 
