@@ -32,18 +32,6 @@ static AstAllocation alloc_ast(AstPool* asts, u32 qwords) noexcept
 	return AstAllocation{ nodes, sources };
 }
 
-static constexpr u8 pack_value_kinds(ValueKind v0, ValueKind v1, ValueKind v2, ValueKind v3, ValueKind v4, ValueKind v5, ValueKind v6, ValueKind v7) noexcept
-{
-	return static_cast<u8>(v0)
-	     | static_cast<u8>(v1) << 1
-	     | static_cast<u8>(v2) << 2
-	     | static_cast<u8>(v3) << 3
-	     | static_cast<u8>(v4) << 4
-	     | static_cast<u8>(v5) << 5
-	     | static_cast<u8>(v6) << 6
-	     | static_cast<u8>(v7) << 7;
-}
-
 // Set FLAG_FIRST_SIBLING and FLAG_LAST_SIBLING (note that next_sibling_offset
 // holds the offset to the first child at this point):
 //
