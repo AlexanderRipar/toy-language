@@ -11,13 +11,23 @@ struct alignas(8) ValueInfo
 
 struct GlobalValuePool
 {
-	ReservedVec<ValueInfo> values;
+	ReservedVec2<ValueInfo> values;
+
+	MutRange<byte> memory;
 };
 
 GlobalValuePool* create_global_value_pool(AllocPool* alloc) noexcept
 {
+	static constexpr u64 VALUES_SIZE = (static_cast<u64>(1) << 28) * sizeof(ValueInfo);
+
+	byte* const memory = static_cast<byte*>(minos::mem_reserve(VALUES_SIZE));
+
+	if (memory == nullptr)
+		panic("Could not reserve memory for GlobalValuePool (0x%X).\n", minos::last_error());
+
 	GlobalValuePool* const globals = static_cast<GlobalValuePool*>(alloc_from_pool(alloc, sizeof(GlobalValuePool), alignof(GlobalValuePool)));
-	globals->values.init(1 << 28, 1 << 11);
+	globals->values.init(MutRange<byte>{ memory, VALUES_SIZE }, 1 << 11);
+	globals->memory = MutRange<byte>{ memory, VALUES_SIZE };
 
 	(void) globals->values.reserve_exact(sizeof(u64));
 
@@ -26,7 +36,7 @@ GlobalValuePool* create_global_value_pool(AllocPool* alloc) noexcept
 
 void release_global_value_pool(GlobalValuePool* globals) noexcept
 {
-	globals->values.release();
+	minos::mem_unreserve(globals->memory.begin(), globals->memory.count());
 }
 
 GlobalValueId alloc_global_value(GlobalValuePool* globals, u64 size, u32 align) noexcept

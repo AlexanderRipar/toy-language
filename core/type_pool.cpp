@@ -279,13 +279,15 @@ struct TypePool
 
 	IndexMap<TypeName, TypeName> named_types;
 
-	ReservedVec<u64> builders;
+	ReservedVec2<u64> builders;
 
 	s32 first_free_builder_index;
 
 	GlobalValuePool* globals;
 
 	ErrorSink* errors;
+
+	MutRange<byte> memory;
 };
 
 static_assert(sizeof(TypeBuilder) == sizeof(TypeBuilderHeader));
@@ -637,14 +639,22 @@ static void find_member_by_rank(TypePool* types, TypeId type_id, u16 rank, FindR
 
 TypePool* create_type_pool(AllocPool* alloc, GlobalValuePool* globals, ErrorSink* errors) noexcept
 {
+	static constexpr u64 BUILDERS_SIZE = (static_cast<u64>(1) << 15) * sizeof(u64);
+
+	byte* const memory = static_cast<byte*>(minos::mem_reserve(BUILDERS_SIZE));
+
+	if (memory == nullptr)
+		panic("Could not reserve memory for TypePool (0x%X).\n", minos::last_error());
+
 	TypePool* const types = static_cast<TypePool*>(alloc_from_pool(alloc, sizeof(TypePool), alignof(TypePool)));
 
 	types->structural_types.init(1 << 24, 1 << 10, 1 << 24, 1 << 9);
 	types->named_types.init(1 << 26, 1 << 10, 1 << 26, 1 << 13);
-	types->builders.init(1 << 15, 1 << 11);
+	types->builders.init(MutRange<byte>{ memory, BUILDERS_SIZE }, 1 << 11);
 	types->first_free_builder_index = -1;
 	types->globals = globals;
 	types->errors = errors;
+	types->memory = MutRange<byte>{ memory, BUILDERS_SIZE };
 
 	// Reserve `0` as `TypeId::INVALID` and `1` as `TypeId::CHECKING`
 
@@ -670,7 +680,7 @@ void release_type_pool(TypePool* types) noexcept
 
 	types->structural_types.release();
 
-	types->builders.release();
+	minos::mem_unreserve(types->memory.begin(), types->memory.count());
 }
 
 

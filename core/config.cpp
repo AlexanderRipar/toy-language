@@ -192,7 +192,9 @@ struct ConfigParser
 
 	Range<char8> path_base;
 
-	ReservedVec<byte> heap;
+	ReservedVec2<byte> heap;
+
+	MutRange<byte> memory;
 };
 
 
@@ -1128,13 +1130,19 @@ static void parse_config(ConfigParser* parser) noexcept
 
 static ConfigParser init_config_parser(Range<char8> filepath, Config* out) noexcept
 {
+	byte* const memory = static_cast<byte*>(minos::mem_reserve(ConfigParser::HEAP_RESERVE));
+
+	if (memory == nullptr)
+		panic("Could not reserve memory for ConfigParser (0x%X).\n", minos::last_error());
+
 	ConfigParser parser;
 
 	parser.out = out;
 	parser.peek = {};
 	parser.context_top = 1;
 	parser.context_stack[0] = &CONFIG;
-	parser.heap.init(ConfigParser::HEAP_RESERVE, ConfigParser::HEAP_COMMIT_INCREMENT);
+	parser.heap.init(MutRange<byte>{ memory, ConfigParser::HEAP_RESERVE }, ConfigParser::HEAP_COMMIT_INCREMENT);
+	parser.memory = MutRange<byte>{ memory, ConfigParser::HEAP_RESERVE };
 
 	minos::FileHandle filehandle;
 
