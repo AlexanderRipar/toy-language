@@ -5,13 +5,13 @@
 
 struct AstPool
 {
-	ReservedVec2<AstNode> nodes;
+	ReservedVec<AstNode> nodes;
 
-	ReservedVec2<SourceId> sources;
+	ReservedVec<SourceId> sources;
 
-	ReservedVec2<AstNode> node_builder;
+	ReservedVec<AstNode> node_builder;
 
-	ReservedVec2<SourceId> source_builder;
+	ReservedVec<SourceId> source_builder;
 
 	MutRange<byte> memory;
 };

@@ -9,7 +9,7 @@
 #include "minos.hpp"
 
 template<typename T, typename Index = u32>
-struct ReservedVec2
+struct ReservedVec
 {
 private:
 

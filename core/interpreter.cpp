@@ -317,17 +317,17 @@ struct Interpreter
 
 	ErrorSink* errors;
 
-	ReservedVec2<u64> arecs;
+	ReservedVec<u64> arecs;
 
 	ArecId top_arec_id;
 
 	ArecId active_arec_id;
 
-	ReservedVec2<byte> temps;
+	ReservedVec<byte> temps;
 
-	ReservedVec2<PartialValueBuilderId> partial_value_builders;
+	ReservedVec<PartialValueBuilderId> partial_value_builders;
 
-	ReservedVec2<PeekablePartialValueIterator> active_partial_values;
+	ReservedVec<PeekablePartialValueIterator> active_partial_values;
 
 	TypeId prelude_type_id;
 

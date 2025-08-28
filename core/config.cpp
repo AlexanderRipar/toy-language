@@ -192,7 +192,7 @@ struct ConfigParser
 
 	Range<char8> path_base;
 
-	ReservedVec2<byte> heap;
+	ReservedVec<byte> heap;
 
 	MutRange<byte> memory;
 };

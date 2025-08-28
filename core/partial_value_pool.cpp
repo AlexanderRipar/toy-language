@@ -113,11 +113,11 @@ struct PartialValuePool
 
 	IndexMap<const ClosedValue*, ClosedValue> closed;
 
-	ReservedVec2<ClosedValue> closed_buffer;
+	ReservedVec<ClosedValue> closed_buffer;
 
-	ReservedVec2<OpenValue> open;
+	ReservedVec<OpenValue> open;
 
-	ReservedVec2<OpenElem> open_values;
+	ReservedVec<OpenElem> open_values;
 
 	u32 first_free_open_index;
 

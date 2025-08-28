@@ -279,7 +279,7 @@ struct TypePool
 
 	IndexMap<TypeName, TypeName> named_types;
 
-	ReservedVec2<u64> builders;
+	ReservedVec<u64> builders;
 
 	s32 first_free_builder_index;
 

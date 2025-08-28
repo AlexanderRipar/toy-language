@@ -11,7 +11,7 @@ struct alignas(8) ValueInfo
 
 struct GlobalValuePool
 {
-	ReservedVec2<ValueInfo> values;
+	ReservedVec<ValueInfo> values;
 
 	MutRange<byte> memory;
 };
