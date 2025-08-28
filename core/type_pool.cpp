@@ -471,8 +471,6 @@ static bool find_builder_member_by_name(TypeBuilderHeader* header, IdentifierId 
 
 	TypeBuilder* curr = head;
 
-	u16 rank = 0;
-
 	while (true)
 	{
 		for (u32 i = 0; i != curr->used; ++i)
@@ -493,8 +491,6 @@ static bool find_builder_member_by_name(TypeBuilderHeader* header, IdentifierId 
 
 		if (curr->next_offset == 0)
 			return false;
-
-		rank += static_cast<u16>(array_count(curr->members));
 
 		curr = type_builder_at_offset(curr, curr->next_offset);
 	}
