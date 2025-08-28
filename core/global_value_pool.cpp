@@ -11,8 +11,6 @@ struct alignas(8) ValueInfo
 
 struct GlobalValuePool
 {
-	TypePool* types;
-
 	ReservedVec<ValueInfo> values;
 };
 
