@@ -66,7 +66,13 @@ else
 # Start one asynchronous job for each build.
 $jobs = $specs | Foreach-Object {
 	Start-Job `
-		-ScriptBlock { $input | Foreach-Object { @{ output = Invoke-Expression $_.command; exitcode = $LASTEXITCODE } } } `
+		-ScriptBlock { $input | Foreach-Object {
+			# While this does not preserve the ANSI escape sequences in gcc's
+			# output, it at least makes them disappear instead of creating
+			# mojibake.
+			[Console]::OutputEncoding = [Text.UTF8Encoding]::UTF8;
+			@{ output = Invoke-Expression $_.command; exitcode = $LASTEXITCODE }
+		} } `
 		-Name $_.jobname `
 		-InputObject $_
 }
@@ -86,7 +92,13 @@ while ($jobs.Count -ne 0)
 
 	$job_result = Receive-Job $completed_job
 
-	@('', '', "################# $($completed_job.Name) #################", '') + $job_result.output
+	Write-Output ''
+	Write-Output ''
+	Write-Output "################# $($completed_job.Name) #################"
+	Write-Output ''
+	Write-Output $job_result.output
+
+	# Write-Output @('', '', "################# $($completed_job.Name) #################", '') + $job_result.output
 
 	if ($job_result.exitcode -ne 0)
 	{
