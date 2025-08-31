@@ -181,17 +181,37 @@ struct EvalSpec
 	{}
 };
 
+enum class EvalTag : u8
+{
+	Success,
+	Unbound,
+};
+
 struct EvalRst
 {
-	bool has_value;
+	EvalTag tag;
 
-	ValueKind kind;
+	union
+	{
+		struct
+		{
+			ValueKind kind;
 
-	TypeId type_id;
+			TypeId type_id;
 
-	MutRange<byte> bytes;
+			MutRange<byte> bytes;
+		} success;
 
-	Arec* unbound_in;
+		struct
+		{
+			Arec* in;
+		} unbound;
+	};
+
+	EvalRst() noexcept :
+		tag{},
+		success{}
+	{}
 };
 
 enum class IdentifierInfoTag : u8
@@ -335,8 +355,8 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept;
 static EvalRst eval_unbound(Arec* unbound_in) noexcept
 {
 	EvalRst rst;
-	rst.has_value = false;
-	rst.unbound_in = unbound_in;
+	rst.tag = EvalTag::Unbound;
+	rst.unbound.in = unbound_in;
 
 	return rst;
 }
@@ -512,7 +532,6 @@ static void push_partial_value(Interpreter* interp, PartialValueId id) noexcept
 	ASSERT_OR_IGNORE(id != PartialValueId::INVALID);
 
 	PeekablePartialValueIterator* const it = interp->active_partial_values.reserve();
-
 	it->it = values_of(interp->partials, id);
 
 	if (has_next(&it->it))
@@ -595,7 +614,7 @@ static void complete_member(Interpreter* interp, TypeId surrounding_type_id, con
 			simple_type(interp->types, TypeTag::Type, {})
 		});
 
-		ASSERT_OR_IGNORE(type_rst.has_value && member_type_id != TypeId::INVALID);
+		ASSERT_OR_IGNORE(type_rst.tag == EvalTag::Success && member_type_id != TypeId::INVALID);
 
 		arec_restore(interp, restore);
 	}
@@ -618,21 +637,21 @@ static void complete_member(Interpreter* interp, TypeId surrounding_type_id, con
 				member_type_id
 			});
 
-			ASSERT_OR_IGNORE(value_rst.has_value);
+			ASSERT_OR_IGNORE(value_rst.tag == EvalTag::Success);
 		}
 		else
 		{
 			const EvalRst value_rst = evaluate(interp, value, EvalSpec{ ValueKind::Value });
 
-			ASSERT_OR_IGNORE(value_rst.has_value);
+			ASSERT_OR_IGNORE(value_rst.tag == EvalTag::Success);
 
-			const TypeMetrics metrics = type_metrics_from_id(interp->types, value_rst.type_id);
+			const TypeMetrics metrics = type_metrics_from_id(interp->types, value_rst.success.type_id);
 
-			member_type_id = value_rst.type_id;
+			member_type_id = value_rst.success.type_id;
 
 			member_value_id = alloc_global_value(interp->globals, metrics.size, metrics.align);
 
-			copy_loc(global_value_get_mut(interp->globals, member_value_id), value_rst.bytes.immut());
+			copy_loc(global_value_get_mut(interp->globals, member_value_id), value_rst.success.bytes.immut());
 		}
 
 		arec_restore(interp, restore);
@@ -973,11 +992,10 @@ static EvalRst fill_spec(Interpreter* interp, EvalSpec spec, const AstNode* erro
 	}
 
 	EvalRst rst;
-	rst.has_value = true;
-	rst.kind = spec.kind;
-	rst.type_id = type_id;
-	rst.bytes = bytes;
-	rst.unbound_in = nullptr;
+	rst.tag = EvalTag::Success;
+	rst.success.kind = spec.kind;
+	rst.success.type_id = type_id;
+	rst.success.bytes = bytes;
 
 	return rst;
 }
@@ -1020,11 +1038,10 @@ static EvalRst fill_spec_sized(Interpreter* interp, EvalSpec spec, const AstNode
 	}
 
 	EvalRst rst;
-	rst.has_value = true;
-	rst.kind = spec.kind;
-	rst.type_id = type_id;
-	rst.bytes = bytes;
-	rst.unbound_in = nullptr;
+	rst.tag = EvalTag::Success;
+	rst.success.kind = spec.kind;
+	rst.success.type_id = type_id;
+	rst.success.bytes = bytes;
 
 	return rst;
 }
@@ -1039,20 +1056,20 @@ static EvalRst evaluate_global_member(Interpreter* interp, AstNode* node, EvalSp
 
 	MutRange<byte> value = global_value_get_mut(interp->globals, member->value.complete);
 
-	if (is_same_type(interp->types, rst.type_id, member->type.complete))
+	if (is_same_type(interp->types, rst.success.type_id, member->type.complete))
 	{
-		if (rst.kind == ValueKind::Location)
+		if (rst.success.kind == ValueKind::Location)
 		{
-			store_loc(rst.bytes, value);
+			store_loc(rst.success.bytes, value);
 		}
 		else
 		{
-			copy_loc(rst.bytes, value.immut());
+			copy_loc(rst.success.bytes, value.immut());
 		}
 	}
-	else if (rst.kind == ValueKind::Value)
+	else if (rst.success.kind == ValueKind::Value)
 	{
-		convert(interp, node, EvalSpec{ rst.kind, rst.bytes, rst.type_id }, EvalSpec{ ValueKind::Location, value, member->type.complete });
+		convert(interp, node, EvalSpec{ rst.success.kind, rst.success.bytes, rst.success.type_id }, EvalSpec{ ValueKind::Location, value, member->type.complete });
 	}
 	else
 	{
@@ -1076,20 +1093,20 @@ static EvalRst evaluate_local_member(Interpreter* interp, AstNode* node, EvalSpe
 
 	EvalRst rst = fill_spec_sized(interp, spec, node, ValueKind::Location, member->type.complete, metrics.size, metrics.align);
 
-	if (is_same_type(interp->types, rst.type_id, member->type.complete))
+	if (is_same_type(interp->types, rst.success.type_id, member->type.complete))
 	{
-		if (rst.kind == ValueKind::Location)
+		if (rst.success.kind == ValueKind::Location)
 		{
-			store_loc(rst.bytes, MutRange<byte>{ lhs_value.begin() + member->offset, metrics.size });
+			store_loc(rst.success.bytes, MutRange<byte>{ lhs_value.begin() + member->offset, metrics.size });
 		}
 		else
 		{
-			copy_loc(rst.bytes, Range<byte>{ lhs_value.begin() + member->offset, metrics.size });
+			copy_loc(rst.success.bytes, Range<byte>{ lhs_value.begin() + member->offset, metrics.size });
 		}
 	}
-	else if (rst.kind == ValueKind::Value)
+	else if (rst.success.kind == ValueKind::Value)
 	{
-		convert(interp, node, EvalSpec{ rst.kind, rst.bytes, rst.type_id }, EvalSpec{ ValueKind::Location, lhs_value, member->type.complete });
+		convert(interp, node, EvalSpec{ rst.success.kind, rst.success.bytes, rst.success.type_id }, EvalSpec{ ValueKind::Location, lhs_value, member->type.complete });
 	}
 	else
 	{
@@ -1138,7 +1155,14 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 		const bool has_pending_type = param->has_pending_type;
 
 		if (has_pending_type)
+		{
 			complete_member(interp, parameter_list_type_id, param);
+		}
+		else if (type_tag_from_id(interp->types, param->type.complete) == TypeTag::Func)
+		{
+			TODO("Add binding of nested signatures");
+		}
+
 
 		const TypeMetrics param_metrics = type_metrics_from_id(interp->types, param->type.complete);
 
@@ -1151,7 +1175,7 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 			param->type.complete
 		});
 
-		ASSERT_OR_IGNORE(arg_rst.has_value);
+		ASSERT_OR_IGNORE(arg_rst.tag == EvalTag::Success);
 
 		arg_rank += 1;
 	}
@@ -1170,7 +1194,7 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 			simple_type(interp->types, TypeTag::Type, {})
 		});
 
-		ASSERT_OR_IGNORE(return_type_rst.has_value);
+		ASSERT_OR_IGNORE(return_type_rst.tag == EvalTag::Success);
 	}
 	else
 	{
@@ -1191,13 +1215,13 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	{
 		EvalRst rst = fill_spec(interp, spec, node, ValueKind::Value, applicable_partial.type_id);
 
-		if (is_same_type(interp->types, applicable_partial.type_id, rst.type_id))
+		if (is_same_type(interp->types, applicable_partial.type_id, rst.success.type_id))
 		{
-			copy_loc(rst.bytes, applicable_partial.data);
+			copy_loc(rst.success.bytes, applicable_partial.data);
 		}
 		else
 		{
-			convert(interp, node, EvalSpec{ rst.kind, rst.bytes, rst.type_id }, EvalSpec{ ValueKind::Value,	{ const_cast<byte*>(applicable_partial.data.begin()), applicable_partial.data.count() }, applicable_partial.type_id	});
+			convert(interp, node, EvalSpec{ rst.success.kind, rst.success.bytes, rst.success.type_id }, EvalSpec{ ValueKind::Value,	{ const_cast<byte*>(applicable_partial.data.begin()), applicable_partial.data.count() }, applicable_partial.type_id	});
 		}
 
 		return rst;
@@ -1210,7 +1234,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const TypeId expression_type = typeinfer(interp, node);
 
-		store_loc(rst.bytes, expression_type);
+		store_loc(rst.success.bytes, expression_type);
 
 		return rst;
 	}
@@ -1226,7 +1250,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, ValueKind::Value, builtin_type_id, sizeof(CallableValue), alignof(CallableValue));
 
-		store_loc(rst.bytes, CallableValue::from_builtin(builtin_type_id, ordinal));
+		store_loc(rst.success.bytes, CallableValue::from_builtin(builtin_type_id, ordinal));
 
 		return rst;
 	}
@@ -1241,7 +1265,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const AstDefinitionData attach = *attachment_of<AstDefinitionData>(node);
 
-		Definition* const definition = reinterpret_cast<Definition*>(rst.bytes.begin());
+		Definition* const definition = reinterpret_cast<Definition*>(rst.success.bytes.begin());
 		memset(definition, 0, sizeof(*definition));
 		definition->name = attach.identifier_id;
 		definition->source = source_id_of(interp->asts, node);
@@ -1267,7 +1291,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			simple_type(interp->types, TypeTag::Type, {})
 		});
 
-		if (!signature_rst.has_value)
+		if (signature_rst.tag == EvalTag::Unbound)
 			return signature_rst;
 
 		if (type_tag_from_id(interp->types, signature_type_id) != TypeTag::Func)
@@ -1281,7 +1305,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const CallableValue callable = CallableValue::from_function(signature_type_id, body_id);
 
-		store_loc(rst.bytes, callable);
+		store_loc(rst.success.bytes, callable);
 
 		return rst;
 	}
@@ -1358,14 +1382,14 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 					simple_type(interp->types, TypeTag::Type, {})
 				});
 
-				if (!type_rst.has_value)
+				if (type_rst.tag == EvalTag::Unbound)
 				{
 					type_is_unbound = true;
 
 					has_unbound_parameter = true;
 
-					if (type_rst.unbound_in < outermost_unbound)
-						outermost_unbound = type_rst.unbound_in;
+					if (type_rst.unbound.in < outermost_unbound)
+						outermost_unbound = type_rst.unbound.in;
 				}
 			}
 
@@ -1381,34 +1405,34 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 						ValueKind::Value,
 					});
 
-					if (!value_rst.has_value)
+					if (value_rst.tag == EvalTag::Unbound)
 					{
-						ASSERT_OR_IGNORE(value_rst.unbound_in != parameter_list_arec);
+						ASSERT_OR_IGNORE(value_rst.unbound.in != parameter_list_arec);
 
 						has_unbound_parameter = true;
 
-						if (value_rst.unbound_in < outermost_unbound)
-							outermost_unbound = value_rst.unbound_in;
+						if (value_rst.unbound.in < outermost_unbound)
+							outermost_unbound = value_rst.unbound.in;
 					}
 					else if (type_is_unbound)
 					{
-						const TypeMetrics metrics = type_metrics_from_id(interp->types, value_rst.type_id);
+						const TypeMetrics metrics = type_metrics_from_id(interp->types, value_rst.success.type_id);
 
-						add_partial_value_to_builder(interp, value, value_rst.type_id, metrics.size, metrics.align);
+						add_partial_value_to_builder(interp, value, value_rst.success.type_id, metrics.size, metrics.align);
 					}
 					else
 					{
-						const TypeMetrics metrics = type_metrics_from_id(interp->types, value_rst.type_id);
+						const TypeMetrics metrics = type_metrics_from_id(interp->types, value_rst.success.type_id);
 
 						member_value_id = alloc_global_value(interp->globals, metrics.size, metrics.align);
 
 						MutRange<byte> member_value = global_value_get_mut(interp->globals, member_value_id);
 
-						ASSERT_OR_IGNORE(member_value.count() == value_rst.bytes.count());
+						ASSERT_OR_IGNORE(member_value.count() == value_rst.success.bytes.count());
 
-						memcpy(member_value.begin(), value_rst.bytes.begin(), member_value.count());
+						memcpy(member_value.begin(), value_rst.success.bytes.begin(), member_value.count());
 
-						member_type_id = value_rst.type_id;
+						member_type_id = value_rst.success.type_id;
 					}
 
 					stack_shrink(interp, mark);
@@ -1427,7 +1451,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 						member_type_id
 					});
 
-					if (!value_rst.has_value)
+					if (value_rst.tag == EvalTag::Unbound)
 						TODO("Handle unbound implicitly typed default values.");
 				}
 			}
@@ -1466,10 +1490,10 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				simple_type(interp->types, TypeTag::Type, {})
 			});
 
-			has_unbound_return_type = !return_type_rst.has_value;
+			has_unbound_return_type = return_type_rst.tag == EvalTag::Unbound;
 
-			if (has_unbound_return_type && return_type_rst.unbound_in < outermost_unbound)
-				outermost_unbound = return_type_rst.unbound_in;
+			if (has_unbound_return_type && return_type_rst.unbound.in < outermost_unbound)
+				outermost_unbound = return_type_rst.unbound.in;
 		}
 		else
 		{
@@ -1514,7 +1538,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const TypeId signature_type_id = simple_type(interp->types, TypeTag::Func, range::from_object_bytes(&signature_type));
 
-		store_loc(rst.bytes, signature_type_id);
+		store_loc(rst.success.bytes, signature_type_id);
 
 		return rst;
 	}
@@ -1540,14 +1564,14 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst rst = fill_spec(interp, spec, node, ValueKind::Location, info.found.type_id);
 
-		if (is_same_type(interp->types, info.found.type_id, rst.type_id))
+		if (is_same_type(interp->types, info.found.type_id, rst.success.type_id))
 		{
-			if (rst.kind == ValueKind::Location)
-				store_loc(rst.bytes, info.found.location);
+			if (rst.success.kind == ValueKind::Location)
+				store_loc(rst.success.bytes, info.found.location);
 			else
-				copy_loc(rst.bytes, info.found.location.immut());
+				copy_loc(rst.success.bytes, info.found.location.immut());
 		}
-		else if (rst.kind == ValueKind::Value)
+		else if (rst.success.kind == ValueKind::Value)
 		{
 			TODO("Implement implicit conversion of identifier values");
 		}
@@ -1569,10 +1593,10 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const AstLitIntegerData attach = *attachment_of<AstLitIntegerData>(node);
 
-		if (is_same_type(interp->types, rst.type_id, comp_integer_type_id))
-			store_loc(rst.bytes, attach.value);
+		if (is_same_type(interp->types, rst.success.type_id, comp_integer_type_id))
+			store_loc(rst.success.bytes, attach.value);
 		else
-			convert_comp_integer_to_integer(interp, node, EvalSpec{ rst.kind, rst.bytes, rst.type_id }, attach.value);
+			convert_comp_integer_to_integer(interp, node, EvalSpec{ rst.success.kind, rst.success.bytes, rst.success.type_id }, attach.value);
 
 		return rst;
 	}
@@ -1585,18 +1609,18 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		MutRange<byte> value = global_value_get_mut(interp->globals, attach.string_value_id);
 
-		if (is_same_type(interp->types, rst.type_id, attach.string_type_id))
+		if (is_same_type(interp->types, rst.success.type_id, attach.string_type_id))
 		{
-			if (rst.kind == ValueKind::Value)
-				copy_loc(rst.bytes, value.immut());
+			if (rst.success.kind == ValueKind::Value)
+				copy_loc(rst.success.bytes, value.immut());
 			else
-				store_loc(rst.bytes, value.immut());
+				store_loc(rst.success.bytes, value.immut());
 		}
-		else if (rst.kind == ValueKind::Value)
+		else if (rst.success.kind == ValueKind::Value)
 		{
-			ASSERT_OR_IGNORE(type_tag_from_id(interp->types, rst.type_id) == TypeTag::Slice);
+			ASSERT_OR_IGNORE(type_tag_from_id(interp->types, rst.success.type_id) == TypeTag::Slice);
 
-			convert_array_to_slice(interp, node, EvalSpec{ rst.kind, rst.bytes, rst.type_id }, EvalSpec{ ValueKind::Value, value, attach.string_type_id });
+			convert_array_to_slice(interp, node, EvalSpec{ rst.success.kind, rst.success.bytes, rst.success.type_id }, EvalSpec{ ValueKind::Value, value, attach.string_type_id });
 		}
 		else
 		{
@@ -1619,13 +1643,13 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst rst;
 
-		if (!callee_rst.has_value)
+		if (callee_rst.tag == EvalTag::Unbound)
 		{
 			TODO("Implement unbound callees");
 		}
 		else
 		{
-			const TypeTag callee_type_tag = type_tag_from_id(interp->types, callee_rst.type_id);
+			const TypeTag callee_type_tag = type_tag_from_id(interp->types, callee_rst.success.type_id);
 
 			if (callee_type_tag != TypeTag::Func && callee_type_tag != TypeTag::Builtin)
 				source_error(interp->errors, source_id_of(interp->asts, callee), "Cannot implicitly convert callee to callable type.\n");
@@ -1638,7 +1662,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			const u32 mark = stack_mark(interp);
 
-			const bool needs_conversion = !is_same_type(interp->types, call_info.return_type_id, rst.type_id);
+			const bool needs_conversion = !is_same_type(interp->types, call_info.return_type_id, rst.success.type_id);
 
 			MutRange<byte> temp_location;
 
@@ -1650,7 +1674,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			}
 			else
 			{
-				temp_location = rst.bytes;
+				temp_location = rst.success.bytes;
 			}
 
 			if (callee_value.is_builtin)
@@ -1666,15 +1690,15 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				const EvalRst call_rst = evaluate(interp, body, EvalSpec{
 					ValueKind::Value,
 					temp_location,
-					rst.type_id
+					rst.success.type_id
 				});
 
-				ASSERT_OR_IGNORE(call_rst.has_value);
+				ASSERT_OR_IGNORE(call_rst.tag == EvalTag::Success);
 			}
 
 			if (needs_conversion)
 			{
-				convert(interp, node, EvalSpec{ rst.kind, rst.bytes, rst.type_id }, EvalSpec{ ValueKind::Value, temp_location, call_info.return_type_id });
+				convert(interp, node, EvalSpec{ rst.success.kind, rst.success.bytes, rst.success.type_id }, EvalSpec{ ValueKind::Value, temp_location, call_info.return_type_id });
 			}
 
 			arec_pop(interp, call_info.parameter_list_arec_id);
@@ -1693,16 +1717,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst lhs_rst = evaluate(interp, lhs, EvalSpec{ ValueKind::Location });
 
-		if (!lhs_rst.has_value)
-			return eval_unbound(lhs_rst.unbound_in);
+		if (lhs_rst.tag == EvalTag::Unbound)
+			return eval_unbound(lhs_rst.unbound.in);
 
-		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_rst.type_id);
+		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_rst.success.type_id);
 
 		if (lhs_type_tag == TypeTag::Composite)
 		{
 			const Member* member;
 
-			if (!type_member_by_name(interp->types, lhs_rst.type_id, attach.identifier_id, source_id_of(interp->asts, node), &member))
+			if (!type_member_by_name(interp->types, lhs_rst.success.type_id, attach.identifier_id, source_id_of(interp->asts, node), &member))
 			{
 				const Range<char8> name = identifier_name_from_id(interp->identifiers, attach.identifier_id);
 
@@ -1710,15 +1734,15 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			}
 
 			if (member->is_global)
-				return evaluate_global_member(interp, node, spec, lhs_rst.type_id, member);
+				return evaluate_global_member(interp, node, spec, lhs_rst.success.type_id, member);
 
-			return evaluate_local_member(interp, node, spec, lhs_rst.type_id, member, lhs_rst.bytes);
+			return evaluate_local_member(interp, node, spec, lhs_rst.success.type_id, member, lhs_rst.success.bytes);
 		}
 		else if (lhs_type_tag == TypeTag::Type)
 		{
-			const TypeId type_id = load_loc<TypeId>(lhs_rst.kind == ValueKind::Value
-				? lhs_rst.bytes
-				: load_loc<MutRange<byte>>(lhs_rst.bytes)
+			const TypeId type_id = load_loc<TypeId>(lhs_rst.success.kind == ValueKind::Value
+				? lhs_rst.success.bytes
+				: load_loc<MutRange<byte>>(lhs_rst.success.bytes)
 			);
 
 			if (type_tag_from_id(interp->types, type_id) != TypeTag::Composite)
@@ -1762,20 +1786,20 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const EvalRst rhs_rst = evaluate(interp, rhs, EvalSpec{ ValueKind::Value });
 
-		if (!lhs_rst.has_value && !rhs_rst.has_value)
+		if (lhs_rst.tag == EvalTag::Unbound && rhs_rst.tag == EvalTag::Unbound)
 		{
 			TODO("Treat unbound parameters to OpCmpEq");
 		}
-		else if (!lhs_rst.has_value)
+		else if (lhs_rst.tag == EvalTag::Unbound)
 		{
 			TODO("Treat unbound parameters to OpCmpEq");
 		}
-		else if (!rhs_rst.has_value)
+		else if (rhs_rst.tag == EvalTag::Unbound)
 		{
 			TODO("Treat unbound parameters to OpCmpEq");
 		}
 
-		const TypeId common_type_id = common_type(interp->types, lhs_rst.type_id, rhs_rst.type_id);
+		const TypeId common_type_id = common_type(interp->types, lhs_rst.success.type_id, rhs_rst.success.type_id);
 
 		if (common_type_id == TypeId::INVALID)
 			source_error(interp->errors, source_id_of(interp->asts, node), "Could not unify argument types of `%s`.\n", tag_name(node->tag));
@@ -1784,32 +1808,32 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		MutRange<byte> lhs_casted;
 
-		if (!is_same_type(interp->types, common_type_id, lhs_rst.type_id))
+		if (!is_same_type(interp->types, common_type_id, lhs_rst.success.type_id))
 		{
 			const TypeMetrics metrics = type_metrics_from_id(interp->types, common_type_id);
 
 			lhs_casted = stack_push(interp, metrics.size, metrics.align);
 
-			convert(interp, lhs, EvalSpec{ ValueKind::Value, lhs_casted, common_type_id }, EvalSpec{ lhs_rst.kind, lhs_rst.bytes, lhs_rst.type_id });
+			convert(interp, lhs, EvalSpec{ ValueKind::Value, lhs_casted, common_type_id }, EvalSpec{ lhs_rst.success.kind, lhs_rst.success.bytes, lhs_rst.success.type_id });
 		}
 		else
 		{
-			lhs_casted = lhs_rst.bytes;
+			lhs_casted = lhs_rst.success.bytes;
 		}
 
 		MutRange<byte> rhs_casted;
 
-		if (!is_same_type(interp->types, common_type_id, rhs_rst.type_id))
+		if (!is_same_type(interp->types, common_type_id, rhs_rst.success.type_id))
 		{
 			const TypeMetrics metrics = type_metrics_from_id(interp->types, common_type_id);
 
 			rhs_casted = stack_push(interp, metrics.size, metrics.align);
 
-			convert(interp, rhs, EvalSpec{ ValueKind::Value, rhs_casted, common_type_id }, EvalSpec{ lhs_rst.kind, lhs_rst.bytes, lhs_rst.type_id });
+			convert(interp, rhs, EvalSpec{ ValueKind::Value, rhs_casted, common_type_id }, EvalSpec{ lhs_rst.success.kind, lhs_rst.success.bytes, lhs_rst.success.type_id });
 		}
 		else
 		{
-			rhs_casted = rhs_rst.bytes;
+			rhs_casted = rhs_rst.success.bytes;
 		}
 
 		ASSERT_OR_IGNORE(lhs_casted.count() == rhs_casted.count());
@@ -1820,7 +1844,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		// No need for implicit conversion here, as bool is not convertible to
 		// anything else.
-		store_loc(rst.bytes, result);
+		store_loc(rst.success.bytes, result);
 
 		return rst;
 	}
@@ -2115,7 +2139,7 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 			});
 
 			// This must succeed as we are on the top level.
-			ASSERT_OR_IGNORE(member_type_rst.has_value);
+			ASSERT_OR_IGNORE(member_type_rst.tag == EvalTag::Success);
 
 			const TypeMetrics metrics = type_metrics_from_id(interp->types, member_type_id);
 
@@ -2138,23 +2162,25 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 
 		const EvalRst value_rst = evaluate(interp, value, value_spec);
 
+		ASSERT_OR_IGNORE(value_rst.tag == EvalTag::Success);
+
 		if (member_value_id == GlobalValueId::INVALID)
 		{
-			const TypeMetrics metrics = type_metrics_from_id(interp->types, value_rst.type_id);
+			const TypeMetrics metrics = type_metrics_from_id(interp->types, value_rst.success.type_id);
 
 			member_value_id = alloc_global_value(interp->globals, metrics.size, metrics.align);
 
 			MutRange<byte> value_bytes = global_value_get_mut(interp->globals, member_value_id);
 
-			ASSERT_OR_IGNORE(value_bytes.count() == value_rst.bytes.count());
+			ASSERT_OR_IGNORE(value_bytes.count() == value_rst.success.bytes.count());
 
-			memcpy(value_bytes.begin(), value_rst.bytes.begin(), value_bytes.count());
+			memcpy(value_bytes.begin(), value_rst.success.bytes.begin(), value_bytes.count());
 		}
 
 		set_incomplete_type_member_info_by_rank(interp->types, file_type_id, member->rank, MemberCompletionInfo{
 			true,
 			true,
-			value_rst.type_id,
+			value_rst.success.type_id,
 			member_value_id
 		});
 	}
