@@ -23,7 +23,9 @@ struct alignas(8) ValueHeader
 
 struct alignas(8) SubvalueHeader
 {
-	u32 value_size;
+	u16 value_size;
+
+	u16 value_align;
 
 	u32 offset_from_root;
 
@@ -266,7 +268,7 @@ PartialValueId complete_partial_value_builder(PartialValuePool* partials, Partia
 	return static_cast<PartialValueId>(header_index(partials, header));
 }
 
-void release_partial_value_builder(PartialValuePool* partials, PartialValueBuilderId id) noexcept
+void discard_partial_value_builder(PartialValuePool* partials, PartialValueBuilderId id) noexcept
 {
 	ASSERT_OR_IGNORE(id != PartialValueBuilderId::INVALID);
 

@@ -1143,6 +1143,7 @@ MutRange<byte> partial_value_builder_add_value(PartialValuePool* partials, Parti
 
 PartialValueId complete_partial_value_builder(PartialValuePool* partials, PartialValueBuilderId id) noexcept;
 
+void discard_partial_value_builder(PartialValuePool* partials, PartialValueBuilderId id) noexcept;
 
 
 AstNode* root_of(PartialValuePool* partials, PartialValueId id) noexcept;
