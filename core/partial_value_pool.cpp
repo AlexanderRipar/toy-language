@@ -161,6 +161,15 @@ static SubvalueHeader* alloc_subheader(PartialValuePool* partials, ValueHeader* 
 	return subheader;
 }
 
+static void discard_header(PartialValuePool* partials, ValueHeader* header, u32* indirection, PartialValueBuilderId builder_id) noexcept
+{
+	*indirection = partials->first_free_builder_ind;
+
+	partials->first_free_builder_ind = static_cast<u32>(builder_id);
+
+	partials->values.dealloc({ reinterpret_cast<byte*>(header), header->capacity });
+}
+
 
 
 PartialValuePool* create_partial_value_pool(AllocPool* alloc) noexcept
@@ -276,11 +285,48 @@ void discard_partial_value_builder(PartialValuePool* partials, PartialValueBuild
 
 	ValueHeader* const header = header_at(partials, id, &indirection);
 
-	*indirection = partials->first_free_builder_ind;
+	return discard_header(partials, header, indirection, id);
+}
 
-	partials->first_free_builder_ind = static_cast<u32>(id);
+void merge_partial_value_builders(PartialValuePool* partials, PartialValueBuilderId dst_id, PartialValueBuilderId src_id) noexcept
+{
+	ASSERT_OR_IGNORE(dst_id != PartialValueBuilderId::INVALID && src_id != PartialValueBuilderId::INVALID);
 
-	partials->values.dealloc({ reinterpret_cast<byte*>(header), header->capacity });
+	u32* dst_indirection;
+
+	u32* src_indirection;
+
+	ValueHeader* dst_header = header_at(partials, dst_id, &dst_indirection);
+
+	ValueHeader* const src_header = header_at(partials, src_id, &src_indirection);
+
+	ASSERT_OR_IGNORE(is_descendant_of(dst_header->root, src_header->root));
+
+	// This is just an estimate; Due to alignment-induced padding, we may end
+	// up actually allocating more, but estimating first leads to fewer
+	// reallocations, and thus fewer moves.
+	// Also note that we subtract `sizeof(ValueHeader)` to avoid
+	// double-counting, as it is incuded in both `dst_header->used` and
+	// `src_header->used`.
+	if (dst_header->capacity < dst_header->used + src_header->used - sizeof(ValueHeader))
+		realloc_header(partials, dst_header, dst_indirection, dst_header->used + src_header->used - sizeof(ValueHeader) - dst_header->capacity);
+
+	SubvalueHeader* src_subheader = src_header->first_value_offset == 0
+		? nullptr
+		: subheader_at(src_header, src_header->first_value_offset);
+
+	while (src_subheader != nullptr)
+	{
+		SubvalueHeader* const dst_subheader = alloc_subheader(partials, dst_header, dst_indirection, src_header->root + src_subheader->offset_from_root, src_subheader->type_id, src_subheader->value_size, src_subheader->value_align);
+
+		memcpy(dst_subheader + 1, src_subheader + 1, src_subheader->value_size);
+
+		src_subheader = src_subheader->next_value_offset == 0
+			? nullptr
+			: subheader_at(src_subheader, src_subheader->next_value_offset);
+	}
+
+	discard_header(partials, src_header, src_indirection, src_id);
 }
 
 

@@ -1145,6 +1145,8 @@ PartialValueId complete_partial_value_builder(PartialValuePool* partials, Partia
 
 void discard_partial_value_builder(PartialValuePool* partials, PartialValueBuilderId id) noexcept;
 
+void merge_partial_value_builders(PartialValuePool* partials, PartialValueBuilderId dst_id, PartialValueBuilderId src_id) noexcept;
+
 
 AstNode* root_of(PartialValuePool* partials, PartialValueId id) noexcept;
 
