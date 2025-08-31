@@ -1128,14 +1128,12 @@ struct PartialValue
 
 struct PartialValueIterator
 {
-	const void* partial;
+	const void* header;
 
-	const void* curr;
-
-	const void* end;
+	const void* subheader;
 };
 
-PartialValuePool* create_partial_value_pool(AllocPool* alloc, AstPool* asts) noexcept;
+PartialValuePool* create_partial_value_pool(AllocPool* alloc) noexcept;
 
 void release_partial_value_pool(PartialValuePool* partials) noexcept;
 
