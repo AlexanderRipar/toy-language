@@ -1,6 +1,7 @@
 #include "core.hpp"
 
 #include "../infra/container.hpp"
+#include "../infra/inplace_sort.hpp"
 
 static constexpr u32 MIN_PARTIAL_VALUE_SIZE_LOG2 = 6;
 
@@ -13,8 +14,6 @@ struct alignas(8) ValueHeader
 	u32 used;
 
 	u32 capacity;
-
-	u32 count;
 
 	u32 first_value_offset;
 
@@ -34,6 +33,21 @@ struct alignas(8) SubvalueHeader
 	TypeId type_id;
 };
 
+struct SubvalueHeaderSortIdx
+{
+	u32 offset_from_root;
+
+	u32 offset_from_header;
+};
+
+struct SubvalueHeaderCompare
+{
+	static s32 compare(SubvalueHeaderSortIdx a, SubvalueHeaderSortIdx b) noexcept
+	{
+		return static_cast<s32>(a.offset_from_header - b.offset_from_header);
+	}
+};
+
 struct PartialValuePool
 {
 	u32 first_free_builder_ind;
@@ -41,6 +55,8 @@ struct PartialValuePool
 	ReservedVec<u32> builder_inds;
 
 	ReservedHeap<MIN_PARTIAL_VALUE_SIZE_LOG2, MAX_PARTIAL_VALUE_SIZE_LOG2> values;
+
+	ReservedVec<SubvalueHeaderSortIdx> sorting_array;
 
 	MutRange<byte> memory;
 };
@@ -50,6 +66,16 @@ struct PartialValuePool
 static u32 header_index(PartialValuePool* partials, ValueHeader* header) noexcept
 {
 	return static_cast<u32>(reinterpret_cast<const u64*>(header) - static_cast<const u64*>(partials->values.begin()));
+}
+
+static s32 subheader_index(SubvalueHeader* from, SubvalueHeader* to) noexcept
+{
+	return static_cast<s32>(reinterpret_cast<u64*>(to) - reinterpret_cast<u64*>(from));
+}
+
+static u32 subheader_index(ValueHeader* from, SubvalueHeader* to) noexcept
+{
+	return static_cast<u32>(reinterpret_cast<u64*>(to) - reinterpret_cast<u64*>(from));
 }
 
 static ValueHeader* header_at(PartialValuePool* partials, PartialValueId id) noexcept
@@ -68,14 +94,14 @@ static ValueHeader* header_at(PartialValuePool* partials, PartialValueBuilderId 
 	return header_at(partials, static_cast<PartialValueId>(builder_ind));
 }
 
-static const SubvalueHeader* subheader_at(const ValueHeader* header, u32 offset)
+static SubvalueHeader* subheader_at(ValueHeader* header, u32 offset)
 {
-	return reinterpret_cast<const SubvalueHeader*>(reinterpret_cast<const u64*>(header) + offset);
+	return reinterpret_cast<SubvalueHeader*>(reinterpret_cast<u64*>(header) + offset);
 }
 
-static const SubvalueHeader* subheader_at(const SubvalueHeader* header, s32 offset) noexcept
+static SubvalueHeader* subheader_at(SubvalueHeader* header, s32 offset) noexcept
 {
-	return reinterpret_cast<const SubvalueHeader*>(reinterpret_cast<const u64*>(header) + offset);
+	return reinterpret_cast<SubvalueHeader*>(reinterpret_cast<u64*>(header) + offset);
 }
 
 static ValueHeader* alloc_header(PartialValuePool* partials, AstNode* root) noexcept
@@ -86,8 +112,8 @@ static ValueHeader* alloc_header(PartialValuePool* partials, AstNode* root) noex
 	header->root = root;
 	header->used = sizeof(ValueHeader);
 	header->capacity = static_cast<u32>(memory.count());
-	header->count = 0;
 	header->first_value_offset = 0;
+	header->last_value_offset = 0;
 
 	return header;
 }
@@ -136,7 +162,7 @@ static SubvalueHeader* alloc_subheader(PartialValuePool* partials, ValueHeader* 
 		subheader = reinterpret_cast<SubvalueHeader*>(free_aligned - sizeof(SubvalueHeader));
 	}
 
-	const u32 offset = static_cast<u32>(reinterpret_cast<byte*>(header) - reinterpret_cast<byte*>(subheader));
+	const u32 offset = subheader_index(header, subheader);
 
 	if (header->last_value_offset == 0)
 	{
@@ -148,17 +174,29 @@ static SubvalueHeader* alloc_subheader(PartialValuePool* partials, ValueHeader* 
 
 		ASSERT_OR_IGNORE(prev->next_value_offset == 0);
 
-		prev->next_value_offset = static_cast<u32>(reinterpret_cast<byte*>(prev) - reinterpret_cast<byte*>(subheader));
+		prev->next_value_offset = subheader_index(prev, subheader);
 	}
 
 	header->last_value_offset = offset;
 
 	subheader->value_size = size;
+	subheader->value_align = align;
 	subheader->offset_from_root = static_cast<u32>(node - header->root);
 	subheader->next_value_offset = 0;
 	subheader->type_id = type_id;
 
 	return subheader;
+}
+
+static PartialValueIterator iterator_from_header(ValueHeader* header) noexcept
+{
+	PartialValueIterator it;
+	it.header = header;
+	it.subheader = header->first_value_offset == 0
+		? nullptr
+		: subheader_at(header, header->first_value_offset);
+
+	return it;
 }
 
 static void discard_header(PartialValuePool* partials, ValueHeader* header, u32* indirection, PartialValueBuilderId builder_id) noexcept
@@ -170,11 +208,50 @@ static void discard_header(PartialValuePool* partials, ValueHeader* header, u32*
 	partials->values.dealloc({ reinterpret_cast<byte*>(header), header->capacity });
 }
 
+static void sort_subheaders_by_offset_from_root(PartialValuePool* partials, ValueHeader* header) noexcept
+{
+	if (header->first_value_offset == 0)
+		return;
+
+	SubvalueHeader* subheader = subheader_at(header, header->first_value_offset);
+
+	while (true)
+	{
+		partials->sorting_array.append({ subheader->offset_from_root, subheader_index(header, subheader) });
+
+		if (subheader->next_value_offset == 0)
+			break;
+
+		subheader = subheader_at(subheader, subheader->next_value_offset);
+	}
+
+	inplace_sort<SubvalueHeaderSortIdx, SubvalueHeaderCompare>({ partials->sorting_array.begin(), partials->sorting_array.used() });
+
+	header->first_value_offset = partials->sorting_array.begin()->offset_from_header;
+
+	u32 prev_offset = partials->sorting_array.begin()->offset_from_header;
+
+	for (u32 i = 1; i != partials->sorting_array.used(); ++i)
+	{
+		SubvalueHeader* const prev_subheader = subheader_at(header, prev_offset);
+
+		const u32 next_offset = partials->sorting_array.begin()[i].offset_from_header;
+
+		prev_subheader->next_value_offset = static_cast<s32>(next_offset - prev_offset);
+
+		prev_offset = next_offset;
+	}
+
+	header->last_value_offset = prev_offset;
+}
+
 
 
 PartialValuePool* create_partial_value_pool(AllocPool* alloc) noexcept
 {
 	static constexpr u32 BUILDER_INDS_SIZE = (1 << 14) * sizeof(u32);
+
+	static constexpr u32 SORTING_ARRAY_SIZE = 1024 * sizeof(SubvalueHeaderSortIdx);
 
 	static constexpr u32 VALUES_CAPACITIES[MAX_PARTIAL_VALUE_SIZE_LOG2 - MIN_PARTIAL_VALUE_SIZE_LOG2 + 1] = {
 		131072, 65536, 32768, 16384,
@@ -195,7 +272,7 @@ PartialValuePool* create_partial_value_pool(AllocPool* alloc) noexcept
 
 	ASSERT_OR_IGNORE(total_values_size <= UINT32_MAX);
 
-	byte* const memory = static_cast<byte*>(minos::mem_reserve(total_values_size + BUILDER_INDS_SIZE));
+	byte* const memory = static_cast<byte*>(minos::mem_reserve(total_values_size + BUILDER_INDS_SIZE + SORTING_ARRAY_SIZE));
 
 	if (memory == nullptr)
 		panic("Could not reserve memory for PartialValuePool (0x%X).\n", minos::last_error());
@@ -203,7 +280,8 @@ PartialValuePool* create_partial_value_pool(AllocPool* alloc) noexcept
 	PartialValuePool* const partials = static_cast<PartialValuePool*>(alloc_from_pool(alloc, sizeof(PartialValuePool), alignof(PartialValuePool)));
 	partials->values.init({ memory, total_values_size }, Range{ VALUES_CAPACITIES }, Range{ VALUES_COMMITS });
 	partials->builder_inds.init({ memory + total_values_size, BUILDER_INDS_SIZE }, 4096 / sizeof(u32));
-	partials->memory = { memory, total_values_size + BUILDER_INDS_SIZE };
+	partials->sorting_array.init({ memory + total_values_size + BUILDER_INDS_SIZE, SORTING_ARRAY_SIZE }, 4096 / sizeof(SubvalueHeaderSortIdx));
+	partials->memory = { memory, total_values_size + BUILDER_INDS_SIZE + SORTING_ARRAY_SIZE };
 
 	// Reserve `PartialValueId::INVALID`.
 	(void) partials->values.alloc(1);
@@ -273,6 +351,8 @@ PartialValueId complete_partial_value_builder(PartialValuePool* partials, Partia
 	*indirection = partials->first_free_builder_ind;
 
 	partials->first_free_builder_ind = static_cast<u32>(id);
+
+	sort_subheaders_by_offset_from_root(partials, header);
 
 	return static_cast<PartialValueId>(header_index(partials, header));
 }
@@ -346,13 +426,7 @@ PartialValueIterator values_of(PartialValuePool* partials, PartialValueId id) no
 
 	ValueHeader* const header = header_at(partials, id);
 
-	PartialValueIterator it;
-	it.header = header;
-	it.subheader = header->first_value_offset == 0
-		? nullptr
-		: subheader_at(header, header->first_value_offset);
-
-	return it;
+	return iterator_from_header(header);
 }
 
 bool has_next(const PartialValueIterator* it) noexcept
@@ -375,7 +449,7 @@ PartialValue next(PartialValueIterator* it) noexcept
 
 	it->subheader = subheader->next_value_offset == 0
 		? nullptr
-		: subheader_at(subheader, subheader->next_value_offset);
+		: subheader_at(const_cast<SubvalueHeader*>(subheader), subheader->next_value_offset);
 
 	return rst;
 }
