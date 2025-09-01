@@ -1342,8 +1342,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		SignatureInfo info = get_signature_info(node);
 
-		AstDirectChildIterator params = direct_children_of(info.parameters);
-
 		const TypeId parameter_list_type_id = create_open_type(interp->types, active_arec_type_id(interp), source_id_of(interp->asts, info.parameters), TypeDisposition::Signature);
 
 		const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, 0, 1, active_arec_id(interp), ArecKind::Unbound);
@@ -1351,6 +1349,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		Arec* const parameter_list_arec = arec_from_id(interp, parameter_list_arec_id);
 
 		u8 param_count = 0;
+
+		AstDirectChildIterator params = direct_children_of(info.parameters);
 
 		while (has_next(&params))
 		{
@@ -1526,7 +1526,48 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		if (outermost_unbound < parameter_list_arec)
 		{
+			// Merge the inner (current) `PartialValueBuilder` into the outer
+			// one. Since completed members aren't stored in the current
+			// builder, add them as well.
+			// Note that we add them directly to the outer builder instead of
+			// the inner to avoid redundant copies from inner to outer.
+
 			pop_and_merge_partial_value_builder(interp);
+
+			MemberIterator complete_members = members_of(interp->types, parameter_list_type_id);
+
+			AstDirectChildIterator complete_params = direct_children_of(info.parameters);
+
+			while (has_next(&complete_members))
+			{
+				const Member* const member = next(&complete_members);
+
+				AstNode* const param = next(&complete_params);
+
+				DefinitionInfo param_info = get_definition_info(param);
+
+				if (is_some(param_info.type) && !member->has_pending_type)
+				{
+					MutRange<byte> type_dst = add_partial_value_to_builder(interp, get_ptr(param_info.type), type_type_id, sizeof(TypeId), alignof(TypeId));
+
+					store_loc(type_dst, member->type.complete);
+				}
+
+				if (is_some(param_info.value) && !member->has_pending_value)
+				{
+					ASSERT_OR_IGNORE(!member->has_pending_type);
+
+					const TypeMetrics metrics = type_metrics_from_id(interp->types, member->type.complete);
+
+					MutRange<byte> value_dst = add_partial_value_to_builder(interp, get_ptr(param_info.value), member->type.complete, metrics.size, metrics.align);
+
+					Range<byte> value_src = global_value_get(interp->globals, member->value.complete);
+
+					copy_loc(value_dst, value_src);
+				}
+			}
+
+			ASSERT_OR_IGNORE(!has_next(&complete_params));
 
 			return eval_unbound(outermost_unbound);
 		}
