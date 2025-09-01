@@ -507,7 +507,20 @@ static void push_partial_value_builder(Interpreter* interp, AstNode* root) noexc
 	interp->partial_value_builders.append(builder_id);
 }
 
-static PartialValueId pop_partial_value_builder(Interpreter* interp) noexcept
+static void pop_and_merge_partial_value_builder(Interpreter* interp) noexcept
+{
+	ASSERT_OR_IGNORE(interp->partial_value_builders.used() >= 2);
+
+	const PartialValueBuilderId inner_builder_id = interp->partial_value_builders.end()[-1];
+
+	const PartialValueBuilderId outer_builder_id = interp->partial_value_builders.end()[-2];
+
+	merge_partial_value_builders(interp->partials, outer_builder_id, inner_builder_id);
+
+	interp->partial_value_builders.pop_by(1);
+}
+
+static PartialValueId pop_and_complete_partial_value_builder(Interpreter* interp) noexcept
 {
 	ASSERT_OR_IGNORE(interp->partial_value_builders.used() != 0);
 
@@ -516,6 +529,17 @@ static PartialValueId pop_partial_value_builder(Interpreter* interp) noexcept
 	interp->partial_value_builders.pop_by(1);
 
 	return complete_partial_value_builder(interp->partials, builder_id);
+}
+
+void pop_and_discard_partial_value_builder(Interpreter* interp) noexcept
+{
+	ASSERT_OR_IGNORE(interp->partial_value_builders.used() != 0);
+
+	const PartialValueBuilderId builder_id = interp->partial_value_builders.end()[-1];
+
+	discard_partial_value_builder(interp->partials, builder_id);
+
+	interp->partial_value_builders.pop_by(1);
 }
 
 static MutRange<byte> add_partial_value_to_builder(Interpreter* interp, AstNode* node, TypeId type_id, u64 size, u32 align) noexcept
@@ -1456,18 +1480,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				}
 			}
 
-			if (member_type_id != TypeId::INVALID)
-			{
-				const TypeTag member_type_tag = type_tag_from_id(interp->types, member_type_id);
-
-				if (member_type_tag == TypeTag::Func || member_type_tag == TypeTag::Builtin)
-				{
-					const SignatureType member_type = *static_cast<const SignatureType*>(simple_type_structure_from_id(interp->types, member_type_id));
-
-					// TODO
-				}
-			}
-
 			set_incomplete_type_member_info_by_rank(interp->types, parameter_list_type_id, member->rank, MemberCompletionInfo{
 				member->has_pending_type && member_type_id != TypeId::INVALID,
 				member->has_pending_value && member_value_id != GlobalValueId::INVALID,
@@ -1512,35 +1524,48 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		arec_pop(interp, parameter_list_arec_id);
 
-		const PartialValueId partial_value_id = pop_partial_value_builder(interp);
-
 		if (outermost_unbound < parameter_list_arec)
+		{
+			pop_and_merge_partial_value_builder(interp);
+
 			return eval_unbound(outermost_unbound);
+		}
+		else
+		{
+			PartialValueId partial_value_id;
 
-		ASSERT_OR_IGNORE(outermost_unbound == parameter_list_arec || outermost_unbound == parameter_list_arec + 1);
+			if (has_unbound_parameter || has_unbound_return_type)
+			{
+				partial_value_id = pop_and_complete_partial_value_builder(interp);
+			}
+			else
+			{
+				pop_and_discard_partial_value_builder(interp);
 
-		SignatureType signature_type{};
-		signature_type.parameter_list_type_id = parameter_list_type_id;
-		signature_type.param_count = param_count;
-		signature_type.is_proc = has_flag(node, AstFlag::Signature_IsProc);
-		signature_type.parameter_list_is_unbound = has_unbound_parameter;
-		signature_type.return_type_is_unbound = has_unbound_return_type;
+				partial_value_id = PartialValueId::INVALID;
+			}
 
-		if (has_unbound_parameter || has_unbound_return_type)
+			ASSERT_OR_IGNORE(outermost_unbound == parameter_list_arec || outermost_unbound == parameter_list_arec + 1);
+
+			SignatureType signature_type{};
+			signature_type.parameter_list_type_id = parameter_list_type_id;
 			signature_type.partial_value_id = partial_value_id;
-		else
-			signature_type.partial_value_id = PartialValueId::INVALID;
+			signature_type.param_count = param_count;
+			signature_type.is_proc = has_flag(node, AstFlag::Signature_IsProc);
+			signature_type.parameter_list_is_unbound = has_unbound_parameter;
+			signature_type.return_type_is_unbound = has_unbound_return_type;
 
-		if (has_unbound_return_type)
-			signature_type.return_type.partial_root = id_from_ast_node(interp->asts, get_ptr(info.return_type));
-		else
-			signature_type.return_type.complete = return_type_id;
+			if (has_unbound_return_type)
+				signature_type.return_type.partial_root = id_from_ast_node(interp->asts, get_ptr(info.return_type));
+			else
+				signature_type.return_type.complete = return_type_id;
 
-		const TypeId signature_type_id = simple_type(interp->types, TypeTag::Func, range::from_object_bytes(&signature_type));
+			const TypeId signature_type_id = simple_type(interp->types, TypeTag::Func, range::from_object_bytes(&signature_type));
 
-		store_loc(rst.success.bytes, signature_type_id);
+			store_loc(rst.success.bytes, signature_type_id);
 
-		return rst;
+			return rst;
+		}
 	}
 
 	case AstTag::Identifier:
