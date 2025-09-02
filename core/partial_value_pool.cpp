@@ -1,292 +1,293 @@
 #include "core.hpp"
 
 #include "../infra/container.hpp"
-#include "../infra/hash.hpp"
+#include "../infra/inplace_sort.hpp"
 
-static constexpr u32 MIN_ELEM_SIZE_LOG2 = 2;
+static constexpr u32 MIN_PARTIAL_VALUE_SIZE_LOG2 = 6;
 
-static constexpr u32 MAX_ELEM_SIZE_LOG2 = 16;
+static constexpr u32 MAX_PARTIAL_VALUE_SIZE_LOG2 = 16;
 
-struct alignas(8) ClosedValue;
-
-static u32 strides_of(const ClosedValue* value) noexcept;
-
-static bool partial_value_equality(const ClosedValue* a, const ClosedValue* b) noexcept;
-
-struct alignas(8) ClosedElem
+struct alignas(8) ValueHeader
 {
-	u32 data_size;
+	AstNode* root;
 
-	u32 data_offset;
+	u32 used;
 
-	u32 node_offset;
+	u32 capacity;
+
+	u32 first_value_offset;
+
+	u32 last_value_offset;
+};
+
+struct alignas(8) SubvalueHeader
+{
+	u16 value_size;
+
+	u16 value_align;
+
+	u32 offset_from_root;
+
+	s32 next_value_offset;
 
 	TypeId type_id;
 };
 
-struct ClosedValueHeader
+struct SubvalueHeaderSortIdx
 {
-	AstNode* root;
+	u32 offset_from_root;
 
-	u32 m_hash;
-
-	u32 count;
+	u32 offset_from_header;
 };
 
-struct alignas(8) ClosedValue
+struct SubvalueHeaderCompare
 {
-	ClosedValueHeader header;
-
-	#if COMPILER_MSVC
-	#pragma warning(push)
-	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
-	#elif COMPILER_CLANG
-	#pragma clang diagnostic push
-	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
-	#elif COMPILER_GCC
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
-	#endif
-	ClosedElem elems[];
-	#if COMPILER_MSVC
-	#pragma warning(pop)
-	#elif COMPILER_CLANG
-	#pragma clang diagnostic pop
-	#elif COMPILER_GCC
-	#pragma GCC diagnostic pop
-	#endif
-
-	static constexpr u32 stride() noexcept
+	static s32 compare(SubvalueHeaderSortIdx a, SubvalueHeaderSortIdx b) noexcept
 	{
-		return 8;
+		return static_cast<s32>(a.offset_from_header - b.offset_from_header);
 	}
-
-	static u32 required_strides(const ClosedValue* key) noexcept
-	{
-		return strides_of(key);
-	}
-
-	u32 used_strides() const noexcept
-	{
-		return strides_of(this);
-	}
-
-	u32 hash() const noexcept
-	{
-		return header.m_hash;
-	}
-
-	bool equal_to_key(const ClosedValue* key, [[maybe_unused]] u32 key_hash) const noexcept
-	{
-		return partial_value_equality(key, this);
-	}
-
-	void init(const ClosedValue* key, [[maybe_unused]] u32 key_hash) noexcept
-	{
-		memcpy(this, key, strides_of(key) * stride());
-	}
-};
-
-struct alignas(8) OpenElem
-{
-	ClosedElem value;
-
-	u32 align;
-
-	u32 next_index;
-};
-
-struct alignas(8) OpenValue
-{
-	u32 count;
-
-	u32 first_index;
-
-	AstNode* root;
-
-	OpenElem* last;
 };
 
 struct PartialValuePool
 {
-	AstPool* asts;
+	u32 first_free_builder_ind;
 
-	IndexMap<const ClosedValue*, ClosedValue> closed;
+	ReservedVec<u32> builder_inds;
 
-	ReservedVec<ClosedValue> closed_buffer;
+	ReservedHeap<MIN_PARTIAL_VALUE_SIZE_LOG2, MAX_PARTIAL_VALUE_SIZE_LOG2> values;
 
-	ReservedVec<OpenValue> open;
-
-	ReservedVec<OpenElem> open_values;
-
-	u32 first_free_open_index;
-
-	u32 first_free_open_value_index;
-
-	ReservedHeap<MIN_ELEM_SIZE_LOG2, MAX_ELEM_SIZE_LOG2> open_data;
+	ReservedVec<SubvalueHeaderSortIdx> sorting_array;
 
 	MutRange<byte> memory;
 };
 
 
 
-static PartialValueIterator iterator_from_ptr(const ClosedValue* partial) noexcept
+static u32 header_index(PartialValuePool* partials, ValueHeader* header) noexcept
+{
+	return static_cast<u32>(reinterpret_cast<const u64*>(header) - static_cast<const u64*>(partials->values.begin()));
+}
+
+static s32 subheader_index(SubvalueHeader* from, SubvalueHeader* to) noexcept
+{
+	return static_cast<s32>(reinterpret_cast<u64*>(to) - reinterpret_cast<u64*>(from));
+}
+
+static u32 subheader_index(ValueHeader* from, SubvalueHeader* to) noexcept
+{
+	return static_cast<u32>(reinterpret_cast<u64*>(to) - reinterpret_cast<u64*>(from));
+}
+
+static ValueHeader* header_at(PartialValuePool* partials, PartialValueId id) noexcept
+{
+	return reinterpret_cast<ValueHeader*>(static_cast<u64*>(partials->values.begin()) + static_cast<u32>(id));
+}
+
+static ValueHeader* header_at(PartialValuePool* partials, PartialValueBuilderId id, u32** out_indirection) noexcept
+{
+	u32* const indirection = partials->builder_inds.begin() + static_cast<u32>(id);
+
+	const u32 builder_ind = *indirection;
+
+	*out_indirection = indirection;
+
+	return header_at(partials, static_cast<PartialValueId>(builder_ind));
+}
+
+static SubvalueHeader* subheader_at(ValueHeader* header, u32 offset)
+{
+	return reinterpret_cast<SubvalueHeader*>(reinterpret_cast<u64*>(header) + offset);
+}
+
+static SubvalueHeader* subheader_at(SubvalueHeader* header, s32 offset) noexcept
+{
+	return reinterpret_cast<SubvalueHeader*>(reinterpret_cast<u64*>(header) + offset);
+}
+
+static ValueHeader* alloc_header(PartialValuePool* partials, AstNode* root) noexcept
+{
+	MutRange<byte> memory = partials->values.alloc(sizeof(ValueHeader));
+
+	ValueHeader* const header = reinterpret_cast<ValueHeader*>(memory.begin());
+	header->root = root;
+	header->used = sizeof(ValueHeader);
+	header->capacity = static_cast<u32>(memory.count());
+	header->first_value_offset = 0;
+	header->last_value_offset = 0;
+
+	return header;
+}
+
+static ValueHeader* realloc_header(PartialValuePool* partials, ValueHeader* old_header, u32* indirection, u32 extra_size) noexcept
+{
+	MutRange<byte> new_memory = partials->values.alloc(old_header->used + extra_size);
+
+	ValueHeader* const new_header = reinterpret_cast<ValueHeader*>(new_memory.begin());
+	memcpy(new_header, old_header, old_header->used);
+	new_header->capacity = static_cast<u32>(new_memory.count());
+
+	*indirection = header_index(partials, new_header);
+
+	partials->values.dealloc({ reinterpret_cast<byte*>(old_header), old_header->capacity });
+
+	return new_header;
+}
+
+static SubvalueHeader* alloc_subheader(PartialValuePool* partials, ValueHeader* header, u32* indirection, AstNode* node, TypeId type_id, u16 size, u16 align) noexcept
+{
+	byte* free_begin = reinterpret_cast<byte*>(header) + header->used + sizeof(SubvalueHeader);
+
+	byte* free_aligned = reinterpret_cast<byte*>(next_multiple(reinterpret_cast<u64>(free_begin), static_cast<u64>(align)));
+
+	byte* const free_end = reinterpret_cast<byte*>(header) + header->capacity;
+
+	const u32 free_size = static_cast<u32>(free_end - free_aligned);
+
+	SubvalueHeader* subheader;
+
+	if (free_size < size)
+	{
+		header = realloc_header(partials, header, indirection, size - free_size);
+
+		free_begin = reinterpret_cast<byte*>(header) + header->used + sizeof(SubvalueHeader);
+
+		free_aligned = reinterpret_cast<byte*>(next_multiple(reinterpret_cast<u64>(free_begin), static_cast<u64>(align)));
+
+		ASSERT_OR_IGNORE(reinterpret_cast<byte*>(header) + header->capacity >= free_aligned + size);
+
+		subheader = reinterpret_cast<SubvalueHeader*>(free_aligned - sizeof(SubvalueHeader));
+	}
+	else
+	{
+		subheader = reinterpret_cast<SubvalueHeader*>(free_aligned - sizeof(SubvalueHeader));
+	}
+
+	const u32 offset = subheader_index(header, subheader);
+
+	if (header->last_value_offset == 0)
+	{
+		header->first_value_offset = offset;
+	}
+	else
+	{
+		SubvalueHeader* const prev = reinterpret_cast<SubvalueHeader*>(reinterpret_cast<byte*>(header) + header->last_value_offset);
+
+		ASSERT_OR_IGNORE(prev->next_value_offset == 0);
+
+		prev->next_value_offset = subheader_index(prev, subheader);
+	}
+
+	header->last_value_offset = offset;
+
+	subheader->value_size = size;
+	subheader->value_align = align;
+	subheader->offset_from_root = static_cast<u32>(node - header->root);
+	subheader->next_value_offset = 0;
+	subheader->type_id = type_id;
+
+	return subheader;
+}
+
+static PartialValueIterator iterator_from_header(ValueHeader* header) noexcept
 {
 	PartialValueIterator it;
-	it.partial = partial;
-	it.curr = partial->elems;
-	it.end = partial->elems + partial->header.count;
+	it.header = header;
+	it.subheader = header->first_value_offset == 0
+		? nullptr
+		: subheader_at(header, header->first_value_offset);
 
 	return it;
 }
 
-static u32 strides_of(const ClosedValue* partial) noexcept
+static void discard_header(PartialValuePool* partials, ValueHeader* header, u32* indirection, PartialValueBuilderId builder_id) noexcept
 {
-	static_assert(sizeof(ClosedValue) % ClosedValue::stride() == 0);
+	*indirection = partials->first_free_builder_ind;
 
-	if (partial->header.count == 0)
-		return sizeof(ClosedValue) / ClosedValue::stride();
+	partials->first_free_builder_ind = static_cast<u32>(builder_id);
 
-	const u64 required_size = static_cast<u64>(sizeof(ClosedValue)) + partial->header.count * sizeof(ClosedElem) + partial->elems[partial->header.count - 1].data_offset;
-
-	return static_cast<u32>(required_size / ClosedValue::stride());
+	partials->values.dealloc({ reinterpret_cast<byte*>(header), header->capacity });
 }
 
-static bool partial_value_equality(const ClosedValue* a, const ClosedValue* b) noexcept
+static void sort_subheaders_by_offset_from_root(PartialValuePool* partials, ValueHeader* header) noexcept
 {
-	if (a->header.m_hash != b->header.m_hash || a->header.count != b->header.count)
-		return false;
+	if (header->first_value_offset == 0)
+		return;
 
-	const AstNode* node_a = a->header.root;
+	SubvalueHeader* subheader = subheader_at(header, header->first_value_offset);
 
-	const AstNode* node_b = b->header.root;
-
-	PartialValueIterator it_a = iterator_from_ptr(a);
-
-	PartialValueIterator it_b = iterator_from_ptr(b);
-
-	while (has_next(&it_a))
+	while (true)
 	{
-		const PartialValue val_a = next(&it_a);
+		partials->sorting_array.append({ subheader->offset_from_root, subheader_index(header, subheader) });
 
-		const PartialValue val_b = next(&it_b);
+		if (subheader->next_value_offset == 0)
+			break;
 
-		if (val_a.type_id != val_b.type_id)
-			return false;
-
-		ASSERT_OR_IGNORE(val_a.data.count() == val_b.data.count());
-
-		if (memcmp(val_a.data.begin(), val_b.data.begin(), val_a.data.count()) != 0)
-			return false;
-
-		while (node_a != val_a.node)
-		{
-			if (node_b == val_b.node)
-				return false;
-
-			if (node_a->own_qwords != node_b->own_qwords || memcmp(node_a, node_b, node_a->own_qwords * sizeof(u64)) != 0)
-				return false;
-
-			node_a += node_a->own_qwords;
-
-			node_b += node_b->own_qwords;
-		}
+		subheader = subheader_at(subheader, subheader->next_value_offset);
 	}
 
-	return true;
+	inplace_sort<SubvalueHeaderSortIdx, SubvalueHeaderCompare>({ partials->sorting_array.begin(), partials->sorting_array.used() });
+
+	header->first_value_offset = partials->sorting_array.begin()->offset_from_header;
+
+	u32 prev_offset = partials->sorting_array.begin()->offset_from_header;
+
+	for (u32 i = 1; i != partials->sorting_array.used(); ++i)
+	{
+		SubvalueHeader* const prev_subheader = subheader_at(header, prev_offset);
+
+		const u32 next_offset = partials->sorting_array.begin()[i].offset_from_header;
+
+		prev_subheader->next_value_offset = static_cast<s32>(next_offset - prev_offset);
+
+		prev_offset = next_offset;
+	}
+
+	header->last_value_offset = prev_offset;
 }
 
-static u32 hash_closed_value(const ClosedValue* partial) noexcept
+
+
+PartialValuePool* create_partial_value_pool(AllocPool* alloc) noexcept
 {
-	const byte* data_begin = reinterpret_cast<const byte*>(partial->elems + partial->header.count);
+	static constexpr u32 BUILDER_INDS_SIZE = (1 << 14) * sizeof(u32);
 
-	u64 data_size;
+	static constexpr u32 SORTING_ARRAY_SIZE = 1024 * sizeof(SubvalueHeaderSortIdx);
 
-	if (partial->header.count == 0)
-	{
-		data_size = 0;
-	}
-	else
-	{
-		const ClosedElem* const last_elem = partial->elems + partial->header.count - 1;
-
-		data_size = last_elem->data_offset - sizeof(ClosedElem);
-	}
-
-	return fnv1a({ data_begin, data_size });
-}
-
-static Range<byte> data_of(const ClosedElem* partial) noexcept
-{
-	return { reinterpret_cast<const byte*>(partial) + partial->data_offset, partial->data_size };
-};
-
-
-
-PartialValuePool* create_partial_value_pool(AllocPool* alloc, AstPool* asts) noexcept
-{
-	static constexpr u32 CLOSED_SIZE = (1 << 20) * sizeof(ClosedValue);
-
-	static constexpr u32 OPEN_SIZE = (1 << 16) * sizeof(OpenValue);
-
-	static constexpr u32 OPEN_VALUES_SIZE = (1 << 20) * sizeof(OpenElem);
-
-	static constexpr u32 OPEN_DATA_CAPACITIES[MAX_ELEM_SIZE_LOG2 - MIN_ELEM_SIZE_LOG2 + 1] = {
-		131072, 65536, 32768, 16384, 8192,
-		  4096,  2048,  1024,   512,  512,
-		   256,   256,   128,   128,   64,
+	static constexpr u32 VALUES_CAPACITIES[MAX_PARTIAL_VALUE_SIZE_LOG2 - MIN_PARTIAL_VALUE_SIZE_LOG2 + 1] = {
+		131072, 65536, 32768, 16384,
+		  8192,  4096,  2048,  1024,
+		   512,  256,    128,
 	};
 
-	static constexpr u32 OPEN_DATA_COMMITS[MAX_ELEM_SIZE_LOG2 - MIN_ELEM_SIZE_LOG2 + 1] = {
-		4096, 2048, 1024, 512, 256,
-		 128,   64,   32,  16,   8,
-		   4,    2,    1,   1,   1,
+	static constexpr u32 VALUES_COMMITS[MAX_PARTIAL_VALUE_SIZE_LOG2 - MIN_PARTIAL_VALUE_SIZE_LOG2 + 1] = {
+		1024, 512, 256, 128,
+		  64,   32,  16,  8,
+		   4,    2,   1,
 	};
 
-	u64 open_data_size = 0;
+	u64 total_values_size = 0;
 
-	for (u32 i = 0; i != array_count(OPEN_DATA_CAPACITIES); ++i)
-		open_data_size += static_cast<u64>(OPEN_DATA_CAPACITIES[i]) << (i + MIN_ELEM_SIZE_LOG2);
+	for (u32 i = 0; i != array_count(VALUES_CAPACITIES); ++i)
+		total_values_size += static_cast<u64>(VALUES_CAPACITIES[i]) << (i + MIN_PARTIAL_VALUE_SIZE_LOG2);
 
-	ASSERT_OR_IGNORE(open_data_size <= UINT32_MAX);
+	ASSERT_OR_IGNORE(total_values_size <= UINT32_MAX);
 
-	PartialValuePool* const partials = static_cast<PartialValuePool*>(alloc_from_pool(alloc, sizeof(PartialValuePool), alignof(PartialValuePool)));
-
-	byte* const memory = static_cast<byte*>(minos::mem_reserve(CLOSED_SIZE + OPEN_SIZE + OPEN_VALUES_SIZE + open_data_size));
+	byte* const memory = static_cast<byte*>(minos::mem_reserve(total_values_size + BUILDER_INDS_SIZE + SORTING_ARRAY_SIZE));
 
 	if (memory == nullptr)
 		panic("Could not reserve memory for PartialValuePool (0x%X).\n", minos::last_error());
 
-	partials->asts = asts;
+	PartialValuePool* const partials = static_cast<PartialValuePool*>(alloc_from_pool(alloc, sizeof(PartialValuePool), alignof(PartialValuePool)));
+	partials->values.init({ memory, total_values_size }, Range{ VALUES_CAPACITIES }, Range{ VALUES_COMMITS });
+	partials->builder_inds.init({ memory + total_values_size, BUILDER_INDS_SIZE }, 4096 / sizeof(u32));
+	partials->sorting_array.init({ memory + total_values_size + BUILDER_INDS_SIZE, SORTING_ARRAY_SIZE }, 4096 / sizeof(SubvalueHeaderSortIdx));
+	partials->memory = { memory, total_values_size + BUILDER_INDS_SIZE + SORTING_ARRAY_SIZE };
 
-	partials->closed.init(1 << 24, 1 << 9, 1 << 26, 1 << 10);
+	// Reserve `PartialValueId::INVALID`.
+	(void) partials->values.alloc(1);
 
-	partials->closed_buffer.init({ memory, CLOSED_SIZE }, static_cast<u32>(1) << 11);
-
-	u64 offset = CLOSED_SIZE;
-
-	partials->open.init({ memory + offset, OPEN_SIZE }, static_cast<u32>(1) << 10);
-
-	offset += OPEN_SIZE;
-
-	partials->open_values.init({ memory + offset, OPEN_VALUES_SIZE }, static_cast<u32>(1) << 11);
-
-	offset += OPEN_VALUES_SIZE;
-
-	partials->open_data.init({ memory + offset, open_data_size }, Range{ OPEN_DATA_CAPACITIES }, Range{ OPEN_DATA_COMMITS });
-
-	offset += open_data_size;
-
-	partials->memory = { memory, offset };
-
-	partials->first_free_open_index = 0;
-
-	partials->first_free_open_value_index = 0;
-
-	ClosedValueHeader dummy_closed{};
-	(void) partials->closed.value_from(reinterpret_cast<ClosedValue*>(&dummy_closed), hash_closed_value(reinterpret_cast<ClosedValue*>(&dummy_closed)));
-
-	(void) partials->open.reserve();
+	// Reserve `PartialValueBuilderId::INVALID`.
+	(void) partials->builder_inds.reserve();
 
 	return partials;
 }
@@ -298,138 +299,157 @@ void release_partial_value_pool(PartialValuePool* partials) noexcept
 
 PartialValueBuilderId create_partial_value_builder(PartialValuePool* partials, AstNode* root) noexcept
 {
-	OpenValue* const partial = partials->open.reserve();
-	partial->count = 0;
-	partial->first_index = 0;
-	partial->root = root;
-	partial->last = nullptr;
+	ValueHeader* const header = alloc_header(partials, root);
 
-	return static_cast<PartialValueBuilderId>(partial - partials->open.begin()); 
+	u32* builder;
+
+	if (partials->first_free_builder_ind == 0)
+	{
+		builder = partials->builder_inds.reserve();
+	}
+	else
+	{
+		builder = partials->builder_inds.begin() + partials->first_free_builder_ind;
+
+		partials->first_free_builder_ind = *builder;
+	}
+
+	*builder = header_index(partials, header);
+
+	return static_cast<PartialValueBuilderId>(builder - partials->builder_inds.begin());
 }
 
 MutRange<byte> partial_value_builder_add_value(PartialValuePool* partials, PartialValueBuilderId id, AstNode* node, TypeId type_id, u64 size, u32 align) noexcept
 {
-	if (size > UINT32_MAX)
+	ASSERT_OR_IGNORE(id != PartialValueBuilderId::INVALID);
+
+	if (size > UINT16_MAX)
 		panic("Size %" PRIu64 " of partial value element exceeds maximum of %u bytes.\n", size, UINT32_MAX);
 
-	if (align > size)
-		panic("Overaligned partial values not yet implemented.\n");
+	if (align > static_cast<u32>(1) << MIN_PARTIAL_VALUE_SIZE_LOG2)
+		TODO("Implement overaligned partial values");
 
-	OpenValue* const partial = partials->open.begin() + static_cast<u32>(id);
+	u32* indirection;
 
-	ASSERT_OR_IGNORE(is_descendant_of(partial->root, node));
+	ValueHeader* header = header_at(partials, id, &indirection);
 
-	OpenElem* const elem = partials->open_values.reserve();
+	ASSERT_OR_IGNORE(is_descendant_of(header->root, node));
 
-	const u32 elem_index = static_cast<u32>(reinterpret_cast<u64*>(elem) - static_cast<u64*>(partials->open_data.begin()));
+	SubvalueHeader* const subheader = alloc_subheader(partials, header, indirection, node, type_id, static_cast<u16>(size), static_cast<u16>(align));
 
-	u32* const prev = partial->last == nullptr ? &partial->first_index : &partial->last->next_index;
-
-	*prev = elem_index;
-
-	partial->last = elem;
-	partial->count += 1;
-
-	MutRange<byte> data = partials->open_data.alloc(sizeof(OpenElem));
-
-	elem->value.data_size = static_cast<u32>(size);
-	elem->value.data_offset = static_cast<u32>(data.begin() - static_cast<byte*>(partials->open_data.begin()));
-	elem->value.node_offset = static_cast<u32>(node - partial->root);
-	elem->value.type_id = type_id;
-	elem->align = align;
-	elem->next_index = 0;
-
-	return data;
+	return { reinterpret_cast<byte*>(subheader + 1), size };
 }
 
 PartialValueId complete_partial_value_builder(PartialValuePool* partials, PartialValueBuilderId id) noexcept
 {
-	OpenValue* const open = partials->open.begin() + static_cast<u32>(id);
+	ASSERT_OR_IGNORE(id != PartialValueBuilderId::INVALID);
 
-	ClosedValue* const closed = static_cast<ClosedValue*>(partials->closed_buffer.reserve_exact(sizeof(ClosedValue) + open->count * sizeof(ClosedElem)));
+	u32* indirection;
 
-	OpenElem* src = open->first_index == 0
+	ValueHeader* const header = header_at(partials, id, &indirection);
+
+	*indirection = partials->first_free_builder_ind;
+
+	partials->first_free_builder_ind = static_cast<u32>(id);
+
+	sort_subheaders_by_offset_from_root(partials, header);
+
+	return static_cast<PartialValueId>(header_index(partials, header));
+}
+
+void discard_partial_value_builder(PartialValuePool* partials, PartialValueBuilderId id) noexcept
+{
+	ASSERT_OR_IGNORE(id != PartialValueBuilderId::INVALID);
+
+	u32* indirection;
+
+	ValueHeader* const header = header_at(partials, id, &indirection);
+
+	return discard_header(partials, header, indirection, id);
+}
+
+void merge_partial_value_builders(PartialValuePool* partials, PartialValueBuilderId dst_id, PartialValueBuilderId src_id) noexcept
+{
+	ASSERT_OR_IGNORE(dst_id != PartialValueBuilderId::INVALID && src_id != PartialValueBuilderId::INVALID);
+
+	u32* dst_indirection;
+
+	u32* src_indirection;
+
+	ValueHeader* dst_header = header_at(partials, dst_id, &dst_indirection);
+
+	ValueHeader* const src_header = header_at(partials, src_id, &src_indirection);
+
+	ASSERT_OR_IGNORE(is_descendant_of(dst_header->root, src_header->root));
+
+	// This is just an estimate; Due to alignment-induced padding, we may end
+	// up actually allocating more, but estimating first leads to fewer
+	// reallocations, and thus fewer moves.
+	// Also note that we subtract `sizeof(ValueHeader)` to avoid
+	// double-counting, as it is incuded in both `dst_header->used` and
+	// `src_header->used`.
+	if (dst_header->capacity < dst_header->used + src_header->used - sizeof(ValueHeader))
+		realloc_header(partials, dst_header, dst_indirection, dst_header->used + src_header->used - sizeof(ValueHeader) - dst_header->capacity);
+
+	SubvalueHeader* src_subheader = src_header->first_value_offset == 0
 		? nullptr
-		: reinterpret_cast<OpenElem*>(static_cast<u64*>(partials->open_data.begin()) + open->first_index);
+		: subheader_at(src_header, src_header->first_value_offset);
 
-	ClosedElem* dst = closed->elems;
-
-	while (src != nullptr)
+	while (src_subheader != nullptr)
 	{
-		partials->closed_buffer.pad_to_alignment(src->align);
+		SubvalueHeader* const dst_subheader = alloc_subheader(partials, dst_header, dst_indirection, src_header->root + src_subheader->offset_from_root, src_subheader->type_id, src_subheader->value_size, src_subheader->value_align);
 
-		void* const data_dst = partials->closed_buffer.reserve_padded(src->value.data_size);
+		memcpy(dst_subheader + 1, src_subheader + 1, src_subheader->value_size);
 
-		void* const data_src = static_cast<byte*>(partials->open_data.begin()) + src->value.data_offset;
-
-		memcpy(data_dst, data_src, src->value.data_size);
-
-		dst->data_size = src->value.data_size;
-		dst->data_offset = static_cast<u32>(static_cast<u64*>(data_dst) - reinterpret_cast<u64*>(dst));
-		dst->node_offset = src->value.node_offset;
-		dst->type_id = src->value.type_id;
-
-		OpenElem* const next = reinterpret_cast<OpenElem*>(static_cast<u64*>(partials->open_data.begin()) + src->next_index);
-
-		partials->open_data.dealloc({ static_cast<byte*>(data_src), src->value.data_size });
-
-		*reinterpret_cast<u32*>(src) = partials->first_free_open_value_index;
-
-		partials->first_free_open_value_index = static_cast<u32>(reinterpret_cast<u64*>(src) - reinterpret_cast<u64*>(partials->open_values.begin()));
-
-		src = next;
-
-		dst += 1;
+		src_subheader = src_subheader->next_value_offset == 0
+			? nullptr
+			: subheader_at(src_subheader, src_subheader->next_value_offset);
 	}
 
-	closed->header.count = open->count;
-	closed->header.m_hash = hash_closed_value(closed);
-	closed->header.root = open->root;
-
-	*reinterpret_cast<u32*>(open) = partials->first_free_open_index;
-
-	partials->first_free_open_index = static_cast<u32>(reinterpret_cast<u64*>(open) - reinterpret_cast<u64*>(partials->open.begin()));
-
-	return static_cast<PartialValueId>(partials->closed.index_from(closed, closed->header.m_hash));
+	discard_header(partials, src_header, src_indirection, src_id);
 }
 
 
 
 AstNode* root_of(PartialValuePool* partials, PartialValueId id) noexcept
 {
-	return partials->closed.value_from(static_cast<u32>(id))->header.root;
+	ASSERT_OR_IGNORE(id != PartialValueId::INVALID);
+
+	ValueHeader* const header = header_at(partials, id);
+
+	return header->root;
 }
 
 PartialValueIterator values_of(PartialValuePool* partials, PartialValueId id) noexcept
 {
-	ClosedValue* const partial = partials->closed.value_from(static_cast<u32>(id));
+	ASSERT_OR_IGNORE(id != PartialValueId::INVALID);
 
-	return iterator_from_ptr(partial);
+	ValueHeader* const header = header_at(partials, id);
+
+	return iterator_from_header(header);
 }
 
 bool has_next(const PartialValueIterator* it) noexcept
 {
-	ASSERT_OR_IGNORE(it->curr <= it->end);
-
-	return it->curr != it->end;
+	return it->subheader != nullptr;
 }
 
 PartialValue next(PartialValueIterator* it) noexcept
 {
 	ASSERT_OR_IGNORE(has_next(it));
 
-	const ClosedElem* const elem = static_cast<const ClosedElem*>(it->curr);
+	const ValueHeader* const header = static_cast<const ValueHeader*>(it->header);
 
-	const ClosedValue* const partial =  static_cast<const ClosedValue*>(it->partial);
+	const SubvalueHeader* const subheader = static_cast<const SubvalueHeader*>(it->subheader);
 
-	PartialValue result;
-	result.node = partial->header.root + elem->node_offset;
-	result.type_id = elem->type_id;
-	result.data = data_of(elem);
+	PartialValue rst;
+	rst.node = header->root + subheader->offset_from_root;
+	rst.type_id = subheader->type_id;
+	rst.data = { reinterpret_cast<const byte*>(subheader + 1), subheader->value_size };
 
-	it->curr = elem + 1;
+	it->subheader = subheader->next_value_offset == 0
+		? nullptr
+		: subheader_at(const_cast<SubvalueHeader*>(subheader), subheader->next_value_offset);
 
-	ASSERT_OR_IGNORE(it->curr <= it->end);
-
-	return result;
+	return rst;
 }

@@ -658,6 +658,8 @@ public:
 			? 0
 			: (32 - MinSizeLog2) - leading_zeros;
 
+		const u32 alloc_size = static_cast<u32>(1) << (category + MinSizeLog2);
+
 		s32 free_index = m_first_frees[category];
 
 		if (free_index < 0)
@@ -672,7 +674,7 @@ public:
 
 			s32* curr = reinterpret_cast<s32*>(head);
 
-			const u32 unit_dwords = (static_cast<u32>(1) << (category + MinSizeLog2 - 2));
+			const u32 unit_dwords = alloc_size / sizeof(u32);
 
 			const u32 committed_dwords = m_commit_increment_bytes[category] / sizeof(u32);
 
@@ -692,7 +694,7 @@ public:
 
 		byte* const begin = static_cast<byte*>(m_memory) + free_index * sizeof(u32);
 
-		return MutRange<byte>{ begin, bytes };
+		return MutRange<byte>{ begin, alloc_size };
 	}
 
 	void dealloc(MutRange<byte> memory) noexcept
