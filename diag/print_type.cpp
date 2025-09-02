@@ -160,11 +160,10 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 				const Range<char8> member_name = identifier_name_from_id(identifiers, member->name);
 
-				diag::buf_printf(ctx, "%s%*s%s%s%s%s\"%.*s\" ",
+				diag::buf_printf(ctx, "%s%*s%s%s%s\"%.*s\" ",
 					has_members ? "" : "\n",
 					(indent + 1) * 2, "",
 					member->is_pub ? "pub " : "",
-					member->is_use ? "use " : "",
 					member->is_mut ? "mut " : "",
 					member->is_global ? "global " : "",
 					static_cast<s32>(member_name.count()), member_name.begin()

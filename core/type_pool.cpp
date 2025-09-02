@@ -498,7 +498,7 @@ static bool find_builder_member_by_name(TypeBuilderHeader* header, IdentifierId 
 	}
 }
 
-static bool find_composite_member_by_name(TypePool* types, CompositeType* composite, IdentifierId name, SourceId source, TypeId type_id, FindResult* out) noexcept
+static bool find_composite_member_by_name(CompositeType* composite, IdentifierId name, SourceId source, TypeId type_id, FindResult* out) noexcept
 {
 	for (u32 i = 0; i != composite->header.member_count; ++i)
 	{
@@ -513,45 +513,6 @@ static bool find_composite_member_by_name(TypePool* types, CompositeType* compos
 			out->surrounding_type_is_complete = true;
 
 			return true;
-		}
-	}
-
-	// Handle `use`.
-
-	for (u32 i = 0; i != composite->header.member_count; ++i)
-	{
-		if (!composite->members[i].is_use)
-			continue;
-
-		if (composite->header.disposition == TypeDisposition::Block && composite->members[i].source > source)
-			return false;
-
-		const TypeId use_type_id = composite->members[i].type.complete;
-
-		ASSERT_OR_IGNORE(use_type_id != TypeId::INVALID);
-
-		const TypeTag use_type_tag = type_tag_from_id(types, use_type_id);
-
-		if (use_type_tag == TypeTag::Type)
-		{
-			Range<byte> global_value = global_value_get(types->globals, composite->members[i].value.complete);
-
-			ASSERT_OR_IGNORE(global_value.count() == sizeof(TypeId));
-
-			const TypeId defined_type_id = *reinterpret_cast<const TypeId*>(global_value.begin());
-
-			// We can pass on source here, as we know `defined_type_id`, being
-			// a member, cannot refer to a block type.
-			if (find_member_by_name(types, defined_type_id, name, source, out))
-				return true;
-		}
-		else
-		{
-			ASSERT_OR_IGNORE(use_type_tag == TypeTag::Composite);
-
-			// Again, just pass on source, we know it'll get ignored.
-			if (find_member_by_name(types, use_type_id, name, source, out))
-				return true;
 		}
 	}
 
@@ -575,7 +536,7 @@ static bool find_member_by_name(TypePool* types, TypeId type_id, IdentifierId na
 		if (structure->tag != TypeTag::Composite)
 			panic("Tried getting member of non-composite type by name.\n");
 
-		return find_composite_member_by_name(types, data<CompositeType>(structure), name, source, type_id, out);
+		return find_composite_member_by_name(data<CompositeType>(structure), name, source, type_id, out);
 	}
 }
 

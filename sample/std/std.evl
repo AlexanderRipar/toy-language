@@ -2,7 +2,7 @@
 // This gets `use`d in the hard-coded prelude that is scoped around every
 // import.
 
-pub use prelude = _import("prelude.evl", 1 == 1, _source_id())
+pub prelude = _import("prelude.evl", 1 == 1, _source_id())
 
 
 /*
