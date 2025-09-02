@@ -36,7 +36,6 @@ enum class Token : u8
 		KwdMut,               // mut
 		KwdGlobal,            // global
 		KwdAuto,              // auto
-		KwdUse,               // use
 		KwdReturn,            // return
 		KwdLeave,             // leave
 		KwdYield,             // yield
@@ -140,7 +139,6 @@ const char8* token_name(Token token) noexcept
 		"mut",
 		"global",
 		"auto",
-		"use",
 		"return",
 		"leave",
 		"yield",
@@ -250,7 +248,6 @@ static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
 	range::from_literal_string("mut",      static_cast<u8>(Token::KwdMut)),
 	range::from_literal_string("let",      static_cast<u8>(Token::KwdLet)),
 	range::from_literal_string("auto",     static_cast<u8>(Token::KwdAuto)),
-	range::from_literal_string("use",      static_cast<u8>(Token::KwdUse)),
 	range::from_literal_string("global",   static_cast<u8>(Token::KwdGlobal)),
 	range::from_literal_string("return",   static_cast<u8>(Token::KwdReturn)),
 	range::from_literal_string("leave",    static_cast<u8>(Token::KwdLeave)),
@@ -1632,8 +1629,7 @@ static bool is_definition_start(Token token) noexcept
 		|| token == Token::KwdPub
 		|| token == Token::KwdMut
 		|| token == Token::KwdGlobal
-		|| token == Token::KwdAuto
-		|| token == Token::KwdUse;
+		|| token == Token::KwdAuto;
 }
 
 static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept;
@@ -1694,16 +1690,6 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'auto' encountered more than once.\n");
 
 				flags |= AstFlag::Definition_IsAuto;
-			}
-			else if (lexeme.token == Token::KwdUse)
-			{
-				if (is_param)
-					source_error(parser->lexer.errors, lexeme.source_id, "Function parameters must not be 'use'.\n");
-
-				if ((flags & AstFlag::Definition_IsUse) != AstFlag::EMPTY)
-					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'use' encountered more than once.\n");
-
-				flags |= AstFlag::Definition_IsUse;
 			}
 			else
 			{

@@ -465,15 +465,14 @@ enum class AstFlag : u8
 
 	Definition_IsPub            = 0x01,
 	Definition_IsMut            = 0x02,
-	Definition_IsGlobal         = 0x04,
-	Definition_IsUse            = 0x08,
-	Definition_IsAuto           = 0x10,
-	Definition_HasType          = 0x20,
+	Definition_IsAuto           = 0x04,
+	Definition_HasType          = 0x08,
+	Definition_IsGlobal         = 0x10,
 
 	Parameter_IsEval            = 0x01,
 	Parameter_IsMut             = 0x02,
-	Parameter_IsAuto            = 0x10,
-	Parameter_HasType           = 0x20,
+	Parameter_IsAuto            = 0x04,
+	Parameter_HasType           = 0x08,
 
 	If_HasWhere                 = 0x01,
 	If_HasElse                  = 0x02,
@@ -1617,9 +1616,6 @@ struct Definition
 	// Whether the member is public.
 	bool is_pub : 1;
 
-	// Whether the member is `use`d.
-	bool is_use : 1;
-
 	// Whether the member is mutable.
 	bool is_mut : 1;
 
@@ -1644,9 +1640,6 @@ struct Member
 
 	// Whether the member is public.
 	bool is_pub : 1;
-
-	// Whether the member is `use`d.
-	bool is_use : 1;
 
 	// Whether the member is mutable.
 	bool is_mut : 1;
