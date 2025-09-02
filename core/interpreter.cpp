@@ -1208,6 +1208,7 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 	}
 	else switch (node->tag)
 	{
+		// MEAT + POTATOES
 	case AstTag::Builtin:
 	{
 		ASSERT_OR_IGNORE(into.success.kind == ValueKind::Value);
@@ -1916,6 +1917,55 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 		return into;
 	}
 
+	case AstTag::UOpAddr:
+	{
+		ASSERT_OR_IGNORE(into.success.kind == ValueKind::Value);
+
+		// 1. get first child
+		AstNode* const operand = first_child_of(node);
+		MutRange<byte> location;
+		// kind = location
+		const EvalSpec operand_spec = evaluate(interp, operand, EvalSpec{
+			ValueKind::Location,
+			range::from_object_bytes_mut(&location)
+		});
+		
+		if (operand_spec.tag == EvalTag::Unbound) 
+			// return the unbound eval specification 
+			return operand_spec;
+		
+		// create + initialize pointer type
+		ReferenceType ptr_type{};
+		ptr_type.referenced_type_id = operand_spec.success.type_id;
+		ptr_type.is_multi = true;
+		// TODO: look into this, is probably wrong. operand should hold the information if that is mutable
+		ptr_type.is_mut = true;
+		ptr_type.is_opt = false;
+
+		TypeId ptr_id = simple_type(interp->types, TypeTag::Ptr, range::from_object_bytes(&ptr_type));
+
+		// eval spec is success => type is known
+		if (into.success.type_id == TypeId::INVALID)
+		{
+			into.success.type_id = ptr_id;
+			if (into.success.location.begin() == nullptr) {
+				into.success.location = stack_push(interp, sizeof(MutRange<byte>), alignof(MutRange<byte>));
+			}
+		}
+		else if (!type_can_implicitly_convert_from_to(interp->types, ptr_id, into.success.type_id))
+		{
+			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot implicitly convert pointer to desired type.\n");
+		}
+
+		store_loc(into.success.location, location);
+		
+		return into;
+	}
+
+	case AstTag::UOpDeref:
+		TODO("pls deref me");
+		break;
+
 	case AstTag::CompositeInitializer:
 	case AstTag::ArrayInitializer:
 	case AstTag::Wildcard:
@@ -1944,8 +1994,6 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 	case AstTag::UOpTry:
 	case AstTag::UOpDefer:
 	case AstTag::UOpDistinct:
-	case AstTag::UOpAddr:
-	case AstTag::UOpDeref:
 	case AstTag::UOpBitNot:
 	case AstTag::UOpLogNot:
 	case AstTag::UOpTypeOptPtr:
@@ -1991,7 +2039,7 @@ static EvalSpec evaluate(Interpreter* interp, AstNode* node, EvalSpec into) noex
 	case AstTag::OpTypeArray:
 	case AstTag::OpArrayIndex:
 		panic("evaluate(%s) not yet implemented.\n", tag_name(node->tag));
-
+	
 	case AstTag::INVALID:
 	case AstTag::File:
 	case AstTag::Parameter:
