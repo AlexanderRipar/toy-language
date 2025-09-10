@@ -202,7 +202,14 @@ inline u8 count_leading_zeros(T n) noexcept
 
 		const bool ok = _BitScanReverse64(&index, static_cast<u64>(n)) != 0;
 
-		return ok ? static_cast<u8>(index) : sizeof(T) * 8;
+		if (!ok)
+			return sizeof(T) * 8;
+			
+		const u8 leading_zeros_64 = static_cast<u8>(63 - index);
+
+		const u8 leading_zeros_t = leading_zeros_64 - (64 - sizeof(T) * 8);
+
+		return leading_zeros_t;
 	#elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 		return n == 0 ? sizeof(T) * 8 : static_cast<u8>(__builtin_clz(n));
 	#else
@@ -226,9 +233,18 @@ inline u8 count_leading_ones(T n) noexcept
 	#endif
 }
 
+template<typename, typename>
+constexpr bool is_same_type = false;
+template <typename T>
+constexpr bool is_same_type<T, T> = true;
+
 NORETURN void panic(const char8* format, ...) noexcept;
 
 NORETURN void vpanic(const char8* format, va_list args) noexcept;
+
+void warn(const char8* format, ...) noexcept;
+
+void vwarn(const char8* format, va_list args) noexcept;
 
 #define TODO(message) panic("Encountered open TODO in %s at %s:%d: %s\n", __FUNCTION__, __FILE__, __LINE__, *(message) == '\0' ? "?" : (message))
 

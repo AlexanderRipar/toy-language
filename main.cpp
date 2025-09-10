@@ -62,7 +62,7 @@ s32 main(s32 argc, const char8** argv)
 
 		GlobalValuePool* const globals = create_global_value_pool(alloc);
 
-		TypePool* const types = create_type_pool(alloc, globals, errors);
+		TypePool* const types = create_type_pool(alloc);
 
 		AstPool* const asts = create_ast_pool(alloc);
 
