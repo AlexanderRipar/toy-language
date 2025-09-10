@@ -1309,6 +1309,165 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		return rst;
 	}
 
+	case AstTag::Block:
+	{
+		const TypeId block_type_id = type_create_composite(interp->types, active_arec_type_id(interp), TypeDisposition::Block, SourceId::INVALID, 0, false);
+
+		const ArecId block_arec_id = arec_push(interp, block_type_id, 0, 1, active_arec_id(interp), ArecKind::Normal);
+
+		Arec* const block_arec = active_arec(interp);
+
+		u16 definition_count = 0;
+
+		AstDirectChildIterator stmts = direct_children_of(node);
+
+		while (has_next(&stmts))
+		{
+			AstNode* const stmt = next(&stmts);
+
+			if (stmt->tag == AstTag::Definition && has_next_sibling(stmt))
+			{
+				DefinitionInfo info = get_definition_info(stmt);
+
+				if (is_none(info.value))
+					source_error(interp->errors, source_id_of(interp->asts, stmt), "Block-level definition must have a value.\n");
+
+				if (has_flag(stmt, AstFlag::Definition_IsGlobal))
+					source_error(interp->errors, source_id_of(interp->asts, stmt), "`global` is not (yet) supported on block-level definitions.\n");
+
+				if (has_flag(stmt, AstFlag::Definition_IsPub))
+					source_error(interp->errors, source_id_of(interp->asts, stmt), "`pub` is not supported on block-level definitions.\n");
+
+				if (is_some(info.type))
+				{
+					TypeId type_id;
+
+					const EvalRst type_rst = evaluate(interp, get_ptr(info.type), EvalSpec{
+						ValueKind::Value,
+						range::from_object_bytes_mut(&type_id),
+						type_create_simple(interp->types, TypeTag::Type)
+					});
+
+					ASSERT_OR_IGNORE(type_rst.tag == EvalTag::Success);
+
+					Member member_init;
+					member_init.name = attachment_of<AstDefinitionData>(stmt)->identifier_id;
+					member_init.type.complete = type_id;
+					member_init.value.complete = GlobalValueId::INVALID;
+					member_init.is_global = false;
+					member_init.is_pub = false;
+					member_init.is_mut = has_flag(stmt, AstFlag::Definition_IsMut);
+					member_init.is_param = false;
+					member_init.has_pending_type = false;
+					member_init.has_pending_value = false;
+					member_init.is_comptime_known = false;
+					member_init.is_arg_independent = false;
+					member_init.rank = 0;
+					member_init.type_completion_arec_id = ArecId::INVALID;
+					member_init.value_completion_arec_id = ArecId::INVALID;
+					member_init.offset = 0;
+
+					if (!type_add_composite_member(interp->types, block_type_id, member_init))
+					{
+						const Range<char8> name = identifier_name_from_id(interp->identifiers, attachment_of<AstDefinitionData>(stmt)->identifier_id);
+
+						source_error(interp->errors, source_id_of(interp->asts, stmt), "Variable with name `%.*s` is already defined.\n", static_cast<s32>(name.count()), name.begin());
+					}
+
+					const Member* member = type_member_by_rank(interp->types, block_type_id, definition_count);
+
+					const TypeMetrics metrics = type_metrics_from_id(interp->types, type_id);
+
+					arec_grow(interp, block_arec_id, member->offset + metrics.size);
+
+					const EvalRst value_rst = evaluate(interp, get_ptr(info.value), EvalSpec{
+						ValueKind::Value,
+						MutRange<byte>{ block_arec->attachment + member->offset, metrics.size },
+						type_id
+					});
+				}
+				else
+				{
+					const EvalRst value_rst = evaluate(interp, get_ptr(info.value), EvalSpec{ ValueKind::Value });
+
+					Member member_init;
+					member_init.name = attachment_of<AstDefinitionData>(stmt)->identifier_id;
+					member_init.type.complete = value_rst.success.type_id;
+					member_init.value.complete = GlobalValueId::INVALID;
+					member_init.is_global = false;
+					member_init.is_pub = false;
+					member_init.is_mut = has_flag(stmt, AstFlag::Definition_IsMut);
+					member_init.is_param = false;
+					member_init.has_pending_type = false;
+					member_init.has_pending_value = false;
+					member_init.is_comptime_known = false;
+					member_init.is_arg_independent = false;
+					member_init.rank = 0;
+					member_init.type_completion_arec_id = ArecId::INVALID;
+					member_init.value_completion_arec_id = ArecId::INVALID;
+					member_init.offset = 0;
+
+					if (!type_add_composite_member(interp->types, block_type_id, member_init))
+					{
+						const Range<char8> name = identifier_name_from_id(interp->identifiers, attachment_of<AstDefinitionData>(stmt)->identifier_id);
+
+						source_error(interp->errors, source_id_of(interp->asts, stmt), "Variable with name `%.*s` is already defined.\n", static_cast<s32>(name.count()), name.begin());
+					}
+
+					const Member* member = type_member_by_rank(interp->types, block_type_id, definition_count);
+
+					const TypeMetrics metrics = type_metrics_from_id(interp->types, value_rst.success.type_id);
+
+					arec_grow(interp, block_arec_id, member->offset + metrics.size);
+
+					copy_loc(MutRange<byte>{ block_arec->attachment + member->offset, metrics.size }, value_rst.success.bytes.immut());
+				}
+
+				definition_count += 1;
+			}
+			else
+			{
+				EvalSpec stmt_spec;
+
+				if (has_next_sibling(stmt))
+				{
+					// Just take some old non-null address here for `dst`.
+					// It won't be written to, due to its size being 0.
+					stmt_spec = EvalSpec{
+						ValueKind::Value,
+						MutRange<byte>{ reinterpret_cast<byte*>(&stmt_spec), static_cast<u64>(0) },
+						type_create_simple(interp->types, TypeTag::Void)
+					};
+				}
+				else
+				{
+					stmt_spec = EvalSpec{ ValueKind::Value, spec.dst, spec.type_id };
+				}
+
+				const EvalRst stmt_rst = evaluate(interp, stmt, stmt_spec);
+
+				ASSERT_OR_IGNORE(stmt_rst.tag == EvalTag::Success);
+
+				const TypeMetrics metrics = type_metrics_from_id(interp->types, stmt_rst.success.type_id);
+
+				const EvalRst rst = fill_spec_sized(interp, spec, node, ValueKind::Value, stmt_rst.success.type_id, metrics.size, metrics.align);
+
+				// TODO: Avoid the useless copy here by reusing the space
+				// allocated for `stmt_rst`.
+				if (spec.dst.begin() == nullptr)
+					copy_loc(rst.success.bytes, stmt_rst.success.bytes.immut());
+
+				arec_pop(interp, block_arec_id);
+
+				return rst;
+			}
+		}
+
+		arec_pop(interp, block_arec_id);
+
+		return fill_spec_sized(interp, spec, node, ValueKind::Value, type_create_simple(interp->types, TypeTag::Void), 0, 1);
+	}
+
 	case AstTag::Func:
 	{
 		AstNode* const signature = first_child_of(node);
@@ -1852,7 +2011,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	{
 		const TypeId bool_type_id = type_create_simple(interp->types, TypeTag::Boolean);
 
-		EvalRst rst = fill_spec_sized(interp, spec, node, ValueKind::Value, bool_type_id, sizeof(bool), alignof(bool));
+		const EvalRst rst = fill_spec_sized(interp, spec, node, ValueKind::Value, bool_type_id, sizeof(bool), alignof(bool));
 
 		AstNode* const lhs = first_child_of(node);
 
@@ -1931,7 +2090,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::Where:
 	case AstTag::Expects:
 	case AstTag::Ensures:
-	case AstTag::Block:
 	case AstTag::If:
 	case AstTag::For:
 	case AstTag::ForEach:

@@ -20,6 +20,8 @@ let void_func = func() -> Void => {}
 
 let u32_identity_with_block = func(a: u32) -> u32 => { a }
 
+let u32_from_block = u32_identity_with_block(42)
+
 let u32_identity_with_block_and_one_definition = func(a: u32) -> u32 => {
 	let n = a
 
@@ -47,6 +49,8 @@ let func_with_inner_type_definition = func() -> Void => {
 
 	{}
 }
+
+let call_with_block = func_with_inner_type_definition()
 
 let func_with_inner_type_definition_and_use = func() -> Void => {
 	let Tj: Type = u32
