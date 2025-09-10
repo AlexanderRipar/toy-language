@@ -1385,10 +1385,14 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 						MutRange<byte>{ block_arec->attachment + member->offset, metrics.size },
 						type_id
 					});
+
+					ASSERT_OR_IGNORE(value_rst.tag == EvalTag::Success);
 				}
 				else
 				{
 					const EvalRst value_rst = evaluate(interp, get_ptr(info.value), EvalSpec{ ValueKind::Value });
+
+					ASSERT_OR_IGNORE(value_rst.tag == EvalTag::Success);
 
 					Member member_init;
 					member_init.name = attachment_of<AstDefinitionData>(stmt)->identifier_id;
