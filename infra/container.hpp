@@ -703,7 +703,7 @@ public:
 
 		const u64 bytes = static_cast<u32>(memory.count());
 
-		const u8 leading_zeros = count_leading_zeros_assume_one(bytes);
+		const u8 leading_zeros = count_leading_zeros(static_cast<u32>(bytes - 1));
 
 		const u8 category = (32 - MinSizeLog2) < leading_zeros
 			? 0
