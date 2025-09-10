@@ -1128,14 +1128,12 @@ struct PartialValue
 
 struct PartialValueIterator
 {
-	const void* partial;
+	const void* header;
 
-	const void* curr;
-
-	const void* end;
+	const void* subheader;
 };
 
-PartialValuePool* create_partial_value_pool(AllocPool* alloc, AstPool* asts) noexcept;
+PartialValuePool* create_partial_value_pool(AllocPool* alloc) noexcept;
 
 void release_partial_value_pool(PartialValuePool* partials) noexcept;
 
@@ -1145,6 +1143,9 @@ MutRange<byte> partial_value_builder_add_value(PartialValuePool* partials, Parti
 
 PartialValueId complete_partial_value_builder(PartialValuePool* partials, PartialValueBuilderId id) noexcept;
 
+void discard_partial_value_builder(PartialValuePool* partials, PartialValueBuilderId id) noexcept;
+
+void merge_partial_value_builders(PartialValuePool* partials, PartialValueBuilderId dst_id, PartialValueBuilderId src_id) noexcept;
 
 
 AstNode* root_of(PartialValuePool* partials, PartialValueId id) noexcept;

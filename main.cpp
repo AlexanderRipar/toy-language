@@ -68,7 +68,7 @@ s32 main(s32 argc, const char8** argv)
 
 		Parser* const parser = create_parser(alloc, identifiers, globals, types, asts, errors, ast_log_file);
 
-		PartialValuePool* const partials = create_partial_value_pool(alloc, asts);
+		PartialValuePool* const partials = create_partial_value_pool(alloc);
 
 		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, globals, partials, errors, imports_log_file, config->logging.imports.enable_prelude);
 
