@@ -1848,7 +1848,9 @@ TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align,
 
 // Adds a member to the open composite type referenced by `open_type_id`.
 // The member is initialized with the data in `member`.
-void type_add_composite_member(TypePool* types, TypeId type_id, Member member) noexcept;
+// Returns `true` if the member was successfully added, and `false` if there
+// was a name collision with an existing member.
+bool type_add_composite_member(TypePool* types, TypeId type_id, Member member) noexcept;
 
 // Sets the type and / or value of the member at position `rank` in the
 // composite type identified by `type_id`.

@@ -910,7 +910,7 @@ TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align,
 	return id_from_structure(types, structure);
 }
 
-void type_add_composite_member(TypePool* types, TypeId type_id, Member member) noexcept
+bool type_add_composite_member(TypePool* types, TypeId type_id, Member member) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && member.rank == 0);
 
@@ -927,6 +927,12 @@ void type_add_composite_member(TypePool* types, TypeId type_id, Member member) n
 	ASSERT_OR_IGNORE(composite->header.is_open);
 
 	ASSERT_OR_IGNORE(composite->header.disposition == TypeDisposition::User || member.offset == 0);
+
+	for (u16 i = 0; i != composite->header.member_count; ++i)
+	{
+		if (composite->members[i].name == member.name)
+			return false;
+	}
 
 	if (direct_structure->size + sizeof(Member) > static_cast<u64>(1) << direct_structure->capacity_log2)
 	{
@@ -966,6 +972,8 @@ void type_add_composite_member(TypePool* types, TypeId type_id, Member member) n
 	composite->header.member_count += 1;
 
 	direct_structure->size += sizeof(Member);
+
+	return true;
 }
 
 void type_set_composite_member_info(TypePool* types, TypeId type_id, u16 rank, MemberCompletionInfo info) noexcept

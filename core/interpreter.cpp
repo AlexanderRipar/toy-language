@@ -788,7 +788,7 @@ static IdentifierInfo lookup_local_identifier(Interpreter* interp, Arec* arec, I
 	return location_info_from_arec_and_member(interp, arec, member);
 }
 
-static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name) noexcept
+static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name, const AstNode* debug_source) noexcept
 {
 	OptPtr<Arec> arec;
 
@@ -797,7 +797,11 @@ static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name) 
 	const Member* member;
 
 	if (!lookup_identifier_arec_and_member(interp, name, &arec, &surrounding_type_id, &member))
-		ASSERT_UNREACHABLE;
+	{
+		const Range<char8> name_str = identifier_name_from_id(interp->identifiers, name);
+
+		source_error(interp->errors, source_id_of(interp->asts, debug_source), "Identifier `%.*s` is undefined.\n", static_cast<s32>(name_str.count()), name_str.begin());
+	}
 
 	if (is_some(arec))
 	{
@@ -1366,7 +1370,12 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			Member param_member = delayed_member_from(interp, param);
 			param_member.is_global = false;
 
-			type_add_composite_member(interp->types, parameter_list_type_id, param_member);
+			if (!type_add_composite_member(interp->types, parameter_list_type_id, param_member))
+			{
+				const Range<char8> name = identifier_name_from_id(interp->identifiers, attachment_of<AstParameterData>(param)->identifier_id);
+				
+				source_error(interp->errors, source_id_of(interp->asts, param), "More than one parameter with name `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
+			}
 
 			param_count += 1;
 		}
@@ -1614,7 +1623,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	{
 		const AstIdentifierData attach = *attachment_of<AstIdentifierData>(node);
 
-		const IdentifierInfo info = lookup_identifier(interp, attach.identifier_id);
+		const IdentifierInfo info = lookup_identifier(interp, attach.identifier_id, node);
 
 		if (info.tag == IdentifierInfoTag::Missing)
 		{
@@ -2019,7 +2028,7 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	{
 		AstIdentifierData attach = *attachment_of<AstIdentifierData>(node);
 
-		IdentifierInfo info = lookup_identifier(interp, attach.identifier_id);
+		IdentifierInfo info = lookup_identifier(interp, attach.identifier_id, node);
 
 		if (info.tag == IdentifierInfoTag::Found)
 			return info.found.type_id;
@@ -2174,7 +2183,12 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 		Member member = delayed_member_from(interp, node);
 		member.is_global = true;
 
-		type_add_composite_member(interp->types, file_type_id, member);
+		if (!type_add_composite_member(interp->types, file_type_id, member))
+		{
+			const Range<char8> name = identifier_name_from_id(interp->identifiers, attachment_of<AstDefinitionData>(node)->identifier_id);
+
+			source_error(interp->errors, source_id_of(interp->asts, node), "More than one top-level definition with name `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
+		}
 	}
 
 	type_seal_composite(interp->types, file_type_id, 0, 1, 0);
@@ -2280,7 +2294,8 @@ static TypeId make_func_type_from_array(TypePool* types, TypeId return_type_id, 
 		member.has_pending_value = false;
 		member.offset = 0;
 
-		type_add_composite_member(types, parameter_list_type_id, member);
+		if (!type_add_composite_member(types, parameter_list_type_id, member))
+			ASSERT_UNREACHABLE;
 	}
 
 	type_seal_composite(types, parameter_list_type_id, 0, 0, 0);
