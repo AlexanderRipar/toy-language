@@ -259,7 +259,7 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 	Member member = dummy_member();
 	member.type.complete = type_create_simple(dummy.types, TypeTag::Boolean);
 
-	type_add_composite_member(dummy.types, composite, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, composite, member), true);
 
 	MemberIterator it = members_of(dummy.types, composite);
 
@@ -332,10 +332,10 @@ static void composites_with_empty_composite_member_are_equal() noexcept
 	Member member = dummy_member();
 
 	member.type.complete = x;
-	type_add_composite_member(dummy.types, a, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
 
 	member.type.complete = y;
-	type_add_composite_member(dummy.types, b, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
 	
 	const bool equal = type_is_equal(dummy.types, a, b);
 
@@ -440,10 +440,10 @@ static void composites_with_same_distinct_source_and_pointers_to_self_are_equal(
 	const TypeId p_b = type_create_reference(dummy.types, TypeTag::Ptr, reference);
 
 	member.type.complete = p_a;
-	type_add_composite_member(dummy.types, a, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
 
 	member.type.complete = p_b;
-	type_add_composite_member(dummy.types, b, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
 
 	type_seal_composite(dummy.types, a, 8, 1, 8);
 
@@ -488,10 +488,10 @@ static void composites_with_same_distinct_source_and_pointers_to_each_other_are_
 	const TypeId p_b = type_create_reference(dummy.types, TypeTag::Ptr, reference);
 
 	member.type.complete = p_b;
-	type_add_composite_member(dummy.types, a, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
 
 	member.type.complete = p_a;
-	type_add_composite_member(dummy.types, b, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
 
 	type_seal_composite(dummy.types, a, 8, 8, 8);
 
@@ -535,17 +535,21 @@ static void composites_with_same_distinct_source_and_pointers_to_self_and_differ
 	reference.referenced_type_id = b;
 	const TypeId p_b = type_create_reference(dummy.types, TypeTag::Ptr, reference);
 
+	member.name = static_cast<IdentifierId>(1);
 	member.type.complete = p_b;
-	type_add_composite_member(dummy.types, a, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
 
+	member.name = static_cast<IdentifierId>(2);
 	member.type.complete = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 8, false });
-	type_add_composite_member(dummy.types, a, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
 
+	member.name = static_cast<IdentifierId>(1);
 	member.type.complete = p_a;
-	type_add_composite_member(dummy.types, b, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
 
+	member.name = static_cast<IdentifierId>(2);
 	member.type.complete = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 64, false });
-	type_add_composite_member(dummy.types, b, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
 
 	type_seal_composite(dummy.types, a, 8, 1, 8);
 
@@ -603,24 +607,26 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 	const TypeId p_b2 = type_create_reference(dummy.types, TypeTag::Ptr, reference);
 
 	member.type.complete = p_a2;
-	type_add_composite_member(dummy.types, a1, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, a1, member), true);
 
 	member.type.complete = p_a1;
-	type_add_composite_member(dummy.types, a2, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, a2, member), true);
 
 	member.type.complete = p_b2;
-	type_add_composite_member(dummy.types, b1, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b1, member), true);
 
 	member.type.complete = p_b1;
-	type_add_composite_member(dummy.types, b2, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b2, member), true);
+
+	member.name = static_cast<IdentifierId>(404);
 
 	member.type.complete = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, false });
-	type_add_composite_member(dummy.types, a1, member);
-	type_add_composite_member(dummy.types, b1, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, a1, member), true);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b1, member), true);
 	
 	member.type.complete = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 64, false });
-	type_add_composite_member(dummy.types, a2, member);
-	type_add_composite_member(dummy.types, b2, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, a2, member), true);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b2, member), true);
 
 	type_seal_composite(dummy.types, a1, 8, 8, 8);
 
@@ -686,24 +692,26 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 	const TypeId p_b2 = type_create_reference(dummy.types, TypeTag::Ptr, reference);
 
 	member.type.complete = p_a2;
-	type_add_composite_member(dummy.types, a1, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, a1, member), true);
 
 	member.type.complete = p_a1;
-	type_add_composite_member(dummy.types, a2, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, a2, member), true);
 
 	member.type.complete = p_b2;
-	type_add_composite_member(dummy.types, b1, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b1, member), true);
 
 	member.type.complete = p_b1;
-	type_add_composite_member(dummy.types, b2, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b2, member), true);
+
+	member.name = static_cast<IdentifierId>(404);
 
 	member.type.complete = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, false });
-	type_add_composite_member(dummy.types, a1, member);
-	type_add_composite_member(dummy.types, b1, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, a1, member), true);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b1, member), true);
 	
 	member.type.complete = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 64, false });
-	type_add_composite_member(dummy.types, a2, member);
-	type_add_composite_member(dummy.types, b2, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, a2, member), true);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b2, member), true);
 
 	type_seal_composite(dummy.types, a1, 8, 8, 8);
 
@@ -753,11 +761,13 @@ static void pair_types_with_same_element_types_are_considered_equal() noexcept
 	Member member = dummy_member();
 	member.type.complete = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, false });
 
-	type_add_composite_member(dummy.types, a, member);
-	type_add_composite_member(dummy.types, a, member);
+	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
 
-	type_add_composite_member(dummy.types, b, member);
-	type_add_composite_member(dummy.types, b, member);
+	member.name = static_cast<IdentifierId>(9001);
+
+	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
+	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
 
 	type_seal_composite(dummy.types, a, 8, 8, 8);
 
