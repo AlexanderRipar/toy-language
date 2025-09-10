@@ -676,8 +676,6 @@ public:
 
 			s32* curr = reinterpret_cast<s32*>(head);
 
-			const u32 unit_dwords = alloc_size / sizeof(u32);
-
 			const u32 committed_dwords = m_commit_increment_bytes[category] / sizeof(u32);
 
 			const u32 next_unit_offset_dwords = m_heads[category] + unit_size / sizeof(u32);

@@ -8,6 +8,7 @@
 
 
 
+
 // Forward declarations.
 // These are necessary because the modules defining them would otherwise appear
 // after those using them.
@@ -1410,6 +1411,8 @@ enum class TypeTag : u8
 	// Should not be used, reserved for sanity checking in debug builds.
 	INVALID = 0,
 
+	INDIRECTION,
+
 	// Tag of the `Void` type. No additional structural data is stored.
 	Void,
 
@@ -1429,14 +1432,28 @@ enum class TypeTag : u8
 	// them. No additional structural data is stored.
 	CompFloat,
 
+	// Tag of the `Bool` type. No additional structural data is stored.
+	Boolean,
+
+	// Tag of the `TypeInfo` type. This type is used to implicitly convert
+	// anything to a `Type`, which is e.g. necessary for functions such as
+	// `typeof` or `sizeof`.
+	TypeInfo,
+
+	// Tag of the `TypeBuilder` type returned from the `_create_type` builtin.
+	// No additional structural data is stored.
+	TypeBuilder,
+
+	// Tag used to indicate that something diverges, effectively making its
+	// type irrelevant. This can be implicitly converted to anything else.
+	// No additional structural data is stored.
+	Divergent,
+
 	// Tag of integer types. Its structure is represented by a `NumericType`.
 	Integer,
 
 	// Tag of integer types. Its structure is represented by a `NumericType`.
 	Float,
-
-	// Tag of the `Bool` type. No additional structural data is stored.
-	Boolean,
 
 	// Tag of slice types. Its structure is represented by a `ReferenceType`.
 	Slice,
@@ -1447,10 +1464,10 @@ enum class TypeTag : u8
 	// Tag of array types. Its structure is represented by an `ArrayType`.
 	Array,
 
-	// Tag of function types. Its structure is represented by a `FuncType`.
+	// Tag of function types. Its structure is represented by a `SignatureType`.
 	Func,
 
-	// Tag of builtin types. Its structure is represented by a `FuncType`.
+	// Tag of builtin types. Its structure is represented by a `SignatureType`.
 	Builtin,
 
 	// Tag of composite types created via `create_open_type`. These have a
@@ -1464,6 +1481,10 @@ enum class TypeTag : u8
 	// `MemberIterator`, which all solely operate on composite types.
 	Composite,
 
+	// Tag of tail array types. Its structure is represented by a
+	// `ReferenceType`.
+	TailArray,
+
 	// Tag of composite literal types.
 	// TODO: This is not used yet, and thus does not currently have an
 	//       associated structure. However, it will likely need one.
@@ -1474,33 +1495,15 @@ enum class TypeTag : u8
 	// associated structure. However, it will likely need one.
 	ArrayLiteral,
 
-	// Tag of the `TypeBuilder` type returned from the `_create_type` builtin.
-	// No additional structural data is stored.
-	TypeBuilder,
-
 	// Tag of variadic function argument types.
 	// TODO: This is not used yet, and thus does not currently have an
 	//       associated structure. However, it will likely need one.
 	Variadic,
 
-	// Tag used to indicate that something diverges, effectively making its
-	// type irrelevant. This can be implicitly converted to anything else.
-	// No additional structural data is stored.
-	Divergent,
-
 	// Tag of trait types.
 	// TODO: This is not used yet, and thus does not currently have an
 	//       associated structure. However, it will likely need one.
 	Trait,
-
-	// Tag of the `TypeInfo` type. This type is used to implicitly convert
-	// anything to a `Type`, which is e.g. necessary for functions such as
-	// `typeof` or `sizeof`.
-	TypeInfo,
-
-	// Tag of tail array types. Its structure is represented by a
-	// `ReferenceType`.
-	TailArray,
 };
 
 enum class TypeDisposition : u8
@@ -1537,15 +1540,13 @@ struct TypeMetrics
 // has iterated them are skipped, as one would expect.
 struct IncompleteMemberIterator
 {
-	void* structure;
+	const void* structure;
 
-	void* name;
+	TypePool* types;
 
 	u16 rank;
 
-	TypeDisposition disposition;
-
-	TypeId type_id;
+	bool is_indirect;
 };
 
 // Iterator over the members of a composite type.
@@ -1554,15 +1555,13 @@ struct IncompleteMemberIterator
 // completed during iteration.
 struct MemberIterator
 {
-	void* structure;
+	const void* structure;
 
-	void* name;
+	TypePool* types;
 
 	u16 rank;
 
-	TypeDisposition disposition;
-
-	TypeId type_id;
+	bool is_indirect;
 };
 
 // Representation of either a `TypeId` or the `AstNodeId` of the expression
@@ -1604,8 +1603,6 @@ struct Definition
 {
 	IdentifierId name;
 
-	SourceId source;
-
 	DelayableTypeId type;
 
 	DelayableValueId default_or_global_value;
@@ -1628,8 +1625,6 @@ struct Definition
 struct Member
 {
 	IdentifierId name;
-
-	SourceId source;
 
 	DelayableTypeId type;
 
@@ -1666,9 +1661,9 @@ struct Member
 
 struct MemberCompletionInfo
 {
-	bool has_type_id : 1;
+	bool has_type_id;
 
-	bool has_value_id : 1;
+	bool has_value_id;
 
 	TypeId type_id;
 
@@ -1773,31 +1768,50 @@ struct SignatureType
 // Creates a `TypePool`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `TypePool` can be freed using
 // `release_type_pool`.
-TypePool* create_type_pool(AllocPool* alloc, GlobalValuePool* globals, ErrorSink* errors) noexcept;
+TypePool* create_type_pool(AllocPool* alloc) noexcept;
 
 // Releases the resources associated with the given `TypePool`.
 void release_type_pool(TypePool* types) noexcept;
 
 
-// Creates a "simple" - meaning non-composite type. This takes a `tag`, along
-// with structural data further describing the type. The layout of this
-// structural data depends on the type. See `TypeTag` for details on this
-// relation.
-TypeId simple_type(TypePool* types, TypeTag tag, Range<byte> data) noexcept;
+// Creates a "simple" type. This takes a `tag`, which
+// must not expect any additional associated data.
+// See `TypeTag` for details on which `tag`s are applicable.
+TypeId type_create_simple(TypePool* types, TypeTag tag) noexcept;
 
-// Creates an "alias" for an existing type, given by `aliased_type_id`.
-// If `is_distinct` is true this alias follows the semantics of the `distinct`
-// keyword. Otherwise this function simply introduces a new name, given by
-// `name_id`, along with a new `SourceId` in `source_id`, for an existing type.
-TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, SourceId source_id, IdentifierId name_id) noexcept;
+// Creates a "numeric", i.e. `Integer` or `Float` type.
+// This takes a tag indicating which type to create, along with a `NumericType`
+// further describing it.
+TypeId type_create_numeric(TypePool* types, TypeTag tag, NumericType attach) noexcept;
+
+// Creates a "reference", i.e. `Ptr`, `Slice` or `TailArray` type.
+// This takes a tag indicating which type to create, along with a
+// `ReferenceType` further describing it.
+TypeId type_create_reference(TypePool* types, TypeTag tag, ReferenceType attach) noexcept;
+
+// Creates an "array" type.
+// This takes a tag indicating which type to create, along with an `ArrayType`
+// further describing it. The `tag` is currently is restricted to
+// `TypeTag::Array`.
+TypeId type_create_array(TypePool* types, TypeTag tag, ArrayType attach) noexcept;
+
+// Creates a "signature", i.e. a `Builtin` or `Function` type.
+// This takes a tag indicating which type to create, along with a
+// `SignatureType` further describing it.
+TypeId type_create_signature(TypePool* types, TypeTag tag, SignatureType attach) noexcept;
 
 // Creates a composite type with no members that can have members added by
-// calling `add_open_type_member` on it.
+// calling `type_add_composite_member` on it.
 //
 // `lexical_parent_source_id` indicates the type lexically surrounding the
 // newly created type, and is used during name lookup.
 //
-// `source_id` indicates where the type was created from.
+// `distinct_source_id` serves to distinguish structurally equivalent types.
+// This is usually set to the type's creation site's source, meaning that
+// structurally equivalent types created at that site are equivalent. However,
+// this can be initialized differently to get different distinguishing
+// behaviour, e.g. to the creation function's caller to create distinct types
+// for each callsite.
 //
 // `disposition` indicates what sort of type is being created.
 // - `TypeDisposition::User` indicates a user-defined type, including e.g. the
@@ -1813,32 +1827,54 @@ TypeId alias_type(TypePool* types, TypeId aliased_type_id, bool is_distinct, Sou
 //   ordered, members - corresponding to definitions - may only be referred to
 //   from points in the source after they are defined.
 //
-// Call `close_open_type` to stop the addition of further members.
-// Call `set_incomplete_type_member_type_by_rank` to set the type of a member
-// that was added with `has_pending_type` set to `true`.
-// Call `set_incomplete_type_member_value_by_rank` to set the value of a member
-// that was added with `has_pending_value` set to `true`.
-TypeId create_open_type(TypePool* types, TypeId lexical_parent_type_id, SourceId source_id, TypeDisposition disposition) noexcept;
+// Call `type_seal_composite` to stop the addition of further members.
+// Call `type_add_composite_member` to add a member to this type.
+// Call `type_set_composite_member_info` to set the type or value of a member
+// that was added with `has_pending_type` or `has_pending_value` respectively
+// set to `true`.
+TypeId type_create_composite(TypePool* types, TypeId lexical_parent_type_id, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
+
+// Seals an open composite type, preventing the addition of further members and
+// setting the type's metrics (`size`, `align` and `stride`).
+// Members that have already been added but that have not yet had their type or
+// value set can still be manipulated via `type_set_composite_member_info` even
+// after this call returns.
+// For types created with `TypeDisposition::Block` or
+// `TypeDisposition::Signature`, `size`, `align` and `stride` must all be `0`,
+// as their values are tracked implicitly as members are added and completed.
+// Otherwise, `size` and `stride` are unrestricted, while `align` must not be
+// `0`.
+TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align, u64 stride) noexcept;
 
 // Adds a member to the open composite type referenced by `open_type_id`.
 // The member is initialized with the data in `member`.
-void add_open_type_member(TypePool* types, TypeId open_type_id, Member member) noexcept;
+void type_add_composite_member(TypePool* types, TypeId type_id, Member member) noexcept;
 
-// Close an open composite type, preventing the addition of further members and
-// setting the type's metrics (`size`, `align` and `stride`).
-void close_open_type(TypePool* types, TypeId open_type_id, u64 size, u32 align, u64 stride) noexcept;
+// Sets the type and / or value of the member at position `rank` in the
+// composite type identified by `type_id`.
+// If `info.has_type` is true, the member's type is set to `info.type`, which
+// must not be `TypeId::INVALID`. Note that the member must have been
+// initialized with `has_pending_type` set to `true`, and must not have had its
+// type set by a preceding call to this function.
+// If `info.has_value` is true, the member's (default-) value is set to
+// `info.value`, which must not be `GlobalValueId::INVALID`. Note that the
+// member must have been initialized with `has_pending_value` set to `true`,
+// and must not have had its value set by a preceding call to this function.
+// Note that both `info.has_type` and `info.has_value` may be `false`, in which
+// case this function is effectively a no-op.
+void type_set_composite_member_info(TypePool* types, TypeId type_id, u16 rank, MemberCompletionInfo info) noexcept;
 
-void set_incomplete_type_member_info_by_rank(TypePool* types, TypeId open_type_id, u16 rank, MemberCompletionInfo info) noexcept;
+TypeId type_copy_composite(TypePool* types, TypeId type_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
 
-TypeId copy_incomplete_type(TypePool* types, TypeId incomplete_type_id) noexcept;
+
 
 // Checks whether `type_id_a` and `type_id_b` refer to the same type or
 // non-distinct aliases of the same type.
-bool is_same_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
+bool type_is_equal(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
 
 // Checks whether `from_type_id` can be implicitly converted to `to_type_id`.
 // If `from_type_id` and `to_type_id` refer to the same type according to
-// `is_same_type`, implicit conversion is allowed.
+// `type_is_equal`, implicit conversion is allowed.
 // Otherwise the allowed implicit conversion are as follows:
 //
 // |   `from`    |   `to`    |                    Notes & Semantics                    |
@@ -1859,25 +1895,15 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 
 // Returns the common type of `type_id_a` and `type_id_b`.
 // If `type_id_a` and `type_id_b` are considered the equivalent by
-// `is_same_type`, the lower of the two is returned. This is done to ensure
+// `type_is_equal`, the lower of the two is returned. This is done to ensure
 // repeatability regardless of operand order.
 // Otherwise, if one of the types is implicitly convertible to the other, the
 // converted-to type is returned. E.g., when `type_id_a` is a `CompInteger` and
 // `type_id_b` is an `Integer`, `type_id_b` is returned.
 // If `type_id_a` and `type_id_b` do not share a common type, `TypeId::INVALID`
 // is returned.
-TypeId common_type(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
+TypeId type_unify(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
 
-
-// Retrieves the name associated with `type_id`.
-// If there is no associated name, returns `IdentifierId::INVALID`.
-// Names are associated by calling `alias_type`.
-IdentifierId type_name_from_id(const TypePool* types, TypeId type_id) noexcept;
-
-// Retrieves the `SourceId` associated with `type_id`.
-// If there is no associated `SourceId`, returns `SourceId::INVALID`. This is
-// only the case for unaliased primitive types.
-SourceId type_source_from_id(const TypePool* types, TypeId type_id) noexcept;
 
 TypeDisposition type_disposition_from_id(TypePool* types, TypeId type_id) noexcept;
 
@@ -1885,7 +1911,13 @@ TypeDisposition type_disposition_from_id(TypePool* types, TypeId type_id) noexce
 // referenced by `type_id`. If the type has no lexical parent,
 // `TypeId::INVALID` is returned. This is only the case for the top-level type
 // of the hard-coded prelude AST.
-TypeId lexical_parent_type_from_id(const TypePool* types, TypeId type_id) noexcept;
+TypeId lexical_parent_type_from_id(TypePool* types, TypeId type_id) noexcept;
+
+// Checks whether `type_metrics_from_id` may be called on `type_id`.
+// This returns false iff `type_id` refers to a composite type that has a
+// `disposition` of `TypeDisposition::User` and has not yet had
+// `type_seal_composite` called on it. 
+bool type_has_metrics(TypePool* types, TypeId type_id) noexcept;
 
 // Retrieves the `size`, `stride` and `align` of the type referenced by
 // `type_id`. `size` and `alignment` may take any value, including `0`.
@@ -1904,13 +1936,34 @@ TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept;
 
 const Member* type_member_by_rank(TypePool* types, TypeId type_id, u16 rank);
 
-bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, SourceId source, const Member** out) noexcept;
+bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, const Member** out) noexcept;
 
 // Retrieves the structural data associated with `type_id`, which must not
 // refer to a composite type.
 // The returned data is the same as that passed to the call to `simple_type`
 // that created `type_id`, chaining through calls to `alias_type`.
-const void* simple_type_structure_from_id(TypePool* types, TypeId type_id) noexcept;
+const void* type_attachment_from_id_raw(TypePool* types, TypeId type_id) noexcept;
+
+template<typename T>
+const T* type_attachment_from_id(TypePool* types, TypeId type_id) noexcept
+{
+	#ifndef _NDEBUG
+		const TypeTag tag = type_tag_from_id(types, type_id);
+
+		if constexpr (is_same_type<T, ReferenceType>)
+			ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray);
+		else if constexpr (is_same_type<T, NumericType>)
+			ASSERT_OR_IGNORE(tag == TypeTag::Integer || tag == TypeTag::Float);
+		else if constexpr (is_same_type<T, ArrayType>)
+			ASSERT_OR_IGNORE(tag == TypeTag::Array);
+		else if constexpr (is_same_type<T, SignatureType>)
+			ASSERT_OR_IGNORE(tag == TypeTag::Func || tag == TypeTag::Builtin);
+		else
+			static_assert(false, "Unexpected attachment passed to type_attachment_from_id");
+	#endif // !_NDEBUG
+
+	return reinterpret_cast<const T*>(type_attachment_from_id_raw(types, type_id));
+}
 
 
 // Retrieves a string representing the given `tag`.

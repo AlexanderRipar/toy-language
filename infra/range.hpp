@@ -179,6 +179,8 @@ private:
 
 public:
 
+	constexpr AttachmentRange() noexcept = default;
+
 	constexpr AttachmentRange(Range<T> range, Attach attachment) noexcept :
 		m_begin{ range.begin() },
 		m_count{ static_cast<u32>(range.count()) },

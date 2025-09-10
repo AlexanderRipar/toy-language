@@ -1057,11 +1057,7 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 
 	buffer_index += bytes_to_copy;
 
-	ArrayType array_of_u8_type{};
-	array_of_u8_type.element_type = lexer->u8_type_id;
-	array_of_u8_type.element_count = buffer_index;
-
-	const TypeId string_type_id = simple_type(lexer->types, TypeTag::Array, range::from_object_bytes(&array_of_u8_type));
+	const TypeId string_type_id = type_create_array(lexer->types, TypeTag::Array, ArrayType{ buffer_index, lexer->u8_type_id });
 
 	const GlobalValueId string_value_id = alloc_global_value(lexer->globals, buffer_index, 1);
 
@@ -2771,14 +2767,10 @@ static void parse_file(Parser* parser) noexcept
 
 Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors, minos::FileHandle log_file) noexcept
 {
-	NumericType u8_type{};
-	u8_type.bits = 8;
-	u8_type.is_signed = false;
-
 	Parser* const parser = static_cast<Parser*>(alloc_from_pool(pool, sizeof(Parser), alignof(Parser)));
 
 	parser->builder = asts;
-	parser->lexer.u8_type_id = simple_type(types, TypeTag::Integer, range::from_object_bytes(&u8_type));
+	parser->lexer.u8_type_id = type_create_numeric(types, TypeTag::Integer, NumericType{ 8, false });
 	parser->lexer.identifiers = identifiers;
 	parser->lexer.globals = globals;
 	parser->lexer.types = types;

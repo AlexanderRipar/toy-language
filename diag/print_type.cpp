@@ -25,21 +25,10 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 	const TypeTag tag = type_tag_from_id(types, type_id);
 
-	const IdentifierId name_id = type_name_from_id(types, type_id);
-
-	const Range<char8> name = name_id == IdentifierId::INVALID ? range::from_literal_string("UNNAMED") : identifier_name_from_id(identifiers, name_id);
-
-	const char8 name_opener = name_id == IdentifierId::INVALID ? '<' : '\"';
-
-	const char8 name_closer = name_id == IdentifierId::INVALID ? '>' : '\"';
-
 	const char8* tag_string = optional_tag_name(tag);
 
-	diag::buf_printf(ctx, "%*s%c%.*s%c%s%s",
+	diag::buf_printf(ctx, "%*s%s%s",
 		skip_initial_indent ? 0 : indent * 2, "",
-		name_opener,
-		static_cast<s32>(name.count()), name.begin(),
-		name_closer,
 		*tag_string == '\0' ? "" : " ",
 		tag_string
 	);
@@ -70,7 +59,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::Integer:
 	case TypeTag::Float:
 	{
-		const NumericType* numeric_type = static_cast<const NumericType*>(simple_type_structure_from_id(types, type_id));
+		const NumericType* numeric_type = type_attachment_from_id<NumericType>(types, type_id);
 
 		diag::buf_printf(ctx, " %s%u\n", tag == TypeTag::Integer ? numeric_type->is_signed ? "s" : "u" : "f", numeric_type->bits);
 
@@ -80,7 +69,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::Slice:
 	case TypeTag::Ptr:
 	{
-		const ReferenceType* const reference = static_cast<const ReferenceType*>(simple_type_structure_from_id(types, type_id));
+		const ReferenceType* const reference = type_attachment_from_id<ReferenceType>(types, type_id);
 
 		const char8* introducer;
 
@@ -104,7 +93,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 	case TypeTag::Array:
 	{
-		const ArrayType* const array = static_cast<const ArrayType*>(simple_type_structure_from_id(types, type_id));
+		const ArrayType* const array = type_attachment_from_id<ArrayType>(types, type_id);
 
 		diag::buf_printf(ctx, " :: [%" PRIu64 "]", array->element_count);
 
@@ -122,7 +111,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 		if (tag == TypeTag::Func)
 		{
-			signature_type = static_cast<const SignatureType*>(simple_type_structure_from_id(types, type_id));
+			signature_type = type_attachment_from_id<SignatureType>(types, type_id);
 
 			composite_type_id = signature_type->parameter_list_type_id;
 		}
@@ -133,7 +122,9 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 			composite_type_id = type_id;
 		}
 
-		const TypeMetrics metrics = type_metrics_from_id(types, composite_type_id);
+		const TypeMetrics metrics = type_has_metrics(types, composite_type_id)
+			? type_metrics_from_id(types, composite_type_id)
+			: TypeMetrics{ 0, 0, 0 };
 
 		diag::buf_printf(ctx, " %s (sz=%" PRIu64 ", al=%" PRIu32 ", st=%" PRIu64 ") {",
 			tag == TypeTag::Func ? "Func" : "Composite",
@@ -201,6 +192,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	}
 
 	case TypeTag::INVALID:
+	case TypeTag::INDIRECTION:
 		; // fallthrough to unreachable.
 	}
 
