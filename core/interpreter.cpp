@@ -828,7 +828,6 @@ static Member delayed_member_from(Interpreter* interp, AstNode* definition) noex
 	member.value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
 	member.is_global = has_flag(definition, AstFlag::Definition_IsGlobal);
 	member.is_pub = has_flag(definition, AstFlag::Definition_IsPub);
-	member.is_use = has_flag(definition, AstFlag::Definition_IsUse);
 	member.is_mut = has_flag(definition, AstFlag::Definition_IsMut);
 	member.is_param = false;
 	member.has_pending_type = true;
@@ -1297,7 +1296,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		definition->default_or_global_value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
 		definition->is_global = has_flag(node, AstFlag::Definition_IsGlobal);
 		definition->is_pub = has_flag(node, AstFlag::Definition_IsPub);
-		definition->is_use = has_flag(node, AstFlag::Definition_IsUse);
 		definition->is_mut = has_flag(node, AstFlag::Definition_IsMut);
 
 		return rst;
@@ -1363,7 +1361,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			Member param_member = delayed_member_from(interp, param);
 			param_member.is_global = false;
-			param_member.is_use = false;
 
 			add_open_type_member(interp->types, parameter_list_type_id, param_member);
 
@@ -2273,7 +2270,6 @@ static TypeId make_func_type_from_array(TypePool* types, TypeId return_type_id, 
 		member.source = SourceId::INVALID;
 		member.is_global = false;
 		member.is_pub = false;
-		member.is_use = false;
 		member.is_mut = false;
 		member.is_comptime_known = params[i].is_comptime_known;
 		member.is_arg_independent = true;
@@ -2633,6 +2629,41 @@ static void init_builtin_values(Interpreter* interp) noexcept
 	interp->builtin_values[static_cast<u8>(Builtin::SourceId)] = &builtin_source_id;
 }
 
+// Pushes `let std = _import(<std_filepath>, _source_id())` into `asts`'s
+// builder.
+static AstBuilderToken std_import(AstPool* asts, IdentifierId std_name, GlobalValueId std_filepath_value_id, TypeId std_filepath_type_id) noexcept
+{
+	const AstBuilderToken import_builtin = push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, static_cast<AstFlag>(Builtin::Import), AstTag::Builtin);
+
+	push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstLitStringData{ std_filepath_value_id, std_filepath_type_id });
+
+	const AstBuilderToken literal_zero = push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstLitIntegerData{ comp_integer_from_u64(0) });
+
+	push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstLitIntegerData{ comp_integer_from_u64(0) });
+
+	push_node(asts, literal_zero, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpCmpEQ);
+
+	const AstBuilderToken source_id_builtin = push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, static_cast<AstFlag>(Builtin::SourceId), AstTag::Builtin);
+
+	push_node(asts, source_id_builtin, SourceId::INVALID, AstFlag::EMPTY, AstTag::Call);
+
+	const AstBuilderToken import_call = push_node(asts, import_builtin, SourceId::INVALID, AstFlag::EMPTY, AstTag::Call);
+
+	return push_node(asts, import_call, SourceId::INVALID, AstFlag::EMPTY, AstDefinitionData{ std_name });
+}
+
+// Pushes `let <use_name> = std.prelude.<use_name>` into `asts`'s builder.
+static void std_prelude_use(AstPool* asts, IdentifierId std_name, IdentifierId prelude_name, IdentifierId use_name) noexcept
+{
+	const AstBuilderToken std_identifer = push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstIdentifierData{ std_name });
+
+	const AstBuilderToken prelude_member = push_node(asts, std_identifer, SourceId::INVALID, AstFlag::EMPTY, AstMemberData{ prelude_name });
+
+	const AstBuilderToken used_member = push_node(asts, prelude_member, SourceId::INVALID, AstFlag::EMPTY, AstMemberData{ use_name });
+
+	push_node(asts, used_member, SourceId::INVALID, AstFlag::EMPTY, AstDefinitionData{ use_name });
+}
+
 static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPool* identifiers, AstPool* asts) noexcept
 {
 	NumericType u8_type{};
@@ -2651,31 +2682,43 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 
 	global_value_set(interp->globals, std_filepath_value_id, 0, config->std.filepath.as_byte_range());
 
-	const AstBuilderToken import_builtin = push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, static_cast<AstFlag>(Builtin::Import), AstTag::Builtin);
+	const IdentifierId std_name = id_from_identifier(identifiers, range::from_literal_string("std"));
 
-	push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstLitStringData{ std_filepath_value_id, std_filepath_type_id });
+	const IdentifierId prelude_name = id_from_identifier(identifiers, range::from_literal_string("prelude"));
 
-	const AstBuilderToken literal_zero = push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstLitIntegerData{ comp_integer_from_u64(0) });
+	const AstBuilderToken first_token = std_import(asts, std_name, std_filepath_value_id, std_filepath_type_id);
 
-	push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstLitIntegerData{ comp_integer_from_u64(0) });
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("u8")));
 
-	push_node(asts, literal_zero, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpCmpEQ);
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("u16")));
 
-	const AstBuilderToken source_id_builtin = push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, static_cast<AstFlag>(Builtin::SourceId), AstTag::Builtin);
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("u32")));
 
-	push_node(asts, source_id_builtin, SourceId::INVALID, AstFlag::EMPTY, AstTag::Call);
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("u64")));
 
-	const AstBuilderToken import_call = push_node(asts, import_builtin, SourceId::INVALID, AstFlag::EMPTY, AstTag::Call);
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("s8")));
 
-	const AstBuilderToken std_definition = push_node(asts, import_call, SourceId::INVALID, AstFlag::EMPTY, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("s16")));
 
-	const AstBuilderToken std_identifier = push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstIdentifierData{ id_from_identifier(identifiers, range::from_literal_string("std")) });
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("s32")));
 
-	const AstBuilderToken prelude_member = push_node(asts, std_identifier, SourceId::INVALID, AstFlag::EMPTY, AstMemberData{ id_from_identifier(identifiers, range::from_literal_string("prelude")) });
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("s64")));
 
-	push_node(asts, prelude_member, SourceId::INVALID, AstFlag::Definition_IsUse, AstDefinitionData{ id_from_identifier(identifiers, range::from_literal_string("prelude")) });
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("f32")));
 
-	push_node(asts, std_definition, SourceId::INVALID, AstFlag::EMPTY, AstTag::File);
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("f64")));
+
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("Type")));
+
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("Bool")));
+
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("Void")));
+
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("true")));
+
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("false")));
+
+	push_node(asts, first_token, SourceId::INVALID, AstFlag::EMPTY, AstTag::File);
 
 	AstNode* const prelude_ast = complete_ast(asts);
 
