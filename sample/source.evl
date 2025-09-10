@@ -1,39 +1,32 @@
-let f = func(eval AType: Type, t: AType, tf: func(x: AType) -> AType) -> AType => tf(t)
+let comptime_one = 1
 
-let k = f(u32, 1, func(x: u32) -> u32 => x)
-
-
-
-/*
-let v0 = 1
-
-let v1: u32 = 1
+let u32_one: u32 = 1
 
 
 
-let f = func(a: u32) -> u32 => 1
+let func_to_1 = func(a: u32) -> u32 => 1
 
-let f1 = func(a: u32) -> u32 => a
-
-
-
-let g = func(a: u32) -> Bool => a == 1
-
-let g1 = func(a: u32, b: u32) -> Bool => a == b
+let u32_identity = func(a: u32) -> u32 => a
 
 
 
-let h = func() -> Void => {}
+let u32_one_equality = func(a: u32) -> Bool => a == 1
 
-let h1 = func(a: u32) -> u32 => { a }
+let u32_equality = func(a: u32, b: u32) -> Bool => a == b
 
-let h2 = func(a: u32) -> u32 => {
+
+
+let void_func = func() -> Void => {}
+
+let u32_identity_with_block = func(a: u32) -> u32 => { a }
+
+let u32_identity_with_block_and_one_definition = func(a: u32) -> u32 => {
 	let n = a
 
 	a
 }
 
-let h3 = func(a: u32) -> u32 => {
+let u32_identity_with_block_and_two_definitions = func(a: u32) -> u32 => {
 	let b = a
 
 	let c = b
@@ -43,19 +36,19 @@ let h3 = func(a: u32) -> u32 => {
 
 
 
-let i = func(T: Type) -> Type => T
+let TypeIdentity = func(T: Type) -> Type => T
 
-let v_i: i(Bool) = 1 == 1
+let type_identity_bool_true: TypeIdentity(Bool) = 1 == 1
 
 
 
-let j = func() -> Void => {
+let func_with_inner_type_definition = func() -> Void => {
 	let Tj: Type = u32
 
 	{}
 }
 
-let j1 = func() -> Void => {
+let func_with_inner_type_definition_and_use = func() -> Void => {
 	let Tj: Type = u32
 
 	let tj: Tj = 1
@@ -63,13 +56,14 @@ let j1 = func() -> Void => {
 	{}
 }
 
+let generic_identity = func(eval TheType: Type, t: TheType) -> TheType => t
 
+let map_single = func(eval AType: Type, t: AType, tf: func(x: AType) -> AType) -> AType => tf(t)
 
-let k = func(eval TheType: Type, t: TheType) -> TheType => t
+let generic_identity_u32 = generic_identity(u32, 1)
 
-let l = func(eval AType: Type, t: AType, tf: func(x: AType) -> AType) -> AType => tf(t)
+let generic_identity_bool = generic_identity(Bool, false)
 
-let v = k(u32, 1)
+let map_single_u32 = map_single(u32, 1, func(x: u32) -> u32 => x)
 
-let w = k(Bool, false)
-*/
+let map_single_bool = map_single(Bool, false, func(x: Bool) -> Bool => x)
