@@ -652,7 +652,7 @@ public:
 	{
 		ASSERT_OR_IGNORE(bytes != 0 && bytes <= (static_cast<u32>(1) << MaxSizeLog2));
 
-		const u8 leading_zeros = count_leading_zeros_assume_one(bytes);
+		const u8 leading_zeros = count_leading_zeros(bytes - 1);
 
 		const u8 category = (32 - MinSizeLog2) < leading_zeros
 			? 0
@@ -661,6 +661,8 @@ public:
 		const u32 alloc_size = static_cast<u32>(1) << (category + MinSizeLog2);
 
 		s32 free_index = m_first_frees[category];
+
+		const u32 unit_size = (static_cast<u32>(1) << (category + MinSizeLog2));
 
 		if (free_index < 0)
 		{
@@ -678,12 +680,12 @@ public:
 
 			const u32 committed_dwords = m_commit_increment_bytes[category] / sizeof(u32);
 
-			const u32 next_unit_offset_dwords = m_heads[category] + unit_dwords;
+			const u32 next_unit_offset_dwords = m_heads[category] + unit_size / sizeof(u32);
 
-			for (u32 i = 0; i != committed_dwords; i += unit_dwords)
+			for (u32 i = 0; i != committed_dwords; i += unit_size / sizeof(u32))
 				curr[i] = static_cast<s32>(i + next_unit_offset_dwords);
 
-			curr[committed_dwords - unit_dwords] = -1;
+			curr[committed_dwords - unit_size / sizeof(u32)] = -1;
 
 			free_index = m_heads[category];
 
