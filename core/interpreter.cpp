@@ -1459,11 +1459,15 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 				arec_pop(interp, block_arec_id);
 
+				type_discard(interp->types, block_type_id);
+
 				return rst;
 			}
 		}
 
 		arec_pop(interp, block_arec_id);
+
+		type_discard(interp->types, block_type_id);
 
 		return fill_spec_sized(interp, spec, node, ValueKind::Value, type_create_simple(interp->types, TypeTag::Void), 0, 1);
 	}

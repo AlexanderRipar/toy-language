@@ -533,6 +533,8 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 
 		const CompositeType* const b_attach = reinterpret_cast<CompositeType*>(b->attach);
 
+		ASSERT_OR_IGNORE(a_attach->header.disposition != TypeDisposition::Block && b_attach->header.disposition != TypeDisposition::Block);
+
 		if (a_attach->header.size != b_attach->header.size
 		 || a_attach->header.stride != b_attach->header.stride
 		 || a_attach->header.align_log2 != b_attach->header.align_log2
@@ -1075,6 +1077,22 @@ TypeId type_copy_composite(TypePool* types, TypeId type_id, u32 initial_member_c
 	const TypeId indirection_type_id = id_from_structure(types, indirection);
 
 	return indirection_type_id;
+}
+
+void type_discard(TypePool* types, TypeId type_id) noexcept
+{
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
+
+	TypeStructure* structure = structure_from_id(types, type_id);
+
+	if (structure->tag == TypeTag::INDIRECTION)
+	{
+		structure = structure_from_id(types, structure->indirection_type_id);
+
+		ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
+	}
+
+	types->structures.dealloc({ reinterpret_cast<byte*>(structure), static_cast<u64>(1) << structure->capacity_log2 });
 }
 
 
