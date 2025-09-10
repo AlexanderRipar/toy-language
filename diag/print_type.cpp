@@ -27,9 +27,8 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 	const char8* tag_string = optional_tag_name(tag);
 
-	diag::buf_printf(ctx, "%*s%s%s",
+	diag::buf_printf(ctx, "%*s%s",
 		skip_initial_indent ? 0 : indent * 2, "",
-		*tag_string == '\0' ? "" : " ",
 		tag_string
 	);
 
@@ -61,7 +60,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	{
 		const NumericType* numeric_type = type_attachment_from_id<NumericType>(types, type_id);
 
-		diag::buf_printf(ctx, " %s%u\n", tag == TypeTag::Integer ? numeric_type->is_signed ? "s" : "u" : "f", numeric_type->bits);
+		diag::buf_printf(ctx, "%s%u\n", tag == TypeTag::Integer ? numeric_type->is_signed ? "s" : "u" : "f", numeric_type->bits);
 
 		return;
 	}
@@ -84,7 +83,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 		else
 			introducer = "*";
 
-		diag::buf_printf(ctx, " %s%s ", introducer, reference->is_mut ? " mut" : "");
+		diag::buf_printf(ctx, "%s%s ", introducer, reference->is_mut ? " mut" : "");
 
 		print_type_impl(ctx, identifiers, types, reference->referenced_type_id, indent + 1, true);
 
@@ -95,7 +94,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	{
 		const ArrayType* const array = type_attachment_from_id<ArrayType>(types, type_id);
 
-		diag::buf_printf(ctx, " :: [%" PRIu64 "]", array->element_count);
+		diag::buf_printf(ctx, "[%" PRIu64 "]", array->element_count);
 
 		print_type_impl(ctx, identifiers, types, array->element_type, indent + 1, true);
 
@@ -126,7 +125,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 			? type_metrics_from_id(types, composite_type_id)
 			: TypeMetrics{ 0, 0, 0 };
 
-		diag::buf_printf(ctx, " %s (sz=%" PRIu64 ", al=%" PRIu32 ", st=%" PRIu64 ") {",
+		diag::buf_printf(ctx, "%s (sz=%" PRIu64 ", al=%" PRIu32 ", st=%" PRIu64 ") {",
 			tag == TypeTag::Func ? "Func" : "Composite",
 			metrics.size,
 			metrics.align,
