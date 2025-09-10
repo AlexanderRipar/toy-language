@@ -61,6 +61,8 @@ static constexpr inline bool is_pow2(T n) noexcept
 template<typename T>
 static constexpr inline T next_pow2(T n, T estimate = 1) noexcept
 {
+	ASSERT_OR_IGNORE(estimate != 0 && is_pow2(estimate));
+
 	while (estimate < n)
 		estimate *= 2;
 
