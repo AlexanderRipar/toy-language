@@ -329,6 +329,8 @@ struct Interpreter
 
 	PartialValuePool* partials;
 
+	ClosurePool* closures;
+
 	ErrorSink* errors;
 
 	ReservedVec<u64> arecs;
@@ -3348,7 +3350,7 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 
 
 
-Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, PartialValuePool* partials, ErrorSink* errors, minos::FileHandle log_file, bool log_prelude) noexcept
+Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, PartialValuePool* partials, ClosurePool* closures, ErrorSink* errors, minos::FileHandle log_file, bool log_prelude) noexcept
 {
 	Interpreter* const interp = static_cast<Interpreter*>(alloc_from_pool(alloc, sizeof(Interpreter), alignof(Interpreter)));
 
@@ -3377,6 +3379,7 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 	interp->identifiers = identifiers;
 	interp->globals = globals;
 	interp->partials = partials;
+	interp->closures = closures;
 	interp->errors = errors;
 	interp->top_arec_id = ArecId::INVALID;
 	interp->active_arec_id = ArecId::INVALID;

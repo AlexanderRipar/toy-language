@@ -70,7 +70,9 @@ s32 main(s32 argc, const char8** argv)
 
 		PartialValuePool* const partials = create_partial_value_pool(alloc);
 
-		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, globals, partials, errors, imports_log_file, config->logging.imports.enable_prelude);
+		ClosurePool* const closures = create_closure_pool(alloc, types);
+
+		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, globals, partials, closures, errors, imports_log_file, config->logging.imports.enable_prelude);
 
 		const TypeId main_file_type_id = import_file(interp, config->entrypoint.filepath, false);
 
