@@ -846,6 +846,39 @@ static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name, 
 
 
 
+static bool u64_from_integer(Range<byte> value, NumericType type, u64* out) noexcept
+{
+	u32 count_size = (type.bits + 7) / 8;
+
+	ASSERT_OR_IGNORE(count_size != 0);
+
+	if (type.is_signed && (value[count_size - 1] & 0x80) != 0)
+		return false;
+
+	// Check `count`'s value fits into 64 bits if its type is larger than that.
+	if (count_size > sizeof(u64))
+	{
+		while (count_size > sizeof(u64))
+		{
+			count_size -= 1;
+
+			if (value[count_size] != 0)
+				return false;
+		}
+	}
+
+	u64 result = 0;
+
+	ASSERT_OR_IGNORE(count_size <= sizeof(u64));
+
+	memcpy(&result, value.begin(), count_size);
+
+	*out = result;
+
+	return true;
+}
+
+
 static Member delayed_member_from(Interpreter* interp, AstNode* definition) noexcept
 {
 	ASSERT_OR_IGNORE(definition->tag == AstTag::Definition || definition->tag == AstTag::Parameter);
@@ -1389,7 +1422,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				const MutRange<byte> value_dst = add_partial_value_to_builder(interp, elem, value_type_id, value_metrics.size, value_metrics.align);
 
 				const Range<byte> value_src = static_cast<ValueKind>(value.attachment().value_kind_bits) == ValueKind::Location
-					? load_loc<MutRange<byte>>(value.mut_range()).immut()
+					? load_loc<Range<byte>>(value.mut_range())
 					: value.range();
 
 				copy_loc(value_dst, value_src);
@@ -2284,30 +2317,10 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			}
 			else if (count_type_tag == TypeTag::Integer)
 			{
-				const NumericType* const count_type = type_attachment_from_id<NumericType>(interp->types, count_rst.success.type_id);
+				const NumericType count_type = *type_attachment_from_id<NumericType>(interp->types, count_rst.success.type_id);
 
-				u32 count_size = (count_type->bits + 7) / 8;
-
-				ASSERT_OR_IGNORE(count_size != 0);
-
-				const bool is_negative = count_type->is_signed && (count_rst.success.bytes[count_size - 1] & 0x80) != 0;
-
-				if (is_negative)
+				if (!u64_from_integer(count_rst.success.bytes.immut(), count_type, &count_u64))
 					source_error(interp->errors, source_id_of(interp->asts, count), "Array element count must fit into unsigned 64-bit integer.\n");
-
-				// Check `count`'s value fits into 64 bits if its type is larger than that.
-				if (count_size > sizeof(count_u64))
-				{
-					while (count_size > sizeof(count_u64))
-					{
-						count_size -= 1;
-
-						if (count_rst.success.bytes[count_size] != 0)
-							source_error(interp->errors, source_id_of(interp->asts, count), "Array element count must fit into unsigned 64-bit integer.\n");
-					}
-				}
-
-				memcpy(&count_u64, count_rst.success.bytes.begin(), count_size);
 			}
 			else
 			{
@@ -2327,8 +2340,12 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			type_type_id
 		});
 
-		if (count_rst.tag == EvalTag::Unbound || elem_type_rst.tag == EvalTag::Unbound)
+		if (count_rst.tag == EvalTag::Unbound && elem_type_rst.tag == EvalTag::Unbound)
 			return eval_unbound(count_rst.unbound.in < elem_type_rst.unbound.in ? count_rst.unbound.in : elem_type_rst.unbound.in);
+		else if (count_rst.tag == EvalTag::Unbound)
+			return eval_unbound(count_rst.unbound.in);
+		else if (elem_type_rst.tag == EvalTag::Unbound)
+			return eval_unbound(elem_type_rst.unbound.in);
 
 		const EvalRst rst = fill_spec_sized(interp, spec, node, ValueKind::Value, type_type_id, sizeof(TypeId), alignof(TypeId));
 
@@ -2337,6 +2354,195 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		store_loc(rst.success.bytes, array_type_id);
 
 		return rst;
+	}
+
+	case AstTag::OpArrayIndex:
+	{
+		AstNode* const arrayish = first_child_of(node);
+
+		EvalRst arrayish_rst = evaluate(interp, arrayish, EvalSpec{
+			ValueKind::Location
+		});
+
+		TypeId elem_type_id = TypeId::INVALID;
+
+		TypeMetrics elem_metrics = {};
+
+		u64 arrayish_size = 0;
+
+		byte* arrayish_begin = nullptr;
+
+		if (arrayish_rst.tag == EvalTag::Success)
+		{
+			const TypeTag arrayish_type_tag = type_tag_from_id(interp->types, arrayish_rst.success.type_id);
+
+			if (arrayish_type_tag == TypeTag::Array || arrayish_type_tag == TypeTag::ArrayLiteral)
+			{
+				const ArrayType* const array_type = type_attachment_from_id<ArrayType>(interp->types, arrayish_rst.success.type_id);
+
+				elem_metrics = type_metrics_from_id(interp->types, array_type->element_type);
+
+				elem_type_id = array_type->element_type;
+
+				arrayish_size = array_type->element_count * elem_metrics.size;
+
+				arrayish_begin = arrayish_rst.success.kind == ValueKind::Location
+					? load_loc<MutRange<byte>>(arrayish_rst.success.bytes).begin()
+					: arrayish_rst.success.bytes.begin();
+			}
+			else if (arrayish_type_tag == TypeTag::Slice)
+			{
+				const ReferenceType* const slice_type = type_attachment_from_id<ReferenceType>(interp->types, arrayish_rst.success.type_id);
+
+				MutRange<byte> slice = load_loc<MutRange<byte>>(arrayish_rst.success.bytes);
+
+				if (arrayish_rst.success.kind == ValueKind::Location)
+					slice = load_loc<MutRange<byte>>(slice);
+
+				elem_metrics = type_metrics_from_id(interp->types, slice_type->referenced_type_id);
+
+				ASSERT_OR_IGNORE(slice.count() % elem_metrics.stride == 0);
+
+				elem_type_id = slice_type->referenced_type_id;
+
+				arrayish_size = slice.count();
+
+				arrayish_begin = slice.begin();
+			}
+			else if (arrayish_type_tag == TypeTag::Ptr)
+			{
+				const ReferenceType* const ptr_type = type_attachment_from_id<ReferenceType>(interp->types, arrayish_rst.success.type_id);
+
+				if (!ptr_type->is_multi)
+					source_error(interp->errors, source_id_of(interp->asts, arrayish), "Left-hand-side of index operator must have array, slice, or multi-pointer type.\n");
+
+				MutRange<byte> ptr_loc = arrayish_rst.success.kind == ValueKind::Location
+					? load_loc<MutRange<byte>>(arrayish_rst.success.bytes)
+					: arrayish_rst.success.bytes;
+
+				void* const ptr = load_loc<void*>(ptr_loc);
+
+				if (ptr_type->is_opt && ptr == nullptr)
+					source_error(interp->errors, source_id_of(interp->asts, node), "Left-hand-side of index operator was `null`.\n");
+
+				ASSERT_OR_IGNORE(ptr != nullptr);
+
+				elem_metrics = type_metrics_from_id(interp->types, ptr_type->referenced_type_id);
+
+				elem_type_id = ptr_type->referenced_type_id;
+
+				arrayish_size = UINT64_MAX;
+
+				arrayish_begin = static_cast<byte*>(ptr);
+			}
+			else
+			{
+				source_error(interp->errors, source_id_of(interp->asts, arrayish), "Left-hand-side of index operator must have array, slice, or multi-pointer type.\n");
+			}
+		}
+
+		AstNode* const index = next_sibling_of(arrayish);
+
+		const EvalRst index_rst = evaluate(interp, index, EvalSpec{
+			ValueKind::Value
+		});
+
+		u64 index_u64 = 0;
+
+		if (index_rst.tag == EvalTag::Success)
+		{
+			const TypeTag index_type_tag = type_tag_from_id(interp->types, index_rst.success.type_id);
+
+			if (index_type_tag == TypeTag::CompInteger)
+			{
+				const CompIntegerValue index_value = load_loc<CompIntegerValue>(index_rst.success.bytes);
+
+				if (!u64_from_comp_integer(index_value, 64, &index_u64))
+					source_error(interp->errors, source_id_of(interp->asts, index), "Right-hand-side of index operator must fit into unsigned 64-bit integer.\n");
+			}
+			else if (index_type_tag == TypeTag::Integer)
+			{
+				const NumericType index_type = *type_attachment_from_id<NumericType>(interp->types, index_rst.success.type_id);
+
+				if (!u64_from_integer(index_rst.success.bytes.immut(), index_type, &index_u64))
+					source_error(interp->errors, source_id_of(interp->asts, index), "Right-hand-side of index operator must fit into unsigned 64-bit integer.\n");
+			}
+			else
+			{
+				source_error(interp->errors, source_id_of(interp->asts, arrayish), "Right-hand-side of index operator must have integer type.\n");
+			}
+		}
+
+		if (arrayish_rst.tag == EvalTag::Unbound || index_rst.tag == EvalTag::Unbound)
+		{
+			Arec* unbound_in;
+
+			if (arrayish_rst.tag == EvalTag::Success)
+			{
+				const TypeMetrics metrics = type_metrics_from_id(interp->types, arrayish_rst.success.type_id);
+
+				const MutRange<byte> dst = add_partial_value_to_builder(interp, arrayish, arrayish_rst.success.type_id, metrics.size, metrics.align);
+
+				const Range<byte> src = arrayish_rst.success.kind == ValueKind::Location
+					? load_loc<Range<byte>>(arrayish_rst.success.bytes)
+					: arrayish_rst.success.bytes.immut();
+
+				copy_loc(dst, src);
+
+				ASSERT_OR_IGNORE(index_rst.tag == EvalTag::Unbound);
+
+				unbound_in = index_rst.unbound.in;
+			}
+			else if (index_rst.tag == EvalTag::Success)
+			{
+				const TypeMetrics metrics = type_metrics_from_id(interp->types, index_rst.success.type_id);
+
+				const MutRange<byte> dst = add_partial_value_to_builder(interp, index, index_rst.success.type_id, metrics.size, metrics.align);
+
+				const Range<byte> src = arrayish_rst.success.kind == ValueKind::Location
+					? load_loc<Range<byte>>(arrayish_rst.success.bytes)
+					: arrayish_rst.success.bytes.immut();
+
+				copy_loc(dst, src);
+
+				ASSERT_OR_IGNORE(arrayish_rst.tag == EvalTag::Unbound);
+
+				unbound_in = arrayish_rst.unbound.in;
+			}
+			else
+			{
+				unbound_in = arrayish_rst.unbound.in < index_rst.unbound.in ? arrayish_rst.unbound.in : index_rst.unbound.in;
+			}
+
+			return eval_unbound(unbound_in);
+		}
+		else
+		{
+			const u64 offset = index_u64 * elem_metrics.stride;
+
+			if (offset + elem_metrics.size > arrayish_size)
+				source_error(interp->errors, source_id_of(interp->asts, node), "Index %" PRIu64 " exceeds element count of %" PRIu64 ".\n", index_u64, arrayish_size / elem_metrics.stride);
+
+			EvalRst rst;
+
+			if (rst.success.kind == ValueKind::Location)
+			{
+				if (arrayish_rst.success.kind != ValueKind::Location)
+					source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use index operator with non-location left-hand-side as a location.\n");
+
+				rst = fill_spec_sized(interp, spec, node, ValueKind::Location, elem_type_id, sizeof(MutRange<byte>), alignof(MutRange<byte>));
+
+				store_loc(rst.success.bytes, MutRange<byte>{ arrayish_begin + offset, elem_metrics.size });
+			}
+			else
+			{
+				rst = fill_spec_sized(interp, spec, node, ValueKind::Value, elem_type_id, elem_metrics.size, elem_metrics.align);
+
+				copy_loc(rst.success.bytes, Range<byte>{ arrayish_begin + offset, elem_metrics.size });
+			}
+
+			return rst;
+		}
 	}
 
 	case AstTag::CompositeInitializer:
@@ -2409,7 +2615,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpSetBitXor:
 	case AstTag::OpSetShiftL:
 	case AstTag::OpSetShiftR:
-	case AstTag::OpArrayIndex:
 		panic("evaluate(%s) not yet implemented.\n", tag_name(node->tag));
 
 	case AstTag::INVALID:

@@ -73,3 +73,19 @@ let map_single_u32 = map_single(u32, 1, func(x: u32) -> u32 => x)
 let map_single_bool = map_single(Bool, false, func(x: Bool) -> Bool => x)
 
 let ten_u32s: [10]u32 = .[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+let five = ten_u32s[4]
+
+let five_u64s_by_name: [five]u64 = .[0, 1, 2, 3, 4]
+
+let five_u64s_by_value: [ten_u32s[4]]u64 = .[5, 6, 7, 8, 9]
+
+let a_one: u32 = 1
+
+let a_one_from_another_one: u32 = a_one
+
+let init_array_of_seven = func(T: Type, t: T) -> [7]T => .[t, t, t, t, t, t, t]
+
+let array_of_seven_u32_ones = init_array_of_seven(u32, 1)
+
+let array_of_one_bool: [array_of_seven_u32_ones[6]]Bool = .[true]
