@@ -2165,13 +2165,29 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			}
 			else
 			{
-				AstNode* const body = ast_node_from_id(interp->asts, static_cast<AstNodeId>(callee_value.function.ast_node_id_bits));
+				ArecId closure_arec_id = ArecId::INVALID;
+
+				if (callee_value.closure_id != ClosureId::INVALID)
+				{
+					ClosureInstance instance = closure_instance(interp->closures, callee_value.closure_id);
+					
+					closure_arec_id = arec_push(interp, instance.type_id, instance.values.count(), instance.align, active_arec_id(interp), ArecKind::Normal);
+
+					Arec* const closure_arec = arec_from_id(interp, closure_arec_id);
+
+					memcpy(closure_arec->attachment, instance.values.begin(), instance.values.count());
+				}
+
+				AstNode* const body = ast_node_from_id(interp->asts, static_cast<AstNodeId>(callee_value.body_ast_node_id));
 
 				const EvalRst call_rst = evaluate(interp, body, EvalSpec{
 					ValueKind::Value,
 					temp_location,
 					rst.success.type_id
 				});
+
+				if (closure_arec_id != ArecId::INVALID)
+					arec_pop(interp, closure_arec_id);
 
 				ASSERT_OR_IGNORE(call_rst.tag == EvalTag::Success);
 			}

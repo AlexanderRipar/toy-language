@@ -89,3 +89,15 @@ let init_array_of_seven = func(T: Type, t: T) -> [7]T => .[t, t, t, t, t, t, t]
 let array_of_seven_u32_ones = init_array_of_seven(u32, 1)
 
 let array_of_one_bool: [array_of_seven_u32_ones[6]]Bool = .[true]
+
+let make_u32_closure = func(n: u32) -> (func() -> u32) => (func() -> u32 => n)
+
+let closed_two_u32 = make_u32_closure(2)
+
+let two_bools_from_closure: [closed_two_u32()]Bool = .[true, false]
+
+let make_generic_closure = func(T: Type, t: T) -> (func() -> T) => (func() -> T => t)
+
+let closed_four_generic_u64 = make_generic_closure(u64, 4)
+
+let four_s8s_from_generic_closure: [closed_four_generic_u64()]s8 = .[2, 7, 42, 127]
