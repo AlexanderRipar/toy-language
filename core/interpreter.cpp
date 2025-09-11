@@ -69,7 +69,7 @@ struct ArecRestoreInfo
 {
 	ArecId old_selected;
 
-	u32 old_used;
+	ArecId old_top;
 };
 
 using BuiltinFunc = void (*) (Interpreter* interp, Arec* arec, AstNode* call_node, MutRange<byte> into) noexcept;
@@ -411,11 +411,11 @@ static ArecRestoreInfo set_active_arec_id(Interpreter* interp, ArecId arec_id) n
 
 	const ArecId old_selected = interp->active_arec_id;
 
-	const u32 old_used = interp->arecs.used();
+	const ArecId old_top = interp->top_arec_id;
 
 	interp->active_arec_id = arec_id;
 
-	return { old_selected, old_used };
+	return { old_selected, old_top };
 }
 
 static Arec* active_arec(Interpreter* interp) noexcept
@@ -437,22 +437,30 @@ static TypeId active_arec_type_id(Interpreter* interp) noexcept
 	return active_arec(interp)->type_id;
 }
 
-static void arec_restore(Interpreter* interp, ArecRestoreInfo info) noexcept
-{
-	ASSERT_OR_IGNORE(info.old_selected <= interp->top_arec_id);
-
-	ASSERT_OR_IGNORE(info.old_selected < static_cast<ArecId>(info.old_used));
-
-	interp->arecs.pop_to(info.old_used);
-
-	interp->active_arec_id = info.old_selected;
-}
-
 static Arec* arec_from_id(Interpreter* interp, ArecId arec_id) noexcept
 {
 	ASSERT_OR_IGNORE(arec_id != ArecId::INVALID);
 
 	return reinterpret_cast<Arec*>(interp->arecs.begin() + static_cast<s32>(arec_id));
+}
+
+static void arec_restore(Interpreter* interp, ArecRestoreInfo info) noexcept
+{
+	ASSERT_OR_IGNORE(info.old_top <= interp->top_arec_id);
+
+	ASSERT_OR_IGNORE(info.old_selected <= static_cast<ArecId>(info.old_top));
+
+	const Arec* const old_top_arec = arec_from_id(interp, info.old_top);
+
+	const u32 old_top_arec_qwords = (sizeof(Arec) + old_top_arec->size + 7) / 8;
+
+	const u32 old_top_arec_base = static_cast<u32>(reinterpret_cast<const u64*>(old_top_arec) - interp->arecs.begin());
+
+	const u32 old_used = old_top_arec_base + old_top_arec_qwords;
+
+	interp->arecs.pop_to(old_used);
+
+	interp->active_arec_id = info.old_selected;
 }
 
 static ArecId arec_push(Interpreter* interp, TypeId record_type_id, u64 size, u32 align, ArecId lookup_parent, ArecKind kind) noexcept
@@ -510,6 +518,11 @@ static void arec_grow(Interpreter* interp, ArecId arec_id, u64 new_size) noexcep
 	ASSERT_OR_IGNORE(reinterpret_cast<u64>(interp->arecs.end()) == (reinterpret_cast<u64>(arec->attachment + arec->size + 7) & ~static_cast<u64>(7)));
 
 	ASSERT_OR_IGNORE(arec->size <= new_size);
+
+	// This overallocates due to `interp->arecs` rounding to 8 bytes.
+	// However, that's not really a problem, as we're in the top arec anyways,
+	// and it'll get popped soon enough.
+	(void) interp->arecs.reserve_padded(static_cast<u32>(new_size - arec->size));
 
 	arec->size = new_size;
 }
