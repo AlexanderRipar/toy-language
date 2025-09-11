@@ -20,7 +20,7 @@
 	#error("Unknown compiler")
 #endif
 
-#include "minos.hpp"
+#include "minos/minos.hpp"
 
 #ifndef NDEBUG
 NORETURN void assert_unreachable_helper() noexcept

@@ -6,7 +6,7 @@
 #include <cstdio>
 
 #include "../infra/common.hpp"
-#include "../infra/minos.hpp"
+#include "../infra/minos/minos.hpp"
 
 #if COMPILER_MSVC
 	#include <intrin.h>

@@ -2,7 +2,7 @@
 #define RESERVED_HEAP_INCLUDE_GUARD
 
 #include "../common.hpp"
-#include "../minos.hpp"
+#include "../minos/minos.hpp"
 
 template<u32 MinSizeLog2, u32 MaxSizeLog2>
 struct ReservedHeap

@@ -2,7 +2,7 @@
 
 #include "minos.hpp"
 
-#include "threading.hpp"
+#include "../threading.hpp"
 
 #include <errno.h>
 #include <sys/mman.h>

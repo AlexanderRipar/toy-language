@@ -1,8 +1,8 @@
 #ifndef MINOS_HPP_INCLUDE_GUARD
 #define MINOS_HPP_INCLUDE_GUARD
 
-#include "common.hpp"
-#include "range.hpp"
+#include "../common.hpp"
+#include "../range.hpp"
 
 namespace minos
 {

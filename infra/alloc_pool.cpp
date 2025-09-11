@@ -1,6 +1,6 @@
 #include "alloc_pool.hpp"
 
-#include "minos.hpp"
+#include "minos/minos.hpp"
 
 struct AllocPool
 {

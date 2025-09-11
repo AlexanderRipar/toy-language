@@ -1,6 +1,6 @@
 #include "core.hpp"
 
-#include "../infra/minos.hpp"
+#include "../infra/minos/minos.hpp"
 #include "../infra/container/reserved_vec.hpp"
 #include "../diag/diag.hpp"
 

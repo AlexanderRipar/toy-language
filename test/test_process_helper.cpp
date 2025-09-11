@@ -3,7 +3,7 @@
 #include <cstdio>
 
 #include "../infra/common.hpp"
-#include "../infra/minos.hpp"
+#include "../infra/minos/minos.hpp"
 
 s32 main(s32 argc, const char8** argv) noexcept
 {

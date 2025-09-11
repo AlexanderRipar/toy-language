@@ -1,5 +1,5 @@
 #include "test_helpers.hpp"
-#include "../infra/minos.hpp"
+#include "../infra/minos/minos.hpp"
 
 #define MINOS_TEST_BEGIN minos::init(); TEST_BEGIN
 

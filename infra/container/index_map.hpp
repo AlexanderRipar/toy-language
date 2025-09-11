@@ -2,7 +2,7 @@
 #define INDEX_MAP_INCLUDE_GUARD
 
 #include "../common.hpp"
-#include "../minos.hpp"
+#include "../minos/minos.hpp"
 
 template<typename K, typename V>
 struct IndexMap

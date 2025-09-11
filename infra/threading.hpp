@@ -3,7 +3,7 @@
 
 #include <atomic>
 
-#include "minos.hpp"
+#include "minos/minos.hpp"
 
 namespace thd
 {

@@ -18,9 +18,9 @@ set(INFRA_SOURCES
 	infra/container/index_map.hpp
 	infra/container/reserved_heap.hpp
 	infra/container/reserved_vec.hpp
-	infra/minos.hpp
-	infra/minos_win32.cpp
-	infra/minos_linux.cpp
+	infra/minos/minos.hpp
+	infra/minos/minos_win32.cpp
+	infra/minos/minos_linux.cpp
 	infra/alloc_pool.hpp
 	infra/alloc_pool.cpp
 	infra/common.hpp

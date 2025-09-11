@@ -4,7 +4,7 @@
 #include "../infra/common.hpp"
 #include "../infra/alloc_pool.hpp"
 #include "../infra/optptr.hpp"
-#include "../infra/minos.hpp"
+#include "../infra/minos/minos.hpp"
 
 
 
