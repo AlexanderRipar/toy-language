@@ -410,7 +410,15 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 
 			return type_can_implicitly_convert_from_to(types, from_attach->element_type, to_attach->element_type);
 		}
+
+		#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wimplicit-fallthrough" // this statement may fall through
+		#endif
 	}
+		#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+		#endif
 
 	// Fallthrough from `ArrayLiteral` to `Array`.
 
