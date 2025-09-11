@@ -7,7 +7,7 @@
 #include "../diag/diag.hpp"
 #include "../infra/common.hpp"
 #include "../infra/alloc_pool.hpp"
-#include "../infra/container.hpp"
+#include "../infra/container/reserved_vec.hpp"
 #include "../infra/hash.hpp"
 
 static constexpr u32 MAX_STRING_LITERAL_BYTES = 4096;

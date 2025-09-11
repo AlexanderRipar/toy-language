@@ -1,6 +1,7 @@
 #include "core.hpp"
 
-#include "../infra/container.hpp"
+#include "../infra/container/reserved_vec.hpp"
+#include "../infra/container/reserved_heap.hpp"
 #include "../infra/inplace_sort.hpp"
 
 static constexpr u32 MIN_PARTIAL_VALUE_SIZE_LOG2 = 6;

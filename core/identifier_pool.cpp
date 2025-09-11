@@ -1,6 +1,9 @@
 #include "core.hpp"
 
-#include "../infra/container.hpp"
+#include <cstddef>
+#include <cstring>
+
+#include "../infra/container/index_map.hpp"
 #include "../infra/range.hpp"
 #include "../infra/hash.hpp"
 
