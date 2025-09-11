@@ -306,6 +306,13 @@ struct PeekablePartialValueIterator
 	PartialValue curr;
 };
 
+struct TypeIdAndValueKind
+{
+	u32 type_id_bits : 30;
+
+	u32 value_kind_bits : 2;
+};
+
 struct Interpreter
 {
 	SourceReader* reader;
@@ -1304,6 +1311,151 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		return rst;
 	}
 
+	case AstTag::ArrayInitializer:
+	{
+		AstDirectChildIterator elems = direct_children_of(node);
+
+		u32 elem_count = 0;
+
+		while (has_next(&elems))
+		{
+			(void) next(&elems);
+
+			elem_count += 1;
+		}
+
+		const u32 mark = stack_mark(interp);
+
+		MutAttachmentRange<byte, TypeIdAndValueKind>* const values = reinterpret_cast<MutAttachmentRange<byte, TypeIdAndValueKind>*>(stack_push(interp, elem_count * sizeof(MutRange<byte>), alignof(MutRange<byte>)).begin());
+
+		elems = direct_children_of(node);
+
+		Arec* unbound_in = nullptr;
+
+		TypeId unified_elem_type_id = TypeId::INVALID;
+
+		for (u32 i = 0; i != elem_count; ++i)
+		{
+			AstNode* const elem = next(&elems);
+
+			const EvalRst elem_rst = evaluate(interp, elem, EvalSpec{
+				ValueKind::Value
+			});
+
+			if (elem_rst.tag == EvalTag::Success)
+			{
+				values[i] = { elem_rst.success.bytes, TypeIdAndValueKind{ static_cast<u32>(elem_rst.success.type_id), static_cast<u32>(elem_rst.success.kind) } };
+
+				if (unified_elem_type_id == TypeId::INVALID)
+				{
+					unified_elem_type_id = elem_rst.success.type_id;
+				}
+				else
+				{
+					unified_elem_type_id = type_unify(interp->types, unified_elem_type_id, elem_rst.success.type_id);
+
+					if (unified_elem_type_id == TypeId::INVALID)
+						source_error(interp->errors, source_id_of(interp->asts, elem), "Array literal element cannot be implicitly converted to type of preceding elements.\n");
+				}
+			}
+			else
+			{
+				if (unbound_in == nullptr || unbound_in > elem_rst.unbound.in)
+					unbound_in = elem_rst.unbound.in;
+
+				values[i] = {};
+			}
+		}
+
+		ASSERT_OR_IGNORE(!has_next(&elems));
+
+		if (unbound_in != nullptr)
+		{
+			elems = direct_children_of(node);
+
+			for (u32 i = 0; i != elem_count; ++i)
+			{
+				AstNode* const elem = next(&elems);
+
+				MutAttachmentRange<byte, TypeIdAndValueKind> value = values[i];
+
+				if (value.begin() == nullptr)
+					continue;
+
+				const TypeId value_type_id = static_cast<TypeId>(value.attachment().type_id_bits);
+
+				const TypeMetrics value_metrics = type_metrics_from_id(interp->types, value_type_id);
+
+				const MutRange<byte> value_dst = add_partial_value_to_builder(interp, elem, value_type_id, value_metrics.size, value_metrics.align);
+
+				const Range<byte> value_src = static_cast<ValueKind>(value.attachment().value_kind_bits) == ValueKind::Location
+					? load_loc<MutRange<byte>>(value.mut_range()).immut()
+					: value.range();
+
+				copy_loc(value_dst, value_src);
+			}
+
+			ASSERT_OR_IGNORE(!has_next(&elems));
+
+			stack_shrink(interp, mark);
+
+			return eval_unbound(unbound_in);
+		}
+		else
+		{
+			const TypeId inferred_type_id = type_create_array(interp->types, TypeTag::ArrayLiteral, ArrayType{ elem_count, unified_elem_type_id });
+
+			EvalRst rst = fill_spec(interp, spec, node, ValueKind::Value, inferred_type_id);
+
+			const ArrayType* const rst_type = type_attachment_from_id<ArrayType>(interp->types, rst.success.type_id);
+
+			unified_elem_type_id = rst_type->element_type;
+
+			const TypeMetrics elem_metrics = unified_elem_type_id == TypeId::INVALID
+				? TypeMetrics{ 0, 0, 1 }
+				: type_metrics_from_id(interp->types, unified_elem_type_id);
+
+			elems = direct_children_of(node);
+
+			for (u32 i = 0; i != elem_count; ++i)
+			{
+				AstNode* const elem = next(&elems);
+
+				const MutAttachmentRange<byte, TypeIdAndValueKind> value = values[i];
+
+				const TypeId value_type_id = static_cast<TypeId>(value.attachment().type_id_bits);
+
+				MutRange<byte> elem_value_dst = rst.success.bytes.mut_subrange(i * elem_metrics.stride, elem_metrics.size);
+
+				if (type_is_equal(interp->types, value_type_id, unified_elem_type_id))
+				{
+					copy_loc(elem_value_dst, value.range());
+				}
+				else
+				{
+					convert(interp, elem, EvalSpec{
+						ValueKind::Value,
+						elem_value_dst,
+						unified_elem_type_id
+					}, EvalSpec{
+						static_cast<ValueKind>(value.attachment().value_kind_bits),
+						value.mut_range(),
+						value_type_id
+					});
+				}
+			}
+
+			ASSERT_OR_IGNORE(!has_next(&elems));
+
+			if (spec.dst.begin() == nullptr)
+				rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
+			else
+				stack_shrink(interp, mark);
+
+			return rst;
+		}
+	}
+
 	case AstTag::Definition:
 	{
 		const TypeId definition_type_id = type_create_simple(interp->types, TypeTag::Definition);
@@ -2188,7 +2340,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	}
 
 	case AstTag::CompositeInitializer:
-	case AstTag::ArrayInitializer:
 	case AstTag::Wildcard:
 	case AstTag::Where:
 	case AstTag::Expects:
