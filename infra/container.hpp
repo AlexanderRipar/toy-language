@@ -603,13 +603,15 @@ private:
 
 	void* m_memory;
 
-	s32 m_first_frees[CategoryCount];
+	s32 m_freelist_heads[CategoryCount];
+
+	s32 m_unused_counts[CategoryCount];
+
+	u32 m_commit_heads[CategoryCount];
 
 	u32 m_ends[CategoryCount];
 
-	u32 m_heads[CategoryCount];
-
-	u32 m_commit_increment_bytes[CategoryCount];
+	u32 m_commit_increments[CategoryCount];
 
 public:
 
@@ -632,13 +634,15 @@ public:
 			if (curr_bytes > static_cast<u32>(INT32_MAX) || total_size + curr_bytes > static_cast<u32>(INT32_MAX))
 				panic("Exceeded maximum size of ReservedHeap (2^32 - 1).\n");
 
-			m_first_frees[i] = -1;
+			m_freelist_heads[i] = -1;
 
-			m_ends[i] = static_cast<u32>((total_size + curr_bytes) / sizeof(u32));
+			m_unused_counts[i] = 0;
 
-			m_heads[i] = static_cast<u32>(total_size / sizeof(u32));
+			m_ends[i] = static_cast<u32>((total_size + curr_bytes));
 
-			m_commit_increment_bytes[i] = commits[i] * unit_size;
+			m_commit_heads[i] = static_cast<u32>(total_size);
+
+			m_commit_increments[i] = commits[i] * unit_size;
 
 			total_size += curr_bytes;
 		}
@@ -660,41 +664,38 @@ public:
 
 		const u32 alloc_size = static_cast<u32>(1) << (category + MinSizeLog2);
 
-		s32 free_index = m_first_frees[category];
+		byte* alloc_begin;
 
-		const u32 unit_size = (static_cast<u32>(1) << (category + MinSizeLog2));
-
-		if (free_index < 0)
+		if (m_freelist_heads[category] >= 0)
 		{
-			if (m_heads[category] == m_ends[category])
+			alloc_begin = static_cast<byte*>(m_memory) + m_freelist_heads[category];
+
+			m_freelist_heads[category] = *reinterpret_cast<s32*>(alloc_begin);
+		}
+		else if (m_unused_counts[category] != 0)
+		{
+			alloc_begin = static_cast<byte*>(m_memory) + m_commit_heads[category] - m_unused_counts[category];
+
+			m_unused_counts[category] -= alloc_size;
+		}
+		else
+		{
+			if (m_commit_heads[category] == m_ends[category])
 				panic("Exceeded storage for %u byte entries in ReservedHeap.\n", static_cast<u32>(1) << (category + MinSizeLog2));
 
-			void* const head = static_cast<byte*>(m_memory) + m_heads[category] * sizeof(u32);
+			void* const head = static_cast<byte*>(m_memory) + m_commit_heads[category];
 
-			if (!minos::mem_commit(head, m_commit_increment_bytes[category]))
+			if (!minos::mem_commit(head, m_commit_increments[category]))
 				panic("Failed to allocate additional storage for %u byte entries in ReservedHead (0x%X).\n", static_cast<u32>(1) << (category + MinSizeLog2), minos::last_error());
 
-			s32* curr = reinterpret_cast<s32*>(head);
+			alloc_begin = static_cast<byte*>(m_memory) + m_commit_heads[category];
 
-			const u32 committed_dwords = m_commit_increment_bytes[category] / sizeof(u32);
+			m_commit_heads[category] += m_commit_increments[category];
 
-			const u32 next_unit_offset_dwords = m_heads[category] + unit_size / sizeof(u32);
-
-			for (u32 i = 0; i != committed_dwords; i += unit_size / sizeof(u32))
-				curr[i] = static_cast<s32>(i + next_unit_offset_dwords);
-
-			curr[committed_dwords - unit_size / sizeof(u32)] = -1;
-
-			free_index = m_heads[category];
-
-			m_heads[category] += m_commit_increment_bytes[category] / sizeof(u32);
+			m_unused_counts[category] = m_commit_increments[category] - alloc_size;
 		}
-		
-		m_first_frees[category] = static_cast<s32*>(m_memory)[free_index];
 
-		byte* const begin = static_cast<byte*>(m_memory) + free_index * sizeof(u32);
-
-		return MutRange<byte>{ begin, alloc_size };
+		return MutRange<byte>{ alloc_begin, alloc_size };
 	}
 
 	void dealloc(MutRange<byte> memory) noexcept
@@ -709,16 +710,15 @@ public:
 			? 0
 			: (32 - MinSizeLog2) - leading_zeros;
 
-		ASSERT_OR_IGNORE(memory.begin() >= (category == 0 ? static_cast<byte*>(m_memory) : reinterpret_cast<byte*>(static_cast<u32*>(m_memory) + m_ends[category - 1])));
+		ASSERT_OR_IGNORE(memory.begin() >= (category == 0 ? static_cast<byte*>(m_memory) : static_cast<byte*>(m_memory) + m_ends[category - 1]));
 
-		ASSERT_OR_IGNORE(memory.end() <= reinterpret_cast<byte*>(static_cast<u32*>(m_memory) + m_ends[category]));
+		ASSERT_OR_IGNORE(memory.end() <= static_cast<byte*>(m_memory) + m_ends[category]);
 
-		if (m_first_frees[category] >= 0)
-			*reinterpret_cast<s32*>(memory.begin()) = m_first_frees[category];
+		*reinterpret_cast<s32*>(memory.begin()) = m_freelist_heads[category];
 
-		m_first_frees[category] = static_cast<s32>(reinterpret_cast<u32*>(memory.begin()) - static_cast<u32*>(m_memory));
+		m_freelist_heads[category] = static_cast<s32>(memory.begin() - static_cast<byte*>(m_memory));
 
-		ASSERT_OR_IGNORE(m_first_frees[category] >= 0);
+		ASSERT_OR_IGNORE(m_freelist_heads[category] >= 0);
 	}
 
 	void* begin() noexcept
