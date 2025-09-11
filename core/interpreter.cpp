@@ -1519,6 +1519,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		Arec* const block_arec = active_arec(interp);
 
+		const u32 mark = stack_mark(interp);
+
 		u16 definition_count = 0;
 
 		AstDirectChildIterator stmts = direct_children_of(node);
@@ -1656,12 +1658,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 				const TypeMetrics metrics = type_metrics_from_id(interp->types, stmt_rst.success.type_id);
 
-				const EvalRst rst = fill_spec_sized(interp, spec, node, ValueKind::Value, stmt_rst.success.type_id, metrics.size, metrics.align);
+				EvalRst rst = fill_spec_sized(interp, spec, node, ValueKind::Value, stmt_rst.success.type_id, metrics.size, metrics.align);
 
-				// TODO: Avoid the useless copy here by reusing the space
-				// allocated for `stmt_rst`.
+				// This is super hacky; We basically forget about the stack
+				// memory just allocated for `rst`, move our result down to the
+				// shrunken stack's top, and copy the resulting location into
+				// `rst`.
 				if (spec.dst.begin() == nullptr)
-					copy_loc(rst.success.bytes, stmt_rst.success.bytes.immut());
+					rst.success.bytes = stack_copy_down(interp, mark, stmt_rst.success.bytes);
+				else
+					stack_shrink(interp, mark);
 
 				arec_pop(interp, block_arec_id);
 
@@ -1670,6 +1676,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				return rst;
 			}
 		}
+
+		stack_shrink(interp, mark);
 
 		arec_pop(interp, block_arec_id);
 
