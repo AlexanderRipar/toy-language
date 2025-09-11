@@ -248,6 +248,8 @@ struct IdentifierInfo
 			TypeId type_id;
 
 			bool is_mut;
+
+			OptPtr<Arec> arec; 
 		} found;
 
 		struct
@@ -263,13 +265,14 @@ struct IdentifierInfo
 
 	IdentifierInfo() noexcept : tag{}, found{} {}
 
-	static IdentifierInfo make_found(MutRange<byte> location, TypeId type_id, bool is_mut) noexcept
+	static IdentifierInfo make_found(MutRange<byte> location, TypeId type_id, bool is_mut, OptPtr<Arec> arec) noexcept
 	{
 		IdentifierInfo info;
 		info.tag = IdentifierInfoTag::Found;
 		info.found.location = location;
 		info.found.type_id = type_id;
 		info.found.is_mut = is_mut;
+		info.found.arec = arec;
 
 		return info;
 	}
@@ -746,7 +749,8 @@ static IdentifierInfo location_info_from_global_member(Interpreter* interp, Type
 	return IdentifierInfo::make_found(
 		global_value_get_mut(interp->globals, member->value.complete),
 		member->type.complete,
-		member->is_mut
+		member->is_mut,
+		none<Arec>()
 	);
 }
 
@@ -768,10 +772,12 @@ static IdentifierInfo location_info_from_arec_and_member(Interpreter* interp, Ar
 	return IdentifierInfo::make_found(
 		MutRange<byte>{ arec->attachment + member->offset, static_cast<u32>(size) },
 		member->type.complete,
-		member->is_mut);
+		member->is_mut,
+		some(arec)
+	);
 }
 
-static bool lookup_identifier_arec_and_member(Interpreter* interp, IdentifierId name, OptPtr<Arec>* out_arec, TypeId* out_surrounding_type_id, const Member** out_member) noexcept
+static bool lookup_identifier_helper(Interpreter* interp, IdentifierId name, OptPtr<Arec>* out_arec, TypeId* out_surrounding_type_id, const Member** out_member) noexcept
 {
 	ASSERT_OR_IGNORE(interp->active_arec_id != ArecId::INVALID);
 
@@ -814,7 +820,7 @@ static bool lookup_identifier_arec_and_member(Interpreter* interp, IdentifierId 
 		lex_scope = lexical_parent_type_from_id(interp->types, lex_scope);
 	}
 
-	return false;	
+	return false;
 }
 
 static IdentifierInfo lookup_local_identifier(Interpreter* interp, Arec* arec, IdentifierId name) noexcept
@@ -827,7 +833,7 @@ static IdentifierInfo lookup_local_identifier(Interpreter* interp, Arec* arec, I
 	return location_info_from_arec_and_member(interp, arec, member);
 }
 
-static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name, const AstNode* debug_source) noexcept
+static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name) noexcept
 {
 	OptPtr<Arec> arec;
 
@@ -835,12 +841,8 @@ static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name, 
 
 	const Member* member;
 
-	if (!lookup_identifier_arec_and_member(interp, name, &arec, &surrounding_type_id, &member))
-	{
-		const Range<char8> name_str = identifier_name_from_id(interp->identifiers, name);
-
-		source_error(interp->errors, source_id_of(interp->asts, debug_source), "Identifier `%.*s` is undefined.\n", static_cast<s32>(name_str.count()), name_str.begin());
-	}
+	if (!lookup_identifier_helper(interp, name, &arec, &surrounding_type_id, &member))
+		return IdentifierInfo::make_missing();
 
 	if (is_some(arec))
 	{
@@ -2015,7 +2017,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	{
 		const AstIdentifierData attach = *attachment_of<AstIdentifierData>(node);
 
-		const IdentifierInfo info = lookup_identifier(interp, attach.identifier_id, node);
+		const IdentifierInfo info = lookup_identifier(interp, attach.identifier_id);
 
 		if (info.tag == IdentifierInfoTag::Missing)
 		{
@@ -2667,7 +2669,7 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	{
 		AstIdentifierData attach = *attachment_of<AstIdentifierData>(node);
 
-		IdentifierInfo info = lookup_identifier(interp, attach.identifier_id, node);
+		IdentifierInfo info = lookup_identifier(interp, attach.identifier_id);
 
 		if (info.tag == IdentifierInfoTag::Found)
 			return info.found.type_id;
