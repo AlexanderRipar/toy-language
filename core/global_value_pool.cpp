@@ -42,7 +42,7 @@ void release_global_value_pool(GlobalValuePool* globals) noexcept
 GlobalValueId alloc_global_value(GlobalValuePool* globals, u64 size, u32 align) noexcept
 {
 	if (size > (UINT32_MAX >> 1))
-		panic("Size %u of type exceeds maximum supported global value size.\n", size);
+		panic("Size %" PRIu64 " of type exceeds maximum supported global value size.\n", size);
 
 	ValueInfo* const info = static_cast<ValueInfo*>(globals->values.reserve_exact(sizeof(ValueInfo)));
 
