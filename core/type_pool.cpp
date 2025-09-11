@@ -216,6 +216,30 @@ static TypeStructure* structure_from_id(TypePool* types, TypeId id) noexcept
 	return reinterpret_cast<TypeStructure*>(reinterpret_cast<u64*>(types->structures.begin()) + static_cast<u32>(id));
 }
 
+static TypeStructure* follow_indirection(TypePool* types, TypeStructure* indir) noexcept
+{
+	if (static_cast<TypeTag>(indir->tag_bits) != TypeTag::INDIRECTION)
+		return indir;
+
+	TypeStructure* const dir = structure_from_id(types, indir->indirection_type_id);
+
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(dir->tag_bits) == TypeTag::Composite);
+
+	return dir;
+}
+
+static const TypeStructure* follow_indirection(TypePool* types, const TypeStructure* indir) noexcept
+{
+	if (static_cast<TypeTag>(indir->tag_bits) != TypeTag::INDIRECTION)
+		return indir;
+
+	TypeStructure* const dir = structure_from_id(types, indir->indirection_type_id);
+
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(dir->tag_bits) == TypeTag::Composite);
+
+	return dir;
+}
+
 static TypeStructure* make_structure(TypePool* types, TypeTag tag, Range<byte> attach, u64 reserve_size, SourceId distinct_source_id) noexcept
 {
 	ASSERT_OR_IGNORE(reserve_size <= UINT16_MAX && reserve_size >= attach.count());
@@ -481,23 +505,9 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 	if (type_id_a == type_id_b)
 		return TypeEq::Equal;
 
-	TypeStructure* a = structure_from_id(types, type_id_a);
+	TypeStructure* const a = follow_indirection(types, structure_from_id(types, type_id_a));
 
-	if (static_cast<TypeTag>(a->tag_bits) == TypeTag::INDIRECTION)
-	{
-		a = structure_from_id(types, a->indirection_type_id);
-
-		ASSERT_OR_IGNORE(static_cast<TypeTag>(a->tag_bits) == TypeTag::Composite);
-	}
-
-	TypeStructure* b = structure_from_id(types, type_id_b);
-
-	if (static_cast<TypeTag>(b->tag_bits) == TypeTag::INDIRECTION)
-	{
-		b = structure_from_id(types, b->indirection_type_id);
-
-		ASSERT_OR_IGNORE(static_cast<TypeTag>(b->tag_bits) == TypeTag::Composite);
-	}
+	TypeStructure* const b = follow_indirection(types, structure_from_id(types, type_id_b));
 
 	// This is assumed to be the common case, so we check for it as early as
 	// possible.
@@ -883,10 +893,7 @@ TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align,
 
 	ASSERT_OR_IGNORE(align <= UINT16_MAX);
 
-	TypeStructure* structure = structure_from_id(types, type_id);
-
-	if (static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION)
-		structure = structure_from_id(types, structure->indirection_type_id);
+	TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
 
@@ -920,9 +927,7 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, Member member) n
 
 	TypeStructure* const structure = structure_from_id(types, type_id);
 
-	TypeStructure* direct_structure = static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION
-		? structure_from_id(types, structure->indirection_type_id)
-		: structure;
+	TypeStructure* direct_structure = follow_indirection(types, structure);
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::Composite);
 
@@ -992,10 +997,7 @@ void type_set_composite_member_info(TypePool* types, TypeId type_id, u16 rank, M
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	TypeStructure* structure = structure_from_id(types, type_id);
-
-	if (static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION)
-		structure = structure_from_id(types, structure->indirection_type_id);
+	TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
 
@@ -1055,10 +1057,7 @@ TypeId type_copy_composite(TypePool* types, TypeId type_id, u32 initial_member_c
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* old_structure = structure_from_id(types, type_id);
-
-	if (static_cast<TypeTag>(old_structure->tag_bits) == TypeTag::INDIRECTION)
-		old_structure = structure_from_id(types, old_structure->indirection_type_id);
+	const TypeStructure* const old_structure = follow_indirection(types, structure_from_id(types, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(old_structure->tag_bits) == TypeTag::Composite);
 
@@ -1097,10 +1096,7 @@ void type_discard(TypePool* types, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	TypeStructure* structure = structure_from_id(types, type_id);
-
-	if (static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION)
-		structure = structure_from_id(types, structure->indirection_type_id);
+	TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
 
@@ -1167,12 +1163,7 @@ TypeDisposition type_disposition_from_id(TypePool* types, TypeId type_id) noexce
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* structure = structure_from_id(types, type_id);
-
-	if (static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION)
-		structure = structure_from_id(types, structure->indirection_type_id);
-
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
+	const TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
@@ -1183,10 +1174,7 @@ TypeId lexical_parent_type_from_id(TypePool* types, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* structure = structure_from_id(types, type_id);
-
-	if (static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION)
-		structure = structure_from_id(types, structure->indirection_type_id);
+	const TypeStructure* structure = follow_indirection(types, structure_from_id(types, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
 
@@ -1199,18 +1187,10 @@ bool type_has_metrics(TypePool* types, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* structure = structure_from_id(types, type_id);
+	const TypeStructure* structure = follow_indirection(types, structure_from_id(types, type_id));
 
-	if (static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION)
-	{
-		structure = structure_from_id(types, structure->indirection_type_id);
-
-		ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
-	}
-	else if (static_cast<TypeTag>(structure->tag_bits) != TypeTag::Composite)
-	{
+	if (static_cast<TypeTag>(structure->tag_bits) != TypeTag::Composite)
 		return true;
-	}
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
@@ -1221,14 +1201,7 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* structure = structure_from_id(types, type_id);
-
-	if (static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION)
-	{
-		structure = structure_from_id(types, structure->indirection_type_id);
-
-		ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
-	}
+	const TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
 	switch (static_cast<TypeTag>(structure->tag_bits))
 	{
@@ -1337,7 +1310,7 @@ TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* structure = structure_from_id(types, type_id);
+	const TypeStructure* const structure = structure_from_id(types, type_id);
 
 	if (static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION)
 		return TypeTag::Composite;
@@ -1349,10 +1322,7 @@ const Member* type_member_by_rank(TypePool* types, TypeId type_id, u16 rank)
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* structure = structure_from_id(types, type_id);
-
-	if (static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION)
-		structure = structure_from_id(types, structure->indirection_type_id);
+	const TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
 
@@ -1367,10 +1337,7 @@ bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, con
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* structure = structure_from_id(types, type_id);
-
-	if (static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION)
-		structure = structure_from_id(types, structure->indirection_type_id);
+	const TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
 
@@ -1393,14 +1360,7 @@ const void* type_attachment_from_id_raw(TypePool* types, TypeId type_id) noexcep
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* structure = structure_from_id(types, type_id);
-
-	if (static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION)
-	{
-		structure = structure_from_id(types, structure->indirection_type_id);
-
-		ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
-	}
+	const TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
 	return structure->attach;
 }
@@ -1453,11 +1413,9 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 
 	const TypeStructure* const structure = structure_from_id(types, type_id);
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION || static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
+	const TypeStructure* const direct_structure = follow_indirection(types, structure);
 
-	const TypeStructure* const direct_structure = static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION
-		? structure_from_id(types, structure->indirection_type_id)
-		: structure;
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::Composite);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(direct_structure->attach);
 
@@ -1480,7 +1438,6 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 	it.structure = first_incomplete_rank == UINT32_MAX ? nullptr : structure;
 	it.types = types;
 	it.rank = static_cast<u16>(first_incomplete_rank);
-	it.is_indirect = static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION;
 
 	return it;
 }
@@ -1489,15 +1446,11 @@ const Member* next(IncompleteMemberIterator* it) noexcept
 {
 	ASSERT_OR_IGNORE(has_next(it));
 
-	const TypeStructure* const structure = static_cast<const TypeStructure*>(it->structure);
+	const TypeStructure* const structure = follow_indirection(it->types, static_cast<const TypeStructure*>(it->structure));
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION || static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
 
-	const TypeStructure* const direct_structure = it->is_indirect
-		? structure_from_id(it->types, structure->indirection_type_id)
-		: structure;
-
-	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(direct_structure->attach);
+	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
 	const Member* const result = composite->members + it->rank;
 
@@ -1527,19 +1480,16 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 
 	const TypeStructure* const structure = structure_from_id(types, type_id);
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION || static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
+	const TypeStructure* const direct_structure = follow_indirection(types, structure);
 
-	const TypeStructure* const direct_structure = static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION
-		? structure_from_id(types, structure->indirection_type_id)
-		: structure;
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::Composite);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(direct_structure->attach);
 
 	MemberIterator it;
-	it.structure = composite->header.member_count == 0 ? nullptr : structure;
+	it.structure = composite->header.member_count == 0 ? nullptr : composite->header.is_fixed ? direct_structure : structure;
 	it.types = types;
 	it.rank = 0;
-	it.is_indirect = static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION;
 
 	return it;
 }
@@ -1548,15 +1498,9 @@ const Member* next(MemberIterator* it) noexcept
 {
 	ASSERT_OR_IGNORE(has_next(it));
 
-	const TypeStructure* const structure = static_cast<const TypeStructure*>(it->structure);
+	const TypeStructure* const structure = follow_indirection(it->types, static_cast<const TypeStructure*>(it->structure));
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION || static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
-
-	const TypeStructure* const direct_structure = it->is_indirect
-		? structure_from_id(it->types, structure->indirection_type_id)
-		: structure;
-
-	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(direct_structure->attach);
+	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
 	const Member* const result = composite->members + it->rank;
 
