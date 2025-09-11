@@ -1490,9 +1490,8 @@ enum class TypeTag : u8
 	//       associated structure. However, it will likely need one.
 	CompositeLiteral,
 
-	// Tag of array literal types.
-	// TODO: This is not used yet, and thus does not currently have an
-	// associated structure. However, it will likely need one.
+	// Tag of array literal types. Its structure is represented by an
+	// `ArrayType`.
 	ArrayLiteral,
 
 	// Tag of variadic function argument types.
@@ -1789,10 +1788,9 @@ TypeId type_create_numeric(TypePool* types, TypeTag tag, NumericType attach) noe
 // `ReferenceType` further describing it.
 TypeId type_create_reference(TypePool* types, TypeTag tag, ReferenceType attach) noexcept;
 
-// Creates an "array" type.
+// Creates an "array", i.e. `Array` or `ArrayLiteral` type.
 // This takes a tag indicating which type to create, along with an `ArrayType`
-// further describing it. The `tag` is currently is restricted to
-// `TypeTag::Array`.
+// further describing it.
 TypeId type_create_array(TypePool* types, TypeTag tag, ArrayType attach) noexcept;
 
 // Creates a "signature", i.e. a `Builtin` or `Function` type.

@@ -347,7 +347,6 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 	case TypeTag::Variadic:
 	case TypeTag::Trait:
 	case TypeTag::CompositeLiteral:
-	case TypeTag::ArrayLiteral:
 	{
 		return false;
 	}
@@ -392,6 +391,28 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 		    && (!from_attach->is_opt || to_attach->is_opt)
 			&& (from_attach->is_multi || !to_attach->is_multi);
 	}
+
+	case TypeTag::ArrayLiteral:
+	{
+		if (to_tag == TypeTag::Array || to_tag == TypeTag::ArrayLiteral)
+		{
+			const ArrayType* const from_attach = reinterpret_cast<const ArrayType*>(from->attach);
+
+			const ArrayType* const to_attach = reinterpret_cast<const ArrayType*>(to->attach);
+
+			if (from_attach->element_count != to_attach->element_count)
+				return false;
+
+			// An empty array literal with no element type can be converted to
+			// an empty array or array literal with any other element type.
+			if (from_attach->element_type == TypeId::INVALID)
+				return true;
+
+			return type_can_implicitly_convert_from_to(types, from_attach->element_type, to_attach->element_type);
+		}
+	}
+
+	// Fallthrough from `ArrayLiteral` to `Array`.
 
 	case TypeTag::Array:
 	{
@@ -656,6 +677,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 	}
 
 	case TypeTag::Array:
+	case TypeTag::ArrayLiteral:
 	{
 		const ArrayType* const a_attach = reinterpret_cast<ArrayType*>(a->attach);
 		
@@ -672,7 +694,22 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 
 		const TypeId b_next = b_attach->element_type;
 
-		const TypeEq element_result = type_is_equal_noloop(types, a_next, b_next, seen, false);
+		TypeEq element_result;
+
+		// Array literals may have `TypeId::INVALID` as their element type if
+		// they have no elements, because no element type can be inferred in
+		// that case. This needs to be special cased to avoid recursing on a
+		// `TypeId::INVALID`.
+		if (tag == TypeTag::ArrayLiteral && (a_next == TypeId::INVALID || b_next == TypeId::INVALID))
+		{
+			element_result = a_next == TypeId::INVALID && b_next == TypeId::INVALID
+				? TypeEq::Equal
+				: TypeEq::Unequal;
+		}
+		else
+		{
+			element_result = type_is_equal_noloop(types, a_next, b_next, seen, false);
+		}
 
 		if (element_result == TypeEq::Equal)
 			unify_holotype(a, b);
@@ -744,7 +781,6 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 	}
 
 	case TypeTag::CompositeLiteral:
-	case TypeTag::ArrayLiteral:
 	case TypeTag::Variadic:
 	case TypeTag::Trait:
 		TODO("Implement `type_is_equal_noloop` for CompositeLiteral, ArrayLiteral, Variadic and Trait");
@@ -843,7 +879,11 @@ TypeId type_create_reference(TypePool* types, TypeTag tag, ReferenceType attach)
 
 TypeId type_create_array(TypePool* types, TypeTag tag, ArrayType attach) noexcept
 {
-	ASSERT_OR_IGNORE(tag == TypeTag::Array);
+	ASSERT_OR_IGNORE(tag == TypeTag::Array || tag == TypeTag::ArrayLiteral);
+
+	// Carve out exception for array literal with no elements having no
+	// intrinsic element type.
+	ASSERT_OR_IGNORE(attach.element_type != TypeId::INVALID || (tag == TypeTag::ArrayLiteral && attach.element_count == 0));
 
 	return type_create_deduplicated(types, tag, range::from_object_bytes(&attach));
 }
@@ -1266,6 +1306,7 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 	}
 
 	case TypeTag::Array:
+	case TypeTag::ArrayLiteral:
 	{
 		const ArrayType* const array = reinterpret_cast<const ArrayType*>(structure->attach);
 
@@ -1294,7 +1335,6 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 
 	case TypeTag::TailArray:
 	case TypeTag::CompositeLiteral:
-	case TypeTag::ArrayLiteral:
 	case TypeTag::Variadic:
 	case TypeTag::Trait:
 		TODO("Implement `type_metrics_from_id` for TailArray, CompositeLiteral, ArrayLiteral, Variadic and Trait.");
