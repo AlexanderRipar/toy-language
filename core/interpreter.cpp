@@ -863,6 +863,40 @@ static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name) 
 
 
 
+static ClosureId close_over_func_body(Interpreter* interp, TypeId parameter_list_type_id, AstNode* body) noexcept
+{
+	ClosureBuilderId builder_id = closure_create(interp->closures);
+
+	AstFlatIterator it = flat_ancestors_of(body);
+
+	while (has_next(&it))
+	{
+		AstNode* const curr = next(&it);
+
+		if (curr->tag != AstTag::Identifier)
+			continue;
+
+		const IdentifierId name = attachment_of<AstIdentifierData>(curr)->identifier_id;
+
+		const Member* unused_member;
+
+		if (type_member_by_name(interp->types, parameter_list_type_id, name, &unused_member))
+			continue;
+
+		IdentifierInfo info = lookup_identifier(interp, name);
+
+		if (info.tag != IdentifierInfoTag::Found)
+			continue;
+
+		if (is_none(info.found.arec))
+			continue;
+
+		builder_id = closure_add_value(interp->closures, builder_id, name, info.found.type_id, info.found.location.immut());
+	}
+
+	return closure_seal(interp->closures, builder_id);
+}
+
 static bool u64_from_integer(Range<byte> value, NumericType type, u64* out) noexcept
 {
 	u32 count_size = (type.bits + 7) / 8;
@@ -1726,6 +1760,10 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		AstNode* const body = next_sibling_of(signature);
 
 		const AstNodeId body_id = id_from_ast_node(interp->asts, body);
+
+		const SignatureType* const signature_type = type_attachment_from_id<SignatureType>(interp->types, signature_type_id);
+
+		const ClosureId closure_id = close_over_func_body(interp, signature_type->parameter_list_type_id, body);
 
 		const CallableValue callable = CallableValue::from_function(signature_type_id, body_id);
 
