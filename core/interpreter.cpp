@@ -2109,6 +2109,84 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		return rst;
 	}
 
+	case AstTag::OpTypeArray:
+	{
+		AstNode* const count = first_child_of(node);
+
+		const EvalRst count_rst = evaluate(interp, count, EvalSpec{
+			ValueKind::Value
+		});
+
+		u64 count_u64 = 0;
+
+		if (count_rst.tag == EvalTag::Success)
+		{
+			const TypeTag count_type_tag = type_tag_from_id(interp->types, count_rst.success.type_id);
+
+			if (count_type_tag == TypeTag::CompInteger)
+			{
+				const CompIntegerValue count_value = load_loc<CompIntegerValue>(count_rst.success.bytes);
+
+				if (!u64_from_comp_integer(count_value, 64, &count_u64))
+					source_error(interp->errors, source_id_of(interp->asts, count), "Array element count must fit into unsigned 64-bit integer.\n");
+			}
+			else if (count_type_tag == TypeTag::Integer)
+			{
+				const NumericType* const count_type = type_attachment_from_id<NumericType>(interp->types, count_rst.success.type_id);
+
+				u32 count_size = (count_type->bits + 7) / 8;
+
+				ASSERT_OR_IGNORE(count_size != 0);
+
+				const bool is_negative = count_type->is_signed && (count_rst.success.bytes[count_size - 1] & 0x80) != 0;
+
+				if (is_negative)
+					source_error(interp->errors, source_id_of(interp->asts, count), "Array element count must fit into unsigned 64-bit integer.\n");
+
+				// Check `count`'s value fits into 64 bits if its type is larger than that.
+				if (count_size > sizeof(count_u64))
+				{
+					while (count_size > sizeof(count_u64))
+					{
+						count_size -= 1;
+
+						if (count_rst.success.bytes[count_size] != 0)
+							source_error(interp->errors, source_id_of(interp->asts, count), "Array element count must fit into unsigned 64-bit integer.\n");
+					}
+				}
+
+				memcpy(&count_u64, count_rst.success.bytes.begin(), count_size);
+			}
+			else
+			{
+				source_error(interp->errors, source_id_of(interp->asts, count), "Array element count must have an integer type.\n");
+			}
+		}
+
+		AstNode* const elem_type = next_sibling_of(count);
+
+		const TypeId type_type_id = type_create_simple(interp->types, TypeTag::Type);
+
+		TypeId elem_type_id;
+
+		const EvalRst elem_type_rst = evaluate(interp, elem_type, EvalSpec{
+			ValueKind::Value,
+			range::from_object_bytes_mut(&elem_type_id),
+			type_type_id
+		});
+
+		if (count_rst.tag == EvalTag::Unbound || elem_type_rst.tag == EvalTag::Unbound)
+			return eval_unbound(count_rst.unbound.in < elem_type_rst.unbound.in ? count_rst.unbound.in : elem_type_rst.unbound.in);
+
+		const EvalRst rst = fill_spec_sized(interp, spec, node, ValueKind::Value, type_type_id, sizeof(TypeId), alignof(TypeId));
+
+		const TypeId array_type_id = type_create_array(interp->types, TypeTag::Array, ArrayType{ count_u64, elem_type_id });
+
+		store_loc(rst.success.bytes, array_type_id);
+
+		return rst;
+	}
+
 	case AstTag::CompositeInitializer:
 	case AstTag::ArrayInitializer:
 	case AstTag::Wildcard:
@@ -2180,7 +2258,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpSetBitXor:
 	case AstTag::OpSetShiftL:
 	case AstTag::OpSetShiftR:
-	case AstTag::OpTypeArray:
 	case AstTag::OpArrayIndex:
 		panic("evaluate(%s) not yet implemented.\n", tag_name(node->tag));
 

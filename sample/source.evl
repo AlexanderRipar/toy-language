@@ -71,3 +71,5 @@ let generic_identity_bool = generic_identity(Bool, false)
 let map_single_u32 = map_single(u32, 1, func(x: u32) -> u32 => x)
 
 let map_single_bool = map_single(Bool, false, func(x: Bool) -> Bool => x)
+
+let ten_u32s = [10]u32
