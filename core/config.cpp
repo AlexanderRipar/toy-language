@@ -1,10 +1,11 @@
 #include "core.hpp"
 
 #include "../infra/minos.hpp"
-#include "../infra/container.hpp"
+#include "../infra/container/reserved_vec.hpp"
 #include "../diag/diag.hpp"
 
 #include <cstdio>
+#include <cstddef>
 
 struct ConfigHeader;
 

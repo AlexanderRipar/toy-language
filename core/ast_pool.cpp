@@ -1,7 +1,7 @@
 #include "core.hpp"
 
 #include "../infra/common.hpp"
-#include "../infra/container.hpp"
+#include "../infra/container/reserved_vec.hpp"
 
 struct AstPool
 {

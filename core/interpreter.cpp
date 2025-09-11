@@ -1,7 +1,7 @@
 #include "core.hpp"
 
 #include "../diag/diag.hpp"
-#include "../infra/container.hpp"
+#include "../infra/container/reserved_vec.hpp"
 
 enum class ArecKind
 {
