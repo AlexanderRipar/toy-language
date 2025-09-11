@@ -613,7 +613,24 @@ static u32 stack_mark(Interpreter* interp) noexcept
 
 static void stack_shrink(Interpreter* interp, u32 mark) noexcept
 {
+	ASSERT_OR_IGNORE(mark <= interp->temps.used());
+
 	interp->temps.pop_to(mark);
+}
+
+static MutRange<byte> stack_copy_down(Interpreter* interp, u32 mark, MutRange<byte> to_copy) noexcept
+{
+	ASSERT_OR_IGNORE(mark <= interp->temps.used());
+
+	ASSERT_OR_IGNORE(to_copy.begin() >= interp->temps.begin() + mark && to_copy.end() <= interp->temps.end());
+
+	byte* const new_begin = interp->temps.begin() + mark;
+
+	memmove(new_begin, to_copy.begin(), to_copy.count());
+
+	interp->temps.pop_to(static_cast<u32>(mark + to_copy.count()));
+
+	return { new_begin, to_copy.count() };
 }
 
 
