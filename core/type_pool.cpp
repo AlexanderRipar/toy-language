@@ -1329,7 +1329,7 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 	case TypeTag::Func:
 	case TypeTag::Builtin:
 	{
-		return { 8, 8, 8 };
+		return { 16, 16, 8 };
 	}
 
 	case TypeTag::Composite:

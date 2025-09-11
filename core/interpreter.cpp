@@ -78,68 +78,40 @@ using BuiltinFunc = void (*) (Interpreter* interp, Arec* arec, AstNode* call_nod
 // function or procedure.
 struct alignas(8) CallableValue
 {
-	#if COMPILER_CLANG
-	#pragma clang diagnostic push
-	#pragma clang diagnostic ignored "-Wnested-anon-types" // anonymous types declared in an anonymous union are an extension
-	#pragma clang diagnostic ignored "-Wgnu-anonymous-struct" // anonymous structs are a GNU extension
-	#elif COMPILER_GCC
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ prohibits anonymous structs
-	#endif
+	bool is_builtin;
+
 	union
 	{
-		struct
-		{
-			u32 is_builtin : 1;
+		u8 ordinal;
 
-			u32 unused_ : 31;
-		};
-
-		struct
-		{
-			u32 is_builtin : 1;
-
-			u32 ordinal : 31;
-		} builtin;
-
-		struct
-		{
-			u32 is_builtin : 1;
-
-			u32 ast_node_id_bits : 31;
-		} function;
+		AstNodeId body_ast_node_id;
 	};
-	#if COMPILER_CLANG
-	#pragma clang diagnostic pop
-	#elif COMPILER_GCC
-	#pragma GCC diagnostic pop
-	#endif
 
 	TypeId signature_type_id;
 
-	static CallableValue from_builtin(TypeId builtin_type_id, u8 ordinal) noexcept
+	ClosureId closure_id;
+
+	static CallableValue from_builtin(TypeId signature_type_id, u8 ordinal) noexcept
 	{
-		return { builtin_type_id, ordinal };
+		CallableValue value;
+		value.is_builtin = true;
+		value.ordinal = ordinal;
+		value.signature_type_id = signature_type_id;
+		value.closure_id = ClosureId::INVALID;
+
+		return value;
 	}
 
-	static CallableValue from_function(TypeId signature_type_id, AstNodeId ast_node_id) noexcept
+	static CallableValue from_function(TypeId signature_type_id, AstNodeId body_ast_node_id, ClosureId closure_id) noexcept
 	{
-		return { signature_type_id, ast_node_id };
+		CallableValue value;
+		value.is_builtin = false;
+		value.body_ast_node_id = body_ast_node_id;
+		value.signature_type_id = signature_type_id;
+		value.closure_id = closure_id;
+
+		return value;
 	}
-
-	CallableValue() noexcept = default;
-
-private:
-
-	CallableValue(TypeId signature_type_id, u8 ordinal) noexcept :
-		builtin{ true, ordinal },
-		signature_type_id{ signature_type_id }
-	{}
-
-	CallableValue(TypeId signature_type_id, AstNodeId ast_node_id) noexcept :
-		function{ false, static_cast<u32>(ast_node_id) },
-		signature_type_id{ signature_type_id }
-	{}
 };
 
 // Utility for creating built-in functions types.
@@ -1765,7 +1737,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const ClosureId closure_id = close_over_func_body(interp, signature_type->parameter_list_type_id, body);
 
-		const CallableValue callable = CallableValue::from_function(signature_type_id, body_id);
+		const CallableValue callable = CallableValue::from_function(signature_type_id, body_id, closure_id);
 
 		store_loc(rst.success.bytes, callable);
 
@@ -2189,7 +2161,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			{
 				Arec* const parameter_list_arec = arec_from_id(interp, call_info.parameter_list_arec_id);
 
-				interp->builtin_values[callee_value.builtin.ordinal](interp, parameter_list_arec, node, temp_location);
+				interp->builtin_values[callee_value.ordinal](interp, parameter_list_arec, node, temp_location);
 			}
 			else
 			{
