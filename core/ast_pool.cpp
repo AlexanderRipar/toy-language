@@ -1,5 +1,7 @@
 #include "core.hpp"
 
+#include <cstring>
+
 #include "../infra/common.hpp"
 #include "../infra/container/reserved_vec.hpp"
 

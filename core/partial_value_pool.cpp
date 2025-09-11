@@ -1,5 +1,7 @@
 #include "core.hpp"
 
+#include <cstring>
+
 #include "../infra/container/reserved_vec.hpp"
 #include "../infra/container/reserved_heap.hpp"
 #include "../infra/inplace_sort.hpp"

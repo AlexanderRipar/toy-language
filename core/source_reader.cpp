@@ -7,6 +7,7 @@
 #include "../infra/hash.hpp"
 
 #include <cstdlib>
+#include <cstddef>
 #include <atomic>
 
 static u32 hash_file_identity(u64 file_id, u32 device_id) noexcept

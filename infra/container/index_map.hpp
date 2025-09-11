@@ -1,6 +1,8 @@
 #ifndef INDEX_MAP_INCLUDE_GUARD
 #define INDEX_MAP_INCLUDE_GUARD
 
+#include <cstring>
+
 #include "../common.hpp"
 #include "../minos/minos.hpp"
 
@@ -331,4 +333,4 @@ public:
 	}
 };
 
-#endif INDEX_MAP_INCLUDE_GUARD
+#endif // INDEX_MAP_INCLUDE_GUARD

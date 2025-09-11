@@ -2,6 +2,7 @@
 #define RESERVED_VEC_INCLUDE_GUARD
 
 #include <limits>
+#include <cstring>
 
 #include "../common.hpp"
 #include "../minos/minos.hpp"
