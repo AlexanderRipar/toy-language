@@ -354,7 +354,6 @@ static EvalRst eval_unbound(Arec* unbound_in) noexcept
 
 
 
-
 static void copy_loc(MutRange<byte> dst, Range<byte> src) noexcept
 {
 	ASSERT_OR_IGNORE(dst.count() == src.count());
@@ -900,7 +899,6 @@ static bool u64_from_integer(Range<byte> value, NumericType type, u64* out) noex
 
 	return true;
 }
-
 
 static Member delayed_member_from(Interpreter* interp, AstNode* definition) noexcept
 {
@@ -2193,9 +2191,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			}
 
 			if (needs_conversion)
-			{
 				convert(interp, node, EvalSpec{ rst.success.kind, rst.success.bytes, rst.success.type_id }, EvalSpec{ ValueKind::Value, temp_location, call_info.return_type_id });
-			}
 
 			arec_pop(interp, call_info.parameter_list_arec_id);
 
