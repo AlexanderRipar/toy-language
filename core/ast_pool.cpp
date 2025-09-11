@@ -612,6 +612,28 @@ bool has_next(const AstPostorderIterator* iterator) noexcept
 }
 
 
+AstFlatIterator flat_ancestors_of(AstNode* node) noexcept
+{
+	return { node, node + node->next_sibling_offset };
+}
+
+AstNode* next(AstFlatIterator* iterator) noexcept
+{
+	ASSERT_OR_IGNORE(has_next(iterator));
+
+	AstNode* const result = iterator->curr;
+
+	iterator->curr += iterator->curr->own_qwords;
+
+	return result;
+}
+
+bool has_next(const AstFlatIterator* iterator) noexcept
+{
+	return iterator->curr != iterator->end;
+}
+
+
 
 SignatureInfo get_signature_info(AstNode* signature) noexcept
 {

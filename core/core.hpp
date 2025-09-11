@@ -670,6 +670,13 @@ struct AstPostorderIterator
 	u32 offsets[MAX_AST_DEPTH];
 };
 
+struct AstFlatIterator
+{
+	AstNode* curr;
+
+	AstNode* end;
+};
+
 // Attachment of an `AstNode` with tag `AstTag::LitInteger`.
 struct alignas(8) AstLitIntegerData
 {
@@ -1093,6 +1100,12 @@ AstIterationResult next(AstPostorderIterator* iterator) noexcept;
 // Checks whether `iterator` has an element to be returned by a future call to
 // `next`. This call is idempotent.
 bool has_next(const AstPostorderIterator* iterator) noexcept;
+
+AstFlatIterator flat_ancestors_of(AstNode* node) noexcept;
+
+AstNode* next(AstFlatIterator* iterator) noexcept;
+
+bool has_next(const AstFlatIterator* iterator) noexcept;
 
 
 
