@@ -1681,20 +1681,26 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 				EvalRst rst = fill_spec_sized(interp, spec, node, ValueKind::Value, stmt_rst.success.type_id, metrics.size, metrics.align);
 
-				// This is super hacky; We basically forget about the stack
-				// memory just allocated for `rst`, move our result down to the
-				// shrunken stack's top, and copy the resulting location into
-				// `rst`.
-				if (spec.dst.begin() == nullptr)
-					rst.success.bytes = stack_copy_down(interp, mark, stmt_rst.success.bytes);
-				else
-					stack_shrink(interp, mark);
+				if (rst.tag == EvalTag::Unbound)
+					source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use block in unbound context.\n");
 
-				arec_pop(interp, block_arec_id);
+				if (!has_next_sibling(stmt))
+				{
+					// This is super hacky; We basically forget about the stack
+					// memory just allocated for `rst`, move our result down to the
+					// shrunken stack's top, and copy the resulting location into
+					// `rst`.
+					if (spec.dst.begin() == nullptr)
+						rst.success.bytes = stack_copy_down(interp, mark, stmt_rst.success.bytes);
+					else
+						stack_shrink(interp, mark);
 
-				type_discard(interp->types, block_type_id);
+					arec_pop(interp, block_arec_id);
 
-				return rst;
+					type_discard(interp->types, block_type_id);
+
+					return rst;
+				}
 			}
 		}
 
