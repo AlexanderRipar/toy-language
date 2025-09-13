@@ -1,36 +1,18 @@
 #include "diag.hpp"
 
-static const char8* optional_tag_name(TypeTag tag) noexcept
-{
-	if (tag == TypeTag::Composite
-	 || tag == TypeTag::Func
-	 || tag == TypeTag::Array
-	 || tag == TypeTag::Slice
-	 || tag == TypeTag::Ptr
-	 || tag == TypeTag::Integer
-	 || tag == TypeTag::Float)
-		return "";
-
-	return tag_name(tag);
-}
-
 static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers, TypePool* types, TypeId type_id, u32 indent, bool skip_initial_indent) noexcept
 {
 	if (type_id == TypeId::INVALID)
 	{
-		diag::buf_printf(ctx, "%*s<INVALID>\n", skip_initial_indent ? 0 : indent * 2, "");
+		diag::buf_printf(ctx, "%*s<Invalid>\n", skip_initial_indent ? 0 : indent * 2, "");
 
 		return;
 	}
 
+	if (!skip_initial_indent)
+		diag::buf_printf(ctx, "%*s", indent * 2, "");
+
 	const TypeTag tag = type_tag_from_id(types, type_id);
-
-	const char8* tag_string = optional_tag_name(tag);
-
-	diag::buf_printf(ctx, "%*s%s",
-		skip_initial_indent ? 0 : indent * 2, "",
-		tag_string
-	);
 
 	switch (tag)
 	{
@@ -42,7 +24,6 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::Boolean:
 	case TypeTag::Builtin:
 	case TypeTag::CompositeLiteral:
-	case TypeTag::ArrayLiteral:
 	case TypeTag::TypeBuilder:
 	case TypeTag::Variadic:
 	case TypeTag::Divergent:
@@ -50,7 +31,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::TypeInfo:
 	case TypeTag::TailArray:
 	{
-		diag::buf_printf(ctx, "\n");
+		diag::buf_printf(ctx, "%s\n", tag_name(tag));
 
 		return;
 	}
@@ -90,11 +71,12 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 		return;
 	}
 
+	case TypeTag::ArrayLiteral:
 	case TypeTag::Array:
 	{
 		const ArrayType* const array = type_attachment_from_id<ArrayType>(types, type_id);
 
-		diag::buf_printf(ctx, "[%" PRIu64 "]", array->element_count);
+		diag::buf_printf(ctx, "%s[%" PRIu64 "]", tag == TypeTag::ArrayLiteral ? "." : "", array->element_count);
 
 		print_type_impl(ctx, identifiers, types, array->element_type, indent + 1, true);
 
