@@ -154,7 +154,7 @@ let array_of_ten_from_direct_curried_closure: [ten_from_direct_curried_closure]s
 	1, 2, 3, 4, 5,
 ]
 
-let conditional_result = if false then
+let conditional_result_array_literal_of_two_u64s = if false then
 		1
 	else if true then
 		.[1, closed_four_generic_u64()]
@@ -178,3 +178,12 @@ let array_mutation_result = {
 }
 
 let empty_array_from_mutated_size: [array_mutation_result]u64 = .[]
+
+let loop_result_mut_5 = {
+	mut n = 0
+
+	for n == 0
+		n = 5
+
+	n
+}
