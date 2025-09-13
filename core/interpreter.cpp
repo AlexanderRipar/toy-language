@@ -1681,6 +1681,51 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		return fill_spec_sized(interp, spec, node, false, true, type_create_simple(interp->types, TypeTag::Void), 0, 1);
 	}
 
+	case AstTag::If:
+	{
+		IfInfo info = get_if_info(node);
+
+		bool cond_val;
+
+		const EvalRst cond_rst = evaluate(interp, info.condition, EvalSpec{
+			ValueKind::Value,
+			range::from_object_bytes_mut(&cond_val),
+			type_create_simple(interp->types, TypeTag::Boolean)
+		});
+
+		if (cond_rst.tag == EvalTag::Unbound)
+			TODO("Implement unbound if alternative");
+
+		AstNode* taken;
+
+		if (cond_val)
+		{
+			taken = info.consequent;
+		}
+		else if (is_some(info.alternative))
+		{
+			taken = get_ptr(info.alternative);
+		}
+		else
+		{
+			return fill_spec_sized(interp, spec, node, false, true, type_create_simple(interp->types, TypeTag::Void), 0, 1);
+		}
+
+		const EvalRst rst = evaluate(interp, taken, EvalSpec{
+			ValueKind::Value,
+			spec.dst,
+			spec.type_id
+		});
+
+		if (rst.tag == EvalTag::Unbound)
+			TODO("Implement unbound if branch.");
+
+		if (spec.kind == ValueKind::Location)
+			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot convert value to location.\n");
+
+		return rst;
+	}
+
 	case AstTag::Func:
 	{
 		AstNode* const signature = first_child_of(node);
@@ -2523,7 +2568,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::Where:
 	case AstTag::Expects:
 	case AstTag::Ensures:
-	case AstTag::If:
 	case AstTag::For:
 	case AstTag::ForEach:
 	case AstTag::Switch:
