@@ -2578,7 +2578,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			EvalRst rst;
 
-			if (rst.success.kind == ValueKind::Location)
+			if (spec.kind == ValueKind::Location)
 			{
 				if (arrayish_rst.success.kind != ValueKind::Location)
 					source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use index operator with non-location left-hand-side as a location.\n");
