@@ -101,3 +101,12 @@ let make_generic_closure = func(T: Type, t: T) -> (func() -> T) => (func() -> T 
 let closed_four_generic_u64 = make_generic_closure(u64, 4)
 
 let four_s8s_from_generic_closure: [closed_four_generic_u64()]s8 = .[2, 7, 42, 127]
+
+let loop_result_mut = {
+	mut n = 0
+
+	for n == 0
+		n = 5
+
+	n
+}
