@@ -160,3 +160,21 @@ let conditional_result = if false then
 		.[1, closed_four_generic_u64()]
 	else
 		.[]
+
+let mutated = {
+	mut x: u32 = 400
+
+	x = 5
+
+	x
+}
+
+mut mutated_array: [mutated]u16 = .[1, 2, 3, 4, 5]
+
+let array_mutation_result = {
+	mutated_array[1] = 0
+
+	mutated_array[1]
+}
+
+let empty_array_from_mutated_size: [array_mutation_result]u64 = .[]
