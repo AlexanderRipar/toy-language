@@ -2786,6 +2786,8 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 {
 	ASSERT_OR_IGNORE(file->tag == AstTag::File);
 
+	resolve_names(interp->lex, file);
+
 	if (interp->ast_log_file.m_rep != nullptr && (file_type_source_id != SourceId::INVALID || interp->log_prelude))
 	{
 		const Range<char8> filepath = file_type_source_id == SourceId::INVALID
@@ -3363,6 +3365,8 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 	push_node(asts, first_token, SourceId::INVALID, AstFlag::EMPTY, AstTag::File);
 
 	AstNode* const prelude_ast = complete_ast(asts);
+
+	set_prelude_scope(interp->lex, prelude_ast);
 
 	interp->prelude_type_id = type_from_file_ast(interp, prelude_ast, SourceId::INVALID);
 
