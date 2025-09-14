@@ -239,3 +239,15 @@ let MyPair = Pair(let x: u32, let y: u32)
 let imported = import("import.evl")
 
 let from_imported = imported.import_member
+
+let x = 5
+
+let px = x.&
+
+let dx = px.*
+
+/*
+if (x == dx) {
+	YAY
+}
+*/

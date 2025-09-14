@@ -51,7 +51,7 @@ enum class Token : u8
 		KwdTry,               // try
 		KwdDefer,             // defer
 		KwdDistinct,          // distinct
-		UOpAddr,              // $
+		UOpAddr,              // .&
 		UOpNot,               // ~
 		UOpLogNot,            // !
 		TypOptPtr,            // ?
@@ -154,7 +154,7 @@ const char8* token_name(Token token) noexcept
 		"try",
 		"defer",
 		"distinct",
-		"$",
+		".&",
 		"~",
 		"!",
 		"?",
@@ -435,7 +435,7 @@ static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
 	{ AstTag::UOpTry,             AstFlag::EMPTY,       8, false, false }, // try
 	{ AstTag::UOpDefer,           AstFlag::EMPTY,       8, false, false }, // defer
 	{ AstTag::UOpDistinct,        AstFlag::EMPTY,       2, false, false }, // distinct
-	{ AstTag::UOpAddr,            AstFlag::EMPTY,       2, false, false }, // $
+	{ AstTag::UOpAddr,            AstFlag::EMPTY,       2, false, false }, // &
 	{ AstTag::UOpBitNot,          AstFlag::EMPTY,       2, false, false }, // ~
 	{ AstTag::UOpLogNot,          AstFlag::EMPTY,       2, false, false }, // !
 	{ AstTag::UOpTypeOptPtr,      AstFlag::Type_IsMut,  2, false, false }, // ?
@@ -1371,6 +1371,12 @@ static RawLexeme raw_next(Lexer* lexer) noexcept
 
 			return { Token::CompositeInitializer };
 		}
+		else if (second == '&')
+		{
+			lexer->curr += 1;
+
+			return { Token::UOpAddr };
+		}
 		else
 		{
 			return { Token::OpMemberOrRef };
@@ -1405,9 +1411,6 @@ static RawLexeme raw_next(Lexer* lexer) noexcept
 		{
 			return { Token::OpSet };
 		}
-
-	case '$':
-		return { Token::UOpAddr };
 
 	case '~':
 		return { Token::UOpNot };
