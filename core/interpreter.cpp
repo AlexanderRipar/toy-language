@@ -2719,7 +2719,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		TypeId ptr_id = type_create_reference(interp->types, TypeTag::Ptr, ptr_type);
 
-		// ptr size & alignment = 8 (  )
+		// ptr size & alignment = 8
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, ptr_id, sizeof(void*), alignof(void*));
 		
 		value_set(&rst.success, range::from_object_bytes_mut(operand_res.success.bytes.begin()));
@@ -2729,7 +2729,31 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 	case AstTag::UOpDeref:
 	{
-		AstNode* const op = first_child_of(node);
+		AstNode* const operand = first_child_of(node);
+
+		EvalRst operand_rst = evaluate(interp, operand, EvalSpec{
+			ValueKind::Value
+		});
+
+		if (operand_rst.tag == EvalTag::Unbound)
+			return operand_rst;
+
+		// type if of the reference, contains type info of the derefed type
+		TypeId ref_type_id = operand_rst.success.type_id;
+
+		if (type_tag_from_id(interp->types, ref_type_id) != TypeTag::Ptr) {
+			source_error(interp->errors, source_id_of(interp->asts, operand), "Operand of `.*` must be a pointer.\n");
+		}
+		
+		const ReferenceType* ref_type = type_attachment_from_id<ReferenceType>(interp->types, ref_type_id);
+		TypeId target_type = ref_type->referenced_type_id;
+		EvalRst result = fill_spec(interp, spec, node, true, ref_type->is_mut, target_type);
+
+		byte* ptr = *value_as<byte*>(operand_rst.success);
+		TypeMetrics metrics = type_metrics_from_id(interp->types, target_type);
+		value_set(&result.success, {ptr, metrics.size});
+
+		return result;
 	}
 
 	case AstTag::CompositeInitializer:
