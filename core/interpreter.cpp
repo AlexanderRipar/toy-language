@@ -2698,11 +2698,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	{
 		// 1. get first child
 		AstNode* const operand = first_child_of(node);
-		MutRange<byte> location;
 		// kind = location
 		EvalRst operand_res = evaluate(interp, operand, EvalSpec{
-			ValueKind::Location,
-			range::from_object_bytes_mut(&location)
+			ValueKind::Location
 		});
 		
 		if (operand_res.tag == EvalTag::Unbound) 
@@ -2722,7 +2720,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		// ptr size & alignment = 8
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, ptr_id, sizeof(void*), alignof(void*));
 		
-		value_set(&rst.success, range::from_object_bytes_mut(operand_res.success.bytes.begin()));
+		byte* address = operand_res.success.bytes.begin();
+		value_set(&rst.success, range::from_object_bytes_mut(&address));
 		
 		return rst;
 	}
