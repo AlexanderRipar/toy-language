@@ -40,7 +40,7 @@ NORETURN void vsource_error(ErrorSink* errors, SourceId source_id, const char8* 
 
 	print_error(&location, format, args);
 
-	minos::exit_process(1);
+	error_exit();
 }
 
 void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept
@@ -59,6 +59,11 @@ void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format,
 	const SourceLocation location = source_location_from_source_id(errors->reader, source_id);
 
 	print_error(&location, format, args);
+}
+
+NORETURN void error_exit() noexcept
+{
+	minos::exit_process(1);
 }
 
 void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept
