@@ -2712,7 +2712,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		ptr_type.referenced_type_id = operand_res.success.type_id;
 		ptr_type.is_multi = true;
 		// TODO: look into this, is probably wrong. operand should hold the information if that is mutable
-		ptr_type.is_mut = true;
+		ptr_type.is_mut = operand_res.success.is_mut;
 		ptr_type.is_opt = false;
 
 		TypeId ptr_id = type_create_reference(interp->types, TypeTag::Ptr, ptr_type);
