@@ -2696,52 +2696,41 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 	case AstTag::UOpAddr:
 	{
-		ASSERT_OR_IGNORE(into.success.kind == ValueKind::Value);
-
 		// 1. get first child
 		AstNode* const operand = first_child_of(node);
 		MutRange<byte> location;
 		// kind = location
-		const EvalSpec operand_spec = evaluate(interp, operand, EvalSpec{
+		EvalRst operand_res = evaluate(interp, operand, EvalSpec{
 			ValueKind::Location,
 			range::from_object_bytes_mut(&location)
 		});
 		
-		if (operand_spec.tag == EvalTag::Unbound) 
+		if (operand_res.tag == EvalTag::Unbound) 
 			// return the unbound eval specification 
-			return operand_spec;
+			return operand_res;
 		
 		// create + initialize pointer type
 		ReferenceType ptr_type{};
-		ptr_type.referenced_type_id = operand_spec.success.type_id;
+		ptr_type.referenced_type_id = operand_res.success.type_id;
 		ptr_type.is_multi = true;
 		// TODO: look into this, is probably wrong. operand should hold the information if that is mutable
 		ptr_type.is_mut = true;
 		ptr_type.is_opt = false;
 
-		TypeId ptr_id = simple_type(interp->types, TypeTag::Ptr, range::from_object_bytes(&ptr_type));
+		TypeId ptr_id = type_create_reference(interp->types, TypeTag::Ptr, ptr_type);
 
-		// eval spec is success => type is known
-		if (into.success.type_id == TypeId::INVALID)
-		{
-			into.success.type_id = ptr_id;
-			if (into.success.location.begin() == nullptr) {
-				into.success.location = stack_push(interp, sizeof(MutRange<byte>), alignof(MutRange<byte>));
-			}
-		}
-		else if (!type_can_implicitly_convert_from_to(interp->types, ptr_id, into.success.type_id))
-		{
-			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot implicitly convert pointer to desired type.\n");
-		}
-
-		store_loc(into.success.location, location);
+		// ptr size & alignment = 8 (  )
+		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, ptr_id, sizeof(void*), alignof(void*));
 		
-		return into;
+		value_set(&rst.success, range::from_object_bytes_mut(operand_res.success.bytes.begin()));
+		
+		return rst;
 	}
 
 	case AstTag::UOpDeref:
-		TODO("pls deref me");
-		break;
+	{
+		AstNode* const op = first_child_of(node);
+	}
 
 	case AstTag::CompositeInitializer:
 	case AstTag::Wildcard:
