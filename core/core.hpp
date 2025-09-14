@@ -1336,6 +1336,10 @@ NORETURN void source_error(ErrorSink* errors, SourceId source_id, const char8* f
 // accepts a `va_list`, enabling nested variadic calls.
 NORETURN void vsource_error(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
 
+void source_error_nonfatal(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
+
+void vsource_error_nonfatal(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
+
 // Prints the given `format` string alongside source information derived from
 // `source_id` to `stderr`.
 // `format` supports the same syntax as `printf`.

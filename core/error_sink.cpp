@@ -43,6 +43,24 @@ NORETURN void vsource_error(ErrorSink* errors, SourceId source_id, const char8* 
 	error_exit();
 }
 
+void source_error_nonfatal(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept
+{
+	va_list args;
+
+	va_start(args, format);
+
+	vsource_error_nonfatal(errors, source_id, format, args);
+
+	va_end(args);
+}
+
+void vsource_error_nonfatal(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept
+{
+	const SourceLocation location = source_location_from_source_id(errors->reader, source_id);
+
+	print_error(&location, format, args);
+}
+
 void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept
 {
 	va_list args;
