@@ -3645,26 +3645,39 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		else if (tag == TypeTag::Integer) 
 		{
 			const NumericType* type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
-			u64 tmp_a_int;
-			u64 tmp_b_int;
-			if (!u64_from_integer(tmp_a.bytes.immut(), *type, &tmp_a_int)) {
-				source_error(interp->errors, source_id_of(interp->asts, summand_a), "cannot currently add numbers > 64 bits.\n");
-			}
-			if (!u64_from_integer(tmp_b.bytes.immut(), *type, &tmp_b_int)) {
-				source_error(interp->errors, source_id_of(interp->asts, summand_b), "cannot currently add numbers > 64 bits.\n");
-			}
-			u64 sum;
-			if (!add_checked(tmp_a_int, tmp_b_int, &sum)) {
-				source_error(interp->errors, source_id_of(interp->asts, node), "arithmetic overflow on addition!\n");
-			}
+			if (type->is_signed) {
+				TODO("MACH FÜR SIGNIERTE AUCH PLOX (u64_from_integer for s64?)");
+			} else {
+				u64 tmp_a_int;
+				u64 tmp_b_int;
+				if (!u64_from_integer(tmp_a.bytes.immut(), *type, &tmp_a_int)) {
+					source_error(interp->errors, source_id_of(interp->asts, summand_a), "cannot currently add numbers > 64 bits.\n");
+				}
+				if (!u64_from_integer(tmp_b.bytes.immut(), *type, &tmp_b_int)) {
+					source_error(interp->errors, source_id_of(interp->asts, summand_b), "cannot currently add numbers > 64 bits.\n");
+				}
+				u64 sum;
+				if (!add_checked(tmp_a_int, tmp_b_int, &sum)) {
+					source_error(interp->errors, source_id_of(interp->asts, node), "arithmetic overflow on addition!\n");
+				}
 
 
-			value_set(&result.success, { reinterpret_cast<byte*>(&sum), (type->bits + 7 / 8) });
+				if (type->bits != 64) {
+					u64 mask = ~((static_cast<u64>(1) << type->bits) - 1);
+					if ((mask & sum) != 0) {
+						source_error(interp->errors, source_id_of(interp->asts, node), "arithmetic overflow on addition!\n");
+					}
+				}
+
+				value_set(&result.success, { reinterpret_cast<byte*>(&sum), static_cast<u64>((type->bits + 7) / 8) });
+			}
 		}
 		else if (tag == TypeTag::CompInteger) 
 		{
-
+			TODO("comp integer (comp_integer_add)");
 		}
+
+		return result;
 	}
 
 	case AstTag::OpArrayIndex:
