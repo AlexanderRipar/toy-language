@@ -2210,7 +2210,7 @@ enum class ArecId : s32
 // Creates an `Interpreter`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `Interpreter` can be freed using
 // `release_interpreter`.
-Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, PartialValuePool* partials, ClosurePool* closures, ErrorSink* errors, minos::FileHandle type_log_file, minos::FileHandle ast_log_file, bool log_prelude) noexcept;
+Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, PartialValuePool* partials, ClosurePool* closures, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle type_log_file, minos::FileHandle ast_log_file, bool log_prelude) noexcept;
 
 // Releases the resources associated with the given `Interpreter`.
 void release_interpreter(Interpreter* interp) noexcept;
