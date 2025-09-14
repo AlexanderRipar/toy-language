@@ -42,6 +42,7 @@ set(CORE_SOURCES
 	core/global_value_pool.cpp
 	core/identifier_pool.cpp
 	core/interpreter.cpp
+	core/lexical_analyser.cpp
 	core/parse.cpp
 	core/source_reader.cpp
 	core/type_pool.cpp

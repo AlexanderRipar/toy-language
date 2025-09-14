@@ -31,6 +31,13 @@ enum class SourceId : u32;
 // `GlobalValuePool` for further information
 enum class GlobalValueId : u32;
 
+struct alignas(u32) NameBinding
+{
+	u16 out;
+
+	u16 rank;
+};
+
 
 
 
@@ -729,7 +736,7 @@ struct alignas(8) AstIdentifierData
 	// `IdentifierId` of the identifier represented by this node.
 	IdentifierId identifier_id;
 
-	u32 unused_ = 0;
+	NameBinding binding;
 };
 
 struct alignas(8) AstMemberData
@@ -1358,6 +1365,20 @@ NORETURN void error_exit() noexcept;
 // for supporting error reporting from `Config` parsing, as `ErrorSink` is
 // necessarily created after the config has been parsed.
 void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept;
+
+
+
+
+
+struct LexicalAnalyser;
+
+LexicalAnalyser* create_lexical_analyser(AllocPool* alloc, IdentifierPool* identifiers, AstPool* asts, ErrorSink* errors) noexcept;
+
+void release_lexical_analyser(LexicalAnalyser* lex) noexcept;
+
+void set_prelude_scope(LexicalAnalyser* lex, AstNode* prelude) noexcept;
+
+void resolve_names(LexicalAnalyser* lex, AstNode* root) noexcept;
 
 
 
