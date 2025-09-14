@@ -66,13 +66,13 @@ s32 main(s32 argc, const char8** argv)
 
 		AstPool* const asts = create_ast_pool(alloc);
 
-		Parser* const parser = create_parser(alloc, identifiers, globals, types, asts, errors, ast_log_file);
+		Parser* const parser = create_parser(alloc, identifiers, globals, types, asts, errors);
 
 		PartialValuePool* const partials = create_partial_value_pool(alloc);
 
 		ClosurePool* const closures = create_closure_pool(alloc, types);
 
-		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, globals, partials, closures, errors, imports_log_file, config->logging.imports.enable_prelude);
+		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, globals, partials, closures, errors, imports_log_file, ast_log_file, config->logging.imports.enable_prelude);
 
 		const TypeId main_file_type_id = import_file(interp, config->entrypoint.filepath, false);
 

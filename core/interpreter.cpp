@@ -321,7 +321,9 @@ struct Interpreter
 
 	BuiltinFunc builtin_values[static_cast<u8>(Builtin::MAX)];
 
-	minos::FileHandle log_file;
+	minos::FileHandle type_log_file;
+
+	minos::FileHandle ast_log_file;
 
 	bool log_prelude;
 
@@ -2782,6 +2784,15 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 {
 	ASSERT_OR_IGNORE(file->tag == AstTag::File);
 
+	if (interp->ast_log_file.m_rep != nullptr && (file_type_source_id != SourceId::INVALID || interp->log_prelude))
+	{
+		const Range<char8> filepath = file_type_source_id == SourceId::INVALID
+			?	range::from_literal_string("<prelude>")
+			: source_file_path_from_source_id(interp->reader, file_type_source_id);
+
+		diag::print_ast(interp->ast_log_file, interp->identifiers, file, filepath);
+	}
+
 	// Note that `interp->prelude_type_id` is `INVALID_TYPE_ID` if we are
 	// called from `init_prelude_type`, so the prelude itself has no lexical
 	// parent.
@@ -3353,17 +3364,17 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 
 	interp->prelude_type_id = type_from_file_ast(interp, prelude_ast, SourceId::INVALID);
 
-	if (interp->log_file.m_rep != nullptr && interp->log_prelude)
+	if (interp->type_log_file.m_rep != nullptr && interp->log_prelude)
 	{
 		const SourceLocation file_type_location = source_location_from_source_id(interp->reader, SourceId::INVALID);
 
-		diag::print_type(interp->log_file, interp->identifiers, interp->types, interp->prelude_type_id, &file_type_location);
+		diag::print_type(interp->type_log_file, interp->identifiers, interp->types, interp->prelude_type_id, &file_type_location);
 	}
 }
 
 
 
-Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, PartialValuePool* partials, ClosurePool* closures, ErrorSink* errors, minos::FileHandle log_file, bool log_prelude) noexcept
+Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, PartialValuePool* partials, ClosurePool* closures, ErrorSink* errors, minos::FileHandle type_log_file, minos::FileHandle ast_log_file, bool log_prelude) noexcept
 {
 	Interpreter* const interp = static_cast<Interpreter*>(alloc_from_pool(alloc, sizeof(Interpreter), alignof(Interpreter)));
 
@@ -3397,7 +3408,8 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 	interp->top_arec_id = ArecId::INVALID;
 	interp->active_arec_id = ArecId::INVALID;
 	interp->prelude_type_id = TypeId::INVALID;
-	interp->log_file = log_file;
+	interp->type_log_file = type_log_file;
+	interp->ast_log_file = ast_log_file;
 	interp->log_prelude = log_prelude;
 
 	u64 offset = 0;
@@ -3442,7 +3454,7 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 	}
 	else if (read.source_file->root_ast == AstNodeId::INVALID)
 	{
-		root = parse(interp->parser, read.content, read.source_file->source_id_base, is_std, filepath);
+		root = parse(interp->parser, read.content, read.source_file->source_id_base, is_std);
 
 		read.source_file->root_ast = id_from_ast_node(interp->asts, root);
 	}
@@ -3453,11 +3465,11 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 
 	const TypeId file_type_id = type_from_file_ast(interp, root, read.source_file->source_id_base);
 
-	if (interp->log_file.m_rep != nullptr)
+	if (interp->type_log_file.m_rep != nullptr)
 	{
 		const SourceLocation file_type_location = source_location_from_source_id(interp->reader, read.source_file->source_id_base);
 
-		diag::print_type(interp->log_file, interp->identifiers, interp->types, file_type_id, &file_type_location);
+		diag::print_type(interp->type_log_file, interp->identifiers, interp->types, file_type_id, &file_type_location);
 	}
 
 	read.source_file->root_type = file_type_id;

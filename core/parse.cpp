@@ -423,8 +423,6 @@ struct Parser
 	Lexer lexer;
 
 	AstPool* builder;
-
-	minos::FileHandle log_file;
 };
 
 static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
@@ -2765,7 +2763,7 @@ static void parse_file(Parser* parser) noexcept
 
 
 
-Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors, minos::FileHandle log_file) noexcept
+Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept
 {
 	Parser* const parser = static_cast<Parser*>(alloc_from_pool(pool, sizeof(Parser), alignof(Parser)));
 
@@ -2775,7 +2773,6 @@ Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValueP
 	parser->lexer.globals = globals;
 	parser->lexer.types = types;
 	parser->lexer.errors = errors;
-	parser->log_file = log_file;
 
 	for (const AttachmentRange keyword : KEYWORDS)
 		identifier_set_attachment(identifiers, keyword.range(), keyword.attachment());
@@ -2788,7 +2785,7 @@ void release_parser([[maybe_unused]] Parser* parser) noexcept
 	// No-op
 }
 
-AstNode* parse(Parser* parser, Range<char8> content, SourceId source_id_base, bool is_std, Range<char8> filepath) noexcept
+AstNode* parse(Parser* parser, Range<char8> content, SourceId source_id_base, bool is_std) noexcept
 {
 	ASSERT_OR_IGNORE(content.count() != 0 && content.end()[-1] == '\0');
 
@@ -2802,9 +2799,6 @@ AstNode* parse(Parser* parser, Range<char8> content, SourceId source_id_base, bo
 	parse_file(parser);
 
 	AstNode* const root = complete_ast(parser->builder);
-
-	if (parser->log_file.m_rep != nullptr)
-		diag::print_ast(parser->log_file, parser->lexer.identifiers, root, filepath);
 
 	return root;
 }

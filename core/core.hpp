@@ -2079,7 +2079,7 @@ struct Parser;
 // Creates a `Parser`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `Parser` can be freed using
 // `release_parser`.
-Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors, minos::FileHandle log_file) noexcept;
+Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept;
 
 // Releases the resources associated with the given `Parser`.
 void release_parser(Parser* parser) noexcept;
@@ -2089,7 +2089,7 @@ void release_parser(Parser* parser) noexcept;
 // with subsequent bytes receiving subsequent `SourceId`s.
 // If `is_std` is `true`, builtins are allowed, otherwise they are disallowed.
 // `filepath` is used for logging.
-AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std, Range<char8> filepath) noexcept;
+AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std) noexcept;
 
 
 
@@ -2189,7 +2189,7 @@ enum class ArecId : s32
 // Creates an `Interpreter`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `Interpreter` can be freed using
 // `release_interpreter`.
-Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, PartialValuePool* partials, ClosurePool* closures, ErrorSink* errors, minos::FileHandle log_file, bool log_prelude) noexcept;
+Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, PartialValuePool* partials, ClosurePool* closures, ErrorSink* errors, minos::FileHandle type_log_file, minos::FileHandle ast_log_file, bool log_prelude) noexcept;
 
 // Releases the resources associated with the given `Interpreter`.
 void release_interpreter(Interpreter* interp) noexcept;
