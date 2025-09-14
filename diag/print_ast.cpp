@@ -5,13 +5,26 @@
 
 static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifiers, const AstNode* node, s32 depth) noexcept
 {
-	if (node->tag == AstTag::Identifier || node->tag == AstTag::Definition || node->tag == AstTag::Parameter || node->tag == AstTag::Member)
+	if (node->tag == AstTag::Identifier)
+	{
+		const AstIdentifierData* const attach = attachment_of<AstIdentifierData>(node);
+
+		const Range<char8> name = identifier_name_from_id(identifiers, attach->identifier_id);
+
+		diag::buf_printf(ctx, "%*s%s [%.*s | %u/%u]\n",
+			(depth + 1) * 2, "",
+			tag_name(node->tag),
+			static_cast<s32>(name.count()), name.begin(),
+			attach->binding.out,
+			attach->binding.rank,
+			has_children(node) ? "" : "}"
+		);
+	}
+	else if (node->tag == AstTag::Definition || node->tag == AstTag::Parameter || node->tag == AstTag::Member)
 	{
 		IdentifierId identifier_id;
 
-		if (node->tag == AstTag::Identifier)
-			identifier_id = attachment_of<AstIdentifierData>(node)->identifier_id;
-		else if (node->tag == AstTag::Definition)
+		if (node->tag == AstTag::Definition)
 			identifier_id = attachment_of<AstDefinitionData>(node)->identifier_id;
 		else if (node->tag == AstTag::Parameter)
 			identifier_id = attachment_of<AstParameterData>(node)->identifier_id;
