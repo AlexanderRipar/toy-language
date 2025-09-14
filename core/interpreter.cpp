@@ -1498,7 +1498,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	{
 		const TypeId definition_type_id = type_create_simple(interp->types, TypeTag::Definition);
 
-		EvalRst rst = fill_spec_sized(interp, spec, node, false, false, definition_type_id, sizeof(Definition), alignof(Definition));
+		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, definition_type_id, sizeof(Definition), alignof(Definition));
 
 		const DefinitionInfo info = get_definition_info(node);
 
