@@ -80,6 +80,56 @@ static constexpr u64 COMP_INTEGER_MAX = (static_cast<u64>(1) << 62) - 1;
 
 static constexpr s64 COMP_INTEGER_MIN = static_cast<s64>((static_cast<u64>(static_cast<s64>(-1)) << 62));
 
+bool bitwise_add(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept
+{
+	ASSERT_OR_IGNORE(dst.count() != 0
+	              && dst.count() == lhs.count()
+	              && dst.count() == rhs.count()
+	              && dst.count() == (bits + 7) / 8);
+
+	const bool partial_top_byte = (bits & 7) == 0 ? false : true;
+
+	const u64 top = partial_top_byte ? dst.count() - 1 : dst.count();
+
+	u64 carry = 0;
+
+	for (u64 i = 0; i != top; ++i)
+	{
+		const u64 sum = static_cast<u64>(lhs[i]) + static_cast<u64>(rhs[i]) + carry;
+
+		dst[i] = static_cast<byte>(sum);
+
+		carry = sum >> 8;
+
+		ASSERT_OR_IGNORE(carry <= 1);
+	}
+
+	if (partial_top_byte)
+	{
+		const u16 top_bits = bits & 7;
+
+		const u8 top_mask = static_cast<u8>(static_cast<u16>(1 << top_bits) - 1);
+
+		const u64 lhs_masked = static_cast<u64>(lhs[top] & top_mask);
+
+		const u64 rhs_masked = static_cast<u64>(rhs[top] & top_mask);
+
+		const u64 sum = lhs_masked + rhs_masked + carry;
+
+		byte* dst_top = dst.begin() + top;
+
+		const byte dst_old = *dst_top;
+
+		*dst_top = static_cast<byte>((dst_old & ~top_mask) | (sum & top_mask));
+
+		carry = sum >> top_bits;
+
+		ASSERT_OR_IGNORE(carry <= 1);
+	}
+
+	return carry == 0;
+}
+
 static bool is_inlined(CompIntegerValue value) noexcept
 {
 	return (value.rep & 1) == 0;

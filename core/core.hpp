@@ -320,6 +320,13 @@ CompFloatValue comp_float_neg(CompFloatValue value) noexcept;
 
 
 
+// Adds the bytes in `lhs` and `rhs` as little-endian integers into `dst`.
+// `dst`, `lhs` and `rhs` must all have the same count.
+// `bits` must be between `dst.count() * 8` and `dst.count() * 8 - 7`.
+// If `bits` is not exactly `dst.count() * 8` only the low `bits % 8` bits of
+// `dst`'s last byte are written, with the others keeping their initial values.
+bool bitwise_add(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept;
+
 // Adds the signed 64-bit values `a` and `b`, returning `false` and
 // leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
 // the result and `true` is returned.
