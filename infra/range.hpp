@@ -468,6 +468,14 @@ namespace range
 
 		memcpy(dst.begin(), src.begin(), dst.count());
 	}
+
+	template<typename T>
+	bool mem_equal(Range<T> a, Range<T> b) noexcept
+	{
+		ASSERT_OR_IGNORE(a.count() == b.count());
+
+		return memcmp(a.begin(), b.begin(), a.count()) == 0;
+	}
 }
 
 #endif // RANGE_INCLUDE_GUARD
