@@ -460,6 +460,14 @@ namespace range
 	{
 		return { arr, N - 1, attachment };
 	}
+
+	template<typename T>
+	void mem_copy(MutRange<T> dst, Range<T> src) noexcept
+	{
+		ASSERT_OR_IGNORE(dst.count() == src.count());
+
+		memcpy(dst.begin(), src.begin(), dst.count());
+	}
 }
 
 #endif // RANGE_INCLUDE_GUARD
