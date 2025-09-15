@@ -3,9 +3,8 @@
 #include "../diag/diag.hpp"
 #include "../infra/container/reserved_vec.hpp"
 
-enum class ArecKind
+enum class ArecKind : bool
 {
-	INVALID = 0,
 	Normal,
 	Unbound,
 };
@@ -39,30 +38,11 @@ struct alignas(8) Arec
 	// a valid `TypeId` referencing a composite type.
 	TypeId type_id;
 
-	u32 size : 30;
+	u32 size;
 
-	u32 kind : 2;
+	u32 attach_index;
 
-	#if COMPILER_MSVC
-	#pragma warning(push)
-	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
-	#elif COMPILER_CLANG
-	#pragma clang diagnostic push
-	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
-	#elif COMPILER_GCC
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
-	#endif
-	// The actual data in this activation record. The size and layout are
-	// defined by `type_id`.
-	alignas(8) byte attachment[];
-	#if COMPILER_MSVC
-	#pragma warning(pop)
-	#elif COMPILER_CLANG
-	#pragma clang diagnostic pop
-	#elif COMPILER_GCC
-	#pragma GCC diagnostic pop
-	#endif
+	ArecKind kind;
 };
 
 struct ArecRestoreInfo
@@ -305,7 +285,9 @@ struct Interpreter
 
 	ErrorSink* errors;
 
-	ReservedVec<u64> arecs;
+	ReservedVec<Arec> arec_headers;
+
+	ReservedVec<u64> arec_attachs;
 
 	ArecId top_arec_id;
 
@@ -395,6 +377,15 @@ static EvalValue make_value(MutRange<byte> bytes, bool is_location, bool is_mut,
 
 
 
+MutRange<byte> arec_attach(Interpreter* interp, Arec* arec) noexcept
+{
+	ASSERT_OR_IGNORE(arec->attach_index + (arec->size + 7) / 8 <= interp->arec_attachs.used());
+
+	byte* const begin = reinterpret_cast<byte*>(interp->arec_attachs.begin() + arec->attach_index);
+
+	return { begin, arec->size };
+}
+
 static ArecRestoreInfo set_active_arec_id(Interpreter* interp, ArecId arec_id) noexcept
 {
 	ASSERT_OR_IGNORE(arec_id != ArecId::INVALID && arec_id <= interp->top_arec_id);
@@ -412,7 +403,7 @@ static Arec* active_arec(Interpreter* interp) noexcept
 {
 	ASSERT_OR_IGNORE(interp->active_arec_id != ArecId::INVALID);
 
-	return reinterpret_cast<Arec*>(interp->arecs.begin() + static_cast<u32>(interp->active_arec_id));
+	return interp->arec_headers.begin() + static_cast<u32>(interp->active_arec_id);
 }
 
 static ArecId active_arec_id(Interpreter* interp) noexcept
@@ -431,7 +422,7 @@ static Arec* arec_from_id(Interpreter* interp, ArecId arec_id) noexcept
 {
 	ASSERT_OR_IGNORE(arec_id != ArecId::INVALID);
 
-	return reinterpret_cast<Arec*>(interp->arecs.begin() + static_cast<s32>(arec_id));
+	return interp->arec_headers.begin() + static_cast<s32>(arec_id);
 }
 
 static void arec_restore(Interpreter* interp, ArecRestoreInfo info) noexcept
@@ -442,37 +433,40 @@ static void arec_restore(Interpreter* interp, ArecRestoreInfo info) noexcept
 
 	const Arec* const old_top_arec = arec_from_id(interp, info.old_top);
 
-	const u32 old_top_arec_qwords = (sizeof(Arec) + old_top_arec->size + 7) / 8;
+	const u32 old_top_arec_qwords = (old_top_arec->size + 7) / 8;
 
-	const u32 old_top_arec_base = static_cast<u32>(reinterpret_cast<const u64*>(old_top_arec) - interp->arecs.begin());
+	const u32 old_used = old_top_arec->attach_index + old_top_arec_qwords;
 
-	const u32 old_used = old_top_arec_base + old_top_arec_qwords;
+	interp->arec_headers.pop_to(static_cast<u32>(info.old_top) + 1);
 
-	interp->arecs.pop_to(old_used);
+	interp->arec_attachs.pop_to(old_used);
 
 	interp->active_arec_id = info.old_selected;
+
+	interp->top_arec_id = info.old_top;
 }
 
 static ArecId arec_push(Interpreter* interp, TypeId record_type_id, u64 size, u32 align, ArecId lookup_parent, ArecKind kind) noexcept
 {
 	ASSERT_OR_IGNORE(type_tag_from_id(interp->types, record_type_id) == TypeTag::Composite);
 
-	ASSERT_OR_IGNORE(kind != ArecKind::INVALID);
-
-	if (size >= (static_cast<u64>(1) << 31))
+	if (size >= UINT32_MAX)
 		panic("Arec too large.\n");
 
 	if (align > 8)
 		TODO("Implement overaligned Arecs");
 
-	Arec* const arec = static_cast<Arec*>(interp->arecs.reserve_padded(static_cast<u32>(sizeof(Arec) + size)));
+	Arec* const arec = interp->arec_headers.reserve();
 	arec->prev_top_id = interp->top_arec_id;
 	arec->surrounding_arec_id = lookup_parent;
 	arec->type_id = record_type_id;
 	arec->size = static_cast<u32>(size);
-	arec->kind = static_cast<u32>(kind);
+	arec->attach_index = interp->arec_attachs.used();
+	arec->kind = kind;
 
-	const ArecId arec_id = static_cast<ArecId>(reinterpret_cast<const u64*>(arec) - interp->arecs.begin());
+	(void) interp->arec_attachs.reserve(static_cast<u32>((size + 7) / 8));
+
+	const ArecId arec_id = static_cast<ArecId>(arec - interp->arec_headers.begin());
 
 	interp->top_arec_id = arec_id;
 
@@ -487,34 +481,36 @@ static void arec_pop(Interpreter* interp, ArecId arec_id) noexcept
 {
 	ASSERT_OR_IGNORE(arec_id != ArecId::INVALID && interp->top_arec_id == arec_id && interp->active_arec_id == arec_id);
 
-	const Arec* const popped = reinterpret_cast<Arec*>(interp->arecs.begin() + static_cast<s32>(arec_id));
+	const Arec* const popped = interp->arec_headers.begin() + static_cast<s32>(arec_id);
 
 	interp->active_arec_id = popped->surrounding_arec_id == ArecId::INVALID ? popped->prev_top_id : popped->surrounding_arec_id;
 
 	interp->top_arec_id = popped->prev_top_id;
 
-	interp->arecs.pop_to(static_cast<u32>(arec_id));
+	const u32 new_attach_top = interp->arec_headers.used() == 1 ? 0 : popped[-1].attach_index + (popped[-1].size + 7) / 8;
+
+	interp->arec_headers.pop_by(1);
+
+	interp->arec_attachs.pop_to(new_attach_top);
 }
 
 static void arec_grow(Interpreter* interp, ArecId arec_id, u64 new_size) noexcept
 {
 	ASSERT_OR_IGNORE(arec_id != ArecId::INVALID && interp->top_arec_id == arec_id);
 
-	if (new_size >= (static_cast<u64>(1) << 31))
+	if (new_size > UINT32_MAX)
 		panic("Arec too large.\n");
 
-	Arec* const arec = reinterpret_cast<Arec*>(interp->arecs.begin() + static_cast<s32>(arec_id));
+	Arec* const arec = interp->arec_headers.begin() + static_cast<s32>(arec_id);
 
-	ASSERT_OR_IGNORE(reinterpret_cast<u64>(interp->arecs.end()) == (reinterpret_cast<u64>(arec->attachment + arec->size + 7) & ~static_cast<u64>(7)));
-
-	ASSERT_OR_IGNORE(arec->size <= new_size);
+	ASSERT_OR_IGNORE(arec->size <= new_size && interp->arec_attachs.used() == (arec->attach_index + arec->size + 7) / 8);
 
 	// This overallocates due to `interp->arecs` rounding to 8 bytes.
 	// However, that's not really a problem, as we're in the top arec anyways,
 	// and it'll get popped soon enough.
-	(void) interp->arecs.reserve_padded(static_cast<u32>(new_size - arec->size));
+	(void) interp->arec_attachs.reserve_padded(static_cast<u32>(new_size - arec->size));
 
-	arec->size = new_size;
+	arec->size = static_cast<u32>(new_size);
 }
 
 
@@ -756,8 +752,10 @@ static IdentifierInfo location_info_from_arec_and_member(Interpreter* interp, Ar
 	if (kind == ArecKind::Unbound)
 		return IdentifierInfo::make_unbound(arec);
 
+	MutRange<byte> attach = arec_attach(interp, arec);
+
 	return IdentifierInfo::make_found(
-		MutRange<byte>{ arec->attachment + member->offset, static_cast<u32>(size) },
+		attach.mut_subrange(member->offset, size),
 		member->type.complete,
 		member->is_mut,
 		some(arec)
@@ -1277,9 +1275,11 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 		if (has_pending_type)
 			arec_grow(interp, parameter_list_arec_id, param->offset + param_metrics.size);
 
+		MutRange<byte> attach = arec_attach(interp, parameter_list_arec);
+
 		const EvalRst arg_rst = evaluate(interp, arg, EvalSpec{
 			ValueKind::Value,
-			MutRange<byte>{ parameter_list_arec->attachment + param->offset, param_metrics.size },
+			attach.mut_subrange(param->offset, param_metrics.size),
 			param->type.complete
 		});
 
@@ -1593,9 +1593,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 					arec_grow(interp, block_arec_id, member->offset + metrics.size);
 
+					MutRange<byte> attach = arec_attach(interp, block_arec);
+
 					const EvalRst value_rst = evaluate(interp, get_ptr(info.value), EvalSpec{
 						ValueKind::Value,
-						MutRange<byte>{ block_arec->attachment + member->offset, metrics.size },
+						attach.mut_subrange(member->offset, metrics.size),
 						type_id
 					});
 
@@ -1637,7 +1639,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 					arec_grow(interp, block_arec_id, member->offset + metrics.size);
 
-					range::mem_copy(MutRange<byte>{ block_arec->attachment + member->offset, metrics.size }, value_rst.success.bytes.immut());
+					MutRange<byte> attach = arec_attach(interp, block_arec);
+
+					range::mem_copy(attach.mut_subrange(member->offset, metrics.size), value_rst.success.bytes.immut());
 				}
 
 				definition_count += 1;
@@ -2155,7 +2159,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 					Arec* const closure_arec = arec_from_id(interp, closure_arec_id);
 
-					memcpy(closure_arec->attachment, instance.values.begin(), instance.values.count());
+					MutRange<byte> attach = arec_attach(interp, closure_arec);
+
+					range::mem_copy(attach, instance.values);
 				}
 
 				AstNode* const body = ast_node_from_id(interp->asts, static_cast<AstNodeId>(callee_value.body_ast_node_id));
@@ -3384,7 +3390,9 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 {
 	Interpreter* const interp = static_cast<Interpreter*>(alloc_from_pool(alloc, sizeof(Interpreter), alignof(Interpreter)));
 
-	static constexpr u64 ARECS_RESERVE_SIZE = (1 << 20) * sizeof(Arec);
+	static constexpr u64 AREC_HEADERS_RESERVE_SIZE = (1 << 20) * sizeof(Arec);
+
+	static constexpr u64 AREC_ATTACHS_RESERVE_SIZE = (1 << 26);
 
 	static constexpr u64 TEMPS_RESERVE_SIZE = (1 << 26) * sizeof(byte);
 
@@ -3392,7 +3400,8 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 
 	static constexpr u64 ACTIVE_PARTIAL_VALUE_RESERVE_SIZE = (1 << 16) * sizeof(PeekablePartialValueIterator);
 
-	const u64 total_reserve_size = ARECS_RESERVE_SIZE
+	const u64 total_reserve_size = AREC_HEADERS_RESERVE_SIZE
+	                             + AREC_ATTACHS_RESERVE_SIZE
 	                             + TEMPS_RESERVE_SIZE
 	                             + PARTIAL_VALUE_BUILDER_RESERVE_SIZE
 	                             + ACTIVE_PARTIAL_VALUE_RESERVE_SIZE;
@@ -3421,8 +3430,11 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 
 	u64 offset = 0;
 
-	interp->arecs.init({ memory + offset, ARECS_RESERVE_SIZE}, 1 << 9);
-	offset += ARECS_RESERVE_SIZE;
+	interp->arec_headers.init({ memory + offset, AREC_HEADERS_RESERVE_SIZE }, 1 << 9);
+	offset += AREC_HEADERS_RESERVE_SIZE;
+
+	interp->arec_attachs.init({ memory + offset, AREC_ATTACHS_RESERVE_SIZE }, 1 << 9);
+	offset += AREC_ATTACHS_RESERVE_SIZE;
 
 	interp->temps.init({ memory + offset, TEMPS_RESERVE_SIZE }, 1 << 9);
 	offset += TEMPS_RESERVE_SIZE;
