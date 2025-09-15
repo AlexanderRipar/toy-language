@@ -81,6 +81,8 @@ void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format,
 
 NORETURN void error_exit() noexcept
 {
+	DEBUGBREAK;
+
 	minos::exit_process(1);
 }
 
