@@ -1898,7 +1898,7 @@ TypeId type_create_signature(TypePool* types, TypeTag tag, SignatureType attach)
 // Call `type_set_composite_member_info` to set the type or value of a member
 // that was added with `has_pending_type` or `has_pending_value` respectively
 // set to `true`.
-TypeId type_create_composite(TypePool* types, TypeId lexical_parent_type_id, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
+TypeId type_create_composite(TypePool* types, TypeId global_scope_type_id, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
 
 // Seals an open composite type, preventing the addition of further members and
 // setting the type's metrics (`size`, `align` and `stride`).
@@ -1977,11 +1977,14 @@ TypeId type_unify(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
 
 TypeDisposition type_disposition_from_id(TypePool* types, TypeId type_id) noexcept;
 
-// Retrieves the lexical parent type associated with the composite type
-// referenced by `type_id`. If the type has no lexical parent,
-// `TypeId::INVALID` is returned. This is only the case for the top-level type
-// of the hard-coded prelude AST.
-TypeId lexical_parent_type_from_id(TypePool* types, TypeId type_id) noexcept;
+// Retrieves the type representing the global scope that the composite type
+// referenced by `type_id` was defined in.
+// If the type has no parent global scope, `TypeId::INVALID` is returned. This
+// is only the case for the type representing the global scope of the
+// hard-coded prelude.
+// Other types representing global scopes (i.e. types returned by
+// `import_file`) return the id of the hard-coded prelude's global scope type.
+TypeId type_global_scope_from_id(TypePool* types, TypeId type_id) noexcept;
 
 // Checks whether `type_metrics_from_id` may be called on `type_id`.
 // This returns false iff `type_id` refers to a composite type that has a

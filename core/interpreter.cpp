@@ -38,11 +38,13 @@ struct alignas(8) Arec
 	// a valid `TypeId` referencing a composite type.
 	TypeId type_id;
 
-	u32 size;
+	u32 size : 31;
+
+	u32 kind : 1;
 
 	u32 attach_index;
 
-	ArecKind kind;
+	TypeId global_scope_type_id;
 };
 
 struct ArecRestoreInfo
@@ -168,78 +170,13 @@ struct EvalRst
 	{}
 };
 
-enum class IdentifierInfoTag : u8
-{
-	Found,
-	Unbound,
-	Missing,
-};
-
 struct IdentifierInfo
 {
-	IdentifierInfoTag tag;
+	EvalTag tag;
 
-	#if COMPILER_CLANG
-	#pragma clang diagnostic push
-	#pragma clang diagnostic ignored "-Wnested-anon-types" // anonymous types declared in an anonymous union are an extension
-	#elif COMPILER_GCC
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ prohibits anonymous structs
-	#endif
-	union
-	{
-		struct
-		{
-			MutRange<byte> location;
+	EvalValue success;
 
-			TypeId type_id;
-
-			bool is_mut;
-
-			OptPtr<Arec> arec; 
-		} found;
-
-		struct
-		{
-			Arec* source;
-		} unbound;
-	};
-	#if COMPILER_CLANG
-	#pragma clang diagnostic pop
-	#elif COMPILER_GCC
-	#pragma GCC diagnostic pop
-	#endif
-
-	IdentifierInfo() noexcept : tag{}, found{} {}
-
-	static IdentifierInfo make_found(MutRange<byte> location, TypeId type_id, bool is_mut, OptPtr<Arec> arec) noexcept
-	{
-		IdentifierInfo info;
-		info.tag = IdentifierInfoTag::Found;
-		info.found.location = location;
-		info.found.type_id = type_id;
-		info.found.is_mut = is_mut;
-		info.found.arec = arec;
-
-		return info;
-	}
-
-	static IdentifierInfo make_unbound(Arec* source) noexcept
-	{
-		IdentifierInfo info;
-		info.tag = IdentifierInfoTag::Unbound;
-		info.unbound.source = source;
-
-		return info;
-	}
-
-	static IdentifierInfo make_missing() noexcept
-	{
-		IdentifierInfo info;
-		info.tag = IdentifierInfoTag::Missing;
-
-		return info;
-	}
+	OptPtr<Arec> arec;
 };
 
 struct CallInfo
@@ -294,6 +231,8 @@ struct Interpreter
 	ArecId active_arec_id;
 
 	ReservedVec<byte> temps;
+
+	ReservedVec<ClosureInstance> active_closures;
 
 	ReservedVec<PartialValueBuilderId> partial_value_builders;
 
@@ -375,6 +314,24 @@ static EvalValue make_value(MutRange<byte> bytes, bool is_location, bool is_mut,
 	return rst;
 }
 
+static IdentifierInfo make_identifier_info(MutRange<byte> location, TypeId type_id, bool is_mut, OptPtr<Arec> arec) noexcept
+{
+	IdentifierInfo info;
+	info.tag = EvalTag::Success;
+	info.success = make_value(location, true, is_mut, type_id);
+	info.arec = arec;
+
+	return info;
+}
+
+static IdentifierInfo make_unbound_identifier_info(Arec* arec) noexcept
+{
+	IdentifierInfo info;
+	info.tag = EvalTag::Unbound;
+	info.arec = some(arec);
+
+	return info;
+}
 
 
 MutRange<byte> arec_attach(Interpreter* interp, Arec* arec) noexcept
@@ -413,9 +370,9 @@ static ArecId active_arec_id(Interpreter* interp) noexcept
 	return interp->active_arec_id;
 }
 
-static TypeId active_arec_type_id(Interpreter* interp) noexcept
+static TypeId active_arec_global_scope_type_id(Interpreter* interp) noexcept
 {
-	return active_arec(interp)->type_id;
+	return active_arec(interp)->global_scope_type_id;
 }
 
 static Arec* arec_from_id(Interpreter* interp, ArecId arec_id) noexcept
@@ -446,7 +403,7 @@ static void arec_restore(Interpreter* interp, ArecRestoreInfo info) noexcept
 	interp->top_arec_id = info.old_top;
 }
 
-static ArecId arec_push(Interpreter* interp, TypeId record_type_id, u64 size, u32 align, ArecId lookup_parent, ArecKind kind) noexcept
+static ArecId arec_push(Interpreter* interp, TypeId record_type_id, u64 size, u32 align, ArecId lookup_parent, ArecKind kind, TypeId global_scope_type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_tag_from_id(interp->types, record_type_id) == TypeTag::Composite);
 
@@ -461,8 +418,9 @@ static ArecId arec_push(Interpreter* interp, TypeId record_type_id, u64 size, u3
 	arec->surrounding_arec_id = lookup_parent;
 	arec->type_id = record_type_id;
 	arec->size = static_cast<u32>(size);
+	arec->kind = static_cast<u32>(kind);
 	arec->attach_index = interp->arec_attachs.used();
-	arec->kind = kind;
+	arec->global_scope_type_id = global_scope_type_id;
 
 	(void) interp->arec_attachs.reserve(static_cast<u32>((size + 7) / 8));
 
@@ -725,11 +683,11 @@ static void complete_member(Interpreter* interp, TypeId surrounding_type_id, con
 
 
 
-static IdentifierInfo location_info_from_global_member(Interpreter* interp, TypeId surrounding_type_id, const Member* member) noexcept
+static IdentifierInfo identifier_info_from_global_member(Interpreter* interp, TypeId surrounding_type_id, const Member* member) noexcept
 {
 	complete_member(interp, surrounding_type_id, member);
 
-	return IdentifierInfo::make_found(
+	return make_identifier_info(
 		global_value_get_mut(interp->globals, member->value.complete),
 		member->type.complete,
 		member->is_mut,
@@ -737,10 +695,10 @@ static IdentifierInfo location_info_from_global_member(Interpreter* interp, Type
 	);
 }
 
-static IdentifierInfo location_info_from_arec_and_member(Interpreter* interp, Arec* arec, const Member* member) noexcept
+static IdentifierInfo identifier_info_from_arec_and_member(Interpreter* interp, Arec* arec, const Member* member) noexcept
 {
 	if (member->is_global)
-		return location_info_from_global_member(interp, arec->type_id, member);
+		return identifier_info_from_global_member(interp, arec->type_id, member);
 
 	const u64 size = type_metrics_from_id(interp->types, member->type.complete).size;
 
@@ -750,11 +708,11 @@ static IdentifierInfo location_info_from_arec_and_member(Interpreter* interp, Ar
 	const ArecKind kind = static_cast<ArecKind>(arec->kind);
 
 	if (kind == ArecKind::Unbound)
-		return IdentifierInfo::make_unbound(arec);
+		return make_unbound_identifier_info(arec);
 
 	MutRange<byte> attach = arec_attach(interp, arec);
 
-	return IdentifierInfo::make_found(
+	return make_identifier_info(
 		attach.mut_subrange(member->offset, size),
 		member->type.complete,
 		member->is_mut,
@@ -762,122 +720,136 @@ static IdentifierInfo location_info_from_arec_and_member(Interpreter* interp, Ar
 	);
 }
 
-static bool lookup_identifier_helper(Interpreter* interp, IdentifierId name, OptPtr<Arec>* out_arec, TypeId* out_surrounding_type_id, const Member** out_member) noexcept
+static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name, NameBinding binding) noexcept
 {
-	ASSERT_OR_IGNORE(interp->active_arec_id != ArecId::INVALID);
-
-	ArecId curr = interp->active_arec_id;
-
-	Arec* arec = arec_from_id(interp, curr);
-
-	while (true)
+	if (binding.is_closed_over)
 	{
-		if (type_member_by_name(interp->types, arec->type_id, name, out_member))
+		ASSERT_OR_IGNORE(interp->active_closures.used() != 0);
+
+		ClosureInstance* instance = interp->active_closures.end() - 1;
+
+		const Member* member;
+
+		if (!type_member_by_name(interp->types, instance->type_id, name, &member))
+			ASSERT_UNREACHABLE;
+
+		ASSERT_OR_IGNORE(!member->is_global && !member->has_pending_type);
+
+		const TypeMetrics metrics = type_metrics_from_id(interp->types, member->type.complete);
+
+		return make_identifier_info(
+			instance->values.mut_subrange(member->offset, metrics.size),
+			member->type.complete,
+			false,
+			none<Arec>()
+		);
+	}
+
+	Arec* arec = active_arec(interp);
+
+	if (binding.is_global)
+	{
+		TypeId global_scope_type_id = arec->global_scope_type_id;
+
+		u16 out = binding.out;
+
+		while (out != 0)
 		{
-			*out_arec = some(arec);
+			ASSERT_OR_IGNORE(global_scope_type_id != TypeId::INVALID);
 
-			*out_surrounding_type_id = arec->type_id;
+			global_scope_type_id = type_global_scope_from_id(interp->types, global_scope_type_id);
 
-			return true;
+			out -= 1;
 		}
 
-		if (arec->surrounding_arec_id == ArecId::INVALID)
-			break;
+		ASSERT_OR_IGNORE(global_scope_type_id != TypeId::INVALID);
 
-		curr = arec->surrounding_arec_id;
+		const Member* const member = type_member_by_rank(interp->types, global_scope_type_id, binding.rank);
 
-		arec = arec_from_id(interp, curr);
+		ASSERT_OR_IGNORE(member->name == name);
+
+		// Since we are in a global context, the member has to be global.
+		return identifier_info_from_global_member(interp, global_scope_type_id, member);
 	}
-
-	TypeId lex_scope = lexical_parent_type_from_id(interp->types, arec->type_id);
-
-	while (lex_scope != TypeId::INVALID)
+	else
 	{
-		if (type_member_by_name(interp->types, lex_scope, name, out_member))
+		u16 out = binding.out;
+
+		while (out != 0)
 		{
-			*out_arec = none<Arec>();
+			ASSERT_OR_IGNORE(arec->surrounding_arec_id != ArecId::INVALID);
 
-			*out_surrounding_type_id = lex_scope;
+			arec = arec_from_id(interp, arec->surrounding_arec_id);
 
-			return true;
+			out -= 1;
 		}
 
-		lex_scope = lexical_parent_type_from_id(interp->types, lex_scope);
-	}
+		const Member* const member = type_member_by_rank(interp->types, arec->type_id, binding.rank);
 
-	return false;
+		ASSERT_OR_IGNORE(member->name == name);
+
+		if (static_cast<ArecKind>(arec->kind) == ArecKind::Unbound)
+			return make_unbound_identifier_info(arec);
+
+		return identifier_info_from_arec_and_member(interp, arec, member);
+	}
 }
 
-static IdentifierInfo lookup_local_identifier(Interpreter* interp, Arec* arec, IdentifierId name) noexcept
+
+
+static ClosureBuilderId close_over_rec(Interpreter* interp, ClosureBuilderId builder_id, AstNode* node, u16 out_adjustment) noexcept
 {
-	const Member* member;
+	if (node->tag == AstTag::Identifier)
+	{
+		const AstIdentifierData attach = *attachment_of<AstIdentifierData>(node);
 
-	if (!type_member_by_name(interp->types, arec->type_id, name, &member))
-		ASSERT_UNREACHABLE;
+		// If the identifier is statically known not to be captured - i.e., if
+		// it is at global scope - we must not capture it.
+		if (!attach.binding.is_closed_over)
+			return builder_id;
 
-	return location_info_from_arec_and_member(interp, arec, member);
+		ASSERT_OR_IGNORE(!attach.binding.is_global);
+
+		// If the identifier is bound to a definition inside the function body,
+		// we must not capture it.
+		// Note that the reason it is still marked as `is_closed_over` is that
+		// it is captured by a nested function.
+		if (attach.binding.out < out_adjustment)
+			return builder_id;
+
+		NameBinding adjusted_binding = attach.binding;
+		adjusted_binding.out -= out_adjustment;
+		adjusted_binding.is_closed_over = attach.binding.is_closed_over_closure;
+
+		IdentifierInfo info = lookup_identifier(interp, attach.identifier_id, adjusted_binding);
+
+		ASSERT_OR_IGNORE(info.tag == EvalTag::Success);
+
+		return closure_add_value(interp->closures, builder_id, attach.identifier_id, info.success.type_id, info.success.bytes.immut());
+	}
+	else
+	{
+		if (node->tag == AstTag::Block || node->tag == AstTag::Func)
+			out_adjustment += 1;
+
+		AstDirectChildIterator it = direct_children_of(node);
+
+		while (has_next(&it))
+		{
+			AstNode* const child = next(&it);
+
+			builder_id = close_over_rec(interp, builder_id, child, out_adjustment);
+		}
+
+		return builder_id;
+	}
 }
 
-static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name) noexcept
-{
-	OptPtr<Arec> arec;
-
-	TypeId surrounding_type_id;
-
-	const Member* member;
-
-	if (!lookup_identifier_helper(interp, name, &arec, &surrounding_type_id, &member))
-		return IdentifierInfo::make_missing();
-
-	if (is_some(arec))
-	{
-		const ArecKind kind = static_cast<ArecKind>(get_ptr(arec)->kind);
-
-		if (kind == ArecKind::Unbound)
-			return IdentifierInfo::make_unbound(get_ptr(arec));
-
-		return location_info_from_arec_and_member(interp, get_ptr(arec), member);
-	}
-	else if (member->is_global)
-	{
-		return location_info_from_global_member(interp, surrounding_type_id, member);
-	}
-
-	return IdentifierInfo::make_missing();
-}
-
-
-
-static ClosureId close_over_func_body(Interpreter* interp, TypeId parameter_list_type_id, AstNode* body) noexcept
+static ClosureId close_over_func_body(Interpreter* interp, AstNode* body) noexcept
 {
 	ClosureBuilderId builder_id = closure_create(interp->closures);
 
-	AstFlatIterator it = flat_ancestors_of(body);
-
-	while (has_next(&it))
-	{
-		AstNode* const curr = next(&it);
-
-		if (curr->tag != AstTag::Identifier)
-			continue;
-
-		const IdentifierId name = attachment_of<AstIdentifierData>(curr)->identifier_id;
-
-		const Member* unused_member;
-
-		if (type_member_by_name(interp->types, parameter_list_type_id, name, &unused_member))
-			continue;
-
-		IdentifierInfo info = lookup_identifier(interp, name);
-
-		if (info.tag != IdentifierInfoTag::Found)
-			continue;
-
-		if (is_none(info.found.arec))
-			continue;
-
-		builder_id = closure_add_value(interp->closures, builder_id, name, info.found.type_id, info.found.location.immut());
-	}
+	builder_id = close_over_rec(interp, builder_id, body, 1);
 
 	return closure_seal(interp->closures, builder_id);
 }
@@ -1239,11 +1211,13 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 		? type_copy_composite(interp->types, signature_type->parameter_list_type_id, signature_type->param_count, true)
 		: signature_type->parameter_list_type_id;
 
+	const TypeId global_scope_type_id = type_global_scope_from_id(interp->types, parameter_list_type_id);
+
 	const ArecId caller_arec_id = active_arec_id(interp);
 
 	const TypeMetrics parameter_list_metrics = type_metrics_from_id(interp->types, parameter_list_type_id);
 
-	const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, parameter_list_metrics.size, parameter_list_metrics.align, ArecId::INVALID, ArecKind::Normal);
+	const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, parameter_list_metrics.size, parameter_list_metrics.align, ArecId::INVALID, ArecKind::Normal, global_scope_type_id);
 
 	Arec* const parameter_list_arec = arec_from_id(interp, parameter_list_arec_id);
 
@@ -1522,9 +1496,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 	case AstTag::Block:
 	{
-		const TypeId block_type_id = type_create_composite(interp->types, active_arec_type_id(interp), TypeDisposition::Block, SourceId::INVALID, 0, false);
+		const TypeId global_scope_type_id = active_arec_global_scope_type_id(interp);
 
-		const ArecId block_arec_id = arec_push(interp, block_type_id, 0, 1, active_arec_id(interp), ArecKind::Normal);
+		const TypeId block_type_id = type_create_composite(interp->types, global_scope_type_id, TypeDisposition::Block, SourceId::INVALID, 0, false);
+
+		const ArecId block_arec_id = arec_push(interp, block_type_id, 0, 1, active_arec_id(interp), ArecKind::Normal, global_scope_type_id);
 
 		Arec* const block_arec = active_arec(interp);
 
@@ -1729,9 +1705,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const AstNodeId body_id = id_from_ast_node(interp->asts, body);
 
-		const SignatureType* const signature_type = type_attachment_from_id<SignatureType>(interp->types, signature_type_id);
-
-		const ClosureId closure_id = close_over_func_body(interp, signature_type->parameter_list_type_id, body);
+		const ClosureId closure_id = close_over_func_body(interp, body);
 
 		CallableValue callable = CallableValue::from_function(signature_type_id, body_id, closure_id);
 
@@ -1748,9 +1722,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		SignatureInfo info = get_signature_info(node);
 
-		const TypeId parameter_list_type_id = type_create_composite(interp->types, active_arec_type_id(interp), TypeDisposition::Signature, SourceId::INVALID, 0, false);
+		const TypeId global_scope_type_id = active_arec_global_scope_type_id(interp);
 
-		const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, 0, 1, active_arec_id(interp), ArecKind::Unbound);
+		const TypeId parameter_list_type_id = type_create_composite(interp->types, global_scope_type_id, TypeDisposition::Signature, SourceId::INVALID, 0, false);
+
+		const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, 0, 1, active_arec_id(interp), ArecKind::Unbound, global_scope_type_id);
 
 		Arec* const parameter_list_arec = arec_from_id(interp, parameter_list_arec_id);
 
@@ -2023,30 +1999,20 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	{
 		const AstIdentifierData attach = *attachment_of<AstIdentifierData>(node);
 
-		const IdentifierInfo info = lookup_identifier(interp, attach.identifier_id);
+		const IdentifierInfo info = lookup_identifier(interp, attach.identifier_id, attach.binding);
 
-		if (info.tag == IdentifierInfoTag::Missing)
+		if (info.tag == EvalTag::Unbound)
+			return eval_unbound(get_ptr(info.arec));
+
+		EvalRst rst = fill_spec(interp, spec, node, true, info.success.is_mut, info.success.type_id);
+
+		if (type_is_equal(interp->types, info.success.type_id, rst.success.type_id))
 		{
-			const Range<char8> name = identifier_name_from_id(interp->identifiers, attach.identifier_id);
-
-			source_error(interp->errors, source_id_of(interp->asts, node), "Identifier '%.*s' is not defined.\n", static_cast<s32>(name.count()), name.begin());
-		}
-		else if (info.tag == IdentifierInfoTag::Unbound)
-		{
-			return eval_unbound(info.unbound.source);
-		}
-
-		ASSERT_OR_IGNORE(info.tag == IdentifierInfoTag::Found);
-
-		EvalRst rst = fill_spec(interp, spec, node, true, info.found.is_mut, info.found.type_id);
-
-		if (type_is_equal(interp->types, info.found.type_id, rst.success.type_id))
-		{
-			value_set(&rst.success, info.found.location);
+			value_set(&rst.success, info.success.bytes);
 		}
 		else if (!rst.success.is_location)
 		{
-			convert(interp, node, &rst.success, make_value(info.found.location, true, info.found.is_mut, info.found.type_id));
+			convert(interp, node, &rst.success, info.success);
 		}
 		else
 		{
@@ -2149,19 +2115,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			}
 			else
 			{
-				ArecId closure_arec_id = ArecId::INVALID;
-
 				if (callee_value.closure_id != ClosureId::INVALID)
 				{
 					ClosureInstance instance = closure_instance(interp->closures, callee_value.closure_id);
-					
-					closure_arec_id = arec_push(interp, instance.type_id, instance.values.count(), instance.align, active_arec_id(interp), ArecKind::Normal);
 
-					Arec* const closure_arec = arec_from_id(interp, closure_arec_id);
-
-					MutRange<byte> attach = arec_attach(interp, closure_arec);
-
-					range::mem_copy(attach, instance.values);
+					interp->active_closures.append(instance);
 				}
 
 				AstNode* const body = ast_node_from_id(interp->asts, static_cast<AstNodeId>(callee_value.body_ast_node_id));
@@ -2172,8 +2130,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 					rst.success.type_id
 				});
 
-				if (closure_arec_id != ArecId::INVALID)
-					arec_pop(interp, closure_arec_id);
+				if (callee_value.closure_id != ClosureId::INVALID)
+					interp->active_closures.pop_by(1);
 
 				ASSERT_OR_IGNORE(call_rst.tag == EvalTag::Success);
 			}
@@ -2659,19 +2617,14 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	{
 		AstIdentifierData attach = *attachment_of<AstIdentifierData>(node);
 
-		IdentifierInfo info = lookup_identifier(interp, attach.identifier_id);
+		IdentifierInfo info = lookup_identifier(interp, attach.identifier_id, attach.binding);
 
-		if (info.tag == IdentifierInfoTag::Found)
-			return info.found.type_id;
+		if (info.tag == EvalTag::Success)
+			return info.success.type_id;
 
 		const Range<char8> name = identifier_name_from_id(interp->identifiers, attach.identifier_id);
 
-		ASSERT_OR_IGNORE(info.tag == IdentifierInfoTag::Unbound || info.tag == IdentifierInfoTag::Missing);
-
-		if (info.tag == IdentifierInfoTag::Unbound)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Identifier '%.*s' is not bound yet, so its type cannot be inferred.\n", static_cast<s32>(name.count()), name.begin());
-
-		source_error(interp->errors, source_id_of(interp->asts, node), "Identifier '%.*s' is not defined.\n", static_cast<s32>(name.count()), name.begin());
+		source_error(interp->errors, source_id_of(interp->asts, node), "Identifier '%.*s' is not bound yet, so its type cannot be inferred.\n", static_cast<s32>(name.count()), name.begin());
 	}
 
 	case AstTag::LitInteger:
@@ -2808,7 +2761,7 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 	// parent.
 	const TypeId file_type_id = type_create_composite(interp->types, interp->prelude_type_id, TypeDisposition::User, file_type_source_id, 0, false);
 
-	const ArecId file_arec_id = arec_push(interp, file_type_id, 0, 1, ArecId::INVALID, ArecKind::Normal);
+	const ArecId file_arec_id = arec_push(interp, file_type_id, 0, 1, ArecId::INVALID, ArecKind::Normal, file_type_id);
 
 	AstDirectChildIterator ast_it = direct_children_of(file);
 
@@ -2974,11 +2927,20 @@ static TypeId make_func_type(TypePool* types, TypeId return_type_id, Params... p
 template<typename T>
 static T get_builtin_arg(Interpreter* interp, Arec* arec, IdentifierId name) noexcept
 {
-	IdentifierInfo info = lookup_local_identifier(interp, arec, name);
+	const Member* member;
 
-	ASSERT_OR_IGNORE(info.tag == IdentifierInfoTag::Found && info.found.location.count() == sizeof(T));
+	if (!type_member_by_name(interp->types, arec->type_id, name, &member))
+		ASSERT_UNREACHABLE;
 
-	return *reinterpret_cast<T*>(info.found.location.begin());
+	ASSERT_OR_IGNORE(!member->is_global && !member->has_pending_type);
+
+	const TypeMetrics metrics = type_metrics_from_id(interp->types, member->type.complete);
+
+	MutRange<byte> value = arec_attach(interp, arec).mut_subrange(member->offset, metrics.size);
+
+	ASSERT_OR_IGNORE(value.count() == sizeof(T));
+
+	return *reinterpret_cast<T*>(value.begin());
 }
 
 static void builtin_integer(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
@@ -3396,6 +3358,8 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 
 	static constexpr u64 TEMPS_RESERVE_SIZE = (1 << 26) * sizeof(byte);
 
+	static constexpr u64 ACTIVE_CLOSURES_RESERVE_SIZE = 512 * sizeof(ClosureInstance);
+
 	static constexpr u64 PARTIAL_VALUE_BUILDER_RESERVE_SIZE = (1 << 16) * sizeof(PartialValueBuilderId);
 
 	static constexpr u64 ACTIVE_PARTIAL_VALUE_RESERVE_SIZE = (1 << 16) * sizeof(PeekablePartialValueIterator);
@@ -3403,6 +3367,7 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 	const u64 total_reserve_size = AREC_HEADERS_RESERVE_SIZE
 	                             + AREC_ATTACHS_RESERVE_SIZE
 	                             + TEMPS_RESERVE_SIZE
+	                             + ACTIVE_CLOSURES_RESERVE_SIZE
 	                             + PARTIAL_VALUE_BUILDER_RESERVE_SIZE
 	                             + ACTIVE_PARTIAL_VALUE_RESERVE_SIZE;
 
@@ -3438,6 +3403,9 @@ Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* 
 
 	interp->temps.init({ memory + offset, TEMPS_RESERVE_SIZE }, 1 << 9);
 	offset += TEMPS_RESERVE_SIZE;
+
+	interp->active_closures.init({ memory + offset, ACTIVE_CLOSURES_RESERVE_SIZE }, 512);
+	offset += ACTIVE_CLOSURES_RESERVE_SIZE;
 
 	interp->partial_value_builders.init({ memory + offset, PARTIAL_VALUE_BUILDER_RESERVE_SIZE }, 1 << 10);
 	offset += PARTIAL_VALUE_BUILDER_RESERVE_SIZE;

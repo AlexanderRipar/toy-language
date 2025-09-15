@@ -101,3 +101,55 @@ let make_generic_closure = func(T: Type, t: T) -> (func() -> T) => (func() -> T 
 let closed_four_generic_u64 = make_generic_closure(u64, 4)
 
 let four_s8s_from_generic_closure: [closed_four_generic_u64()]s8 = .[2, 7, 42, 127]
+
+let make_generic_closure_with_one_block = func(T: Type, t: T) -> (func() -> T) => { func() -> T => t }
+
+let uuu_f = make_generic_closure_with_one_block(u32, 5)
+
+let uuu = uuu_f()
+
+let uuu_d = make_generic_closure_with_one_block(u32, 5)()
+
+let make_generic_closure_with_two_blocks = func(T: Type, t: T) -> (func() -> T) => { func() -> T => t }
+
+let vvv_f = make_generic_closure_with_two_blocks(u8, 255)
+
+let vvv = vvv_f()
+
+let vvv_d = make_generic_closure_with_two_blocks(u8, 255)()
+
+let make_generic_closure_with_three_blocks = func(T: Type, t: T) -> (func() -> T) => { { { func() -> T => t } } }
+
+let www_f = make_generic_closure_with_three_blocks(Bool, true)
+
+let www = www_f()
+
+let www_d = make_generic_closure_with_three_blocks(Bool, true)()
+
+let such_a_silly_closure = func(T: Type, t: T) -> (func() -> T) => { { { func() -> T => { { t } } } } }
+
+let xxx_f = such_a_silly_closure(Type, s32)
+
+let xxx = xxx_f()
+
+let xxx_d = such_a_silly_closure(Type, s32)()
+
+let make_generic_closure_curried = func(T: Type) -> (func(t: T) -> (func() -> T)) => { func(t: T) -> (func() -> T) => (func() -> T => { { t } }) }
+
+let make_curried_u32_closure = make_generic_closure_curried(u32)
+
+let make_curried_u32_10 = make_curried_u32_closure(10)
+
+let ten_from_curried_closure = make_curried_u32_10()
+
+let array_of_ten_from_curried_closure: [ten_from_curried_closure]s16 = .[
+	1, 2, 3, 4, 5,
+	1, 2, 3, 4, 5,
+]
+
+let ten_from_direct_curried_closure = make_generic_closure_curried(u32)(10)()
+
+let array_of_ten_from_direct_curried_closure: [ten_from_direct_curried_closure]s16 = .[
+	1, 2, 3, 4, 5,
+	1, 2, 3, 4, 5,
+]

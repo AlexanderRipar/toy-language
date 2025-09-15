@@ -66,7 +66,7 @@ struct CompositeTypeHeader
 
 	bool is_fixed;
 
-	TypeId lexical_parent_type_id;
+	TypeId global_scope_type_id;
 
 	u16 capacity;
 
@@ -903,7 +903,7 @@ TypeId type_create_signature(TypePool* types, TypeTag tag, SignatureType attach)
 	return type_create_deduplicated(types, tag, range::from_object_bytes(&attach));
 }
 
-TypeId type_create_composite(TypePool* types, TypeId lexical_parent_type_id, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept
+TypeId type_create_composite(TypePool* types, TypeId global_scope_type_id, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept
 {
 	const u64 reserve_size = sizeof(CompositeType) + initial_member_capacity * sizeof(Member);
 
@@ -915,7 +915,7 @@ TypeId type_create_composite(TypePool* types, TypeId lexical_parent_type_id, Typ
 	header.incomplete_member_count = 0;
 	header.disposition = disposition;
 	header.is_open = true;
-	header.lexical_parent_type_id = lexical_parent_type_id;
+	header.global_scope_type_id = global_scope_type_id;
 	header.is_fixed = is_fixed_member_capacity;
 	header.capacity = static_cast<u16>(next_pow2(sizeof(TypeStructure) + reserve_size, static_cast<u64>(32)));
 	header.used = sizeof(TypeStructure) + sizeof(CompositeTypeHeader);
@@ -1219,7 +1219,7 @@ TypeDisposition type_disposition_from_id(TypePool* types, TypeId type_id) noexce
 	return composite->header.disposition;
 }
 
-TypeId lexical_parent_type_from_id(TypePool* types, TypeId type_id) noexcept
+TypeId type_global_scope_from_id(TypePool* types, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
@@ -1229,7 +1229,7 @@ TypeId lexical_parent_type_from_id(TypePool* types, TypeId type_id) noexcept
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
-	return composite->header.lexical_parent_type_id;
+	return composite->header.global_scope_type_id;
 }
 
 bool type_has_metrics(TypePool* types, TypeId type_id) noexcept
