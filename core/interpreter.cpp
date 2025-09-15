@@ -1726,6 +1726,61 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		return rst;
 	}
 
+	case AstTag::For:
+	{
+		ForInfo info = get_for_info(node);
+
+		if (is_some(info.where))
+			TODO("Implement where on for loops");
+
+		if (is_some(info.finally))
+			TODO("Implement finally on for loops.");
+
+		while (true)
+		{
+			bool cond_val;
+
+			const EvalRst cond_rst = evaluate(interp, info.condition, EvalSpec{
+				ValueKind::Value,
+				range::from_object_bytes_mut(&cond_val),
+				type_create_simple(interp->types, TypeTag::Boolean)
+			});
+
+			if (cond_rst.tag != EvalTag::Success)
+				source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use `for` in an unbound context.\n");
+
+			if (!cond_val)
+				break;
+
+			byte unused_body_val;
+
+			const EvalRst body_rst = evaluate(interp, info.body, EvalSpec{
+				ValueKind::Value,
+				{ &unused_body_val, static_cast<u64>(0) },
+				type_create_simple(interp->types, TypeTag::Void)				
+			});
+
+			if (body_rst.tag != EvalTag::Success)
+				source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use `for` in an unbound context.\n");
+
+			if (is_some(info.step))
+			{
+				byte unused_step_val;
+
+				const EvalRst step_rst = evaluate(interp, get_ptr(info.step), EvalSpec{
+					ValueKind::Value,
+					{ &unused_step_val, static_cast<u64>(0) },
+					type_create_simple(interp->types, TypeTag::Void)
+				});
+
+				if (step_rst.tag != EvalTag::Success)
+					source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use `for` in an unbound context.\n");
+			}
+		}
+
+		return fill_spec_sized(interp, spec, node, false, true, type_create_simple(interp->types, TypeTag::Void), 0, 1);
+	}
+
 	case AstTag::Func:
 	{
 		AstNode* const signature = first_child_of(node);
@@ -2596,7 +2651,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::Where:
 	case AstTag::Expects:
 	case AstTag::Ensures:
-	case AstTag::For:
 	case AstTag::ForEach:
 	case AstTag::Switch:
 	case AstTag::Case:

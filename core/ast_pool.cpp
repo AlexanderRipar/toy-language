@@ -729,13 +729,15 @@ IfInfo get_if_info(AstNode* node) noexcept
 
 ForInfo get_for_info(AstNode* node) noexcept
 {
-	ASSERT_OR_IGNORE(node->tag == AstTag::If);
+	ASSERT_OR_IGNORE(node->tag == AstTag::For);
 
 	AstNode* curr = first_child_of(node);
 
 	ForInfo info{};
 
 	info.condition = curr;
+
+	curr = next_sibling_of(curr);
 
 	if (has_flag(node, AstFlag::For_HasStep))
 	{
