@@ -726,6 +726,8 @@ struct alignas(8) AstLitCharData
 	// Unicode codepoint representing this character literal's value.
 	u32 codepoint;
 
+	// Padding to ensure consistent binary representation and avoid compiler
+	// warnings regarding padding due to `alignas`.
 	u32 unused_ = 0;
 };
 
@@ -738,9 +740,13 @@ struct alignas(8) AstIdentifierData
 	// `IdentifierId` of the identifier represented by this node.
 	IdentifierId identifier_id;
 
+	// Location of the definition this identifier is referring to, relative
+	// to the identifier's position in the source code.
+	// This is set by `resolve_names`.
 	NameBinding binding;
 };
 
+// Attachment of an `AstNode` with tag `AstTag::Member`.
 struct alignas(8) AstMemberData
 {
 	// Tag used for sanity checks in debug builds.
@@ -749,6 +755,8 @@ struct alignas(8) AstMemberData
 	// `IdentifierId` of the member represented by this node.
 	IdentifierId identifier_id;
 
+	// Padding to ensure consistent binary representation and avoid compiler
+	// warnings regarding padding due to `alignas`.
 	u32 unused_ = 0;
 };
 
@@ -762,6 +770,7 @@ struct alignas(8) AstLitStringData
 	// value.
 	GlobalValueId string_value_id;
 
+	// `TypeId` of the `u8` array representing this string's value.
 	TypeId string_type_id;
 };
 
@@ -774,16 +783,22 @@ struct alignas(8) AstDefinitionData
 	// `IdentifierId` of the definition.
 	IdentifierId identifier_id;
 
+	// Padding to ensure consistent binary representation and avoid compiler
+	// warnings regarding padding due to `alignas`.
 	u32 unused_ = 0;
 };
 
 // Attachment of an `AstNode` with tag `AstTag::Parameter`.
 struct alignas(8) AstParameterData
 {
+	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::Parameter;
 
+	// `IdentifierId` of the parameter.
 	IdentifierId identifier_id;
 
+	// Padding to ensure consistent binary representation and avoid compiler
+	// warnings regarding padding due to `alignas`.
 	u32 unused_ = 0;
 };
 
