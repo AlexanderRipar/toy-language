@@ -33,9 +33,13 @@ enum class GlobalValueId : u32;
 
 struct alignas(u32) NameBinding
 {
-	u16 out : 15;
+	u16 out : 13;
 
 	u16 is_global : 1;
+
+	u16 is_closed_over : 1;
+
+	u16 is_closed_over_closure : 1;
 
 	u16 rank;
 };

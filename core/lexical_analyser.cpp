@@ -10,6 +10,15 @@ static constexpr u32 MIN_SCOPE_MAP_SIZE_LOG2 = 6;
 
 static constexpr u32 MAX_SCOPE_MAP_SIZE_LOG2 = 16;
 
+static constexpr u16 MAX_SCOPE_ENTRY_COUNT = static_cast<u16>(1 << 15);
+
+struct ScopeEntry
+{
+	u16 rank : 15;
+	
+	u16 is_global : 1;
+};
+
 struct ScopeMap
 {
 	u32 capacity;
@@ -18,7 +27,7 @@ struct ScopeMap
 
 	bool is_global;
 
-	u8 unused_;
+	bool next_outer_closes;
 
 	#if COMPILER_MSVC
 	#pragma warning(push)
@@ -41,14 +50,14 @@ struct ScopeMap
 
 	// IdentifierId names[];
 
-	// u16 ranks[];
+	// ScopeEntry entries[];
 };
 
 struct ScopeMapInfo
 {
 	IdentifierId* names;
 
-	u16* ranks;
+	ScopeEntry* entries;
 };
 
 struct LexicalAnalyser
@@ -70,22 +79,24 @@ struct LexicalAnalyser
 	MutRange<byte> memory;
 };
 
+static_assert(sizeof(ScopeEntry) == 2);
+
 
 
 ScopeMapInfo scope_map_info(ScopeMap* scope) noexcept
 {
 	IdentifierId* const names = reinterpret_cast<IdentifierId*>(scope->occupied_bits + (scope->capacity + 63) / 64);
 
-	u16* const ranks = reinterpret_cast<u16*>(names + scope->capacity);
+	ScopeEntry* const entries = reinterpret_cast<ScopeEntry*>(names + scope->capacity);
 
-	return { names, ranks };
+	return { names, entries };
 }
 
 static u32 scope_map_size(u32 capacity) noexcept
 {
 	const u32 occupied_bits_bytes = sizeof(u64) * ((capacity + 63) / 64);
 
-	return sizeof(ScopeMap) + occupied_bits_bytes + capacity * (sizeof(u32) + sizeof(u16));
+	return sizeof(ScopeMap) + occupied_bits_bytes + capacity * (sizeof(u32) + sizeof(ScopeEntry));
 }
 
 static ScopeMap* scope_map_alloc_sized(LexicalAnalyser* lex, bool is_global, u32 capacity) noexcept
@@ -98,6 +109,7 @@ static ScopeMap* scope_map_alloc_sized(LexicalAnalyser* lex, bool is_global, u32
 	scope->capacity = capacity;
 	scope->used = 0;
 	scope->is_global = is_global;
+	scope->next_outer_closes = false;
 	memset(scope->occupied_bits, 0, sizeof(u64) * ((capacity + 63) / 64));
 
 	return scope;
@@ -116,7 +128,7 @@ static void scope_map_dealloc(LexicalAnalyser* lex, ScopeMap* scope) noexcept
 }
 
 template<bool check_duplicates>
-static void scope_map_add_nogrow(LexicalAnalyser* lex, ScopeMap* scope, IdentifierId name, u16 rank, const AstNode* error_source) noexcept
+static void scope_map_add_nogrow(LexicalAnalyser* lex, ScopeMap* scope, IdentifierId name, ScopeEntry entry, const AstNode* error_source) noexcept
 {
 	const u32 hash = fnv1a(range::from_object_bytes(&name));
 
@@ -172,7 +184,7 @@ static void scope_map_add_nogrow(LexicalAnalyser* lex, ScopeMap* scope, Identifi
 	scope->occupied_bits[index / 64] |= static_cast<u64>(1) << (index % 64);
 
 	info.names[index] = name;
-	info.ranks[index] = rank;
+	info.entries[index] = entry;
 }
 
 static ScopeMap* scope_map_grow(LexicalAnalyser* lex, ScopeMap* old_scope) noexcept
@@ -201,7 +213,7 @@ static ScopeMap* scope_map_grow(LexicalAnalyser* lex, ScopeMap* old_scope) noexc
 
 			const u32 index = index_base + least_index;
 
-			scope_map_add_nogrow<false>(lex, new_scope, old_info.names[index], old_info.ranks[index], nullptr);
+			scope_map_add_nogrow<false>(lex, new_scope, old_info.names[index], old_info.entries[index], nullptr);
 
 			bitmask ^= static_cast<u64>(1) << least_index;
 		}
@@ -216,7 +228,7 @@ static ScopeMap* scope_map_grow(LexicalAnalyser* lex, ScopeMap* old_scope) noexc
 	return new_scope;
 }
 
-static bool scope_map_get(ScopeMap* scope, IdentifierId name, u16* out) noexcept
+static bool scope_map_get(ScopeMap* scope, IdentifierId name, ScopeEntry* out) noexcept
 {
 	const ScopeMapInfo info = scope_map_info(scope);
 
@@ -239,7 +251,7 @@ static bool scope_map_get(ScopeMap* scope, IdentifierId name, u16* out) noexcept
 
 		if (info.names[index] == name)
 		{
-			*out = info.ranks[index];
+			*out = info.entries[index];
 
 			return true;
 		}
@@ -274,12 +286,15 @@ static bool scope_map_get(ScopeMap* scope, IdentifierId name, u16* out) noexcept
 	}
 }
 
-static ScopeMap* scope_map_add(LexicalAnalyser* lex, ScopeMap* scope, IdentifierId name, u16 rank, const AstNode* error_source) noexcept
+static ScopeMap* scope_map_add(LexicalAnalyser* lex, ScopeMap* scope, IdentifierId name, ScopeEntry entry, const AstNode* error_source) noexcept
 {
+	if (scope->used == MAX_SCOPE_ENTRY_COUNT)
+		source_error(lex->errors, source_id_of(lex->asts, error_source), "Exceeded maximum of %u definitions in a single scope.\n", MAX_SCOPE_ENTRY_COUNT);
+
 	if (static_cast<u32>(scope->used) * 3 > scope->capacity * 2)
 		scope = scope_map_grow(lex, scope);
 
-	scope_map_add_nogrow<true>(lex, scope, name, rank, error_source);
+	scope_map_add_nogrow<true>(lex, scope, name, entry, error_source);
 
 	return scope;
 }
@@ -323,11 +338,13 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 		bool is_global = false;
 
+		bool is_in_closure = false;
+
+		bool is_in_nested_closure = false;
+
 		for (s32 i = lex->scopes_top; i >= 0; --i)
 		{
 			ScopeMap* const scope = lex->scopes[i];
-
-			u16 rank;
 
 			if (!is_global && scope->is_global)
 			{
@@ -338,11 +355,24 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 			ASSERT_OR_IGNORE(is_global || !scope->is_global);
 
-			if (scope_map_get(scope, attach->identifier_id, &rank))
+			ScopeEntry entry;
+
+			if (scope_map_get(scope, attach->identifier_id, &entry))
 			{
-				attach->binding = NameBinding{ static_cast<u16>(offset_start - i), static_cast<u16>(is_global), rank };
+				attach->binding.out = static_cast<u16>(offset_start - i);
+				attach->binding.is_global = is_global || entry.is_global;
+				attach->binding.is_closed_over = is_in_closure && !is_global;
+				attach->binding.is_closed_over_closure = is_in_nested_closure && !is_global;
+				attach->binding.rank = entry.rank;
 
 				return;
+			}
+
+			if (scope->next_outer_closes)
+			{
+				is_in_nested_closure = is_in_closure;
+
+				is_in_closure = true;
 			}
 		}
 
@@ -354,14 +384,16 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 	}
 	else if (tag == AstTag::Func)
 	{
-		// Special cased as the signature's parameters must be kept alive for
-		// its sibling body, and only popped afterwards.
+		// Special cased since the signature's parameters must be kept alive
+		// for its sibling - the function body - and only popped afterwards.
 
 		AstNode* const signature = first_child_of(node);
-		
+
 		ASSERT_OR_IGNORE(signature->tag == AstTag::Signature);
 
 		resolve_names_rec(lex, signature, false);
+
+		lex->scopes[lex->scopes_top]->next_outer_closes = true;
 
 		AstNode* const body = next_sibling_of(signature);
 
@@ -383,7 +415,11 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 			ScopeMap* scope = lex->scopes[lex->scopes_top];
 
-			scope = scope_map_add(lex, scope, attach->identifier_id, scope->used, node);
+			ScopeEntry entry;
+			entry.rank = scope->used;
+			entry.is_global = scope->is_global || has_flag(node, AstFlag::Definition_IsGlobal);
+
+			scope = scope_map_add(lex, scope, attach->identifier_id, entry, node);
 
 			lex->scopes[lex->scopes_top] = scope;
 		}
@@ -427,7 +463,11 @@ static void resolve_names_root(LexicalAnalyser* lex, AstNode* root) noexcept
 
 		const AstDefinitionData* const attach = attachment_of<AstDefinitionData>(node);
 
-		scope = scope_map_add(lex, scope, attach->identifier_id, rank, node);
+		ScopeEntry entry;
+		entry.rank = rank;
+		entry.is_global = true;
+
+		scope = scope_map_add(lex, scope, attach->identifier_id, entry, node);
 
 		rank += 1;
 	}
