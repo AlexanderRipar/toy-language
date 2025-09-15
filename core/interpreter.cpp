@@ -3275,7 +3275,7 @@ static AstBuilderToken std_import(AstPool* asts, IdentifierId std_name, GlobalVa
 // Pushes `let <use_name> = std.prelude.<use_name>` into `asts`'s builder.
 static void std_prelude_use(AstPool* asts, IdentifierId std_name, IdentifierId prelude_name, IdentifierId use_name) noexcept
 {
-	const AstBuilderToken std_identifer = push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstIdentifierData{ std_name });
+	const AstBuilderToken std_identifer = push_node(asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstIdentifierData{ std_name, NameBinding{ 0, false, false, false, 0 } });
 
 	const AstBuilderToken prelude_member = push_node(asts, std_identifer, SourceId::INVALID, AstFlag::EMPTY, AstMemberData{ prelude_name });
 

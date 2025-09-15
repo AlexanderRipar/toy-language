@@ -303,7 +303,7 @@ static ScopeMap* scope_map_add(LexicalAnalyser* lex, ScopeMap* scope, Identifier
 
 static void push_scope(LexicalAnalyser* lex, ScopeMap* scope) noexcept
 {
-	ASSERT_OR_IGNORE(lex->scopes_top + 1 < array_count(lex->scopes));
+	ASSERT_OR_IGNORE(static_cast<u64>(lex->scopes_top) + 1 < array_count(lex->scopes));
 
 	lex->scopes_top += 1;
 
@@ -324,7 +324,7 @@ static void pop_scope(LexicalAnalyser* lex) noexcept
 
 static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) noexcept
 {
-	ASSERT_OR_IGNORE(lex->scopes_top >= 0 && lex->scopes_top < array_count(lex->scopes));
+	ASSERT_OR_IGNORE(lex->scopes_top >= 0 && static_cast<u64>(lex->scopes_top) < array_count(lex->scopes));
 
 	const AstTag tag = node->tag;
 

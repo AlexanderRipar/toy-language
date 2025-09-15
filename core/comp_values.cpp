@@ -85,7 +85,7 @@ bool bitwise_add(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs)
 	ASSERT_OR_IGNORE(dst.count() != 0
 	              && dst.count() == lhs.count()
 	              && dst.count() == rhs.count()
-	              && dst.count() == (bits + 7) / 8);
+	              && dst.count() == (static_cast<u64>(bits) + 7) / 8);
 
 	const bool partial_top_byte = (bits & 7) == 0 ? false : true;
 

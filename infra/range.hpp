@@ -1,6 +1,8 @@
 #ifndef RANGE_INCLUDE_GUARD
 #define RANGE_INCLUDE_GUARD
 
+#include <cstring>
+
 #include "common.hpp"
 
 template<typename T>
