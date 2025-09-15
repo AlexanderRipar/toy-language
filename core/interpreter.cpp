@@ -2333,6 +2333,34 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		return rst;
 	}
 
+	case AstTag::OpSet:
+	{
+		AstNode* const lhs = first_child_of(node);
+
+		const EvalRst lhs_rst = evaluate(interp, lhs, EvalSpec{
+			ValueKind::Location
+		});
+
+		if (lhs_rst.tag == EvalTag::Unbound)
+			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use `=` operator in unbound context.\n");
+
+		if (!lhs_rst.success.is_mut)
+			source_error(interp->errors, source_id_of(interp->asts, node), "Left-hand-side of `=` operator must be mutable.\n");
+
+		AstNode* const rhs = next_sibling_of(lhs);
+
+		const EvalRst rhs_rst = evaluate(interp, rhs, EvalSpec{
+			ValueKind::Value,
+			lhs_rst.success.bytes,
+			lhs_rst.success.type_id
+		});
+
+		if (rhs_rst.tag == EvalTag::Unbound)
+			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use `=` operator in unbound context.\n");
+
+		return fill_spec_sized(interp, spec, node, false, true, type_create_simple(interp->types, TypeTag::Void), 0, 1);
+	}
+
 	case AstTag::OpTypeArray:
 	{
 		AstNode* const count = first_child_of(node);
@@ -2618,7 +2646,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpCmpLE:
 	case AstTag::OpCmpGE:
 	case AstTag::OpCmpNE:
-	case AstTag::OpSet:
 	case AstTag::OpSetAdd:
 	case AstTag::OpSetSub:
 	case AstTag::OpSetMul:
