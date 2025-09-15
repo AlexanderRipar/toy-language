@@ -11,10 +11,11 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 
 		const Range<char8> name = identifier_name_from_id(identifiers, attach->identifier_id);
 
-		diag::buf_printf(ctx, "%*s%s [%.*s | %u/%u]\n",
+		diag::buf_printf(ctx, "%*s%s [%.*s | %c%u/%u]\n",
 			(depth + 1) * 2, "",
 			tag_name(node->tag),
 			static_cast<s32>(name.count()), name.begin(),
+			attach->binding.is_global ? 'g' : 'l',
 			attach->binding.out,
 			attach->binding.rank,
 			has_children(node) ? "" : "}"

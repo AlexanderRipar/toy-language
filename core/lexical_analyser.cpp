@@ -14,7 +14,11 @@ struct ScopeMap
 {
 	u32 capacity;
 
-	u32 used;
+	u16 used;
+
+	bool is_global;
+
+	u8 unused_;
 
 	#if COMPILER_MSVC
 	#pragma warning(push)
@@ -84,7 +88,7 @@ static u32 scope_map_size(u32 capacity) noexcept
 	return sizeof(ScopeMap) + occupied_bits_bytes + capacity * (sizeof(u32) + sizeof(u16));
 }
 
-static ScopeMap* scope_map_alloc_sized(LexicalAnalyser* lex, u32 capacity) noexcept
+static ScopeMap* scope_map_alloc_sized(LexicalAnalyser* lex, bool is_global, u32 capacity) noexcept
 {
 	ASSERT_OR_IGNORE(is_pow2(capacity));
 
@@ -93,14 +97,15 @@ static ScopeMap* scope_map_alloc_sized(LexicalAnalyser* lex, u32 capacity) noexc
 	ScopeMap* const scope = reinterpret_cast<ScopeMap*>(memory.begin());
 	scope->capacity = capacity;
 	scope->used = 0;
+	scope->is_global = is_global;
 	memset(scope->occupied_bits, 0, sizeof(u64) * ((capacity + 63) / 64));
 
 	return scope;
 }
 
-static ScopeMap* scope_map_alloc(LexicalAnalyser* lex) noexcept
+static ScopeMap* scope_map_alloc(LexicalAnalyser* lex, bool is_global) noexcept
 {
-	return scope_map_alloc_sized(lex, 8);
+	return scope_map_alloc_sized(lex, is_global, 8);
 }
 
 static void scope_map_dealloc(LexicalAnalyser* lex, ScopeMap* scope) noexcept
@@ -174,7 +179,7 @@ static ScopeMap* scope_map_grow(LexicalAnalyser* lex, ScopeMap* old_scope) noexc
 {
 	const u32 new_capacity = old_scope->capacity * 2;
 
-	ScopeMap* const new_scope = scope_map_alloc_sized(lex, new_capacity);
+	ScopeMap* const new_scope = scope_map_alloc_sized(lex, old_scope->is_global, new_capacity);
 	new_scope->capacity = new_capacity;
 	new_scope->used = 0;
 
@@ -271,7 +276,7 @@ static bool scope_map_get(ScopeMap* scope, IdentifierId name, u16* out) noexcept
 
 static ScopeMap* scope_map_add(LexicalAnalyser* lex, ScopeMap* scope, IdentifierId name, u16 rank, const AstNode* error_source) noexcept
 {
-	if (scope->used * 3 > scope->capacity * 2)
+	if (static_cast<u32>(scope->used) * 3 > scope->capacity * 2)
 		scope = scope_map_grow(lex, scope);
 
 	scope_map_add_nogrow<true>(lex, scope, name, rank, error_source);
@@ -314,13 +319,28 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 		AstIdentifierData* const attach = attachment_of<AstIdentifierData>(node);
 
+		s32 offset_start = lex->scopes_top;
+
+		bool is_global = false;
+
 		for (s32 i = lex->scopes_top; i >= 0; --i)
 		{
+			ScopeMap* const scope = lex->scopes[i];
+
 			u16 rank;
 
-			if (scope_map_get(lex->scopes[i], attach->identifier_id, &rank))
+			if (!is_global && scope->is_global)
 			{
-				attach->binding = NameBinding{ static_cast<u16>(lex->scopes_top - i), rank };
+				offset_start = i;
+
+				is_global = true;
+			}
+
+			ASSERT_OR_IGNORE(is_global || !scope->is_global);
+
+			if (scope_map_get(scope, attach->identifier_id, &rank))
+			{
+				attach->binding = NameBinding{ static_cast<u16>(offset_start - i), static_cast<u16>(is_global), rank };
 
 				return;
 			}
@@ -336,6 +356,7 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 	{
 		// Special cased as the signature's parameters must be kept alive for
 		// its sibling body, and only popped afterwards.
+
 		AstNode* const signature = first_child_of(node);
 		
 		ASSERT_OR_IGNORE(signature->tag == AstTag::Signature);
@@ -362,13 +383,13 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 			ScopeMap* scope = lex->scopes[lex->scopes_top];
 
-			scope = scope_map_add(lex, scope, attach->identifier_id, static_cast<u16>(scope->used), node);
+			scope = scope_map_add(lex, scope, attach->identifier_id, scope->used, node);
 
 			lex->scopes[lex->scopes_top] = scope;
 		}
 		else if (tag == AstTag::Block || tag == AstTag::Signature)
 		{
-			push_scope(lex, scope_map_alloc(lex));
+			push_scope(lex, scope_map_alloc(lex, false));
 
 			needs_pop = true;
 		}
@@ -389,7 +410,7 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 static void resolve_names_root(LexicalAnalyser* lex, AstNode* root) noexcept
 {
-	ScopeMap* scope = scope_map_alloc(lex);
+	ScopeMap* scope = scope_map_alloc(lex, true);
 
 	u16 rank = 0;
 
