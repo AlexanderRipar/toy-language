@@ -2028,7 +2028,7 @@ const T* type_attachment_from_id(TypePool* types, TypeId type_id) noexcept
 		else if constexpr (is_same_type<T, NumericType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Integer || tag == TypeTag::Float);
 		else if constexpr (is_same_type<T, ArrayType>)
-			ASSERT_OR_IGNORE(tag == TypeTag::Array);
+			ASSERT_OR_IGNORE(tag == TypeTag::Array || tag == TypeTag::ArrayLiteral);
 		else if constexpr (is_same_type<T, SignatureType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Func || tag == TypeTag::Builtin);
 		else
