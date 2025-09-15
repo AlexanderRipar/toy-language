@@ -5,20 +5,22 @@
 
 static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifiers, const AstNode* node, s32 depth) noexcept
 {
+	diag::buf_printf(ctx, "%*s%s",
+		(depth + 1) * 2, "",
+		tag_name(node->tag)
+	);
+
 	if (node->tag == AstTag::Identifier)
 	{
 		const AstIdentifierData* const attach = attachment_of<AstIdentifierData>(node);
 
 		const Range<char8> name = identifier_name_from_id(identifiers, attach->identifier_id);
 
-		diag::buf_printf(ctx, "%*s%s [%.*s | %c%u/%u]\n",
-			(depth + 1) * 2, "",
-			tag_name(node->tag),
+		diag::buf_printf(ctx, " [%.*s | %c%u/%u]",
 			static_cast<s32>(name.count()), name.begin(),
-			attach->binding.is_global ? 'g' : 'l',
+			attach->binding.is_global ? 'g' : attach->binding.is_closed_over_closure ? 'C' : attach->binding.is_closed_over ? 'c' : 's',
 			attach->binding.out,
-			attach->binding.rank,
-			has_children(node) ? "" : "}"
+			attach->binding.rank
 		);
 	}
 	else if (node->tag == AstTag::Definition || node->tag == AstTag::Parameter || node->tag == AstTag::Member)
@@ -34,11 +36,8 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 
 		const Range<char8> name = identifier_name_from_id(identifiers, identifier_id);
 
-		diag::buf_printf(ctx, "%*s%s [%.*s] {%s\n",
-			(depth + 1) * 2, "",
-			tag_name(node->tag),
-			static_cast<s32>(name.count()), name.begin(),
-			has_children(node) ? "" : "}"
+		diag::buf_printf(ctx, " [%.*s]",
+			static_cast<s32>(name.count()), name.begin()
 		);
 	}
 	else if (node->tag == AstTag::LitInteger)
@@ -48,21 +47,14 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 		if (!s64_from_comp_integer(attachment_of<AstLitIntegerData>(node)->value, 64, &value))
 			value = 0; // TODO: Print something nicer here.
 
-		diag::buf_printf(ctx, "%*s%s [%" PRId64 "] {%s\n",
-			(depth + 1) * 2, "",
-			tag_name(node->tag),
-			value,
-			has_children(node) ? "" : "}"
+		diag::buf_printf(ctx, " [%" PRId64 "]",
+			value
 		);
 	}
-	else
-	{
-		diag::buf_printf(ctx, "%*s%s {%s\n",
-			(depth + 1) * 2, "",
-			tag_name(node->tag),
-			has_children(node) ? "" : "}"
-		);
-	}
+
+	diag::buf_printf(ctx, " {%s\n",
+		has_children(node) ? "" : "}"
+	);
 }
 
 void diag::print_ast(minos::FileHandle out, IdentifierPool* identifiers, AstNode* root, Range<char8> source) noexcept
