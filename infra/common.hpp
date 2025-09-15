@@ -1,7 +1,6 @@
 #ifndef COMMON_INCLUDE_GUARD
 #define COMMON_INCLUDE_GUARD
 
-#include <cassert>
 #include <cstdint>
 #include <cstdarg>
 #include <inttypes.h>
@@ -65,7 +64,9 @@ using f64 = double;
 #else
 	NORETURN void assert_unreachable_helper(const char8* file, u32 line) noexcept;
 
-	#define ASSERT_OR_IGNORE(x) assert(x)
+	NORETURN void assert_or_ignore_helper(const char8* file, u32 line, const char8* expr) noexcept;
+
+	#define ASSERT_OR_IGNORE(x) do { if (!(x)) assert_or_ignore_helper(__FILE__, __LINE__, #x); } while (false)
 
 	#define ASSERT_UNREACHABLE assert_unreachable_helper(__FILE__, __LINE__)
 #endif

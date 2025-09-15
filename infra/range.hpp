@@ -28,7 +28,7 @@ public:
 
 	constexpr const T& operator[](u64 i) const noexcept
 	{
-		assert(i < count());
+		ASSERT_OR_IGNORE(i < count());
 
 		return m_begin[i];
 	}
@@ -76,14 +76,14 @@ public:
 
 	const T& operator[](u64 i) const noexcept
 	{
-		assert(i < count());
+		ASSERT_OR_IGNORE(i < count());
 
 		return m_begin[i];
 	}
 
 	T& operator[](u64 i) noexcept
 	{
-		assert(i < count());
+		ASSERT_OR_IGNORE(i < count());
 
 		return m_begin[i];
 	}
@@ -247,7 +247,7 @@ public:
 
 	const T& operator[](u32 i) const noexcept
 	{
-		assert(i < count());
+		ASSERT_OR_IGNORE(i < count());
 
 		return m_begin[i];
 	}
@@ -345,14 +345,14 @@ public:
 
 	const T& operator[](u64 i) const noexcept
 	{
-		assert(i < count());
+		ASSERT_OR_IGNORE(i < count());
 
 		return m_begin[i];
 	}
 
 	T& operator[](u64 i) noexcept
 	{
-		assert(i < count());
+		ASSERT_OR_IGNORE(i < count());
 
 		return m_begin[i];
 	}

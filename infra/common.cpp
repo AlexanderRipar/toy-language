@@ -14,6 +14,15 @@ NORETURN void assert_unreachable_helper(const char8* file, u32 line) noexcept
 
 	minos::exit_process(1);
 }
+
+NORETURN void assert_or_ignore_helper(const char8* file, u32 line, const char8* expr) noexcept
+{
+	fprintf(stderr, "Assertion `%s` failed (%s:%u)\n", expr, file, line);
+
+	DEBUGBREAK;
+
+	minos::exit_process(1);
+}
 #endif // !NDEBUG
 
 NORETURN void panic(const char8* format, ...) noexcept
