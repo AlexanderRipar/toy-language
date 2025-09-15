@@ -2091,7 +2091,7 @@ struct ClosureInstance
 
 	u32 align;
 
-	Range<byte> values;
+	MutRange<byte> values;
 };
 
 ClosurePool* create_closure_pool(AllocPool* alloc, TypePool* types) noexcept;
