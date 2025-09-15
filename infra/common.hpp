@@ -63,10 +63,11 @@ using f64 = double;
 	#define ASSERT_OR_IGNORE(x) do {} while (false)
 	#define ASSERT_UNREACHABLE do { 1 / 0; } while (false)
 #else
-	NORETURN void assert_unreachable_helper() noexcept;
+	NORETURN void assert_unreachable_helper(const char8* file, u32 line) noexcept;
 
 	#define ASSERT_OR_IGNORE(x) assert(x)
-	#define ASSERT_UNREACHABLE assert_unreachable_helper()
+
+	#define ASSERT_UNREACHABLE assert_unreachable_helper(__FILE__, __LINE__)
 #endif
 
 template<typename T>

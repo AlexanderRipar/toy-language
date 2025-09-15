@@ -6,14 +6,14 @@
 #include "minos/minos.hpp"
 
 #ifndef NDEBUG
-NORETURN void assert_unreachable_helper() noexcept
-	{
-		fprintf(stderr, "Reached unreachable code\n");
+NORETURN void assert_unreachable_helper(const char8* file, u32 line) noexcept
+{
+	fprintf(stderr, "Reached unreachable code (%s:%u)\n", file, line);
 
-		DEBUGBREAK;
+	DEBUGBREAK;
 
-		minos::exit_process(1);
-	}
+	minos::exit_process(1);
+}
 #endif // !NDEBUG
 
 NORETURN void panic(const char8* format, ...) noexcept
