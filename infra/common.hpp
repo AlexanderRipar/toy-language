@@ -42,6 +42,23 @@ using char16 = wchar_t;
 using f32 = float;
 using f64 = double;
 
+#if COMPILER_MSVC
+	#include <intrin.h>
+	#define DEBUGBREAK __debugbreak()
+#elif COMPILER_CLANG
+	#if !__has_builtin(__builtin_debugtrap)
+		#error("Required __builtin_debugtrap not supported by used clang version")
+	#endif
+
+	#define DEBUGBREAK __builtin_debugtrap()
+#elif COMPILER_GCC
+	#include <signal.h>
+
+	#define DEBUGBREAK raise(SIGTRAP)
+#else
+	#error("Unknown compiler")
+#endif
+
 #ifdef NDEBUG
 	#define ASSERT_OR_IGNORE(x) do {} while (false)
 	#define ASSERT_UNREACHABLE do { 1 / 0; } while (false)
