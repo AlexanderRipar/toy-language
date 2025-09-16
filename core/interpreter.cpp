@@ -1158,7 +1158,7 @@ static CompareResult compare(Interpreter* interp, TypeId common_type_id, Range<b
 	{
 		const NumericType type = *type_attachment_from_id<NumericType>(interp->types, common_type_id);
 
-		ASSERT_OR_IGNORE(lhs.count() == (type.bits + 7) >> 3);
+		ASSERT_OR_IGNORE(lhs.count() == (static_cast<u64>(type.bits) + 7) >> 3);
 
 		const s64 compare_size = static_cast<s64>(type.bits >> 3);
 
