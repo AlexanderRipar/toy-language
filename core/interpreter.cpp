@@ -2681,6 +2681,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 	}
 
+	case AstTag::OpCmpLT:
+	case AstTag::OpCmpGT:
+	case AstTag::OpCmpLE:
+	case AstTag::OpCmpGE:
+	case AstTag::OpCmpNE:
 	case AstTag::OpCmpEQ:
 	{
 		const TypeId bool_type_id = type_create_simple(interp->types, TypeTag::Boolean);
@@ -2755,8 +2760,23 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		if (result.tag == CompareTag::INVALID)
 			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot compare values of the given type.\n");
+		else if (result.tag == CompareTag::Equality && node->tag != AstTag::OpCmpNE && node->tag != AstTag::OpCmpEQ)
+			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot order values of the given type.\n");
 
-		bool bool_result = result.equality == CompareEquality::Equal;
+		bool bool_result;
+
+		if (node->tag == AstTag::OpCmpLT)
+			bool_result = result.ordering == WeakCompareOrdering::LessThan;
+		else if (node->tag == AstTag::OpCmpGT)
+			bool_result = result.ordering == WeakCompareOrdering::GreaterThan;
+		else if (node->tag == AstTag::OpCmpLE)
+			bool_result = result.ordering == WeakCompareOrdering::LessThan || result.ordering == WeakCompareOrdering::Equal;
+		else if (node->tag == AstTag::OpCmpGE)
+			bool_result = result.ordering == WeakCompareOrdering::GreaterThan || result.ordering == WeakCompareOrdering::Equal;
+		else if (node->tag == AstTag::OpCmpNE)
+			bool_result = result.ordering != WeakCompareOrdering::Equal && result.ordering != WeakCompareOrdering::Unordered;
+		else if (node->tag == AstTag::OpCmpEQ)
+			bool_result = result.ordering == WeakCompareOrdering::Equal;
 
 		// No need for implicit conversion here, as bool is not convertible to
 		// anything else.
@@ -3117,11 +3137,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpShiftR:
 	case AstTag::OpLogAnd:
 	case AstTag::OpLogOr:
-	case AstTag::OpCmpLT:
-	case AstTag::OpCmpGT:
-	case AstTag::OpCmpLE:
-	case AstTag::OpCmpGE:
-	case AstTag::OpCmpNE:
 	case AstTag::OpSetAdd:
 	case AstTag::OpSetSub:
 	case AstTag::OpSetMul:
