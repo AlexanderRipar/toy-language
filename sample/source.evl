@@ -250,16 +250,27 @@ let imported = import("import.evl")
 
 let from_imported = imported.import_member
 
-let x = 5
+let pointed_x = 5
 
-let px = x.&
+let pointed_y = 1
 
-let dx = px.*
+let pointer_to_x = pointed_x.&
 
-let deref_array: [dx]s8 = .[1, 2, 3, 4, 5]
+let dereferenced_x = pointer_to_x.*
 
-/*
-if (x == dx) {
-	YAY
-}
-*/
+let deref_array: [dereferenced_x]s8 = .[1, 2, 3, 4, 5]
+
+let dereferenced_ptr_equal_array_of_one_elem = if pointed_x == dereferenced_x then
+		.[1]
+	else
+		.[0, 0]
+
+let ptr_ref_then_deref_then_ref_addr_equal_array_of_one_elem = if pointed_x.&.*.& == pointer_to_x then
+		.[1]
+	else
+		.[0, 0]
+
+let ptrs_to_unequal_are_unequal_array_of_one_elem = if pointed_x.& == pointed_y.& then
+		.[]
+	else
+		.[1]
