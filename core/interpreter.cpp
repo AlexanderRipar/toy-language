@@ -3570,112 +3570,110 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		return rst;
 	}
 
-	
 	case AstTag::OpAdd:
 	{
-		AstNode* summand_a = first_child_of(node);
-		AstNode* summand_b = next_sibling_of(summand_a);
-		EvalRst lhs = evaluate(interp, summand_a, EvalSpec{
+		const u32 mark = stack_mark(interp);
+
+		AstNode* const lhs = first_child_of(node);
+		EvalRst lhs_rst = evaluate(interp, lhs, EvalSpec{
 			ValueKind::Value
 		});
 
-		EvalRst rhs = evaluate(interp, summand_b, EvalSpec{
+		AstNode* const rhs = next_sibling_of(lhs);
+		EvalRst rhs_rst = evaluate(interp, rhs, EvalSpec{
 			ValueKind::Value
 		});
-		
-		TypeId unified_type_id = type_unify(interp->types, lhs.success.type_id, rhs.success.type_id);
 
-		if (unified_type_id == TypeId::INVALID) {
-			source_error(interp->errors, source_id_of(interp->asts, node), "TODO");
-		}
+		const TypeId unified_type_id = type_unify(interp->types, lhs_rst.success.type_id, rhs_rst.success.type_id);
 
-		TypeTag tag = type_tag_from_id(interp->types, unified_type_id);
+		if (unified_type_id == TypeId::INVALID)
+			source_error(interp->errors, source_id_of(interp->asts, node), "Incompatible operand types passed to `+` operator.\n");
 
-		bool can_add = tag == TypeTag::Integer || 
-			tag == TypeTag::Float || 
-			tag == TypeTag::CompInteger || 
-			tag == TypeTag::CompFloat;
+		const TypeTag unified_type_tag = type_tag_from_id(interp->types, unified_type_id);
 
-		if (!can_add) {
-			source_error(interp->errors, source_id_of(interp->asts, summand_a), "The `+` operation is only supported for Integer and Float values!\n");
-		}
+		if (unified_type_tag == TypeTag::Integer
+		 || unified_type_tag == TypeTag::Float
+		 || unified_type_tag == TypeTag::CompInteger
+		 || unified_type_tag == TypeTag::CompFloat)
+			source_error(interp->errors, source_id_of(interp->asts, lhs), "The `+` operator is only supported for Integer and Float values!\n");
 
-		TypeTag tag_a = type_tag_from_id(interp->types, lhs.success.type_id);
-		TypeTag tag_b = type_tag_from_id(interp->types, rhs.success.type_id);
-		EvalValue tmp_a;
-		EvalValue tmp_b;
-		TypeMetrics metrics = type_metrics_from_id(interp->types, unified_type_id);
-		if (tag_a == tag) {
+		const TypeMetrics metrics = type_metrics_from_id(interp->types, unified_type_id);
+
+		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_rst.success.type_id);
+
+		EvalValue lhs_value;
+
+		if (lhs_type_tag == unified_type_tag)
+		{
 			// the first summand is the target type
-			tmp_a = lhs.success;
-		} else {
+			lhs_value = lhs_rst.success;
+		}
+		else
+		{
 			// need to convert lhs to rhs type
-			tmp_a = make_value(stack_push(interp, metrics.size, metrics.align), false, true, unified_type_id);
-			convert(interp, summand_a, &tmp_a, lhs.success);
+			lhs_value = make_value(stack_push(interp, metrics.size, metrics.align), false, true, unified_type_id);
+
+			convert(interp, lhs, &lhs_value, lhs_rst.success);
 		}
-		if (tag_b == tag) {
-			// the first summand is the target type
-			tmp_b = rhs.success;
-		} else {
+
+		const TypeTag rhs_type_tag = type_tag_from_id(interp->types, rhs_rst.success.type_id);
+
+		EvalValue rhs_value;
+
+		if (rhs_type_tag == unified_type_tag)
+		{
+			// the second summand is the target type
+			rhs_value = rhs_rst.success;
+		}
+		else
+		{
 			// need to convert rhs to lhs type
-			tmp_b = make_value(stack_push(interp, metrics.size, metrics.align), false, true, unified_type_id);
-			convert(interp, summand_a, &tmp_b, rhs.success);
+			rhs_value = make_value(stack_push(interp, metrics.size, metrics.align), false, true, unified_type_id);
+
+			convert(interp, lhs, &rhs_value, rhs_rst.success);
 		}
 
 		EvalRst result = fill_spec(interp, spec, node, false, true, unified_type_id);
 
-		if (tag == TypeTag::Float)
+		if (unified_type_tag == TypeTag::Float)
 		{
-			// discern between double and single prec
-			// f64 / f32
 			const NumericType* type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
-			if (type->bits == 32) {
-				f32 sum = *value_as<f32>(tmp_a) + *value_as<f32>(tmp_b);
+
+			if (type->bits == 32)
+			{
+				f32 sum = *value_as<f32>(lhs_value) + *value_as<f32>(rhs_value);
+
 				value_set(&result.success, range::from_object_bytes_mut(&sum));
-			} else {
+			}
+			else
+			{
 				ASSERT_OR_IGNORE(type->bits == 64);
-				TODO("double precision impl");
+
+				f64 sum = *value_as<f64>(lhs_value) + *value_as<f64>(rhs_value);
+
+				value_set(&result.success, range::from_object_bytes_mut(&sum));
 			}
 		}
-		else if (tag == TypeTag::CompFloat) 
+		else if (unified_type_tag == TypeTag::CompFloat)
 		{
-			CompFloatValue sum = comp_float_add(*value_as<CompFloatValue>(tmp_a), *value_as<CompFloatValue>(tmp_b));
-			value_set(&result.success, range::from_object_bytes_mut(&sum)); 
+			CompFloatValue sum = comp_float_add(*value_as<CompFloatValue>(lhs_value), *value_as<CompFloatValue>(rhs_value));
+
+			value_set(&result.success, range::from_object_bytes_mut(&sum));
 		}
-		else if (tag == TypeTag::Integer) 
+		else if (unified_type_tag == TypeTag::Integer)
 		{
 			const NumericType* type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
-			if (type->is_signed) {
-				TODO("MACH FÜR SIGNIERTE AUCH PLOX (u64_from_integer for s64?)");
-			} else {
-				u64 tmp_a_int;
-				u64 tmp_b_int;
-				if (!u64_from_integer(tmp_a.bytes.immut(), *type, &tmp_a_int)) {
-					source_error(interp->errors, source_id_of(interp->asts, summand_a), "cannot currently add numbers > 64 bits.\n");
-				}
-				if (!u64_from_integer(tmp_b.bytes.immut(), *type, &tmp_b_int)) {
-					source_error(interp->errors, source_id_of(interp->asts, summand_b), "cannot currently add numbers > 64 bits.\n");
-				}
-				u64 sum;
-				if (!add_checked(tmp_a_int, tmp_b_int, &sum)) {
-					source_error(interp->errors, source_id_of(interp->asts, node), "arithmetic overflow on addition!\n");
-				}
 
-
-				if (type->bits != 64) {
-					u64 mask = ~((static_cast<u64>(1) << type->bits) - 1);
-					if ((mask & sum) != 0) {
-						source_error(interp->errors, source_id_of(interp->asts, node), "arithmetic overflow on addition!\n");
-					}
-				}
-
-				value_set(&result.success, { reinterpret_cast<byte*>(&sum), static_cast<u64>((type->bits + 7) / 8) });
-			}
+			bitwise_add(type->bits, result.success.bytes, lhs_rst.success.bytes.immut(), rhs_rst.success.bytes.immut());
 		}
-		else if (tag == TypeTag::CompInteger) 
+		else if (unified_type_tag == TypeTag::CompInteger)
 		{
-			TODO("comp integer (comp_integer_add)");
+			CompIntegerValue sum = comp_integer_add(*value_as<CompIntegerValue>(lhs_value), *value_as<CompIntegerValue>(rhs_value));
+
+			value_set(&result.success, range::from_object_bytes_mut(&sum));
 		}
+
+		result.success.bytes = stack_copy_down(interp, mark, result.success.bytes);
 
 		return result;
 	}
