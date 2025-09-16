@@ -51,7 +51,6 @@ enum class Token : u8
 		KwdTry,               // try
 		KwdDefer,             // defer
 		KwdDistinct,          // distinct
-		UOpAddr,              // $
 		UOpNot,               // ~
 		UOpLogNot,            // !
 		TypOptPtr,            // ?
@@ -69,6 +68,7 @@ enum class Token : u8
 		OpSubTC,              // -:
 		OpMulTC,              // *:
 		OpMod,                // %
+		UOpAddr,              // .&
 		UOpDeref,             // .*
 		OpAnd,                // &
 		OpOr,                 // |
@@ -154,7 +154,6 @@ const char8* token_name(Token token) noexcept
 		"try",
 		"defer",
 		"distinct",
-		"$",
 		"~",
 		"!",
 		"?",
@@ -172,6 +171,7 @@ const char8* token_name(Token token) noexcept
 		"-:",
 		"*:",
 		"%",
+		".&",
 		".*",
 		"&",
 		"|",
@@ -435,7 +435,6 @@ static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
 	{ AstTag::UOpTry,             AstFlag::EMPTY,       8, false, false }, // try
 	{ AstTag::UOpDefer,           AstFlag::EMPTY,       8, false, false }, // defer
 	{ AstTag::UOpDistinct,        AstFlag::EMPTY,       2, false, false }, // distinct
-	{ AstTag::UOpAddr,            AstFlag::EMPTY,       2, false, false }, // $
 	{ AstTag::UOpBitNot,          AstFlag::EMPTY,       2, false, false }, // ~
 	{ AstTag::UOpLogNot,          AstFlag::EMPTY,       2, false, false }, // !
 	{ AstTag::UOpTypeOptPtr,      AstFlag::Type_IsMut,  2, false, false }, // ?
@@ -459,6 +458,7 @@ static constexpr OperatorDesc BINARY_OPERATOR_DESCS[] = {
 	{ AstTag::OpSubTC,     AstFlag::EMPTY, 3, true,  true  }, // -:
 	{ AstTag::OpMulTC,     AstFlag::EMPTY, 2, true,  true  }, // *:
 	{ AstTag::OpMod,       AstFlag::EMPTY, 2, true,  true  }, // %
+	{ AstTag::UOpAddr,     AstFlag::EMPTY, 1, false, false }, // .&
 	{ AstTag::UOpDeref,    AstFlag::EMPTY, 1, false, false }, // .*
 	{ AstTag::OpBitAnd,    AstFlag::EMPTY, 6, true,  true  }, // &
 	{ AstTag::OpBitOr,     AstFlag::EMPTY, 6, true,  true  }, // |
@@ -1371,6 +1371,12 @@ static RawLexeme raw_next(Lexer* lexer) noexcept
 
 			return { Token::CompositeInitializer };
 		}
+		else if (second == '&')
+		{
+			lexer->curr += 1;
+
+			return { Token::UOpAddr };
+		}
 		else
 		{
 			return { Token::OpMemberOrRef };
@@ -1405,9 +1411,6 @@ static RawLexeme raw_next(Lexer* lexer) noexcept
 		{
 			return { Token::OpSet };
 		}
-
-	case '$':
-		return { Token::UOpAddr };
 
 	case '~':
 		return { Token::UOpNot };

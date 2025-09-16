@@ -2693,6 +2693,70 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 	}
 
+	case AstTag::UOpAddr:
+	{
+		
+		AstNode* const operand = first_child_of(node);
+		
+		EvalRst operand_rst = evaluate(interp, operand, EvalSpec{
+			ValueKind::Location
+		});
+		
+		if (operand_rst.tag == EvalTag::Unbound) 
+			// return the eval unbound operand result 
+			return operand_rst;
+		
+		// create + initialize pointer type
+		ReferenceType ptr_type{};
+		ptr_type.referenced_type_id = operand_rst.success.type_id;
+		ptr_type.is_multi = true;
+		ptr_type.is_mut = operand_rst.success.is_mut;
+		ptr_type.is_opt = false;
+
+		const TypeId ptr_type_id = type_create_reference(interp->types, TypeTag::Ptr, ptr_type);
+
+		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, ptr_type_id, sizeof(void*), alignof(void*));
+		
+		byte* address = operand_rst.success.bytes.begin();
+		
+		value_set(&rst.success, range::from_object_bytes_mut(&address));
+		
+		return rst;
+	}
+
+	case AstTag::UOpDeref:
+	{
+		AstNode* const operand = first_child_of(node);
+
+		EvalRst operand_rst = evaluate(interp, operand, EvalSpec{
+			ValueKind::Value
+		});
+
+		if (operand_rst.tag == EvalTag::Unbound)
+			return operand_rst;
+
+		// type if of the reference, contains type info of the derefed type
+		TypeId reference_type_id = operand_rst.success.type_id;
+
+		if (type_tag_from_id(interp->types, reference_type_id) != TypeTag::Ptr) {
+			source_error(interp->errors, source_id_of(interp->asts, operand), "Operand of `.*` must be a pointer.\n");
+		}
+		
+		const ReferenceType* reference_type = type_attachment_from_id<ReferenceType>(interp->types, reference_type_id);
+		
+		TypeId dereferenced_type = reference_type->referenced_type_id;
+		
+		EvalRst rst = fill_spec(interp, spec, node, true, reference_type->is_mut, dereferenced_type);
+
+		byte* const ptr = *value_as<byte*>(operand_rst.success);
+
+		const TypeMetrics metrics = type_metrics_from_id(interp->types, dereferenced_type);
+		
+		value_set(&rst.success, {ptr, metrics.size});
+
+		return rst;
+	}
+
 	case AstTag::CompositeInitializer:
 	case AstTag::Wildcard:
 	case AstTag::Where:
@@ -2714,8 +2778,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpTry:
 	case AstTag::UOpDefer:
 	case AstTag::UOpDistinct:
-	case AstTag::UOpAddr:
-	case AstTag::UOpDeref:
 	case AstTag::UOpBitNot:
 	case AstTag::UOpLogNot:
 	case AstTag::UOpNegate:
@@ -2754,7 +2816,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpSetShiftL:
 	case AstTag::OpSetShiftR:
 		panic("evaluate(%s) not yet implemented.\n", tag_name(node->tag));
-
+	
 	case AstTag::INVALID:
 	case AstTag::File:
 	case AstTag::Parameter:
