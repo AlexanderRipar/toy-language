@@ -130,6 +130,8 @@ bool bitwise_add(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs)
 	return carry == 0;
 }
 
+
+
 static bool is_inlined(CompIntegerValue value) noexcept
 {
 	return (value.rep & 1) == 0;
@@ -141,6 +143,8 @@ static bool is_negative(CompIntegerValue value) noexcept
 
 	return static_cast<s64>(value.rep) < 0;
 }
+
+
 
 CompIntegerValue comp_integer_from_u64(u64 value) noexcept
 {
@@ -373,12 +377,17 @@ bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntege
 	return true;
 }
 
-bool comp_integer_equal(CompIntegerValue lhs, CompIntegerValue rhs) noexcept
+StrongCompareOrdering comp_integer_compare(CompIntegerValue lhs, CompIntegerValue rhs) noexcept
 {
 	if (!is_inlined(lhs) || !is_inlined(rhs))
 		panic("Unexpected non-inlined `CompIntegerValue`.\n");
 
-	return lhs.rep == rhs.rep;
+	if (lhs.rep == rhs.rep)
+		return StrongCompareOrdering::Equal;
+	else if (lhs.rep < rhs.rep)
+		return StrongCompareOrdering::LessThan;
+	else
+		return StrongCompareOrdering::GreaterThan;
 }
 
 
@@ -477,4 +486,16 @@ CompFloatValue comp_float_neg(CompFloatValue value) noexcept
 	(void) value;
 
 	TODO("");
+}
+
+WeakCompareOrdering comp_float_compare(CompFloatValue lhs, CompFloatValue rhs) noexcept
+{
+	if (isnan(lhs.rep) || isnan(rhs.rep))
+		return WeakCompareOrdering::Unordered;
+	else if (lhs.rep == rhs.rep)
+		return WeakCompareOrdering::Equal;
+	else if (lhs.rep < rhs.rep)
+		return WeakCompareOrdering::LessThan;
+	else
+		return WeakCompareOrdering::GreaterThan;
 }

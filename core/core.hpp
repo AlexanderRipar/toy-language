@@ -176,6 +176,21 @@ Range<char8> identifier_name_from_id(const IdentifierPool* identifiers, Identifi
 
 
 
+enum class StrongCompareOrdering : u8
+{
+	Equal,
+	LessThan,
+	GreaterThan,
+};
+
+enum class WeakCompareOrdering : u8
+{
+	Equal,
+	LessThan,
+	GreaterThan,
+	Unordered,
+};
+
 // Representation of a compile-time known, arbitrary-width signed integer.
 // This is used to represent integer literals, and arithmetic involving them.
 // Currently, it really only supports values in the range [-2^62, 2^62-1].
@@ -273,7 +288,7 @@ bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntege
 
 // Compares the values represented by two `CompIntegerValues`. Returns `true`
 // if they are equal, `false` otherwise.
-bool comp_integer_equal(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
+StrongCompareOrdering comp_integer_compare(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
 
 
 
@@ -330,6 +345,8 @@ CompFloatValue comp_float_div(CompFloatValue lhs, CompFloatValue rhs) noexcept;
 // Takes the modulo of `lhs` by `rhs`, returning a new `CompFloatValue`
 // representing the result.
 CompFloatValue comp_float_neg(CompFloatValue value) noexcept;
+
+WeakCompareOrdering comp_float_compare(CompFloatValue lhs, CompFloatValue rhs) noexcept;
 
 
 
