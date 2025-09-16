@@ -2736,18 +2736,22 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			return operand_rst;
 
 		// type if of the reference, contains type info of the derefed type
-		TypeId ref_type_id = operand_rst.success.type_id;
+		TypeId reference_type_id = operand_rst.success.type_id;
 
-		if (type_tag_from_id(interp->types, ref_type_id) != TypeTag::Ptr) {
+		if (type_tag_from_id(interp->types, reference_type_id) != TypeTag::Ptr) {
 			source_error(interp->errors, source_id_of(interp->asts, operand), "Operand of `.*` must be a pointer.\n");
 		}
 		
-		const ReferenceType* ref_type = type_attachment_from_id<ReferenceType>(interp->types, ref_type_id);
-		TypeId target_type = ref_type->referenced_type_id;
-		EvalRst rst = fill_spec(interp, spec, node, true, ref_type->is_mut, target_type);
+		const ReferenceType* reference_type = type_attachment_from_id<ReferenceType>(interp->types, reference_type_id);
+		
+		TypeId dereferenced_type = reference_type->referenced_type_id;
+		
+		EvalRst rst = fill_spec(interp, spec, node, true, reference_type->is_mut, dereferenced_type);
 
-		byte* ptr = *value_as<byte*>(operand_rst.success);
-		TypeMetrics metrics = type_metrics_from_id(interp->types, target_type);
+		byte* const ptr = *value_as<byte*>(operand_rst.success);
+
+		const TypeMetrics metrics = type_metrics_from_id(interp->types, dereferenced_type);
+		
 		value_set(&rst.success, {ptr, metrics.size});
 
 		return rst;
