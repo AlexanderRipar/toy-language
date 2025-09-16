@@ -861,7 +861,7 @@ const char8* tag_name(AstTag tag) noexcept
 		"UOpBitNot",
 		"UOpLogNot",
 		"UOpTypeOptPtr",
-		"UOpTypeVar",
+		"UOpTypeVarArgs",
 		"UOpImpliedMember",
 		"UOpTypePtr",
 		"UOpNegate",

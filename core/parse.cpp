@@ -435,7 +435,7 @@ static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
 	{ AstTag::UOpBitNot,          AstFlag::EMPTY,       2, false, false }, // ~
 	{ AstTag::UOpLogNot,          AstFlag::EMPTY,       2, false, false }, // !
 	{ AstTag::UOpTypeOptPtr,      AstFlag::Type_IsMut,  2, false, false }, // ?
-	{ AstTag::UOpTypeVar,         AstFlag::EMPTY,       2, false, false }, // ...
+	{ AstTag::UOpTypeVarArgs,         AstFlag::EMPTY,       2, false, false }, // ...
 	{ AstTag::UOpTypeTailArray,   AstFlag::EMPTY,       2, false, false }, // [...]
 	{ AstTag::UOpTypeMultiPtr,    AstFlag::Type_IsMut,  2, false, false }, // [*]
 	{ AstTag::UOpTypeOptMultiPtr, AstFlag::Type_IsMut,  2, false, false }, // [?]

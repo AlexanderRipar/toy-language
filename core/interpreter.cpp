@@ -2709,7 +2709,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpDeref:
 	case AstTag::UOpBitNot:
 	case AstTag::UOpLogNot:
-	case AstTag::UOpTypeVar:
+	case AstTag::UOpTypeVarArgs:
 	case AstTag::UOpImpliedMember:
 	case AstTag::UOpNegate:
 	case AstTag::UOpPos:
@@ -2844,7 +2844,7 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::UOpBitNot:
 	case AstTag::UOpLogNot:
 	case AstTag::UOpTypeOptPtr:
-	case AstTag::UOpTypeVar:
+	case AstTag::UOpTypeVarArgs:
 	case AstTag::UOpImpliedMember:
 	case AstTag::UOpTypePtr:
 	case AstTag::UOpNegate:

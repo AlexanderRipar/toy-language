@@ -433,7 +433,7 @@ enum class AstTag : u8
 	UOpBitNot,
 	UOpLogNot,
 	UOpTypeOptPtr,
-	UOpTypeVar,
+	UOpTypeVarArgs,
 	UOpImpliedMember,
 	UOpTypePtr,
 	UOpNegate,
