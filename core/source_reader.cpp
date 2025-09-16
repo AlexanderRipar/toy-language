@@ -197,9 +197,9 @@ static SourceFile* source_file_from_source_id(SourceReader* reader, SourceId sou
 	// We cannot have lo == hi == reader->source_file_count - 1, as we have
 	// already checked that we do not exceed the last entry's beginning before
 	// entering the search loop.
-	ASSERT_OR_IGNORE(lo == 0 && hi == 0);
+	ASSERT_OR_IGNORE(lo < reader->source_file_count - 1);
 
-	return &entries->data;
+	return &entries[lo].data;
 }
 
 static Range<char8> source_file_path(SourceReader* reader, SourceFile* source_file) noexcept
