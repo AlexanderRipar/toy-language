@@ -2397,10 +2397,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			const TypeMetrics metrics = type_metrics_from_id(interp->types, common_type_id);
 
-			lhs_casted.bytes = stack_push(interp, metrics.size, metrics.align);
-			lhs_casted.is_location = false;
-			lhs_casted.is_mut = true;
-			lhs_casted.type_id = common_type_id;
+			lhs_casted = make_value(stack_push(interp, metrics.size, metrics.align), false, true, common_type_id);
 
 			convert(interp, lhs, &lhs_casted, lhs_rst.success);
 		}
@@ -2415,12 +2412,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			const TypeMetrics metrics = type_metrics_from_id(interp->types, common_type_id);
 
-			lhs_casted.bytes = stack_push(interp, metrics.size, metrics.align);
-			lhs_casted.is_location = false;
-			lhs_casted.is_mut = true;
-			lhs_casted.type_id = common_type_id;
+			rhs_casted = make_value(stack_push(interp, metrics.size, metrics.align), false, true, common_type_id);
 
-			convert(interp, lhs, &rhs_casted, rhs_rst.success);
+			convert(interp, rhs, &rhs_casted, rhs_rst.success);
 		}
 		else
 		{
