@@ -2251,6 +2251,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpTypeMultiPtr:
 	case AstTag::UOpTypeOptMultiPtr:
 	case AstTag::UOpTypeOptPtr:
+	case AstTag::UOpTypeVarArgs:
 	case AstTag::UOpTypePtr:
 	{
 		AstNode* const referenced = first_child_of(node);
@@ -2274,7 +2275,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		reference_type.is_multi = node->tag == AstTag::UOpTypeMultiPtr || node->tag == AstTag::UOpTypeOptMultiPtr;
 		reference_type.is_mut = has_flag(node, AstFlag::Type_IsMut);
 
-		const TypeTag reference_type_tag = node->tag == AstTag::UOpTypeSlice ? TypeTag::Slice : TypeTag::Ptr;
+		const TypeTag reference_type_tag = node->tag == AstTag::UOpTypeSlice ? TypeTag::Slice : node->tag == AstTag::UOpTypeVarArgs ? TypeTag::Variadic : TypeTag::Ptr;
 
 		TypeId reference_type_id = type_create_reference(interp->types, reference_type_tag, reference_type);
 
@@ -2709,8 +2710,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpDeref:
 	case AstTag::UOpBitNot:
 	case AstTag::UOpLogNot:
-	case AstTag::UOpTypeVarArgs:
-	case AstTag::UOpImpliedMember:
 	case AstTag::UOpNegate:
 	case AstTag::UOpPos:
 	case AstTag::OpAdd:
@@ -2752,6 +2751,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::File:
 	case AstTag::Parameter:
 	case AstTag::ParameterList:
+	case AstTag::UOpImpliedMember:
 	case AstTag::MAX:
 		; // Fallthrough to unreachable.
 	}
