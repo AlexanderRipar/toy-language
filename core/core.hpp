@@ -1673,6 +1673,10 @@ struct Definition
 
 	DelayableValueId value;
 
+	ArecId type_completion_arec_id;
+
+	ArecId value_completion_arec_id;
+
 	// Whether the member is global. If this is `true`, the value of `offset`
 	// is undefined.
 	bool is_global : 1;
