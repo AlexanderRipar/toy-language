@@ -26,6 +26,8 @@ pub Bool: Type = _typeof(1 == 1)
 
 pub Void: Type = _typeof({})
 
+pub Definition: Type = _definition()
+
 
 
 // Constants

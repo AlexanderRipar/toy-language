@@ -256,6 +256,7 @@ static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
 	range::from_literal_string("_integer",             static_cast<u8>(Builtin::Integer)),
 	range::from_literal_string("_float",               static_cast<u8>(Builtin::Float)),
 	range::from_literal_string("_type",                static_cast<u8>(Builtin::Type)),
+	range::from_literal_string("_definition",          static_cast<u8>(Builtin::Definition)),
 	range::from_literal_string("_typeof",              static_cast<u8>(Builtin::Typeof)),
 	range::from_literal_string("_returntypeof",        static_cast<u8>(Builtin::Returntypeof)),
 	range::from_literal_string("_sizeof",              static_cast<u8>(Builtin::Sizeof)),
