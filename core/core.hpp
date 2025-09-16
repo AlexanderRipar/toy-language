@@ -2168,8 +2168,12 @@ enum class Builtin : u8
 	Type,
 
 	// Returns the `Definition` type.
-	// let _definition = func() -> Type`
+	// `let _definition = func() -> Type`
 	Definition,
+
+	// Returns the `TypeInfo` type.
+	// `let _type_info = func() -> Type`
+	TypeInfo,
 
 	// Returns the type of its argument, or the value of its argument if it is
 	// of type `Type`.

@@ -28,6 +28,8 @@ pub Void: Type = _typeof({})
 
 pub Definition: Type = _definition()
 
+pub TypeInfo: Type = _type_info()
+
 
 
 // Constants

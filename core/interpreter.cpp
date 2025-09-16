@@ -3151,6 +3151,13 @@ static void builtin_definition(Interpreter* interp, [[maybe_unused]] Arec* arec,
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }
 
+static void builtin_type_info(Interpreter* interp, [[maybe_unused]] Arec* arec, MutRange<byte> into) noexcept
+{
+	const TypeId rst = type_create_simple(interp->types, TypeTag::TypeInfo);
+
+	range::mem_copy(into, range::from_object_bytes(&rst));
+}
+
 static void builtin_typeof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId rst = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("arg")));
@@ -3453,6 +3460,8 @@ static void init_builtin_types(Interpreter* interp) noexcept
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::Definition)] = make_func_type(interp->types, type_type_id);
 
+	interp->builtin_type_ids[static_cast<u8>(Builtin::TypeInfo)] = make_func_type(interp->types, type_type_id);
+
 	interp->builtin_type_ids[static_cast<u8>(Builtin::Typeof)] = make_func_type(interp->types, type_type_id,
 		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_info_type_id, true }
 	);
@@ -3519,6 +3528,7 @@ static void init_builtin_values(Interpreter* interp) noexcept
 	interp->builtin_values[static_cast<u8>(Builtin::Float)] = &builtin_float;
 	interp->builtin_values[static_cast<u8>(Builtin::Type)] = &builtin_type;
 	interp->builtin_values[static_cast<u8>(Builtin::Definition)] = &builtin_definition;
+	interp->builtin_values[static_cast<u8>(Builtin::TypeInfo)] = &builtin_type_info;
 	interp->builtin_values[static_cast<u8>(Builtin::Typeof)] = &builtin_typeof;
 	interp->builtin_values[static_cast<u8>(Builtin::Returntypeof)] = &builtin_returntypeof;
 	interp->builtin_values[static_cast<u8>(Builtin::Sizeof)] = &builtin_sizeof;
@@ -3762,6 +3772,7 @@ const char8* tag_name(Builtin builtin) noexcept
 		"_float",
 		"_type",
 		"_definition",
+		"_type_info",
 		"_typeof",
 		"_returntypeof",
 		"_sizeof",
