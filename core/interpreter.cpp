@@ -1330,7 +1330,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	}
 	else switch (node->tag)
 	{
-		// MEAT + POTATOES
 	case AstTag::Builtin:
 	{
 		const u8 ordinal = static_cast<u8>(node->flags);
@@ -2696,31 +2695,30 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 	case AstTag::UOpAddr:
 	{
-		// 1. get first child
+		
 		AstNode* const operand = first_child_of(node);
-		// kind = location
-		EvalRst operand_res = evaluate(interp, operand, EvalSpec{
+		
+		EvalRst operand_rst = evaluate(interp, operand, EvalSpec{
 			ValueKind::Location
 		});
 		
-		if (operand_res.tag == EvalTag::Unbound) 
-			// return the unbound eval specification 
-			return operand_res;
+		if (operand_rst.tag == EvalTag::Unbound) 
+			// return the eval unbound operand result 
+			return operand_rst;
 		
 		// create + initialize pointer type
 		ReferenceType ptr_type{};
-		ptr_type.referenced_type_id = operand_res.success.type_id;
+		ptr_type.referenced_type_id = operand_rst.success.type_id;
 		ptr_type.is_multi = true;
-		// TODO: look into this, is probably wrong. operand should hold the information if that is mutable
-		ptr_type.is_mut = operand_res.success.is_mut;
+		ptr_type.is_mut = operand_rst.success.is_mut;
 		ptr_type.is_opt = false;
 
-		TypeId ptr_id = type_create_reference(interp->types, TypeTag::Ptr, ptr_type);
+		const TypeId ptr_type_id = type_create_reference(interp->types, TypeTag::Ptr, ptr_type);
 
-		// ptr size & alignment = 8
-		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, ptr_id, sizeof(void*), alignof(void*));
+		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, ptr_type_id, sizeof(void*), alignof(void*));
 		
-		byte* address = operand_res.success.bytes.begin();
+		byte* address = operand_rst.success.bytes.begin();
+		
 		value_set(&rst.success, range::from_object_bytes_mut(&address));
 		
 		return rst;
@@ -2746,13 +2744,13 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		
 		const ReferenceType* ref_type = type_attachment_from_id<ReferenceType>(interp->types, ref_type_id);
 		TypeId target_type = ref_type->referenced_type_id;
-		EvalRst result = fill_spec(interp, spec, node, true, ref_type->is_mut, target_type);
+		EvalRst rst = fill_spec(interp, spec, node, true, ref_type->is_mut, target_type);
 
 		byte* ptr = *value_as<byte*>(operand_rst.success);
 		TypeMetrics metrics = type_metrics_from_id(interp->types, target_type);
-		value_set(&result.success, {ptr, metrics.size});
+		value_set(&rst.success, {ptr, metrics.size});
 
-		return result;
+		return rst;
 	}
 
 	case AstTag::CompositeInitializer:
