@@ -1,0 +1,10 @@
+entrypoint.filepath = 'source.evl'
+
+std.filepath = 'std/std.evl'
+
+logging.asts.enable = true
+logging.asts.log-filepath = 'output/ast_output.txt'
+
+logging.imports.enable = true
+logging.imports.enable-prelude = true
+logging.imports.log-filepath = 'output/import_output.txt'
