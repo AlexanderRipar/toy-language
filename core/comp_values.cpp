@@ -490,7 +490,7 @@ CompFloatValue comp_float_neg(CompFloatValue value) noexcept
 
 WeakCompareOrdering comp_float_compare(CompFloatValue lhs, CompFloatValue rhs) noexcept
 {
-	if (isnan(lhs.rep) || isnan(rhs.rep))
+	if (std::isnan(lhs.rep) || std::isnan(rhs.rep))
 		return WeakCompareOrdering::Unordered;
 	else if (lhs.rep == rhs.rep)
 		return WeakCompareOrdering::Equal;

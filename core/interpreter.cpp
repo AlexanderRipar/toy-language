@@ -1265,7 +1265,7 @@ static CompareResult compare(Interpreter* interp, TypeId common_type_id, Range<b
 
 			const f32 rhs_value = *reinterpret_cast<const f32*>(rhs.begin());
 
-			if (isnan(lhs_value) || isnan(rhs_value))
+			if (std::isnan(lhs_value) || std::isnan(rhs_value))
 				return CompareResult{ WeakCompareOrdering::Unordered };
 			else if (lhs_value < rhs_value)
 				return CompareResult{ WeakCompareOrdering::LessThan };
@@ -1282,7 +1282,7 @@ static CompareResult compare(Interpreter* interp, TypeId common_type_id, Range<b
 
 			const f64 rhs_value = *reinterpret_cast<const f64*>(rhs.begin());
 
-			if (isnan(lhs_value) || isnan(rhs_value))
+			if (std::isnan(lhs_value) || std::isnan(rhs_value))
 				return CompareResult{ WeakCompareOrdering::Unordered };
 			else if (lhs_value < rhs_value)
 				return CompareResult{ WeakCompareOrdering::LessThan };
