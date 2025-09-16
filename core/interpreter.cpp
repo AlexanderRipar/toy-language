@@ -3704,6 +3704,14 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 
 	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("import")));
 
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("typeof")));
+
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("sizeof")));
+
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("alignof")));
+
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("strideof")));
+
 	push_node(asts, first_token, SourceId::INVALID, AstFlag::EMPTY, AstTag::File);
 
 	AstNode* const prelude_ast = complete_ast(asts);
