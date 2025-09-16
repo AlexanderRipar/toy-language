@@ -467,7 +467,7 @@ static void arec_grow(Interpreter* interp, ArecId arec_id, u64 new_size) noexcep
 
 	Arec* const arec = interp->arec_headers.begin() + static_cast<s32>(arec_id);
 
-	ASSERT_OR_IGNORE(arec->size <= new_size && interp->arec_attachs.used() == (arec->attach_index + arec->size + 7) / 8);
+	ASSERT_OR_IGNORE(arec->size <= new_size && interp->arec_attachs.used() == arec->attach_index + (arec->size + 7) / 8);
 
 	// This overallocates due to `interp->arecs` rounding to 8 bytes.
 	// However, that's not really a problem, as we're in the top arec anyways,
