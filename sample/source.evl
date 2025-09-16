@@ -221,15 +221,25 @@ let func_taking_mut_opt_multi_ptr = func(p: [?]mut u8) -> Void => {}
 let variadic_func = func(args: ...u8) -> Void => {}
 
 let Pair = func(fst: Definition, snd: Definition) -> Type => {
-	mut tb = std.create_type_builder()
+	let tb = std.create_type_builder()
 
-	let fst_type = std.definition_typeof(fst)
+	let fst_type: Type = std.definition_typeof(fst)
 
-	let snd_type = std.definition_typeof(snd)
+	let fst_size = sizeof(fst_type)
+
+	let fst_align = alignof(fst_type)
 
 	std.add_type_member(tb, fst, 0)
 
+
+	let snd_type: Type = std.definition_typeof(snd)
+
+	let snd_size = sizeof(snd_type)
+
+	let snd_align = alignof(snd_type)
+
 	std.add_type_member(tb, snd, 0)
+
 
 	std.complete_type(tb, 0, 1, 0)
 }
