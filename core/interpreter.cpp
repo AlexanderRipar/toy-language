@@ -3462,15 +3462,15 @@ static void init_builtin_types(Interpreter* interp) noexcept
 	);
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::Sizeof)] = make_func_type(interp->types, comp_integer_type_id,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_info_type_id, true }
+		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_type_id, true }
 	);
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::Alignof)] = make_func_type(interp->types, comp_integer_type_id,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_info_type_id, true }
+		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_type_id, true }
 	);
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::Strideof)] = make_func_type(interp->types, comp_integer_type_id,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_info_type_id, true }
+		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_type_id, true }
 	);
 
 	// TODO: Figure out what type this takes as its argument. A member? If so,
