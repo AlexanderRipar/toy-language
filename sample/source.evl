@@ -225,3 +225,7 @@ let Pair = func(fst: Definition, snd: Definition) -> Type => {
 }
 
 let MyPair = Pair(let x: u32, let y: u32)
+
+let imported = import("import.evl")
+
+let from_imported = imported.import_member
