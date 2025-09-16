@@ -1671,7 +1671,7 @@ struct Definition
 
 	DelayableTypeId type;
 
-	DelayableValueId default_or_global_value;
+	DelayableValueId value;
 
 	// Whether the member is global. If this is `true`, the value of `offset`
 	// is undefined.

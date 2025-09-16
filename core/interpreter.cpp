@@ -1492,7 +1492,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		memset(definition, 0, sizeof(*definition));
 		definition->name = attach.identifier_id;
 		definition->type.pending = is_some(info.type) ? id_from_ast_node(interp->asts, get_ptr(info.type)) : AstNodeId::INVALID;
-		definition->default_or_global_value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
+		definition->value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
 		definition->is_global = has_flag(node, AstFlag::Definition_IsGlobal);
 		definition->is_pub = has_flag(node, AstFlag::Definition_IsPub);
 		definition->is_mut = has_flag(node, AstFlag::Definition_IsMut);
