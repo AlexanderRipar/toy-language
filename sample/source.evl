@@ -217,3 +217,5 @@ let opt_multi_ptr_type = [?]u8
 let func_taking_opt_multi_ptr = func(p: [?]u8) -> Void => {}
 
 let func_taking_mut_opt_multi_ptr = func(p: [?]mut u8) -> Void => {}
+
+let variadic_func = func(args: ...u8) -> Void => {}

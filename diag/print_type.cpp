@@ -25,7 +25,6 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::Builtin:
 	case TypeTag::CompositeLiteral:
 	case TypeTag::TypeBuilder:
-	case TypeTag::Variadic:
 	case TypeTag::Divergent:
 	case TypeTag::Trait:
 	case TypeTag::TypeInfo:
@@ -48,6 +47,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 	case TypeTag::Slice:
 	case TypeTag::Ptr:
+	case TypeTag::Variadic:
 	{
 		const ReferenceType* const reference = type_attachment_from_id<ReferenceType>(types, type_id);
 
@@ -55,6 +55,8 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 		if (tag == TypeTag::Slice)
 			introducer = "[]";
+		else if (tag == TypeTag::Variadic)
+			introducer = "...";
 		else if (reference->is_opt && reference->is_multi)
 			introducer = "[?]";
 		else if (reference->is_multi)

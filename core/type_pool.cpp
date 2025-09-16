@@ -880,7 +880,7 @@ TypeId type_create_numeric(TypePool* types, TypeTag tag, NumericType attach) noe
 
 TypeId type_create_reference(TypePool* types, TypeTag tag, ReferenceType attach) noexcept
 {
-	ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray);
+	ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray || tag == TypeTag::Variadic);
 
 	return type_create_deduplicated(types, tag, range::from_object_bytes(&attach));
 }
@@ -1304,6 +1304,7 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 	}
 
 	case TypeTag::Slice:
+	case TypeTag::Variadic:
 	{
 		return { 16, 16, 8 };
 	}
@@ -1343,9 +1344,8 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 
 	case TypeTag::TailArray:
 	case TypeTag::CompositeLiteral:
-	case TypeTag::Variadic:
 	case TypeTag::Trait:
-		TODO("Implement `type_metrics_from_id` for TailArray, CompositeLiteral, ArrayLiteral, Variadic and Trait.");
+		TODO("Implement `type_metrics_from_id` for TailArray, CompositeLiteral, ArrayLiteral and Trait.");
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:

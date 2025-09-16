@@ -1562,9 +1562,8 @@ enum class TypeTag : u8
 	// `ArrayType`.
 	ArrayLiteral,
 
-	// Tag of variadic function argument types.
-	// TODO: This is not used yet, and thus does not currently have an
-	//       associated structure. However, it will likely need one.
+	// Tag of variadic function argument types. Its structure is represented by
+	// a `ReferenceType`.
 	Variadic,
 
 	// Tag of trait types.
@@ -2024,7 +2023,7 @@ const T* type_attachment_from_id(TypePool* types, TypeId type_id) noexcept
 		const TypeTag tag = type_tag_from_id(types, type_id);
 
 		if constexpr (is_same_type<T, ReferenceType>)
-			ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray);
+			ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray || tag == TypeTag::Variadic);
 		else if constexpr (is_same_type<T, NumericType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Integer || tag == TypeTag::Float);
 		else if constexpr (is_same_type<T, ArrayType>)
