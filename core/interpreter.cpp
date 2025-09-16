@@ -3269,13 +3269,11 @@ static void builtin_import(Interpreter* interp, Arec* arec, MutRange<byte> into)
 
 static void builtin_create_type_builder(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
-	(void) interp;
+	const SourceId source_id = get_builtin_arg<SourceId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("source_id")));
 
-	(void) arec;
+	const TypeId rst = type_create_composite(interp->types, TypeId::INVALID, TypeDisposition::User, source_id, 0, false);
 
-	(void) into;
-
-	TODO("Implement.");
+	range::mem_copy(into, range::from_object_bytes(&rst));
 }
 
 static void builtin_add_type_member(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept

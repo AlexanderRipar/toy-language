@@ -221,6 +221,7 @@ let func_taking_mut_opt_multi_ptr = func(p: [?]mut u8) -> Void => {}
 let variadic_func = func(args: ...u8) -> Void => {}
 
 let Pair = func(fst: Definition, snd: Definition) -> Type => {
+	mut tb = std.create_type_builder()
 	u32
 }
 
