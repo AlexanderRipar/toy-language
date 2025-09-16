@@ -3775,6 +3775,7 @@ const char8* tag_name(Builtin builtin) noexcept
 		"_complete_type",
 		"_source_id",
 		"_caller_source_id",
+		"_definition_typeof",
 	};
 
 	u8 ordinal = static_cast<u8>(builtin);
