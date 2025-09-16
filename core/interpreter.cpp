@@ -2769,6 +2769,15 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 {
 	switch (node->tag)
 	{
+	case AstTag::Builtin:
+	{
+		const u8 ordinal = static_cast<u8>(node->flags);
+
+		ASSERT_OR_IGNORE(ordinal < array_count(interp->builtin_type_ids));
+
+		return interp->builtin_type_ids[ordinal];
+	}
+
 	case AstTag::Block:
 	{
 		if (!has_children(node))
@@ -2812,7 +2821,6 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 		return type_create_simple(interp->types, TypeTag::Boolean);
 	}
 
-	case AstTag::Builtin:
 	case AstTag::CompositeInitializer:
 	case AstTag::ArrayInitializer:
 	case AstTag::Wildcard:
