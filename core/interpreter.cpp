@@ -521,13 +521,22 @@ void pop_and_discard_partial_value_builder(Interpreter* interp) noexcept
 	interp->partial_value_builders.pop_by(1);
 }
 
-static MutRange<byte> add_partial_value_to_builder(Interpreter* interp, AstNode* node, TypeId type_id, u64 size, u32 align) noexcept
+static void add_partial_value_to_builder_sized(Interpreter* interp, AstNode* node, TypeId type_id, Range<byte> bytes, u64 size, u32 align) noexcept
 {
 	ASSERT_OR_IGNORE(interp->partial_value_builders.used() != 0);
 
 	const PartialValueBuilderId builder_id = interp->partial_value_builders.end()[-1];
 
-	return partial_value_builder_add_value(interp->partials, builder_id, node, type_id, size, align);
+	MutRange<byte> dst = partial_value_builder_add_value(interp->partials, builder_id, node, type_id, size, align);
+
+	range::mem_copy(dst, bytes);
+}
+
+static void add_partial_value_to_builder(Interpreter* interp, AstNode* node, TypeId type_id, Range<byte> bytes) noexcept
+{
+	const TypeMetrics metrics = type_metrics_from_id(interp->types, type_id);
+
+	add_partial_value_to_builder_sized(interp, node, type_id, bytes, metrics.size, metrics.align);
 }
 
 static void push_partial_value(Interpreter* interp, PartialValueId id) noexcept
@@ -1418,11 +1427,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				if (value.bytes.begin() == nullptr)
 					continue;
 
-				const TypeMetrics value_metrics = type_metrics_from_id(interp->types, value.type_id);
-
-				const MutRange<byte> value_dst = add_partial_value_to_builder(interp, elem, value.type_id, value_metrics.size, value_metrics.align);
-
-				range::mem_copy(value_dst, value.bytes.immut());
+				add_partial_value_to_builder(interp, elem, value.type_id, value.bytes.immut());
 			}
 
 			ASSERT_OR_IGNORE(!has_next(&elems));
@@ -1936,9 +1941,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 					}
 					else if (type_is_unbound)
 					{
-						const TypeMetrics metrics = type_metrics_from_id(interp->types, value_rst.success.type_id);
-
-						add_partial_value_to_builder(interp, value, value_rst.success.type_id, metrics.size, metrics.align);
+						add_partial_value_to_builder(interp, value, value_rst.success.type_id, value_rst.success.bytes.immut());
 					}
 					else
 					{
@@ -2044,22 +2047,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 				if (is_some(param_info.type) && !member->has_pending_type)
 				{
-					MutRange<byte> type_dst = add_partial_value_to_builder(interp, get_ptr(param_info.type), type_type_id, sizeof(TypeId), alignof(TypeId));
-
-					range::mem_copy(type_dst, range::from_object_bytes(&member->type.complete));
+					add_partial_value_to_builder_sized(interp, get_ptr(param_info.type), type_type_id, range::from_object_bytes(&member->type.complete), sizeof(TypeId), alignof(TypeId));
 				}
 
 				if (is_some(param_info.value) && !member->has_pending_value)
 				{
 					ASSERT_OR_IGNORE(!member->has_pending_type);
 
-					const TypeMetrics metrics = type_metrics_from_id(interp->types, member->type.complete);
-
-					MutRange<byte> value_dst = add_partial_value_to_builder(interp, get_ptr(param_info.value), member->type.complete, metrics.size, metrics.align);
-
 					Range<byte> value_src = global_value_get(interp->globals, member->value.complete);
 
-					range::mem_copy(value_dst, value_src);
+					add_partial_value_to_builder(interp, get_ptr(param_info.value), member->type.complete, value_src);
 				}
 			}
 
@@ -2372,15 +2369,19 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		if (lhs_rst.tag == EvalTag::Unbound && rhs_rst.tag == EvalTag::Unbound)
 		{
-			TODO("Treat unbound parameters to OpCmpEq");
+			return eval_unbound(lhs_rst.unbound < rhs_rst.unbound ? lhs_rst.unbound : rhs_rst.unbound);
 		}
 		else if (lhs_rst.tag == EvalTag::Unbound)
 		{
-			TODO("Treat unbound parameters to OpCmpEq");
+			add_partial_value_to_builder(interp, rhs, rhs_rst.success.type_id, rhs_rst.success.bytes.immut());
+
+			return eval_unbound(lhs_rst.unbound);
 		}
 		else if (rhs_rst.tag == EvalTag::Unbound)
 		{
-			TODO("Treat unbound parameters to OpCmpEq");
+			add_partial_value_to_builder(interp, lhs, lhs_rst.success.type_id, lhs_rst.success.bytes.immut());
+
+			return eval_unbound(rhs_rst.unbound);
 		}
 
 		const TypeId common_type_id = type_unify(interp->types, lhs_rst.success.type_id, rhs_rst.success.type_id);
@@ -2646,11 +2647,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			if (arrayish_rst.tag == EvalTag::Success)
 			{
-				const TypeMetrics metrics = type_metrics_from_id(interp->types, arrayish_rst.success.type_id);
-
-				const MutRange<byte> dst = add_partial_value_to_builder(interp, arrayish, arrayish_rst.success.type_id, metrics.size, metrics.align);
-
-				range::mem_copy(dst, arrayish_rst.success.bytes.immut());
+				add_partial_value_to_builder(interp, arrayish, arrayish_rst.success.type_id, arrayish_rst.success.bytes.immut());
 
 				ASSERT_OR_IGNORE(index_rst.tag == EvalTag::Unbound);
 
@@ -2658,11 +2655,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			}
 			else if (index_rst.tag == EvalTag::Success)
 			{
-				const TypeMetrics metrics = type_metrics_from_id(interp->types, index_rst.success.type_id);
-
-				const MutRange<byte> dst = add_partial_value_to_builder(interp, index, index_rst.success.type_id, metrics.size, metrics.align);
-
-				range::mem_copy(dst, index_rst.success.bytes.immut());
+				add_partial_value_to_builder(interp, index, index_rst.success.type_id, index_rst.success.bytes.immut());
 
 				ASSERT_OR_IGNORE(arrayish_rst.tag == EvalTag::Unbound);
 
