@@ -1653,13 +1653,13 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 				const TypeMetrics metrics = type_metrics_from_id(interp->types, stmt_rst.success.type_id);
 
-				EvalRst rst = fill_spec_sized(interp, spec, node, false, true, stmt_rst.success.type_id, metrics.size, metrics.align);
-
-				if (rst.tag == EvalTag::Unbound)
+				if (stmt_rst.tag == EvalTag::Unbound)
 					source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use block in unbound context.\n");
 
 				if (!has_next_sibling(stmt))
 				{
+					EvalRst rst = fill_spec_sized(interp, spec, node, false, true, stmt_rst.success.type_id, metrics.size, metrics.align);
+
 					// This is super hacky; We basically forget about the stack
 					// memory just allocated for `rst`, move our result down to the
 					// shrunken stack's top, and copy the resulting location into
