@@ -2691,18 +2691,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 	case AstTag::UOpAddr:
 	{
-		
 		AstNode* const operand = first_child_of(node);
 		
 		EvalRst operand_rst = evaluate(interp, operand, EvalSpec{
 			ValueKind::Location
 		});
 		
-		if (operand_rst.tag == EvalTag::Unbound) 
-			// return the eval unbound operand result 
-			return operand_rst;
+		if (operand_rst.tag == EvalTag::Unbound)
+			return eval_unbound(operand_rst.unbound);
 		
-		// create + initialize pointer type
+		// Create and initialize pointer type.
 		ReferenceType ptr_type{};
 		ptr_type.referenced_type_id = operand_rst.success.type_id;
 		ptr_type.is_multi = true;
@@ -2729,15 +2727,14 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		});
 
 		if (operand_rst.tag == EvalTag::Unbound)
-			return operand_rst;
+			return eval_unbound(operand_rst.unbound);
 
 		// type if of the reference, contains type info of the derefed type
 		TypeId reference_type_id = operand_rst.success.type_id;
 
-		if (type_tag_from_id(interp->types, reference_type_id) != TypeTag::Ptr) {
+		if (type_tag_from_id(interp->types, reference_type_id) != TypeTag::Ptr)
 			source_error(interp->errors, source_id_of(interp->asts, operand), "Operand of `.*` must be a pointer.\n");
-		}
-		
+
 		const ReferenceType* reference_type = type_attachment_from_id<ReferenceType>(interp->types, reference_type_id);
 		
 		TypeId dereferenced_type = reference_type->referenced_type_id;
