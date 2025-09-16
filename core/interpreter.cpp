@@ -2905,7 +2905,7 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	ASSERT_UNREACHABLE;
 }
 
-static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file_type_source_id) noexcept
+static void type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file_type_source_id, TypeId* out) noexcept
 {
 	ASSERT_OR_IGNORE(file->tag == AstTag::File);
 
@@ -2951,6 +2951,8 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 	}
 
 	type_seal_composite(interp->types, file_type_id, 0, 1, 0);
+
+	*out = file_type_id;
 
 	IncompleteMemberIterator members = incomplete_members_of(interp->types, file_type_id);
 
@@ -3018,16 +3020,14 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 		}
 
 		type_set_composite_member_info(interp->types, file_type_id, member->rank, MemberCompletionInfo{
-			true,
-			true,
+			member->has_pending_type,
+			member->has_pending_value,
 			value_rst.success.type_id,
 			member_value_id
 		});
 	}
 
 	arec_pop(interp, file_arec_id);
-
-	return file_type_id;
 }
 
 
@@ -3530,7 +3530,7 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 
 	set_prelude_scope(interp->lex, prelude_ast);
 
-	interp->prelude_type_id = type_from_file_ast(interp, prelude_ast, SourceId::INVALID);
+	type_from_file_ast(interp, prelude_ast, SourceId::INVALID, &interp->prelude_type_id);
 
 	if (interp->type_log_file.m_rep != nullptr && interp->log_prelude)
 	{
@@ -3644,7 +3644,9 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 		root = ast_node_from_id(interp->asts, read.source_file->root_ast);
 	}
 
-	const TypeId file_type_id = type_from_file_ast(interp, root, read.source_file->source_id_base);
+	type_from_file_ast(interp, root, read.source_file->source_id_base, &read.source_file->root_type);
+
+	const TypeId file_type_id = read.source_file->root_type;
 
 	if (interp->type_log_file.m_rep != nullptr)
 	{
@@ -3652,8 +3654,6 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 
 		diag::print_type(interp->type_log_file, interp->identifiers, interp->types, file_type_id, &file_type_location);
 	}
-
-	read.source_file->root_type = file_type_id;
 
 	return file_type_id;
 }
