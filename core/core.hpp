@@ -2212,7 +2212,8 @@ enum class Builtin : u8
 	// `let _create_type_builder = func(source_id: u32) -> TypeBuilder`
 	CreateTypeBuilder,
 
-	// TODO: This is not yet specified.
+	// Adds a member to a `TypeBuilder`.
+	// `let _add_type_member = func(builder: TypeBuilder, definition: Definition, offset: s64) -> Void`
 	AddTypeMember,
 
 	// TODO: This is not yet specified.

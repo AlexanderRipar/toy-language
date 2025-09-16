@@ -3338,14 +3338,6 @@ static void init_builtin_types(Interpreter* interp) noexcept
 
 	const TypeId type_info_type_id = type_create_simple(interp->types, TypeTag::TypeInfo);
 
-	ReferenceType ptr_to_type_builder_type{};
-	ptr_to_type_builder_type.is_opt = false;
-	ptr_to_type_builder_type.is_multi = false;
-	ptr_to_type_builder_type.is_mut = true;
-	ptr_to_type_builder_type.referenced_type_id = type_builder_type_id;
-
-	const TypeId ptr_to_mut_type_builder_type_id = type_create_reference(interp->types, TypeTag::Ptr, ptr_to_type_builder_type);
-
 	const TypeId s64_type_id = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ 64, true });
 
 	const TypeId u8_type_id = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ 8, false });
@@ -3414,7 +3406,7 @@ static void init_builtin_types(Interpreter* interp) noexcept
 	);
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::AddTypeMember)] = make_func_type(interp->types, void_type_id,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("builder")), ptr_to_mut_type_builder_type_id, true },
+		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("builder")), type_builder_type_id, true },
 		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("definition")), definition_type_id, true },
 		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("offset")), s64_type_id, true }
 	);
