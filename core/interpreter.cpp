@@ -2247,6 +2247,38 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		return rst;
 	}
 
+	case AstTag::UOpTypeSlice:
+	{
+		AstNode* const referenced = first_child_of(node);
+
+		const TypeId type_type_id = type_create_simple(interp->types, TypeTag::Type);
+
+		TypeId referenced_type_id;
+
+		EvalRst referenced_rst = evaluate(interp, referenced, EvalSpec{
+			ValueKind::Value,
+			range::from_object_bytes_mut(&referenced_type_id),
+			type_type_id
+		});
+
+		if (referenced_rst.tag == EvalTag::Unbound)
+			return eval_unbound(referenced_rst.unbound);
+
+		ReferenceType reference_type{};
+		reference_type.referenced_type_id = referenced_type_id;
+		reference_type.is_opt = false;
+		reference_type.is_multi = false;
+		reference_type.is_mut = has_flag(node, AstFlag::Type_IsMut);
+
+		TypeId reference_type_id = type_create_reference(interp->types, TypeTag::Slice, reference_type);
+
+		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, type_type_id, sizeof(TypeId), alignof(TypeId));
+
+		value_set(&rst.success, range::from_object_bytes_mut(&reference_type_id));
+
+		return rst;
+	}
+
 	case AstTag::Member:
 	{
 		AstNode* const lhs = first_child_of(node);
@@ -2663,7 +2695,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::Leave:
 	case AstTag::Yield:
 	case AstTag::UOpTypeTailArray:
-	case AstTag::UOpTypeSlice:
 	case AstTag::UOpTypeMultiPtr:
 	case AstTag::UOpTypeOptMultiPtr:
 	case AstTag::UOpEval:

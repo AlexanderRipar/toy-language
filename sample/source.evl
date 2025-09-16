@@ -187,3 +187,9 @@ let loop_result_mut_5 = {
 
 	n
 }
+
+let slice_type = []u32
+
+let func_taking_slice = func(s: []s8) -> Void => {}
+
+let func_taking_mut_slice = func(s: []mut s8) -> Void => {}
