@@ -58,7 +58,7 @@ struct ArecRestoreInfo
 	ArecId old_top;
 };
 
-using BuiltinFunc = void (*) (Interpreter* interp, Arec* arec, AstNode* call_node, MutRange<byte> into) noexcept;
+using BuiltinFunc = void (*) (Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept;
 
 // Representation of a callable, meaning either a builtin or a user-defined
 // function or procedure.
@@ -2217,7 +2217,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			{
 				Arec* const parameter_list_arec = arec_from_id(interp, call_info.parameter_list_arec_id);
 
-				interp->builtin_values[callee_value.ordinal](interp, parameter_list_arec, node, temp_location);
+				interp->builtin_values[callee_value.ordinal](interp, parameter_list_arec, temp_location);
 			}
 			else
 			{
@@ -3107,7 +3107,7 @@ static T get_builtin_arg(Interpreter* interp, Arec* arec, IdentifierId name) noe
 	return *reinterpret_cast<T*>(value.begin());
 }
 
-static void builtin_integer(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_integer(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const u8 bits = get_builtin_arg<u8>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("bits")));
 
@@ -3118,7 +3118,7 @@ static void builtin_integer(Interpreter* interp, Arec* arec, [[maybe_unused]] As
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }
 
-static void builtin_float(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_float(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const u8 bits = get_builtin_arg<u8>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("bits")));
 
@@ -3127,28 +3127,28 @@ static void builtin_float(Interpreter* interp, Arec* arec, [[maybe_unused]] AstN
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }
 
-static void builtin_type(Interpreter* interp, [[maybe_unused]] Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_type(Interpreter* interp, [[maybe_unused]] Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId rst = type_create_simple(interp->types, TypeTag::Type);
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }
 
-static void builtin_definition(Interpreter* interp, [[maybe_unused]] Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_definition(Interpreter* interp, [[maybe_unused]] Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId rst = type_create_simple(interp->types, TypeTag::Definition);
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }
 
-static void builtin_typeof(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_typeof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId rst = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("arg")));
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }
 
-static void builtin_returntypeof(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_returntypeof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId arg = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("arg")));
 
@@ -3162,7 +3162,7 @@ static void builtin_returntypeof(Interpreter* interp, Arec* arec, [[maybe_unused
 	range::mem_copy(into, range::from_object_bytes(&signature_type->return_type.complete));
 }
 
-static void builtin_sizeof(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_sizeof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId arg = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("arg")));
 
@@ -3173,7 +3173,7 @@ static void builtin_sizeof(Interpreter* interp, Arec* arec, [[maybe_unused]] Ast
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }
 
-static void builtin_alignof(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_alignof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId arg = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("arg")));
 
@@ -3184,7 +3184,7 @@ static void builtin_alignof(Interpreter* interp, Arec* arec, [[maybe_unused]] As
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }
 
-static void builtin_strideof(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_strideof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId arg = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("arg")));
 
@@ -3195,7 +3195,7 @@ static void builtin_strideof(Interpreter* interp, Arec* arec, [[maybe_unused]] A
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }
 
-static void builtin_offsetof(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_offsetof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	(void) interp;
 
@@ -3206,7 +3206,7 @@ static void builtin_offsetof(Interpreter* interp, Arec* arec, [[maybe_unused]] A
 	TODO("Implement.");
 }
 
-static void builtin_nameof(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_nameof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	(void) interp;
 
@@ -3217,7 +3217,7 @@ static void builtin_nameof(Interpreter* interp, Arec* arec, [[maybe_unused]] Ast
 	TODO("Implement.");
 }
 
-static void builtin_import(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_import(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const Range<char8> path = get_builtin_arg<Range<char8>>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("path")));
 
@@ -3238,12 +3238,12 @@ static void builtin_import(Interpreter* interp, Arec* arec, [[maybe_unused]] Ast
 		const u32 path_base_parent_chars = minos::path_to_absolute_directory(path_base, MutRange{ path_base_parent_buf });
 
 		if (path_base_parent_chars == 0 || path_base_parent_chars > array_count(path_base_parent_buf))
-			source_error(interp->errors, source_id_of(interp->asts, call_node), "Failed to make get parent directory from `from` source file (0x%X).\n", minos::last_error());
+			source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Failed to get parent directory from `from` source file (0x%X).\n", minos::last_error());
 
 		const u32 absolute_path_chars = minos::path_to_absolute_relative_to(path, Range{ path_base_parent_buf , path_base_parent_chars }, MutRange{ absolute_path_buf });
 
 		if (absolute_path_chars == 0 || absolute_path_chars > array_count(absolute_path_buf))
-			source_error(interp->errors, source_id_of(interp->asts, call_node), "Failed to make `path` %.*s absolute relative to `from` %.*s (0x%X).\n", static_cast<s32>(path.count()), path.begin(), static_cast<s32>(path_base.count()), path_base.begin(), minos::last_error());
+			source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Failed to make `path` %.*s absolute relative to `from` %.*s (0x%X).\n", static_cast<s32>(path.count()), path.begin(), static_cast<s32>(path_base.count()), path_base.begin(), minos::last_error());
 
 		absolute_path = Range{ absolute_path_buf, absolute_path_chars };
 	}
@@ -3259,7 +3259,7 @@ static void builtin_import(Interpreter* interp, Arec* arec, [[maybe_unused]] Ast
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }
 
-static void builtin_create_type_builder(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_create_type_builder(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	(void) interp;
 
@@ -3270,7 +3270,7 @@ static void builtin_create_type_builder(Interpreter* interp, Arec* arec, [[maybe
 	TODO("Implement.");
 }
 
-static void builtin_add_type_member(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_add_type_member(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	(void) interp;
 
@@ -3281,7 +3281,7 @@ static void builtin_add_type_member(Interpreter* interp, Arec* arec, [[maybe_unu
 	TODO("Implement.");
 }
 
-static void builtin_complete_type(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_complete_type(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	(void) interp;
 
@@ -3292,7 +3292,7 @@ static void builtin_complete_type(Interpreter* interp, Arec* arec, [[maybe_unuse
 	TODO("Implement.");
 }
 
-static void builtin_source_id(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_source_id(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const Arec* const calling_arec = arec_from_id(interp, arec->caller_arec_id);
 
@@ -3301,7 +3301,7 @@ static void builtin_source_id(Interpreter* interp, Arec* arec, [[maybe_unused]] 
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }
 
-static void builtin_caller_source_id(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_caller_source_id(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const Arec* const calling_arec = arec_from_id(interp, arec->caller_arec_id);
 
