@@ -3359,6 +3359,51 @@ static void builtin_caller_source_id(Interpreter* interp, Arec* arec, MutRange<b
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }
 
+static void builtin_definition_typeof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+{
+	// TODO: Change `Definition` into a reference type so that its members can
+	//       be meaningfully set here, to avoid multiple evaluations.
+
+	const Definition definition = get_builtin_arg<Definition>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("definition")));
+
+	TypeId type_id;
+
+	if (!definition.has_pending_type)
+	{
+		type_id = definition.type.complete;
+	}
+	else if (definition.type.pending != AstNodeId::INVALID)
+	{
+		AstNode* const type = ast_node_from_id(interp->asts, definition.type.pending);
+
+		const EvalRst rst = evaluate(interp, type, EvalSpec{
+			ValueKind::Value,
+			range::from_object_bytes_mut(&type_id),
+			type_create_simple(interp->types, TypeTag::Type)
+		});
+
+		if (rst.tag == EvalTag::Unbound)
+			source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Cannot use `_definition_typeof` in unbound context.\n");
+	}
+	else
+	{
+		ASSERT_OR_IGNORE(definition.has_pending_value && definition.value.pending != AstNodeId::INVALID);
+
+		AstNode* const value = ast_node_from_id(interp->asts, definition.value.pending);
+
+		const EvalRst rst = evaluate(interp, value, EvalSpec{
+			ValueKind::Value
+		});
+
+		if (rst.tag == EvalTag::Unbound)
+			source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Cannot use `_definition_typeof` in unbound context.\n");
+
+		type_id = rst.success.type_id;
+	}
+
+	range::mem_copy(into, range::from_object_bytes(&type_id));
+}
+
 
 
 static void init_builtin_types(Interpreter* interp) noexcept
@@ -3462,6 +3507,10 @@ static void init_builtin_types(Interpreter* interp) noexcept
 	interp->builtin_type_ids[static_cast<u8>(Builtin::SourceId)] = make_func_type(interp->types, u32_type_id);
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::CallerSourceId)] = make_func_type(interp->types, u32_type_id);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::DefinitionTypeof)] = make_func_type(interp->types, type_type_id,
+		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("definition")), definition_type_id, true }
+	);
 }
 
 static void init_builtin_values(Interpreter* interp) noexcept
@@ -3483,6 +3532,7 @@ static void init_builtin_values(Interpreter* interp) noexcept
 	interp->builtin_values[static_cast<u8>(Builtin::CompleteType)] = &builtin_complete_type;
 	interp->builtin_values[static_cast<u8>(Builtin::SourceId)] = &builtin_source_id;
 	interp->builtin_values[static_cast<u8>(Builtin::CallerSourceId)] = &builtin_caller_source_id;
+	interp->builtin_values[static_cast<u8>(Builtin::DefinitionTypeof)] = &builtin_definition_typeof;
 }
 
 // Pushes `let std = _import(<std_filepath>, _source_id())` into `asts`'s

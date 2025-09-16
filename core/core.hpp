@@ -2230,6 +2230,11 @@ enum class Builtin : u8
 	// `let _caller_source_id = func() -> u32`
 	CallerSourceId,
 
+	// Returns the type of the passed definition, calculating it if
+	// `has_pending_type` is set.
+	// `let _definition_typeof = func(definition: Definition) -> Type`
+	DefinitionTypeof,
+
 	// Number of `Builtin`s, used for sizing arrays. Should not be used
 	// otherwise.
 	MAX,
