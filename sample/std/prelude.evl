@@ -30,6 +30,8 @@ pub Definition: Type = _definition()
 
 pub TypeInfo: Type = _type_info()
 
+pub CompInteger: Type = _typeof(1)
+
 
 
 // Constants
@@ -44,16 +46,10 @@ pub false: Bool = 1 == 0
 
 pub import = func(path: []u8) -> Type => _import(path, false, _caller_source_id())
 
-/*
-pub typeof = func(value: T) where T = Type -> Type => _typeof(value)
+pub typeof = func(T: TypeInfo) -> Type => _typeof(T)
 
-pub sizeof = func(value: T) where T = Type -> CompInteger => _sizeof(value)
+pub sizeof = func(T: Type) -> CompInteger => _sizeof(T)
 
-pub alignof = func(value: T) where T = Type -> CompInteger => _alignof(value)
+pub alignof = func(T: Type) -> CompInteger => _alignof(T)
 
-pub strideof = func(value: T) where T = Type -> CompInteger => _strideof(value)
-
-pub offsetof = func(value: T) where T = Type -> CompInteger => _offsetof(value)
-
-pub nameof = func(value: T) where T = Type -> CompInteger => if value == Type then _nameof(value) else _nameof(_typeof(value))
-*/
+pub strideof = func(T: Type) -> CompInteger => _strideof(T)
