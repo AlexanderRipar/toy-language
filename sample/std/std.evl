@@ -4,13 +4,13 @@
 
 pub prelude = _import("prelude.evl", 1 == 1, _source_id())
 
+pub TypeBuilder: Type = _returntypeof(_create_type_builder)
+
+pub create_type_builder = func() -> TypeBuilder => _create_type_builder()
+
 
 /*
 // Composite type creation
-
-pub TypeBuilder: Type => _returntypeof(_create_type_builder)
-
-pub create_type_builder = func() -> TypeBuilder => _create_type_builder()
 
 pub add_type_member = func(
 	builder: *mut TypeBuilder,
