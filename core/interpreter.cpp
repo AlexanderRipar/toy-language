@@ -1,5 +1,7 @@
 #include "core.hpp"
 
+#include <cmath>
+
 #include "../diag/diag.hpp"
 #include "../infra/container/reserved_vec.hpp"
 
@@ -137,6 +139,37 @@ struct EvalSpec
 		type_id{ type_id },
 		dst{ dst }
 	{}
+};
+
+enum class CompareTag : u8
+{
+	INVALID = 0,
+	Ordering,
+	Equality,
+};
+
+enum class CompareEquality : u8
+{
+	Equal,
+	Unequal,
+};
+
+struct CompareResult
+{
+	CompareTag tag;
+
+	union
+	{
+		WeakCompareOrdering ordering;
+
+		CompareEquality equality;
+	};
+
+	explicit CompareResult() noexcept : tag{ CompareTag::INVALID }, ordering{} {}
+
+	explicit CompareResult(WeakCompareOrdering ordering) : tag{ CompareTag::Ordering }, ordering{ ordering } {}
+
+	explicit CompareResult(CompareEquality equality) : tag{ CompareTag::Equality }, equality{ equality } {}
 };
 
 enum class EvalTag : u8
@@ -1054,6 +1087,301 @@ static void convert(Interpreter* interp, const AstNode* error_source, EvalValue*
 	case TypeTag::Trait:
 	case TypeTag::TypeInfo:
 	case TypeTag::TailArray:
+		; // Fallthrough to unreachable.
+	}
+
+	ASSERT_UNREACHABLE;
+}
+
+static CompareResult compare(Interpreter* interp, TypeId common_type_id, Range<byte> lhs, Range<byte> rhs, const AstNode* error_source) noexcept
+{
+	ASSERT_OR_IGNORE(lhs.count() == rhs.count());
+
+	const TypeTag common_type_tag = type_tag_from_id(interp->types, common_type_id);
+
+	switch (common_type_tag)
+	{
+	case TypeTag::Void:
+	{
+		ASSERT_OR_IGNORE(lhs.count() == 0);
+
+		return CompareResult{ CompareEquality::Equal };
+	}
+
+	case TypeTag::Type:
+	case TypeTag::TypeInfo:
+	case TypeTag::TypeBuilder:
+	{
+		ASSERT_OR_IGNORE(lhs.count() == sizeof(TypeId));
+
+		const TypeId lhs_value = *reinterpret_cast<const TypeId*>(lhs.begin());
+
+		const TypeId rhs_value = *reinterpret_cast<const TypeId*>(rhs.begin());
+
+		return CompareResult{ type_is_equal(interp->types, lhs_value, rhs_value) ? CompareEquality::Equal : CompareEquality::Unequal };
+	}
+
+	case TypeTag::CompInteger:
+	{
+		ASSERT_OR_IGNORE(lhs.count() == sizeof(CompIntegerValue));
+
+		const CompIntegerValue lhs_value = *reinterpret_cast<const CompIntegerValue*>(lhs.begin());
+
+		const CompIntegerValue rhs_value = *reinterpret_cast<const CompIntegerValue*>(rhs.begin());
+
+		return CompareResult{ static_cast<WeakCompareOrdering>(comp_integer_compare(lhs_value, rhs_value)) };
+	}
+
+	case TypeTag::CompFloat:
+	{
+		ASSERT_OR_IGNORE(lhs.count() == sizeof(CompFloatValue));
+
+		const CompFloatValue lhs_value = *reinterpret_cast<const CompFloatValue*>(lhs.begin());
+
+		const CompFloatValue rhs_value = *reinterpret_cast<const CompFloatValue*>(rhs.begin());
+
+		return CompareResult{ comp_float_compare(lhs_value, rhs_value) };
+	}
+
+	case TypeTag::Boolean:
+	{
+		ASSERT_OR_IGNORE(lhs.count() == sizeof(bool));
+
+		const bool lhs_value = *reinterpret_cast<const bool*>(lhs.begin());
+
+		const bool rhs_value = *reinterpret_cast<const bool*>(rhs.begin());
+
+		return CompareResult{ lhs_value == rhs_value ? CompareEquality::Equal : CompareEquality::Unequal };
+	}
+
+	case TypeTag::Integer:
+	{
+		const NumericType type = *type_attachment_from_id<NumericType>(interp->types, common_type_id);
+
+		ASSERT_OR_IGNORE(lhs.count() == (type.bits + 7) >> 3);
+
+		const s64 compare_size = static_cast<s64>(type.bits >> 3);
+
+		const u8 extra_bits = type.bits & 7;
+
+		if (extra_bits != 0)
+		{
+			const u8 mask = static_cast<u8>((1 << extra_bits) - 1);
+
+			const u8 lhs_masked = lhs[compare_size] & mask;
+
+			const u8 rhs_masked = rhs[compare_size] & mask;
+
+			if (lhs_masked != rhs_masked)
+			{
+				if (type.is_signed)
+				{
+					const u8 msb_mask = static_cast<u8>(1 << (extra_bits - 1));
+
+					const bool lhs_is_negative = (lhs_masked & msb_mask) != 0;
+
+					const bool rhs_is_negative = (rhs_masked & msb_mask) != 0;
+
+					if (lhs_is_negative && rhs_is_negative)
+					{
+						// Flip it.
+						// And reverse it.
+						return CompareResult{ lhs_masked < rhs_masked ? WeakCompareOrdering::GreaterThan : WeakCompareOrdering::LessThan };
+					}
+					else if (lhs_is_negative)
+					{
+						return CompareResult{ WeakCompareOrdering::LessThan };
+					}
+					else if (rhs_is_negative)
+					{
+						return CompareResult{ WeakCompareOrdering::GreaterThan };
+					}
+					else
+					{
+						return CompareResult{ lhs_masked < rhs_masked ? WeakCompareOrdering::LessThan : WeakCompareOrdering::GreaterThan };
+					}
+				}
+				else
+				{
+					if (lhs_masked < rhs_masked)
+						return CompareResult{ WeakCompareOrdering::LessThan };
+					else
+						return CompareResult{ WeakCompareOrdering::GreaterThan };
+				}
+			}
+		}
+
+		if (compare_size == 0)
+			return CompareResult{ WeakCompareOrdering::Equal };
+
+		s64 i = compare_size - 1;
+
+		bool negate_comparison = false;
+
+		if (type.is_signed)
+		{
+			const bool lhs_is_negative = (lhs[i] & 0x80) != 0;
+
+			const bool rhs_is_negative = (rhs[i] & 0x80) != 0;
+			
+			if (lhs_is_negative && rhs_is_negative)
+				negate_comparison = true;
+			else if (lhs_is_negative)
+				return CompareResult{ WeakCompareOrdering::LessThan };
+			else if (rhs_is_negative)
+				return CompareResult{ WeakCompareOrdering::GreaterThan };
+		}
+
+		do
+		{
+			const u8 lhs_byte = lhs[i];
+
+			const u8 rhs_byte = rhs[i];
+
+			if (lhs_byte == rhs_byte)
+				continue;
+
+			if (lhs_byte < rhs_byte)
+				return CompareResult{ negate_comparison ? WeakCompareOrdering::GreaterThan : WeakCompareOrdering::LessThan };
+			else if (rhs_byte > lhs_byte)
+				return CompareResult{ negate_comparison ? WeakCompareOrdering::LessThan : WeakCompareOrdering::GreaterThan };
+
+			i -= 1;
+		}
+		while (i >= 0);
+
+		return CompareResult{ WeakCompareOrdering::Equal };
+	}
+
+	case TypeTag::Float:
+	{
+		const NumericType type = *type_attachment_from_id<NumericType>(interp->types, common_type_id);
+
+		if (type.bits == 32)
+		{
+			ASSERT_OR_IGNORE(lhs.count() == sizeof(f32));
+
+			const f32 lhs_value = *reinterpret_cast<const f32*>(lhs.begin());
+
+			const f32 rhs_value = *reinterpret_cast<const f32*>(rhs.begin());
+
+			if (isnan(lhs_value) || isnan(rhs_value))
+				return CompareResult{ WeakCompareOrdering::Unordered };
+			else if (lhs_value < rhs_value)
+				return CompareResult{ WeakCompareOrdering::LessThan };
+			else if (lhs_value > rhs_value)
+				return CompareResult{ WeakCompareOrdering::GreaterThan };
+			else
+				return CompareResult{ WeakCompareOrdering::Equal };
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(lhs.count() == sizeof(f64) && type.bits == 64);
+
+			const f64 lhs_value = *reinterpret_cast<const f64*>(lhs.begin());
+
+			const f64 rhs_value = *reinterpret_cast<const f64*>(rhs.begin());
+
+			if (isnan(lhs_value) || isnan(rhs_value))
+				return CompareResult{ WeakCompareOrdering::Unordered };
+			else if (lhs_value < rhs_value)
+				return CompareResult{ WeakCompareOrdering::LessThan };
+			else if (lhs_value > rhs_value)
+				return CompareResult{ WeakCompareOrdering::GreaterThan };
+			else
+				return CompareResult{ WeakCompareOrdering::Equal };
+		}
+	}
+
+	case TypeTag::Slice:
+	{
+		ASSERT_OR_IGNORE(lhs.count() == sizeof(void*) * 2);
+
+		return CompareResult{ range::mem_equal(lhs, rhs) ? CompareEquality::Equal : CompareEquality::Unequal };
+	}
+
+	case TypeTag::Ptr:
+	{
+		ASSERT_OR_IGNORE(lhs.count() == sizeof(void*));
+
+		return CompareResult{ range::mem_equal(lhs, rhs) ? CompareEquality::Equal : CompareEquality::Unequal };
+	}
+
+	case TypeTag::Array:
+	{
+		const ArrayType type = *type_attachment_from_id<ArrayType>(interp->types, common_type_id);
+
+		if (type.element_type == TypeId::INVALID)
+		{
+			ASSERT_OR_IGNORE(type.element_count == 0 && lhs.count() == 0);
+
+			return CompareResult{ CompareEquality::Equal };
+		}
+
+		const TypeMetrics metrics = type_metrics_from_id(interp->types, type.element_type);
+
+		for (u64 i = 0; i != type.element_count; ++i)
+		{
+			const Range<byte> lhs_elem{ lhs.begin() + i * metrics.stride, metrics.size };
+
+			const Range<byte> rhs_elem{ rhs.begin() + i * metrics.stride, metrics.size };
+
+			const CompareResult result = compare(interp, type.element_type, lhs_elem, rhs_elem, error_source);
+
+			if (result.tag == CompareTag::INVALID)
+				return CompareResult{};
+			else if (result.equality != CompareEquality::Equal)
+				return CompareResult{ CompareEquality::Unequal };
+		}
+
+		return CompareResult{ CompareEquality::Equal };
+	}
+
+	case TypeTag::Composite:
+	{
+		ASSERT_OR_IGNORE(lhs.count() == type_metrics_from_id(interp->types, common_type_id).size);
+
+		MemberIterator it = members_of(interp->types, common_type_id);
+
+		while (has_next(&it))
+		{
+			const Member* const member = next(&it);
+
+			if (member->has_pending_type || member->has_pending_value)
+				source_error(interp->errors, source_id_of(interp->asts, error_source), "Tried comparing values of incomplete composite type.\n");
+
+			if (member->is_global)
+				continue;
+
+			const TypeMetrics metrics = type_metrics_from_id(interp->types, member->type.complete);
+
+			const Range<byte> lhs_member{ lhs.begin() + member->offset, metrics.size };
+
+			const Range<byte> rhs_member{ rhs.begin() + member->offset, metrics.size };
+
+			const CompareResult result = compare(interp, member->type.complete, lhs_member, rhs_member, error_source);
+
+			if (result.tag == CompareTag::INVALID)
+				return CompareResult{};
+			else if (result.equality != CompareEquality::Equal)
+				return CompareResult{ CompareEquality::Unequal };
+		}
+
+		return CompareResult{ CompareEquality::Equal };
+	}
+	case TypeTag::Definition:
+	case TypeTag::Func:
+	case TypeTag::Builtin:
+	case TypeTag::TailArray:
+		return CompareResult{};
+
+	case TypeTag::CompositeLiteral:
+	case TypeTag::ArrayLiteral:
+	case TypeTag::Variadic:
+	case TypeTag::Divergent:
+	case TypeTag::Trait:
+	case TypeTag::INVALID:
+	case TypeTag::INDIRECTION:
 		; // Fallthrough to unreachable.
 	}
 
@@ -2421,13 +2749,18 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			rhs_casted = rhs_rst.success;
 		}
 
-		bool result = range::mem_equal(lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
+		const CompareResult result = compare(interp, common_type_id, lhs_casted.bytes.immut(), rhs_casted.bytes.immut(), node);
 
 		stack_shrink(interp, mark);
 
+		if (result.tag == CompareTag::INVALID)
+			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot compare values of the given type.\n");
+
+		bool bool_result = result.equality == CompareEquality::Equal;
+
 		// No need for implicit conversion here, as bool is not convertible to
 		// anything else.
-		value_set(&rst.success, range::from_object_bytes_mut(&result));
+		value_set(&rst.success, range::from_object_bytes_mut(&bool_result));
 
 		return rst;
 	}
