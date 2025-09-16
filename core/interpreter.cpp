@@ -1496,6 +1496,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		definition->is_global = has_flag(node, AstFlag::Definition_IsGlobal);
 		definition->is_pub = has_flag(node, AstFlag::Definition_IsPub);
 		definition->is_mut = has_flag(node, AstFlag::Definition_IsMut);
+		definition->has_pending_type = true;
+		definition->has_pending_value = is_some(info.value);
 		definition->type_completion_arec_id = is_some(info.type) ? active_arec_id(interp) : ArecId::INVALID;
 		definition->value_completion_arec_id = is_some(info.value) ? active_arec_id(interp) : ArecId::INVALID;
 
