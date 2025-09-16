@@ -2688,6 +2688,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpCmpNE:
 	case AstTag::OpCmpEQ:
 	{
+		const u32 mark = stack_mark(interp);
+
 		const TypeId bool_type_id = type_create_simple(interp->types, TypeTag::Boolean);
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, bool_type_id, sizeof(bool), alignof(bool));
@@ -2721,8 +2723,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		if (common_type_id == TypeId::INVALID)
 			source_error(interp->errors, source_id_of(interp->asts, node), "Could not unify argument types of `%s`.\n", tag_name(node->tag));
-
-		const u32 mark = stack_mark(interp);
 
 		EvalValue lhs_casted;
 
