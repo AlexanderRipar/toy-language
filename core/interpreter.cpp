@@ -3445,7 +3445,11 @@ static void builtin_definition_typeof(Interpreter* interp, Arec* arec, MutRange<
 	}
 	else if (definition.type.pending != AstNodeId::INVALID)
 	{
+		ASSERT_OR_IGNORE(definition.type.pending != AstNodeId::INVALID && definition.type_completion_arec_id != ArecId::INVALID);
+
 		AstNode* const type = ast_node_from_id(interp->asts, definition.type.pending);
+
+		const ArecRestoreInfo restore = set_active_arec_id(interp, definition.type_completion_arec_id);
 
 		const EvalRst rst = evaluate(interp, type, EvalSpec{
 			ValueKind::Value,
@@ -3453,18 +3457,24 @@ static void builtin_definition_typeof(Interpreter* interp, Arec* arec, MutRange<
 			type_create_simple(interp->types, TypeTag::Type)
 		});
 
+		arec_restore(interp, restore);
+
 		if (rst.tag == EvalTag::Unbound)
 			source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Cannot use `_definition_typeof` in unbound context.\n");
 	}
 	else
 	{
-		ASSERT_OR_IGNORE(definition.has_pending_value && definition.value.pending != AstNodeId::INVALID);
+		ASSERT_OR_IGNORE(definition.has_pending_value && definition.value.pending != AstNodeId::INVALID && definition.value_completion_arec_id != ArecId::INVALID);
 
 		AstNode* const value = ast_node_from_id(interp->asts, definition.value.pending);
+
+		const ArecRestoreInfo restore = set_active_arec_id(interp, definition.type_completion_arec_id);
 
 		const EvalRst rst = evaluate(interp, value, EvalSpec{
 			ValueKind::Value
 		});
+
+		arec_restore(interp, restore);
 
 		if (rst.tag == EvalTag::Unbound)
 			source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Cannot use `_definition_typeof` in unbound context.\n");
