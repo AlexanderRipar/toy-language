@@ -193,3 +193,27 @@ let slice_type = []u32
 let func_taking_slice = func(s: []s8) -> Void => {}
 
 let func_taking_mut_slice = func(s: []mut s8) -> Void => {}
+
+let ptr_type = *u8
+
+let func_taking_ptr = func(p: ptr_type) -> Void => {}
+
+let func_taking_mut_ptr_type = func(p: *mut Bool) -> Void => {}
+
+let multi_ptr_type = [*]u8
+
+let func_taking_multi_ptr = func(p: [*]Void) -> Void => {}
+
+let func_taking_mut_multi_ptr_type = func(p: [*]mut Type) -> Void => {}
+
+let opt_ptr_type = ?u8
+
+let func_taking_opt_ptr = func(p: ?u8) -> Void => {}
+
+let func_taking_mut_opt_ptr = func(p: ?mut u8) -> Void => {}
+
+let opt_multi_ptr_type = [?]u8
+
+let func_taking_opt_multi_ptr = func(p: [?]u8) -> Void => {}
+
+let func_taking_mut_opt_multi_ptr = func(p: [?]mut u8) -> Void => {}

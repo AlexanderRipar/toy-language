@@ -2248,6 +2248,10 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	}
 
 	case AstTag::UOpTypeSlice:
+	case AstTag::UOpTypeMultiPtr:
+	case AstTag::UOpTypeOptMultiPtr:
+	case AstTag::UOpTypeOptPtr:
+	case AstTag::UOpTypePtr:
 	{
 		AstNode* const referenced = first_child_of(node);
 
@@ -2266,11 +2270,13 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		ReferenceType reference_type{};
 		reference_type.referenced_type_id = referenced_type_id;
-		reference_type.is_opt = false;
-		reference_type.is_multi = false;
+		reference_type.is_opt = node->tag == AstTag::UOpTypeOptPtr || node->tag == AstTag::UOpTypeOptMultiPtr;
+		reference_type.is_multi = node->tag == AstTag::UOpTypeMultiPtr || node->tag == AstTag::UOpTypeOptMultiPtr;
 		reference_type.is_mut = has_flag(node, AstFlag::Type_IsMut);
 
-		TypeId reference_type_id = type_create_reference(interp->types, TypeTag::Slice, reference_type);
+		const TypeTag reference_type_tag = node->tag == AstTag::UOpTypeSlice ? TypeTag::Slice : TypeTag::Ptr;
+
+		TypeId reference_type_id = type_create_reference(interp->types, reference_type_tag, reference_type);
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, type_type_id, sizeof(TypeId), alignof(TypeId));
 
@@ -2695,8 +2701,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::Leave:
 	case AstTag::Yield:
 	case AstTag::UOpTypeTailArray:
-	case AstTag::UOpTypeMultiPtr:
-	case AstTag::UOpTypeOptMultiPtr:
 	case AstTag::UOpEval:
 	case AstTag::UOpTry:
 	case AstTag::UOpDefer:
@@ -2705,10 +2709,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpDeref:
 	case AstTag::UOpBitNot:
 	case AstTag::UOpLogNot:
-	case AstTag::UOpTypeOptPtr:
 	case AstTag::UOpTypeVar:
 	case AstTag::UOpImpliedMember:
-	case AstTag::UOpTypePtr:
 	case AstTag::UOpNegate:
 	case AstTag::UOpPos:
 	case AstTag::OpAdd:
