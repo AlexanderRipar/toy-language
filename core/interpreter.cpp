@@ -1545,6 +1545,75 @@ static EvalRst evaluate_local_member(Interpreter* interp, AstNode* node, EvalSpe
 	return rst;
 }
 
+static EvalTag evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode* node, EvalValue* out_lhs, EvalValue* out_rhs, TypeId* out_common_type_id, Arec** out_unbound) noexcept
+{
+	AstNode* const lhs = first_child_of(node);
+
+	const EvalRst lhs_rst = evaluate(interp, lhs, EvalSpec{ ValueKind::Value });
+
+	AstNode* const rhs = next_sibling_of(lhs);
+
+	const EvalRst rhs_rst = evaluate(interp, rhs, EvalSpec{ ValueKind::Value });
+
+	if (lhs_rst.tag == EvalTag::Unbound && rhs_rst.tag == EvalTag::Unbound)
+	{
+		*out_unbound = lhs_rst.unbound < rhs_rst.unbound ? lhs_rst.unbound : rhs_rst.unbound;
+
+		return EvalTag::Unbound;
+	}
+	else if (lhs_rst.tag == EvalTag::Unbound)
+	{
+		add_partial_value_to_builder(interp, rhs, rhs_rst.success.type_id, rhs_rst.success.bytes.immut());
+
+		*out_unbound = lhs_rst.unbound;
+
+		return EvalTag::Unbound;
+	}
+	else if (rhs_rst.tag == EvalTag::Unbound)
+	{
+		add_partial_value_to_builder(interp, lhs, lhs_rst.success.type_id, lhs_rst.success.bytes.immut());
+
+		*out_unbound = rhs_rst.unbound;
+
+		return EvalTag::Unbound;
+	}
+
+	const TypeId common_type_id = type_unify(interp->types, lhs_rst.success.type_id, rhs_rst.success.type_id);
+
+	if (common_type_id == TypeId::INVALID)
+		source_error(interp->errors, source_id_of(interp->asts, node), "Could not unify argument types of `%s`.\n", tag_name(node->tag));
+
+	if (!type_is_equal(interp->types, common_type_id, lhs_rst.success.type_id))
+	{
+		const TypeMetrics metrics = type_metrics_from_id(interp->types, common_type_id);
+
+		*out_lhs = make_value(stack_push(interp, metrics.size, metrics.align), false, true, common_type_id);
+
+		convert(interp, lhs, out_lhs, lhs_rst.success);
+	}
+	else
+	{
+		*out_lhs = lhs_rst.success;
+	}
+
+	if (!type_is_equal(interp->types, common_type_id, rhs_rst.success.type_id))
+	{
+		const TypeMetrics metrics = type_metrics_from_id(interp->types, common_type_id);
+
+		*out_rhs = make_value(stack_push(interp, metrics.size, metrics.align), false, true, common_type_id);
+
+		convert(interp, rhs, out_rhs, rhs_rst.success);
+	}
+	else
+	{
+		*out_rhs = rhs_rst.success;
+	}
+
+	*out_common_type_id = common_type_id;
+
+	return EvalTag::Success;
+}
+
 static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signature_type, AstNode* callee) noexcept
 {
 	if (signature_type->parameter_list_is_unbound || signature_type->return_type_is_unbound)
@@ -2694,65 +2763,18 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, bool_type_id, sizeof(bool), alignof(bool));
 
-		AstNode* const lhs = first_child_of(node);
-
-		const EvalRst lhs_rst = evaluate(interp, lhs, EvalSpec{ ValueKind::Value });
-
-		AstNode* const rhs = next_sibling_of(lhs);
-
-		const EvalRst rhs_rst = evaluate(interp, rhs, EvalSpec{ ValueKind::Value });
-
-		if (lhs_rst.tag == EvalTag::Unbound && rhs_rst.tag == EvalTag::Unbound)
-		{
-			return eval_unbound(lhs_rst.unbound < rhs_rst.unbound ? lhs_rst.unbound : rhs_rst.unbound);
-		}
-		else if (lhs_rst.tag == EvalTag::Unbound)
-		{
-			add_partial_value_to_builder(interp, rhs, rhs_rst.success.type_id, rhs_rst.success.bytes.immut());
-
-			return eval_unbound(lhs_rst.unbound);
-		}
-		else if (rhs_rst.tag == EvalTag::Unbound)
-		{
-			add_partial_value_to_builder(interp, lhs, lhs_rst.success.type_id, lhs_rst.success.bytes.immut());
-
-			return eval_unbound(rhs_rst.unbound);
-		}
-
-		const TypeId common_type_id = type_unify(interp->types, lhs_rst.success.type_id, rhs_rst.success.type_id);
-
-		if (common_type_id == TypeId::INVALID)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Could not unify argument types of `%s`.\n", tag_name(node->tag));
-
 		EvalValue lhs_casted;
-
-		if (!type_is_equal(interp->types, common_type_id, lhs_rst.success.type_id))
-		{
-			const TypeMetrics metrics = type_metrics_from_id(interp->types, common_type_id);
-
-			lhs_casted = make_value(stack_push(interp, metrics.size, metrics.align), false, true, common_type_id);
-
-			convert(interp, lhs, &lhs_casted, lhs_rst.success);
-		}
-		else
-		{
-			lhs_casted = lhs_rst.success;
-		}
 
 		EvalValue rhs_casted;
 
-		if (!type_is_equal(interp->types, common_type_id, rhs_rst.success.type_id))
-		{
-			const TypeMetrics metrics = type_metrics_from_id(interp->types, common_type_id);
+		TypeId common_type_id;
 
-			rhs_casted = make_value(stack_push(interp, metrics.size, metrics.align), false, true, common_type_id);
+		Arec* unbound;
 
-			convert(interp, rhs, &rhs_casted, rhs_rst.success);
-		}
-		else
-		{
-			rhs_casted = rhs_rst.success;
-		}
+		const EvalTag sub_tag = evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound);
+
+		if (sub_tag == EvalTag::Unbound)
+			return eval_unbound(unbound);
 
 		const CompareResult result = compare(interp, common_type_id, lhs_casted.bytes.immut(), rhs_casted.bytes.immut(), node);
 
