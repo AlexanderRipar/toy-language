@@ -3357,6 +3357,8 @@ static void init_builtin_types(Interpreter* interp) noexcept
 
 	const TypeId s64_type_id = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ 64, true });
 
+	const TypeId u64_type_id = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ 64, false });
+
 	const TypeId u8_type_id = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ 8, false });
 
 	ReferenceType slice_of_u8_type{};
@@ -3429,7 +3431,10 @@ static void init_builtin_types(Interpreter* interp) noexcept
 	);
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::CompleteType)] = make_func_type(interp->types, type_type_id,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_builder_type_id, true }
+		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("builder")), type_builder_type_id, true },
+		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("size")), u64_type_id, true },
+		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("align")), u64_type_id, true },
+		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("stride")), u64_type_id, true }
 	);
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::SourceId)] = make_func_type(interp->types, u32_type_id);

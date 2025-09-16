@@ -2216,7 +2216,10 @@ enum class Builtin : u8
 	// `let _add_type_member = func(builder: TypeBuilder, definition: Definition, offset: s64) -> Void`
 	AddTypeMember,
 
-	// TODO: This is not yet specified.
+	// Turns the given `TypeBuilder` into a `Type`, in effect calling
+	// `type_seal_composite` with the given (range-checked) `size`, `align` and
+	// `stride`, and then completing all of its members' types and values.
+	// `let _complete_type = func(builder: TypeBuilder, size: u64, align: u64, stride: u64) -> Type`
 	CompleteType,
 
 	// Returns the `SourceId` of the call site as a `u32`.
