@@ -64,7 +64,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 		else
 			introducer = "*";
 
-		diag::buf_printf(ctx, "%s%s ", introducer, reference->is_mut ? " mut" : "");
+		diag::buf_printf(ctx, "%s%s", introducer, reference->is_mut ? "mut " : "");
 
 		print_type_impl(ctx, identifiers, types, reference->referenced_type_id, indent + 1, true);
 
