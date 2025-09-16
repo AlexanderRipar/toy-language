@@ -2175,15 +2175,15 @@ enum class Builtin : u8
 	Returntypeof,
 
 	// Returns the size of its argument.
-	// `let _sizeof = func(arg: TypeInfo) -> Type`
+	// `let _sizeof = func(arg: TypeInfo) -> CompInteger`
 	Sizeof,
 
 	// Returns the alignment of its argument.
-	// `let _alignof = func(arg: TypeInfo) -> Type`
+	// `let _alignof = func(arg: TypeInfo) -> CompInteger`
 	Alignof,
 
 	// Returns the stride of its argument.
-	// `let _strideof = func(arg: TypeInfo) -> Type`
+	// `let _strideof = func(arg: TypeInfo) -> CompInteger`
 	Strideof,
 
 	// TODO: This is not yet specified.
