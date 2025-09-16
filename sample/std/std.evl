@@ -4,20 +4,20 @@
 
 pub prelude = _import("prelude.evl", 1 == 1, _source_id())
 
+
+
+// Composite type creation
+
 pub TypeBuilder: Type = _returntypeof(_create_type_builder)
 
 pub create_type_builder = func() -> TypeBuilder => _create_type_builder(_caller_source_id())
 
 pub add_type_member = func(builder: TypeBuilder, definition: Definition, offset: s64) -> Void => _add_type_member(builder, definition, offset)
 
+pub complete_type = func(builder: TypeBuilder, size: u64, align: u64, stride: u64) -> Type => _complete_type(builder, size, align, stride)
+
 
 /*
-// Composite type creation
-
-pub complete_type => func(builder: TypeBuilder) -> Type = _complete_type(builder)
-
-
-
 // Internal helpers
 
 let std_import = func(path: []char8) -> Type => _import(path, true)

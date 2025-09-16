@@ -3308,13 +3308,35 @@ static void builtin_add_type_member(Interpreter* interp, Arec* arec, [[maybe_unu
 
 static void builtin_complete_type(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
-	(void) interp;
+	const TypeId builder = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("builder")));
 
-	(void) arec;
+	const u64 size = get_builtin_arg<u64>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("size")));
 
-	(void) into;
+	const u64 align = get_builtin_arg<u64>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("align")));
 
-	TODO("Implement.");
+	const u64 stride = get_builtin_arg<u64>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("stride")));
+
+	if (align > UINT32_MAX)
+		source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Alignment %" PRIu64 " passed to `_complete_type` must not exceed the maximum supported value of %u.\n", align, static_cast<u32>(1) << 31);
+
+	if (align == 0)
+		source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Alignment %" PRIu64 " passed to `_complete_type` must not be 0.\n", align);
+
+	if (!is_pow2(align))
+		source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Alignment %" PRIu64 " passed to `_complete_type` must be a power of two.\n", align);
+
+	const TypeId direct_type_id = type_seal_composite(interp->types, builder, size, static_cast<u32>(align), stride);
+
+	IncompleteMemberIterator it = incomplete_members_of(interp->types, direct_type_id);
+
+	while (has_next(&it))
+	{
+		const Member* const member = next(&it);
+
+		complete_member(interp, direct_type_id, member);
+	}
+
+	range::mem_copy(into, range::from_object_bytes(&direct_type_id));
 }
 
 static void builtin_source_id(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept

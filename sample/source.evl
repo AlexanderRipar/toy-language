@@ -227,7 +227,7 @@ let Pair = func(fst: Definition, snd: Definition) -> Type => {
 
 	std.add_type_member(tb, snd, 0)
 
-	u32
+	std.complete_type(tb, 0, 1, 0)
 }
 
 let MyPair = Pair(let x: u32, let y: u32)
