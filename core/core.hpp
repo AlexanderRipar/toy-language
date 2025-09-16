@@ -2216,6 +2216,10 @@ enum class Builtin : u8
 	// `let _source_id = func() -> u32`
 	SourceId,
 
+	// Returns the `SourceId` of the call site's caller as a `u32`.
+	// `let _caller_source_id = func() -> u32`
+	CallerSourceId,
+
 	// Number of `Builtin`s, used for sizing arrays. Should not be used
 	// otherwise.
 	MAX,

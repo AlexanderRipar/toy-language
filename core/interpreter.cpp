@@ -3292,9 +3292,22 @@ static void builtin_complete_type(Interpreter* interp, Arec* arec, [[maybe_unuse
 	TODO("Implement.");
 }
 
-static void builtin_source_id([[maybe_unused]] Interpreter* interp, [[maybe_unused]] Arec* arec, AstNode* call_node, MutRange<byte> into) noexcept
+static void builtin_source_id(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
 {
-	const SourceId rst = source_id_of(interp->asts, call_node);
+	const Arec* const calling_arec = arec_from_id(interp, arec->caller_arec_id);
+
+	const SourceId rst = calling_arec->source_id;
+
+	range::mem_copy(into, range::from_object_bytes(&rst));
+}
+
+static void builtin_caller_source_id(Interpreter* interp, Arec* arec, [[maybe_unused]] AstNode* call_node, MutRange<byte> into) noexcept
+{
+	const Arec* const calling_arec = arec_from_id(interp, arec->caller_arec_id);
+
+	const Arec* const caller_arec = arec_from_id(interp, calling_arec->caller_arec_id);
+
+	const SourceId rst = caller_arec->source_id;
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }
@@ -3401,6 +3414,8 @@ static void init_builtin_types(Interpreter* interp) noexcept
 	);
 
 	interp->builtin_type_ids[static_cast<u8>(Builtin::SourceId)] = make_func_type(interp->types, u32_type_id);
+
+	interp->builtin_type_ids[static_cast<u8>(Builtin::CallerSourceId)] = make_func_type(interp->types, u32_type_id);
 }
 
 static void init_builtin_values(Interpreter* interp) noexcept
@@ -3421,6 +3436,7 @@ static void init_builtin_values(Interpreter* interp) noexcept
 	interp->builtin_values[static_cast<u8>(Builtin::AddTypeMember)] = &builtin_add_type_member;
 	interp->builtin_values[static_cast<u8>(Builtin::CompleteType)] = &builtin_complete_type;
 	interp->builtin_values[static_cast<u8>(Builtin::SourceId)] = &builtin_source_id;
+	interp->builtin_values[static_cast<u8>(Builtin::CallerSourceId)] = &builtin_caller_source_id;
 }
 
 // Pushes `let std = _import(<std_filepath>, _source_id())` into `asts`'s
@@ -3505,6 +3521,8 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("true")));
 
 	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("false")));
+
+	std_prelude_use(asts, std_name, prelude_name, id_from_identifier(identifiers, range::from_literal_string("import")));
 
 	push_node(asts, first_token, SourceId::INVALID, AstFlag::EMPTY, AstTag::File);
 
@@ -3660,6 +3678,7 @@ const char8* tag_name(Builtin builtin) noexcept
 		"_add_type_member",
 		"_complete_type",
 		"_source_id",
+		"_caller_source_id",
 	};
 
 	u8 ordinal = static_cast<u8>(builtin);
