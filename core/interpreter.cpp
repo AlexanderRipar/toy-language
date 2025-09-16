@@ -2513,19 +2513,31 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		});
 
 		if (count_rst.tag == EvalTag::Unbound && elem_type_rst.tag == EvalTag::Unbound)
+		{
 			return eval_unbound(count_rst.unbound < elem_type_rst.unbound ? count_rst.unbound : elem_type_rst.unbound);
+		}
 		else if (count_rst.tag == EvalTag::Unbound)
+		{
+			add_partial_value_to_builder(interp, elem_type, elem_type_rst.success.type_id, elem_type_rst.success.bytes.immut());
+
 			return eval_unbound(count_rst.unbound);
+		}
 		else if (elem_type_rst.tag == EvalTag::Unbound)
+		{
+			add_partial_value_to_builder(interp, count, count_rst.success.type_id, count_rst.success.bytes.immut());
+
 			return eval_unbound(elem_type_rst.unbound);
+		}
+		else
+		{
+			EvalRst rst = fill_spec_sized(interp, spec, node, false, true, type_type_id, sizeof(TypeId), alignof(TypeId));
 
-		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, type_type_id, sizeof(TypeId), alignof(TypeId));
+			TypeId array_type_id = type_create_array(interp->types, TypeTag::Array, ArrayType{ count_u64, elem_type_id });
 
-		TypeId array_type_id = type_create_array(interp->types, TypeTag::Array, ArrayType{ count_u64, elem_type_id });
+			value_set(&rst.success, range::from_object_bytes_mut(&array_type_id));
 
-		value_set(&rst.success, range::from_object_bytes_mut(&array_type_id));
-
-		return rst;
+			return rst;
+		}
 	}
 
 	case AstTag::OpArrayIndex:
