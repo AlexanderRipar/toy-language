@@ -2653,32 +2653,21 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			}
 		}
 
-		if (arrayish_rst.tag == EvalTag::Unbound || index_rst.tag == EvalTag::Unbound)
+		if (arrayish_rst.tag == EvalTag::Unbound && index_rst.tag == EvalTag::Unbound)
 		{
-			Arec* unbound_in;
+			return eval_unbound(arrayish_rst.unbound < index_rst.unbound ? arrayish_rst.unbound : index_rst.unbound);
+		}
+		else if (arrayish_rst.tag == EvalTag::Unbound)
+		{
+			add_partial_value_to_builder(interp, index, index_rst.success.type_id, index_rst.success.bytes.immut());
 
-			if (arrayish_rst.tag == EvalTag::Success)
-			{
-				add_partial_value_to_builder(interp, arrayish, arrayish_rst.success.type_id, arrayish_rst.success.bytes.immut());
+			return eval_unbound(arrayish_rst.unbound);
+		}
+		else if (index_rst.tag == EvalTag::Unbound)
+		{
+			add_partial_value_to_builder(interp, arrayish, arrayish_rst.success.type_id, arrayish_rst.success.bytes.immut());
 
-				ASSERT_OR_IGNORE(index_rst.tag == EvalTag::Unbound);
-
-				unbound_in = index_rst.unbound;
-			}
-			else if (index_rst.tag == EvalTag::Success)
-			{
-				add_partial_value_to_builder(interp, index, index_rst.success.type_id, index_rst.success.bytes.immut());
-
-				ASSERT_OR_IGNORE(arrayish_rst.tag == EvalTag::Unbound);
-
-				unbound_in = arrayish_rst.unbound;
-			}
-			else
-			{
-				unbound_in = arrayish_rst.unbound < index_rst.unbound ? arrayish_rst.unbound : index_rst.unbound;
-			}
-
-			return eval_unbound(unbound_in);
+			return eval_unbound(index_rst.unbound);
 		}
 		else
 		{
