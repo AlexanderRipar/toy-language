@@ -45,6 +45,10 @@ struct alignas(8) Arec
 	u32 attach_index;
 
 	TypeId global_scope_type_id;
+
+	SourceId source_id;
+
+	ArecId caller_arec_id;
 };
 
 struct ArecRestoreInfo
@@ -403,7 +407,7 @@ static void arec_restore(Interpreter* interp, ArecRestoreInfo info) noexcept
 	interp->top_arec_id = info.old_top;
 }
 
-static ArecId arec_push(Interpreter* interp, TypeId record_type_id, u64 size, u32 align, ArecId lookup_parent, ArecKind kind, TypeId global_scope_type_id) noexcept
+static ArecId arec_push(Interpreter* interp, TypeId record_type_id, u64 size, u32 align, ArecId lookup_parent, ArecKind kind, TypeId global_scope_type_id, SourceId source_id, ArecId caller_arec_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_tag_from_id(interp->types, record_type_id) == TypeTag::Composite);
 
@@ -421,6 +425,8 @@ static ArecId arec_push(Interpreter* interp, TypeId record_type_id, u64 size, u3
 	arec->kind = static_cast<u32>(kind);
 	arec->attach_index = interp->arec_attachs.used();
 	arec->global_scope_type_id = global_scope_type_id;
+	arec->source_id = source_id;
+	arec->caller_arec_id = caller_arec_id;
 
 	(void) interp->arec_attachs.reserve(static_cast<u32>((size + 7) / 8));
 
@@ -1217,7 +1223,7 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 
 	const TypeMetrics parameter_list_metrics = type_metrics_from_id(interp->types, parameter_list_type_id);
 
-	const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, parameter_list_metrics.size, parameter_list_metrics.align, ArecId::INVALID, ArecKind::Normal, global_scope_type_id);
+	const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, parameter_list_metrics.size, parameter_list_metrics.align, ArecId::INVALID, ArecKind::Normal, global_scope_type_id, source_id_of(interp->asts, callee), caller_arec_id);
 
 	Arec* const parameter_list_arec = arec_from_id(interp, parameter_list_arec_id);
 
@@ -1500,7 +1506,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const TypeId block_type_id = type_create_composite(interp->types, global_scope_type_id, TypeDisposition::Block, SourceId::INVALID, 0, false);
 
-		const ArecId block_arec_id = arec_push(interp, block_type_id, 0, 1, active_arec_id(interp), ArecKind::Normal, global_scope_type_id);
+		const ArecId block_arec_id = arec_push(interp, block_type_id, 0, 1, active_arec_id(interp), ArecKind::Normal, global_scope_type_id, source_id_of(interp->asts, node), active_arec(interp)->caller_arec_id);
 
 		Arec* const block_arec = active_arec(interp);
 
@@ -1826,7 +1832,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const TypeId parameter_list_type_id = type_create_composite(interp->types, global_scope_type_id, TypeDisposition::Signature, SourceId::INVALID, 0, false);
 
-		const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, 0, 1, active_arec_id(interp), ArecKind::Unbound, global_scope_type_id);
+		const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, 0, 1, active_arec_id(interp), ArecKind::Unbound, global_scope_type_id, source_id_of(interp->asts, node), active_arec(interp)->caller_arec_id);
 
 		Arec* const parameter_list_arec = arec_from_id(interp, parameter_list_arec_id);
 
@@ -2919,7 +2925,7 @@ static TypeId type_from_file_ast(Interpreter* interp, AstNode* file, SourceId fi
 	// parent.
 	const TypeId file_type_id = type_create_composite(interp->types, interp->prelude_type_id, TypeDisposition::User, file_type_source_id, 0, false);
 
-	const ArecId file_arec_id = arec_push(interp, file_type_id, 0, 1, ArecId::INVALID, ArecKind::Normal, file_type_id);
+	const ArecId file_arec_id = arec_push(interp, file_type_id, 0, 1, ArecId::INVALID, ArecKind::Normal, file_type_id, file_type_source_id, ArecId::INVALID);
 
 	AstDirectChildIterator ast_it = direct_children_of(file);
 
