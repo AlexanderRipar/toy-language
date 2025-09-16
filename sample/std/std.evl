@@ -6,7 +6,7 @@ pub prelude = _import("prelude.evl", 1 == 1, _source_id())
 
 pub TypeBuilder: Type = _returntypeof(_create_type_builder)
 
-pub create_type_builder = func() -> TypeBuilder => _create_type_builder()
+pub create_type_builder = func() -> TypeBuilder => _create_type_builder(_caller_source_id())
 
 
 /*

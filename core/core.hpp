@@ -2203,7 +2203,9 @@ enum class Builtin : u8
 	// `let _import = func(path: []u8, is_std: Bool, from: u32) -> Type`
 	Import,
 
-	// TODO: This is not yet specified.
+	// Creates an empty, unsealed composite type with its `distinct_source_id`
+	// set to `source_id`, returning it typed as a `TypeTag::TypeBuilder`.
+	// `let _create_type_builder = func(source_id: u32) -> TypeBuilder`
 	CreateTypeBuilder,
 
 	// TODO: This is not yet specified.
