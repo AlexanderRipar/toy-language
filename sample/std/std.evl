@@ -8,22 +8,11 @@ pub TypeBuilder: Type = _returntypeof(_create_type_builder)
 
 pub create_type_builder = func() -> TypeBuilder => _create_type_builder(_caller_source_id())
 
+pub add_type_member = func(builder: TypeBuilder, definition: Definition, offset: s64) -> Void => _add_type_member(builder, definition, offset)
+
 
 /*
 // Composite type creation
-
-pub add_type_member = func(
-	builder: *mut TypeBuilder,
-	definition: Definition,
-	name: []u8,
-	Typ: Type,
-	offset: s64,
-	is_mut: Bool,
-	is_pub: Bool,
-	is_use: Bool,
-	is_global: Bool,
-	default_value: ?Typ
-) -> Void => _add_type_member(builder, name, Typ, offset, is_mut, is_pub, is_global, is_use, default_value)
 
 pub complete_type => func(builder: TypeBuilder) -> Type = _complete_type(builder)
 

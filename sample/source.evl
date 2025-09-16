@@ -222,6 +222,11 @@ let variadic_func = func(args: ...u8) -> Void => {}
 
 let Pair = func(fst: Definition, snd: Definition) -> Type => {
 	mut tb = std.create_type_builder()
+
+	std.add_type_member(tb, fst, 0)
+
+	std.add_type_member(tb, snd, 0)
+
 	u32
 }
 

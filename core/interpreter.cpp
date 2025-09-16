@@ -3278,15 +3278,32 @@ static void builtin_create_type_builder(Interpreter* interp, Arec* arec, MutRang
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }
 
-static void builtin_add_type_member(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static void builtin_add_type_member(Interpreter* interp, Arec* arec, [[maybe_unused]] MutRange<byte> into) noexcept
 {
-	(void) interp;
+	const TypeId builder = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("builder")));
 
-	(void) arec;
+	const Definition definition = get_builtin_arg<Definition>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("definition")));
 
-	(void) into;
+	const s64 offset = get_builtin_arg<s64>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("offset")));
 
-	TODO("Implement.");
+	Member member{};
+	member.name = definition.name;
+	member.type = definition.type;
+	member.value = definition.value;
+	member.is_global = definition.is_global;
+	member.is_pub = definition.is_pub;
+	member.is_mut = definition.is_mut;
+	member.is_param = false;
+	member.has_pending_type = definition.has_pending_type;
+	member.has_pending_value = definition.has_pending_value;
+	member.is_comptime_known = false;
+	member.is_arg_independent = false;
+	member.rank = 0;
+	member.type_completion_arec_id = definition.type_completion_arec_id;
+	member.value_completion_arec_id = definition.value_completion_arec_id;
+	member.offset = offset;
+
+	type_add_composite_member(interp->types, builder, member);
 }
 
 static void builtin_complete_type(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
