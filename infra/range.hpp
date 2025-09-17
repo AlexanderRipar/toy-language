@@ -50,6 +50,20 @@ public:
 		return m_end - m_begin;
 	}
 
+	Range<T> subrange(u64 begin) const noexcept
+	{
+		ASSERT_OR_IGNORE(begin <= count());
+
+		return { m_begin + begin, m_end };
+	}
+
+	Range<T> subrange(u64 begin, u64 subrange_count) const noexcept
+	{
+		ASSERT_OR_IGNORE(begin + subrange_count <= count());
+
+		return { m_begin + begin, subrange_count };
+	}
+
 	constexpr Range<byte> as_byte_range() const noexcept
 	{
 		return { reinterpret_cast<const byte*>(m_begin), count() * sizeof(T) };
