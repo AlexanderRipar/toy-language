@@ -10,19 +10,9 @@ struct ErrorSink
 
 	IdentifierPool* identifiers;
 
-	bool has_error_dst;
+	bool has_error_jmp_buf;
 
-	// So... I guess MSVC pads aligns this to 16 bytes and then decides to warn
-	// about it. We are fine with this extra alignment, since it is handled by
-	// `AllocPool`, so we can just ignore the warning.
-	#if COMPILER_MSVC
-	#pragma warning(push)
-	#pragma warning(disable : 4324) // C4324: structure was padded due to alignment specifier
-	#endif
-	jmp_buf error_dst;
-	#if COMPILER_MSVC
-	#pragma warning(pop)
-	#endif
+	jmp_buf* error_jmp_buf;
 };
 
 [[nodiscard]] ErrorSink* create_error_sink(AllocPool* alloc, SourceReader* reader, IdentifierPool* identifiers) noexcept
@@ -31,6 +21,7 @@ struct ErrorSink
 
 	errors->reader = reader;
 	errors->identifiers = identifiers;
+	errors->has_error_jmp_buf = false;
 
 	return errors;
 }
@@ -94,34 +85,19 @@ void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format,
 	print_error(&location, format, args);
 }
 
-// We don't do C++ object destruction here lol.
-#if COMPILER_MSVC
-#pragma warning(push)
-#pragma warning(disable : 4611) // C4611: interaction between '_setjmp' and C++ object destruction is non-portable
-#endif
-bool set_error_handling_context(ErrorSink* errors) noexcept
+void set_error_handling_context(ErrorSink* errors, jmp_buf* setjmpd_longjmp_buf) noexcept
 {
-	errors->has_error_dst = true;
+	errors->has_error_jmp_buf = true;
 
-	// This is intentionally an `if (true) return true`, as `setjmp` must only
-	// be used in very specific context (e.g. in a comparison in the condition
-	// of an `if`), so
-	// DO *NOT* CLEAN THIS UP.
-	if (setjmp(errors->error_dst) != 0)
-		return true;
-
-	return false;
+	errors->error_jmp_buf = setjmpd_longjmp_buf;
 }
-#if COMPILER_MSVC
-#pragma warning(pop)
-#endif
 
 NORETURN void error_exit(ErrorSink* errors) noexcept
 {
 	DEBUGBREAK;
 
-	if (errors->has_error_dst)
-		longjmp(errors->error_dst, 1);
+	if (errors->has_error_jmp_buf)
+		longjmp(*errors->error_jmp_buf, 1);
 	else
 		minos::exit_process(1);
 }

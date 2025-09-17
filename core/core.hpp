@@ -1,6 +1,8 @@
 #ifndef CORE_INCLUDE_GUARD
 #define CORE_INCLUDE_GUARD
 
+#include <csetjmp>
+
 #include "../infra/common.hpp"
 #include "../infra/alloc_pool.hpp"
 #include "../infra/optptr.hpp"
@@ -1429,10 +1431,11 @@ void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, 
 // accepts a `va_list`, enabling nested variadic calls.
 void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
 
-// Sets the caller as the context to which to return to upon a call to
-// `source_error`, `vsource_error` or `error_exit`.
-// Returns `true` upon a return from a handled error, and `false` otherwise.
-bool set_error_handling_context(ErrorSink* errors) noexcept;
+// Takes a pointer to a `jmp_buf` on which `setjmp` has previously been called.
+// When one of `source_error`, `vsource_error` or `error_exit` is called next,
+// `longjmp` will be called with that `jmp_buf` and `1` passed for the `status`
+// argument (`setjmp`'s return).
+void set_error_handling_context(ErrorSink* errors, jmp_buf* setjmpd_longjmp_buf) noexcept;
 
 NORETURN void error_exit(ErrorSink* errors) noexcept;
 
