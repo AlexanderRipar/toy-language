@@ -1,0 +1,10 @@
+
+let unused = {
+	let x = 1 & 1
+
+	std.assert(x == 1)
+
+	let y = 1 & 2
+
+	std.assert(y == 0)
+}
