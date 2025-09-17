@@ -3033,66 +3033,18 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `<<` must be of integer type.\n");
 			}
 
-			const u64 shift_by_bytes = shift / 8;
-
-			const u8 shift_by_bits = shift % 8;
-
 			if (lhs_type.bits <= shift)
 				source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `<<` exceeds the left-hand-side's size.\n");
 
-			const u64 lhs_size = (lhs_type.bits + 7) / 8;
-
-			const u64 shift_size = lhs_size - shift_by_bytes;
-
 			if (node->tag == AstTag::OpShiftL)
 			{
-				memset(rst_value.begin() + (shift + 7) / 8, 0, shift_size);
-
-				u8 carry = 0;
-
-				for (u64 i = 0; i != shift_size; ++i)
-				{
-					const u16 shifted = static_cast<u16>((static_cast<u16>(lhs_value[i]) << shift_by_bits) | carry);
-
-					rst_value[i + shift_by_bytes] = static_cast<u8>(shifted);
-
-					carry = static_cast<u8>(shifted >> 8);
-				}
-
-				// TODO: Set top bits if lhs_type.bits is not a multiple of 8
+				bitwise_shift_left(lhs_type.bits, rst_value, lhs_value, shift);
 			}
 			else
 			{
 				ASSERT_OR_IGNORE(node->tag == AstTag::OpShiftR);
 
-				u8 fill = 0;
-
-				if (lhs_type.is_signed)
-				{
-					const u8 extra_bits = lhs_type.bits % 8;
-
-					const u8 msb_mask = extra_bits == 0 ? 0x80 : static_cast<u8>(1 << (extra_bits - 1));
-
-					if ((lhs_value[lhs_type.bits / 8] & msb_mask) != 0)
-						fill = 0xFF;
-				}
-
-				memset(rst_value.begin(), fill, shift_size);
-
-				u8 carry = 0;
-
-				for (u64 i = 0; i != shift_size; ++i)
-				{
-					const u8 lhs_byte = lhs_value[i + shift_by_bytes];
-
-					const u8 shifted = (lhs_byte >> shift_by_bits) | carry;
-
-					rst_value[i] = shifted;
-
-					carry = static_cast<u8>(static_cast<u16>(lhs_byte) << (8 - shift_by_bits));
-				}
-
-				// TODO: Set top bits if lhs_type.bits is not a multiple of 8
+				bitwise_shift_right(lhs_type.bits, rst_value, lhs_value, shift, lhs_type.is_signed);
 			}
 		}
 		else
