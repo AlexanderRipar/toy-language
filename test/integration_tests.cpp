@@ -82,7 +82,7 @@ void integration_tests() noexcept
 		if (filename.count() < 7
 		|| (filename[0] != 'u' && filename[0] != 's')
 		|| (filename[1] != 't' && filename[1] != 'f')
-		||  filename[2] != '_'
+		||  filename[2] != '-'
 		|| !range::mem_equal(filename.subrange(filename.count() - 4), range::from_literal_string(".evl")))
 		{
 			status = minos::directory_enumeration_next(dir, &rst);
