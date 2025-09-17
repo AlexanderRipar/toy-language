@@ -1555,7 +1555,7 @@ enum class TypeTag : u8
 
 	// Tag of the `TypeInfo` type. This type is used to implicitly convert
 	// anything to a `Type`, which is e.g. necessary for functions such as
-	// `typeof` or `sizeof`.
+	// `typeof` or `sizeof`. No additional structural data is stored.
 	TypeInfo,
 
 	// Tag of the `TypeBuilder` type returned from the `_create_type` builtin.
