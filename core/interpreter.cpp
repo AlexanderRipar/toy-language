@@ -3694,6 +3694,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::Trait:
 	case AstTag::Impl:
 	case AstTag::Catch:
+	case AstTag::Undefined:
 	case AstTag::LitChar:
 	case AstTag::Return:
 	case AstTag::Leave:
@@ -3816,6 +3817,7 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::Impl:
 	case AstTag::Catch:
 	case AstTag::Unreachable:
+	case AstTag::Undefined:
 	case AstTag::LitFloat:
 	case AstTag::LitChar:
 	case AstTag::LitString:
