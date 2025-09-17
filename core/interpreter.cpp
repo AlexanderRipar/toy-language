@@ -3601,7 +3601,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::Ensures:
 	case AstTag::ForEach:
 	case AstTag::Switch:
-	case AstTag::Case:
 	case AstTag::Trait:
 	case AstTag::Impl:
 	case AstTag::Catch:
@@ -3644,6 +3643,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::INVALID:
 	case AstTag::File:
 	case AstTag::Parameter:
+	case AstTag::Case:
 	case AstTag::ParameterList:
 	case AstTag::UOpImpliedMember:
 	case AstTag::MAX:
