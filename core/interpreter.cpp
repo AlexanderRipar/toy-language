@@ -1642,6 +1642,30 @@ static EvalRst evaluate_local_member(Interpreter* interp, AstNode* node, EvalSpe
 	return rst;
 }
 
+static Arec* check_binary_expr_for_unbound(Interpreter* interp, AstNode* lhs, AstNode* rhs, const EvalRst* lhs_rst, const EvalRst* rhs_rst) noexcept
+{
+	if (lhs_rst->tag == EvalTag::Success && rhs_rst->tag == EvalTag::Success)
+	{
+		return nullptr;
+	}
+	else if (lhs_rst->tag == EvalTag::Success)
+	{
+		add_partial_value_to_builder(interp, lhs, lhs_rst->success.type_id, lhs_rst->success.bytes.immut());
+
+		return rhs_rst->unbound;
+	}
+	else if (rhs_rst->tag == EvalTag::Success)
+	{
+		add_partial_value_to_builder(interp, rhs, rhs_rst->success.type_id, rhs_rst->success.bytes.immut());
+
+		return lhs_rst->unbound;
+	}
+	else
+	{
+		return lhs_rst->unbound < rhs_rst->unbound ? lhs_rst->unbound : rhs_rst->unbound;
+	}
+}
+
 static bool evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode* node, EvalValue* out_lhs, EvalValue* out_rhs, TypeId* out_common_type_id, Arec** out_unbound) noexcept
 {
 	AstNode* const lhs = first_child_of(node);
@@ -1652,25 +1676,11 @@ static bool evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode* no
 
 	const EvalRst rhs_rst = evaluate(interp, rhs, EvalSpec{ ValueKind::Value });
 
-	if (lhs_rst.tag == EvalTag::Unbound && rhs_rst.tag == EvalTag::Unbound)
+	Arec* const unbound = check_binary_expr_for_unbound(interp, lhs, rhs, &lhs_rst, &rhs_rst);
+
+	if (unbound != nullptr)
 	{
-		*out_unbound = lhs_rst.unbound < rhs_rst.unbound ? lhs_rst.unbound : rhs_rst.unbound;
-
-		return false;
-	}
-	else if (lhs_rst.tag == EvalTag::Unbound)
-	{
-		add_partial_value_to_builder(interp, rhs, rhs_rst.success.type_id, rhs_rst.success.bytes.immut());
-
-		*out_unbound = lhs_rst.unbound;
-
-		return false;
-	}
-	else if (rhs_rst.tag == EvalTag::Unbound)
-	{
-		add_partial_value_to_builder(interp, lhs, lhs_rst.success.type_id, lhs_rst.success.bytes.immut());
-
-		*out_unbound = rhs_rst.unbound;
+		*out_unbound = unbound;
 
 		return false;
 	}
@@ -3028,22 +3038,10 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			ValueKind::Value
 		});
 
-		if (lhs_rst.tag == EvalTag::Unbound && rhs_rst.tag == EvalTag::Unbound)
-		{
-			return eval_unbound(lhs_rst.unbound < rhs_rst.unbound ? lhs_rst.unbound : rhs_rst.unbound);
-		}
-		else if (lhs_rst.tag == EvalTag::Unbound)
-		{
-			add_partial_value_to_builder(interp, rhs, rhs_rst.success.type_id, rhs_rst.success.bytes.immut());
+		Arec* const unbound = check_binary_expr_for_unbound(interp, lhs, rhs, &lhs_rst, &rhs_rst);
 
-			return eval_unbound(lhs_rst.unbound);
-		}
-		else if (rhs_rst.tag == EvalTag::Unbound)
-		{
-			add_partial_value_to_builder(interp, lhs, lhs_rst.success.type_id, lhs_rst.success.bytes.immut());
-
-			return eval_unbound(rhs_rst.unbound);
-		}
+		if (unbound != nullptr)
+			return eval_unbound(unbound);
 
 		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_rst.success.type_id);
 
