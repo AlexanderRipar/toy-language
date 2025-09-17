@@ -77,8 +77,13 @@ void integration_tests() noexcept
 
 		const Range<char8> filename = range::from_cstring(rst.filename);
 
-		// Skip files that do not have one of the test prefixes `(u|s)(t|f)_`.
-		if (filename.count() < 3 || (filename[0] != 'u' && filename[0] != 's') || (filename[1] != 't' && filename[1] != 'f') || filename[2] != '_')
+		// Skip files that do not have one of the test prefixes `(u|s)(t|f)_`
+		// or the suffix `.evl`.
+		if (filename.count() < 7
+		|| (filename[0] != 'u' && filename[0] != 's')
+		|| (filename[1] != 't' && filename[1] != 'f')
+		||  filename[2] != '_'
+		|| !range::mem_equal(filename.subrange(filename.count() - 4), range::from_literal_string(".evl")))
 		{
 			status = minos::directory_enumeration_next(dir, &rst);
 
