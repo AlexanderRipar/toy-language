@@ -2,29 +2,11 @@
 #include "../core/core.hpp"
 #include "../infra/range.hpp"
 
-#define SOURCES_DIRECTORY "integration_test_sources/"
-
-#define TEST_SOURCE(name, is_std, expect_failure) range::from_literal_string(SOURCES_DIRECTORY name, TestInfo{ is_std, expect_failure })
-
-struct TestInfo
-{
-	bool is_std;
-
-	bool expect_failure;
-};
-
-static constexpr const Range<char8> CONFIG_FILEPATH = range::from_literal_string(SOURCES_DIRECTORY "common-config.toml");
-
-static constexpr AttachmentRange<char8, TestInfo> TESTS[] = {
-	TEST_SOURCE("empty.evl", false, false),
-	TEST_SOURCE("assert-false.evl", false, true),
-};
-
 static void run_integration_test(Range<char8> filepath, bool is_std, bool expect_failure) noexcept
 {
 	TEST_BEGIN_NAMED(filepath);
 
-	CoreData core = create_core_data(CONFIG_FILEPATH);
+	CoreData core = create_core_data(range::from_literal_string("integration-test-sources/common-config.toml"));
 
 	jmp_buf error_buf;
 
