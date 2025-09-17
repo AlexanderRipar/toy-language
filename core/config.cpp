@@ -107,6 +107,7 @@ static constexpr ConfigHeader CONFIG_STD[] = {
 
 static constexpr ConfigHeader CONFIG_LOGGING_ASTS[] = {
 	ConfigHeader::make_boolean(offsetof(Config, logging.asts.enable), "enable", "Print ASTs after they are parsed"),
+	ConfigHeader::make_boolean(offsetof(Config, logging.asts.enable_prelude), "enable-prelude", "Print AST of hard-coded prelude pseudo-file"),
 	ConfigHeader::make_path(offsetof(Config, logging.asts.log_filepath), "log-file", "Path of the log file. Defaults to stdout"),
 };
 
@@ -118,12 +119,18 @@ static constexpr ConfigHeader CONFIG_LOGGING_IMPORTS[] = {
 
 static constexpr ConfigHeader CONFIG_LOGGING_CONFIG[] = {
 	ConfigHeader::make_boolean(offsetof(Config, logging.config.enable), "enable", "Print config after it is parsed"),
+	ConfigHeader::make_boolean(offsetof(Config, logging.config.log_filepath), "log-file", "Path of the log file. Defaults to stdout"),
+};
+
+static constexpr ConfigHeader CONFIG_LOGGING_DIAGNOSTICS[] = {
+	ConfigHeader::make_boolean(offsetof(Config, logging.diagnostics.log_filepath), "log-file", "Path of the log file. Defaults to stderr"),
 };
 
 static constexpr ConfigHeader CONFIG_LOGGING[] = {
 	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_LOGGING_ASTS }, "asts", "AST logging parameters"),
 	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_LOGGING_IMPORTS }, "imports", "file import logging parameters"),
 	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_LOGGING_CONFIG }, "config", "Config logging parameters"),
+	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_LOGGING_DIAGNOSTICS }, "diagnostics", "Source-level warning and error message logging parameters"),
 };
 
 static constexpr ConfigHeader CONFIG_ROOTS[] = {

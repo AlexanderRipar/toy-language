@@ -1,12 +1,12 @@
 #include "core.hpp"
 
-static minos::FileHandle get_log_file(bool enable, Range<char8> filepath) noexcept
+static minos::FileHandle get_log_file(bool enable, Range<char8> filepath, minos::StdFileName fallback) noexcept
 {
 	if (!enable)
 		return minos::FileHandle{};
 
 	if (filepath.count() == 0)
-		return minos::standard_file_handle(minos::StdFileName::StdOut);
+		return minos::standard_file_handle(fallback);
 
 	minos::FileHandle log_file;
 
@@ -22,21 +22,23 @@ CoreData create_core_data(Range<char8> config_filepath) noexcept
 
 	Config* const config = create_config(alloc, config_filepath);
 
-	const minos::FileHandle config_log_file = get_log_file(config->logging.config.enable, config->logging.config.log_filepath);
+	const minos::FileHandle config_log_file = get_log_file(config->logging.config.enable, config->logging.config.log_filepath, minos::StdFileName::StdOut);
 
 	if (config_log_file.m_rep != nullptr)
 		print_config(config_log_file, config);
 
-	const minos::FileHandle ast_log_file = get_log_file(config->logging.asts.enable, config->logging.asts.log_filepath);
+	const minos::FileHandle ast_log_file = get_log_file(config->logging.asts.enable, config->logging.asts.log_filepath, minos::StdFileName::StdOut);
 
-	const minos::FileHandle imports_log_file = get_log_file(config->logging.imports.enable, config->logging.imports.log_filepath);
+	const minos::FileHandle imports_log_file = get_log_file(config->logging.imports.enable, config->logging.imports.log_filepath, minos::StdFileName::StdOut);
+
+	const minos::FileHandle diagnostics_log_file = get_log_file(true, config->logging.diagnostics.log_filepath, minos::StdFileName::StdErr);
 
 	CoreData core;
 	core.alloc = alloc;
 	core.config = config;
 	core.identifiers = create_identifier_pool(core.alloc);
 	core.reader = create_source_reader(core.alloc);
-	core.errors = create_error_sink(core.alloc, core.reader, core.identifiers);
+	core.errors = create_error_sink(core.alloc, core.reader, core.identifiers, diagnostics_log_file);
 	core.globals = create_global_value_pool(core.alloc);
 	core.types = create_type_pool(core.alloc);
 	core.asts = create_ast_pool(core.alloc);

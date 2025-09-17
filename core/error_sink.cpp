@@ -3,6 +3,11 @@
 #include <cstdio>
 #include <cstdarg>
 #include <csetjmp>
+#include <fcntl.h>
+
+#ifdef _WIN32
+	#include <io.h>
+#endif
 
 struct ErrorSink
 {
@@ -10,17 +15,31 @@ struct ErrorSink
 
 	IdentifierPool* identifiers;
 
+	FILE* log_file;
+
 	bool has_error_jmp_buf;
 
 	jmp_buf* error_jmp_buf;
 };
 
-[[nodiscard]] ErrorSink* create_error_sink(AllocPool* alloc, SourceReader* reader, IdentifierPool* identifiers) noexcept
+[[nodiscard]] ErrorSink* create_error_sink(AllocPool* alloc, SourceReader* reader, IdentifierPool* identifiers, minos::FileHandle log_file) noexcept
 {
 	ErrorSink* const errors = static_cast<ErrorSink*>(alloc_from_pool(alloc, sizeof(ErrorSink), alignof(ErrorSink)));
 
+	#ifdef _WIN32
+		const s32 fd = _open_osfhandle(reinterpret_cast<intptr_t>(log_file.m_rep), _O_APPEND);
+
+		if (fd == -1)
+			panic("_open_osfhandle failed.\n");
+
+		FILE* log_file_ptr = _fdopen(fd, "a");
+	#else
+		FILE* log_file_ptr = fdopen(static_cast<s32>(reinterpret_cast<u64>(log_file.m_rep)), "a");
+	#endif
+
 	errors->reader = reader;
 	errors->identifiers = identifiers;
+	errors->log_file = log_file_ptr;
 	errors->has_error_jmp_buf = false;
 
 	return errors;

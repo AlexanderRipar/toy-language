@@ -74,6 +74,8 @@ struct Config
 		{
 			bool enable = false;
 
+			bool enable_prelude = false;
+
 			Range<char8> log_filepath = {};
 		} asts;
 
@@ -92,6 +94,11 @@ struct Config
 
 			Range<char8> log_filepath = {};
 		} config;
+
+		struct
+		{
+			Range<char8> log_filepath = {};
+		} diagnostics;
 	} logging;
 
 
@@ -1398,7 +1405,7 @@ struct ErrorSink;
 // Creates a `ErrorSink`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `ErrorSink` can be freed using
 // `release_error_sink`.
-ErrorSink* create_error_sink(AllocPool* pool, SourceReader* reader, IdentifierPool* identifiers) noexcept;
+ErrorSink* create_error_sink(AllocPool* pool, SourceReader* reader, IdentifierPool* identifiers, minos::FileHandle log_file) noexcept;
 
 // Releases the resources associated with the given `ErrorSink`.
 void release_error_sink(ErrorSink* errors) noexcept;
