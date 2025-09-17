@@ -1,1 +1,1 @@
-std.assert(false)
+let x = std.assert(false)
