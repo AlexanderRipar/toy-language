@@ -159,6 +159,7 @@ enum class ShiftAmountResult : u8
 	InRange,
 	TooLarge,
 	Negative,
+	UnsupportedType,
 };
 
 struct CompareResult
@@ -941,59 +942,93 @@ static bool u64_from_integer(Range<byte> value, NumericType type, u64* out) noex
 	return true;
 }
 
-static ShiftAmountResult shift_amount_from_integer(Range<byte> value, NumericType type, u16 max_bits, u64* out) noexcept
+static ShiftAmountResult shift_amount(Interpreter* interp, Range<byte> value, TypeId type_id, u16 max_shift_log2_ceil, u16* out) noexcept
 {
-	const u64 size = type.bits / 8;
+	const TypeTag type_tag = type_tag_from_id(interp->types, type_id);
 
-	const u8 extra_bits = type.bits % 8;
-
-	if (type.is_signed)
+	if (type_tag == TypeTag::CompInteger)
 	{
-		if (extra_bits == 0)
-		{
-			if ((value[size - 1] & 0x80) != 0)
-				return ShiftAmountResult::Negative;
-		}
-		else
-		{
-			const u8 msb_mask = static_cast<u8>(1 << (extra_bits - 1));
+		ASSERT_OR_IGNORE(value.count() == sizeof(CompIntegerValue));
 
-			if ((value[size] & msb_mask) != 0)
-				return ShiftAmountResult::Negative;
-		}
-	}
+		const CompIntegerValue comp_integer_value = *reinterpret_cast<const CompIntegerValue*>(value.begin());
 
-	for (u64 i = 8; i < size; ++i)
-	{
-		if (value[i] != 0)
+		if (comp_integer_compare(comp_integer_value, comp_integer_from_u64(0)) == StrongCompareOrdering::LessThan)
+			return ShiftAmountResult::Negative;
+
+		u64 shift;
+
+		if (!u64_from_comp_integer(comp_integer_value, 16, &shift))
 			return ShiftAmountResult::TooLarge;
-	}
 
-	if (size >= 8 && extra_bits != 0)
-	{
-		const u8 bits = value[size] & static_cast<u8>((1 << extra_bits) - 1);
+		ASSERT_OR_IGNORE(shift <= UINT16_MAX);
 
-		if (bits != 0)
+		if (shift >= max_shift_log2_ceil)
 			return ShiftAmountResult::TooLarge;
+
+		*out = static_cast<u16>(shift);
+
+		return ShiftAmountResult::InRange;
 	}
-
-	u64 shift = 0;
-
-	memcpy(&shift, value.begin(), size < 8 ? size : 8);
-
-	if (extra_bits != 0)
+	else if (type_tag == TypeTag::Integer)
 	{
-		const u8 bits = value[size] & static_cast<u8>((1 << extra_bits) - 1);
+		const NumericType type = *type_attachment_from_id<NumericType>(interp->types, type_id);
 
-		shift |= bits << (size * 8);
+		const u64 size = type.bits / 8;
+
+		const u8 extra_bits = type.bits % 8;
+
+		if (type.is_signed)
+		{
+			if (extra_bits == 0)
+			{
+				if ((value[size - 1] & 0x80) != 0)
+					return ShiftAmountResult::Negative;
+			}
+			else
+			{
+				const u8 msb_mask = static_cast<u8>(1 << (extra_bits - 1));
+
+				if ((value[size] & msb_mask) != 0)
+					return ShiftAmountResult::Negative;
+			}
+		}
+
+		for (u64 i = 8; i < size; ++i)
+		{
+			if (value[i] != 0)
+				return ShiftAmountResult::TooLarge;
+		}
+
+		if (size >= 8 && extra_bits != 0)
+		{
+			const u8 bits = value[size] & static_cast<u8>((1 << extra_bits) - 1);
+
+			if (bits != 0)
+				return ShiftAmountResult::TooLarge;
+		}
+
+		u64 shift = 0;
+
+		memcpy(&shift, value.begin(), size < 8 ? size : 8);
+
+		if (extra_bits != 0)
+		{
+			const u8 bits = value[size] & static_cast<u8>((1 << extra_bits) - 1);
+
+			shift |= bits << (size * 8);
+		}
+
+		if (shift >= max_shift_log2_ceil)
+			return ShiftAmountResult::TooLarge;
+
+		*out = static_cast<u16>(shift);
+
+		return ShiftAmountResult::InRange;
 	}
-
-	if (shift >= max_bits)
-		return ShiftAmountResult::TooLarge;
-
-	*out = shift;
-
-	return ShiftAmountResult::InRange;
+	else
+	{
+		return ShiftAmountResult::UnsupportedType;
+	}
 }
 
 static Member delayed_member_from(Interpreter* interp, AstNode* definition) noexcept
@@ -2951,7 +2986,37 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_rst.success.type_id);
 
-		const TypeTag rhs_type_tag = type_tag_from_id(interp->types, rhs_rst.success.type_id);
+		u16 max_shift_log2_ceil;
+
+		NumericType lhs_type;
+
+		if (lhs_type_tag == TypeTag::CompInteger)
+		{
+			max_shift_log2_ceil = 16;
+		}
+		else if (lhs_type_tag == TypeTag::Integer)
+		{
+			lhs_type = *type_attachment_from_id<NumericType>(interp->types, lhs_rst.success.type_id);
+
+			max_shift_log2_ceil = lhs_type.bits;
+		}
+		else
+		{
+			source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must be of integer type.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
+		}
+
+		u16 shift;
+
+		const ShiftAmountResult shift_rst = shift_amount(interp, rhs_rst.success.bytes.immut(), rhs_rst.success.type_id, max_shift_log2_ceil, &shift);
+
+		if (shift_rst == ShiftAmountResult::Negative)
+			source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must not be negative.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
+		else if (shift_rst == ShiftAmountResult::TooLarge)
+			source_error(interp->errors, source_id_of(interp->asts, rhs), "%s-shifting by 2^16 or more is not supported.\n", node->tag == AstTag::OpShiftL ? "Left" : "Right");
+		else if (shift_rst == ShiftAmountResult::UnsupportedType)
+			source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must be of integer type.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
+
+		ASSERT_OR_IGNORE(shift_rst == ShiftAmountResult::InRange);
 
 		EvalRst rst = fill_spec(interp, spec, node, false, true, lhs_rst.success.type_id);
 
@@ -2959,33 +3024,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			const CompIntegerValue lhs_value = *value_as<CompIntegerValue>(lhs_rst.success);
 
-			CompIntegerValue rhs_value;
-
-			if (rhs_type_tag == TypeTag::CompInteger)
-			{
-				rhs_value = *value_as<CompIntegerValue>(rhs_rst.success);
-			}
-			else if (rhs_type_tag == TypeTag::Integer)
-			{
-				const NumericType rhs_type = *type_attachment_from_id<NumericType>(interp->types, rhs_rst.success.type_id);
-
-				u64 shift;
-
-				const ShiftAmountResult shift_rst = shift_amount_from_integer(rhs_rst.success.bytes.immut(), rhs_type, UINT16_MAX, &shift);
-
-				if (shift_rst == ShiftAmountResult::Negative)
-					source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must not be negative.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
-				else if (shift_rst == ShiftAmountResult::TooLarge)
-					source_error(interp->errors, source_id_of(interp->asts, rhs), "%s-shifting by 2^16 or more is not supported.\n", node->tag == AstTag::OpShiftL ? "Left" : "Right");
-
-				ASSERT_OR_IGNORE(shift_rst == ShiftAmountResult::InRange);
-
-				rhs_value = comp_integer_from_u64(shift);
-			}
-			else
-			{
-				source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must be of integer type.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
-			}
+			const CompIntegerValue rhs_value = comp_integer_from_u64(shift);
 
 			CompIntegerValue rst_value;
 
@@ -3008,51 +3047,15 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			ASSERT_OR_IGNORE(lhs_type_tag == TypeTag::Integer);
 
-			const NumericType lhs_type = *type_attachment_from_id<NumericType>(interp->types, lhs_rst.success.type_id);
-
-			MutRange<byte> rst_value = rst.success.bytes;
-
-			const Range<byte> lhs_value = lhs_rst.success.bytes.immut();
-
-			u64 shift;
-
-			if (rhs_type_tag == TypeTag::CompInteger)
-			{
-				const CompIntegerValue rhs_comp_value = *value_as<CompIntegerValue>(rhs_rst.success);
-
-				if (comp_integer_compare(rhs_comp_value, comp_integer_from_u64(0)) == StrongCompareOrdering::LessThan)
-					source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must not be negative.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
-
-				if (!u64_from_comp_integer(rhs_comp_value, 64, &shift))
-					source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` exceeds the left-hand-side's size.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
-			}
-			else if (rhs_type_tag == TypeTag::Integer)
-			{
-				const NumericType rhs_type = *type_attachment_from_id<NumericType>(interp->types, rhs_rst.success.type_id);
-
-				const ShiftAmountResult shift_rst = shift_amount_from_integer(rhs_rst.success.bytes.immut(), rhs_type, lhs_type.bits, &shift);
-
-				if (shift_rst == ShiftAmountResult::Negative)
-					source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must not be negative.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
-				else if (shift_rst == ShiftAmountResult::TooLarge)
-					source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` exceeds the left-hand-side's size.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
-
-				ASSERT_OR_IGNORE(shift_rst == ShiftAmountResult::InRange);
-			}
-			else
-			{
-				source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must be of integer type.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
-			}
-
 			if (node->tag == AstTag::OpShiftL)
 			{
-				bitwise_shift_left(lhs_type.bits, rst_value, lhs_value, shift);
+				bitwise_shift_left(lhs_type.bits, rst.success.bytes, lhs_rst.success.bytes.immut(), shift);
 			}
 			else
 			{
 				ASSERT_OR_IGNORE(node->tag == AstTag::OpShiftR);
 
-				bitwise_shift_right(lhs_type.bits, rst_value, lhs_value, shift, lhs_type.is_signed);
+				bitwise_shift_right(lhs_type.bits, rst.success.bytes, lhs_rst.success.bytes.immut(), shift, lhs_type.is_signed);
 			}
 		}
 
