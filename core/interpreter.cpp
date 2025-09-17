@@ -2641,14 +2641,49 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, comp_integer_type_id, sizeof(CompIntegerValue), alignof(CompIntegerValue));
 
-		AstLitIntegerData attach = *attachment_of<AstLitIntegerData>(node);
+		CompIntegerValue value = attachment_of<AstLitIntegerData>(node)->value;
 
 		if (type_is_equal(interp->types, rst.success.type_id, comp_integer_type_id))
-			value_set(&rst.success, range::from_object_bytes_mut(&attach.value));
-		else if (!rst.success.is_location)
-			convert_comp_integer_to_integer(interp, node, &rst.success, attach.value);
+			value_set(&rst.success, range::from_object_bytes_mut(&value));
 		else
-			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot treat integer litearal as location as it requires an implicit conversion to conform to the desired type.\n");
+			convert_comp_integer_to_integer(interp, node, &rst.success, value);
+
+		return rst;
+	}
+
+	case AstTag::LitFloat:
+	{
+		const TypeId comp_float_type_id = type_create_simple(interp->types, TypeTag::CompFloat);
+
+		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, comp_float_type_id, sizeof(CompFloatValue), alignof(CompFloatValue));
+
+		CompFloatValue value = attachment_of<AstLitFloatData>(node)->value;
+
+		if (type_is_equal(interp->types, rst.success.type_id, comp_float_type_id))
+		{
+			value_set(&rst.success, range::from_object_bytes_mut(&value));
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(type_tag_from_id(interp->types, rst.success.type_id) == TypeTag::Float);
+
+			const NumericType type = *type_attachment_from_id<NumericType>(interp->types, rst.success.type_id);
+
+			if (type.bits == 32)
+			{
+				f32 f32_value = f32_from_comp_float(value);
+
+				value_set(&rst.success, range::from_object_bytes_mut(&f32_value));
+			}
+			else
+			{
+				ASSERT_OR_IGNORE(type.bits == 64);
+
+				f64 f64_value = f64_from_comp_float(value);
+
+				value_set(&rst.success, range::from_object_bytes_mut(&f64_value));
+			}
+		}
 
 		return rst;
 	}
@@ -3570,7 +3605,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::Trait:
 	case AstTag::Impl:
 	case AstTag::Catch:
-	case AstTag::LitFloat:
 	case AstTag::LitChar:
 	case AstTag::Return:
 	case AstTag::Leave:
