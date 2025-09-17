@@ -274,3 +274,5 @@ let ptrs_to_unequal_are_unequal_array_of_one_elem = if pointed_x.& == pointed_y.
 		.[]
 	else
 		.[1]
+
+let x = std.assert(true)

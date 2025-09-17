@@ -838,6 +838,7 @@ const char8* tag_name(AstTag tag) noexcept
 		"Trait",
 		"Impl",
 		"Catch",
+		"Unreachable",
 		"Identifier",
 		"LitInteger",
 		"LitFloat",

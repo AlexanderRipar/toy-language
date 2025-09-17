@@ -2605,6 +2605,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 	}
 
+	case AstTag::Unreachable:
+	{
+		source_error(interp->errors, source_id_of(interp->asts, node), "Reached `unreachable`.\n");
+	}
+
 	case AstTag::Identifier:
 	{
 		const AstIdentifierData attach = *attachment_of<AstIdentifierData>(node);
@@ -3810,6 +3815,7 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::Trait:
 	case AstTag::Impl:
 	case AstTag::Catch:
+	case AstTag::Unreachable:
 	case AstTag::LitFloat:
 	case AstTag::LitChar:
 	case AstTag::LitString:

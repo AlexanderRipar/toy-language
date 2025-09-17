@@ -458,6 +458,7 @@ enum class AstTag : u8
 	Trait,
 	Impl,
 	Catch,
+	Unreachable,
 	Identifier,
 	LitInteger,
 	LitFloat,

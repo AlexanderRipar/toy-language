@@ -36,6 +36,7 @@ enum class Token : u8
 		KwdMut,               // mut
 		KwdGlobal,            // global
 		KwdAuto,              // auto
+		KwdUnreachable,       // unreachable
 		KwdReturn,            // return
 		KwdLeave,             // leave
 		KwdYield,             // yield
@@ -139,6 +140,7 @@ const char8* token_name(Token token) noexcept
 		"mut",
 		"global",
 		"auto",
+		"unreachable",
 		"return",
 		"leave",
 		"yield",
@@ -248,6 +250,7 @@ static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
 	range::from_literal_string("mut",      static_cast<u8>(Token::KwdMut)),
 	range::from_literal_string("let",      static_cast<u8>(Token::KwdLet)),
 	range::from_literal_string("auto",     static_cast<u8>(Token::KwdAuto)),
+	range::from_literal_string("unreachable", static_cast<u8>(Token::KwdUnreachable)),
 	range::from_literal_string("global",   static_cast<u8>(Token::KwdGlobal)),
 	range::from_literal_string("return",   static_cast<u8>(Token::KwdReturn)),
 	range::from_literal_string("leave",    static_cast<u8>(Token::KwdLeave)),
@@ -2549,6 +2552,14 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 				lexeme = peek(&parser->lexer);
 
 				continue;
+			}
+			else if (lexeme.token == Token::KwdUnreachable)
+			{
+				expecting_operand = false;
+
+				const AstBuilderToken value_token = push_node(parser->builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstTag::Unreachable);
+
+				push_operand(parser, &stack, value_token);
 			}
 			else if (lexeme.token == Token::Builtin)
 			{

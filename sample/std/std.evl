@@ -17,3 +17,5 @@ pub add_type_member = func(builder: TypeBuilder, definition: Definition, offset:
 pub complete_type = func(builder: TypeBuilder, size: u64, align: u64, stride: u64) -> Type => _complete_type(builder, size, align, stride)
 
 pub definition_typeof = func(definition: Definition) -> Type => _definition_typeof(definition)
+
+pub assert = func(x: Bool) -> Void => if !x then unreachable
