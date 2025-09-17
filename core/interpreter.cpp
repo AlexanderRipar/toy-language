@@ -2610,6 +2610,20 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		source_error(interp->errors, source_id_of(interp->asts, node), "Reached `unreachable`.\n");
 	}
 
+	case AstTag::Undefined:
+	{
+		if (spec.type_id == TypeId::INVALID)
+			source_error(interp->errors, source_id_of(interp->asts, node), "Type of `undefined` must be inferrable from context.\n");
+
+		EvalRst rst = fill_spec(interp, spec, node, false, true, spec.type_id);
+
+		// We are returning uninitialized memory, so we might as well add a
+		// nice debug pattern <3
+		range::mem_set(rst.success.bytes, 0x5A);
+
+		return rst;
+	}
+
 	case AstTag::Identifier:
 	{
 		const AstIdentifierData attach = *attachment_of<AstIdentifierData>(node);
@@ -3694,7 +3708,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::Trait:
 	case AstTag::Impl:
 	case AstTag::Catch:
-	case AstTag::Undefined:
 	case AstTag::LitChar:
 	case AstTag::Return:
 	case AstTag::Leave:
