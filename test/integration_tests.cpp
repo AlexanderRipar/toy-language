@@ -57,7 +57,7 @@ void integration_tests() noexcept
 {
 	TEST_MODULE_BEGIN;
 
-	const Range<char8> test_directory = range::from_literal_string("integration_test_sources");
+	const Range<char8> test_directory = range::from_literal_string("integration-test-sources");
 
 	minos::DirectoryEnumerationHandle dir;
 
