@@ -26,16 +26,29 @@ struct ErrorSink
 {
 	ErrorSink* const errors = static_cast<ErrorSink*>(alloc_from_pool(alloc, sizeof(ErrorSink), alignof(ErrorSink)));
 
-	#ifdef _WIN32
-		const s32 fd = _open_osfhandle(reinterpret_cast<intptr_t>(log_file.m_rep), _O_APPEND);
+	FILE* log_file_ptr;
 
-		if (fd == -1)
-			panic("_open_osfhandle failed.\n");
+	if (log_file.m_rep == minos::standard_file_handle(minos::StdFileName::StdErr).m_rep)
+	{
+		// Prevent a double-close during CRT teardown.
+		log_file_ptr = stderr;
+	}
+	else
+	{
+		#ifdef _WIN32
+			const s32 fd = _open_osfhandle(reinterpret_cast<intptr_t>(log_file.m_rep), _O_APPEND);
 
-		FILE* log_file_ptr = _fdopen(fd, "a");
-	#else
-		FILE* log_file_ptr = fdopen(static_cast<s32>(reinterpret_cast<u64>(log_file.m_rep)), "a");
-	#endif
+			if (fd == -1)
+				panic("_open_osfhandle failed.\n");
+
+			log_file_ptr = _fdopen(fd, "a");
+		#else
+			log_file_ptr = fdopen(static_cast<s32>(reinterpret_cast<u64>(log_file.m_rep)), "a");
+		#endif
+
+		if (log_file_ptr == nullptr)
+			panic("Failed to convert diagnostics log file handle to `FILE*`.\n");
+	}
 
 	errors->reader = reader;
 	errors->identifiers = identifiers;
