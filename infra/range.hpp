@@ -478,6 +478,12 @@ namespace range
 
 		return memcmp(a.begin(), b.begin(), a.count()) == 0;
 	}
+
+	template<typename T>
+	void mem_set(MutRange<T> dst, byte value) noexcept
+	{
+		memset(dst.begin(), static_cast<s32>(value), dst.count());
+	}
 }
 
 #endif // RANGE_INCLUDE_GUARD
