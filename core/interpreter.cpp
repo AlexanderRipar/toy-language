@@ -1762,7 +1762,6 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 		else if (type_tag_from_id(interp->types, param->type.complete) == TypeTag::Func)
 			TODO("Add binding of nested signatures");
 
-
 		const TypeMetrics param_metrics = type_metrics_from_id(interp->types, param->type.complete);
 
 		if (has_pending_type)
@@ -2708,6 +2707,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 	case AstTag::Call:
 	{
+		const u32 callee_mark = stack_mark(interp);
+
 		AstNode* const callee = first_child_of(node);
 
 		CallableValue callee_value;
@@ -2717,78 +2718,78 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			range::from_object_bytes_mut(&callee_value)
 		});
 
+		stack_shrink(interp, callee_mark);
+
 		EvalRst rst;
 
 		if (callee_rst.tag == EvalTag::Unbound)
 		{
 			TODO("Implement unbound callees");
 		}
+
+		const TypeTag callee_type_tag = type_tag_from_id(interp->types, callee_rst.success.type_id);
+
+		if (callee_type_tag != TypeTag::Func && callee_type_tag != TypeTag::Builtin)
+			source_error(interp->errors, source_id_of(interp->asts, callee), "Cannot implicitly convert callee to callable type.\n");
+
+		const SignatureType* const signature_type = type_attachment_from_id<SignatureType>(interp->types, callee_value.signature_type_id);
+
+		const CallInfo call_info = setup_call_args(interp, signature_type, callee);
+
+		rst = fill_spec(interp, spec, node, false, true, call_info.return_type_id);
+
+		const u32 mark = stack_mark(interp);
+
+		const bool needs_conversion = !type_is_equal(interp->types, call_info.return_type_id, rst.success.type_id);
+
+		MutRange<byte> temp_location;
+
+		if (needs_conversion)
+		{
+			const TypeMetrics return_type_metrics = type_metrics_from_id(interp->types, call_info.return_type_id);
+
+			temp_location = stack_push(interp, return_type_metrics.size, return_type_metrics.align);
+		}
 		else
 		{
-			const TypeTag callee_type_tag = type_tag_from_id(interp->types, callee_rst.success.type_id);
-
-			if (callee_type_tag != TypeTag::Func && callee_type_tag != TypeTag::Builtin)
-				source_error(interp->errors, source_id_of(interp->asts, callee), "Cannot implicitly convert callee to callable type.\n");
-
-			const SignatureType* const signature_type = type_attachment_from_id<SignatureType>(interp->types, callee_value.signature_type_id);
-
-			const CallInfo call_info = setup_call_args(interp, signature_type, callee);
-
-			rst = fill_spec(interp, spec, node, false, true, call_info.return_type_id);
-
-			const u32 mark = stack_mark(interp);
-
-			const bool needs_conversion = !type_is_equal(interp->types, call_info.return_type_id, rst.success.type_id);
-
-			MutRange<byte> temp_location;
-
-			if (needs_conversion)
-			{
-				const TypeMetrics return_type_metrics = type_metrics_from_id(interp->types, call_info.return_type_id);
-
-				temp_location = stack_push(interp, return_type_metrics.size, return_type_metrics.align);
-			}
-			else
-			{
-				temp_location = rst.success.bytes;
-			}
-
-			if (callee_value.is_builtin)
-			{
-				Arec* const parameter_list_arec = arec_from_id(interp, call_info.parameter_list_arec_id);
-
-				interp->builtin_values[callee_value.ordinal](interp, parameter_list_arec, temp_location);
-			}
-			else
-			{
-				if (callee_value.closure_id != ClosureId::INVALID)
-				{
-					ClosureInstance instance = closure_instance(interp->closures, callee_value.closure_id);
-
-					interp->active_closures.append(instance);
-				}
-
-				AstNode* const body = ast_node_from_id(interp->asts, static_cast<AstNodeId>(callee_value.body_ast_node_id));
-
-				const EvalRst call_rst = evaluate(interp, body, EvalSpec{
-					ValueKind::Value,
-					temp_location,
-					rst.success.type_id
-				});
-
-				if (callee_value.closure_id != ClosureId::INVALID)
-					interp->active_closures.pop_by(1);
-
-				ASSERT_OR_IGNORE(call_rst.tag == EvalTag::Success);
-			}
-
-			if (needs_conversion)
-				convert(interp, node, &rst.success, make_value(temp_location, false, true, call_info.return_type_id));
-
-			arec_pop(interp, call_info.parameter_list_arec_id);
-
-			stack_shrink(interp, mark);
+			temp_location = rst.success.bytes;
 		}
+
+		if (callee_value.is_builtin)
+		{
+			Arec* const parameter_list_arec = arec_from_id(interp, call_info.parameter_list_arec_id);
+
+			interp->builtin_values[callee_value.ordinal](interp, parameter_list_arec, temp_location);
+		}
+		else
+		{
+			if (callee_value.closure_id != ClosureId::INVALID)
+			{
+				ClosureInstance instance = closure_instance(interp->closures, callee_value.closure_id);
+
+				interp->active_closures.append(instance);
+			}
+
+			AstNode* const body = ast_node_from_id(interp->asts, static_cast<AstNodeId>(callee_value.body_ast_node_id));
+
+			const EvalRst call_rst = evaluate(interp, body, EvalSpec{
+				ValueKind::Value,
+				temp_location,
+				rst.success.type_id
+			});
+
+			if (callee_value.closure_id != ClosureId::INVALID)
+				interp->active_closures.pop_by(1);
+
+			ASSERT_OR_IGNORE(call_rst.tag == EvalTag::Success);
+		}
+
+		if (needs_conversion)
+			convert(interp, node, &rst.success, make_value(temp_location, false, true, call_info.return_type_id));
+
+		arec_pop(interp, call_info.parameter_list_arec_id);
+
+		stack_shrink(interp, mark);
 
 		return rst;
 	}
@@ -2800,9 +2801,13 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpTypeVarArgs:
 	case AstTag::UOpTypePtr:
 	{
-		AstNode* const referenced = first_child_of(node);
-
 		const TypeId type_type_id = type_create_simple(interp->types, TypeTag::Type);
+
+		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, type_type_id, sizeof(TypeId), alignof(TypeId));
+
+		const u32 mark = stack_mark(interp);
+
+		AstNode* const referenced = first_child_of(node);
 
 		TypeId referenced_type_id;
 
@@ -2825,23 +2830,29 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		TypeId reference_type_id = type_create_reference(interp->types, reference_type_tag, reference_type);
 
-		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, type_type_id, sizeof(TypeId), alignof(TypeId));
-
 		value_set(&rst.success, range::from_object_bytes_mut(&reference_type_id));
+
+		stack_shrink(interp, mark);
 
 		return rst;
 	}
 
 	case AstTag::UOpAddr:
 	{
+		const u32 mark = stack_mark(interp);
+
 		AstNode* const operand = first_child_of(node);
-		
+
 		EvalRst operand_rst = evaluate(interp, operand, EvalSpec{
 			ValueKind::Location
 		});
-		
+
 		if (operand_rst.tag == EvalTag::Unbound)
+		{
+			stack_shrink(interp, mark);
+
 			return eval_unbound(operand_rst.unbound);
+		}
 		
 		// Create and initialize pointer type.
 		ReferenceType ptr_type{};
@@ -2857,12 +2868,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		byte* address = operand_rst.success.bytes.begin();
 		
 		value_set(&rst.success, range::from_object_bytes_mut(&address));
-		
+
+		rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
+
 		return rst;
 	}
 
 	case AstTag::UOpDeref:
 	{
+		const u32 mark = stack_mark(interp);
+
 		AstNode* const operand = first_child_of(node);
 
 		EvalRst operand_rst = evaluate(interp, operand, EvalSpec{
@@ -2870,7 +2885,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		});
 
 		if (operand_rst.tag == EvalTag::Unbound)
+		{
+			stack_shrink(interp, mark);
+
 			return eval_unbound(operand_rst.unbound);
+		}
 
 		// type if of the reference, contains type info of the derefed type
 		TypeId reference_type_id = operand_rst.success.type_id;
@@ -2888,7 +2907,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const TypeMetrics metrics = type_metrics_from_id(interp->types, dereferenced_type);
 		
-		value_set(&rst.success, {ptr, metrics.size});
+		value_set(&rst.success, { ptr, metrics.size });
+
+		stack_shrink(interp, mark);
 
 		return rst;
 	}
@@ -2906,7 +2927,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		Arec* unbound;
 
 		if (!evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound))
+		{
+			stack_shrink(interp, mark);
+
 			return eval_unbound(unbound);
+		}
 
 		const TypeTag common_type_tag = type_tag_from_id(interp->types, common_type_id);
 
@@ -2961,7 +2986,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		Arec* unbound;
 
 		if (!evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound))
+		{
+			stack_shrink(interp, mark);
+
 			return eval_unbound(unbound);
+		}
 
 		const TypeTag common_type_tag = type_tag_from_id(interp->types, common_type_id);
 
@@ -3016,7 +3045,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		Arec* unbound;
 
 		if (!evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound))
+		{
+			stack_shrink(interp, mark);
+
 			return eval_unbound(unbound);
+		}
 
 		const TypeTag common_type_tag = type_tag_from_id(interp->types, common_type_id);
 
@@ -3076,7 +3109,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		Arec* const unbound = check_binary_expr_for_unbound(interp, lhs, rhs, &lhs_rst, &rhs_rst);
 
 		if (unbound != nullptr)
+		{
+			stack_shrink(interp, mark);
+
 			return eval_unbound(unbound);
+		}
 
 		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_rst.success.type_id);
 
@@ -3230,6 +3267,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 	case AstTag::Member:
 	{
+		const u32 mark = stack_mark(interp);
+
 		AstNode* const lhs = first_child_of(node);
 
 		const AstMemberData attach = *attachment_of<AstMemberData>(node);
@@ -3237,9 +3276,15 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		EvalRst lhs_rst = evaluate(interp, lhs, EvalSpec{ ValueKind::Location });
 
 		if (lhs_rst.tag == EvalTag::Unbound)
+		{
+			stack_shrink(interp, mark);
+
 			return eval_unbound(lhs_rst.unbound);
+		}
 
 		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_rst.success.type_id);
+
+		EvalRst rst;
 
 		if (lhs_type_tag == TypeTag::Composite)
 		{
@@ -3253,9 +3298,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			}
 
 			if (member->is_global)
-				return evaluate_global_member(interp, node, spec, lhs_rst.success.type_id, member);
-
-			return evaluate_local_member(interp, node, spec, lhs_rst.success.type_id, member, lhs_rst.success.bytes);
+				rst = evaluate_global_member(interp, node, spec, lhs_rst.success.type_id, member);
+			else
+				rst = evaluate_local_member(interp, node, spec, lhs_rst.success.type_id, member, lhs_rst.success.bytes);
 		}
 		else if (lhs_type_tag == TypeTag::Type)
 		{
@@ -3280,12 +3325,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				source_error(interp->errors, source_id_of(interp->asts, node), "Member `%.*s` cannot be accessed through a type, as it is not global.\n", static_cast<s32>(name.count()), name.begin());
 			}
 
-			return evaluate_global_member(interp, node, spec, type_id, member);
+			rst = evaluate_global_member(interp, node, spec, type_id, member);
 		}
 		else
 		{
 			source_error(interp->errors, source_id_of(interp->asts, node), "Left-hand-side of `.` must be either a composite value or a composite type.\n");
 		}
+
+		stack_shrink(interp, mark);
+
+		return rst;
 	}
 
 	case AstTag::OpCmpLT:
@@ -3295,11 +3344,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpCmpNE:
 	case AstTag::OpCmpEQ:
 	{
-		const u32 mark = stack_mark(interp);
-
 		const TypeId bool_type_id = type_create_simple(interp->types, TypeTag::Boolean);
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, bool_type_id, sizeof(bool), alignof(bool));
+
+		const u32 mark = stack_mark(interp);
 
 		EvalValue lhs_casted;
 
@@ -3310,11 +3359,13 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		Arec* unbound;
 
 		if (!evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound))
+		{
+			stack_shrink(interp, mark);
+
 			return eval_unbound(unbound);
+		}
 
 		const CompareResult result = compare(interp, common_type_id, lhs_casted.bytes.immut(), rhs_casted.bytes.immut(), node);
-
-		stack_shrink(interp, mark);
 
 		if (result.tag == CompareTag::INVALID)
 			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot compare values of the given type.\n");
@@ -3340,11 +3391,15 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		// anything else.
 		value_set(&rst.success, range::from_object_bytes_mut(&bool_result));
 
+		stack_shrink(interp, mark);
+
 		return rst;
 	}
 
 	case AstTag::OpSet:
 	{
+		const u32 mark = stack_mark(interp);
+
 		AstNode* const lhs = first_child_of(node);
 
 		const EvalRst lhs_rst = evaluate(interp, lhs, EvalSpec{
@@ -3368,11 +3423,19 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		if (rhs_rst.tag == EvalTag::Unbound)
 			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use `=` operator in unbound context.\n");
 
+		stack_shrink(interp, mark);
+
 		return fill_spec_sized(interp, spec, node, false, true, type_create_simple(interp->types, TypeTag::Void), 0, 1);
 	}
 
 	case AstTag::OpTypeArray:
 	{
+		const TypeId type_type_id = type_create_simple(interp->types, TypeTag::Type);
+
+		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, type_type_id, sizeof(TypeId), alignof(TypeId));
+
+		const u32 mark = stack_mark(interp);
+
 		AstNode* const count = first_child_of(node);
 
 		const EvalRst count_rst = evaluate(interp, count, EvalSpec{
@@ -3407,8 +3470,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		AstNode* const elem_type = next_sibling_of(count);
 
-		const TypeId type_type_id = type_create_simple(interp->types, TypeTag::Type);
-
 		TypeId elem_type_id;
 
 		const EvalRst elem_type_rst = evaluate(interp, elem_type, EvalSpec{
@@ -3417,32 +3478,22 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			type_type_id
 		});
 
-		if (count_rst.tag == EvalTag::Unbound && elem_type_rst.tag == EvalTag::Unbound)
+		Arec* const unbound = check_binary_expr_for_unbound(interp, count, elem_type, &count_rst, &elem_type_rst);
+
+		if (unbound != nullptr)
 		{
-			return eval_unbound(count_rst.unbound < elem_type_rst.unbound ? count_rst.unbound : elem_type_rst.unbound);
+			stack_shrink(interp, mark);
+
+			return eval_unbound(unbound);
 		}
-		else if (count_rst.tag == EvalTag::Unbound)
-		{
-			add_partial_value_to_builder(interp, elem_type, elem_type_rst.success.type_id, elem_type_rst.success.bytes.immut());
 
-			return eval_unbound(count_rst.unbound);
-		}
-		else if (elem_type_rst.tag == EvalTag::Unbound)
-		{
-			add_partial_value_to_builder(interp, count, count_rst.success.type_id, count_rst.success.bytes.immut());
+		TypeId array_type_id = type_create_array(interp->types, TypeTag::Array, ArrayType{ count_u64, elem_type_id });
 
-			return eval_unbound(elem_type_rst.unbound);
-		}
-		else
-		{
-			EvalRst rst = fill_spec_sized(interp, spec, node, false, true, type_type_id, sizeof(TypeId), alignof(TypeId));
+		value_set(&rst.success, range::from_object_bytes_mut(&array_type_id));
 
-			TypeId array_type_id = type_create_array(interp->types, TypeTag::Array, ArrayType{ count_u64, elem_type_id });
+		stack_shrink(interp, mark);
 
-			value_set(&rst.success, range::from_object_bytes_mut(&array_type_id));
-
-			return rst;
-		}
+		return rst;
 	}
 
 	case AstTag::OpArrayIndex:
