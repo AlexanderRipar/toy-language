@@ -1429,7 +1429,12 @@ void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, 
 // accepts a `va_list`, enabling nested variadic calls.
 void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
 
-NORETURN void error_exit() noexcept;
+// Sets the caller as the context to which to return to upon a call to
+// `source_error`, `vsource_error` or `error_exit`.
+// Returns `true` upon a return from a handled error, and `false` otherwise.
+bool set_error_handling_context(ErrorSink* errors) noexcept;
+
+NORETURN void error_exit(ErrorSink* errors) noexcept;
 
 // Helper for allowing printing in the same format as that provided by
 // `[v]source_[error|warning]` without an `ErrorSink`. This is mainly intended

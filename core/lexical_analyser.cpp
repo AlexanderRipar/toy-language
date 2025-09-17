@@ -502,7 +502,7 @@ static void resolve_names_root(LexicalAnalyser* lex, AstNode* root) noexcept
 	}
 
 	if (lex->has_error)
-		error_exit();
+		error_exit(lex->errors);
 }
 
 

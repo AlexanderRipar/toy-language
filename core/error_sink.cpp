@@ -2,12 +2,27 @@
 
 #include <cstdio>
 #include <cstdarg>
+#include <csetjmp>
 
 struct ErrorSink
 {
 	SourceReader* reader;
 
 	IdentifierPool* identifiers;
+
+	bool has_error_dst;
+
+	// So... I guess MSVC pads aligns this to 16 bytes and then decides to warn
+	// about it. We are fine with this extra alignment, since it is handled by
+	// `AllocPool`, so we can just ignore the warning.
+	#if COMPILER_MSVC
+	#pragma warning(push)
+	#pragma warning(disable : 4324) // C4324: structure was padded due to alignment specifier
+	#endif
+	jmp_buf error_dst;
+	#if COMPILER_MSVC
+	#pragma warning(pop)
+	#endif
 };
 
 [[nodiscard]] ErrorSink* create_error_sink(AllocPool* alloc, SourceReader* reader, IdentifierPool* identifiers) noexcept
@@ -40,7 +55,7 @@ NORETURN void vsource_error(ErrorSink* errors, SourceId source_id, const char8* 
 
 	print_error(&location, format, args);
 
-	error_exit();
+	error_exit(errors);
 }
 
 void source_error_nonfatal(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept
@@ -79,11 +94,36 @@ void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format,
 	print_error(&location, format, args);
 }
 
-NORETURN void error_exit() noexcept
+// We don't do C++ object destruction here lol.
+#if COMPILER_MSVC
+#pragma warning(push)
+#pragma warning(disable : 4611) // C4611: interaction between '_setjmp' and C++ object destruction is non-portable
+#endif
+bool set_error_handling_context(ErrorSink* errors) noexcept
+{
+	errors->has_error_dst = true;
+
+	// This is intentionally an `if (true) return true`, as `setjmp` must only
+	// be used in very specific context (e.g. in a comparison in the condition
+	// of an `if`), so
+	// DO *NOT* CLEAN THIS UP.
+	if (setjmp(errors->error_dst) != 0)
+		return true;
+
+	return false;
+}
+#if COMPILER_MSVC
+#pragma warning(pop)
+#endif
+
+NORETURN void error_exit(ErrorSink* errors) noexcept
 {
 	DEBUGBREAK;
 
-	minos::exit_process(1);
+	if (errors->has_error_dst)
+		longjmp(errors->error_dst, 1);
+	else
+		minos::exit_process(1);
 }
 
 void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept
