@@ -358,6 +358,36 @@ WeakCompareOrdering comp_float_compare(CompFloatValue lhs, CompFloatValue rhs) n
 // Returns `false` if overflow occurred, `true` otherwise.
 bool bitwise_add(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept;
 
+// Shifts the bytes in `lhs` by `rhs` bits to the left (upward in the bytewise
+// representation, i.e. to a higher index), putting the result into `dst`.
+// `dst` and `lhs` must have the same count. The shifted-out high bytes are
+// discarded.
+// `rhs` must be less than `bits`.
+// `bits` must be between `dst.count() * 8` and `dst.count() * 8 - 7`.
+// If `bits` is not exactly `dst.count() * 8` only the low `bits % 8` bits of
+// `dst`'s last byte are written, with the others keeping their initial values,
+// and only the `bits % 8` bits of `lhs`'s last byte are respected, with the
+// others treated as 0.
+// Bits in `dst` that do not receive a shifted bit are set to 0.
+void bitwise_shift_left(u16 bits, MutRange<byte> dst, Range<byte> lhs, u64 rhs) noexcept;
+
+// Shifts the bytes in `lhs` by `rhs` bits to the right (downward in the
+// bytewise representation, i.e. to a lower index), putting the result into
+// `dst`. The shifted-out low bytes are discarded.
+// `dst` and `lhs` must have the same count.
+// `rhs` must be less than `bits`.
+// `bits` must be between `dst.count() * 8` and `dst.count() * 8 - 7`.
+// If `bits` is not exactly `dst.count() * 8` only the low `bits % 8` bits of
+// `dst`'s last byte are written, with the others keeping their initial values,
+// and only the `bits % 8` bits of `lhs`'s last byte are respected, with the
+// others treated as 0.
+// If `is_arithmetic_shift` is true and the most significant bit of `src` is 1,
+// then bits in `dst` that do not receive a shifted bit are set to 1. Otherwise
+// they are set to 0.
+void bitwise_shift_right(u16 bits, MutRange<byte> dst, Range<byte> lhs, u64 rhs, bool is_arithmetic_shift) noexcept;
+
+
+
 // Adds the signed 64-bit values `a` and `b`, returning `false` and
 // leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
 // the result and `true` is returned.

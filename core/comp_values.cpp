@@ -130,6 +130,94 @@ bool bitwise_add(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs)
 	return carry == 0;
 }
 
+void bitwise_shift_left(u16 bits, MutRange<byte> dst, Range<byte> lhs, u64 rhs) noexcept
+{
+	ASSERT_OR_IGNORE(rhs < bits);
+
+	const u64 shift_by_bytes = rhs / 8;
+
+	const u8 shift_by_bits = rhs % 8;
+
+	const u64 lhs_size = bits / 8;
+
+	const u8 extra_bits = bits % 8;
+
+	const u64 shift_size = lhs_size - shift_by_bytes;
+
+	memset(dst.begin() + shift_size, 0, shift_by_bytes);
+
+	u8 carry = 0;
+
+	for (u64 i = 0; i != shift_size; ++i)
+	{
+		const u16 shifted = static_cast<u16>((static_cast<u16>(lhs[i]) << shift_by_bits) | carry);
+
+		dst[i + shift_by_bytes] = static_cast<u8>(shifted);
+
+		carry = static_cast<u8>(shifted >> 8);
+	}
+
+	if (extra_bits != 0)
+	{
+		TODO("Left-shift from non-whole byte.");
+	}
+}
+
+void bitwise_shift_right(u16 bits, MutRange<byte> dst, Range<byte> lhs, u64 rhs, bool is_arithmetic_shift) noexcept
+{
+	ASSERT_OR_IGNORE(rhs < bits);
+
+	const u64 shift_by_bytes = rhs / 8;
+
+	const u8 shift_by_bits = rhs % 8;
+
+	const u8 shift_by_bits_inverse = 8 - shift_by_bits;
+
+	const u64 lhs_size = bits / 8;
+
+	const u8 extra_bits = bits % 8;
+
+	const u64 shift_size = lhs_size - shift_by_bytes;
+
+	u8 fill = 0;
+
+	if (is_arithmetic_shift)
+	{
+		if (extra_bits == 0)
+		{
+			if ((lhs[lhs_size - 1] & 0x80) != 0)
+				fill = 0xFF;
+		}
+		else
+		{
+			const u8 msb_mask = static_cast<u8>(1) << (extra_bits - 1);
+
+			if ((lhs[lhs_size] & msb_mask) != 0)
+				fill = 0xFF;
+		}
+	}
+
+	memset(dst.begin(), fill, shift_by_bytes);
+
+	u8 carry = 0;
+
+	if (extra_bits != 0)
+	{
+		TODO("Right-shift from non-whole byte.");
+	}
+
+	for (u64 i = 0; i != shift_size; ++i)
+	{
+		const u8 lhs_byte = lhs[i + shift_by_bytes];
+
+		const u8 shifted = (lhs_byte >> shift_by_bits) | carry;
+
+		dst[i + shift_by_bytes] = shifted;
+
+		carry = static_cast<u8>(static_cast<u16>(lhs_byte) << shift_by_bits_inverse);
+	}
+}
+
 
 
 static bool is_inlined(CompIntegerValue value) noexcept
