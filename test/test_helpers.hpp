@@ -8,21 +8,6 @@
 #include "../infra/common.hpp"
 #include "../infra/minos/minos.hpp"
 
-#if COMPILER_MSVC
-	#include <intrin.h>
-	#define DEBUGBREAK __debugbreak()
-#elif COMPILER_CLANG
-	#if !__has_builtin(__builtin_debugtrap)
-		#error("Required __builtin_debugtrap not supported by used clang version")
-	#endif
-
-	#define DEBUGBREAK __builtin_debugtrap()
-#elif COMPILER_GCC
-	#include <signal.h>
-
-	#define DEBUGBREAK raise(SIGTRAP)
-#endif
-
 struct TestResult
 {
 	const char8* test;
