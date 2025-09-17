@@ -14,6 +14,8 @@ struct TestResult
 
 	const char8* module;
 
+	Range<char8> subtest;
+
 	u64 duration;
 
 	u32 failure_count;
@@ -28,11 +30,16 @@ extern std::vector<TestResult> g_module_times;
 extern bool g_ignore_debugbreaks;
 
 #define TEST_BEGIN \
-		const u64 test_start_ = minos::exact_timestamp()
+		const u64 test_start_ = minos::exact_timestamp(); \
+		const Range<char8> test_name_ = {}
+
+#define TEST_BEGIN_NAMED(name) \
+		const u64 test_start_ = minos::exact_timestamp(); \
+		const Range<char8> test_name_ = name
 
 #define TEST_END \
 		ASSERT_OR_IGNORE(g_curr_module != nullptr); \
-		g_test_times.push_back({ __FUNCTION__, g_curr_module, minos::exact_timestamp() - test_start_, 0 })
+		g_test_times.push_back({ __FUNCTION__, g_curr_module, test_name_, minos::exact_timestamp() - test_start_, 0 })
 
 #define TEST_MODULE_BEGIN \
 		g_curr_module = __FUNCTION__; \
@@ -41,12 +48,18 @@ extern bool g_ignore_debugbreaks;
 #define TEST_MODULE_END \
 		ASSERT_OR_IGNORE(g_curr_module != nullptr && strcmp(g_curr_module, __FUNCTION__) == 0); \
 		g_curr_module = nullptr; \
-		g_module_times.push_back({ nullptr, __FUNCTION__, minos::exact_timestamp() - module_start_, 0 })
+		g_module_times.push_back({ nullptr, __FUNCTION__, {}, minos::exact_timestamp() - module_start_, 0 })
 
 #define TEST_RELATION_(a, b, relation) \
 		do { \
 			if (!((a) relation (b))) { \
-				fprintf(stderr, "%s:\n    Assertion %s %s %s failed\n    (%s:%u)\n", __FUNCTION__, #a, #relation, #b, __FILE__, __LINE__); \
+				fprintf(stderr, "%s%s%.*s:\n    Assertion `%s %s %s` failed\n    (%s:%u)\n", \
+					__FUNCTION__, \
+					test_name_.begin() == nullptr ? "" : "@", \
+					static_cast<s32>(test_name_.count()), test_name_.begin(), \
+					#a, #relation, #b, \
+					__FILE__, __LINE__ \
+				); \
 				g_test_times.back().failure_count += 1; \
 				if (!g_ignore_debugbreaks) \
 					DEBUGBREAK; \
@@ -56,7 +69,12 @@ extern bool g_ignore_debugbreaks;
 #define TEST_FUNCTION_(a, b, c, function, relation, expected) \
 		do { \
 			if (!((function((a), (b), (c))) relation (expected))) { \
-				fprintf(stderr, "%s:\n    Assertion %s(%s, %s, %s) %s %s failed\n    (%s:%u)\n", __FUNCTION__, #function, #a, #b, #c, #relation, #expected, __FILE__, __LINE__); \
+				fprintf(stderr, "%s%s%.*s:\n    Assertion `%s(%s, %s, %s) %s %s` failed\n    (%s:%u)\n", \
+					__FUNCTION__, test_name_.begin() == nullptr ? "" : "@", \
+					static_cast<s32>(test_name_.count()), test_name_.begin(), \
+					#function, #a, #b, #c, #relation, #expected, \
+					__FILE__, __LINE__ \
+				); \
 				g_test_times.back().failure_count += 1; \
 				if (!g_ignore_debugbreaks) \
 					DEBUGBREAK; \

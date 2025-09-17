@@ -19,6 +19,8 @@ void ast_tests() noexcept;
 
 void type_pool_tests() noexcept;
 
+void integration_tests() noexcept;
+
 struct TimeDesc
 {
 	const char8* unit;
@@ -592,6 +594,8 @@ s32 main(s32 argc, const char8** argv) noexcept
 	ast_tests();
 
 	type_pool_tests();
+
+	integration_tests();
 
 	const u64 duration = minos::exact_timestamp() - start;
 

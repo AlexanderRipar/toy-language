@@ -4,7 +4,7 @@ project(test)
 
 # Prepare source files
 
-set(TEST_SOURCES test_helpers.hpp minos_tests.cpp ast_tests.cpp type_pool_tests.cpp)
+set(TEST_SOURCES test_helpers.hpp minos_tests.cpp ast_tests.cpp type_pool_tests.cpp integration_tests.cpp)
 
 list(TRANSFORM INFRA_SOURCES PREPEND "../")
 
