@@ -33,6 +33,7 @@ set(INFRA_SOURCES
 
 set(CORE_SOURCES
 	core/core.hpp
+	core/core.cpp
 	core/ast_pool.cpp
 	core/closure_pool.cpp
 	core/partial_value_pool.cpp

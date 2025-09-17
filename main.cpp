@@ -5,22 +5,6 @@
 #include <cstring>
 #include <cstdio>
 
-static minos::FileHandle log_file(bool enable, Range<char8> filepath) noexcept
-{
-	if (!enable)
-		return minos::FileHandle{};
-
-	if (filepath.count() == 0)
-		return minos::standard_file_handle(minos::StdFileName::StdOut);
-
-	minos::FileHandle log_file;
-
-	if (!minos::file_create(filepath, minos::Access::Write, minos::ExistsMode::Truncate, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &log_file))
-		panic("Failed to open log file %.*s (0x%X)\n", static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
-
-	return log_file;
-}
-
 s32 main(s32 argc, const char8** argv)
 {
 	if (argc == 0)
@@ -37,48 +21,11 @@ s32 main(s32 argc, const char8** argv)
 	}
 	else if (argc == 3 && strcmp(argv[1] , "-config") == 0)
 	{
-		AllocPool* const alloc = create_alloc_pool(1u << 24, 1u << 18);
+		CoreData core = create_core_data(range::from_cstring(argv[2]));
 
-		Config* const config = create_config(alloc, range::from_cstring(argv[2]));
+		(void) import_file(core.interp, core.config->entrypoint.filepath, false);
 
-
-
-		const minos::FileHandle config_log_file = log_file(config->logging.config.enable, config->logging.config.log_filepath);
-
-		if (config_log_file.m_rep != nullptr)
-			print_config(config_log_file, config);
-
-		const minos::FileHandle ast_log_file = log_file(config->logging.asts.enable, config->logging.asts.log_filepath);
-
-		const minos::FileHandle imports_log_file = log_file(config->logging.imports.enable, config->logging.imports.log_filepath);
-
-
-
-		IdentifierPool* const identifiers = create_identifier_pool(alloc);
-
-		SourceReader* const reader = create_source_reader(alloc);
-
-		ErrorSink* const errors = create_error_sink(alloc, reader, identifiers);
-
-		GlobalValuePool* const globals = create_global_value_pool(alloc);
-
-		TypePool* const types = create_type_pool(alloc);
-
-		AstPool* const asts = create_ast_pool(alloc);
-
-		Parser* const parser = create_parser(alloc, identifiers, globals, types, asts, errors);
-
-		PartialValuePool* const partials = create_partial_value_pool(alloc);
-
-		ClosurePool* const closures = create_closure_pool(alloc, types);
-
-		LexicalAnalyser* const lex = create_lexical_analyser(alloc, identifiers, asts, errors);
-
-		Interpreter* const interp = create_interpreter(alloc, config, reader, parser, types, asts, identifiers, globals, partials, closures, lex, errors, imports_log_file, ast_log_file, config->logging.imports.enable_prelude);
-
-		(void) import_file(interp, config->entrypoint.filepath, false);
-
-		release_config(config);
+		release_core_data(&core);
 
 		fprintf(stderr, "\nCompleted successfully\n");
 

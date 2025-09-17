@@ -2332,4 +2332,41 @@ const char8* tag_name(Builtin builtin) noexcept;
 
 const char8* tag_name(ValueKind type_kind) noexcept;
 
+
+
+
+
+struct CoreData
+{
+	AllocPool* alloc;
+
+	Config* config;
+
+	IdentifierPool* identifiers;
+
+	SourceReader* reader;
+
+	ErrorSink* errors;
+
+	GlobalValuePool* globals;
+
+	TypePool* types;
+
+	AstPool* asts;
+
+	Parser* parser;
+
+	PartialValuePool* partials;
+
+	ClosurePool* closures;
+
+	LexicalAnalyser* lex;
+
+	Interpreter* interp;
+};
+
+CoreData create_core_data(Range<char8> config_filepath) noexcept;
+
+void release_core_data(CoreData* core) noexcept;
+
 #endif // CORE_INCLUDE_GUARD
