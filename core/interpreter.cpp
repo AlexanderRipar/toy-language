@@ -3124,6 +3124,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	}
 
 	case AstTag::OpLogAnd:
+	case AstTag::OpLogOr:
 	{
 		const TypeId bool_type_id = type_create_simple(interp->types, TypeTag::Boolean);
 
@@ -3141,7 +3142,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			bool_type_id
 		});
 
-		// Since we are short-circuiting here we can't look at `rhs` to see
+		// Since we might short-circuit here we can't look at `rhs` to see
 		// whether it should be put into a partial value, so just return right
 		// away.
 		if (lhs_rst.tag == EvalTag::Unbound)
@@ -3151,8 +3152,10 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			return eval_unbound(lhs_rst.unbound);
 		}
 
-		// Short-circuit.
-		if (!lhs_value)
+		// Short-circuit. If we are performing and `and`, short-circuit iff lhs
+		// is `false`. Otherwise (i.e. if we are performing an `or`)
+		// short-circuit iff lhs is `true`. 
+		if (lhs_value != (node->tag == AstTag::OpLogAnd))
 		{
 			value_set(&rst.success, lhs_rst.success.bytes);
 
@@ -3180,9 +3183,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			return eval_unbound(rhs_rst.unbound);
 		}
 
-		// Since we're here, we know that `lhs` was `true`, as it would
-		// otherwise have short-circuited, so we can just use `rhs` as the
-		// result of the `and` operation.
+		// Since we're here, we know that `lhs` did not short-circuit, so it
+		// has no further bearing on the result. Thus we can just use `rhs` as
+		// the result of the operation.
 		value_set(&rst.success, rhs_rst.success.bytes);
 
 		stack_shrink(interp, mark);
@@ -3589,7 +3592,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpSubTC:
 	case AstTag::OpMulTC:
 	case AstTag::OpMod:
-	case AstTag::OpLogOr:
 	case AstTag::OpSetAdd:
 	case AstTag::OpSetSub:
 	case AstTag::OpSetMul:
