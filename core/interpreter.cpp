@@ -2914,6 +2914,40 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		return rst;
 	}
 
+	case AstTag::UOpLogNot:
+	{
+		const TypeId bool_type_id = type_create_simple(interp->types, TypeTag::Boolean);
+
+		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, bool_type_id, sizeof(bool), alignof(bool));
+
+		const u32 mark = stack_mark(interp);
+
+		AstNode* const operand = first_child_of(node);
+
+		bool operand_value;
+
+		const EvalRst operand_rst = evaluate(interp, operand, EvalSpec{
+			ValueKind::Value,
+			range::from_object_bytes_mut(&operand_value),
+			bool_type_id
+		});
+
+		if (operand_rst.tag == EvalTag::Unbound)
+		{
+			stack_shrink(interp, mark);
+
+			return eval_unbound(operand_rst.unbound);
+		}
+
+		operand_value = !operand_value;
+
+		value_set(&rst.success, range::from_object_bytes_mut(&operand_value));
+
+		stack_shrink(interp, mark);
+
+		return rst;
+	}
+
 	case AstTag::OpBitAnd:
 	{
 		const u32 mark = stack_mark(interp);
@@ -3665,7 +3699,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpDefer:
 	case AstTag::UOpDistinct:
 	case AstTag::UOpBitNot:
-	case AstTag::UOpLogNot:
 	case AstTag::UOpNegate:
 	case AstTag::UOpPos:
 	case AstTag::OpAdd:
