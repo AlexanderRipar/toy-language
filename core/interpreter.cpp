@@ -1545,7 +1545,7 @@ static EvalRst evaluate_local_member(Interpreter* interp, AstNode* node, EvalSpe
 	return rst;
 }
 
-static EvalTag evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode* node, EvalValue* out_lhs, EvalValue* out_rhs, TypeId* out_common_type_id, Arec** out_unbound) noexcept
+static bool evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode* node, EvalValue* out_lhs, EvalValue* out_rhs, TypeId* out_common_type_id, Arec** out_unbound) noexcept
 {
 	AstNode* const lhs = first_child_of(node);
 
@@ -1559,7 +1559,7 @@ static EvalTag evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode*
 	{
 		*out_unbound = lhs_rst.unbound < rhs_rst.unbound ? lhs_rst.unbound : rhs_rst.unbound;
 
-		return EvalTag::Unbound;
+		return false;
 	}
 	else if (lhs_rst.tag == EvalTag::Unbound)
 	{
@@ -1567,7 +1567,7 @@ static EvalTag evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode*
 
 		*out_unbound = lhs_rst.unbound;
 
-		return EvalTag::Unbound;
+		return false;
 	}
 	else if (rhs_rst.tag == EvalTag::Unbound)
 	{
@@ -1575,7 +1575,7 @@ static EvalTag evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode*
 
 		*out_unbound = rhs_rst.unbound;
 
-		return EvalTag::Unbound;
+		return false;
 	}
 
 	const TypeId common_type_id = type_unify(interp->types, lhs_rst.success.type_id, rhs_rst.success.type_id);
@@ -1611,7 +1611,7 @@ static EvalTag evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode*
 
 	*out_common_type_id = common_type_id;
 
-	return EvalTag::Success;
+	return true;
 }
 
 static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signature_type, AstNode* callee) noexcept
@@ -2702,9 +2702,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		Arec* unbound;
 
-		const EvalTag sub_tag = evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound);
-
-		if (sub_tag == EvalTag::Unbound)
+		if (!evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound))
 			return eval_unbound(unbound);
 
 		const TypeTag common_type_tag = type_tag_from_id(interp->types, common_type_id);
@@ -2828,9 +2826,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		Arec* unbound;
 
-		const EvalTag sub_tag = evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound);
-
-		if (sub_tag == EvalTag::Unbound)
+		if (!evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound))
 			return eval_unbound(unbound);
 
 		const CompareResult result = compare(interp, common_type_id, lhs_casted.bytes.immut(), rhs_casted.bytes.immut(), node);
