@@ -3123,6 +3123,73 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		return rst;
 	}
 
+	case AstTag::OpLogAnd:
+	{
+		const TypeId bool_type_id = type_create_simple(interp->types, TypeTag::Boolean);
+
+		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, bool_type_id, sizeof(bool), alignof(bool));
+
+		const u32 mark = stack_mark(interp);
+
+		AstNode* const lhs = first_child_of(node);
+
+		bool lhs_value;
+
+		const EvalRst lhs_rst = evaluate(interp, lhs, EvalSpec{
+			ValueKind::Value,
+			range::from_object_bytes_mut(&lhs_value),
+			bool_type_id
+		});
+
+		// Since we are short-circuiting here we can't look at `rhs` to see
+		// whether it should be put into a partial value, so just return right
+		// away.
+		if (lhs_rst.tag == EvalTag::Unbound)
+		{
+			stack_shrink(interp, mark);
+
+			return eval_unbound(lhs_rst.unbound);
+		}
+
+		// Short-circuit.
+		if (!lhs_value)
+		{
+			value_set(&rst.success, lhs_rst.success.bytes);
+
+			stack_shrink(interp, mark);
+
+			return rst;
+		}
+
+		AstNode* const rhs = next_sibling_of(lhs);
+
+		bool rhs_value;
+
+		const EvalRst rhs_rst = evaluate(interp, rhs, EvalSpec{
+			ValueKind::Value,
+			range::from_object_bytes_mut(&rhs_value),
+			bool_type_id
+		});
+
+		if (rhs_rst.tag == EvalTag::Unbound)
+		{
+			add_partial_value_to_builder_sized(interp, lhs, bool_type_id, lhs_rst.success.bytes.immut(), sizeof(bool), alignof(bool));
+
+			stack_shrink(interp, mark);
+
+			return eval_unbound(rhs_rst.unbound);
+		}
+
+		// Since we're here, we know that `lhs` was `true`, as it would
+		// otherwise have short-circuited, so we can just use `rhs` as the
+		// result of the `and` operation.
+		value_set(&rst.success, rhs_rst.success.bytes);
+
+		stack_shrink(interp, mark);
+
+		return rst;
+	}
+
 	case AstTag::Member:
 	{
 		AstNode* const lhs = first_child_of(node);
@@ -3522,7 +3589,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpSubTC:
 	case AstTag::OpMulTC:
 	case AstTag::OpMod:
-	case AstTag::OpLogAnd:
 	case AstTag::OpLogOr:
 	case AstTag::OpSetAdd:
 	case AstTag::OpSetSub:
