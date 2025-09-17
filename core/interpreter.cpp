@@ -2855,6 +2855,256 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		return rst;
 	}
 
+	case AstTag::OpShiftL:
+	case AstTag::OpShiftR:
+	{
+		const u32 mark = stack_mark(interp);
+
+		AstNode* const lhs = first_child_of(node);
+
+		EvalRst lhs_rst = evaluate(interp, lhs, spec);
+
+		AstNode* const rhs = next_sibling_of(lhs);
+
+		EvalRst rhs_rst = evaluate(interp, rhs, EvalSpec{
+			ValueKind::Value
+		});
+
+		if (lhs_rst.tag == EvalTag::Unbound && rhs_rst.tag == EvalTag::Unbound)
+		{
+			return eval_unbound(lhs_rst.unbound < rhs_rst.unbound ? lhs_rst.unbound : rhs_rst.unbound);
+		}
+		else if (lhs_rst.tag == EvalTag::Unbound)
+		{
+			add_partial_value_to_builder(interp, rhs, rhs_rst.success.type_id, rhs_rst.success.bytes.immut());
+
+			return eval_unbound(lhs_rst.unbound);
+		}
+		else if (rhs_rst.tag == EvalTag::Unbound)
+		{
+			add_partial_value_to_builder(interp, lhs, lhs_rst.success.type_id, lhs_rst.success.bytes.immut());
+
+			return eval_unbound(rhs_rst.unbound);
+		}
+
+		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_rst.success.type_id);
+
+		const TypeTag rhs_type_tag = type_tag_from_id(interp->types, rhs_rst.success.type_id);
+
+		EvalRst rst = fill_spec(interp, spec, node, false, true, lhs_rst.success.type_id);
+
+		if (lhs_type_tag == TypeTag::CompInteger)
+		{
+			const CompIntegerValue lhs_value = *value_as<CompIntegerValue>(lhs_rst.success);
+
+			CompIntegerValue rhs_value;
+
+			if (rhs_type_tag == TypeTag::CompInteger)
+			{
+				rhs_value = *value_as<CompIntegerValue>(rhs_rst.success);
+
+			}
+			else if (rhs_type_tag == TypeTag::Integer)
+			{
+				const NumericType rhs_type = *type_attachment_from_id<NumericType>(interp->types, rhs_rst.success.type_id);
+
+				const u64 rhs_size = rhs_type.bits / 8;
+
+				const u8 rhs_extra_bits = rhs_type.bits % 8;
+
+				if (rhs_type.is_signed)
+				{
+					const u8 msb_mask = rhs_extra_bits == 0 ? 0x80 : static_cast<u8>(1 << rhs_extra_bits);
+
+					if ((rhs_rst.success.bytes[rhs_size] & msb_mask) != 0)
+						source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `<<` must not be negative.\n");
+				}
+
+				for (u64 i = 8; i < rhs_size; ++i)
+				{
+					if (rhs_rst.success.bytes[i] != 0)
+						source_error(interp->errors, source_id_of(interp->asts, rhs), "Left-shifting by 2^64 or more is not supported.\n");
+				}
+
+				if (rhs_size >= 8 && rhs_extra_bits != 0)
+				{
+					const u8 bits = rhs_rst.success.bytes[rhs_size] & static_cast<u8>((1 << rhs_extra_bits) - 1);
+
+					if (bits != 0)
+						source_error(interp->errors, source_id_of(interp->asts, rhs), "Left-shifting by 2^64 or more is not supported.\n");
+				}
+
+				u64 shift;
+
+				memcpy(&shift, rhs_rst.success.bytes.begin(), rhs_size < 8 ? rhs_size : 8);
+
+				if (rhs_extra_bits != 0)
+				{
+					const u8 bits = rhs_rst.success.bytes[rhs_size] & static_cast<u8>((1 << rhs_extra_bits) - 1);
+
+					shift |= bits << (rhs_size * 8);
+				}
+
+				rhs_value = comp_integer_from_u64(shift);
+			}
+			else
+			{
+				source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `<<` must be of integer type.\n");
+			}
+
+			CompIntegerValue rst_value;
+
+			if (node->tag == AstTag::OpShiftL)
+			{
+				if (!comp_integer_shift_left(lhs_value, rhs_value, &rst_value))
+					source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `<<` must not be negative.\n");
+			}
+			else
+			{
+				ASSERT_OR_IGNORE(node->tag == AstTag::OpShiftR);
+
+				if (!comp_integer_shift_right(lhs_value, rhs_value, &rst_value))
+					source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `<<` must not be negative.\n");
+			}
+
+			value_set(&rst.success, range::from_object_bytes_mut(&rst_value));
+		}
+		else if (lhs_type_tag == TypeTag::Integer)
+		{
+			const NumericType lhs_type = *type_attachment_from_id<NumericType>(interp->types, lhs_rst.success.type_id);
+
+			MutRange<byte> rst_value = rst.success.bytes;
+
+			const Range<byte> lhs_value = lhs_rst.success.bytes.immut();
+
+			u64 shift;
+
+			if (rhs_type_tag == TypeTag::CompInteger)
+			{
+				const CompIntegerValue rhs_comp_value = *value_as<CompIntegerValue>(rhs_rst.success);
+
+				if (comp_integer_compare(rhs_comp_value, comp_integer_from_u64(0)) == StrongCompareOrdering::LessThan)
+					source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `<<` must not be negative.\n");
+
+				if (!u64_from_comp_integer(rhs_comp_value, 64, &shift))
+					source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `<<` exceeds the left-hand-side's size.\n");
+			}
+			else if (rhs_type_tag == TypeTag::Integer)
+			{
+				const NumericType rhs_type = *type_attachment_from_id<NumericType>(interp->types, rhs_rst.success.type_id);
+
+				const u64 rhs_size = rhs_type.bits / 8;
+
+				const u8 rhs_extra_bits = rhs_type.bits % 8;
+
+				if (rhs_type.is_signed)
+				{
+					const u8 msb_mask = rhs_extra_bits == 0 ? 0x80 : static_cast<u8>(1 << (rhs_extra_bits - 1));
+
+					if ((rhs_rst.success.bytes[rhs_size] & msb_mask) != 0)
+						source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `<<` must not be negative.\n");
+				}
+
+				for (u64 i = 8; i < rhs_size; ++i)
+				{
+					if (rhs_rst.success.bytes[i] != 0)
+						source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `<<` exceeds the left-hand-side's size.\n");
+				}
+
+				if (rhs_size >= 8 && rhs_extra_bits != 0)
+				{
+					const u8 bits = rhs_rst.success.bytes[rhs_size] & static_cast<u8>((1 << rhs_extra_bits) - 1);
+
+					if (bits != 0)
+						source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `<<` exceeds the left-hand-side's size.\n");
+				}
+
+				memcpy(&shift, rhs_rst.success.bytes.begin(), rhs_size < 8 ? rhs_size : 8);
+
+				if (rhs_extra_bits != 0)
+				{
+					const u8 bits = rhs_rst.success.bytes[rhs_size] & static_cast<u8>((1 << rhs_extra_bits) - 1);
+
+					shift |= bits << (rhs_size * 8);
+				}
+			}
+			else
+			{
+				source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `<<` must be of integer type.\n");
+			}
+
+			const u64 shift_by_bytes = shift / 8;
+
+			const u8 shift_by_bits = shift % 8;
+
+			if (lhs_type.bits <= shift)
+				source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `<<` exceeds the left-hand-side's size.\n");
+
+			const u64 lhs_size = (lhs_type.bits + 7) / 8;
+
+			const u64 shift_size = lhs_size - shift_by_bytes;
+
+			if (node->tag == AstTag::OpShiftL)
+			{
+				memset(rst_value.begin() + (shift + 7) / 8, 0, shift_size);
+
+				u8 carry = 0;
+
+				for (u64 i = 0; i != shift_size; ++i)
+				{
+					const u16 shifted = static_cast<u16>((static_cast<u16>(lhs_value[i]) << shift_by_bits) | carry);
+
+					rst_value[i + shift_by_bytes] = static_cast<u8>(shifted);
+
+					carry = static_cast<u8>(shifted >> 8);
+				}
+
+				// TODO: Set top bits if lhs_type.bits is not a multiple of 8
+			}
+			else
+			{
+				ASSERT_OR_IGNORE(node->tag == AstTag::OpShiftR);
+
+				u8 fill = 0;
+
+				if (lhs_type.is_signed)
+				{
+					const u8 extra_bits = lhs_type.bits % 8;
+
+					const u8 msb_mask = extra_bits == 0 ? 0x80 : static_cast<u8>(1 << (extra_bits - 1));
+
+					if ((lhs_value[lhs_type.bits / 8] & msb_mask) != 0)
+						fill = 0xFF;
+				}
+
+				memset(rst_value.begin(), fill, shift_size);
+
+				u8 carry = 0;
+
+				for (u64 i = 0; i != shift_size; ++i)
+				{
+					const u8 lhs_byte = lhs_value[i + shift_by_bytes];
+
+					const u8 shifted = (lhs_byte >> shift_by_bits) | carry;
+
+					rst_value[i] = shifted;
+
+					carry = static_cast<u8>(static_cast<u16>(lhs_byte) << (8 - shift_by_bits));
+				}
+
+				// TODO: Set top bits if lhs_type.bits is not a multiple of 8
+			}
+		}
+		else
+		{
+			source_error(interp->errors, source_id_of(interp->asts, lhs), "Left-hand-side of `<<` must be of integer type.\n");
+		}
+
+		rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
+
+		return rst;
+	}
+
 	case AstTag::Member:
 	{
 		AstNode* const lhs = first_child_of(node);
@@ -3315,8 +3565,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpSubTC:
 	case AstTag::OpMulTC:
 	case AstTag::OpMod:
-	case AstTag::OpShiftL:
-	case AstTag::OpShiftR:
 	case AstTag::OpLogAnd:
 	case AstTag::OpLogOr:
 	case AstTag::OpSetAdd:
