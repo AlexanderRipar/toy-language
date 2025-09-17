@@ -113,12 +113,14 @@ void set_error_handling_context(ErrorSink* errors, jmp_buf* setjmpd_longjmp_buf)
 
 NORETURN void error_exit(ErrorSink* errors) noexcept
 {
-	DEBUGBREAK;
-
 	if (errors->has_error_jmp_buf)
 		longjmp(*errors->error_jmp_buf, 1);
 	else
+	{
+		DEBUGBREAK;
+
 		minos::exit_process(1);
+	}
 }
 
 void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept
