@@ -2716,7 +2716,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			CompIntegerValue value;
 
 			if (!comp_integer_bit_and(*value_as<CompIntegerValue>(lhs_casted), *value_as<CompIntegerValue>(rhs_casted), &value))
-				source_error(interp->errors, source_id_of(interp->asts, node), "Cannot take bitwise and of negative compile-time integer value.\n");
+				source_error(interp->errors, source_id_of(interp->asts, node), "Cannot apply operator `&` to negative compile-time integer value.\n");
 
 			value_set(&rst.success, range::from_object_bytes_mut(&value));
 		}
@@ -2738,6 +2738,61 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		else
 		{
 			source_error(interp->errors, source_id_of(interp->asts, node), "Operator `&` only works on integer or boolean typed values.\n");
+		}
+
+		rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
+
+		return rst;
+	}
+
+	case AstTag::OpBitOr:
+	{
+		const u32 mark = stack_mark(interp);
+
+		EvalValue lhs_casted;
+
+		EvalValue rhs_casted;
+
+		TypeId common_type_id;
+
+		Arec* unbound;
+
+		if (!evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound))
+			return eval_unbound(unbound);
+
+		const TypeTag common_type_tag = type_tag_from_id(interp->types, common_type_id);
+
+		EvalRst rst;
+
+		if (common_type_tag == TypeTag::CompInteger)
+		{
+			rst = fill_spec_sized(interp, spec, node, false, true, common_type_id, sizeof(CompIntegerValue), alignof(CompIntegerValue));
+
+			CompIntegerValue value;
+
+			if (!comp_integer_bit_or(*value_as<CompIntegerValue>(lhs_casted), *value_as<CompIntegerValue>(rhs_casted), &value))
+				source_error(interp->errors, source_id_of(interp->asts, node), "Cannot apply operator `|` to negative compile-time integer value.\n");
+
+			value_set(&rst.success, range::from_object_bytes_mut(&value));
+		}
+		else if (common_type_tag == TypeTag::Boolean)
+		{
+			rst = fill_spec_sized(interp, spec, node, false, true, common_type_id, sizeof(bool), alignof(bool));
+
+			bool value = *value_as<bool>(lhs_casted) || *value_as<bool>(rhs_casted);
+
+			value_set(&rst.success, range::from_object_bytes_mut(&value));
+		}
+		else if (common_type_tag == TypeTag::Integer)
+		{
+			rst = fill_spec(interp, spec, node, false, true, common_type_id);
+
+			for (u32 i = 0; i != rst.success.bytes.count(); ++i)
+				rst.success.bytes[i] = lhs_casted.bytes[i] | rhs_casted.bytes[i];
+		}
+		else
+		{
+			source_error(interp->errors, source_id_of(interp->asts, node), "Operator `|` only works on integer or boolean typed values.\n");
 		}
 
 		rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
@@ -3205,7 +3260,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpSubTC:
 	case AstTag::OpMulTC:
 	case AstTag::OpMod:
-	case AstTag::OpBitOr:
 	case AstTag::OpBitXor:
 	case AstTag::OpShiftL:
 	case AstTag::OpShiftR:
