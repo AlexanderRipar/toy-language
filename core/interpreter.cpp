@@ -3664,7 +3664,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			const NumericType* type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
 
-			bitwise_add(type->bits, result.success.bytes, lhs_rst.success.bytes.immut(), rhs_rst.success.bytes.immut());
+			if (!bitwise_add(type->bits, result.success.bytes, lhs_rst.success.bytes.immut(), rhs_rst.success.bytes.immut())) {
+				source_error(interp->errors, source_id_of(interp->asts, node), "Overflow occured for `+`.\n");
+			}
 		}
 		else if (unified_type_tag == TypeTag::CompInteger)
 		{
