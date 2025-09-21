@@ -3796,7 +3796,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			// TODO: flip bits on rhs?
 
-			bitwise_add(type->bits, result.success.bytes, lhs_rst.success.bytes.immut(), rhs_rst.success.bytes.immut());
+			if (bitwise_add(type->bits, result.success.bytes, lhs_rst.success.bytes.immut(), rhs_rst.success.bytes.immut())) {
+				source_error(interp->errors, source_id_of(interp->asts, node), "Overflow occured while subtracting!");
+			}
 		}
 		else if (unified_type_tag == TypeTag::CompInteger)
 		{
