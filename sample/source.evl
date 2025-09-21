@@ -275,7 +275,7 @@ let ptrs_to_unequal_are_unequal_array_of_one_elem = if pointed_x.& == pointed_y.
 	else
 		.[1]
 
-let x = std.assert(true)
+let check = std.assert(true)
 
 
 let one = 1
@@ -286,7 +286,7 @@ let seven = six + 1
 
 let subtractor = -5
 
-let result = seven + subtract
+let result = seven + subtractor
 
 let test_add_array = [result]s8 = .[1, 2]
 
