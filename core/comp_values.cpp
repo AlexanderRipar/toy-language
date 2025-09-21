@@ -80,7 +80,8 @@ static constexpr u64 COMP_INTEGER_MAX = (static_cast<u64>(1) << 62) - 1;
 
 static constexpr s64 COMP_INTEGER_MIN = static_cast<s64>((static_cast<u64>(static_cast<s64>(-1)) << 62));
 
-bool bitwise_add(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept
+template<bool is_add>
+static bool bitwise_add_or_sub(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept
 {
 	ASSERT_OR_IGNORE(dst.count() != 0
 	              && dst.count() == lhs.count()
@@ -95,7 +96,12 @@ bool bitwise_add(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs)
 
 	for (u64 i = 0; i != top; ++i)
 	{
-		const u64 sum = static_cast<u64>(lhs[i]) + static_cast<u64>(rhs[i]) + carry;
+		u64 sum;
+
+		if constexpr (is_add)
+			sum = static_cast<u64>(lhs[i]) + static_cast<u64>(rhs[i]) + carry;
+		else
+			sum = static_cast<u64>(lhs[i]) - static_cast<u64>(rhs[i]) - carry;
 
 		dst[i] = static_cast<byte>(sum);
 
@@ -114,7 +120,12 @@ bool bitwise_add(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs)
 
 		const u64 rhs_masked = static_cast<u64>(rhs[top] & top_mask);
 
-		const u64 sum = lhs_masked + rhs_masked + carry;
+		u64 sum;
+
+		if constexpr (is_add)
+			sum = lhs_masked + rhs_masked + carry;
+		else
+			sum = lhs_masked - rhs_masked - carry;
 
 		byte* dst_top = dst.begin() + top;
 
@@ -128,6 +139,16 @@ bool bitwise_add(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs)
 	}
 
 	return carry == 0;
+}
+
+bool bitwise_add(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept
+{
+	return bitwise_add_or_sub<true>(bits, dst, lhs, rhs);
+}
+
+bool bitwise_sub(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept
+{
+	return bitwise_add_or_sub<false>(bits, dst, lhs, rhs);
 }
 
 void bitwise_shift_left(u16 bits, MutRange<byte> dst, Range<byte> lhs, u64 rhs) noexcept
