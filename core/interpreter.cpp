@@ -3697,6 +3697,118 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			return rst;
 		}
 	}
+	
+	case AstTag::OpSub:
+	{
+		const u32 mark = stack_mark(interp);
+
+		AstNode* const lhs = first_child_of(node);
+		EvalRst lhs_rst = evaluate(interp, lhs, EvalSpec{
+			ValueKind::Value
+		});
+
+		AstNode* const rhs = next_sibling_of(lhs);
+		EvalRst rhs_rst = evaluate(interp, rhs, EvalSpec{
+			ValueKind::Value
+		});
+
+		const TypeId unified_type_id = type_unify(interp->types, lhs_rst.success.type_id, rhs_rst.success.type_id);
+
+		if (unified_type_id == TypeId::INVALID)
+			source_error(interp->errors, source_id_of(interp->asts, node), "Incompatible operand types passed to `-` operator.\n");
+
+		// TODO: check if into type can overflow / is signed?
+
+		const TypeTag unified_type_tag = type_tag_from_id(interp->types, unified_type_id);
+
+		if (unified_type_tag == TypeTag::Integer
+		 || unified_type_tag == TypeTag::Float
+		 || unified_type_tag == TypeTag::CompInteger
+		 || unified_type_tag == TypeTag::CompFloat)
+			source_error(interp->errors, source_id_of(interp->asts, lhs), "The `-` operator is only supported for Integer and Float values!\n");
+
+		const TypeMetrics metrics = type_metrics_from_id(interp->types, unified_type_id);
+
+		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_rst.success.type_id);
+
+		EvalValue lhs_value;
+
+		if (lhs_type_tag == unified_type_tag)
+		{
+			// the first summand is the target type
+			lhs_value = lhs_rst.success;
+		}
+		else
+		{
+			// need to convert lhs to rhs type
+			lhs_value = make_value(stack_push(interp, metrics.size, metrics.align), false, true, unified_type_id);
+
+			convert(interp, lhs, &lhs_value, lhs_rst.success);
+		}
+
+		const TypeTag rhs_type_tag = type_tag_from_id(interp->types, rhs_rst.success.type_id);
+
+		EvalValue rhs_value;
+
+		if (rhs_type_tag == unified_type_tag)
+		{
+			// the second summand is the target type
+			rhs_value = rhs_rst.success;
+		}
+		else
+		{
+			// need to convert rhs to lhs type
+			rhs_value = make_value(stack_push(interp, metrics.size, metrics.align), false, true, unified_type_id);
+
+			convert(interp, lhs, &rhs_value, rhs_rst.success);
+		}
+
+		EvalRst result = fill_spec(interp, spec, node, false, true, unified_type_id);
+
+		if (unified_type_tag == TypeTag::Float)
+		{
+			const NumericType* type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
+
+			if (type->bits == 32)
+			{
+				f32 sum = *value_as<f32>(lhs_value) - *value_as<f32>(rhs_value);
+
+				value_set(&result.success, range::from_object_bytes_mut(&sum));
+			}
+			else
+			{
+				ASSERT_OR_IGNORE(type->bits == 64);
+
+				f64 sum = *value_as<f64>(lhs_value) - *value_as<f64>(rhs_value);
+
+				value_set(&result.success, range::from_object_bytes_mut(&sum));
+			}
+		}
+		else if (unified_type_tag == TypeTag::CompFloat)
+		{
+			CompFloatValue sum = comp_float_sub(*value_as<CompFloatValue>(lhs_value), *value_as<CompFloatValue>(rhs_value));
+
+			value_set(&result.success, range::from_object_bytes_mut(&sum));
+		}
+		else if (unified_type_tag == TypeTag::Integer)
+		{
+			const NumericType* type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
+
+			// TODO: flip bits on rhs?
+
+			bitwise_add(type->bits, result.success.bytes, lhs_rst.success.bytes.immut(), rhs_rst.success.bytes.immut());
+		}
+		else if (unified_type_tag == TypeTag::CompInteger)
+		{
+			CompIntegerValue sum = comp_integer_sub(*value_as<CompIntegerValue>(lhs_value), *value_as<CompIntegerValue>(rhs_value));
+
+			value_set(&result.success, range::from_object_bytes_mut(&sum));
+		}
+
+		result.success.bytes = stack_copy_down(interp, mark, result.success.bytes);
+
+		return result;
+	}
 
 	case AstTag::CompositeInitializer:
 	case AstTag::Wildcard:
@@ -3721,7 +3833,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpNegate:
 	case AstTag::UOpPos:
 	case AstTag::OpAdd:
-	case AstTag::OpSub:
 	case AstTag::OpMul:
 	case AstTag::OpDiv:
 	case AstTag::OpAddTC:
