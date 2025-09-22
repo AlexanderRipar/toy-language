@@ -3591,10 +3591,10 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const TypeTag unified_type_tag = type_tag_from_id(interp->types, unified_type_id);
 
-		if (unified_type_tag == TypeTag::Integer
+		if (!(unified_type_tag == TypeTag::Integer
 		 || unified_type_tag == TypeTag::Float
 		 || unified_type_tag == TypeTag::CompInteger
-		 || unified_type_tag == TypeTag::CompFloat)
+		 || unified_type_tag == TypeTag::CompFloat))
 			source_error(interp->errors, source_id_of(interp->asts, lhs), "The `+` operator is only supported for Integer and Float values!\n");
 
 		const TypeMetrics metrics = type_metrics_from_id(interp->types, unified_type_id);
@@ -3665,7 +3665,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			const NumericType* type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
 
 			if (!bitwise_add(type->bits, result.success.bytes, lhs_rst.success.bytes.immut(), rhs_rst.success.bytes.immut())) {
-				source_error(interp->errors, source_id_of(interp->asts, node), "Overflow occured for `+`.\n");
+				source_error(interp->errors, source_id_of(interp->asts, node), "Overflow occured for `+` operator.\n");
 			}
 		}
 		else if (unified_type_tag == TypeTag::CompInteger)
