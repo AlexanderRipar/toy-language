@@ -280,16 +280,14 @@ let check = std.assert(true)
 
 let one = 1
 
-let six = x + one
+let six: s8 = 5 + 1
 
-let seven = six + 1
+let seven = six + one
 
-let subtractor = -5
+let two: u8 = one + one
 
-let result = seven + subtractor
-
-let test_add_array = [result]s8 = .[1, 2]
+let test_add_array: [two]s8 = .[1, 2]
 
 let float_one = 1.0
 
-let float_half = float_one - 0.5
+let float_half = float_one + 0.5
