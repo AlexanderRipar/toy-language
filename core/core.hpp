@@ -1445,6 +1445,16 @@ void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, 
 // `format` supports the same syntax as `printf`.
 void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
 
+// Prints the given `format` string to the diagnostic log file configured with
+// `errors`.
+// `format` supports the same syntax as `printf`.
+void error_diagnostic(ErrorSink* errors, const char8* format, ...) noexcept;
+
+// Prints the given `format` string to the diagnostic log file configured with
+// `errors`.
+// `format` supports the same syntax as `printf`.
+void verror_diagnostic(ErrorSink* errors, const char8* format, va_list args) noexcept;
+
 // Takes a pointer to a `jmp_buf` on which `setjmp` has previously been called.
 // When one of `source_error`, `vsource_error` or `error_exit` is called next,
 // `longjmp` will be called with that `jmp_buf` and `1` passed for the `status`

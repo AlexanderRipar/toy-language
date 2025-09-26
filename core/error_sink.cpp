@@ -117,6 +117,22 @@ void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format,
 	print_error_to(errors->log_file, &location, format, args);
 }
 
+void error_diagnostic(ErrorSink* errors, const char8* format, ...) noexcept
+{
+	va_list args;
+
+	va_start(args, format);
+
+	verror_diagnostic(errors, format, args);
+
+	va_end(args);
+}
+
+void verror_diagnostic(ErrorSink* errors, const char8* format, va_list args) noexcept
+{
+	vfprintf(errors->log_file, format, args);
+}
+
 void set_error_handling_context(ErrorSink* errors, jmp_buf* setjmpd_longjmp_buf) noexcept
 {
 	errors->has_error_jmp_buf = true;
