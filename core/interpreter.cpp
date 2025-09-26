@@ -853,6 +853,23 @@ static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name, 
 
 
 
+static void print_stack_trace(Interpreter* interp) noexcept
+{
+	Arec* arec = active_arec(interp);
+
+	while (true)
+	{
+		SourceLocation loc = source_location_from_source_id(interp->reader, arec->source_id);
+
+		error_diagnostic(interp->errors, "    %.*s:%u:%u\n", static_cast<s32>(loc.filepath.count()), loc.filepath.begin(), loc.line_number, loc.column_number);
+
+		if (arec->caller_arec_id == ArecId::INVALID)
+			break;
+
+		arec = arec_from_id(interp, arec->caller_arec_id);
+	}
+}
+
 static ClosureBuilderId close_over_rec(Interpreter* interp, ClosureBuilderId builder_id, AstNode* node, u16 out_adjustment) noexcept
 {
 	if (node->tag == AstTag::Identifier)
@@ -2607,7 +2624,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 	case AstTag::Unreachable:
 	{
-		source_error(interp->errors, source_id_of(interp->asts, node), "Reached `unreachable`.\n");
+		source_error_nonfatal(interp->errors, source_id_of(interp->asts, node), "Reached `unreachable`.\n");
+
+		print_stack_trace(interp);
+
+		error_exit(interp->errors);
 	}
 
 	case AstTag::Undefined:
