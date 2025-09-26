@@ -76,7 +76,7 @@ NORETURN void vsource_error(ErrorSink* errors, SourceId source_id, const char8* 
 {
 	const SourceLocation location = source_location_from_source_id(errors->reader, source_id);
 
-	print_error(&location, format, args);
+	print_error_to(errors->log_file, &location, format, args);
 
 	error_exit(errors);
 }
@@ -96,7 +96,7 @@ void vsource_error_nonfatal(ErrorSink* errors, SourceId source_id, const char8* 
 {
 	const SourceLocation location = source_location_from_source_id(errors->reader, source_id);
 
-	print_error(&location, format, args);
+	print_error_to(errors->log_file, &location, format, args);
 }
 
 void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept
@@ -114,7 +114,7 @@ void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format,
 {
 	const SourceLocation location = source_location_from_source_id(errors->reader, source_id);
 
-	print_error(&location, format, args);
+	print_error_to(errors->log_file, &location, format, args);
 }
 
 void set_error_handling_context(ErrorSink* errors, jmp_buf* setjmpd_longjmp_buf) noexcept
@@ -136,13 +136,18 @@ NORETURN void error_exit(ErrorSink* errors) noexcept
 	}
 }
 
-void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept
+static void print_error_to(FILE* dst, const SourceLocation* location, const char8* format, va_list args) noexcept
 {
-	fprintf(stderr, "%.*s:%u:%u: ",
+	fprintf(dst, "%.*s:%u:%u: ",
 		static_cast<s32>(location->filepath.count()), location->filepath.begin(),
 		location->line_number,
 		location->column_number
 	);
 
-	vfprintf(stderr, format, args);
+	vfprintf(dst, format, args);
+}
+
+void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept
+{
+	print_error_to(stderr, location, format, args);
 }
