@@ -3599,11 +3599,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const TypeMetrics metrics = type_metrics_from_id(interp->types, unified_type_id);
 
-		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_rst.success.type_id);
-
 		EvalValue lhs_value;
 
-		if (lhs_type_tag == unified_type_tag)
+		if (type_is_equal(interp->types, unified_type_id, lhs_rst.success.type_id))
 		{
 			// the first summand is the target type
 			lhs_value = lhs_rst.success;
@@ -3616,11 +3614,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			convert(interp, lhs, &lhs_value, lhs_rst.success);
 		}
 
-		const TypeTag rhs_type_tag = type_tag_from_id(interp->types, rhs_rst.success.type_id);
-
 		EvalValue rhs_value;
 
-		if (rhs_type_tag == unified_type_tag)
+		if (type_is_equal(interp->types, unified_type_id, rhs_rst.success.type_id))
 		{
 			// the second summand is the target type
 			rhs_value = rhs_rst.success;
