@@ -3654,7 +3654,18 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			CompFloatValue sum = comp_float_add(*value_as<CompFloatValue>(lhs_value), *value_as<CompFloatValue>(rhs_value));
 
-			value_set(&result.success, range::from_object_bytes_mut(&sum));
+			const TypeTag rst_type_tag = type_tag_from_id(interp->types, result.success.type_id);
+
+			if (rst_type_tag == TypeTag::CompFloat)
+			{
+				value_set(&result.success, range::from_object_bytes_mut(&sum));
+			}
+			else
+			{
+				ASSERT_OR_IGNORE(rst_type_tag == TypeTag::Float);
+
+				convert(interp, node, &result.success, make_value(range::from_object_bytes_mut(&sum), false, true, unified_type_id));
+			}
 		}
 		else if (unified_type_tag == TypeTag::Integer)
 		{
@@ -3668,7 +3679,18 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			CompIntegerValue sum = comp_integer_add(*value_as<CompIntegerValue>(lhs_value), *value_as<CompIntegerValue>(rhs_value));
 
-			value_set(&result.success, range::from_object_bytes_mut(&sum));
+			const TypeTag rst_type_tag = type_tag_from_id(interp->types, result.success.type_id);
+
+			if (rst_type_tag == TypeTag::CompInteger)
+			{
+				value_set(&result.success, range::from_object_bytes_mut(&sum));
+			}
+			else
+			{
+				ASSERT_OR_IGNORE(rst_type_tag == TypeTag::Integer);
+
+				convert(interp, node, &result.success, make_value(range::from_object_bytes_mut(&sum), false, true, unified_type_id));
+			}
 		}
 
 		result.success.bytes = stack_copy_down(interp, mark, result.success.bytes);
