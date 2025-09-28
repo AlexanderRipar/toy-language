@@ -556,11 +556,7 @@ f32 f32_from_comp_float(CompFloatValue value) noexcept
 
 CompFloatValue comp_float_add(CompFloatValue lhs, CompFloatValue rhs) noexcept
 {
-	(void) lhs;
-
-	(void) rhs;
-
-	TODO("");
+	return CompFloatValue{ lhs.rep + rhs.rep };
 }
 
 CompFloatValue comp_float_sub(CompFloatValue lhs, CompFloatValue rhs) noexcept
