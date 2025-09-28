@@ -3575,11 +3575,13 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		const u32 mark = stack_mark(interp);
 
 		AstNode* const lhs = first_child_of(node);
+
 		EvalRst lhs_rst = evaluate(interp, lhs, EvalSpec{
 			ValueKind::Value
 		});
 
 		AstNode* const rhs = next_sibling_of(lhs);
+
 		EvalRst rhs_rst = evaluate(interp, rhs, EvalSpec{
 			ValueKind::Value
 		});
@@ -3599,102 +3601,101 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const TypeMetrics metrics = type_metrics_from_id(interp->types, unified_type_id);
 
-		EvalValue lhs_value;
+		EvalValue lhs_casted;
 
 		if (type_is_equal(interp->types, unified_type_id, lhs_rst.success.type_id))
 		{
-			// the first summand is the target type
-			lhs_value = lhs_rst.success;
+			lhs_casted = lhs_rst.success;
 		}
 		else
 		{
-			// need to convert lhs to rhs type
-			lhs_value = make_value(stack_push(interp, metrics.size, metrics.align), false, true, unified_type_id);
+			lhs_casted = make_value(stack_push(interp, metrics.size, metrics.align), false, true, unified_type_id);
 
-			convert(interp, lhs, &lhs_value, lhs_rst.success);
+			convert(interp, lhs, &lhs_casted, lhs_rst.success);
 		}
 
-		EvalValue rhs_value;
+		EvalValue rhs_casted;
 
 		if (type_is_equal(interp->types, unified_type_id, rhs_rst.success.type_id))
 		{
-			// the second summand is the target type
-			rhs_value = rhs_rst.success;
+			rhs_casted = rhs_rst.success;
 		}
 		else
 		{
-			// need to convert rhs to lhs type
-			rhs_value = make_value(stack_push(interp, metrics.size, metrics.align), false, true, unified_type_id);
+			rhs_casted = make_value(stack_push(interp, metrics.size, metrics.align), false, true, unified_type_id);
 
-			convert(interp, rhs, &rhs_value, rhs_rst.success);
+			convert(interp, rhs, &rhs_casted, rhs_rst.success);
 		}
 
-		EvalRst result = fill_spec(interp, spec, node, false, true, unified_type_id);
+		EvalRst rst = fill_spec(interp, spec, node, false, true, unified_type_id);
 
 		if (unified_type_tag == TypeTag::Float)
 		{
-			const NumericType* type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
+			const NumericType* const type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
 
 			if (type->bits == 32)
 			{
-				f32 sum = *value_as<f32>(lhs_value) + *value_as<f32>(rhs_value);
+				f32 sum = *value_as<f32>(lhs_casted) + *value_as<f32>(rhs_casted);
 
-				value_set(&result.success, range::from_object_bytes_mut(&sum));
+				value_set(&rst.success, range::from_object_bytes_mut(&sum));
 			}
 			else
 			{
 				ASSERT_OR_IGNORE(type->bits == 64);
 
-				f64 sum = *value_as<f64>(lhs_value) + *value_as<f64>(rhs_value);
+				f64 sum = *value_as<f64>(lhs_casted) + *value_as<f64>(rhs_casted);
 
-				value_set(&result.success, range::from_object_bytes_mut(&sum));
+				value_set(&rst.success, range::from_object_bytes_mut(&sum));
 			}
 		}
 		else if (unified_type_tag == TypeTag::CompFloat)
 		{
-			CompFloatValue sum = comp_float_add(*value_as<CompFloatValue>(lhs_value), *value_as<CompFloatValue>(rhs_value));
+			CompFloatValue sum = comp_float_add(*value_as<CompFloatValue>(lhs_casted), *value_as<CompFloatValue>(rhs_casted));
 
-			const TypeTag rst_type_tag = type_tag_from_id(interp->types, result.success.type_id);
+			const TypeTag rst_type_tag = type_tag_from_id(interp->types, rst.success.type_id);
 
 			if (rst_type_tag == TypeTag::CompFloat)
 			{
-				value_set(&result.success, range::from_object_bytes_mut(&sum));
+				value_set(&rst.success, range::from_object_bytes_mut(&sum));
 			}
 			else
 			{
 				ASSERT_OR_IGNORE(rst_type_tag == TypeTag::Float);
 
-				convert(interp, node, &result.success, make_value(range::from_object_bytes_mut(&sum), false, true, unified_type_id));
+				convert(interp, node, &rst.success, make_value(range::from_object_bytes_mut(&sum), false, true, unified_type_id));
 			}
 		}
 		else if (unified_type_tag == TypeTag::Integer)
 		{
-			const NumericType* type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
+			const NumericType* const type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
 
-			if (!bitwise_add(type->bits, result.success.bytes, lhs_value.bytes.immut(), rhs_value.bytes.immut()))
+			if (!bitwise_add(type->bits, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut()))
 				source_error(interp->errors, source_id_of(interp->asts, node), "Overflow occured for `+` operator.\n");
 		}
 		else if (unified_type_tag == TypeTag::CompInteger)
 		{
-			CompIntegerValue sum = comp_integer_add(*value_as<CompIntegerValue>(lhs_value), *value_as<CompIntegerValue>(rhs_value));
+			CompIntegerValue sum = comp_integer_add(*value_as<CompIntegerValue>(lhs_casted), *value_as<CompIntegerValue>(rhs_casted));
 
-			const TypeTag rst_type_tag = type_tag_from_id(interp->types, result.success.type_id);
+			const TypeTag rst_type_tag = type_tag_from_id(interp->types, rst.success.type_id);
 
 			if (rst_type_tag == TypeTag::CompInteger)
 			{
-				value_set(&result.success, range::from_object_bytes_mut(&sum));
+				value_set(&rst.success, range::from_object_bytes_mut(&sum));
 			}
 			else
 			{
 				ASSERT_OR_IGNORE(rst_type_tag == TypeTag::Integer);
 
-				convert(interp, node, &result.success, make_value(range::from_object_bytes_mut(&sum), false, true, unified_type_id));
+				convert(interp, node, &rst.success, make_value(range::from_object_bytes_mut(&sum), false, true, unified_type_id));
 			}
 		}
 
-		result.success.bytes = stack_copy_down(interp, mark, result.success.bytes);
+		if (spec.dst.begin() == nullptr)
+			rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
+		else
+			stack_shrink(interp, mark);
 
-		return result;
+		return rst;
 	}
 
 	case AstTag::OpArrayIndex:
