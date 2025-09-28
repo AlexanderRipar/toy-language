@@ -3626,7 +3626,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			// need to convert rhs to lhs type
 			rhs_value = make_value(stack_push(interp, metrics.size, metrics.align), false, true, unified_type_id);
 
-			convert(interp, lhs, &rhs_value, rhs_rst.success);
+			convert(interp, rhs, &rhs_value, rhs_rst.success);
 		}
 
 		EvalRst result = fill_spec(interp, spec, node, false, true, unified_type_id);
