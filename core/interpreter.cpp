@@ -3931,12 +3931,19 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 
 		IdentifierInfo info = lookup_identifier(interp, attach.identifier_id, attach.binding);
 
-		if (info.tag == EvalTag::Success)
-			return info.success.type_id;
+		if (info.tag != EvalTag::Success)
+		{
+			const Range<char8> name = identifier_name_from_id(interp->identifiers, attach.identifier_id);
 
-		const Range<char8> name = identifier_name_from_id(interp->identifiers, attach.identifier_id);
+			source_error(interp->errors, source_id_of(interp->asts, node), "Identifier '%.*s' is not bound yet, so its type cannot be inferred.\n", static_cast<s32>(name.count()), name.begin());
+		}
 
-		source_error(interp->errors, source_id_of(interp->asts, node), "Identifier '%.*s' is not bound yet, so its type cannot be inferred.\n", static_cast<s32>(name.count()), name.begin());
+		const TypeTag type_tag = type_tag_from_id(interp->types, info.success.type_id);
+
+		if (type_tag == TypeTag::TypeInfo)
+			return *value_as<TypeId>(info.success);
+
+		return info.success.type_id;
 	}
 
 	case AstTag::LitInteger:
