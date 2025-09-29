@@ -9,6 +9,17 @@
 	#include <io.h>
 #endif
 
+static void print_error_to(FILE* dst, const SourceLocation* location, const char8* format, va_list args) noexcept
+{
+	fprintf(dst, "%.*s:%u:%u: ",
+		static_cast<s32>(location->filepath.count()), location->filepath.begin(),
+		location->line_number,
+		location->column_number
+	);
+
+	vfprintf(dst, format, args);
+}
+
 struct ErrorSink
 {
 	SourceReader* reader;
@@ -150,17 +161,6 @@ NORETURN void error_exit(ErrorSink* errors) noexcept
 
 		minos::exit_process(1);
 	}
-}
-
-static void print_error_to(FILE* dst, const SourceLocation* location, const char8* format, va_list args) noexcept
-{
-	fprintf(dst, "%.*s:%u:%u: ",
-		static_cast<s32>(location->filepath.count()), location->filepath.begin(),
-		location->line_number,
-		location->column_number
-	);
-
-	vfprintf(dst, format, args);
 }
 
 void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept
