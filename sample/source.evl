@@ -275,4 +275,19 @@ let ptrs_to_unequal_are_unequal_array_of_one_elem = if pointed_x.& == pointed_y.
 	else
 		.[1]
 
-let x = std.assert(true)
+let check = std.assert(true)
+
+
+let one = 1
+
+let six: s8 = 5 + 1
+
+let seven = six + one
+
+let two: u8 = one + one
+
+let test_add_array: [two]s8 = .[1, 2]
+
+let float_one = 1.0
+
+let float_half = float_one + 0.5
