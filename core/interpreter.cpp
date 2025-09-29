@@ -2989,6 +2989,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	}
 
 	case AstTag::OpAdd:
+	case AstTag::OpSub:
 	{
 		const u32 mark = stack_mark(interp);
 
@@ -3007,7 +3008,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		const TypeId unified_type_id = type_unify(interp->types, lhs_rst.success.type_id, rhs_rst.success.type_id);
 
 		if (unified_type_id == TypeId::INVALID)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Incompatible operand types passed to `+` operator.\n");
+			source_error(interp->errors, source_id_of(interp->asts, node), "Incompatible operand types passed to `%s` operator.\n", tag_name(node->tag));
 
 		const TypeTag unified_type_tag = type_tag_from_id(interp->types, unified_type_id);
 
@@ -3015,7 +3016,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		 && unified_type_tag != TypeTag::Float
 		 && unified_type_tag != TypeTag::CompInteger
 		 && unified_type_tag != TypeTag::CompFloat)
-			source_error(interp->errors, source_id_of(interp->asts, lhs), "The `+` operator is only supported for Integer and Float values!\n");
+			source_error(interp->errors, source_id_of(interp->asts, lhs), "The `%s` operator is only supported for Integer and Float values!\n", tag_name(node->tag));
 
 		const TypeMetrics metrics = type_metrics_from_id(interp->types, unified_type_id);
 
@@ -3053,58 +3054,108 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			if (type->bits == 32)
 			{
-				f32 sum = *value_as<f32>(lhs_casted) + *value_as<f32>(rhs_casted);
+				const f32 lhs_value = *value_as<f32>(lhs_casted);
 
-				value_set(&rst.success, range::from_object_bytes_mut(&sum));
+				const f32 rhs_value = *value_as<f32>(rhs_casted);
+
+				f32 rst_value;
+
+				if (node->tag == AstTag::OpAdd)
+					rst_value = lhs_value + rhs_value;
+				else if (node->tag == AstTag::OpSub)
+					rst_value = lhs_value - rhs_value;
+				else
+					ASSERT_UNREACHABLE;
+				
+				value_set(&rst.success, range::from_object_bytes_mut(&rst_value));
 			}
 			else
 			{
-				ASSERT_OR_IGNORE(type->bits == 64);
+				const f64 lhs_value = *value_as<f64>(lhs_casted);
 
-				f64 sum = *value_as<f64>(lhs_casted) + *value_as<f64>(rhs_casted);
+				const f64 rhs_value = *value_as<f64>(rhs_casted);
 
-				value_set(&rst.success, range::from_object_bytes_mut(&sum));
+				f64 rst_value;
+
+				if (node->tag == AstTag::OpAdd)
+					rst_value = lhs_value + rhs_value;
+				else if (node->tag == AstTag::OpSub)
+					rst_value = lhs_value - rhs_value;
+				else
+					ASSERT_UNREACHABLE;
+
+				value_set(&rst.success, range::from_object_bytes_mut(&rst_value));
 			}
 		}
 		else if (unified_type_tag == TypeTag::CompFloat)
 		{
-			CompFloatValue sum = comp_float_add(*value_as<CompFloatValue>(lhs_casted), *value_as<CompFloatValue>(rhs_casted));
+			const CompFloatValue lhs_value = *value_as<CompFloatValue>(lhs_casted);
+
+			const CompFloatValue rhs_value = *value_as<CompFloatValue>(rhs_casted);
+			
+			CompFloatValue rst_value;
+
+			if (node->tag == AstTag::OpAdd)
+				rst_value = comp_float_add(lhs_value, rhs_value);
+			else if (node->tag == AstTag::OpSub)
+				rst_value = comp_float_sub(lhs_value, rhs_value);
+			else
+				ASSERT_UNREACHABLE;
 
 			const TypeTag rst_type_tag = type_tag_from_id(interp->types, rst.success.type_id);
 
 			if (rst_type_tag == TypeTag::CompFloat)
 			{
-				value_set(&rst.success, range::from_object_bytes_mut(&sum));
+				value_set(&rst.success, range::from_object_bytes_mut(&rst_value));
 			}
 			else
 			{
 				ASSERT_OR_IGNORE(rst_type_tag == TypeTag::Float);
 
-				convert(interp, node, &rst.success, make_value(range::from_object_bytes_mut(&sum), false, true, unified_type_id));
+				convert(interp, node, &rst.success, make_value(range::from_object_bytes_mut(&rst_value), false, true, unified_type_id));
 			}
 		}
 		else if (unified_type_tag == TypeTag::Integer)
 		{
 			const NumericType* const type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
 
-			if (!bitwise_add(type->bits, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut()))
-				source_error(interp->errors, source_id_of(interp->asts, node), "Overflow occured for `+` operator.\n");
+			bool rst_ok;
+
+			if (node->tag == AstTag::OpAdd)
+				rst_ok = bitwise_add(type->bits, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
+			else if (node->tag == AstTag::OpSub)
+				rst_ok = bitwise_sub(type->bits, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
+			else
+				ASSERT_UNREACHABLE;
+
+			if (!rst_ok)
+				source_error(interp->errors, source_id_of(interp->asts, node), "Overflow encountered while evaluating pperator `%s`.\n", tag_name(node->tag));
 		}
 		else if (unified_type_tag == TypeTag::CompInteger)
 		{
-			CompIntegerValue sum = comp_integer_add(*value_as<CompIntegerValue>(lhs_casted), *value_as<CompIntegerValue>(rhs_casted));
+			const CompIntegerValue lhs_value = *value_as<CompIntegerValue>(lhs_casted);
+
+			const CompIntegerValue rhs_value = *value_as<CompIntegerValue>(rhs_casted);
+			CompIntegerValue rst_value;
+			
+			if (node->tag == AstTag::OpAdd)
+				rst_value = comp_integer_add(lhs_value, rhs_value);
+			else if (node->tag == AstTag::OpSub)
+				rst_value = comp_integer_sub(lhs_value, rhs_value);
+			else
+				ASSERT_UNREACHABLE;
 
 			const TypeTag rst_type_tag = type_tag_from_id(interp->types, rst.success.type_id);
 
 			if (rst_type_tag == TypeTag::CompInteger)
 			{
-				value_set(&rst.success, range::from_object_bytes_mut(&sum));
+				value_set(&rst.success, range::from_object_bytes_mut(&rst_value));
 			}
 			else
 			{
 				ASSERT_OR_IGNORE(rst_type_tag == TypeTag::Integer);
 
-				convert(interp, node, &rst.success, make_value(range::from_object_bytes_mut(&sum), false, true, unified_type_id));
+				convert(interp, node, &rst.success, make_value(range::from_object_bytes_mut(&rst_value), false, true, unified_type_id));
 			}
 		}
 
@@ -3880,7 +3931,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpBitNot:
 	case AstTag::UOpNegate:
 	case AstTag::UOpPos:
-	case AstTag::OpSub:
 	case AstTag::OpMul:
 	case AstTag::OpDiv:
 	case AstTag::OpAddTC:
