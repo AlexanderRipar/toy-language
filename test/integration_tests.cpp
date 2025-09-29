@@ -6,7 +6,10 @@ static void run_integration_test(Range<char8> filepath, bool is_std, bool expect
 {
 	TEST_BEGIN_NAMED(filepath);
 
-	CoreData core = create_core_data(range::from_literal_string("integration-test-sources/common-config.toml"));
+	CoreData core = create_core_data(expect_failure
+		? range::from_literal_string("integration-test-sources/config-failure.toml")
+		: range::from_literal_string("integration-test-sources/config-success.toml")
+	);
 
 	jmp_buf error_buf;
 

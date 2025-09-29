@@ -1,0 +1,3 @@
+entrypoint.filepath = 'unused'
+std.filepath = '../../sample/std/std.evl'
+logging.diagnostics.enable = false
