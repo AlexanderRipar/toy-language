@@ -31,7 +31,7 @@ CoreData create_core_data(Range<char8> config_filepath) noexcept
 
 	const minos::FileHandle imports_log_file = get_log_file(config->logging.imports.enable, config->logging.imports.log_filepath, minos::StdFileName::StdOut);
 
-	const minos::FileHandle diagnostics_log_file = get_log_file(true, config->logging.diagnostics.log_filepath, minos::StdFileName::StdErr);
+	const minos::FileHandle diagnostics_log_file = get_log_file(config->logging.diagnostics.enable, config->logging.diagnostics.log_filepath, minos::StdFileName::StdErr);
 
 	CoreData core;
 	core.alloc = alloc;

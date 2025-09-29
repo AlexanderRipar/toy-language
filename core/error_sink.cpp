@@ -11,6 +11,9 @@
 
 static void print_error_to(FILE* dst, const SourceLocation* location, const char8* format, va_list args) noexcept
 {
+	if (dst == nullptr)
+		return;
+
 	fprintf(dst, "%.*s:%u:%u: ",
 		static_cast<s32>(location->filepath.count()), location->filepath.begin(),
 		location->line_number,
@@ -39,26 +42,33 @@ struct ErrorSink
 
 	FILE* log_file_ptr;
 
-	if (log_file.m_rep == minos::standard_file_handle(minos::StdFileName::StdErr).m_rep)
+	if (log_file.m_rep == nullptr)
 	{
-		// Prevent a double-close during CRT teardown.
-		log_file_ptr = stderr;
+		log_file_ptr = nullptr;
 	}
 	else
 	{
-		#ifdef _WIN32
-			const s32 fd = _open_osfhandle(reinterpret_cast<intptr_t>(log_file.m_rep), _O_APPEND);
+		if (log_file.m_rep == minos::standard_file_handle(minos::StdFileName::StdErr).m_rep)
+		{
+			// Prevent a double-close during CRT teardown.
+			log_file_ptr = stderr;
+		}
+		else
+		{
+			#ifdef _WIN32
+				const s32 fd = _open_osfhandle(reinterpret_cast<intptr_t>(log_file.m_rep), _O_APPEND);
 
-			if (fd == -1)
-				panic("_open_osfhandle failed.\n");
+				if (fd == -1)
+					panic("_open_osfhandle failed.\n");
 
-			log_file_ptr = _fdopen(fd, "a");
-		#else
-			log_file_ptr = fdopen(static_cast<s32>(reinterpret_cast<u64>(log_file.m_rep)), "a");
-		#endif
+				log_file_ptr = _fdopen(fd, "a");
+			#else
+				log_file_ptr = fdopen(static_cast<s32>(reinterpret_cast<u64>(log_file.m_rep)), "a");
+			#endif
 
-		if (log_file_ptr == nullptr)
-			panic("Failed to convert diagnostics log file handle to `FILE*`.\n");
+			if (log_file_ptr == nullptr)
+				panic("Failed to convert diagnostics log file handle to `FILE*`.\n");
+		}
 	}
 
 	errors->reader = reader;
@@ -141,7 +151,8 @@ void error_diagnostic(ErrorSink* errors, const char8* format, ...) noexcept
 
 void verror_diagnostic(ErrorSink* errors, const char8* format, va_list args) noexcept
 {
-	vfprintf(errors->log_file, format, args);
+	if (errors->log_file != nullptr)
+		vfprintf(errors->log_file, format, args);
 }
 
 void set_error_handling_context(ErrorSink* errors, jmp_buf* setjmpd_longjmp_buf) noexcept

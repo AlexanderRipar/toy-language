@@ -123,6 +123,7 @@ static constexpr ConfigHeader CONFIG_LOGGING_CONFIG[] = {
 };
 
 static constexpr ConfigHeader CONFIG_LOGGING_DIAGNOSTICS[] = {
+	ConfigHeader::make_boolean(offsetof(Config, logging.diagnostics.enable), "enable", "Print diagnostics"),
 	ConfigHeader::make_boolean(offsetof(Config, logging.diagnostics.log_filepath), "log-file", "Path of the log file. Defaults to stderr"),
 };
 

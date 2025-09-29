@@ -97,6 +97,8 @@ struct Config
 
 		struct
 		{
+			bool enable = true;
+
 			Range<char8> log_filepath = {};
 		} diagnostics;
 	} logging;
