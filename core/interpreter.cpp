@@ -1352,6 +1352,8 @@ static CompareResult compare(Interpreter* interp, TypeId common_type_id, Range<b
 
 			const u8 rhs_byte = rhs[i];
 
+			i -= 1;
+
 			if (lhs_byte == rhs_byte)
 				continue;
 
@@ -1359,8 +1361,6 @@ static CompareResult compare(Interpreter* interp, TypeId common_type_id, Range<b
 				return CompareResult{ negate_comparison ? WeakCompareOrdering::GreaterThan : WeakCompareOrdering::LessThan };
 			else if (rhs_byte > lhs_byte)
 				return CompareResult{ negate_comparison ? WeakCompareOrdering::LessThan : WeakCompareOrdering::GreaterThan };
-
-			i -= 1;
 		}
 		while (i >= 0);
 
