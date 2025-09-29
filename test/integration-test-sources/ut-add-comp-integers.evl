@@ -1,0 +1,25 @@
+let unused = {
+	let two = 1 + 1
+
+	std.assert(two == 2)
+
+	std.assert(typeof(two) == std.prelude.CompInteger)
+
+	let u32_one: u32 = 1
+
+	let u32_five = u32_one + 4
+
+	std.assert(u32_five == 5)
+
+	std.assert(typeof(u32_five) == u32)
+
+	let u64_5000: u64 = 5000
+
+	let u64_7245: u64 = 7245
+
+	let u64_12245 = u64_5000 + u64_7245
+
+	std.assert(u64_12245 == 12245)
+
+	std.assert(typeof(u64_12245) == u64)
+}

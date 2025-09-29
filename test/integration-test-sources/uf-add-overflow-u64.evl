@@ -1,0 +1,8 @@
+// Literals currently do not support 0x8000000000000000, so we fake it here by
+// adding 0x2000000000000000 eight times.
+
+let a: u64 = 0x2000000000000000
+
+let b: u64 = a + a + a + a
+
+let c = b + b
