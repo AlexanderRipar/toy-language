@@ -1297,6 +1297,8 @@ Config* create_config(AllocPool* alloc, Range<char8> filepath) noexcept
 {
 	Config* const config = static_cast<Config*>(alloc_from_pool(alloc, sizeof(Config), alignof(Config)));
 
+	*config = Config{};
+
 	ConfigParser parser = init_config_parser(filepath, config);
 
 	parse_config(&parser);
