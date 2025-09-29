@@ -3231,22 +3231,33 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			const CompIntegerValue rhs_value = comp_integer_from_u64(shift);
 
-			CompIntegerValue rst_value;
+			CompIntegerValue shifted;
 
 			if (node->tag == AstTag::OpShiftL)
 			{
-				if (!comp_integer_shift_left(lhs_value, rhs_value, &rst_value))
+				if (!comp_integer_shift_left(lhs_value, rhs_value, &shifted))
 					source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must not be negative.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
 			}
 			else
 			{
 				ASSERT_OR_IGNORE(node->tag == AstTag::OpShiftR);
 
-				if (!comp_integer_shift_right(lhs_value, rhs_value, &rst_value))
+				if (!comp_integer_shift_right(lhs_value, rhs_value, &shifted))
 					source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must not be negative.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
 			}
 
-			value_set(&rst.success, range::from_object_bytes_mut(&rst_value));
+			const TypeTag rst_type_tag = type_tag_from_id(interp->types, rst.success.type_id);
+
+			if (rst_type_tag == TypeTag::CompInteger)
+			{
+				value_set(&rst.success, range::from_object_bytes_mut(&shifted));
+			}
+			else
+			{
+				ASSERT_OR_IGNORE(rst_type_tag == TypeTag::Integer);
+
+				convert(interp, node, &rst.success, make_value(range::from_object_bytes_mut(&shifted), false, true, lhs_rst.success.type_id));
+			}
 		}
 		else
 		{
