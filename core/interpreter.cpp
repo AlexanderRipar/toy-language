@@ -2990,6 +2990,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 	case AstTag::OpAdd:
 	case AstTag::OpSub:
+	case AstTag::OpMul:
 	{
 		const u32 mark = stack_mark(interp);
 
@@ -3064,6 +3065,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 					rst_value = lhs_value + rhs_value;
 				else if (node->tag == AstTag::OpSub)
 					rst_value = lhs_value - rhs_value;
+				else if (node->tag == AstTag::OpMul)
+					rst_value = lhs_value * rhs_value;
 				else
 					ASSERT_UNREACHABLE;
 				
@@ -3081,6 +3084,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 					rst_value = lhs_value + rhs_value;
 				else if (node->tag == AstTag::OpSub)
 					rst_value = lhs_value - rhs_value;
+				else if (node->tag == AstTag::OpMul)
+					rst_value = lhs_value * rhs_value;
 				else
 					ASSERT_UNREACHABLE;
 
@@ -3099,6 +3104,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				rst_value = comp_float_add(lhs_value, rhs_value);
 			else if (node->tag == AstTag::OpSub)
 				rst_value = comp_float_sub(lhs_value, rhs_value);
+			else if (node->tag == AstTag::OpMul)
+				rst_value = comp_float_mul(lhs_value, rhs_value);
 			else
 				ASSERT_UNREACHABLE;
 
@@ -3125,6 +3132,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				rst_ok = bitwise_add(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
 			else if (node->tag == AstTag::OpSub)
 				rst_ok = bitwise_sub(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
+			else if (node->tag == AstTag::OpMul)
+				rst_ok = bitwise_mul(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
 			else
 				ASSERT_UNREACHABLE;
 
@@ -3142,6 +3151,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				rst_value = comp_integer_add(lhs_value, rhs_value);
 			else if (node->tag == AstTag::OpSub)
 				rst_value = comp_integer_sub(lhs_value, rhs_value);
+			else if (node->tag == AstTag::OpMul)
+				rst_value = comp_integer_mul(lhs_value, rhs_value);
 			else
 				ASSERT_UNREACHABLE;
 
@@ -3931,7 +3942,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpBitNot:
 	case AstTag::UOpNegate:
 	case AstTag::UOpPos:
-	case AstTag::OpMul:
 	case AstTag::OpDiv:
 	case AstTag::OpAddTC:
 	case AstTag::OpSubTC:
