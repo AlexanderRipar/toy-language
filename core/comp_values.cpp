@@ -1,7 +1,10 @@
 #include "core.hpp"
 
 #include <cmath>
-#include <intrin.h>
+
+#ifdef COMPILER_MSVC
+	#include <intrin.h>
+#endif
 
 static constexpr u64 COMP_INTEGER_MAX = (static_cast<u64>(1) << 62) - 1;
 
