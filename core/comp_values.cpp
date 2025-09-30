@@ -185,6 +185,11 @@ bool bitwise_sub(u16 bits, bool is_signed, MutRange<byte> dst, Range<byte> lhs, 
 	return bitwise_binary_arithmetic_op<BinaryArithmeticOp::Sub>(bits, is_signed, dst, lhs, rhs);
 }
 
+bool bitwise_mul(u16 bits, bool is_signed, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept
+{
+	return bitwise_binary_arithmetic_op<BinaryArithmeticOp::Mul>(bits, is_signed, dst, lhs, rhs);
+}
+
 void bitwise_shift_left(u16 bits, MutRange<byte> dst, Range<byte> lhs, u64 rhs) noexcept
 {
 	ASSERT_OR_IGNORE(rhs < bits);
