@@ -443,6 +443,15 @@ void bitwise_shift_right(u16 bits, MutRange<byte> dst, Range<byte> lhs, u64 rhs,
 // negative value representable in the given bit count), `true` otherwise.
 bool bitwise_neg(u16 bits, MutRange<byte> dst, Range<byte> operand) noexcept;
 
+// Computes the bitwise not of the bytes in `operand`, putting the resulting
+// value into `dst`.
+// `dst` and `operand` must have the same count.
+// `bits` must be between `dst.count() * 8` and `dst.count() * 8 - 7`.
+// If `bits` is not exactly `dst.count() * 8` only the low `bits % 8` bits of
+// `dst`'s last byte are written, with the others keeping their initial values.
+// Returns `false` if overflow occurred (i.e., if `operand` contained the most
+// negative value representable in the given bit count), `true` otherwise.
+void bitwise_not(u16 bits, MutRange<byte> dst, Range<byte> operand) noexcept;
 
 
 

@@ -2953,6 +2953,55 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		return rst;
 	}
 
+	case AstTag::UOpBitNot:
+	{
+		const u32 mark = stack_mark(interp);
+
+		AstNode* const operand = first_child_of(node);
+
+		EvalRst operand_rst = evaluate(interp, operand, EvalSpec{ ValueKind::Value });
+
+		if (operand_rst.tag == EvalTag::Unbound)
+			return eval_unbound(operand_rst.unbound);
+
+		EvalRst rst = fill_spec(interp, spec, node, false, true, operand_rst.success.type_id);
+
+		EvalValue operand_casted;
+
+		if (type_is_equal(interp->types, operand_rst.success.type_id, rst.success.type_id))
+		{
+			operand_casted = operand_rst.success;
+		}
+		else
+		{
+			const TypeMetrics metrics = type_metrics_from_id(interp->types, rst.success.type_id);
+
+			operand_casted = make_value(stack_push(interp, metrics.size, metrics.align), false, true, rst.success.type_id);
+
+			convert(interp, node, &operand_casted, operand_rst.success);
+		}
+
+		const TypeTag type_tag = type_tag_from_id(interp->types, rst.success.type_id);
+
+		if (type_tag == TypeTag::Integer)
+		{
+			const NumericType* const type = type_attachment_from_id<NumericType>(interp->types, rst.success.type_id);
+
+			bitwise_not(type->bits, rst.success.bytes, operand_casted.bytes.immut());
+		}
+		else
+		{
+			source_error(interp->errors, source_id_of(interp->asts, node), "`~` can only be applied to integer operands.\n");
+		}
+
+		if (spec.dst.begin() == nullptr)
+			rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
+		else
+			stack_shrink(interp, mark);
+
+		return rst;
+	}
+
 	case AstTag::UOpLogNot:
 	{
 		const TypeId bool_type_id = type_create_simple(interp->types, TypeTag::Boolean);
@@ -3057,17 +3106,24 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			bitwise_neg(type->bits, rst.success.bytes, operand_casted.bytes.immut());
 		}
-		
-		if (spec.dst.begin() == nullptr)
-			stack_shrink(interp, mark);
 		else
+		{
+			source_error(interp->errors, source_id_of(interp->asts, node), "Unary `-` can only be applied to integer or float-point operands.\n");
+		}
+
+		if (spec.dst.begin() == nullptr)
 			rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
+		else
+			stack_shrink(interp, mark);
 
 		return rst;
 	}
 
 	case AstTag::UOpPos:
 	{
+		if (spec.kind == ValueKind::Location)
+			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot convert value to location.\n");
+
 		AstNode* const operand = first_child_of(node);
 
 		EvalRst operand_rst = evaluate(interp, operand, spec);
@@ -4068,7 +4124,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpTry:
 	case AstTag::UOpDefer:
 	case AstTag::UOpDistinct:
-	case AstTag::UOpBitNot:
 	case AstTag::OpAddTC:
 	case AstTag::OpSubTC:
 	case AstTag::OpMulTC:

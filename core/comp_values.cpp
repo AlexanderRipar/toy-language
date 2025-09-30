@@ -337,6 +337,19 @@ bool bitwise_neg(u16 bits, MutRange<byte> dst, Range<byte> operand) noexcept
 	return true;
 }
 
+void bitwise_not(u16 bits, MutRange<byte> dst, Range<byte> operand) noexcept
+{
+	ASSERT_OR_IGNORE(bits >= 8 && bits <= 64 && is_pow2(bits));
+
+	ASSERT_OR_IGNORE(dst.count() != 0
+	              && dst.count() == operand.count()
+	              && dst.count() == bits / 8);
+
+	for (u64 i = 0; i != dst.count(); ++i)
+		dst[i] = ~operand[i];
+}
+
+
 
 bool add_checked_u8(u8 a, u8 b, u8* out) noexcept
 {
