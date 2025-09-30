@@ -3329,17 +3329,18 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			const CompIntegerValue lhs_value = *value_as<CompIntegerValue>(lhs_casted);
 
 			const CompIntegerValue rhs_value = *value_as<CompIntegerValue>(rhs_casted);
+
 			CompIntegerValue rst_value;
 			
-			if (node->tag == AstTag::OpAdd)
+			if (node->tag == AstTag::OpAdd || node->tag == AstTag::OpAddTC)
 			{
 				rst_value = comp_integer_add(lhs_value, rhs_value);
 			}
-			else if (node->tag == AstTag::OpSub)
+			else if (node->tag == AstTag::OpSub || node->tag == AstTag::OpSubTC)
 			{
 				rst_value = comp_integer_sub(lhs_value, rhs_value);
 			}
-			else if (node->tag == AstTag::OpMul)
+			else if (node->tag == AstTag::OpMul || node->tag == AstTag::OpMulTC)
 			{
 				rst_value = comp_integer_mul(lhs_value, rhs_value);
 			}
