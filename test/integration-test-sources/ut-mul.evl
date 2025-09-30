@@ -1,0 +1,16 @@
+let unused = {
+
+	let six = 2 * 3
+
+	std.assert(six == 6)
+
+	std.assert(typeof(six) == std.prelude.CompInteger)
+
+	let nine: u32 = 9
+
+	let u32_2295 = nine * 255
+
+	std.assert(u32_2295 == 2295)
+
+	std.assert(typeof(u32_2295) == u32)
+}
