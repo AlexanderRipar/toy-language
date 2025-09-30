@@ -3147,6 +3147,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpMul:
 	case AstTag::OpDiv:
 	case AstTag::OpMod:
+	case AstTag::OpAddTC:
+	case AstTag::OpSubTC:
+	case AstTag::OpMulTC:
 	{
 		const u32 mark = stack_mark(interp);
 
@@ -3207,7 +3210,10 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		if (unified_type_tag == TypeTag::Float)
 		{
-			if (node->tag == AstTag::OpMod)
+			if (node->tag == AstTag::OpMod
+			 || node->tag == AstTag::OpAddTC
+			 || node->tag == AstTag::OpSubTC
+			 || node->tag == AstTag::OpMulTC)
 				source_error(interp->errors, source_id_of(interp->asts, node), "Operator `%s` does not support floating-point operands.\n", tag_name(node->tag));
 
 			const NumericType* const type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
@@ -3257,7 +3263,10 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 		else if (unified_type_tag == TypeTag::CompFloat)
 		{
-			if (node->tag == AstTag::OpMod)
+			if (node->tag == AstTag::OpMod
+			 || node->tag == AstTag::OpAddTC
+			 || node->tag == AstTag::OpSubTC
+			 || node->tag == AstTag::OpMulTC)
 				source_error(interp->errors, source_id_of(interp->asts, node), "Operator `%s` does not support floating-point operands.\n", tag_name(node->tag));
 
 			const CompFloatValue lhs_value = *value_as<CompFloatValue>(lhs_casted);
@@ -3296,12 +3305,15 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			bool rst_ok;
 
-			if (node->tag == AstTag::OpAdd)
-				rst_ok = bitwise_add(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
-			else if (node->tag == AstTag::OpSub)
-				rst_ok = bitwise_sub(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
-			else if (node->tag == AstTag::OpMul)
-				rst_ok = bitwise_mul(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
+			if (node->tag == AstTag::OpAdd || node->tag == AstTag::OpAddTC)
+				rst_ok = bitwise_add(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut())
+				      || node->tag == AstTag::OpAddTC;
+			else if (node->tag == AstTag::OpSub || node->tag == AstTag::OpSubTC)
+				rst_ok = bitwise_sub(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut())
+				      || node->tag == AstTag::OpSubTC;
+			else if (node->tag == AstTag::OpMul || node->tag == AstTag::OpMulTC)
+				rst_ok = bitwise_mul(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut())
+				      || node->tag == AstTag::OpMulTC;
 			else if (node->tag == AstTag::OpDiv)
 				rst_ok = bitwise_div(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
 			else if (node->tag == AstTag::OpMod)
@@ -4124,9 +4136,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpTry:
 	case AstTag::UOpDefer:
 	case AstTag::UOpDistinct:
-	case AstTag::OpAddTC:
-	case AstTag::OpSubTC:
-	case AstTag::OpMulTC:
 	case AstTag::OpSetAdd:
 	case AstTag::OpSetSub:
 	case AstTag::OpSetMul:
