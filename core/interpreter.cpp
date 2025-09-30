@@ -3129,7 +3129,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				ASSERT_UNREACHABLE;
 
 			if (!rst_ok)
-				source_error(interp->errors, source_id_of(interp->asts, node), "Overflow encountered while evaluating pperator `%s`.\n", tag_name(node->tag));
+				source_error(interp->errors, source_id_of(interp->asts, node), "Overflow encountered while evaluating operator `%s`.\n", tag_name(node->tag));
 		}
 		else if (unified_type_tag == TypeTag::CompInteger)
 		{
