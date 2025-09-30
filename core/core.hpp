@@ -367,7 +367,7 @@ WeakCompareOrdering comp_float_compare(CompFloatValue lhs, CompFloatValue rhs) n
 // If `bits` is not exactly `dst.count() * 8` only the low `bits % 8` bits of
 // `dst`'s last byte are written, with the others keeping their initial values.
 // Returns `false` if overflow occurred, `true` otherwise.
-bool bitwise_add(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept;
+bool bitwise_add(u16 bits, bool is_signed, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept;
 
 // Subtracts the bytes in `rhs` from those in `lhs` as little-endian integers,
 // putting the resulting value into `dst`.
@@ -376,7 +376,7 @@ bool bitwise_add(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs)
 // If `bits` is not exactly `dst.count() * 8` only the low `bits % 8` bits of
 // `dst`'s last byte are written, with the others keeping their initial values.
 // Returns `false` if overflow occurred, `true` otherwise.
-bool bitwise_sub(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept;
+bool bitwise_sub(u16 bits, bool is_signed, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept;
 
 // Shifts the bytes in `lhs` by `rhs` bits to the left (upward in the bytewise
 // representation, i.e. to a higher index), putting the result into `dst`.

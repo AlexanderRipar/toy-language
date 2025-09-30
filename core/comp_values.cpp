@@ -7,75 +7,182 @@ static constexpr u64 COMP_INTEGER_MAX = (static_cast<u64>(1) << 62) - 1;
 
 static constexpr s64 COMP_INTEGER_MIN = static_cast<s64>((static_cast<u64>(static_cast<s64>(-1)) << 62));
 
-template<bool is_add>
-static bool bitwise_add_or_sub(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept
+enum class BinaryArithmeticOp
 {
+	Add,
+	Sub,
+	Mul,
+	Div,
+};
+
+template<BinaryArithmeticOp op>
+static bool bitwise_binary_arithmetic_op(u16 bits, bool is_signed, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept
+{
+	ASSERT_OR_IGNORE(bits >= 8 && bits <= 64 && is_pow2(bits));
+
 	ASSERT_OR_IGNORE(dst.count() != 0
 	              && dst.count() == lhs.count()
 	              && dst.count() == rhs.count()
-	              && dst.count() == (static_cast<u64>(bits) + 7) / 8);
+	              && dst.count() == bits / 8);
 
-	const bool partial_top_byte = (bits & 7) == 0 ? false : true;
-
-	const u64 top = partial_top_byte ? dst.count() - 1 : dst.count();
-
-	u64 carry = 0;
-
-	for (u64 i = 0; i != top; ++i)
+	if (is_signed)
 	{
-		u64 sum;
+		s64 lhs_value;
 
-		if constexpr (is_add)
-			sum = static_cast<u64>(lhs[i]) + static_cast<u64>(rhs[i]) + carry;
+		s64 rhs_value;
+
+		if (bits == 8)
+		{
+			lhs_value = *reinterpret_cast<const s8*>(lhs.begin());
+
+			rhs_value = *reinterpret_cast<const s8*>(rhs.begin());
+		}
+		else if (bits == 16)
+		{
+			lhs_value = *reinterpret_cast<const s16*>(lhs.begin());
+
+			rhs_value = *reinterpret_cast<const s16*>(rhs.begin());
+		}
+		else if (bits == 32)
+		{
+			lhs_value = *reinterpret_cast<const s32*>(lhs.begin());
+
+			rhs_value = *reinterpret_cast<const s32*>(rhs.begin());
+		}
 		else
-			sum = static_cast<u64>(lhs[i]) - static_cast<u64>(rhs[i]) - carry;
+		{
+			ASSERT_OR_IGNORE(bits == 64);
 
-		dst[i] = static_cast<byte>(sum);
+			lhs_value = *reinterpret_cast<const s64*>(lhs.begin());
 
-		carry = sum >> 8;
+			rhs_value = *reinterpret_cast<const s64*>(rhs.begin());
+		}
 
-		ASSERT_OR_IGNORE(carry <= 1);
+		s64 dst_value;
+
+		if constexpr (op == BinaryArithmeticOp::Add)
+		{
+			if (!add_checked_s64(lhs_value, rhs_value, &dst_value))
+				return false;
+		}
+		else if constexpr (op == BinaryArithmeticOp::Sub)
+		{
+			if (!sub_checked_s64(lhs_value, rhs_value, &dst_value))
+				return false;
+		}
+		else if constexpr (op == BinaryArithmeticOp::Mul)
+		{
+			if (!mul_checked_s64(lhs_value, rhs_value, &dst_value))
+				return false;
+		}
+		else if constexpr (op == BinaryArithmeticOp::Div)
+		{
+			if (rhs_value == 0)
+				return false;
+
+			dst_value = lhs_value / rhs_value;
+		}
+		else
+		{
+			ASSERT_UNREACHABLE;
+		}
+
+		if (bits != 64)
+		{
+			const s64 min_value = -static_cast<s64>((static_cast<u64>(1) << (bits - 1)));
+
+			const s64 max_value = static_cast<s64>((static_cast<u64>(1) << (bits - 1)) - 1);
+
+			if (dst_value < min_value || dst_value > max_value)
+				return false;
+		}
+
+		memcpy(dst.begin(), &dst_value, dst.count());
+	}
+	else
+	{
+		u64 lhs_value;
+
+		u64 rhs_value;
+
+		if (bits == 8)
+		{
+			lhs_value = *reinterpret_cast<const u8*>(lhs.begin());
+
+			rhs_value = *reinterpret_cast<const u8*>(rhs.begin());
+		}
+		else if (bits == 16)
+		{
+			lhs_value = *reinterpret_cast<const u16*>(lhs.begin());
+
+			rhs_value = *reinterpret_cast<const u16*>(rhs.begin());
+		}
+		else if (bits == 32)
+		{
+			lhs_value = *reinterpret_cast<const u32*>(lhs.begin());
+
+			rhs_value = *reinterpret_cast<const u32*>(rhs.begin());
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(bits == 64);
+
+			lhs_value = *reinterpret_cast<const u64*>(lhs.begin());
+
+			rhs_value = *reinterpret_cast<const u64*>(rhs.begin());
+		}
+
+		u64 dst_value;
+
+		if constexpr (op == BinaryArithmeticOp::Add)
+		{
+			if (!add_checked_u64(lhs_value, rhs_value, &dst_value))
+				return false;
+		}
+		else if constexpr (op == BinaryArithmeticOp::Sub)
+		{
+			if (!sub_checked_u64(lhs_value, rhs_value, &dst_value))
+				return false;
+		}
+		else if constexpr (op == BinaryArithmeticOp::Mul)
+		{
+			if (!mul_checked_u64(lhs_value, rhs_value, &dst_value))
+				return false;
+		}
+		else if constexpr (op == BinaryArithmeticOp::Div)
+		{
+			if (rhs_value == 0)
+				return false;
+
+			dst_value = lhs_value / rhs_value;
+		}
+		else
+		{
+			ASSERT_UNREACHABLE;
+		}
+
+		if (bits != 64)
+		{
+			const u64 max_value = (static_cast<u64>(1) << bits) - 1;
+
+			if (dst_value > max_value)
+				return false;
+		}
+
+		memcpy(dst.begin(), &dst_value, dst.count());
 	}
 
-	if (partial_top_byte)
-	{
-		const u16 top_bits = bits & 7;
-
-		const u8 top_mask = static_cast<u8>(static_cast<u16>(1 << top_bits) - 1);
-
-		const u64 lhs_masked = static_cast<u64>(lhs[top] & top_mask);
-
-		const u64 rhs_masked = static_cast<u64>(rhs[top] & top_mask);
-
-		u64 sum;
-
-		if constexpr (is_add)
-			sum = lhs_masked + rhs_masked + carry;
-		else
-			sum = lhs_masked - rhs_masked - carry;
-
-		byte* dst_top = dst.begin() + top;
-
-		const byte dst_old = *dst_top;
-
-		*dst_top = static_cast<byte>((dst_old & ~top_mask) | (sum & top_mask));
-
-		carry = sum >> top_bits;
-
-		ASSERT_OR_IGNORE(carry <= 1);
-	}
-
-	return carry == 0;
+	return true;
 }
 
-bool bitwise_add(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept
+bool bitwise_add(u16 bits, bool is_signed, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept
 {
-	return bitwise_add_or_sub<true>(bits, dst, lhs, rhs);
+	return bitwise_binary_arithmetic_op<BinaryArithmeticOp::Add>(bits, is_signed, dst, lhs, rhs);
 }
 
-bool bitwise_sub(u16 bits, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept
+bool bitwise_sub(u16 bits, bool is_signed, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept
 {
-	return bitwise_add_or_sub<false>(bits, dst, lhs, rhs);
+	return bitwise_binary_arithmetic_op<BinaryArithmeticOp::Sub>(bits, is_signed, dst, lhs, rhs);
 }
 
 void bitwise_shift_left(u16 bits, MutRange<byte> dst, Range<byte> lhs, u64 rhs) noexcept

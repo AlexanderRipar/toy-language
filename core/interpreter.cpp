@@ -3122,9 +3122,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			bool rst_ok;
 
 			if (node->tag == AstTag::OpAdd)
-				rst_ok = bitwise_add(type->bits, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
+				rst_ok = bitwise_add(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
 			else if (node->tag == AstTag::OpSub)
-				rst_ok = bitwise_sub(type->bits, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
+				rst_ok = bitwise_sub(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
 			else
 				ASSERT_UNREACHABLE;
 
