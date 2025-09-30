@@ -2992,6 +2992,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpSub:
 	case AstTag::OpMul:
 	case AstTag::OpDiv:
+	case AstTag::OpMod:
 	{
 		const u32 mark = stack_mark(interp);
 
@@ -3052,6 +3053,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		if (unified_type_tag == TypeTag::Float)
 		{
+			if (node->tag == AstTag::OpMod)
+				source_error(interp->errors, source_id_of(interp->asts, node), "Operator `%s` does not support floating-point operands.\n", tag_name(node->tag));
+
 			const NumericType* const type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
 
 			if (type->bits == 32)
@@ -3099,6 +3103,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 		else if (unified_type_tag == TypeTag::CompFloat)
 		{
+			if (node->tag == AstTag::OpMod)
+				source_error(interp->errors, source_id_of(interp->asts, node), "Operator `%s` does not support floating-point operands.\n", tag_name(node->tag));
+
 			const CompFloatValue lhs_value = *value_as<CompFloatValue>(lhs_casted);
 
 			const CompFloatValue rhs_value = *value_as<CompFloatValue>(rhs_casted);
@@ -3143,6 +3150,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				rst_ok = bitwise_mul(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
 			else if (node->tag == AstTag::OpDiv)
 				rst_ok = bitwise_div(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
+			else if (node->tag == AstTag::OpMod)
+				rst_ok = bitwise_mod(type->bits, type->is_signed, rst.success.bytes, lhs_casted.bytes.immut(), rhs_casted.bytes.immut());
 			else
 				ASSERT_UNREACHABLE;
 
@@ -3967,7 +3976,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpAddTC:
 	case AstTag::OpSubTC:
 	case AstTag::OpMulTC:
-	case AstTag::OpMod:
 	case AstTag::OpSetAdd:
 	case AstTag::OpSetSub:
 	case AstTag::OpSetMul:

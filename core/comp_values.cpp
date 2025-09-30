@@ -16,6 +16,7 @@ enum class BinaryArithmeticOp
 	Sub,
 	Mul,
 	Div,
+	Mod,
 };
 
 template<BinaryArithmeticOp op>
@@ -84,6 +85,13 @@ static bool bitwise_binary_arithmetic_op(u16 bits, bool is_signed, MutRange<byte
 				return false;
 
 			dst_value = lhs_value / rhs_value;
+		}
+		else if constexpr (op == BinaryArithmeticOp::Mod)
+		{
+			if (rhs_value == 0)
+				return false;
+
+			dst_value = lhs_value % rhs_value;
 		}
 		else
 		{
@@ -159,6 +167,13 @@ static bool bitwise_binary_arithmetic_op(u16 bits, bool is_signed, MutRange<byte
 
 			dst_value = lhs_value / rhs_value;
 		}
+		else if constexpr (op == BinaryArithmeticOp::Mod)
+		{
+			if (rhs_value == 0)
+				return false;
+
+			dst_value = lhs_value % rhs_value;
+		}
 		else
 		{
 			ASSERT_UNREACHABLE;
@@ -196,6 +211,11 @@ bool bitwise_mul(u16 bits, bool is_signed, MutRange<byte> dst, Range<byte> lhs, 
 bool bitwise_div(u16 bits, bool is_signed, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept
 {
 	return bitwise_binary_arithmetic_op<BinaryArithmeticOp::Div>(bits, is_signed, dst, lhs, rhs);
+}
+
+bool bitwise_mod(u16 bits, bool is_signed, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept
+{
+	return bitwise_binary_arithmetic_op<BinaryArithmeticOp::Mod>(bits, is_signed, dst, lhs, rhs);
 }
 
 void bitwise_shift_left(u16 bits, MutRange<byte> dst, Range<byte> lhs, u64 rhs) noexcept
