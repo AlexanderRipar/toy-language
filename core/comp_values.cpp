@@ -306,6 +306,36 @@ void bitwise_shift_right(u16 bits, MutRange<byte> dst, Range<byte> lhs, u64 rhs,
 	}
 }
 
+bool bitwise_neg(u16 bits, MutRange<byte> dst, Range<byte> operand) noexcept
+{
+	ASSERT_OR_IGNORE(bits >= 8 && bits <= 64 && is_pow2(bits));
+
+	ASSERT_OR_IGNORE(dst.count() != 0
+	              && dst.count() == operand.count()
+	              && dst.count() == bits / 8);
+
+	s64 value;
+
+	if (bits == 8)
+		value = *reinterpret_cast<const s8*>(operand.begin());
+	else if (bits == 16)
+		value = *reinterpret_cast<const s16*>(operand.begin());
+	else if (bits == 32)
+		value = *reinterpret_cast<const s32*>(operand.begin());
+	else if (bits == 64)
+		value = *reinterpret_cast<const s64*>(operand.begin());
+	else
+		ASSERT_UNREACHABLE;
+
+	const s64 most_negative = static_cast<s64>(static_cast<u64>(1) << (bits - 1));
+
+	if (value == most_negative)
+		return false;
+
+	memcpy(dst.begin(), &value, dst.count());
+
+	return true;
+}
 
 
 bool add_checked_u8(u8 a, u8 b, u8* out) noexcept

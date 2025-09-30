@@ -2987,6 +2987,105 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		return rst;
 	}
 
+	case AstTag::UOpNegate:
+	{
+		const u32 mark = stack_mark(interp);
+
+		AstNode* const operand = first_child_of(node);
+
+		EvalRst operand_rst = evaluate(interp, operand, EvalSpec{ ValueKind::Value });
+
+		if (operand_rst.tag == EvalTag::Unbound)
+			return eval_unbound(operand_rst.unbound);
+
+		EvalRst rst = fill_spec(interp, spec, node, false, true, operand_rst.success.type_id);
+
+		EvalValue operand_casted;
+
+		if (type_is_equal(interp->types, operand_rst.success.type_id, rst.success.type_id))
+		{
+			operand_casted = operand_rst.success;
+		}
+		else
+		{
+			const TypeMetrics metrics = type_metrics_from_id(interp->types, rst.success.type_id);
+
+			operand_casted = make_value(stack_push(interp, metrics.size, metrics.align), false, true, rst.success.type_id);
+
+			convert(interp, node, &operand_casted, operand_rst.success);
+		}
+
+		const TypeTag type_tag = type_tag_from_id(interp->types, rst.success.type_id);
+
+		if (type_tag == TypeTag::CompFloat)
+		{
+			CompFloatValue rst_value = comp_float_neg(*value_as<CompFloatValue>(operand_casted));
+
+			value_set(&rst.success, range::from_object_bytes_mut(&rst_value));
+		}
+		else if (type_tag == TypeTag::Float)
+		{
+			const NumericType* const type = type_attachment_from_id<NumericType>(interp->types, rst.success.type_id);
+
+			if (type->bits == 32)
+			{
+				f32 rst_value = -*value_as<f32>(operand_casted);
+
+				value_set(&rst.success, range::from_object_bytes_mut(&rst_value));
+			}
+			else
+			{
+				ASSERT_OR_IGNORE(type->bits == 64);
+
+				f64 rst_value = -*value_as<f64>(operand_casted);
+
+				value_set(&rst.success, range::from_object_bytes_mut(&rst_value));
+			}
+		}
+		else if (type_tag == TypeTag::CompInteger)
+		{
+			CompIntegerValue rst_value = comp_integer_neg(*value_as<CompIntegerValue>(operand_casted));
+
+			value_set(&rst.success, range::from_object_bytes_mut(&rst_value));
+		}
+		else if (type_tag == TypeTag::Integer)
+		{
+			const NumericType* const type = type_attachment_from_id<NumericType>(interp->types, rst.success.type_id);
+
+			if (type->is_signed)
+				source_error(interp->errors, source_id_of(interp->asts, node), "Cannot negate unsigned integer.\n");
+
+			bitwise_neg(type->bits, rst.success.bytes, operand_casted.bytes.immut());
+		}
+		
+		if (spec.dst.begin() == nullptr)
+			stack_shrink(interp, mark);
+		else
+			rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
+
+		return rst;
+	}
+
+	case AstTag::UOpPos:
+	{
+		AstNode* const operand = first_child_of(node);
+
+		EvalRst operand_rst = evaluate(interp, operand, spec);
+
+		if (operand_rst.tag == EvalTag::Unbound)
+			return eval_unbound(operand_rst.unbound);
+
+		const TypeTag type_tag = type_tag_from_id(interp->types, operand_rst.success.type_id);
+
+		if (type_tag != TypeTag::CompInteger
+		 && type_tag != TypeTag::Integer
+		 && type_tag != TypeTag::CompFloat
+		 && type_tag != TypeTag::Float)
+			source_error(interp->errors, source_id_of(interp->asts, node), "Unary `+` can only be applied to integer or float-point operands.\n");
+
+		return operand_rst;
+	}
+
 	case AstTag::OpAdd:
 	case AstTag::OpSub:
 	case AstTag::OpMul:
@@ -3970,8 +4069,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpDefer:
 	case AstTag::UOpDistinct:
 	case AstTag::UOpBitNot:
-	case AstTag::UOpNegate:
-	case AstTag::UOpPos:
 	case AstTag::OpAddTC:
 	case AstTag::OpSubTC:
 	case AstTag::OpMulTC:
