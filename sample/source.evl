@@ -295,30 +295,28 @@ let float_half = float_one + 0.5
 
 
 
-let fib_upto = func(T: Type) -> (func(n: T) -> [n]T) => {
-	func(n: T) -> [n]T => {
+let fib_upto = func(T: Type, n: T) -> [n]T => {
 
-		mut result: [n]T = undefined
+	mut result: [n]T = undefined
 
-		mut prev: T = 0
+	mut prev: T = 0
 
-		mut curr: T = 1
+	mut curr: T = 1
 
-		mut i = 0
+	mut i = 0
 
-		for i != n, i = i + 1
-		{
-			result[i] = curr
+	for i != n, i = i + 1
+	{
+		result[i] = curr
 
-			let tmp = curr
+		let tmp = curr
 
-			curr = curr + prev
+		curr = curr + prev
 
-			prev = tmp
-		}
-
-		result
+		prev = tmp
 	}
+
+	result
 }
 
-let fib_u64_upto_10 = fib_upto(u8)(10)
+let fib_u8_upto_10 = fib_upto(u8, 10)
