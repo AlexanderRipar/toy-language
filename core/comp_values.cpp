@@ -1,80 +1,7 @@
 #include "core.hpp"
 
 #include <cmath>
-
-#if defined(COMPILER_MSVC)
-	#include <intrin.h>
-
-	bool add_checked(s64 a, s64 b, s64* out) noexcept
-	{
-		return !_addcarry_u64(0, static_cast<u64>(a), static_cast<u64>(b), reinterpret_cast<u64*>(out)) != 0;
-	}
-
-	bool sub_checked(s64 a, s64 b, s64* out) noexcept
-	{
-		return !_subborrow_u64(0, static_cast<u64>(a), static_cast<u64>(b), reinterpret_cast<u64*>(out)) != 0;
-	}
-
-	bool mul_checked(s64 a, s64 b, s64* out) noexcept
-	{
-		s64 overflow;
-
-		*out = _mul128(a, b, &overflow);
-
-		return overflow == 0;
-	}
-
-	bool add_checked(u64 a, u64 b, u64* out) noexcept
-	{
-		return _addcarry_u64(0, a, b, out) == 0;
-	}
-
-	bool sub_checked(u64 a, u64 b, u64* out) noexcept
-	{
-		return _subborrow_u64(0, a, b, out) == 0;
-	}
-
-	bool mul_checked(u64 a, u64 b, u64* out) noexcept
-	{
-		u64 overflow;
-
-		*out = _umul128(a, b, &overflow);
-
-		return overflow == 0;
-	}
-#elif defined(COMPILER_GCC) || defined(COMPILER_CLANG)
-	bool add_checked(s64 a, s64 b, s64* out) noexcept
-	{
-		return !__builtin_add_overflow(a, b, out);
-	}
-
-	bool sub_checked(s64 a, s64 b, s64* out) noexcept
-	{
-		return !__builtin_sub_overflow(a, b, out);
-	}
-
-	bool mul_checked(s64 a, s64 b, s64* out) noexcept
-	{
-		return !__builtin_mul_overflow(a, b, out);
-	}
-
-	bool add_checked(u64 a, u64 b, u64* out) noexcept
-	{
-		return !__builtin_add_overflow(a, b, out);
-	}
-
-	bool sub_checked(u64 a, u64 b, u64* out) noexcept
-	{
-		return !__builtin_sub_overflow(a, b, out);
-	}
-
-	bool mul_checked(u64 a, u64 b, u64* out) noexcept
-	{
-		return !__builtin_mul_overflow(a, b, out);
-	}
-#else
-	#error("Unsupported compiler")
-#endif
+#include <intrin.h>
 
 static constexpr u64 COMP_INTEGER_MAX = (static_cast<u64>(1) << 62) - 1;
 
@@ -241,6 +168,253 @@ void bitwise_shift_right(u16 bits, MutRange<byte> dst, Range<byte> lhs, u64 rhs,
 
 
 
+bool add_checked_u8(u8 a, u8 b, u8* out) noexcept
+{
+	const u64 result = static_cast<u64>(a) + static_cast<u64>(b);
+
+	*out = static_cast<u8>(result);
+
+	return result <= UINT8_MAX;
+}
+
+bool add_checked_u16(u16 a, u16 b, u16* out) noexcept
+{
+	const u64 result = static_cast<u64>(a) + static_cast<u64>(b);
+
+	*out = static_cast<u16>(result);
+
+	return result <= UINT16_MAX;
+}
+
+bool add_checked_u32(u32 a, u32 b, u32* out) noexcept
+{
+	const u64 result = static_cast<u64>(a) + static_cast<u64>(b);
+
+	*out = static_cast<u32>(result);
+
+	return result <= UINT32_MAX;
+}
+
+bool add_checked_u64(u64 a, u64 b, u64* out) noexcept
+{
+	const u64 result = a + b;
+
+	*out = result;
+
+	return result >= a && result >= b;
+}
+
+bool add_checked_s8(s8 a, s8 b, s8* out) noexcept
+{
+	const s64 result = static_cast<s64>(a) + static_cast<s64>(b);
+
+	*out = static_cast<s8>(result);
+
+	return result >= INT8_MIN && result <= INT8_MAX;
+}
+
+bool add_checked_s16(s16 a, s16 b, s16* out) noexcept
+{
+	const s64 result = static_cast<s64>(a) + static_cast<s64>(b);
+
+	*out = static_cast<s16>(result);
+
+	return result >= INT16_MIN && result <= INT16_MAX;
+}
+
+bool add_checked_s32(s32 a, s32 b, s32* out) noexcept
+{
+	const s64 result = static_cast<s64>(a) + static_cast<s64>(b);
+
+	*out = static_cast<s32>(result);
+
+	return result >= INT32_MIN && result <= INT32_MAX;
+}
+
+bool add_checked_s64(s64 a, s64 b, s64* out) noexcept
+{
+	const u64 result = static_cast<u64>(static_cast<s64>(a)) + static_cast<u64>(static_cast<s64>(b));
+
+	*out = static_cast<s64>(result);
+
+	if (a < 0)
+		return b >= INT64_MIN - a;
+	else
+		return INT64_MAX - a >= b;
+}
+
+
+
+bool sub_checked_u8(u8 a, u8 b, u8* out) noexcept
+{
+	const u64 result = static_cast<u64>(a) - static_cast<u64>(b);
+
+	*out = static_cast<u8>(result);
+
+	return result <= UINT8_MAX;
+}
+
+bool sub_checked_u16(u16 a, u16 b, u16* out) noexcept
+{
+	const u64 result = static_cast<u64>(a) - static_cast<u64>(b);
+
+	*out = static_cast<u16>(result);
+
+	return result <= UINT16_MAX;
+}
+
+bool sub_checked_u32(u32 a, u32 b, u32* out) noexcept
+{
+	const u64 result = static_cast<u64>(a) - static_cast<u64>(b);
+
+	*out = static_cast<u32>(result);
+
+	return result <= UINT32_MAX;
+}
+
+bool sub_checked_u64(u64 a, u64 b, u64* out) noexcept
+{
+	const u64 result = a - b;
+
+	*out = result;
+
+	return a >= b;
+}
+
+bool sub_checked_s8(s8 a, s8 b, s8* out) noexcept
+{
+	const s64 result = static_cast<s64>(a) - static_cast<s64>(b);
+
+	*out = static_cast<s8>(result);
+
+	return result >= INT8_MIN && result <= INT8_MAX;
+}
+
+bool sub_checked_s16(s16 a, s16 b, s16* out) noexcept
+{
+	const s64 result = static_cast<s64>(a) - static_cast<s64>(b);
+
+	*out = static_cast<s16>(result);
+
+	return result >= INT16_MIN && result <= INT16_MAX;
+}
+
+bool sub_checked_s32(s32 a, s32 b, s32* out) noexcept
+{
+	const s64 result = static_cast<s64>(a) - static_cast<s64>(b);
+
+	*out = static_cast<s16>(result);
+
+	return result >= INT16_MIN && result <= INT16_MAX;
+}
+
+bool sub_checked_s64(s64 a, s64 b, s64* out) noexcept
+{
+	const u64 result = static_cast<u64>(static_cast<s64>(a)) - static_cast<u64>(static_cast<s64>(b));
+
+	*out = static_cast<s64>(result);
+
+	if (a > 0 && b < 0)
+		return result > 0;
+	else if (a < 0 && b > 0)
+		return result < 0;
+	else
+		return true;
+}
+
+
+
+bool mul_checked_u8(u8 a, u8 b, u8* out) noexcept
+{
+	const u64 result = static_cast<u64>(a) * static_cast<u64>(b);
+
+	*out = static_cast<u8>(result);
+
+	return result <= UINT8_MAX;
+}
+
+bool mul_checked_u16(u16 a, u16 b, u16* out) noexcept
+{
+	const u64 result = static_cast<u64>(a) * static_cast<u64>(b);
+
+	*out = static_cast<u16>(result);
+
+	return result <= UINT16_MAX;
+}
+
+bool mul_checked_u32(u32 a, u32 b, u32* out) noexcept
+{
+	const u64 result = static_cast<u64>(a) * static_cast<u64>(b);
+
+	*out = static_cast<u32>(result);
+
+	return result <= UINT32_MAX;
+}
+
+bool mul_checked_u64(u64 a, u64 b, u64* out) noexcept
+{
+#ifdef COMPILER_MSVC
+	u64 high_result;
+
+	const u64 result = _umul128(a, b, &high_result);
+
+	*out = result;
+
+	return a == 0 || b == 0 || (result >= a && result >= b && high_result == 0);
+#else
+	return !__builtin_mul_overflow(a, b, out);
+#endif
+}
+
+bool mul_checked_s8(s8 a, s8 b, s8* out) noexcept
+{
+	const s64 result = static_cast<s64>(a) * static_cast<s64>(b);
+
+	*out = static_cast<s8>(result);
+
+	return result >= INT8_MIN && result <= INT8_MAX;
+}
+
+bool mul_checked_s16(s16 a, s16 b, s16* out) noexcept
+{
+	const s64 result = static_cast<s64>(a) * static_cast<s64>(b);
+
+	*out = static_cast<s16>(result);
+
+	return result >= INT16_MIN && result <= INT16_MAX;
+}
+
+bool mul_checked_s32(s32 a, s32 b, s32* out) noexcept
+{
+	const s64 result = static_cast<s64>(a) * static_cast<s64>(b);
+
+	*out = static_cast<s32>(result);
+
+	return result >= INT32_MIN && result <= INT32_MAX;
+}
+
+bool mul_checked_s64(s64 a, s64 b, s64* out) noexcept
+{
+#ifdef COMPILER_MSVC
+	s64 high_result;
+
+	const s64 result = _mul128(a, b, &high_result);
+
+	*out = result;
+
+	if (high_result != 0 && high_result != -1)
+		return false;
+	else if ((a <= 0) == (b <= 0))
+		return result >= 0;
+	else
+		return result <= 0;
+#else
+	return !__builtin_mul_overflow(a, b, out);
+#endif
+}
+
+
+
 static bool is_inlined(CompIntegerValue value) noexcept
 {
 	return (value.rep & 1) == 0;
@@ -333,7 +507,7 @@ CompIntegerValue comp_integer_add(CompIntegerValue lhs, CompIntegerValue rhs) no
 
 	s64 result;
 
-	if (!add_checked(static_cast<s64>(lhs.rep), static_cast<s64>(rhs.rep), &result))
+	if (!add_checked_s64(static_cast<s64>(lhs.rep), static_cast<s64>(rhs.rep), &result))
 		panic("Value of subtraction of `CompIntegerValue`s exceeds currently supported maximum value.\n");
 
 	return { static_cast<u64>(result) };
@@ -346,7 +520,7 @@ CompIntegerValue comp_integer_sub(CompIntegerValue lhs, CompIntegerValue rhs) no
 
 	s64 result;
 
-	if (!sub_checked(static_cast<s64>(lhs.rep), static_cast<s64>(rhs.rep), &result))
+	if (!sub_checked_s64(static_cast<s64>(lhs.rep), static_cast<s64>(rhs.rep), &result))
 		panic("Value of subtraction of `CompIntegerValue`s exceeds currently supported maximum value.\n");
 
 	return { static_cast<u64>(result) };
@@ -359,7 +533,7 @@ CompIntegerValue comp_integer_mul(CompIntegerValue lhs, CompIntegerValue rhs) no
 
 	s64 result;
 
-	if (!mul_checked(static_cast<s64>(lhs.rep), static_cast<s64>(rhs.rep) >> 1, &result))
+	if (!mul_checked_s64(static_cast<s64>(lhs.rep), static_cast<s64>(rhs.rep) >> 1, &result))
 		panic("Value of multiplication of `CompIntegerValue`s exceeds currently supported maximum value.\n");
 
 	return { static_cast<u64>(result) };

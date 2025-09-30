@@ -408,35 +408,137 @@ void bitwise_shift_right(u16 bits, MutRange<byte> dst, Range<byte> lhs, u64 rhs,
 
 
 
-// Adds the signed 64-bit values `a` and `b`, returning `false` and
-// leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
-// the result and `true` is returned.
-bool add_checked(s64 a, s64 b, s64* out) noexcept;
 
-// Subtracts the signed 64-bit values `a` and `b`, returning `false` and
-// leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
-// the result and `true` is returned.
-bool sub_checked(s64 a, s64 b, s64* out) noexcept;
 
-// Multiplies the signed 64-bit values `a` and `b`, returning `false` and
+// Safely adds the 8-bit unsigned integers `a` and `b`, returning `false` and
 // leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
 // the result and `true` is returned.
-bool mul_checked(s64 a, s64 b, s64* out) noexcept;
+bool add_checked_u8(u8 a, u8 b, u8* out) noexcept;
 
-// Adds the unsigned 64-bit values `a` and `b`, returning `false` and
+// Safely adds the 16-bit unsigned integers `a` and `b`, returning `false` and
 // leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
 // the result and `true` is returned.
-bool add_checked(u64 a, u64 b, u64* out) noexcept;
+bool add_checked_u16(u16 a, u16 b, u16* out) noexcept;
 
-// Subtracts the unsigned 64-bit values `a` and `b`, returning `false` and
+// Safely adds the 32-bit unsigned integers `a` and `b`, returning `false` and
 // leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
 // the result and `true` is returned.
-bool sub_checked(u64 a, u64 b, u64* out) noexcept;
+bool add_checked_u32(u32 a, u32 b, u32* out) noexcept;
 
-// Multiplies the unsigned 64-bit values `a` and `b`, returning `false` and
+// Safely adds the 64-bit unsigned integers `a` and `b`, returning `false` and
 // leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
 // the result and `true` is returned.
-bool mul_checked(u64 a, u64 b, u64* out) noexcept;
+bool add_checked_u64(u64 a, u64 b, u64* out) noexcept;
+
+// Safely adds the 8-bit signed integers `a` and `b`, returning `false` and
+// leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
+// the result and `true` is returned.
+bool add_checked_s8(s8 a, s8 b, s8* out) noexcept;
+
+// Safely adds the 16-bit signed integers `a` and `b`, returning `false` and
+// leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
+// the result and `true` is returned.
+bool add_checked_s16(s16 a, s16 b, s16* out) noexcept;
+
+// Safely adds the 32-bit signed integers `a` and `b`, returning `false` and
+// leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
+// the result and `true` is returned.
+bool add_checked_s32(s32 a, s32 b, s32* out) noexcept;
+
+// Safely adds the 64-bit signed integers `a` and `b`, returning `false` and
+// leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set to
+// the result and `true` is returned.
+bool add_checked_s64(s64 a, s64 b, s64* out) noexcept;
+
+
+// Safely subtracts the 8-bit unsigned integer `b` from `a`, returning `false`
+// and leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set
+// to the result and `true` is returned.
+bool sub_checked_u8(u8 a, u8 b, u8* out) noexcept;
+
+// Safely subtracts the 16-bit unsigned integer `b` from `a`, returning `false`
+// and leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set
+// to the result and `true` is returned.
+bool sub_checked_u16(u16 a, u16 b, u16* out) noexcept;
+
+// Safely subtracts the 32-bit unsigned integer `b` from `a`, returning `false`
+// and leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set
+// to the result and `true` is returned.
+bool sub_checked_u32(u32 a, u32 b, u32* out) noexcept;
+
+// Safely subtracts the 64-bit unsigned integer `b` from `a`, returning `false`
+// and leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set
+// to the result and `true` is returned.
+bool sub_checked_u64(u64 a, u64 b, u64* out) noexcept;
+
+// Safely subtracts the 8-bit signed integer `b` from `a`, returning `false`
+// and leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set
+// to the result and `true` is returned.
+bool sub_checked_s8(s8 a, s8 b, s8* out) noexcept;
+
+// Safely subtracts the 16-bit signed integer `b` from `a`, returning `false`
+// and leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set
+// to the result and `true` is returned.
+bool sub_checked_s16(s16 a, s16 b, s16* out) noexcept;
+
+// Safely subtracts the 32-bit signed integer `b` from `a`, returning `false`
+// and leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set
+// to the result and `true` is returned.
+bool sub_checked_s32(s32 a, s32 b, s32* out) noexcept;
+
+// Safely subtracts the 64-bit signed integer `b` from `a`, returning `false`
+// and leaving `*out` undefined if overflow occurred. Otherwise, `*out` is set
+// to the result and `true` is returned.
+bool sub_checked_s64(s64 a, s64 b, s64* out) noexcept;
+
+
+// Safely multiplies the 8-bit unsigned integers `a` and `b`.
+// If the result would overflow, `false` is returned, and `*out` is
+// left undefined. Otherwise, `true` is returned, and `*out` is set to the
+// division's result.
+bool mul_checked_u8(u8 a, u8 b, u8* out) noexcept;
+
+// Safely multiplies the 16-bit unsigned integers `a` and `b`.
+// If the result would overflow, `false` is returned, and `*out` is
+// left undefined. Otherwise, `true` is returned, and `*out` is set to the
+// division's result.
+bool mul_checked_u16(u16 a, u16 b, u16* out) noexcept;
+
+// Safely multiplies the 32-bit unsigned integers `a` and `b`.
+// If the result would overflow, `false` is returned, and `*out` is
+// left undefined. Otherwise, `true` is returned, and `*out` is set to the
+// division's result.
+bool mul_checked_u32(u32 a, u32 b, u32* out) noexcept;
+
+// Safely multiplies the 64-bit unsigned integers `a` and `b`.
+// If the result would overflow, `false` is returned, and `*out` is
+// left undefined. Otherwise, `true` is returned, and `*out` is set to the
+// division's result.
+bool mul_checked_u64(u64 a, u64 b, u64* out) noexcept;
+
+// Safely multiplies the 8-bit signed integers `a` and `b`.
+// If the result would overflow, `false` is returned, and `*out` is
+// left undefined. Otherwise, `true` is returned, and `*out` is set to the
+// division's result.
+bool mul_checked_s8(s8 a, s8 b, s8* out) noexcept;
+
+// Safely multiplies the 16-bit signed integers `a` and `b`.
+// If the result would overflow, `false` is returned, and `*out` is
+// left undefined. Otherwise, `true` is returned, and `*out` is set to the
+// division's result.
+bool mul_checked_s16(s16 a, s16 b, s16* out) noexcept;
+
+// Safely multiplies the 32-bit signed integers `a` and `b`.
+// If the result would overflow, `false` is returned, and `*out` is
+// left undefined. Otherwise, `true` is returned, and `*out` is set to the
+// division's result.
+bool mul_checked_s32(s32 a, s32 b, s32* out) noexcept;
+
+// Safely multiplies the 64-bit signed integers `a` and `b`.
+// If the result would overflow, `false` is returned, and `*out` is
+// left undefined. Otherwise, `true` is returned, and `*out` is set to the
+// division's result.
+bool mul_checked_s64(s64 a, s64 b, s64* out) noexcept;
 
 
 
