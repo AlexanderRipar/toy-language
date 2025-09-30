@@ -1,6 +1,5 @@
 1. [The Language](#the-language)
 2. [Building](#building)
-3. [Code Structure](#code-structure)
 
 
 # The Language
@@ -8,6 +7,7 @@
 This project currently goes under the Working name `eval`.
 
 The semantics and even syntax are by no means finalized yet.
+
 
 ## Goals
 
@@ -30,7 +30,7 @@ logical next step from that already found in languages such as C++
 A minimal program consists of a main procedure such as the following:
 
 ```
-let main = proc(args: [][]u8) -> void = {
+let main = proc(args: [][]u8) -> void => {
 	std.print("Hello World!\n")
 }
 ```
@@ -54,7 +54,7 @@ terminated by `}`, as should be familiar from most C-family languages. Since
 this block only contains a single "statement", we can omit it like so:
 
 ```
-let main = proc(args: [][]u8) -> void = std.print("Hello World!\n")
+let main = proc(args: [][]u8) -> void => std.print("Hello World!\n")
 ```
 
 Generally, most language constructs can be used in most places, since they are
@@ -330,8 +330,8 @@ the C `struct` keyword, the following function would suffice (admittedly using
 some not-yet-introduced builtins to introspect definitions):
 
 ```
-let CStruct = func(members: ...Definition) -> Type =
-{
+let CStruct = func(members: ...Definition) -> Type => {
+
 	mut tb = create_type_builder()
 
 	mut offset: s64 = 0
@@ -417,8 +417,8 @@ equivalence that can be most easily understood by how it is implemented:
 Some examples to illustrate this:
 
 ```
-let T1 = func(def: Definition) -> Type =
-{
+let T1 = func(def: Definition) -> Type => {
+
 	mut tb = create_type_builder()
 
 	add_type_member(tb, def, .offset = 0)
@@ -427,8 +427,8 @@ let T1 = func(def: Definition) -> Type =
 }
 
 // Word-for-word copy of T1
-let T2 = func(def: Definition) -> Type =
-{
+let T2 = func(def: Definition) -> Type => {
+
 	mut tb = create_type_builder()
 
 	add_type_member(tb, def, .offset = 0)
@@ -606,6 +606,42 @@ To build this project, you will need
 - One of the [supported C++ compilers](#supported-compilers)
 
 
+## Building For Your Platform
+
+Once `cmake` is installed configure your build system as follows:
+
+- For msvc: `cmake -S . -B build/msvc -DCMAKE_CXX_COMPILER=msvc -DCMAKE_C_COMPILER=msvc`
+- For gcc: `cmake -S . -B build/gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc`
+- For clang: `cmake -S . -B build/clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang`
+
+Note that the exact build directories can of course be set to anything of your
+liking, but the given values correspond to those used by `build-all.ps1`,
+making it possible to reuse the same build configuration when you decide to use
+this wrapper.
+
+Once the build system is configured run cmake again to actually perform your build:
+
+```
+cmake --build <build-directory-from-before>
+```
+
+This will create a binary compiled in debug mode somewhere inside your build
+directory (the exact location depends on your compiler). \
+To run the resulting compiler on the source.evl file found in the sample
+directory, use
+
+```
+<build-directory-from-before>/<path-to-exe> -config sample/config.toml
+```
+
+
+## Running Tests
+
+The project's test suite can be run as part of the cmake build by specifying
+the `run-tests` target. By default this is not enabled to speed up quick
+rebuilds, even though the test suite clocks in at under one second in total. 
+
+
 ## Multi-Compiler and -Platform Build Support
 
 If you want to build the project on all available supported compilers and
@@ -620,38 +656,8 @@ the [list of supported compilers](#supported-compilers).
 
 The following is a list of the compilers and platforms under which builds are known to succeed.
 
-| Platform   | Compiler | Versions |
-|------------|----------|----------|
-| Windows 10 | msvc     | 19.39    |
-| Ubuntu     | clang    | 18.1     |
-| Ubuntu     | gcc      | 13.3     |
-
-
-# Code Structure
-
-## General odditities
-
-Since I keep flip-flopping between styles, here's an arbitrary set of rules
-intended to avoid useless refactorings.
-
-- Member functions are only used in container templates (and will eventually be
-  eliminated there as well).
-- Constructors are never used.
-- All declarations that are required across modules are put in `core.hpp`
-- Each module forward-declares a struct of its name, which is instantiated once
-  and acts as a pseudo-global. This struct's definition is kept in the module's
-  implementation to avoid over-entangled dependencies.
-- Each module is implemented in its on `.cpp` file.
-
-
-## Future Architectural Redesigns
-
-Eventually all module objects should be combined into a single allocation.
-
-This will allow a single fixed-sized header, followed by a single huge memory
-reservation holding all allocation pools. This will also allow all ids to
-occupy a single, DWORD-indexed space, which can then be addressed as
-`allocation_base + 4 * id`.
-
-This should also unify id definitions, by making id a template over the
-identified type.
+| Platform   | Compiler |   Versions   |
+|------------|----------|--------------|
+| Windows 10 | msvc     | 19.39, 19.44 |
+| Ubuntu     | clang    | 18.1         |
+| Ubuntu     | gcc      | 13.3         |
