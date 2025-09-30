@@ -387,6 +387,15 @@ bool bitwise_sub(u16 bits, bool is_signed, MutRange<byte> dst, Range<byte> lhs, 
 // Returns `false` if overflow occurred, `true` otherwise.
 bool bitwise_mul(u16 bits, bool is_signed, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept;
 
+// Divides the bytes in `lhs` by those in `rhs` as little-endian integers,
+// putting the resulting value into `dst`.
+// `dst`, `lhs` and `rhs` must all have the same count.
+// `bits` must be between `dst.count() * 8` and `dst.count() * 8 - 7`.
+// If `bits` is not exactly `dst.count() * 8` only the low `bits % 8` bits of
+// `dst`'s last byte are written, with the others keeping their initial values.
+// Returns `false` if overflow occurred, `true` otherwise.
+bool bitwise_div(u16 bits, bool is_signed, MutRange<byte> dst, Range<byte> lhs, Range<byte> rhs) noexcept;
+
 // Shifts the bytes in `lhs` by `rhs` bits to the left (upward in the bytewise
 // representation, i.e. to a higher index), putting the result into `dst`.
 // `dst` and `lhs` must have the same count. The shifted-out high bytes are
