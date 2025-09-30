@@ -278,6 +278,7 @@ let ptrs_to_unequal_are_unequal_array_of_one_elem = if pointed_x.& == pointed_y.
 let check = std.assert(true)
 
 
+
 let one = 1
 
 let six: s8 = 5 + 1
@@ -291,3 +292,33 @@ let test_add_array: [two]s8 = .[1, 2]
 let float_one = 1.0
 
 let float_half = float_one + 0.5
+
+
+
+let fib_upto = func(T: Type) -> (func(n: T) -> [n]T) => {
+	func(n: T) -> [n]T => {
+
+		mut result: [n]T = undefined
+
+		mut prev: T = 0
+
+		mut curr: T = 1
+
+		mut i = 0
+
+		for i != n, i = i + 1
+		{
+			result[i] = curr
+
+			let tmp = curr
+
+			curr = curr + prev
+
+			prev = tmp
+		}
+
+		result
+	}
+}
+
+let fib_u64_upto_10 = fib_upto(u8)(10)
