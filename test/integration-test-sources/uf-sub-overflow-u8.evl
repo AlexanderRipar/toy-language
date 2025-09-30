@@ -1,0 +1,7 @@
+let a: u8 = 0
+
+let b: u8 = 200
+
+let c = a - b
+
+let d = b - c

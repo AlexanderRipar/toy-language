@@ -1,0 +1,5 @@
+let a: u32 = 1
+
+let b: s16 = 2
+
+let c = a - b

@@ -1,0 +1,7 @@
+let a: s8 = 0
+
+let b: s8 = 100
+
+let c = a - b
+
+let d = b - c
