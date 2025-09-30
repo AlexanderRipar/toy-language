@@ -656,8 +656,8 @@ the [list of supported compilers](#supported-compilers).
 
 The following is a list of the compilers and platforms under which builds are known to succeed.
 
-| Platform   | Compiler |   Versions   |
-|------------|----------|--------------|
-| Windows 10 | msvc     | 19.39, 19.44 |
-| Ubuntu     | clang    | 18.1         |
-| Ubuntu     | gcc      | 13.3         |
+| Platform   | Compiler |       Versions      |
+|------------|----------|---------------------|
+| Windows 10 | msvc     | 19.33, 19.39, 19.44 |
+| Ubuntu     | clang    | 18.1                |
+| Ubuntu     | gcc      | 13.3                |
