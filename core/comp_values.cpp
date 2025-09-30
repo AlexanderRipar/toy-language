@@ -430,9 +430,9 @@ bool sub_checked_s32(s32 a, s32 b, s32* out) noexcept
 
 bool sub_checked_s64(s64 a, s64 b, s64* out) noexcept
 {
-	const u64 result = static_cast<u64>(static_cast<s64>(a)) - static_cast<u64>(static_cast<s64>(b));
+	const s64 result = static_cast<s64>(static_cast<u64>(static_cast<s64>(a)) - static_cast<u64>(static_cast<s64>(b)));
 
-	*out = static_cast<s64>(result);
+	*out = result;
 
 	if (a > 0 && b < 0)
 		return result > 0;
