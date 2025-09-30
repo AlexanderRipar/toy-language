@@ -510,10 +510,9 @@ static void arec_grow(Interpreter* interp, ArecId arec_id, u64 new_size) noexcep
 
 	ASSERT_OR_IGNORE(arec->size <= new_size && interp->arec_attachs.used() == arec->attach_index + (arec->size + 7) / 8);
 
-	// This overallocates due to `interp->arecs` rounding to 8 bytes.
-	// However, that's not really a problem, as we're in the top arec anyways,
-	// and it'll get popped soon enough.
-	(void) interp->arec_attachs.reserve_padded(static_cast<u32>(new_size - arec->size));
+	const u32 extra_qwords = static_cast<u32>((new_size + 7) / 8 - (arec->size + 7) / 8);
+
+	(void) interp->arec_attachs.reserve(extra_qwords);
 
 	arec->size = static_cast<u32>(new_size);
 }
