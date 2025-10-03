@@ -14,7 +14,9 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 	{
 		const AstIdentifierData* const attach = attachment_of<AstIdentifierData>(node);
 
-		const Range<char8> name = identifier_name_from_id(identifiers, attach->identifier_id);
+		const Range<char8> name = attach->identifier_id == IdentifierId::INVALID
+			? range::from_literal_string("<unnamed>")
+			: identifier_name_from_id(identifiers, attach->identifier_id);
 
 		diag::buf_printf(ctx, " [%.*s | %c%u/%u]",
 			static_cast<s32>(name.count()), name.begin(),
@@ -34,7 +36,9 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 		else
 			identifier_id = attachment_of<AstMemberData>(node)->identifier_id;
 
-		const Range<char8> name = identifier_name_from_id(identifiers, identifier_id);
+		const Range<char8> name = identifier_id == IdentifierId::INVALID
+			? range::from_literal_string("<unnamed>")
+			: identifier_name_from_id(identifiers, identifier_id);
 
 		diag::buf_printf(ctx, " [%.*s]",
 			static_cast<s32>(name.count()), name.begin()

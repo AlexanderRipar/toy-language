@@ -113,7 +113,8 @@ static DummyTree nary_dummy_tree(u32 n) noexcept
 // | | 3
 // | ` 4
 // ` 5
-//   + 6
+//   + 10 - Instead of 6, i.e. AstTag::Where, as it gets lowered into
+//   | |    nothingness.
 //   | ` 7
 //   ` 8
 //     ` 9
@@ -132,7 +133,7 @@ static DummyTree complex_dummy_tree() noexcept
 
 	push_node(&tree, { static_cast<AstTag>(5), AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_LAST_SIBLING, 5 * NODE_QWORDS });
 
-	push_node(&tree, { static_cast<AstTag>(6), AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING, 2 * NODE_QWORDS });
+	push_node(&tree, { static_cast<AstTag>(10), AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING, 2 * NODE_QWORDS });
 
 	push_node(&tree, { static_cast<AstTag>(7), AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
@@ -633,7 +634,7 @@ static void push_node_with_complex_tree_and_complete_reverses_tree() noexcept
 
 	const AstBuilderToken t7 = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(7));
 
-	const AstBuilderToken t6 = push_node(pools.asts, t7, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(6));
+	const AstBuilderToken t6 = push_node(pools.asts, t7, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(10));
 
 	const AstBuilderToken t9 = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(9));
 

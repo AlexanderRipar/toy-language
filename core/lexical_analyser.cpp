@@ -334,6 +334,11 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 		AstIdentifierData* const attach = attachment_of<AstIdentifierData>(node);
 
+		// Return early and leave the `NameBinding` as-is in case of a
+		// synthesized identifier generated during lowering of e.g. `+=`.
+		if (attach->identifier_id == IdentifierId::INVALID)
+			return;
+
 		s32 offset_start = lex->scopes_top;
 
 		bool is_global = false;

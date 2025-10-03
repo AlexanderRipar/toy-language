@@ -320,3 +320,13 @@ let fib_upto = func(T: Type, n: T) -> [n]T => {
 }
 
 let fib_u8_upto_10 = fib_upto(u8, 10)
+
+mut plusequald = 5
+
+let plusequald_rst = {
+	plusequald += 1
+
+	plusequald
+}
+
+let plusequald_array_of_six_u64: [plusequald]u64 = .[1, 2, 3, 4, 5, 6]

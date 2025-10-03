@@ -25,6 +25,8 @@ struct AstAllocation
 	SourceId* sources;
 };
 
+static void lower_ast_rec(AstPool* asts, AstNode* src_node, bool lower_where_expr) noexcept;
+
 static AstAllocation alloc_ast(AstPool* asts, u32 qwords) noexcept
 {
 	AstNode* const nodes = static_cast<AstNode*>(asts->nodes.reserve_exact(qwords * sizeof(u64)));
@@ -256,6 +258,44 @@ static AstNode* copy_postorder_to_preorder(AstPool* asts, u32 src_root_index) no
 	return allocation.nodes;
 }
 
+static AstNode* make_synth_node(AstPool* asts, AstTag tag, AstFlag flags, u8 structure_flags, SourceId source_id) noexcept
+{
+	AstNode* const node = asts->nodes.reserve();
+	node->tag = tag;
+	node->flags = flags;
+	node->own_qwords = 1;
+	node->structure_flags = structure_flags;
+	node->next_sibling_offset = 0;
+
+	asts->sources.append(source_id);
+
+	return node;
+}
+
+template<typename T>
+static AstNode* make_synth_node(AstPool* asts, T attach, AstFlag flags, u8 structure_flags, SourceId source_id) noexcept
+{
+	const u8 own_qwords = 1  + sizeof(T) / sizeof(AstNode);
+
+	AstNode* const node = asts->nodes.reserve(own_qwords);
+	node->tag = T::TAG;
+	node->flags = flags;
+	node->own_qwords = own_qwords;
+	node->structure_flags = structure_flags;
+	node->next_sibling_offset = 0;
+
+	memcpy(node + 1, &attach, sizeof(attach));
+
+	*asts->sources.reserve(own_qwords) = source_id;
+
+	return node;
+}
+
+static void close_synth_node(AstPool* asts, AstNode* node) noexcept
+{
+	node->next_sibling_offset = static_cast<u32>(asts->nodes.end() - node);
+}
+
 static void set_value_kinds(AstNode* root) noexcept
 {
 	ValueKind first_child_value_kind = ValueKind::Value;
@@ -282,6 +322,180 @@ static void set_value_kinds(AstNode* root) noexcept
 
 		curr->structure_flags |= static_cast<u8>(curr_value_kind);
 	}
+}
+
+// if|for|foreach|switch <header> where <def1> <def2> ... <defn> <body>
+//
+// becomes
+//
+// {
+//   <def1>
+//   <def2>
+//   ...
+//   <defn>
+//
+//   if|for|foreach|switch <header> <body>
+// }
+static void lower_expr_with_where(AstPool* asts, AstNode* src_node, AstNode* src_where) noexcept
+{
+	const SourceId src_where_source = asts->sources.begin()[src_where - asts->nodes.begin()];
+
+	AstNode* const dst_block = make_synth_node(asts, AstTag::Block, AstFlag::EMPTY, src_node->structure_flags, src_where_source);
+
+	AstDirectChildIterator where_defs = direct_children_of(src_where);
+
+	while (has_next(&where_defs))
+	{
+		AstNode* const src_where_def = next(&where_defs);
+
+		ASSERT_OR_IGNORE(src_where_def->tag == AstTag::Definition);
+
+		lower_ast_rec(asts, src_where_def, true);
+	}
+
+	// Lower without special-casing `where` by setting `lower_where_expr` to `false`.
+	lower_ast_rec(asts, src_node, false);
+
+	close_synth_node(asts, dst_block);
+}
+
+// <lhs> <op>= <rhs>
+//
+// becomes
+//
+// {
+//   let _unnamed = <lhs>.&
+//
+//   _unnamed.* = _unnamed.* <op> <rhs>
+// }
+static void lower_set_op(AstPool* asts, AstNode* src_node) noexcept
+{
+	static constexpr u8 DEFINITION_DATA_QWORDS = sizeof(AstDefinitionData) / sizeof(AstNode);
+
+	static constexpr u8 IDENTIFIER_DATA_QWORDS = sizeof(AstIdentifierData) / sizeof(AstNode);
+
+	const SourceId src_source = asts->sources.begin()[src_node - asts->nodes.begin()];
+
+	AstNode* const src_lhs = first_child_of(src_node);
+
+	AstNode* const src_rhs = next_sibling_of(src_lhs);
+
+	AstNode* const dst_block = make_synth_node(asts, AstTag::Block, AstFlag::EMPTY, src_node->structure_flags, src_source);
+
+	// let _unnamed = <lhs>.&
+
+	AstNode* const dst_definition = make_synth_node(asts, AstDefinitionData{ IdentifierId::INVALID }, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING, src_source);
+
+	AstNode* const dst_addrof = make_synth_node(asts, AstTag::UOpAddr, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING, src_source);
+
+	lower_ast_rec(asts, src_lhs, true);
+
+	dst_addrof[1].structure_flags |= AstNode::STRUCTURE_LAST_SIBLING;
+
+	close_synth_node(asts, dst_addrof);
+
+	close_synth_node(asts, dst_definition);
+
+	// _unnamed.* = _unnamed.* <op> <rhs>
+
+	AstNode* const dst_set = make_synth_node(asts, AstTag::OpSet, AstFlag::EMPTY, AstNode::STRUCTURE_LAST_SIBLING, src_source);
+
+	AstNode* const dst_set_lhs_deref = make_synth_node(asts, AstTag::UOpDeref, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING, src_source);
+
+	AstNode* const dst_set_lhs_identifier = make_synth_node(asts, AstIdentifierData{ IdentifierId::INVALID, NameBinding{ 0, false, false, false, 0 } }, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, src_source);
+
+	close_synth_node(asts, dst_set_lhs_identifier);
+
+	close_synth_node(asts, dst_set_lhs_deref);
+
+	const AstTag op_tag = static_cast<AstTag>(static_cast<u8>(src_node->tag) - static_cast<u8>(AstTag::OpSetAdd) + static_cast<u8>(AstTag::OpAdd));
+
+	AstNode* const dst_set_op = make_synth_node(asts, op_tag, AstFlag::EMPTY, AstNode::STRUCTURE_LAST_SIBLING, src_source);
+
+	AstNode* const dst_set_rhs_deref = make_synth_node(asts, AstTag::UOpDeref, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING, src_source);
+
+	AstNode* const dst_set_rhs_identifier = make_synth_node(asts, AstIdentifierData{ IdentifierId::INVALID, NameBinding{ 0, false, false, false, 0 } }, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, src_source);
+
+	close_synth_node(asts, dst_set_rhs_identifier);
+	
+	close_synth_node(asts, dst_set_rhs_deref);
+
+	lower_ast_rec(asts, src_rhs, true);
+
+	dst_set_rhs_identifier[1 + sizeof(AstIdentifierData) / sizeof(u64)].structure_flags |= AstNode::STRUCTURE_LAST_SIBLING;
+
+	close_synth_node(asts, dst_set_op);
+
+	close_synth_node(asts, dst_set);
+
+	close_synth_node(asts, dst_block);
+}
+
+static void lower_ast_rec(AstPool* asts, AstNode* src_node, bool lower_where_expr) noexcept
+{
+	if (lower_where_expr && src_node->tag == AstTag::If && has_flag(src_node, AstFlag::If_HasWhere))
+	{
+		IfInfo info = get_if_info(src_node);
+
+		lower_expr_with_where(asts, src_node, get_ptr(info.where));
+	}
+	else if (lower_where_expr && src_node->tag == AstTag::For && has_flag(src_node, AstFlag::For_HasWhere))
+	{
+		ForInfo info = get_for_info(src_node);
+
+		lower_expr_with_where(asts, src_node, get_ptr(info.where));
+	}
+	else if (lower_where_expr && src_node->tag == AstTag::ForEach && has_flag(src_node, AstFlag::ForEach_HasWhere))
+	{
+		ForEachInfo info = get_foreach_info(src_node);
+
+		lower_expr_with_where(asts, src_node, get_ptr(info.where));
+	}
+	else if (lower_where_expr && src_node->tag == AstTag::Switch && has_flag(src_node, AstFlag::Switch_HasWhere))
+	{
+		SwitchInfo info = get_switch_info(src_node);
+
+		lower_expr_with_where(asts, src_node, get_ptr(info.where));
+	}
+	else if (src_node->tag >= AstTag::OpSetAdd && src_node->tag <= AstTag::OpSetShiftR)
+	{
+		lower_set_op(asts, src_node);
+	}
+	else if (src_node->tag != AstTag::Where)
+	{
+		const u64 src_index = src_node - asts->nodes.begin();
+
+		AstNode* const dst_node = asts->nodes.reserve(src_node->own_qwords);
+		memcpy(dst_node, src_node, src_node->own_qwords * sizeof(u64));
+
+		*asts->sources.reserve(src_node->own_qwords) = asts->sources.begin()[src_index];
+
+		AstDirectChildIterator it = direct_children_of(src_node);
+
+		while (has_next(&it))
+			lower_ast_rec(asts, next(&it), true);
+
+		close_synth_node(asts, dst_node);
+	}
+}
+
+static void lower_ast(AstPool* asts, AstNode* src_root) noexcept
+{
+	AstNode* const dst_root = asts->nodes.end();
+
+	lower_ast_rec(asts, src_root, true);
+
+	AstNode* const dst_end = asts->nodes.end();
+
+	const u32 dst_count = static_cast<u32>(dst_end - dst_root);
+
+	memcpy(src_root, dst_root, dst_count * sizeof(u64));
+
+	const u32 new_used = static_cast<u32>(src_root - asts->nodes.begin()) + dst_count;
+
+	asts->nodes.pop_to(new_used);
+
+	asts->sources.pop_to(new_used);
 }
 
 
@@ -444,15 +658,17 @@ AstNode* complete_ast(AstPool* asts) noexcept
 
 	const u32 src_root_index = build_traversal_list(asts);
 
-	AstNode* const dst_root = copy_postorder_to_preorder(asts, src_root_index);
+	AstNode* const root = copy_postorder_to_preorder(asts, src_root_index);
 
-	set_value_kinds(dst_root);
+	lower_ast(asts, root);
+
+	set_value_kinds(root);
 
 	asts->node_builder.reset(1 << 17);
 
 	asts->source_builder.reset(1 << 17);
 
-	return dst_root;
+	return root;
 }
 
 
