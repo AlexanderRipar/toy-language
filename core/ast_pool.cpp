@@ -811,6 +811,34 @@ ForEachInfo get_foreach_info(AstNode* node) noexcept
 	return info;
 }
 
+SwitchInfo get_switch_info(AstNode* node) noexcept
+{
+	ASSERT_OR_IGNORE(node->tag == AstTag::Switch);
+
+	AstNode* curr = first_child_of(node);
+
+	SwitchInfo info{};
+
+	info.switched = curr;
+
+	curr = next_sibling_of(node);
+
+	if (has_flag(node, AstFlag::Switch_HasWhere))
+	{
+		info.where = some(curr);
+
+		curr = next_sibling_of(node);
+	}
+	else
+	{
+		info.where = none<AstNode>();
+	}
+
+	info.first_case = curr;
+
+	return info;
+}
+
 
 
 const char8* tag_name(AstTag tag) noexcept
