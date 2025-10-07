@@ -2744,6 +2744,238 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		return rst;
 	}
 
+	case AstTag::OpSliceOf:
+	{
+		const u32 mark = stack_mark(interp);
+
+		OpSliceOfInfo info = get_op_slice_of_info(node);
+
+		Arec* sliced_unbound = nullptr;
+
+		EvalRst sliced_rst = evaluate(interp, info.sliced, EvalSpec{ ValueKind::Value });
+
+		if (sliced_rst.tag == EvalTag::Unbound)
+			sliced_unbound = sliced_rst.unbound;
+
+		Arec* begin_unbound = nullptr;
+
+		EvalRst begin_rst;
+
+		if (is_some(info.begin))
+		{
+			AstNode* const begin = get_ptr(info.begin);
+
+			begin_rst = evaluate(interp, begin, EvalSpec{ ValueKind::Value });
+
+			if (begin_rst.tag == EvalTag::Unbound)
+				begin_unbound = begin_rst.unbound;
+		}
+
+		Arec* end_unbound = nullptr;
+
+		EvalRst end_rst;
+
+		if (is_some(info.end))
+		{
+			AstNode* const end = get_ptr(info.end);
+
+			end_rst = evaluate(interp, end, EvalSpec{ ValueKind::Value });
+
+			if (end_rst.tag == EvalTag::Unbound)
+				end_unbound = end_rst.unbound;
+		}
+
+		if (sliced_unbound != nullptr || begin_unbound != nullptr || end_unbound != nullptr)
+		{
+			Arec* unbound = sliced_unbound;
+
+			if (sliced_unbound == nullptr)
+				add_partial_value_to_builder(interp, info.sliced, sliced_rst.success.type_id, sliced_rst.success.bytes.immut());
+
+			if (begin_unbound == nullptr)
+				add_partial_value_to_builder(interp, info.sliced, begin_rst.success.type_id, begin_rst.success.bytes.immut());
+			else if (begin_unbound < unbound)
+				unbound = begin_unbound;
+
+			if (end_unbound == nullptr)
+				add_partial_value_to_builder(interp, info.sliced, end_rst.success.type_id, end_rst.success.bytes.immut());
+			else if (end_unbound < unbound)
+				unbound = end_unbound;
+
+			return eval_unbound(unbound);
+		}
+
+		const TypeTag sliced_type_tag = type_tag_from_id(interp->types, sliced_rst.success.type_id);
+
+		TypeId elem_type_id;
+
+		TypeMetrics elem_metrics;
+
+		byte* first_elem;
+
+		bool has_byte_count;
+
+		u64 byte_count;
+
+		bool is_mut;
+
+		if (sliced_type_tag == TypeTag::Array || sliced_type_tag == TypeTag::ArrayLiteral)
+		{
+			const ArrayType* const array_type = type_attachment_from_id<ArrayType>(interp->types, sliced_rst.success.type_id);
+
+			elem_type_id = array_type->element_type;
+
+			elem_metrics = type_metrics_from_id(interp->types, array_type->element_type);
+
+			first_elem = sliced_rst.success.bytes.begin();
+
+			has_byte_count = true;
+
+			byte_count = elem_metrics.stride * array_type->element_count;
+
+			is_mut = sliced_rst.success.is_mut;
+		}
+		else if (sliced_type_tag == TypeTag::Slice)
+		{
+			const ReferenceType* const slice_type = type_attachment_from_id<ReferenceType>(interp->types, sliced_rst.success.type_id);
+
+			MutRange<byte> slice = *value_as<MutRange<byte>>(sliced_rst.success);
+
+			elem_type_id = slice_type->referenced_type_id;
+
+			elem_metrics = type_metrics_from_id(interp->types, slice_type->referenced_type_id);
+
+			first_elem = slice.begin();
+
+			has_byte_count = true;
+
+			byte_count = slice.count();
+
+			is_mut = sliced_rst.success.is_mut && slice_type->is_mut;
+		}
+		else if (sliced_type_tag == TypeTag::Ptr)
+		{
+			const ReferenceType* const ptr_type = type_attachment_from_id<ReferenceType>(interp->types, sliced_rst.success.type_id);
+
+			if (!ptr_type->is_multi)
+				source_error(interp->errors, source_id_of(interp->asts, info.sliced), "Left-hand-side of slicing operator must be of multi-pointer and not single-pointer type.\n");
+
+			elem_type_id = ptr_type->referenced_type_id;
+
+			elem_metrics = type_metrics_from_id(interp->types, ptr_type->referenced_type_id);
+
+			first_elem = *value_as<byte*>(sliced_rst.success);
+
+			has_byte_count = false;
+
+			byte_count = 0;
+
+			is_mut = sliced_rst.success.is_mut && ptr_type->is_mut;
+		}
+		else
+		{
+			source_error(interp->errors, source_id_of(interp->asts, info.sliced), "Left-hand-side of slicing operator must be of array, slice or multi-pointer type.\n");
+		}
+
+		byte* begin_ptr;
+
+		if (is_some(info.begin))
+		{
+			const TypeTag begin_type_tag = type_tag_from_id(interp->types, begin_rst.success.type_id);
+
+			u64 begin_index;
+
+			if (begin_type_tag == TypeTag::CompInteger)
+			{
+				if (!u64_from_comp_integer(*value_as<CompIntegerValue>(begin_rst.success), 64, &begin_index))
+					source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.begin)), "Begin index of slicing operator must fit into unsigned 64-bit integer.\n");
+			}
+			else if (begin_type_tag == TypeTag::Integer)
+			{
+				const NumericType begin_type = *type_attachment_from_id<NumericType>(interp->types, begin_rst.success.type_id);
+
+				if (!u64_from_integer(begin_rst.success.bytes.immut(), begin_type, &begin_index))
+					source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.begin)), "Begin index of slicing operator must fit into unsigned 64-bit integer.\n");
+			}
+			else
+			{
+				source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.begin)), "Begin index of slicing operator must be of integer type.\n");
+			}
+
+			begin_ptr = first_elem + begin_index * elem_metrics.stride;
+		}
+		else
+		{
+			begin_ptr = first_elem;
+		}
+
+		byte* end_ptr;
+
+		if (is_some(info.end))
+		{
+			const TypeTag end_type_tag = type_tag_from_id(interp->types, end_rst.success.type_id);
+
+			u64 end_index;
+
+			if (end_type_tag == TypeTag::CompInteger)
+			{
+				if (!u64_from_comp_integer(*value_as<CompIntegerValue>(end_rst.success), 64, &end_index))
+					source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.end)), "End index of slicing operator must fit into unsigned 64-bit integer.\n");
+			}
+			else if (end_type_tag == TypeTag::Integer)
+			{
+				const NumericType begin_type = *type_attachment_from_id<NumericType>(interp->types, end_rst.success.type_id);
+
+				if (!u64_from_integer(end_rst.success.bytes.immut(), begin_type, &end_index))
+					source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.end)), "End index of slicing operator must fit into unsigned 64-bit integer.\n");
+			}
+			else
+			{
+				source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.end)), "End index of slicing operator must be of integer type.\n");
+			}
+
+			end_ptr = first_elem + end_index * elem_metrics.stride;
+		}
+		else if (has_byte_count)
+		{
+			end_ptr = first_elem + byte_count;
+		}
+		else
+		{
+			source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.end)), "End index of slicing operator cannot be elided with left-hand-side of multi-pointer type, as the end cannot be derived.\n");
+		}
+
+		if (has_byte_count && begin_ptr > first_elem + byte_count)
+			source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.begin)), "Begin index of slicing operator must be less than the element count of the indexed array or slice.\n");
+
+		if (has_byte_count && end_ptr > first_elem + byte_count)
+			source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.end)), "End index of slicing operator must be less than the element count of the indexed array or slice.\n");
+
+		if (begin_ptr > end_ptr)
+			source_error(interp->errors, source_id_of(interp->asts, node), "Begin index of slicing operator must be less than or equal to end index.\n");
+
+		MutRange<byte> rst_slice{ begin_ptr, end_ptr };
+
+		ReferenceType slice_type{};
+		slice_type.referenced_type_id = elem_type_id;
+		slice_type.is_opt = false;
+		slice_type.is_multi = false;
+		slice_type.is_mut = is_mut;
+
+		const TypeId slice_type_id = type_create_reference(interp->types, TypeTag::Slice, slice_type);
+
+		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, slice_type_id, sizeof(MutRange<byte>), alignof(MutRange<byte>));
+
+		value_set(&rst.success, range::from_object_bytes_mut(&rst_slice));
+
+		if (spec.dst.begin() == nullptr)
+			rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
+		else
+			stack_shrink(interp, mark);
+
+		return rst;
+	}
+
 	case AstTag::Call:
 	{
 		const u32 callee_mark = stack_mark(interp);
