@@ -41,6 +41,7 @@ enum class Token : u8
 		KwdReturn,            // return
 		KwdLeave,             // leave
 		KwdYield,             // yield
+		DoubleDot,            // ..
 		ArrayInitializer,     // .[
 		CompositeInitializer, // .{
 		BracketR,             // ]
@@ -896,7 +897,7 @@ static RawLexeme scan_number_token(Lexer* lexer, char8 first) noexcept
 		curr += 1;
 	}
 
-	if (*curr == '.')
+	if (*curr == '.' && curr[1] != '.')
 	{
 		curr += 1;
 
@@ -1352,12 +1353,18 @@ static RawLexeme raw_next(Lexer* lexer) noexcept
 	case '.':
 		if (second == '.')
 		{
-			if (lexer->curr[1] != '.')
-				source_error(lexer->errors, lexer->peek.source_id, "Unexpected Token '..'\n");
+			if (lexer->curr[1] == '.')
+			{
+				lexer->curr += 2;
 
-			lexer->curr += 2;
+				return { Token::TypVar };
+			}
+			else
+			{
+				lexer->curr += 1;
 
-			return { Token::TypVar };
+				return { Token::DoubleDot };
+			}
 		}
 		else if (second == '*')
 		{
@@ -2669,7 +2676,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 
 				remove_lparen(&stack);
 			}
-			else if (lexeme.token == Token::BracketL) // Array Index
+			else if (lexeme.token == Token::BracketL) // Array Index or Slice
 			{
 				ASSERT_OR_IGNORE(stack.operand_count != 0);
 
@@ -2679,16 +2686,73 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 
 				skip(&parser->lexer);
 
-				parse_expr(parser, false);
-
 				lexeme = peek(&parser->lexer);
 
-				if (lexeme.token != Token::BracketR)
-					source_error(parser->lexer.errors, lexeme.source_id, "Expected ']' after array index expression, but got '%s'\n", token_name(lexeme.token));
+				if (lexeme.token == Token::DoubleDot)
+				{
+					AstFlag flags = AstFlag::EMPTY;
 
-				const AstBuilderToken index_token = push_node(parser->builder, stack.operand_tokens[stack.operand_count - 1], source_id, AstFlag::EMPTY, AstTag::OpArrayIndex);
+					skip(&parser->lexer);
 
-				stack.operand_tokens[stack.operand_count - 1] = index_token;
+					lexeme = peek(&parser->lexer);
+
+					if (lexeme.token != Token::BracketR)
+					{
+						flags |= AstFlag::OpSliceOf_HasEnd;
+
+						parse_expr(parser, false);
+
+						lexeme = peek(&parser->lexer);
+
+						if (lexeme.token != Token::BracketR)
+							source_error(parser->lexer.errors, lexeme.source_id, "Expected ']' after slice index expression, but got '%s'.\n", token_name(lexeme.token));
+					}
+
+					const AstBuilderToken slice_token = push_node(parser->builder, stack.operand_tokens[stack.operand_count - 1], source_id, flags, AstTag::OpSliceOf);
+
+					stack.operand_tokens[stack.operand_count - 1] = slice_token;
+				}
+				else
+				{
+					parse_expr(parser, false);
+
+					lexeme = peek(&parser->lexer);
+
+					if (lexeme.token == Token::BracketR)
+					{
+						const AstBuilderToken index_token = push_node(parser->builder, stack.operand_tokens[stack.operand_count - 1], source_id, AstFlag::EMPTY, AstTag::OpArrayIndex);
+
+						stack.operand_tokens[stack.operand_count - 1] = index_token;
+					}
+					else if (lexeme.token == Token::DoubleDot)
+					{
+						AstFlag flags = AstFlag::OpSliceOf_HasBegin;
+
+						skip(&parser->lexer);
+
+						lexeme = peek(&parser->lexer);
+
+						if (lexeme.token != Token::BracketR)
+						{
+							flags |= AstFlag::OpSliceOf_HasEnd;
+
+							parse_expr(parser, false);
+
+							lexeme = peek(&parser->lexer);
+
+							if (lexeme.token != Token::BracketR)
+								source_error(parser->lexer.errors, lexeme.source_id, "Expected ']' after slice index expression, but got '%s'.\n", token_name(lexeme.token));
+						}
+
+						const AstBuilderToken slice_token = push_node(parser->builder, stack.operand_tokens[stack.operand_count - 1], source_id, flags, AstTag::OpSliceOf);
+
+						stack.operand_tokens[stack.operand_count - 1] = slice_token;
+					}
+					else
+					{
+						source_error(parser->lexer.errors, lexeme.source_id, "Expected ']' after array index expression, but got '%s'\n", token_name(lexeme.token));
+					}
+				}
 			}
 			else if (lexeme.token == Token::KwdCatch)
 			{
