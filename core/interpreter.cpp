@@ -4143,9 +4143,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		AstNode* const count = first_child_of(node);
 
-		const EvalRst count_rst = evaluate(interp, count, EvalSpec{
-			ValueKind::Value
-		});
+		const EvalRst count_rst = evaluate(interp, count, EvalSpec{ ValueKind::Value });
 
 		u64 count_u64 = 0;
 
