@@ -1093,6 +1093,7 @@ const char8* tag_name(AstTag tag) noexcept
 		"LitFloat",
 		"LitChar",
 		"LitString",
+		"OpSliceOf",
 		"Return",
 		"Leave",
 		"Yield",

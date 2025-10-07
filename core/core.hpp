@@ -632,6 +632,7 @@ enum class AstTag : u8
 	LitFloat,
 	LitChar,
 	LitString,
+	OpSliceOf,
 	Return,
 	Leave,
 	Yield,
@@ -736,6 +737,9 @@ enum class AstFlag : u8
 	Impl_HasExpects             = 0x01,
 
 	Catch_HasDefinition         = 0x01,
+
+	OpSliceOf_HasBegin          = 0x01,
+	OpSliceOf_HasEnd            = 0x02,
 
 	Type_IsMut                  = 0x02,
 };
