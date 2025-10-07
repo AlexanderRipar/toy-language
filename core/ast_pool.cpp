@@ -1059,6 +1059,45 @@ SwitchInfo get_switch_info(AstNode* node) noexcept
 	return info;
 }
 
+OpSliceOfInfo get_op_slice_of_info(AstNode* node) noexcept
+{
+	ASSERT_OR_IGNORE(node->tag == AstTag::OpSliceOf);
+
+	AstNode* curr = first_child_of(node);
+
+	OpSliceOfInfo info{};
+
+	info.sliced = curr;
+
+	if (has_flag(node, AstFlag::OpSliceOf_HasBegin))
+	{
+		curr = next_sibling_of(curr);
+
+		info.begin = some(curr);
+	}
+	else
+	{
+		info.begin = none<AstNode>();
+	}
+
+	if (has_flag(node, AstFlag::OpSliceOf_HasEnd))
+	{
+		curr = next_sibling_of(curr);
+
+		info.end = some(curr);
+	}
+	else
+	{
+		info.end = none<AstNode>();
+	}
+
+	ASSERT_OR_IGNORE(!has_next_sibling(curr));
+
+	return info;
+}
+
+
+
 
 
 const char8* tag_name(AstTag tag) noexcept

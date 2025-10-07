@@ -1140,6 +1140,15 @@ struct SwitchInfo
 	AstNode* first_case;
 };
 
+struct OpSliceOfInfo
+{
+	AstNode* sliced;
+
+	OptPtr<AstNode> begin;
+
+	OptPtr<AstNode> end;
+};
+
 
 
 // Bitwise `or` of two `AstFlag`s
@@ -1329,6 +1338,8 @@ ForEachInfo get_foreach_info(AstNode* node) noexcept;
 // Retrieves a `SwitchInfo` struct corresponding to `node`'s child structure.
 // `node`'s tag must be `AstTag::Switch`.
 SwitchInfo get_switch_info(AstNode* node) noexcept;
+
+OpSliceOfInfo get_op_slice_of_info(AstNode* node) noexcept;
 
 // Creates an iterator over `node`'s direct children, skipping over more
 // removed ancestors.
