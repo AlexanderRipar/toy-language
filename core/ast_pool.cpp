@@ -338,6 +338,8 @@ static void set_value_kinds(AstNode* root) noexcept
 // }
 static void lower_expr_with_where(AstPool* asts, AstNode* src_node, AstNode* src_where) noexcept
 {
+	ASSERT_OR_IGNORE((src_node->tag == AstTag::If || src_node->tag == AstTag::For || src_node->tag == AstTag::ForEach || src_node->tag == AstTag::Switch) && src_where->tag == AstTag::Where);
+
 	const SourceId src_where_source = asts->sources.begin()[src_where - asts->nodes.begin()];
 
 	AstNode* const dst_block = make_synth_node(asts, AstTag::Block, AstFlag::EMPTY, src_node->structure_flags, src_where_source);
@@ -370,6 +372,8 @@ static void lower_expr_with_where(AstPool* asts, AstNode* src_node, AstNode* src
 // }
 static void lower_set_op(AstPool* asts, AstNode* src_node) noexcept
 {
+	ASSERT_OR_IGNORE(src_node->tag >= AstTag::OpSetAdd && src_node->tag <= AstTag::OpSetShiftR);
+
 	static constexpr u8 DEFINITION_DATA_QWORDS = sizeof(AstDefinitionData) / sizeof(AstNode);
 
 	static constexpr u8 IDENTIFIER_DATA_QWORDS = sizeof(AstIdentifierData) / sizeof(AstNode);
