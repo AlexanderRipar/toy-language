@@ -485,7 +485,13 @@ static void lower_ast_rec(AstPool* asts, AstNode* src_node, bool lower_where_exp
 
 static void lower_ast(AstPool* asts, AstNode* src_root) noexcept
 {
+	ASSERT_OR_IGNORE(src_root >= asts->nodes.begin() && src_root < asts->nodes.end());
+
+	SourceId* const src_sources = asts->sources.begin() + (src_root - asts->nodes.begin());
+
 	AstNode* const dst_root = asts->nodes.end();
+
+	SourceId* const dst_sources = asts->sources.end();
 
 	lower_ast_rec(asts, src_root, true);
 
@@ -494,6 +500,8 @@ static void lower_ast(AstPool* asts, AstNode* src_root) noexcept
 	const u32 dst_count = static_cast<u32>(dst_end - dst_root);
 
 	memcpy(src_root, dst_root, dst_count * sizeof(u64));
+
+	memcpy(src_sources, dst_sources, dst_count * sizeof(SourceId));
 
 	const u32 new_used = static_cast<u32>(src_root - asts->nodes.begin()) + dst_count;
 
