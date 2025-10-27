@@ -25,7 +25,7 @@ struct AstAllocation
 	SourceId* sources;
 };
 
-static void lower_ast_rec(AstPool* asts, AstNode* src_node, bool lower_where_expr) noexcept;
+static void lower_tags_rec(AstPool* asts, AstNode* src_node, bool lower_where_expr) noexcept;
 
 static AstAllocation alloc_ast(AstPool* asts, u32 qwords) noexcept
 {
@@ -308,7 +308,7 @@ static void close_synth_node(AstPool* asts, AstNode* node) noexcept
 //
 //   if|for|foreach|switch <header> <body>
 // }
-static void lower_expr_with_where(AstPool* asts, AstNode* src_node, AstNode* src_where) noexcept
+static void lower_tags_expr_with_where(AstPool* asts, AstNode* src_node, AstNode* src_where) noexcept
 {
 	ASSERT_OR_IGNORE((src_node->tag == AstTag::If || src_node->tag == AstTag::For || src_node->tag == AstTag::ForEach || src_node->tag == AstTag::Switch) && src_where->tag == AstTag::Where);
 
@@ -324,11 +324,11 @@ static void lower_expr_with_where(AstPool* asts, AstNode* src_node, AstNode* src
 
 		ASSERT_OR_IGNORE(src_where_def->tag == AstTag::Definition);
 
-		lower_ast_rec(asts, src_where_def, true);
+		lower_tags_rec(asts, src_where_def, true);
 	}
 
 	// Lower without special-casing `where` by setting `lower_where_expr` to `false`.
-	lower_ast_rec(asts, src_node, false);
+	lower_tags_rec(asts, src_node, false);
 
 	close_synth_node(asts, dst_block);
 }
@@ -342,7 +342,7 @@ static void lower_expr_with_where(AstPool* asts, AstNode* src_node, AstNode* src
 //
 //   _unnamed.* = _unnamed.* <op> <rhs>
 // }
-static void lower_set_op(AstPool* asts, AstNode* src_node) noexcept
+static void lower_tags_set_op(AstPool* asts, AstNode* src_node) noexcept
 {
 	ASSERT_OR_IGNORE(src_node->tag >= AstTag::OpSetAdd && src_node->tag <= AstTag::OpSetShiftR);
 
@@ -364,7 +364,7 @@ static void lower_set_op(AstPool* asts, AstNode* src_node) noexcept
 
 	AstNode* const dst_addrof = make_synth_node(asts, AstTag::UOpAddr, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING, src_source);
 
-	lower_ast_rec(asts, src_lhs, true);
+	lower_tags_rec(asts, src_lhs, true);
 
 	dst_addrof[1].structure_flags |= AstNode::STRUCTURE_LAST_SIBLING;
 
@@ -396,7 +396,7 @@ static void lower_set_op(AstPool* asts, AstNode* src_node) noexcept
 	
 	close_synth_node(asts, dst_set_rhs_deref);
 
-	lower_ast_rec(asts, src_rhs, true);
+	lower_tags_rec(asts, src_rhs, true);
 
 	dst_set_rhs_identifier[1 + sizeof(AstIdentifierData) / sizeof(u64)].structure_flags |= AstNode::STRUCTURE_LAST_SIBLING;
 
@@ -407,35 +407,35 @@ static void lower_set_op(AstPool* asts, AstNode* src_node) noexcept
 	close_synth_node(asts, dst_block);
 }
 
-static void lower_ast_rec(AstPool* asts, AstNode* src_node, bool lower_where_expr) noexcept
+static void lower_tags_rec(AstPool* asts, AstNode* src_node, bool lower_where_expr) noexcept
 {
 	if (lower_where_expr && src_node->tag == AstTag::If && has_flag(src_node, AstFlag::If_HasWhere))
 	{
 		IfInfo info = get_if_info(src_node);
 
-		lower_expr_with_where(asts, src_node, get_ptr(info.where));
+		lower_tags_expr_with_where(asts, src_node, get_ptr(info.where));
 	}
 	else if (lower_where_expr && src_node->tag == AstTag::For && has_flag(src_node, AstFlag::For_HasWhere))
 	{
 		ForInfo info = get_for_info(src_node);
 
-		lower_expr_with_where(asts, src_node, get_ptr(info.where));
+		lower_tags_expr_with_where(asts, src_node, get_ptr(info.where));
 	}
 	else if (lower_where_expr && src_node->tag == AstTag::ForEach && has_flag(src_node, AstFlag::ForEach_HasWhere))
 	{
 		ForEachInfo info = get_foreach_info(src_node);
 
-		lower_expr_with_where(asts, src_node, get_ptr(info.where));
+		lower_tags_expr_with_where(asts, src_node, get_ptr(info.where));
 	}
 	else if (lower_where_expr && src_node->tag == AstTag::Switch && has_flag(src_node, AstFlag::Switch_HasWhere))
 	{
 		SwitchInfo info = get_switch_info(src_node);
 
-		lower_expr_with_where(asts, src_node, get_ptr(info.where));
+		lower_tags_expr_with_where(asts, src_node, get_ptr(info.where));
 	}
 	else if (src_node->tag >= AstTag::OpSetAdd && src_node->tag <= AstTag::OpSetShiftR)
 	{
-		lower_set_op(asts, src_node);
+		lower_tags_set_op(asts, src_node);
 	}
 	else if (src_node->tag != AstTag::Where)
 	{
@@ -449,7 +449,7 @@ static void lower_ast_rec(AstPool* asts, AstNode* src_node, bool lower_where_exp
 		AstDirectChildIterator it = direct_children_of(src_node);
 
 		while (has_next(&it))
-			lower_ast_rec(asts, next(&it), true);
+			lower_tags_rec(asts, next(&it), true);
 
 		close_synth_node(asts, dst_node);
 	}
@@ -465,7 +465,7 @@ static void lower_ast(AstPool* asts, AstNode* src_root) noexcept
 
 	SourceId* const dst_sources = asts->sources.end();
 
-	lower_ast_rec(asts, src_root, true);
+	lower_tags_rec(asts, src_root, true);
 
 	AstNode* const dst_end = asts->nodes.end();
 
