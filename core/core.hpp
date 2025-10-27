@@ -149,6 +149,18 @@ enum class IdentifierId : u32
 	// Used to indicate that there is no identifier associated with a
 	// construct. No valid identifier will ever map to this `IdentifierId`.
 	INVALID = 0,
+
+	// Reserved value used synthetic definitions created during lowering of
+	// set-operations to load-operate-set.
+	FirstSynth = 1,
+
+	// First reserved value used for synthetic definitions created during
+	// lifting of values to locations. This pass reserves all identifiers in
+	// the range [SecondSynth, FirstNatural).
+	SecondSynth = 2,
+
+	// First value used for user-defined identifiers.
+	FirstNatural = 65536,
 };
 
 // Creates an `IdentifierPool`, allocating the necessary storage from `alloc`.

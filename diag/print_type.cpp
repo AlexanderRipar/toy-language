@@ -132,16 +132,28 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 			{
 				const Member* member = next(&it);
 
-				const Range<char8> member_name = identifier_name_from_id(identifiers, member->name);
-
-				diag::buf_printf(ctx, "%s%*s%s%s%s\"%.*s\" ",
+				diag::buf_printf(ctx, "%s%*s%s%s%s",
 					has_members ? "" : "\n",
 					(indent + 1) * 2, "",
 					member->is_pub ? "pub " : "",
 					member->is_mut ? "mut " : "",
-					member->is_global ? "global " : "",
-					static_cast<s32>(member_name.count()), member_name.begin()
+					member->is_global ? "global " : ""
 				);
+
+				if (member->name < IdentifierId::FirstNatural)
+				{
+					diag::buf_printf(ctx, "\"_%u\" ",
+						static_cast<u32>(member->name)
+					);
+				}
+				else
+				{
+					const Range<char8> name = identifier_name_from_id(identifiers, member->name);
+
+					diag::buf_printf(ctx, "\"%.*s\" ",
+						static_cast<s32>(name.count()), name.begin()
+					);
+				}
 
 				if (member->is_global)
 					diag::buf_printf(ctx, ":: ");

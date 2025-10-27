@@ -14,12 +14,22 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 	{
 		const AstIdentifierData* const attach = attachment_of<AstIdentifierData>(node);
 
-		const Range<char8> name = attach->identifier_id == IdentifierId::INVALID
-			? range::from_literal_string("<unnamed>")
-			: identifier_name_from_id(identifiers, attach->identifier_id);
+		if (attach->identifier_id < IdentifierId::FirstNatural)
+		{
+			diag::buf_printf(ctx, " [_%u |",
+				static_cast<u32>(attach->identifier_id)
+			);
+		}
+		else
+		{
+			const Range<char8> name = identifier_name_from_id(identifiers, attach->identifier_id);
 
-		diag::buf_printf(ctx, " [%.*s | %c%u/%u]",
-			static_cast<s32>(name.count()), name.begin(),
+			diag::buf_printf(ctx, " [%.*s |",
+				static_cast<s32>(name.count()), name.begin()
+			);
+		}
+
+		diag::buf_printf(ctx, " %c%u/%u]",
 			attach->binding.is_global ? 'g' : attach->binding.is_closed_over_closure ? 'C' : attach->binding.is_closed_over ? 'c' : 's',
 			attach->binding.out,
 			attach->binding.rank
@@ -36,13 +46,20 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 		else
 			identifier_id = attachment_of<AstMemberData>(node)->identifier_id;
 
-		const Range<char8> name = identifier_id == IdentifierId::INVALID
-			? range::from_literal_string("<unnamed>")
-			: identifier_name_from_id(identifiers, identifier_id);
+		if (identifier_id < IdentifierId::FirstNatural)
+		{
+			diag::buf_printf(ctx, " [_%u]",
+				static_cast<u32>(identifier_id)
+			);
+		}
+		else
+		{
+			const Range<char8> name = identifier_name_from_id(identifiers, identifier_id);
 
-		diag::buf_printf(ctx, " [%.*s]",
-			static_cast<s32>(name.count()), name.begin()
-		);
+			diag::buf_printf(ctx, " [%.*s]",
+				static_cast<s32>(name.count()), name.begin()
+			);
+		}
 	}
 	else if (node->tag == AstTag::LitInteger)
 	{

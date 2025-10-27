@@ -82,9 +82,6 @@ IdentifierPool* create_identifier_pool(AllocPool* alloc) noexcept
 
 	identifiers->map.init(1u << 24, 1u << 15, 1u << 31, 1u << 18);
 
-	// Occupy index 0 with a nonsense value so it can be used as INVALID_IDENTIFIER_ID
-	(void) identifiers->map.value_from(Range<char8>{ nullptr, nullptr }, fnv1a(Range<byte>{ nullptr, nullptr }));
-
 	return identifiers;
 }
 
@@ -95,7 +92,7 @@ void release_identifier_pool(IdentifierPool* identifiers) noexcept
 
 IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept
 {
-	return IdentifierId{ identifiers->map.index_from(identifier, fnv1a(identifier.as_byte_range())) };
+	return static_cast<IdentifierId>(identifiers->map.index_from(identifier, fnv1a(identifier.as_byte_range())) + static_cast<u32>(IdentifierId::FirstNatural));
 }
 
 IdentifierId id_and_attachment_from_identifier(IdentifierPool* identifiers, Range<char8> identifier, u8* out_token) noexcept
@@ -104,7 +101,7 @@ IdentifierId id_and_attachment_from_identifier(IdentifierPool* identifiers, Rang
 
 	*out_token = entry->m_attachment;
 
-	return IdentifierId{ identifiers->map.index_from(entry) };
+	return static_cast<IdentifierId>(identifiers->map.index_from(entry) + static_cast<u32>(IdentifierId::FirstNatural));
 }
 
 void identifier_set_attachment(IdentifierPool* identifiers, Range<char8> identifier, u8 attachment) noexcept
@@ -120,9 +117,9 @@ void identifier_set_attachment(IdentifierPool* identifiers, Range<char8> identif
 
 Range<char8> identifier_name_from_id(const IdentifierPool* identifiers, IdentifierId id) noexcept
 {
-	ASSERT_OR_IGNORE(id != IdentifierId::INVALID);
+	ASSERT_OR_IGNORE(id >= IdentifierId::FirstNatural);
 
-	const IdentifierEntry* const entry = identifiers->map.value_from(static_cast<u32>(id));
+	const IdentifierEntry* const entry = identifiers->map.value_from(static_cast<u32>(id) - static_cast<u32>(IdentifierId::FirstNatural));
 
-	return { entry->m_chars, entry->m_length };
+	return Range<char8>{ entry->m_chars, entry->m_length };
 }

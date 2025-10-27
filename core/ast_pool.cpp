@@ -388,7 +388,7 @@ static void lower_set_op(AstPool* asts, AstNode* src_node) noexcept
 
 	// let _unnamed = <lhs>.&
 
-	AstNode* const dst_definition = make_synth_node(asts, AstDefinitionData{ IdentifierId::INVALID }, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING, src_source);
+	AstNode* const dst_definition = make_synth_node(asts, AstDefinitionData{ IdentifierId::FirstSynth }, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING, src_source);
 
 	AstNode* const dst_addrof = make_synth_node(asts, AstTag::UOpAddr, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING, src_source);
 
@@ -406,7 +406,7 @@ static void lower_set_op(AstPool* asts, AstNode* src_node) noexcept
 
 	AstNode* const dst_set_lhs_deref = make_synth_node(asts, AstTag::UOpDeref, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING, src_source);
 
-	AstNode* const dst_set_lhs_identifier = make_synth_node(asts, AstIdentifierData{ IdentifierId::INVALID, NameBinding{ 0, false, false, false, 0 } }, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, src_source);
+	AstNode* const dst_set_lhs_identifier = make_synth_node(asts, AstIdentifierData{ IdentifierId::FirstSynth }, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, src_source);
 
 	close_synth_node(asts, dst_set_lhs_identifier);
 
@@ -418,7 +418,7 @@ static void lower_set_op(AstPool* asts, AstNode* src_node) noexcept
 
 	AstNode* const dst_set_rhs_deref = make_synth_node(asts, AstTag::UOpDeref, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING, src_source);
 
-	AstNode* const dst_set_rhs_identifier = make_synth_node(asts, AstIdentifierData{ IdentifierId::INVALID, NameBinding{ 0, false, false, false, 0 } }, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, src_source);
+	AstNode* const dst_set_rhs_identifier = make_synth_node(asts, AstIdentifierData{ IdentifierId::FirstSynth }, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, src_source);
 
 	close_synth_node(asts, dst_set_rhs_identifier);
 	
