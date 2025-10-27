@@ -784,13 +784,11 @@ enum class AstNodeId : u32
 // additional siblings can be checked via the `has_next_sibling` function.
 struct alignas(8) AstNode
 {
-	static constexpr u8 STRUCTURE_VALUE_KIND_BITS = 0x01;
+	static constexpr u8 STRUCTURE_FIRST_SIBLING = 0x01;
 
-	static constexpr u8 STRUCTURE_FIRST_SIBLING = 0x02;
+	static constexpr u8 STRUCTURE_LAST_SIBLING = 0x02;
 
-	static constexpr u8 STRUCTURE_LAST_SIBLING = 0x04;
-
-	static constexpr u8 STRUCTURE_NO_CHILDREN = 0x08;
+	static constexpr u8 STRUCTURE_NO_CHILDREN = 0x04;
 
 	// Indicates what kind of AST node is represented. This determines the
 	// meaning of `flags` and the layout and semantics of the trailing data.
@@ -1277,8 +1275,6 @@ bool has_next_sibling(const AstNode* node) noexcept;
 bool has_flag(const AstNode* node, AstFlag flag) noexcept;
 
 bool is_descendant_of(const AstNode* parent, const AstNode* child) noexcept;
-
-ValueKind value_kind_of(const AstNode* node) noexcept;
 
 // Returns the next sibling of `node`.
 // This function must only be called on `AstNode`s that have a next sibling.

@@ -296,34 +296,6 @@ static void close_synth_node(AstPool* asts, AstNode* node) noexcept
 	node->next_sibling_offset = static_cast<u32>(asts->nodes.end() - node);
 }
 
-static void set_value_kinds(AstNode* root) noexcept
-{
-	ValueKind first_child_value_kind = ValueKind::Value;
-
-	AstPostorderIterator it = postorder_ancestors_of(root);
-
-	while (has_next(&it))
-	{
-		AstNode* const curr = next(&it).node;
-
-		const AstTag tag = curr->tag;
-
-		ValueKind curr_value_kind;
-
-		if (tag == AstTag::Identifier || tag == AstTag::OpArrayIndex || tag == AstTag::UOpDeref)
-			curr_value_kind = ValueKind::Location;
-		else if (tag == AstTag::Member)
-			curr_value_kind = first_child_value_kind;
-		else
-			curr_value_kind = ValueKind::Value;
-
-		if ((curr->structure_flags & AstNode::STRUCTURE_FIRST_SIBLING) != 0)
-			first_child_value_kind = curr_value_kind;
-
-		curr->structure_flags |= static_cast<u8>(curr_value_kind);
-	}
-}
-
 // if|for|foreach|switch <header> where <def1> <def2> ... <defn> <body>
 //
 // becomes
@@ -595,11 +567,6 @@ bool is_descendant_of(const AstNode* parent, const AstNode* child) noexcept
 	return child >= parent && child < parent + parent->next_sibling_offset;
 }
 
-ValueKind value_kind_of(const AstNode* node) noexcept
-{
-	return static_cast<ValueKind>(node->structure_flags & (AstNode::STRUCTURE_VALUE_KIND_BITS));
-}
-
 AstNode* next_sibling_of(AstNode* node) noexcept
 {
 	ASSERT_OR_IGNORE(has_next_sibling(node));
@@ -673,8 +640,6 @@ AstNode* complete_ast(AstPool* asts) noexcept
 	AstNode* const root = copy_postorder_to_preorder(asts, src_root_index);
 
 	lower_ast(asts, root);
-
-	set_value_kinds(root);
 
 	asts->node_builder.reset(1 << 17);
 

@@ -168,7 +168,7 @@ static DummyTree double_binary_dummy_tree() noexcept
 
 	push_node(&tree, { AstTag::LitFloat, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
-	push_node(&tree, { AstTag::Identifier, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN | AstNode::STRUCTURE_VALUE_KIND_BITS, NODE_QWORDS });
+	push_node(&tree, { AstTag::Identifier, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
 	push_node(&tree, { AstTag::LitInteger, AstFlag::EMPTY, NODE_QWORDS, AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, NODE_QWORDS });
 
