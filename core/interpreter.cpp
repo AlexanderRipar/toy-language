@@ -4350,7 +4350,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 	case AstTag::CompositeInitializer:
 	case AstTag::Wildcard:
-	case AstTag::Where:
 	case AstTag::Expects:
 	case AstTag::Ensures:
 	case AstTag::ForEach:
@@ -4367,6 +4366,15 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::UOpTry:
 	case AstTag::UOpDefer:
 	case AstTag::UOpDistinct:
+		panic("evaluate(%s) not yet implemented.\n", tag_name(node->tag));
+	
+	case AstTag::INVALID:
+	case AstTag::File:
+	case AstTag::Where:
+	case AstTag::Parameter:
+	case AstTag::Case:
+	case AstTag::ParameterList:
+	case AstTag::UOpImpliedMember:
 	case AstTag::OpSetAdd:
 	case AstTag::OpSetSub:
 	case AstTag::OpSetMul:
@@ -4380,14 +4388,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::OpSetBitXor:
 	case AstTag::OpSetShiftL:
 	case AstTag::OpSetShiftR:
-		panic("evaluate(%s) not yet implemented.\n", tag_name(node->tag));
-	
-	case AstTag::INVALID:
-	case AstTag::File:
-	case AstTag::Parameter:
-	case AstTag::Case:
-	case AstTag::ParameterList:
-	case AstTag::UOpImpliedMember:
 	case AstTag::MAX:
 		; // Fallthrough to unreachable.
 	}
@@ -4461,7 +4461,6 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::CompositeInitializer:
 	case AstTag::ArrayInitializer:
 	case AstTag::Wildcard:
-	case AstTag::Where:
 	case AstTag::Expects:
 	case AstTag::Ensures:
 	case AstTag::Definition:
@@ -4469,7 +4468,6 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::For:
 	case AstTag::ForEach:
 	case AstTag::Switch:
-	case AstTag::Case:
 	case AstTag::Func:
 	case AstTag::Signature:
 	case AstTag::Trait:
@@ -4499,7 +4497,6 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::UOpLogNot:
 	case AstTag::UOpTypeOptPtr:
 	case AstTag::UOpTypeVarArgs:
-	case AstTag::UOpImpliedMember:
 	case AstTag::UOpTypePtr:
 	case AstTag::UOpNegate:
 	case AstTag::UOpPos:
@@ -4525,6 +4522,17 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::OpCmpGE:
 	case AstTag::OpCmpNE:
 	case AstTag::OpSet:
+	case AstTag::OpTypeArray:
+	case AstTag::OpArrayIndex:
+		panic("typeinfer(%s) not yet implemented.\n", tag_name(node->tag));
+	
+	case AstTag::INVALID:
+	case AstTag::File:
+	case AstTag::Where:
+	case AstTag::Parameter:
+	case AstTag::Case:
+	case AstTag::ParameterList:
+	case AstTag::UOpImpliedMember:
 	case AstTag::OpSetAdd:
 	case AstTag::OpSetSub:
 	case AstTag::OpSetMul:
@@ -4538,14 +4546,6 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::OpSetBitXor:
 	case AstTag::OpSetShiftL:
 	case AstTag::OpSetShiftR:
-	case AstTag::OpTypeArray:
-	case AstTag::OpArrayIndex:
-		panic("typeinfer(%s) not yet implemented.\n", tag_name(node->tag));
-	
-	case AstTag::INVALID:
-	case AstTag::File:
-	case AstTag::Parameter:
-	case AstTag::ParameterList:
 	case AstTag::MAX:
 		; // Fallthrough to unreachable.
 	}
