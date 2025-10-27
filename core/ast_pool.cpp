@@ -491,10 +491,6 @@ static void lower_tags_set_op(AstPool* asts, AstNode* src_node) noexcept
 {
 	ASSERT_OR_IGNORE(src_node->tag >= AstTag::OpSetAdd && src_node->tag <= AstTag::OpSetShiftR);
 
-	static constexpr u8 DEFINITION_DATA_QWORDS = sizeof(AstDefinitionData) / sizeof(AstNode);
-
-	static constexpr u8 IDENTIFIER_DATA_QWORDS = sizeof(AstIdentifierData) / sizeof(AstNode);
-
 	const SourceId src_source = asts->sources.begin()[src_node - asts->nodes.begin()];
 
 	AstNode* const src_lhs = first_child_of(src_node);
