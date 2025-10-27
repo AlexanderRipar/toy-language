@@ -4480,6 +4480,7 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::LitFloat:
 	case AstTag::LitChar:
 	case AstTag::LitString:
+	case AstTag::OpSliceOf:
 	case AstTag::Return:
 	case AstTag::Leave:
 	case AstTag::Yield:
