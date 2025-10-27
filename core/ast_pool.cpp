@@ -258,6 +258,8 @@ static AstNode* copy_postorder_to_preorder(AstPool* asts, u32 src_root_index) no
 	return allocation.nodes;
 }
 
+
+
 static AstNode* make_synth_node(AstPool* asts, AstTag tag, AstFlag flags, u8 structure_flags, SourceId source_id) noexcept
 {
 	AstNode* const node = asts->nodes.reserve();
@@ -295,6 +297,149 @@ static void close_synth_node(AstPool* asts, AstNode* node) noexcept
 {
 	node->next_sibling_offset = static_cast<u32>(asts->nodes.end() - node);
 }
+
+static IdentifierId next_synth_id(IdentifierId synth_id) noexcept
+{
+	if (synth_id >= IdentifierId::FirstNatural)
+		panic("Exceeded maximum of %u synthetic identifiers in a block.\n", static_cast<u32>(IdentifierId::FirstNatural) - static_cast<u32>(IdentifierId::FirstSynth));
+
+	return static_cast<IdentifierId>(static_cast<u32>(synth_id) + 1);
+}
+
+
+
+static IdentifierId lower_locs_rec(AstPool* asts, AstNode* node, IdentifierId synth_id) noexcept;
+
+static bool needs_location(AstTag tag) noexcept
+{
+	return tag == AstTag::UOpAddr
+	    || tag == AstTag::OpSliceOf
+	    || tag == AstTag::OpArrayIndex
+	    || tag == AstTag::Member;
+}
+
+static bool provides_location(AstTag tag) noexcept
+{
+	return tag == AstTag::UOpDeref
+		|| tag == AstTag::OpArrayIndex
+		|| tag == AstTag::Member
+		|| tag == AstTag::Identifier;
+}
+
+static IdentifierId lower_locs_rec_promote_value_to_definition(AstPool* asts, AstNode* node, IdentifierId synth_id) noexcept
+{
+	ASSERT_OR_IGNORE(node->tag != AstTag::File);
+
+	if (node->tag == AstTag::Block)
+		return synth_id;
+
+	AstDirectChildIterator it = direct_children_of(node);
+
+	if (needs_location(node->tag) && !provides_location(first_child_of(node)->tag))
+	{
+		if (!has_next(&it))
+			ASSERT_UNREACHABLE;
+
+		// Skip `node`'s first child in during further promotion. It has just
+		// been lowered into `synth_definition`.
+		AstNode* const child = next(&it);
+
+		AstNode* const synth_definition = make_synth_node(asts, AstDefinitionData{ synth_id }, AstFlag::EMPTY, node->structure_flags & ~AstNode::STRUCTURE_LAST_SIBLING, source_id_of(asts, node));
+
+		synth_id = next_synth_id(synth_id);
+
+		synth_id = lower_locs_rec(asts, child, synth_id);
+
+		close_synth_node(asts, synth_definition);
+	}
+
+	while (has_next(&it))
+	{
+		AstNode* const child = next(&it);
+
+		synth_id = lower_locs_rec_promote_value_to_definition(asts, child, synth_id);
+	}
+
+	return synth_id;
+}
+
+// {
+//   <prev-exprs>
+//
+//   <surrounding-expr> <value-expr>.& <surrounding-expr>
+//
+//   <next-exprs>
+// }
+//
+// becomes
+//
+// {
+//   <prev-exprs>
+//
+//   let _unnamed = <value-expr>
+//
+//   <surrounding-expr> _unnamed.& <surrounding-expr>
+//
+//   <next-exprs>
+// }
+//
+// Here, <value-expr> is anything that is not either
+// - An identifier - `x`
+// - A pointer dereference - `<e>.*`
+// - A slice dereference - `<e>[n]`
+// - An array dereference whose left-hand-side is itself *not* a <value-expr> - `<e>[n]`
+// - A member access whose left-hand-side is itself *not* a <value-expr> - `<e>.y`
+static IdentifierId lower_locs_rec(AstPool* asts, AstNode* node, IdentifierId synth_id) noexcept
+{
+	AstNode* const dst_node = asts->nodes.reserve(node->own_qwords);
+	memcpy(dst_node, node, node->own_qwords * sizeof(u64));
+
+	SourceId* const dst_source = asts->sources.reserve(node->own_qwords);
+	*dst_source = asts->sources.begin()[node - asts->nodes.begin()];
+
+	AstDirectChildIterator it = direct_children_of(node);
+
+	if (needs_location(node->tag) && !provides_location(first_child_of(node)->tag))
+	{
+		AstNode* const synth_identifier = make_synth_node(asts, AstIdentifierData{ synth_id }, AstFlag::EMPTY, node->structure_flags | AstNode::STRUCTURE_NO_CHILDREN, source_id_of(asts, node));
+
+		synth_id = next_synth_id(synth_id);
+
+		close_synth_node(asts, synth_identifier);
+
+		// Skip `node`'s first child. It is outlined and referenced by
+		// `synth_identifier`.
+
+		if (!has_next(&it))
+			ASSERT_UNREACHABLE;
+
+		(void) next(&it);
+	}
+
+	const bool is_lifting_root = node->tag == AstTag::Block || node->tag == AstTag::File;
+
+	IdentifierId child_synth_id = is_lifting_root ? IdentifierId::SecondSynth : synth_id;
+
+	while (has_next(&it))
+	{
+		AstNode* const child = next(&it);
+
+		const bool has_promoted = is_lifting_root && lower_locs_rec_promote_value_to_definition(asts, child, child_synth_id) != child_synth_id;
+
+		AstNode* const lowered_first = asts->nodes.end();
+
+		child_synth_id = lower_locs_rec(asts, child, child_synth_id);
+
+		if (has_promoted)
+			lowered_first->structure_flags &= ~AstNode::STRUCTURE_FIRST_SIBLING;
+	}
+
+	dst_node->next_sibling_offset = static_cast<u32>(asts->nodes.end() - dst_node);
+
+	return is_lifting_root ? synth_id : child_synth_id;
+}
+
+
 
 // if|for|foreach|switch <header> where <def1> <def2> ... <defn> <body>
 //
@@ -455,27 +600,37 @@ static void lower_tags_rec(AstPool* asts, AstNode* src_node, bool lower_where_ex
 	}
 }
 
+
+
 static void lower_ast(AstPool* asts, AstNode* src_root) noexcept
 {
 	ASSERT_OR_IGNORE(src_root >= asts->nodes.begin() && src_root < asts->nodes.end());
 
 	SourceId* const src_sources = asts->sources.begin() + (src_root - asts->nodes.begin());
 
-	AstNode* const dst_root = asts->nodes.end();
+	// Tags
 
-	SourceId* const dst_sources = asts->sources.end();
+	AstNode* const tags_result = asts->nodes.end();
 
 	lower_tags_rec(asts, src_root, true);
 
-	AstNode* const dst_end = asts->nodes.end();
+	ASSERT_OR_IGNORE(asts->nodes.used() == asts->sources.used());
 
-	const u32 dst_count = static_cast<u32>(dst_end - dst_root);
+	// Values -> Locations
 
-	memcpy(src_root, dst_root, dst_count * sizeof(u64));
+	AstNode* const locs_result = asts->nodes.end();
 
-	memcpy(src_sources, dst_sources, dst_count * sizeof(SourceId));
+	(void) lower_locs_rec(asts, tags_result, IdentifierId::SecondSynth);
 
-	const u32 new_used = static_cast<u32>(src_root - asts->nodes.begin()) + dst_count;
+	// Move back and shrink
+
+	ASSERT_OR_IGNORE(asts->nodes.used() == asts->sources.used());
+
+	memcpy(src_root, locs_result, locs_result->next_sibling_offset * sizeof(u64));
+
+	memcpy(src_sources, asts->sources.begin() + (locs_result - asts->nodes.begin()), locs_result->next_sibling_offset * sizeof(SourceId));
+
+	const u32 new_used = static_cast<u32>(src_root - asts->nodes.begin()) + locs_result->next_sibling_offset;
 
 	asts->nodes.pop_to(new_used);
 
@@ -638,6 +793,10 @@ AstNode* complete_ast(AstPool* asts) noexcept
 	const u32 src_root_index = build_traversal_list(asts);
 
 	AstNode* const root = copy_postorder_to_preorder(asts, src_root_index);
+
+	asts->node_builder.reset(1 << 17);
+
+	asts->source_builder.reset(1 << 17);
 
 	lower_ast(asts, root);
 
