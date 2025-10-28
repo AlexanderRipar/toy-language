@@ -41,6 +41,7 @@ enum class Token : u8
 		KwdReturn,            // return
 		KwdLeave,             // leave
 		KwdYield,             // yield
+		OpMemberOrRef,        // .
 		DoubleDot,            // ..
 		ArrayInitializer,     // .[
 		CompositeInitializer, // .{
@@ -62,7 +63,6 @@ enum class Token : u8
 		TypMultiPtr,          // [*]
 		TypOptMultiPtr,       // [?]
 		TypSlice,             // []
-		OpMemberOrRef,        // .
 		OpMulOrTypPtr,        // *
 		OpSub,                // -
 		OpAdd,                // +
@@ -147,6 +147,8 @@ const char8* token_name(Token token) noexcept
 		"return",
 		"leave",
 		"yield",
+		".",
+		"..",
 		".[",
 		".{",
 		"]",
@@ -167,7 +169,6 @@ const char8* token_name(Token token) noexcept
 		"[*]",
 		"[?]",
 		"[]",
-		".",
 		"*",
 		"-",
 		"+",
@@ -450,7 +451,6 @@ static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
 	{ AstTag::UOpTypeMultiPtr,    AstFlag::Type_IsMut,  2, false, false }, // [*]
 	{ AstTag::UOpTypeOptMultiPtr, AstFlag::Type_IsMut,  2, false, false }, // [?]
 	{ AstTag::UOpTypeSlice,       AstFlag::Type_IsMut,  2, false, false }, // []
-	{ AstTag::UOpImpliedMember,   AstFlag::EMPTY,       1, false, false }, // .
 	{ AstTag::UOpTypePtr,         AstFlag::Type_IsMut,  2, false, false }, // *
 	{ AstTag::UOpNegate,          AstFlag::EMPTY,       2, false, false }, // -
 	{ AstTag::UOpPos,             AstFlag::EMPTY,       2, false, false }, // +
@@ -2593,6 +2593,23 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 				const AstBuilderToken value_token = push_node(parser->builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, static_cast<AstFlag>(lexeme.builtin), AstTag::Builtin);
 
 				push_operand(parser, &stack, value_token);
+			}
+			else if (lexeme.token == Token::OpMemberOrRef)
+			{
+				expecting_operand = false;
+
+				const SourceId source_id = lexeme.source_id;
+
+				skip(&parser->lexer);
+
+				lexeme = peek(&parser->lexer);
+
+				if (lexeme.token != Token::Ident)
+					source_error(parser->lexer.errors, lexeme.source_id, "Expected '%s' after prefix '.' operator but got '%s'.\n", token_name(Token::Ident), token_name(lexeme.token));
+
+				const AstBuilderToken implied_member_token = push_node(parser->builder, AstBuilderToken::NO_CHILDREN, source_id, AstFlag::EMPTY, AstImpliedMemberData{ lexeme.identifier_id });
+
+				push_operand(parser, &stack, implied_member_token);
 			}
 			else // Unary operator
 			{

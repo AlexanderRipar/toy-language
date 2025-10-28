@@ -35,7 +35,7 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 			attach->binding.rank
 		);
 	}
-	else if (node->tag == AstTag::Definition || node->tag == AstTag::Parameter || node->tag == AstTag::Member)
+	else if (node->tag == AstTag::Definition || node->tag == AstTag::Parameter || node->tag == AstTag::Member || node->tag == AstTag::UOpImpliedMember)
 	{
 		IdentifierId identifier_id;
 
@@ -43,8 +43,10 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 			identifier_id = attachment_of<AstDefinitionData>(node)->identifier_id;
 		else if (node->tag == AstTag::Parameter)
 			identifier_id = attachment_of<AstParameterData>(node)->identifier_id;
-		else
+		else if (node->tag == AstTag::Member)
 			identifier_id = attachment_of<AstMemberData>(node)->identifier_id;
+		else
+			identifier_id = attachment_of<AstImpliedMemberData>(node)->identifier_id;
 
 		if (identifier_id < IdentifierId::FirstNatural)
 		{

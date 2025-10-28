@@ -1777,15 +1777,14 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 
 		if (arg->tag == AstTag::OpSet)
 		{
-			AstNode* const arg_name_member = first_child_of(arg);
+			AstNode* const arg_name = first_child_of(arg);
 
-			ASSERT_OR_IGNORE(arg_name_member->tag == AstTag::UOpImpliedMember);
+			if (arg_name->tag != AstTag::UOpImpliedMember)
+				source_error(interp->errors, source_id_of(interp->asts, arg), "Assignment inside calls is only allowed to named arguments.\n");
 
-			AstNode* const arg_name_identifier = first_child_of(arg_name_member);
+			const IdentifierId arg_identifier_id = attachment_of<AstImpliedMemberData>(arg_name)->identifier_id;
 
-			ASSERT_OR_IGNORE(arg_name_identifier->tag == AstTag::Identifier);
-
-			const IdentifierId arg_identifier_id = attachment_of<AstIdentifierData>(arg_name_identifier)->identifier_id;
+			AstNode* const arg_value = next_sibling_of(arg_name);
 
 			const Member* param;
 
@@ -1807,7 +1806,7 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 
 			args_mask |= arg_bit;
 
-			args[param->rank] = id_from_ast_node(interp->asts, next_sibling_of(arg_name_member));
+			args[param->rank] = id_from_ast_node(interp->asts, arg_value);
 		}
 		else
 		{

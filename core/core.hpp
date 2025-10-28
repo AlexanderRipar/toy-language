@@ -999,6 +999,20 @@ struct alignas(8) AstMemberData
 	u32 unused_ = 0;
 };
 
+// Attachment of an `AstNode` with tag `AstTag::UOpImpliedMember`.
+struct alignas(8) AstImpliedMemberData
+{
+	// Tag used for sanity checks in debug builds.
+	static constexpr AstTag TAG = AstTag::UOpImpliedMember;
+
+	// `IdentifierId` of the member represented by this node.
+	IdentifierId identifier_id;
+
+	// Padding to ensure consistent binary representation and avoid compiler
+	// warnings regarding padding due to `alignas`.
+	u32 unused_ = 0;
+};
+
 // Attachment of an `AstNode` with tag `AstTag::LitString`.
 struct alignas(8) AstLitStringData
 {
