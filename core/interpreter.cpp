@@ -302,6 +302,8 @@ struct Interpreter
 
 
 
+static void convert(Interpreter* interp, const AstNode* error_source, EvalValue* dst, EvalValue src) noexcept;
+
 static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexcept;
 
 static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept;
@@ -1155,6 +1157,139 @@ static void convert_array_to_slice(Interpreter* interp, const AstNode* error_sou
 	value_set(dst, range::from_object_bytes_mut(&src.bytes));
 }
 
+static void convert_composite_literal_to_composite(Interpreter* interp, const AstNode* error_source, EvalValue* dst, EvalValue src) noexcept
+{
+	ASSERT_OR_IGNORE(dst->type_id != TypeId::INVALID && type_tag_from_id(interp->types, dst->type_id) == TypeTag::Composite);
+
+	const u32 mark = stack_mark(interp);
+
+	const u32 dst_member_count = type_get_composite_member_count(interp->types, dst->type_id);
+
+	const u32 seen_members_size = ((dst_member_count + 7) / 8 + sizeof(u64) - 1) & ~(sizeof(u64) - 1);
+
+	u64* const seen_members = reinterpret_cast<u64*>(stack_push(interp, seen_members_size, alignof(u64)).begin());
+
+	memset(seen_members, 0, seen_members_size);
+
+	u32 rank = 0;
+
+	MemberIterator it = members_of(interp->types, src.type_id);
+
+	while (has_next(&it))
+	{
+		const Member* const src_member = next(&it);
+
+		const Member* dst_member;
+
+		if (src_member->name != IdentifierId::INVALID)
+		{
+			if (!type_member_by_name(interp->types, dst->type_id, src_member->name, &dst_member))
+			{
+				const Range<char8> name = identifier_name_from_id(interp->identifiers, src_member->name);
+
+				source_error(interp->errors, source_id_of(interp->asts, error_source), "Destination type of composite literal conversion has no member `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
+			}
+
+			if (dst_member->is_global)
+			{
+				const Range<char8> name = identifier_name_from_id(interp->identifiers, dst_member->name);
+
+				source_error(interp->errors, source_id_of(interp->asts, error_source), "Cannot initialize global member `%.*s` in composite initializer.\n", static_cast<s32>(name.count()), name.begin());
+			}
+
+			rank = dst_member->rank + 1;
+		}
+		else 
+		{
+			do
+			{
+				if (rank == dst_member_count)
+					source_error(interp->errors, source_id_of(interp->asts, error_source), "Too many members in composite literal to convert to destination type.\n");
+
+				dst_member = type_member_by_rank(interp->types, dst->type_id, static_cast<u16>(rank));
+
+				rank += 1;
+			}
+			while (dst_member->is_global);
+		}
+
+		ASSERT_OR_IGNORE(!src_member->has_pending_type && !dst_member->has_pending_type);
+
+		u64* const seen_members_elem = seen_members + (dst_member->rank >> 6);
+
+		const u64 member_bit = static_cast<u64>(1) << dst_member->rank & 63;
+
+		if ((*seen_members_elem & member_bit) != 0)
+		{
+			const Range<char8> name = identifier_name_from_id(interp->identifiers, dst_member->name);
+
+			source_error(interp->errors, source_id_of(interp->asts, error_source), "Member `%.*s` mapped more than once during composite literal conversion.\n", static_cast<s32>(name.count()), name.begin());
+		}
+
+		*seen_members_elem |= member_bit;
+
+		if (type_is_equal(interp->types, src_member->type.complete, dst_member->type.complete))
+		{
+			const TypeMetrics metrics = type_metrics_from_id(interp->types, dst_member->type.complete);
+
+			range::mem_copy(dst->bytes.mut_subrange(dst_member->offset, metrics.size), src.bytes.subrange(src_member->offset, metrics.size));
+		}
+		else if (type_can_implicitly_convert_from_to(interp->types, src_member->type.complete, dst_member->type.complete))
+		{
+			const TypeMetrics dst_metrics = type_metrics_from_id(interp->types, dst_member->type.complete);
+
+			const TypeMetrics src_metrics = type_metrics_from_id(interp->types, src_member->type.complete);
+
+			EvalValue dst_value = make_value(dst->bytes.mut_subrange(dst_member->offset, dst_metrics.size), false, true, dst_member->type.complete);
+
+			EvalValue src_value = make_value(src.bytes.mut_subrange(src_member->offset, src_metrics.size), false, true, src_member->type.complete);
+
+			convert(interp, error_source, &dst_value, src_value);
+		}
+		else
+		{
+			const Range<char8> name = identifier_name_from_id(interp->identifiers, dst_member->name);
+
+			source_error(interp->errors, source_id_of(interp->asts, error_source), "Member `%.*s` cannot be initialized from composite literal member because their types do not match.\n", static_cast<s32>(name.count()), name.begin());
+		}
+	}
+
+	for (u32 i = 0; i != dst_member_count; ++i)
+	{
+		const u64 seen_members_elem = seen_members[i >> 6];
+
+		const u64 member_bit = static_cast<u64>(1) << (i & 63);
+
+		if ((seen_members_elem & member_bit) != 0)
+			continue;
+
+		const Member* member = type_member_by_rank(interp->types, dst->type_id, static_cast<u16>(i));
+
+		if (member->is_global)
+			continue;
+
+		if (member->has_pending_value)
+			complete_member(interp, dst->type_id, member);
+
+		if (member->value.complete == GlobalValueId::INVALID)
+		{
+			const Range<char8> name = identifier_name_from_id(interp->identifiers, member->name);
+
+			source_error(interp->errors, source_id_of(interp->asts, error_source), "Composite initializer is missing initializer for member `%.*s` of target type which lacks a default value.\n", static_cast<s32>(name.count()), name.begin());
+		}
+
+		const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member->type.complete);
+
+		const MutRange<byte> default_dst = dst->bytes.mut_subrange(member->offset, member_metrics.size);
+
+		const Range<byte> default_src = global_value_get(interp->globals, member->value.complete);
+
+		range::mem_copy(default_dst, default_src);
+	}
+
+	stack_shrink(interp, mark);
+}
+
 static void convert(Interpreter* interp, const AstNode* error_source, EvalValue* dst, EvalValue src) noexcept
 {
 	ASSERT_OR_IGNORE(dst->type_id != TypeId::INVALID
@@ -1188,6 +1323,13 @@ static void convert(Interpreter* interp, const AstNode* error_source, EvalValue*
 		return;
 	}
 
+	case TypeTag::CompositeLiteral:
+	{
+		convert_composite_literal_to_composite(interp, error_source, dst, src);
+
+		return;
+	}
+
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
 	case TypeTag::Void:
@@ -1201,7 +1343,6 @@ static void convert(Interpreter* interp, const AstNode* error_source, EvalValue*
 	case TypeTag::Func:
 	case TypeTag::Builtin:
 	case TypeTag::Composite:
-	case TypeTag::CompositeLiteral:
 	case TypeTag::ArrayLiteral:
 	case TypeTag::TypeBuilder:
 	case TypeTag::Variadic:

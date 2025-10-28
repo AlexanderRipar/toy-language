@@ -356,3 +356,9 @@ let fib_u16_upto_5 = fib_upto(.n = 5, .T = u16)
 let pair: MyPair = .{ 1, 2 }
 
 let two_elem_array_from_member: [pair.y]u32 = .[0, 1]
+
+let raw_initializer = .{ .y = 2, .x = 1 }
+
+let pair_from_raw_initializer: MyPair = raw_initializer
+
+let two_elem_array_from_indirectly_initialized_member: [pair_from_raw_initializer.y]u8 = undefined
