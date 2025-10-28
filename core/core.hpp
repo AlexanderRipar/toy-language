@@ -1872,6 +1872,7 @@ enum class TypeDisposition : u8
 	User,
 	Signature,
 	Block,
+	Literal,
 };
 
 // Allocation metrics returned by `type_metrics_by_id`, describing the size,
