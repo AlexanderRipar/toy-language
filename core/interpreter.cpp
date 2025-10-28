@@ -2222,8 +2222,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			const u32 target_member_count = type_get_composite_member_count(interp->types, spec.type_id);
 
-			u64* const seen_members = reinterpret_cast<u64*>(stack_push(interp, member_count * sizeof(u64), alignof(u64)).begin());
-			memset(seen_members, 0, member_count * sizeof(u64));
+			const u32 seen_members_size = ((member_count + 7) / 8 + sizeof(u64) - 1) & ~(sizeof(u64) - 1);
+
+			u64* const seen_members = reinterpret_cast<u64*>(stack_push(interp, seen_members_size, alignof(u64)).begin());
+
+			memset(seen_members, 0, seen_members_size);
 
 			u16 rank = 0;
 
@@ -2231,14 +2234,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			{
 				const Member* member;
 
-				if (names[i] == IdentifierId::INVALID)
-				{
-					if (rank >= target_member_count)
-						source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Too many members in composite literal.\n");
-
-					member = type_member_by_rank(interp->types, spec.type_id, rank);
-				}
-				else
+				if (names[i] != IdentifierId::INVALID)
 				{
 					if (!type_member_by_name(interp->types, spec.type_id, names[i], &member))
 					{
@@ -2247,16 +2243,27 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 						source_error(interp->errors, source_id_of(interp->asts, node), "Target type of composite initializer does not have a member `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
 					}
 
-					rank = member->rank;
+					if (member->is_global)
+					{
+						const Range<char8> name = identifier_name_from_id(interp->identifiers, member->name);
+
+						source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Cannot initialize global member `%.*s` in composite initializer.\n", static_cast<s32>(name.count()), name.begin());
+					}
+
+					rank = member->rank + 1;
 				}
-
-				rank += 1;
-
-				if (member->is_global)
+				else
 				{
-					const Range<char8> name = identifier_name_from_id(interp->identifiers, member->name);
+					do
+					{
+						if (rank == target_member_count)
+							source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Too many members in composite literal.\n");
 
-					source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Cannot initialize global member `%.*s` in composite initializer.\n", static_cast<s32>(name.count()), name.begin());
+						member = type_member_by_rank(interp->types, spec.type_id, rank);
+
+						rank += 1;
+					}
+					while (member->is_global);
 				}
 
 				u64* const seen_members_elem = seen_members + (member->rank >> 6);
@@ -2339,9 +2346,53 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			const TypeId rst_type_id = type_create_composite(interp->types, TypeTag::CompositeLiteral, active_arec_global_scope_type_id(interp), TypeDisposition::Literal, source_id_of(interp->asts, node), member_count, true);
 
-			type_seal_composite(interp->types, result_type_id, 0, 0, 0);
+			for (u32 i = 0; i != member_count; ++i)
+			{
+				Member member_init;
+				member_init.name = names[i];
+				member_init.type.complete = values[i].type_id;
+				member_init.value.complete = GlobalValueId::INVALID;
+				member_init.is_global = false;
+				member_init.is_pub = false;
+				member_init.is_mut = false;
+				member_init.is_param = false;
+				member_init.has_pending_type = false;
+				member_init.has_pending_value = false;
+				member_init.is_comptime_known = false;
+				member_init.is_arg_independent = false;
+				member_init.rank = 0;
+				member_init.type_completion_arec_id = ArecId::INVALID;
+				member_init.value_completion_arec_id = ArecId::INVALID;
+				member_init.offset = 0;
 
-			TODO("Implement creation of composite literal type and instance");
+				if (!type_add_composite_member(interp->types, rst_type_id, member_init))
+				{
+					ASSERT_OR_IGNORE(names[i] != IdentifierId::INVALID);
+
+					const Range<char8> name = identifier_name_from_id(interp->identifiers, names[i]);
+
+					source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Composite literal member with name `%.*s` defined more than once.\n", static_cast<s32>(name.count()), name.begin());
+				}
+			}
+
+			type_seal_composite(interp->types, rst_type_id, 0, 0, 0);
+
+			EvalRst rst = fill_spec(interp, spec, node, false, true, rst_type_id);
+
+			MemberIterator it = members_of(interp->types, rst_type_id);
+
+			for (u32 i = 0; i != member_count; ++i)
+			{
+				const Member* member = next(&it);
+
+				ASSERT_OR_IGNORE(!member->has_pending_type && !member->is_global);
+
+				const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member->type.complete);
+
+				range::mem_copy(rst.success.bytes.mut_subrange(member->offset, member_metrics.size), values[i].bytes.immut());
+			}
+
+			return rst;
 		}
 	}
 
