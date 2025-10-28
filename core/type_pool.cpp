@@ -346,7 +346,6 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 	case TypeTag::TailArray:
 	case TypeTag::Variadic:
 	case TypeTag::Trait:
-	case TypeTag::CompositeLiteral:
 	{
 		return false;
 	}
@@ -390,6 +389,25 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 		return (from_attach->is_mut || !to_attach->is_mut)
 		    && (!from_attach->is_opt || to_attach->is_opt)
 			&& (from_attach->is_multi || !to_attach->is_multi);
+	}
+
+	case TypeTag::CompositeLiteral:
+	{
+		if (to_tag != TypeTag::Composite)
+			return false;
+
+		const CompositeType* const from_attach = reinterpret_cast<const CompositeType*>(from->attach);
+
+		const CompositeType* const to_attach = reinterpret_cast<const CompositeType*>(to->attach);
+
+		u32 rank = 0;
+
+		for (u32 i = 0; i != from_attach->header.member_count; ++i)
+		{
+			// TODO: Implement member-by-member comparison
+		}
+
+		return true;
 	}
 
 	case TypeTag::ArrayLiteral:
