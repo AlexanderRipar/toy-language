@@ -639,19 +639,28 @@ static void stack_shrink(Interpreter* interp, u32 mark) noexcept
 	interp->temps.pop_to(mark);
 }
 
-static MutRange<byte> stack_copy_down(Interpreter* interp, u32 mark, MutRange<byte> to_copy) noexcept
+static MutRange<byte> stack_shrink_and_lift(Interpreter* interp, u32 mark, MutRange<byte> to_copy) noexcept
 {
 	ASSERT_OR_IGNORE(mark <= interp->temps.used());
 
-	ASSERT_OR_IGNORE(to_copy.begin() >= interp->temps.begin() + mark && to_copy.end() <= interp->temps.end());
+	if (to_copy.begin() < interp->temps.begin() + mark || to_copy.end() >= interp->temps.end())
+	{
+		stack_shrink(interp, mark);
 
-	byte* const new_begin = interp->temps.begin() + mark;
+		return to_copy;
+	}
+	else
+	{
+		ASSERT_OR_IGNORE(to_copy.begin() >= interp->temps.begin() + mark && to_copy.end() <= interp->temps.end());
 
-	memmove(new_begin, to_copy.begin(), to_copy.count());
+		byte* const new_begin = interp->temps.begin() + mark;
 
-	interp->temps.pop_to(static_cast<u32>(mark + to_copy.count()));
+		memmove(new_begin, to_copy.begin(), to_copy.count());
 
-	return { new_begin, to_copy.count() };
+		interp->temps.pop_to(static_cast<u32>(mark + to_copy.count()));
+
+		return { new_begin, to_copy.count() };
+	}
 }
 
 
@@ -2096,10 +2105,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			ASSERT_OR_IGNORE(!has_next(&elems));
 
-			if (spec.dst.begin() == nullptr)
-				rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
-			else
-				stack_shrink(interp, mark);
+			rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
 
 			return rst;
 		}
@@ -2295,10 +2301,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 					// memory just allocated for `rst`, move our result down to the
 					// shrunken stack's top, and copy the resulting location into
 					// `rst`.
-					if (spec.dst.begin() == nullptr)
-						rst.success.bytes = stack_copy_down(interp, mark, stmt_rst.success.bytes);
-					else
-						stack_shrink(interp, mark);
+					rst.success.bytes = stack_shrink_and_lift(interp, mark, stmt_rst.success.bytes);
 
 					arec_pop(interp, block_arec_id);
 
@@ -3071,10 +3074,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		value_set(&rst.success, range::from_object_bytes_mut(&rst_slice));
 
-		if (spec.dst.begin() == nullptr)
-			rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
-		else
-			stack_shrink(interp, mark);
+		rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
 
 		return rst;
 	}
@@ -3243,7 +3243,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		
 		value_set(&rst.success, range::from_object_bytes_mut(&address));
 
-		rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
+		rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
 
 		return rst;
 	}
@@ -3329,10 +3329,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			source_error(interp->errors, source_id_of(interp->asts, node), "`~` can only be applied to integer operands.\n");
 		}
 
-		if (spec.dst.begin() == nullptr)
-			rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
-		else
-			stack_shrink(interp, mark);
+		rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
 
 		return rst;
 	}
@@ -3446,10 +3443,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			source_error(interp->errors, source_id_of(interp->asts, node), "Unary `-` can only be applied to integer or float-point operands.\n");
 		}
 
-		if (spec.dst.begin() == nullptr)
-			rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
-		else
-			stack_shrink(interp, mark);
+		rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
 
 		return rst;
 	}
@@ -3703,10 +3697,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			}
 		}
 
-		if (spec.dst.begin() == nullptr)
-			rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
-		else
-			stack_shrink(interp, mark);
+		rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
 
 		return rst;
 	}
@@ -3765,7 +3756,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			source_error(interp->errors, source_id_of(interp->asts, node), "Operator `&` only works on integer or boolean typed values.\n");
 		}
 
-		rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
+		rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
 
 		return rst;
 	}
@@ -3824,7 +3815,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			source_error(interp->errors, source_id_of(interp->asts, node), "Operator `|` only works on integer or boolean typed values.\n");
 		}
 
-		rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
+		rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
 
 		return rst;
 	}
@@ -3883,7 +3874,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			source_error(interp->errors, source_id_of(interp->asts, node), "Operator `^` only works on integer or boolean typed values.\n");
 		}
 
-		rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
+		rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
 
 		return rst;
 	}
@@ -3998,7 +3989,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			}
 		}
 
-		rst.success.bytes = stack_copy_down(interp, mark, rst.success.bytes);
+		rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
 
 		return rst;
 	}
