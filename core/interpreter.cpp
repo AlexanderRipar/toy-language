@@ -2337,7 +2337,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 		else
 		{
-			const TypeId result_type_id = type_create_composite(interp->types, active_arec_global_scope_type_id(interp), TypeDisposition::Literal, source_id_of(interp->asts, node), member_count, true);
+			const TypeId rst_type_id = type_create_composite(interp->types, TypeTag::CompositeLiteral, active_arec_global_scope_type_id(interp), TypeDisposition::Literal, source_id_of(interp->asts, node), member_count, true);
 
 			type_seal_composite(interp->types, result_type_id, 0, 0, 0);
 
@@ -2375,7 +2375,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	{
 		const TypeId global_scope_type_id = active_arec_global_scope_type_id(interp);
 
-		const TypeId block_type_id = type_create_composite(interp->types, global_scope_type_id, TypeDisposition::Block, SourceId::INVALID, 0, false);
+		const TypeId block_type_id = type_create_composite(interp->types, TypeTag::Composite, global_scope_type_id, TypeDisposition::Block, SourceId::INVALID, 0, false);
 
 		const ArecId block_arec_id = arec_push(interp, block_type_id, 0, 1, active_arec_id(interp), ArecKind::Normal, global_scope_type_id, source_id_of(interp->asts, node), active_arec(interp)->caller_arec_id);
 
@@ -2698,7 +2698,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const TypeId global_scope_type_id = active_arec_global_scope_type_id(interp);
 
-		const TypeId parameter_list_type_id = type_create_composite(interp->types, global_scope_type_id, TypeDisposition::Signature, SourceId::INVALID, 0, false);
+		const TypeId parameter_list_type_id = type_create_composite(interp->types, TypeTag::Composite, global_scope_type_id, TypeDisposition::Signature, SourceId::INVALID, 0, false);
 
 		const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, 0, 1, active_arec_id(interp), ArecKind::Unbound, global_scope_type_id, source_id_of(interp->asts, node), active_arec(interp)->caller_arec_id);
 
@@ -4898,7 +4898,7 @@ static void type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file
 	// Note that `interp->prelude_type_id` is `INVALID_TYPE_ID` if we are
 	// called from `init_prelude_type`, so the prelude itself has no lexical
 	// parent.
-	const TypeId file_type_id = type_create_composite(interp->types, interp->prelude_type_id, TypeDisposition::User, file_type_source_id, 0, false);
+	const TypeId file_type_id = type_create_composite(interp->types, TypeTag::Composite, interp->prelude_type_id, TypeDisposition::User, file_type_source_id, 0, false);
 
 	const ArecId file_arec_id = arec_push(interp, file_type_id, 0, 1, ArecId::INVALID, ArecKind::Normal, file_type_id, file_type_source_id, ArecId::INVALID);
 
@@ -5011,7 +5011,7 @@ static void type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file
 
 static TypeId make_func_type_from_array(TypePool* types, TypeId return_type_id, u8 param_count, const BuiltinParamInfo* params) noexcept
 {
-	const TypeId parameter_list_type_id = type_create_composite(types, TypeId::INVALID, TypeDisposition::Signature, SourceId::INVALID, param_count, true);
+	const TypeId parameter_list_type_id = type_create_composite(types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::Signature, SourceId::INVALID, param_count, true);
 
 	for (u8 i = 0; i != param_count; ++i)
 	{
@@ -5245,7 +5245,7 @@ static void builtin_create_type_builder(Interpreter* interp, Arec* arec, MutRang
 {
 	const SourceId source_id = get_builtin_arg<SourceId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("source_id")));
 
-	const TypeId rst = type_create_composite(interp->types, TypeId::INVALID, TypeDisposition::User, source_id, 0, false);
+	const TypeId rst = type_create_composite(interp->types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::User, source_id, 0, false);
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
 }

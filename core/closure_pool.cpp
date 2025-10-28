@@ -121,7 +121,7 @@ ClosureBuilderId closure_create(ClosurePool* closures) noexcept
 	closure->used = sizeof(Closure);
 	closure->capacity_log2 = count_trailing_zeros_assume_one(static_cast<u16>(memory.count()));
 	closure->align_log2 = 0;
-	closure->type_id = type_create_composite(closures->types, TypeId::INVALID, TypeDisposition::User, SourceId::INVALID, 1, false);
+	closure->type_id = type_create_composite(closures->types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::User, SourceId::INVALID, 1, false);
 
 	return id_from_closure(closures, closure);
 }

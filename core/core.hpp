@@ -2167,6 +2167,10 @@ TypeId type_create_signature(TypePool* types, TypeTag tag, SignatureType attach)
 // Creates a composite type with no members that can have members added by
 // calling `type_add_composite_member` on it.
 //
+// `tag` must be one of `TypeTag::Composite` and `TypeTag::CompositeLiteral`
+// and determines whether the created type will be a composite or a composite
+// literal.
+//
 // `lexical_parent_source_id` indicates the type lexically surrounding the
 // newly created type, and is used during name lookup.
 //
@@ -2196,7 +2200,7 @@ TypeId type_create_signature(TypePool* types, TypeTag tag, SignatureType attach)
 // Call `type_set_composite_member_info` to set the type or value of a member
 // that was added with `has_pending_type` or `has_pending_value` respectively
 // set to `true`.
-TypeId type_create_composite(TypePool* types, TypeId global_scope_type_id, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
+TypeId type_create_composite(TypePool* types, TypeTag tag, TypeId global_scope_type_id, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
 
 // Seals an open composite type, preventing the addition of further members and
 // setting the type's metrics (`size`, `align` and `stride`).

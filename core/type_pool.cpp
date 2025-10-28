@@ -224,7 +224,7 @@ static TypeStructure* follow_indirection(TypePool* types, TypeStructure* indir) 
 
 	TypeStructure* const dir = structure_from_id(types, indir->indirection_type_id);
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(dir->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(dir->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(dir->tag_bits) == TypeTag::CompositeLiteral);
 
 	return dir;
 }
@@ -236,7 +236,7 @@ static const TypeStructure* follow_indirection(TypePool* types, const TypeStruct
 
 	TypeStructure* const dir = structure_from_id(types, indir->indirection_type_id);
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(dir->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(dir->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(dir->tag_bits) == TypeTag::CompositeLiteral);
 
 	return dir;
 }
@@ -903,8 +903,10 @@ TypeId type_create_signature(TypePool* types, TypeTag tag, SignatureType attach)
 	return type_create_deduplicated(types, tag, range::from_object_bytes(&attach));
 }
 
-TypeId type_create_composite(TypePool* types, TypeId global_scope_type_id, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept
+TypeId type_create_composite(TypePool* types, TypeTag tag, TypeId global_scope_type_id, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept
 {
+	ASSERT_OR_IGNORE(tag == TypeTag::Composite || tag == TypeTag::CompositeLiteral);
+
 	const u64 reserve_size = sizeof(CompositeType) + initial_member_capacity * sizeof(Member);
 
 	CompositeTypeHeader header{};
@@ -920,7 +922,7 @@ TypeId type_create_composite(TypePool* types, TypeId global_scope_type_id, TypeD
 	header.capacity = static_cast<u16>(next_pow2(sizeof(TypeStructure) + reserve_size, static_cast<u64>(32)));
 	header.used = sizeof(TypeStructure) + sizeof(CompositeTypeHeader);
 
-	TypeStructure* const structure = make_structure(types, TypeTag::Composite, range::from_object_bytes(&header), reserve_size, distinct_source_id);
+	TypeStructure* const structure = make_structure(types, tag, range::from_object_bytes(&header), reserve_size, distinct_source_id);
 
 	const TypeId structure_type_id = id_from_structure(types, structure);
 
@@ -944,7 +946,7 @@ TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align,
 
 	TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
 
@@ -978,7 +980,7 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, Member member) n
 
 	TypeStructure* direct_structure = follow_indirection(types, structure);
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::CompositeLiteral);
 
 	CompositeType* composite = reinterpret_cast<CompositeType*>(direct_structure->attach);
 
@@ -986,10 +988,15 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, Member member) n
 
 	ASSERT_OR_IGNORE(composite->header.disposition == TypeDisposition::User || member.offset == 0);
 
-	for (u16 i = 0; i != composite->header.member_count; ++i)
+	ASSERT_OR_IGNORE(composite->header.disposition == TypeDisposition::Literal || member.name != IdentifierId::INVALID);
+
+	if (member.name != IdentifierId::INVALID)
 	{
-		if (composite->members[i].name == member.name)
-			return false;
+		for (u16 i = 0; i != composite->header.member_count; ++i)
+		{
+			if (composite->members[i].name == member.name)
+				return false;
+		}
 	}
 
 	if (composite->header.capacity < composite->header.used + sizeof(Member))
@@ -1048,7 +1055,7 @@ void type_set_composite_member_info(TypePool* types, TypeId type_id, u16 rank, M
 
 	TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
 
@@ -1108,7 +1115,7 @@ TypeId type_copy_composite(TypePool* types, TypeId type_id, u32 initial_member_c
 
 	const TypeStructure* const old_structure = follow_indirection(types, structure_from_id(types, type_id));
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(old_structure->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(old_structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(old_structure->tag_bits) == TypeTag::CompositeLiteral);
 
 	const CompositeType* const old_composite = reinterpret_cast<const CompositeType*>(old_structure->attach);
 
@@ -1147,7 +1154,7 @@ u32 type_get_composite_member_count(TypePool* types, TypeId type_id) noexcept
 
 	TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
 
@@ -1162,7 +1169,7 @@ void type_discard(TypePool* types, TypeId type_id) noexcept
 
 	TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
 
@@ -1240,7 +1247,7 @@ TypeId type_global_scope_from_id(TypePool* types, TypeId type_id) noexcept
 
 	const TypeStructure* structure = follow_indirection(types, structure_from_id(types, type_id));
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
@@ -1349,6 +1356,7 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 	}
 
 	case TypeTag::Composite:
+	case TypeTag::CompositeLiteral:
 	{
 		const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
@@ -1358,9 +1366,8 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 	}
 
 	case TypeTag::TailArray:
-	case TypeTag::CompositeLiteral:
 	case TypeTag::Trait:
-		TODO("Implement `type_metrics_from_id` for TailArray, CompositeLiteral, ArrayLiteral and Trait.");
+		TODO("Implement `type_metrics_from_id` for TailArray and Trait.");
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
@@ -1388,7 +1395,7 @@ const Member* type_member_by_rank(TypePool* types, TypeId type_id, u16 rank)
 
 	const TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
@@ -1403,7 +1410,7 @@ bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, con
 
 	const TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
@@ -1478,7 +1485,7 @@ IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) 
 
 	const TypeStructure* const direct_structure = follow_indirection(types, structure);
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(direct_structure->attach);
 
@@ -1511,7 +1518,7 @@ const Member* next(IncompleteMemberIterator* it) noexcept
 
 	const TypeStructure* const structure = follow_indirection(it->types, static_cast<const TypeStructure*>(it->structure));
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
@@ -1545,7 +1552,7 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 
 	const TypeStructure* const direct_structure = follow_indirection(types, structure);
 
-	ASSERT_OR_IGNORE(static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::Composite);
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(direct_structure->attach);
 
