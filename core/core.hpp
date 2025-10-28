@@ -612,6 +612,10 @@ struct AstPool;
 // expressions of the form `a + b + ...`.
 static constexpr s32 MAX_AST_DEPTH = 128;
 
+// Maximum number of parameters a function may take. This is set to 64 to allow
+// efficiently tracking seen args in a 64-bit mask.
+static constexpr u32 MAX_FUNC_PARAM_COUNT = 64;
+
 // Tag used to identify the kind of an `AstNode`.
 enum class AstTag : u8
 {
