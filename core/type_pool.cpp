@@ -1141,6 +1141,21 @@ TypeId type_copy_composite(TypePool* types, TypeId type_id, u32 initial_member_c
 	return indirection_type_id;
 }
 
+u32 type_get_composite_member_count(TypePool* types, TypeId type_id) noexcept
+{
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
+
+	TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
+
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
+
+	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
+
+	ASSERT_OR_IGNORE(!composite->header.is_open);
+
+	return composite->header.member_count;
+}
+
 void type_discard(TypePool* types, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);

@@ -2231,6 +2231,10 @@ void type_set_composite_member_info(TypePool* types, TypeId type_id, u16 rank, M
 
 TypeId type_copy_composite(TypePool* types, TypeId type_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
 
+// Retrieves the number of members in the type referenced by `type_id`, which
+// must reference a sealed composite type.
+u32 type_get_composite_member_count(TypePool* types, TypeId type_id) noexcept;
+
 void type_discard(TypePool* types, TypeId type_id) noexcept;
 
 
