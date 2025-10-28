@@ -405,7 +405,7 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 		pop_scope(lex);
 	}
-	else if (tag != AstTag::UOpImpliedMember)
+	else
 	{
 		bool needs_pop = false;
 
