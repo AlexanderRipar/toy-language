@@ -23,7 +23,6 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::CompFloat:
 	case TypeTag::Boolean:
 	case TypeTag::Builtin:
-	case TypeTag::CompositeLiteral:
 	case TypeTag::TypeBuilder:
 	case TypeTag::Divergent:
 	case TypeTag::Trait:
@@ -87,6 +86,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 	case TypeTag::Func:
 	case TypeTag::Composite:
+	case TypeTag::CompositeLiteral:
 	{
 		const SignatureType* signature_type;
 
@@ -110,7 +110,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 			: TypeMetrics{ 0, 0, 0 };
 
 		diag::buf_printf(ctx, "%s (sz=%" PRIu64 ", al=%" PRIu32 ", st=%" PRIu64 ") {",
-			tag == TypeTag::Func ? "Func" : "Composite",
+			tag == TypeTag::Func ? "Func" : tag == TypeTag::Composite ? "Composite" : "CompositeLiteral",
 			metrics.size,
 			metrics.align,
 			metrics.stride
