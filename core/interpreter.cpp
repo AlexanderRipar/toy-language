@@ -1758,42 +1758,146 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 
 	const ArecRestoreInfo restore = set_active_arec_id(interp, caller_arec_id);
 
+	// Iterate over the arguments and store references to them in `args`,
+	// without evaluating them yet.
+
 	u16 arg_rank = 0;
 
 	AstNode* arg = callee;
+
+	static_assert(MAX_FUNC_PARAM_COUNT <= 64);
+
+	u64 args_mask = 0;
+
+	AstNodeId args[MAX_FUNC_PARAM_COUNT];
 
 	while (has_next_sibling(arg))
 	{
 		arg = next_sibling_of(arg);
 
 		if (arg->tag == AstTag::OpSet)
-			TODO("Implement named arguments");
+		{
+			AstNode* const arg_name_member = first_child_of(arg);
 
-		const Member* const param = type_member_by_rank(interp->types, parameter_list_type_id, arg_rank);
+			ASSERT_OR_IGNORE(arg_name_member->tag == AstTag::UOpImpliedMember);
 
-		const bool has_pending_type = param->has_pending_type;
+			AstNode* const arg_name_identifier = first_child_of(arg_name_member);
 
-		if (has_pending_type)
-			complete_member(interp, parameter_list_type_id, param);
-		else if (type_tag_from_id(interp->types, param->type.complete) == TypeTag::Func)
-			TODO("Add binding of nested signatures");
+			ASSERT_OR_IGNORE(arg_name_identifier->tag == AstTag::Identifier);
 
-		const TypeMetrics param_metrics = type_metrics_from_id(interp->types, param->type.complete);
+			const IdentifierId arg_identifier_id = attachment_of<AstIdentifierData>(arg_name_identifier)->identifier_id;
 
-		if (has_pending_type)
-			arec_grow(interp, parameter_list_arec_id, param->offset + param_metrics.size);
+			const Member* param;
 
-		MutRange<byte> attach = arec_attach(interp, parameter_list_arec);
+			if (!type_member_by_name(interp->types, parameter_list_type_id, arg_identifier_id, &param))
+			{
+				const Range<char8> name = identifier_name_from_id(interp->identifiers, arg_identifier_id);
 
-		const EvalRst arg_rst = evaluate(interp, arg, EvalSpec{
-			ValueKind::Value,
-			attach.mut_subrange(param->offset, param_metrics.size),
-			param->type.complete
-		});
+				source_error(interp->errors, source_id_of(interp->asts, arg), "Parameter `%.*s` does not exist for the called function.\n", static_cast<s32>(name.count()), name.begin());
+			}
 
-		ASSERT_OR_IGNORE(arg_rst.tag == EvalTag::Success);
+			const u64 arg_bit = static_cast<u64>(1) << param->rank;
 
-		arg_rank += 1;
+			if ((args_mask & arg_bit) != 0)
+			{
+				const Range<char8> name = identifier_name_from_id(interp->identifiers, arg_identifier_id);
+
+				source_error(interp->errors, source_id_of(interp->asts, arg), "Multiple arguments for parameter `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
+			}
+
+			args_mask |= arg_bit;
+
+			args[param->rank] = id_from_ast_node(interp->asts, next_sibling_of(arg_name_member));
+		}
+		else
+		{
+			if (arg_rank == signature_type->param_count)
+				source_error(interp->errors, source_id_of(interp->asts, arg), "Too many arguments supplied to function call.\n");
+
+			const u64 arg_bit = static_cast<u64>(1) << arg_rank;
+
+			if ((args_mask & arg_bit) != 0)
+				source_error(interp->errors, source_id_of(interp->asts, arg), "Positional parameter must not follow named parameter.\n");
+
+			args_mask |= arg_bit;
+
+			args[arg_rank] = id_from_ast_node(interp->asts, arg);
+
+			arg_rank += 1;
+		}
+	}
+
+	// Iterate over arguments and default values, evaluating / loading them in
+	// the order they were declared in the function definition.
+	// This is necessary to satisfy dependencies between parameters, such as
+	// in:
+	//
+	// ```
+	// let f = func(T: Type, t: T) -> Void`
+	// f(.t = 5, .T = u32)
+	// ```
+	//
+	// which would otherwise result in an unkown value for `T` when setting
+	// `t` due to the reverse order of named parameters.
+
+	MutRange<byte> attach = arec_attach(interp, parameter_list_arec);
+
+	MemberIterator it = members_of(interp->types, parameter_list_type_id);
+
+	for (u32 i = 0; i != signature_type->param_count; ++i)
+	{
+		if (!has_next(&it))
+			ASSERT_UNREACHABLE;
+
+		const Member* param = next(&it);
+
+		ASSERT_OR_IGNORE(param->rank == i);
+
+		if ((args_mask & static_cast<u64>(1) << i) != 0)
+		{
+			const bool has_pending_type = param->has_pending_type;
+
+			if (has_pending_type)
+				complete_member(interp, parameter_list_type_id, param);
+			else if (type_tag_from_id(interp->types, param->type.complete) == TypeTag::Func)
+				TODO("Add binding of nested signatures");
+
+			const TypeMetrics param_metrics = type_metrics_from_id(interp->types, param->type.complete);
+
+			if (has_pending_type)
+			{
+				arec_grow(interp, parameter_list_arec_id, param->offset + param_metrics.size);
+
+				attach = arec_attach(interp, parameter_list_arec);
+			}
+
+			AstNode* const arg_value = ast_node_from_id(interp->asts, args[i]);
+
+			const EvalRst arg_rst = evaluate(interp, arg_value, EvalSpec{
+				ValueKind::Value,
+				attach.mut_subrange(param->offset, param_metrics.size),
+				param->type.complete
+			});
+
+			ASSERT_OR_IGNORE(arg_rst.tag == EvalTag::Success);
+		}
+		else if (param->value.complete != GlobalValueId::INVALID)
+		{
+			if (param->has_pending_value)
+				complete_member(interp, parameter_list_type_id, param);
+
+			const TypeMetrics param_metrics = type_metrics_from_id(interp->types, param->type.complete);
+
+			const Range<byte> default_value = global_value_get(interp->globals, param->value.complete);
+
+			range::mem_copy(attach.mut_subrange(param->offset, param_metrics.size), default_value);
+		}
+		else
+		{
+			const Range<char8> name = identifier_name_from_id(interp->identifiers, param->name);
+
+			source_error(interp->errors, source_id_of(interp->asts, callee), "Missing argument for parameter `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
+		}
 	}
 
 	arec_restore(interp, restore);

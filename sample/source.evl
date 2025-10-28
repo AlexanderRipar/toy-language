@@ -334,3 +334,5 @@ let plusequald_array_of_six_u64: [plusequald]u64 = .[1, 2, 3, 4, 5, 6]
 let xs: [2]u32 = .[1, 2]
 
 let x0to2 = xs[..]
+
+let fib_u16_upto_5 = fib_upto(.n = 5, .T = u16)
