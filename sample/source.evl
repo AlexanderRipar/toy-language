@@ -220,6 +220,14 @@ let func_taking_mut_opt_multi_ptr = func(p: [?]mut u8) -> Void => {}
 
 let variadic_func = func(args: ...u8) -> Void => {}
 
+let max = func(T: Type, a: T, b: T) -> T => if a > b then a else b
+
+let align_to = func(T: Type, size: T, align: T) -> T => {
+	std.assert((align & (align - 1)) == 0)
+
+	(size + align - 1) & ~(align - 1)
+}
+
 let Pair = func(fst: Definition, snd: Definition) -> Type => {
 	let tb = std.create_type_builder()
 
@@ -238,10 +246,18 @@ let Pair = func(fst: Definition, snd: Definition) -> Type => {
 
 	let snd_align = alignof(snd_type)
 
-	std.add_type_member(tb, snd, 0)
+	let snd_offset = 4 // align_to(s64, fst_size, snd_align)
+
+	std.add_type_member(tb, snd, snd_offset)
 
 
-	std.complete_type(tb, 0, 1, 0)
+	let size = 8 // snd_offset + snd_size
+
+	let align = 4 // max(u64, fst_align, snd_align)
+
+	let stride = 8 // align_to(u64, size, align)
+
+	std.complete_type(tb, .size = size, .align = align, .stride = stride)
 }
 
 let MyPair = Pair(let x: u32, let y: u32)
@@ -336,3 +352,7 @@ let xs: [2]u32 = .[1, 2]
 let x0to2 = xs[..]
 
 let fib_u16_upto_5 = fib_upto(.n = 5, .T = u16)
+
+let pair: MyPair = .{ 1, 2 }
+
+let two_elem_array_from_member: [pair.y]u32 = .[0, 1]
