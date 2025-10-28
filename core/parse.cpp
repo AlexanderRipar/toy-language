@@ -2114,8 +2114,15 @@ static AstBuilderToken parse_signature(Parser* parser) noexcept
 
 	AstBuilderToken first_parameter_token = AstBuilderToken::NO_CHILDREN;
 
+	u32 param_count = 0;
+
 	while (lexeme.token != Token::ParenR)
 	{
+		if (param_count == MAX_FUNC_PARAM_COUNT)
+			source_error(parser->lexer.errors, lexeme.source_id, "Exceeded maximum of %u function parameters", MAX_FUNC_PARAM_COUNT);
+
+		param_count += 1;
+
 		const AstBuilderToken parameter_token = parse_definition(parser, true, true, true);
 
 		if (first_parameter_token == AstBuilderToken::NO_CHILDREN)
@@ -2639,8 +2646,15 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 
 				lexeme = peek(&parser->lexer);
 
+				u32 arg_count = 0;
+
 				while (lexeme.token != Token::ParenR)
 				{
+					if (arg_count == MAX_FUNC_PARAM_COUNT)
+						source_error(parser->lexer.errors, lexeme.source_id, "Call exceeds maximum of %u arguments.\n", MAX_FUNC_PARAM_COUNT);
+
+					arg_count += 1;
+
 					bool unused;
 
 					parse_top_level_expr(parser, true, &unused);
