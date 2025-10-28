@@ -1779,7 +1779,7 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 		{
 			AstNode* const arg_name = first_child_of(arg);
 
-			if (arg_name->tag != AstTag::UOpImpliedMember)
+			if (arg_name->tag != AstTag::ImpliedMember)
 				source_error(interp->errors, source_id_of(interp->asts, arg), "Assignment inside calls is only allowed to named arguments.\n");
 
 			const IdentifierId arg_identifier_id = attachment_of<AstImpliedMemberData>(arg_name)->identifier_id;
@@ -4477,7 +4477,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	case AstTag::Parameter:
 	case AstTag::Case:
 	case AstTag::ParameterList:
-	case AstTag::UOpImpliedMember:
+	case AstTag::ImpliedMember:
 	case AstTag::OpSetAdd:
 	case AstTag::OpSetSub:
 	case AstTag::OpSetMul:
@@ -4635,7 +4635,7 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	case AstTag::Parameter:
 	case AstTag::Case:
 	case AstTag::ParameterList:
-	case AstTag::UOpImpliedMember:
+	case AstTag::ImpliedMember:
 	case AstTag::OpSetAdd:
 	case AstTag::OpSetSub:
 	case AstTag::OpSetMul:

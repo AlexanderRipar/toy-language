@@ -35,7 +35,7 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 			attach->binding.rank
 		);
 	}
-	else if (node->tag == AstTag::Definition || node->tag == AstTag::Parameter || node->tag == AstTag::Member || node->tag == AstTag::UOpImpliedMember)
+	else if (node->tag == AstTag::Definition || node->tag == AstTag::Parameter || node->tag == AstTag::Member || node->tag == AstTag::ImpliedMember)
 	{
 		IdentifierId identifier_id;
 

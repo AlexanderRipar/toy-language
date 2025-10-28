@@ -1280,7 +1280,7 @@ const char8* tag_name(AstTag tag) noexcept
 		"UOpLogNot",
 		"UOpTypeOptPtr",
 		"UOpTypeVarArgs",
-		"UOpImpliedMember",
+		"ImpliedMember",
 		"UOpTypePtr",
 		"UOpNegate",
 		"UOpPos",

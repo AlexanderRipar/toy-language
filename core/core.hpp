@@ -668,7 +668,7 @@ enum class AstTag : u8
 	UOpLogNot,
 	UOpTypeOptPtr,
 	UOpTypeVarArgs,
-	UOpImpliedMember,
+	ImpliedMember,
 	UOpTypePtr,
 	UOpNegate,
 	UOpPos,
@@ -999,11 +999,11 @@ struct alignas(8) AstMemberData
 	u32 unused_ = 0;
 };
 
-// Attachment of an `AstNode` with tag `AstTag::UOpImpliedMember`.
+// Attachment of an `AstNode` with tag `AstTag::ImpliedMember`.
 struct alignas(8) AstImpliedMemberData
 {
 	// Tag used for sanity checks in debug builds.
-	static constexpr AstTag TAG = AstTag::UOpImpliedMember;
+	static constexpr AstTag TAG = AstTag::ImpliedMember;
 
 	// `IdentifierId` of the member represented by this node.
 	IdentifierId identifier_id;
