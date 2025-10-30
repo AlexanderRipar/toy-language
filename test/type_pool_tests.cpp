@@ -25,20 +25,18 @@ static void release_dummy_types(DummyTypePool dummy) noexcept
 	release_alloc_pool(dummy.alloc);
 }
 
-static Member dummy_member() noexcept
+static MemberInfo dummy_member() noexcept
 {
-	Member member{};
+	MemberInfo member{};
 	member.name = static_cast<IdentifierId>(42);
 	member.type.complete = TypeId::INVALID;
 	member.value.complete = GlobalValueId::INVALID;
 	member.is_global = false;
 	member.is_pub = true;
 	member.is_mut = true;
-	member.is_param = false;
 	member.has_pending_type = false;
 	member.has_pending_value = false;
 	member.is_comptime_known = true;
-	member.is_arg_independent = false;
 	member.rank = 0;
 	member.type_completion_arec_id = ArecId::INVALID;
 	member.value_completion_arec_id = ArecId::INVALID;
@@ -256,7 +254,7 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 
 	TEST_UNEQUAL(composite, TypeId::INVALID);
 
-	Member member = dummy_member();
+	MemberInfo member = dummy_member();
 	member.type.complete = type_create_simple(dummy.types, TypeTag::Boolean);
 
 	TEST_EQUAL(type_add_composite_member(dummy.types, composite, member), true);
@@ -267,9 +265,11 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 
 	while (has_next(&it))
 	{
-		const Member* const interned_member = next(&it);
+		const MemberInfo interned_member = next(&it);
 
-		TEST_MEM_EQUAL(&member, interned_member, sizeof(Member));
+		static_assert(sizeof(interned_member) == sizeof(member));
+
+		TEST_MEM_EQUAL(&member, &interned_member, sizeof(member));
 
 		member_count += 1;
 	}
@@ -329,7 +329,7 @@ static void composites_with_empty_composite_member_are_equal() noexcept
 
 	const TypeId b = type_create_composite(dummy.types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	Member member = dummy_member();
+	MemberInfo member = dummy_member();
 
 	member.type.complete = x;
 	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
@@ -422,7 +422,7 @@ static void composites_with_same_distinct_source_and_pointers_to_self_are_equal(
 
 	DummyTypePool dummy = create_dummy_types();
 
-	Member member = dummy_member();
+	MemberInfo member = dummy_member();
 
 	ReferenceType reference{};
 	reference.is_opt = false;
@@ -470,7 +470,7 @@ static void composites_with_same_distinct_source_and_pointers_to_each_other_are_
 
 	DummyTypePool dummy = create_dummy_types();
 
-	Member member = dummy_member();
+	MemberInfo member = dummy_member();
 
 	ReferenceType reference{};
 	reference.is_opt = false;
@@ -518,7 +518,7 @@ static void composites_with_same_distinct_source_and_pointers_to_self_and_differ
 
 	DummyTypePool dummy = create_dummy_types();
 
-	Member member = dummy_member();
+	MemberInfo member = dummy_member();
 
 	ReferenceType reference{};
 	reference.is_opt = false;
@@ -584,7 +584,7 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 	reference.is_multi = false;
 	reference.is_mut = false;
 
-	Member member = dummy_member();
+	MemberInfo member = dummy_member();
 
 	const TypeId a1 = type_create_composite(dummy.types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::User, SourceId::INVALID, 0, false);
 
@@ -669,7 +669,7 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 	reference.is_multi = false;
 	reference.is_mut = false;
 
-	Member member = dummy_member();
+	MemberInfo member = dummy_member();
 
 	const TypeId a1 = type_create_composite(dummy.types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::User, SourceId::INVALID, 0, false);
 
@@ -758,7 +758,7 @@ static void pair_types_with_same_element_types_are_considered_equal() noexcept
 
 	const TypeId b = type_create_composite(dummy.types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	Member member = dummy_member();
+	MemberInfo member = dummy_member();
 	member.type.complete = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, false });
 
 	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);

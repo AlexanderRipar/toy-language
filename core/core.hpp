@@ -1869,6 +1869,7 @@ enum class TypeTag : u8
 enum class TypeDisposition : u8
 {
 	INVALID = 0,
+	File,
 	User,
 	Signature,
 	Block,
@@ -1971,33 +1972,25 @@ struct Definition
 	bool has_pending_value : 1;
 };
 
-struct Member
+struct MemberInfo
 {
-	IdentifierId name;
-
 	DelayableTypeId type;
 
 	DelayableValueId value;
 
-	// Whether the member is global. If this is `true`, the value of `offset`
-	// is undefined.
-	bool is_global : 1;
+	IdentifierId name;
 
-	// Whether the member is public.
 	bool is_pub : 1;
 
-	// Whether the member is mutable.
 	bool is_mut : 1;
 
-	bool is_param : 1;
+	bool is_global : 1;
+
+	bool is_comptime_known : 1;
 
 	bool has_pending_type : 1;
 
 	bool has_pending_value : 1;
-
-	bool is_comptime_known : 1;
-
-	bool is_arg_independent : 1;
 
 	u16 rank;
 
@@ -2006,17 +1999,6 @@ struct Member
 	ArecId value_completion_arec_id;
 
 	s64 offset;
-};
-
-struct MemberCompletionInfo
-{
-	bool has_type_id;
-
-	bool has_value_id;
-
-	TypeId type_id;
-
-	GlobalValueId value_id;
 };
 
 // Structural data for `Ptr`, `Slice` and `TailArray` types.
@@ -2186,6 +2168,8 @@ TypeId type_create_signature(TypePool* types, TypeTag tag, SignatureType attach)
 // set to `true`.
 TypeId type_create_composite(TypePool* types, TypeTag tag, TypeId global_scope_type_id, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
 
+void type_set_composite_file_completion_arec_id(TypePool* types, TypeId type_id, ArecId completion_arec_id) noexcept;
+
 // Seals an open composite type, preventing the addition of further members and
 // setting the type's metrics (`size`, `align` and `stride`).
 // Members that have already been added but that have not yet had their type or
@@ -2202,7 +2186,7 @@ TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align,
 // The member is initialized with the data in `member`.
 // Returns `true` if the member was successfully added, and `false` if there
 // was a name collision with an existing member.
-bool type_add_composite_member(TypePool* types, TypeId type_id, Member member) noexcept;
+bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInfo init) noexcept;
 
 // Sets the type and / or value of the member at position `rank` in the
 // composite type identified by `type_id`.
@@ -2216,7 +2200,7 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, Member member) n
 // and must not have had its value set by a preceding call to this function.
 // Note that both `info.has_type` and `info.has_value` may be `false`, in which
 // case this function is effectively a no-op.
-void type_set_composite_member_info(TypePool* types, TypeId type_id, u16 rank, MemberCompletionInfo info) noexcept;
+void type_set_composite_member_info(TypePool* types, TypeId type_id, u16 rank, TypeId member_type_id, GlobalValueId member_value_id) noexcept;
 
 TypeId type_copy_composite(TypePool* types, TypeId type_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
 
@@ -2297,9 +2281,9 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
 // For types created by `create_open_type`, this is `TypeTag::Composite`.
 TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept;
 
-const Member* type_member_by_rank(TypePool* types, TypeId type_id, u16 rank);
+const MemberInfo type_member_by_rank(TypePool* types, TypeId type_id, u16 rank);
 
-bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, const Member** out) noexcept;
+bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, MemberInfo* out) noexcept;
 
 // Retrieves the structural data associated with `type_id`, which must not
 // refer to a composite type.
@@ -2342,7 +2326,7 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept;
 // Retrieves the next element of `iterator`. This function may only be called
 // exactly once after `has_next` called on the same iterator has returned
 // `true`.
-const Member* next(MemberIterator* it) noexcept;
+MemberInfo next(MemberIterator* it) noexcept;
 
 // Checks whether `iterator` has an element to be returned by a future call to
 // `next`. This call is idempotent.

@@ -137,24 +137,22 @@ ClosureBuilderId closure_add_value(ClosurePool* closures, ClosureBuilderId build
 
 	const u64 aligned_begin = next_multiple(closure->used, static_cast<u16>(value_metrics.align));
 
-	Member member{};
-	member.name = name;
-	member.type = value_type_id;
-	member.value.complete = GlobalValueId::INVALID;
-	member.is_global = false;
-	member.is_pub = false;
-	member.is_mut = false;
-	member.is_param = false;
-	member.has_pending_type = false;
-	member.has_pending_value = false;
-	member.is_comptime_known = false;
-	member.is_arg_independent = false;
-	member.rank = 0;
-	member.type_completion_arec_id = ArecId::INVALID;
-	member.value_completion_arec_id = ArecId::INVALID;
-	member.offset = aligned_begin;
+	MemberInfo member_init{};
+	member_init.name = name;
+	member_init.type = value_type_id;
+	member_init.value.complete = GlobalValueId::INVALID;
+	member_init.is_global = false;
+	member_init.is_pub = false;
+	member_init.is_mut = false;
+	member_init.has_pending_type = false;
+	member_init.has_pending_value = false;
+	member_init.is_comptime_known = false;
+	member_init.rank = 0;
+	member_init.type_completion_arec_id = ArecId::INVALID;
+	member_init.value_completion_arec_id = ArecId::INVALID;
+	member_init.offset = aligned_begin;
 
-	if (!type_add_composite_member(closures->types, closure->type_id, member))
+	if (!type_add_composite_member(closures->types, closure->type_id, member_init))
 		return id_from_closure(closures, closure);
 
 	if (value_metrics.align > static_cast<u32>(1) << closure->align_log2)

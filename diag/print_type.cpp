@@ -130,43 +130,43 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 			while (has_next(&it))
 			{
-				const Member* member = next(&it);
+				const MemberInfo member = next(&it);
 
 				diag::buf_printf(ctx, "%s%*s%s%s%s",
 					has_members ? "" : "\n",
 					(indent + 1) * 2, "",
-					member->is_pub ? "pub " : "",
-					member->is_mut ? "mut " : "",
-					member->is_global ? "global " : ""
+					member.is_pub ? "pub " : "",
+					member.is_mut ? "mut " : "",
+					member.is_global ? "global " : ""
 				);
 
-				if (member->name < IdentifierId::FirstNatural)
+				if (member.name < IdentifierId::FirstNatural)
 				{
 					diag::buf_printf(ctx, "\"_%u\" ",
-						static_cast<u32>(member->name)
+						static_cast<u32>(member.name)
 					);
 				}
 				else
 				{
-					const Range<char8> name = identifier_name_from_id(identifiers, member->name);
+					const Range<char8> name = identifier_name_from_id(identifiers, member.name);
 
 					diag::buf_printf(ctx, "\"%.*s\" ",
 						static_cast<s32>(name.count()), name.begin()
 					);
 				}
 
-				if (member->is_global)
+				if (member.is_global)
 					diag::buf_printf(ctx, ":: ");
 				else
-					diag::buf_printf(ctx, "(%+" PRId64 ") :: ", member->offset);
+					diag::buf_printf(ctx, "(%+" PRId64 ") :: ", member.offset);
 
-				if (member->has_pending_type)
+				if (member.has_pending_type)
 				{
 					diag::buf_printf(ctx, "<INCOMPLETE>\n");
 				}
 				else
 				{
-					print_type_impl(ctx, identifiers, types, member->type.complete, indent + 1, true);
+					print_type_impl(ctx, identifiers, types, member.type.complete, indent + 1, true);
 				}
 
 				has_members = true;
