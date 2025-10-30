@@ -1894,22 +1894,6 @@ struct TypeMetrics
 	u32 align;
 };
 
-// Iterator over the incomplete members of a composite type.
-// To create an `IncompleteMemberIterator` call `incomplete_members_of`.
-// This iterator is resistant to the iterated type having its members or itself
-// completed during iteration. Members that are completed before the iterator
-// has iterated them are skipped, as one would expect.
-struct IncompleteMemberIterator
-{
-	const void* structure;
-
-	TypePool* types;
-
-	u16 rank;
-
-	bool is_indirect;
-};
-
 // Iterator over the members of a composite type.
 // To create a `MemberIterator` call `members_of`.
 // This iterator is resistant to the iterated type having its members or itself
@@ -2350,24 +2334,6 @@ const T* type_attachment_from_id(TypePool* types, TypeId type_id) noexcept
 // `TypeTag::INVALID`.
 const char8* tag_name(TypeTag tag) noexcept;
 
-
-// Creates an iterator over `type_id`s incomplete members, i.e. members for
-// which at least one of `has_pending_type` or `has_pending_value` is true.
-// See `IncompleteMemberIterator` for further details.
-IncompleteMemberIterator incomplete_members_of(TypePool* types, TypeId type_id) noexcept;
-
-// Retrieves the next element of `iterator`. This function may only be called
-// exactly once after `has_next` called on the same iterator has returned
-// `true`.
-const Member* next(IncompleteMemberIterator* it) noexcept;
-
-// Checks whether `iterator` has an element to be returned by a future call to
-// `next`. This call is idempotent.
-// The call to `next` must be made immediately after this call, as the iterated
-// type's remaining incomplete members might otherwise be completed by code
-// running between the calls, meaning that their may no longer be incomplete
-// members, even if there were some at the time `has_next` was called.
-bool has_next(const IncompleteMemberIterator* it) noexcept;
 
 // Creates an iterator over `type_id`s members.
 // See `MemberIterator` for further details.

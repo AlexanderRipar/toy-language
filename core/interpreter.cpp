@@ -2930,13 +2930,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		bool has_unbound_parameter = false;
 
-		IncompleteMemberIterator members = incomplete_members_of(interp->types, parameter_list_type_id);
+		MemberIterator members = members_of(interp->types, parameter_list_type_id);
 
 		while (has_next(&members))
 		{
 			const Member* const member = next(&members);
 
-			ASSERT_OR_IGNORE(member->has_pending_type || member->has_pending_value);
+			if (!member->has_pending_type && !member->has_pending_value)
+				continue;
+
+			ASSERT_OR_IGNORE(member.has_pending_type || member.has_pending_value);
 
 			TypeId member_type_id = TypeId::INVALID;
 
@@ -5121,13 +5124,14 @@ static void type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file
 
 	*out = file_type_id;
 
-	IncompleteMemberIterator members = incomplete_members_of(interp->types, file_type_id);
+	MemberIterator members = members_of(interp->types, file_type_id);
 
 	while (has_next(&members))
 	{
 		const Member* member = next(&members);
 
-		ASSERT_OR_IGNORE(member->has_pending_type && member->has_pending_value);
+		if (!member->has_pending_type)
+			continue;
 
 		AstNode* const value = ast_node_from_id(interp->asts, member->value.pending);
 
@@ -5491,7 +5495,7 @@ static void builtin_complete_type(Interpreter* interp, Arec* arec, MutRange<byte
 
 	const TypeId direct_type_id = type_seal_composite(interp->types, builder, size, static_cast<u32>(align), stride);
 
-	IncompleteMemberIterator it = incomplete_members_of(interp->types, direct_type_id);
+	MemberIterator it = members_of(interp->types, direct_type_id);
 
 	while (has_next(&it))
 	{
