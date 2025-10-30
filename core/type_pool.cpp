@@ -1287,7 +1287,7 @@ void type_set_composite_member_info(TypePool* types, TypeId type_id, u16 rank, T
 	if (!member->has_pending_type && !member->has_pending_value)
 		return;
 
-		ASSERT_OR_IGNORE(composite->incomplete_member_count != 0);
+	ASSERT_OR_IGNORE(composite->incomplete_member_count != 0);
 
 	if (member->has_pending_type)
 	{
