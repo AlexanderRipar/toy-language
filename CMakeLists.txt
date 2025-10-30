@@ -57,9 +57,15 @@ set(DIAG_SOURCES
 	diag/print_type.cpp
 )
 
-function(prepare_exe NAME)
-	add_executable(${NAME} ${ARGN})
+set(INTERFACE_HEADERS
+	core/core.hpp
+	infra/common.hpp
+	infra/alloc_pool.hpp
+	infra/optptr.hpp
+	infra/minos/minos.hpp
+)
 
+function(set_common_target_options NAME)
 	target_compile_features(${NAME} PRIVATE cxx_std_17)
 
 	if (MSVC)
@@ -86,10 +92,22 @@ function(prepare_exe NAME)
 	endif()
 endfunction()
 
+function(prepare_object_library NAME)
+	add_library(${NAME} OBJECT ${ARGN})
 
+	set_common_target_options(${NAME})
+endfunction()
 
-prepare_exe(compil0r main.cpp ${INFRA_SOURCES} ${CORE_SOURCES} ${DIAG_SOURCES})
+function(prepare_executable NAME)
+	add_executable(${NAME} ${ARGN})
 
+	set_common_target_options(${NAME})
 
+	target_link_libraries(${NAME} PRIVATE elib)
+endfunction()
+
+prepare_object_library(elib ${CORE_SOURCES} ${DIAG_SOURCES} ${INFRA_SOURCES})
+
+prepare_executable(eval main.cpp ${INTERFACE_HEADERS})
 
 add_subdirectory(test)

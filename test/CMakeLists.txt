@@ -12,11 +12,13 @@ list(TRANSFORM CORE_SOURCES PREPEND "../")
 
 list(TRANSFORM DIAG_SOURCES PREPEND "../")
 
+list(TRANSFORM INTERFACE_HEADERS PREPEND "../")
+
 
 
 # Main test program
 
-prepare_exe(test test_main.cpp ${TEST_SOURCES} ${INFRA_SOURCES} ${CORE_SOURCES} ${DIAG_SOURCES})
+prepare_executable(test test_main.cpp ${TEST_SOURCES} ${INTERFACE_HEADERS})
 
 
 
@@ -24,7 +26,7 @@ prepare_exe(test test_main.cpp ${TEST_SOURCES} ${INFRA_SOURCES} ${CORE_SOURCES} 
 # It gets copied into minos_fs_data/helpers/${COMPILER_NAME} so it can be run
 # from test.
 
-prepare_exe(test-process-helper test_process_helper.cpp ${INFRA_SOURCES})
+prepare_executable(test-process-helper test_process_helper.cpp)
 
 target_compile_definitions(test PRIVATE HELPER_PROCESS_PATH="$<TARGET_FILE:test-process-helper>")
 
