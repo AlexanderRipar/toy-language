@@ -27,6 +27,7 @@ set(INFRA_SOURCES
 	infra/common.cpp
 	infra/hash.hpp
 	infra/inplace_sort.hpp
+	infra/optptr.hpp
 	infra/range.hpp
 	infra/threading.hpp
 )
