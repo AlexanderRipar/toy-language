@@ -225,7 +225,7 @@ let max = func(T: Type, a: T, b: T) -> T => if a > b then a else b
 let align_to = func(T: Type, size: T, align: T) -> T => {
 	std.assert((align & (align - 1)) == 0)
 
-	(size + align - 1) & ~(align - 1)
+	{ (size + align - 1) & ~(align - 1) }
 }
 
 let Pair = func(fst: Definition, snd: Definition) -> Type => {
