@@ -1243,7 +1243,7 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInfo init)
 		ASSERT_OR_IGNORE(init.name != IdentifierId::INVALID
 		              && init.has_pending_type != (init.type_completion_arec_id == ArecId::INVALID)
 		              && init.has_pending_value != (init.value_completion_arec_id == ArecId::INVALID)
-		              && !init.has_pending_value || init.value.pending != AstNodeId::INVALID);
+		              && (!init.has_pending_value || init.value.pending != AstNodeId::INVALID));
 
 		UserMemberData* const dst = static_cast<UserMemberData*>(raw_dst);
 		dst->offset = init.offset;
