@@ -143,7 +143,7 @@ public:
 };
 
 template<typename T, u32 NEXT_FIELD_OFFSET>
-struct IndexStackListHeader
+struct ThreadsafeIndexStackListHeader
 {
 private:
 

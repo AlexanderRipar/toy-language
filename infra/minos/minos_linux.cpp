@@ -110,7 +110,7 @@ struct MinosIoUringLock
 
 struct MinosIoUringSQEFreelist
 {
-	IndexStackListHeader<io_uring_sqe, 0> sqes;
+	ThreadsafeIndexStackListHeader<io_uring_sqe, 0> sqes;
 };
 
 struct MinosIoUring
@@ -140,7 +140,7 @@ struct MinosIoUring
 
 struct MinosGlobalIoUrings
 {
-	IndexStackListHeader<MinosIoUring, 0> freelist;
+	ThreadsafeIndexStackListHeader<MinosIoUring, 0> freelist;
 
 	MinosIoUring rings[MINOS_IO_URING_MAX_COUNT];
 };
