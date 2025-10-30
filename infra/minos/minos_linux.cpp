@@ -94,7 +94,7 @@ struct MinosIoUringData
 
 struct MinosIoUringLock
 {
-	thd::Mutex mutex;
+	Mutex mutex;
 
 	// Bookkeeping for teardown. Put here in one cacheline with mutex since it
 	// is only accessed on creation and teardown.
@@ -110,7 +110,7 @@ struct MinosIoUringLock
 
 struct MinosIoUringSQEFreelist
 {
-	thd::IndexStackListHeader<io_uring_sqe, 0> sqes;
+	IndexStackListHeader<io_uring_sqe, 0> sqes;
 };
 
 struct MinosIoUring
@@ -140,7 +140,7 @@ struct MinosIoUring
 
 struct MinosGlobalIoUrings
 {
-	thd::IndexStackListHeader<MinosIoUring, 0> freelist;
+	IndexStackListHeader<MinosIoUring, 0> freelist;
 
 	MinosIoUring rings[MINOS_IO_URING_MAX_COUNT];
 };
