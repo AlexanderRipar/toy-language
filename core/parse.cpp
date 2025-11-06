@@ -299,19 +299,12 @@ struct Lexeme
 
 		Builtin builtin;
 
-		#if COMPILER_CLANG
-		#pragma clang diagnostic push
-		#pragma clang diagnostic ignored "-Wnested-anon-types" // anonymous types declared in an anonymous union are an extension
-		#endif
 		struct
 		{
 			GlobalValueId value_id;
 			
 			TypeId type_id;
 		} string;
-		#if COMPILER_CLANG
-		#pragma clang diagnostic pop
-		#endif
 	};
 };
 
@@ -331,20 +324,12 @@ struct RawLexeme
 
 		Builtin builtin;
 
-		#if COMPILER_CLANG
-		#pragma clang diagnostic push
-		#pragma clang diagnostic ignored "-Wnested-anon-types" // anonymous types declared in an anonymous union are an extension
-		#endif
 		struct
 		{
 			GlobalValueId value_id;
 
 			TypeId type_id;
 		} string;
-		#if COMPILER_CLANG
-		#pragma clang diagnostic pop
-		#endif
-		
 	};
 
 	RawLexeme() noexcept = default;

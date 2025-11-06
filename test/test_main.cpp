@@ -59,10 +59,7 @@ struct InvocationInfo
 
 	u32 timeout_milliseconds;
 
-	#if COMPILER_CLANG
-		#pragma clang diagnostic push
-		#pragma clang diagnostic ignored "-Wnested-anon-types" // anonymous types declared in an anonymous union are an extension
-	#elif COMPILER_GCC
+	#if COMPILER_GCC
 		#pragma GCC diagnostic push
 		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ prohibits anonymous structs
 	#endif
@@ -109,9 +106,7 @@ struct InvocationInfo
 			u64 write_value;
 		} shm;
 	};
-	#if COMPILER_CLANG
-		#pragma clang diagnostic pop
-	#elif COMPILER_GCC
+	#if COMPILER_GCC
 		#pragma GCC diagnostic pop
 	#endif
 };

@@ -55,10 +55,7 @@ struct alignas(8) CommonMemberData
 
 	union
 	{
-		#if COMPILER_CLANG
-		#pragma clang diagnostic push
-		#pragma clang diagnostic ignored "-Wnested-anon-types" // anonymous types declared in an anonymous union are an extension
-		#elif COMPILER_GCC
+		#if COMPILER_GCC
 		#pragma GCC diagnostic push
 		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ prohibits anonymous structs
 		#endif
@@ -82,9 +79,7 @@ struct alignas(8) CommonMemberData
 
 			u8 unused_2_[3];
 		};
-		#if COMPILER_CLANG
-		#pragma clang diagnostic pop
-		#elif COMPILER_GCC
+		#if COMPILER_GCC
 		#pragma GCC diagnostic pop
 		#endif
 		
@@ -112,10 +107,7 @@ using FullMemberData = UserMemberData;
 
 struct CompositeType
 {
-	#if COMPILER_CLANG
-	#pragma clang diagnostic push
-	#pragma clang diagnostic ignored "-Wnested-anon-types" // anonymous types declared in an anonymous union are an extension
-	#elif COMPILER_GCC
+	#if COMPILER_GCC
 	#pragma GCC diagnostic push
 	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ prohibits anonymous structs
 	#endif
@@ -133,9 +125,7 @@ struct CompositeType
 			u32 unused_;
 		} file;
 	};
-	#if COMPILER_CLANG
-	#pragma clang diagnostic pop
-	#elif COMPILER_GCC
+	#if COMPILER_GCC
 	#pragma GCC diagnostic pop
 	#endif
 

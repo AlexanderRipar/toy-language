@@ -85,6 +85,7 @@ function(set_common_target_options NAME)
 			-Wextra
 			-Wno-c99-extensions       # flexible array members are a C99 feature
 			-Wno-gnu-anonymous-struct # anonymous structs are a GNU extension
+			-Wno-nested-anon-types    # anonymous types declared in an anonymous union are an extension
 			-g
 		)
 	else()
