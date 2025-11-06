@@ -4,16 +4,6 @@ project(compil0r)
 
 
 
-if(MSVC)
-	set(COMPILER_NAME "msvc")
-elseif (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
-	set(COMPILER_NAME "gcc")
-elseif (${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
-	set(COMPILER_NAME "clang")
-endif()
-
-
-
 set(INFRA_SOURCES
 	infra/container/index_map.hpp
 	infra/container/reserved_heap.hpp
