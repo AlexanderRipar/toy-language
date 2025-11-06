@@ -29,10 +29,7 @@ struct ScopeMap
 
 	bool next_outer_closes;
 
-	#if COMPILER_MSVC
-	#pragma warning(push)
-	#pragma warning(disable : 4200) // C4200: nonstandard extension used: zero-sized array in struct/union
-	#elif COMPILER_CLANG
+	#if COMPILER_CLANG
 	#pragma clang diagnostic push
 	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
 	#elif COMPILER_GCC
@@ -40,9 +37,7 @@ struct ScopeMap
 	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	u64 occupied_bits[];
-	#if COMPILER_MSVC
-	#pragma warning(pop)
-	#elif COMPILER_CLANG
+	#if COMPILER_CLANG
 	#pragma clang diagnostic pop
 	#elif COMPILER_GCC
 	#pragma GCC diagnostic pop

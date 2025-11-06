@@ -66,7 +66,8 @@ function(set_common_target_options NAME)
 
 		target_compile_options(${NAME} PRIVATE
 			/W4
-			/wd4201
+			/wd4200 # nonstandard extension used: zero-sized array in struct/union
+			/wd4201 # nonstandard extension used: nameless struct/union
 			"$<$<NOT:$<CONFIG:Debug>>:/Zi>"
 		)
 	else()
