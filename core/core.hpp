@@ -4,7 +4,6 @@
 #include <csetjmp>
 
 #include "../infra/common.hpp"
-#include "../infra/alloc_pool.hpp"
 #include "../infra/optptr.hpp"
 #include "../infra/minos/minos.hpp"
 
@@ -45,6 +44,36 @@ struct alignas(u32) NameBinding
 
 	u16 rank;
 };
+
+
+
+
+
+// Pool for allocating other core handles.
+// Amortizes memory allocation overhead for fixed-size elements of the
+// structures referenced by handles.
+struct AllocPool;
+
+// Creates an `AllocPool`.
+//
+// `reserve` indicates as the maximum cumulative size of all allocations made
+// from the pool. Note that the actual allocatable size may be lower due to
+// padding introduced by alignment requirements.
+//
+// `commit_increment` specifies how many bytes to grow the pool's committed
+// memory region by each time new memory beyond that already committed is
+// requested.
+// Note that both parameters may be rounded up internally, e.g. to satisfy the
+// system's allocation granularity.
+AllocPool* create_alloc_pool(u32 reserve, u32 commit_increment) noexcept;
+
+// Releases the memory held by `pool`.
+// This invalidates all handles that were previosly allocated from `pool`.
+void release_alloc_pool(AllocPool* pool) noexcept;
+
+// Allocates a chunk of `bytes` bytes of memory from `pool`, satisfying the
+// alignment indicated `alignment`.
+void* alloc_from_pool(AllocPool* pool, u32 bytes, u32 alignment) noexcept;
 
 
 

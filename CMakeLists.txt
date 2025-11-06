@@ -21,8 +21,6 @@ set(INFRA_SOURCES
 	infra/minos/minos.hpp
 	infra/minos/minos_win32.cpp
 	infra/minos/minos_linux.cpp
-	infra/alloc_pool.hpp
-	infra/alloc_pool.cpp
 	infra/common.hpp
 	infra/common.cpp
 	infra/hash.hpp
@@ -35,6 +33,7 @@ set(INFRA_SOURCES
 set(CORE_SOURCES
 	core/core.hpp
 	core/core.cpp
+	core/alloc_pool.cpp
 	core/ast_pool.cpp
 	core/closure_pool.cpp
 	core/partial_value_pool.cpp
@@ -60,7 +59,6 @@ set(DIAG_SOURCES
 set(INTERFACE_HEADERS
 	core/core.hpp
 	infra/common.hpp
-	infra/alloc_pool.hpp
 	infra/optptr.hpp
 	infra/minos/minos.hpp
 )
