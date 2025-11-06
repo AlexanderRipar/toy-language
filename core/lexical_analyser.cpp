@@ -533,7 +533,7 @@ LexicalAnalyser* create_lexical_analyser(HandlePool* alloc, IdentifierPool* iden
 	if (memory == nullptr)
 		panic("Could not reserve memory for LexicalAnalyser (0x%X).\n", minos::last_error());
 
-	LexicalAnalyser* const lex = static_cast<LexicalAnalyser*>(alloc_handle_from_pool(alloc, sizeof(LexicalAnalyser), alignof(LexicalAnalyser)));
+	LexicalAnalyser* const lex = alloc_handle_from_pool<LexicalAnalyser>(alloc);
 	lex->scope_pool.init({ memory, scope_pool_size }, Range{ SCOPE_POOL_CAPACITIES }, Range{ SCOPE_POOL_COMMITS });
 	lex->scopes_top = -1;
 	lex->identifiers = identifiers;

@@ -280,7 +280,7 @@ PartialValuePool* create_partial_value_pool(HandlePool* alloc) noexcept
 	if (memory == nullptr)
 		panic("Could not reserve memory for PartialValuePool (0x%X).\n", minos::last_error());
 
-	PartialValuePool* const partials = static_cast<PartialValuePool*>(alloc_handle_from_pool(alloc, sizeof(PartialValuePool), alignof(PartialValuePool)));
+	PartialValuePool* const partials = alloc_handle_from_pool<PartialValuePool>(alloc);
 	partials->values.init({ memory, total_values_size }, Range{ VALUES_CAPACITIES }, Range{ VALUES_COMMITS });
 	partials->builder_inds.init({ memory + total_values_size, BUILDER_INDS_SIZE }, 4096 / sizeof(u32));
 	partials->sorting_array.init({ memory + total_values_size + BUILDER_INDS_SIZE, SORTING_ARRAY_SIZE }, 4096 / sizeof(SubvalueHeaderSortIdx));

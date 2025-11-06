@@ -78,7 +78,7 @@ struct IdentifierPool
 
 IdentifierPool* create_identifier_pool(HandlePool* alloc) noexcept
 {
-	IdentifierPool* const identifiers = static_cast<IdentifierPool*>(alloc_handle_from_pool(alloc, sizeof(IdentifierPool), alignof(IdentifierPool)));
+	IdentifierPool* const identifiers = alloc_handle_from_pool<IdentifierPool>(alloc);
 
 	identifiers->map.init(1u << 24, 1u << 15, 1u << 31, 1u << 18);
 

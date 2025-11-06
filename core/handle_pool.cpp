@@ -44,7 +44,7 @@ void release_handle_pool(HandlePool* pool) noexcept
 	minos::mem_unreserve(pool, pool->reserve);
 }
 
-void* alloc_handle_from_pool(HandlePool* pool, u32 bytes, u32 alignment) noexcept
+void* alloc_handle_from_pool_raw(HandlePool* pool, u32 bytes, u32 alignment) noexcept
 {
 	ASSERT_OR_IGNORE(is_pow2(alignment));
 

@@ -637,7 +637,7 @@ static void lower_ast(AstPool* asts, AstNode* src_root) noexcept
 
 AstPool* create_ast_pool(HandlePool* alloc) noexcept
 {
-	AstPool* const asts = static_cast<AstPool*>(alloc_handle_from_pool(alloc, sizeof(AstPool), alignof(AstPool)));
+	AstPool* const asts = alloc_handle_from_pool<AstPool>(alloc);
 
 	const u64 nodes_reserve_size = (static_cast<u64>(1) << 30) * sizeof(AstNode);
 

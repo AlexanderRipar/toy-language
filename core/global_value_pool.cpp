@@ -25,7 +25,7 @@ GlobalValuePool* create_global_value_pool(HandlePool* alloc) noexcept
 	if (memory == nullptr)
 		panic("Could not reserve memory for GlobalValuePool (0x%X).\n", minos::last_error());
 
-	GlobalValuePool* const globals = static_cast<GlobalValuePool*>(alloc_handle_from_pool(alloc, sizeof(GlobalValuePool), alignof(GlobalValuePool)));
+	GlobalValuePool* const globals = alloc_handle_from_pool<GlobalValuePool>(alloc);
 	globals->values.init(MutRange<byte>{ memory, VALUES_SIZE }, 1 << 11);
 	globals->memory = MutRange<byte>{ memory, VALUES_SIZE };
 

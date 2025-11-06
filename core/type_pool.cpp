@@ -1012,7 +1012,7 @@ TypePool* create_type_pool(HandlePool* alloc) noexcept
 	if (memory == nullptr)
 		panic("Could not reserve memory for TypePool (0x%X).\n", minos::last_error());
 
-	TypePool* const types = static_cast<TypePool*>(alloc_handle_from_pool(alloc, sizeof(TypePool), alignof(TypePool)));
+	TypePool* const types = alloc_handle_from_pool<TypePool>(alloc);
 	types->dedup.init(1 << 21, 1 << 8, 1 << 20, 1 << 10);
 	types->structures.init({ memory, structures_size }, Range{ STRUCTURES_CAPACITIES }, Range{ STRUCTURES_COMMITS });
 	types->memory = { memory, structures_size };

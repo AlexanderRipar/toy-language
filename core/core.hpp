@@ -71,9 +71,18 @@ HandlePool* create_handle_pool(u32 reserve, u32 commit_increment) noexcept;
 // This invalidates all handles that were previosly allocated from `pool`.
 void release_handle_pool(HandlePool* pool) noexcept;
 
+// Do not call this function directly. Use `alloc_handle_from_pool` instead.
 // Allocates a chunk of `bytes` bytes of memory from `pool`, satisfying the
 // alignment indicated `alignment`.
-void* alloc_handle_from_pool(HandlePool* pool, u32 bytes, u32 alignment) noexcept;
+void* alloc_handle_from_pool_raw(HandlePool* pool, u32 bytes, u32 alignment) noexcept;
+
+// Allocates memory sufficiently sized and aligned to hold an object of type
+// `T` from `pool`.
+template<typename T>
+T* alloc_handle_from_pool(HandlePool* pool) noexcept
+{
+	return static_cast<T*>(alloc_handle_from_pool_raw(pool, sizeof(T), alignof(T)));
+}
 
 
 
@@ -2314,12 +2323,13 @@ const MemberInfo type_member_by_rank(TypePool* types, TypeId type_id, u16 rank);
 
 bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, MemberInfo* out) noexcept;
 
+// Do not call this function directly. Use `type_attachment_from_id` instead.
+const void* type_attachment_from_id_raw(TypePool* types, TypeId type_id) noexcept;
+
 // Retrieves the structural data associated with `type_id`, which must not
 // refer to a composite type.
 // The returned data is the same as that passed to the call to `simple_type`
 // that created `type_id`, chaining through calls to `alias_type`.
-const void* type_attachment_from_id_raw(TypePool* types, TypeId type_id) noexcept;
-
 template<typename T>
 const T* type_attachment_from_id(TypePool* types, TypeId type_id) noexcept
 {

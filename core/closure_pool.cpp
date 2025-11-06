@@ -97,7 +97,7 @@ ClosurePool* create_closure_pool(HandlePool* alloc, TypePool* types) noexcept
 	if (memory == nullptr)
 		panic("Could not reserve memory for ClosurePool (0x%X).\n", minos::last_error());
 
-	ClosurePool* const closures = static_cast<ClosurePool*>(alloc_handle_from_pool(alloc, sizeof(ClosurePool), alignof(ClosurePool)));
+	ClosurePool* const closures = alloc_handle_from_pool<ClosurePool>(alloc);
 	closures->types = types;
 	closures->closures.init({ memory, closures_size }, Range{ CLOSURES_CAPACITIES }, Range{ CLOSURES_COMMITS });
 	closures->memory = { memory, closures_size };

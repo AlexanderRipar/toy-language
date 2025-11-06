@@ -5847,7 +5847,7 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 
 Interpreter* create_interpreter(HandlePool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, PartialValuePool* partials, ClosurePool* closures, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle type_log_file, minos::FileHandle ast_log_file, bool log_prelude) noexcept
 {
-	Interpreter* const interp = static_cast<Interpreter*>(alloc_handle_from_pool(alloc, sizeof(Interpreter), alignof(Interpreter)));
+	Interpreter* const interp = alloc_handle_from_pool<Interpreter>(alloc);
 
 	static constexpr u64 AREC_HEADERS_RESERVE_SIZE = (1 << 20) * sizeof(Arec);
 
