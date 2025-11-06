@@ -2336,13 +2336,13 @@ const T* type_attachment_from_id(TypePool* types, TypeId type_id) noexcept
 	#ifndef _NDEBUG
 		const TypeTag tag = type_tag_from_id(types, type_id);
 
-		if constexpr (is_same_type<T, ReferenceType>)
+		if constexpr (is_same_cpp_type<T, ReferenceType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray || tag == TypeTag::Variadic);
-		else if constexpr (is_same_type<T, NumericType>)
+		else if constexpr (is_same_cpp_type<T, NumericType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Integer || tag == TypeTag::Float);
-		else if constexpr (is_same_type<T, ArrayType>)
+		else if constexpr (is_same_cpp_type<T, ArrayType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Array || tag == TypeTag::ArrayLiteral);
-		else if constexpr (is_same_type<T, SignatureType>)
+		else if constexpr (is_same_cpp_type<T, SignatureType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Func || tag == TypeTag::Builtin);
 		else
 			static_assert(false, "Unexpected attachment passed to type_attachment_from_id");

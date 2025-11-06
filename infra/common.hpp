@@ -244,9 +244,9 @@ inline u8 count_leading_ones(T n) noexcept
 }
 
 template<typename, typename>
-constexpr bool is_same_type = false;
+constexpr bool is_same_cpp_type = false;
 template <typename T>
-constexpr bool is_same_type<T, T> = true;
+constexpr bool is_same_cpp_type<T, T> = true;
 
 NORETURN void panic(const char8* format, ...) noexcept;
 
