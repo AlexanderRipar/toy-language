@@ -17,7 +17,6 @@ set(INFRA_SOURCES
 	infra/inplace_sort.hpp
 	infra/optptr.hpp
 	infra/range.hpp
-	infra/threading.hpp
 )
 
 set(CORE_SOURCES
