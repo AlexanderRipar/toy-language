@@ -53,38 +53,23 @@ struct alignas(8) CommonMemberData
 
 	DelayableValueId value;
 
-	union
-	{
-		#if COMPILER_GCC
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ prohibits anonymous structs
-		#endif
-		struct
-		{
-			IdentifierId name;
+	IdentifierId name;
 
-			bool has_pending_type : 1;
+	bool has_pending_type : 1;
 
-			bool has_pending_value : 1;
+	bool has_pending_value : 1;
 
-			bool is_pub : 1;
+	bool is_pub : 1;
 
-			bool is_mut : 1;
+	bool is_mut : 1;
 
-			bool is_global : 1;
+	bool is_global : 1;
 
-			bool is_comptime_known : 1;
+	bool is_comptime_known : 1;
 
-			bool unused_1_ : 2;
+	bool unused_1_ : 2;
 
-			u8 unused_2_[3];
-		};
-		#if COMPILER_GCC
-		#pragma GCC diagnostic pop
-		#endif
-		
-		u64 bitwise_comparable;
-	};
+	u8 unused_2_[3];
 };
 
 struct alignas(8) FileMemberData : CommonMemberData {};
@@ -743,7 +728,19 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 			
 			const CommonMemberData* const b_member = member_at(b_attach, rank);
 
-			if (a_member->bitwise_comparable != b_member->bitwise_comparable)
+			// Include unused reserved members in the comparison to allow
+			// comparing entire 64-bit values.
+			if (a_member->name != b_member->name
+			 || a_member->has_pending_type != b_member->has_pending_type
+			 || a_member->has_pending_value != b_member->has_pending_value
+			 || a_member->is_pub != b_member->is_pub
+			 || a_member->is_mut != b_member->is_mut
+			 || a_member->is_global != b_member->is_global
+			 || a_member->is_comptime_known != b_member->is_comptime_known
+			 || a_member->unused_1_ != b_member->unused_1_
+			 || a_member->unused_2_[0] != b_member->unused_2_[0]
+			 || a_member->unused_2_[1] != b_member->unused_2_[1]
+			 || a_member->unused_2_[2] != b_member->unused_2_[2])
 			{
 				eq_state_pop(seen);
 			
