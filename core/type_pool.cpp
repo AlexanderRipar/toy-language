@@ -3,7 +3,6 @@
 #include "../infra/hash.hpp"
 #include "../infra/container/index_map.hpp"
 #include "../infra/container/reserved_heap.hpp"
-#include "../infra/inplace_sort.hpp"
 
 #include <cstdlib>
 #include <cstring>
