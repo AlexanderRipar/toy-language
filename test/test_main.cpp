@@ -59,10 +59,6 @@ struct InvocationInfo
 
 	u32 timeout_milliseconds;
 
-	#if COMPILER_GCC
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ prohibits anonymous structs
-	#endif
 	union
 	{
 		struct
@@ -105,10 +101,7 @@ struct InvocationInfo
 
 			u64 write_value;
 		} shm;
-	};
-	#if COMPILER_GCC
-		#pragma GCC diagnostic pop
-	#endif
+	} cmd;
 };
 
 static bool parse_u64(const char8* arg, u64* out) noexcept
@@ -238,7 +231,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 			out->type = InvocationType::ExitWith;
 
-			out->exit_with.exit_code = static_cast<u32>(n);
+			out->cmd.exit_with.exit_code = static_cast<u32>(n);
 
 			arg_index += 2;
 		}
@@ -273,7 +266,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 			out->type = first_char == 'e' ? InvocationType::Event : InvocationType::Semaphore;
 
-			out->event.handle.m_rep = reinterpret_cast<void*>(n);
+			out->cmd.event.handle.m_rep = reinterpret_cast<void*>(n);
 
 			arg_index += 2;
 		}
@@ -297,7 +290,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 			out->type = InvocationType::CheckCwd;
 
-			out->check_cwd.suffix = range::from_cstring(argv[arg_index + 1]);
+			out->cmd.check_cwd.suffix = range::from_cstring(argv[arg_index + 1]);
 
 			arg_index += 2;
 		}
@@ -328,58 +321,58 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 				return false;
 			}
 
-			out->shm.handle.m_rep = reinterpret_cast<void*>(n);
+			out->cmd.shm.handle.m_rep = reinterpret_cast<void*>(n);
 
-			if (!parse_u64(argv[arg_index + 2], &out->shm.reserve_offset))
+			if (!parse_u64(argv[arg_index + 2], &out->cmd.shm.reserve_offset))
 			{
 				fprintf(stderr, "%s expects its 2nd argument (reservation offset) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
-			if (!parse_u64(argv[arg_index + 3], &out->shm.reserve_bytes))
+			if (!parse_u64(argv[arg_index + 3], &out->cmd.shm.reserve_bytes))
 			{
 				fprintf(stderr, "%s expects its 3rd argument (reservation bytes) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
-			if (!parse_u64(argv[arg_index + 4], &out->shm.commit_offset))
+			if (!parse_u64(argv[arg_index + 4], &out->cmd.shm.commit_offset))
 			{
 				fprintf(stderr, "%s expects its 4th argument (commit offset) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
-			if (!parse_u64(argv[arg_index + 5], &out->shm.commit_bytes))
+			if (!parse_u64(argv[arg_index + 5], &out->cmd.shm.commit_bytes))
 			{
 				fprintf(stderr, "%s expects its 5th argument (commit bytes) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
-			if (!parse_u64(argv[arg_index + 6], &out->shm.read_offset))
+			if (!parse_u64(argv[arg_index + 6], &out->cmd.shm.read_offset))
 			{
 				fprintf(stderr, "%s expects its 6th argument (read offset) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
-			if (!parse_u64(argv[arg_index + 7], &out->shm.read_value))
+			if (!parse_u64(argv[arg_index + 7], &out->cmd.shm.read_value))
 			{
 				fprintf(stderr, "%s expects its 7th argument (expected read value) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
-			if (!parse_u64(argv[arg_index + 8], &out->shm.write_offset))
+			if (!parse_u64(argv[arg_index + 8], &out->cmd.shm.write_offset))
 			{
 				fprintf(stderr, "%s expects its 8th argument (write offset) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
-			if (!parse_u64(argv[arg_index + 9], &out->shm.write_value))
+			if (!parse_u64(argv[arg_index + 9], &out->cmd.shm.write_value))
 			{
 				fprintf(stderr, "%s expects its 9th argument (write value) to be a base-ten number\n", argv[arg_index]);
 
@@ -466,19 +459,19 @@ static void handle_divergent_invocations(const InvocationInfo* invocation) noexc
 
 	case InvocationType::ExitWith:
 	{
-		minos::exit_process(invocation->exit_with.exit_code);
+		minos::exit_process(invocation->cmd.exit_with.exit_code);
 	}
 
 	case InvocationType::Event:
 	{
 		if (invocation->has_timeout)
 		{
-			if (!minos::event_wait_timeout(invocation->event.handle, static_cast<u32>(invocation->timeout_milliseconds)))
+			if (!minos::event_wait_timeout(invocation->cmd.event.handle, static_cast<u32>(invocation->timeout_milliseconds)))
 				minos::exit_process(2);
 		}
 		else
 		{
-			minos::event_wait(invocation->event.handle);
+			minos::event_wait(invocation->cmd.event.handle);
 		}
 
 		minos::exit_process(0);
@@ -488,12 +481,12 @@ static void handle_divergent_invocations(const InvocationInfo* invocation) noexc
 	{
 		if (invocation->has_timeout)
 		{
-			if (!minos::semaphore_wait_timeout(invocation->semaphore.handle, static_cast<u32>(invocation->timeout_milliseconds)))
+			if (!minos::semaphore_wait_timeout(invocation->cmd.semaphore.handle, static_cast<u32>(invocation->timeout_milliseconds)))
 				minos::exit_process(2);
 		}
 		else
 		{
-			minos::semaphore_wait(invocation->semaphore.handle);
+			minos::semaphore_wait(invocation->cmd.semaphore.handle);
 		}
 
 		minos::exit_process(0);
@@ -507,42 +500,42 @@ static void handle_divergent_invocations(const InvocationInfo* invocation) noexc
 		if (cwd_chars == 0 || cwd_chars > array_count(cwd))
 			panic("Could not get working directory (0x%X)\n", minos::last_error());
 
-		if (invocation->check_cwd.suffix.count() <= cwd_chars)
+		if (invocation->cmd.check_cwd.suffix.count() <= cwd_chars)
 		{
-			if (memcmp(invocation->check_cwd.suffix.begin(), cwd + cwd_chars - invocation->check_cwd.suffix.count(), invocation->check_cwd.suffix.count()) == 0)
+			if (memcmp(invocation->cmd.check_cwd.suffix.begin(), cwd + cwd_chars - invocation->cmd.check_cwd.suffix.count(), invocation->cmd.check_cwd.suffix.count()) == 0)
 				minos::exit_process(0);
 		}
 
-		fprintf(stderr, "cwd was %.*s and did not end with %.*s\n", static_cast<s32>(cwd_chars), cwd, static_cast<s32>(invocation->check_cwd.suffix.count()), invocation->check_cwd.suffix.begin());
+		fprintf(stderr, "cwd was %.*s and did not end with %.*s\n", static_cast<s32>(cwd_chars), cwd, static_cast<s32>(invocation->cmd.check_cwd.suffix.count()), invocation->cmd.check_cwd.suffix.begin());
 
 		minos::exit_process(2);
 	}
 
 	case InvocationType::Shm:
 	{
-		byte* const mem = static_cast<byte*>(minos::shm_reserve(invocation->shm.handle, invocation->shm.reserve_offset, invocation->shm.reserve_bytes));
+		byte* const mem = static_cast<byte*>(minos::shm_reserve(invocation->cmd.shm.handle, invocation->cmd.shm.reserve_offset, invocation->cmd.shm.reserve_bytes));
 
 		if (mem == nullptr)
 			minos::exit_process(2);
 
 		minos::Access access;
 
-		if (invocation->shm.write_value == 0)
+		if (invocation->cmd.shm.write_value == 0)
 			access = minos::Access::Read;
 		else
 			access = minos::Access::Read | minos::Access::Write;
 
-		if (!minos::shm_commit(mem + invocation->shm.commit_offset, access, invocation->shm.commit_bytes))
+		if (!minos::shm_commit(mem + invocation->cmd.shm.commit_offset, access, invocation->cmd.shm.commit_bytes))
 			minos::exit_process(3);
 
-		if (mem[invocation->shm.read_offset] != invocation->shm.read_value)
+		if (mem[invocation->cmd.shm.read_offset] != invocation->cmd.shm.read_value)
 			minos::exit_process(4);
 
-		if (invocation->shm.write_value != 0)
+		if (invocation->cmd.shm.write_value != 0)
 		{
-			mem[invocation->shm.write_offset] = static_cast<byte>(invocation->shm.write_value);
+			mem[invocation->cmd.shm.write_offset] = static_cast<byte>(invocation->cmd.shm.write_value);
 
-			if (mem[invocation->shm.write_offset] != static_cast<byte>(invocation->shm.write_value))
+			if (mem[invocation->cmd.shm.write_offset] != static_cast<byte>(invocation->cmd.shm.write_value))
 				minos::exit_process(5);
 		}
 
