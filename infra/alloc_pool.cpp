@@ -71,17 +71,3 @@ void* alloc_from_pool(AllocPool* pool, u32 bytes, u32 alignment) noexcept
 
 	return reinterpret_cast<byte*>(pool) + alloc_begin;
 }
-
-void clear(AllocPool* pool, u32 max_remaining_commit) noexcept
-{
-	pool->used = 0;
-
-	max_remaining_commit = next_multiple(max_remaining_commit, pool->commit_increment);
-
-	if (pool->commit > max_remaining_commit)
-	{
-		minos::mem_decommit(pool + max_remaining_commit, max_remaining_commit - pool->commit);
-
-		pool->commit = max_remaining_commit;
-	}
-}
