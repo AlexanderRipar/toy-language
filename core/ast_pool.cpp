@@ -85,7 +85,7 @@ static void set_flags(AstPool* asts) noexcept
 // Create a linked list modelling a preorder traversal of all nodes.
 static u32 build_traversal_list(AstPool* asts) noexcept
 {
-	sreg depth = -1;
+	s32 depth = -1;
 
 	u32 recursively_last_child = static_cast<u32>(AstBuilderToken::NO_CHILDREN);
 
