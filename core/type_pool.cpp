@@ -3,6 +3,7 @@
 #include "../infra/hash.hpp"
 #include "../infra/container/index_map.hpp"
 #include "../infra/container/reserved_heap.hpp"
+#include "../infra/container/reserved_vec.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -212,6 +213,8 @@ struct TypePool
 	IndexMap<DeduplicatedTypeInit, DeduplicatedTypeInfo> dedup;
 
 	ReservedHeap<MIN_STRUCTURE_SIZE_LOG2, MAX_STRUCTURE_SIZE_LOG2> structures;
+
+	ReservedVec<u64> scratch;
 
 	MutRange<byte> memory;
 };
@@ -495,12 +498,102 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 
 		const CompositeType* const to_attach = reinterpret_cast<const CompositeType*>(to->attach);
 
-		u32 rank = 0;
+		const u32 required_seen_qwords = to_attach->member_count / 64 + 63;
+	
+		u64* seen_member_bits = static_cast<u64*>(types->scratch.reserve(required_seen_qwords));
 
+		memset(seen_member_bits, 0, required_seen_qwords * sizeof(u64));
+
+		u32 to_rank = 0;
+
+		// Check whether all members in `from` have a corresponding non-global
+		// member in `to` of a type they can be converted to.
 		for (u32 i = 0; i != from_attach->member_count; ++i)
 		{
-			// TODO: Implement member-by-member comparison
+			const CommonMemberData* const from_member = member_at(from_attach, i);
+
+			const CommonMemberData* to_member;
+
+			if (from_member->name == IdentifierId::INVALID)
+			{
+				// Get next non-global member, or return `false` if there is no
+				// such member.
+				while (true)
+				{
+					if (to_attach->member_count <= to_rank)
+					{
+						types->scratch.pop_by(required_seen_qwords);
+
+						return false;
+					}
+
+					to_member = member_at(to_attach, to_rank);
+
+					if (!to_member->is_global)
+						break;
+
+					to_rank += 1;
+				}
+			}
+			else
+			{
+				u16 found_rank;
+
+				if (!find_member_by_name(to_attach, from_member->name, &found_rank, &to_member))
+				{
+					types->scratch.pop_by(required_seen_qwords);
+
+					return false;
+				}
+
+				if (to_member->is_global)
+				{
+					types->scratch.pop_by(required_seen_qwords);
+
+					return false;
+				}
+
+				to_rank = found_rank;
+			}
+
+			ASSERT_OR_IGNORE(!from_member->has_pending_type && from_member->value.complete == GlobalValueId::INVALID);
+
+			if (to_member->has_pending_type)
+				TODO("Implement implicit convertability check from composite literal to incomplete type");
+
+			if (!type_can_implicitly_convert_from_to(types, from_member->type.complete, to_member->type.complete))
+			{
+				types->scratch.pop_by(required_seen_qwords);
+
+				return false;
+			}
+
+			seen_member_bits[to_rank >> 6] |= static_cast<u64>(1) << (to_rank & 63);
+
+			to_rank += 1;
 		}
+
+		// Check whether all members of `to` that are not contained in `from`
+		// have a default value.
+		for (u32 i = 0; i != to_attach->member_count; ++i)
+		{
+			if ((seen_member_bits[i >> 6] & (static_cast<u64>(1) << (i & 63))) != 0)
+				continue;
+
+			const CommonMemberData* const to_member = member_at(to_attach, i);
+
+			if (to_member->is_global)
+				continue;
+
+			if (to_member->value.complete == GlobalValueId::INVALID)
+			{
+				types->scratch.pop_by(required_seen_qwords);
+
+				return false;
+			}
+		}
+
+		types->scratch.pop_by(required_seen_qwords);
 
 		return true;
 	}
@@ -961,12 +1054,16 @@ TypePool* create_type_pool(HandlePool* alloc) noexcept
 		  16,   4,   1,   1,
 	};
 
+	static constexpr u32 SCRATCH_CAPACITY = static_cast<u32>(1) << 16;
+
+	static constexpr u32 SCRATCH_COMMIT_INCREMENT = static_cast<u32>(1) << 12;
+
 	u64 structures_size = 0;
 
 	for (u32 i = 0; i != array_count(STRUCTURES_CAPACITIES); ++i)
 		structures_size += static_cast<u64>(STRUCTURES_CAPACITIES[i]) << (i + MIN_STRUCTURE_SIZE_LOG2);
 
-	byte* const memory = static_cast<byte*>(minos::mem_reserve(structures_size));
+	byte* const memory = static_cast<byte*>(minos::mem_reserve(structures_size + SCRATCH_CAPACITY));
 
 	if (memory == nullptr)
 		panic("Could not reserve memory for TypePool (0x%X).\n", minos::last_error());
@@ -974,6 +1071,7 @@ TypePool* create_type_pool(HandlePool* alloc) noexcept
 	TypePool* const types = alloc_handle_from_pool<TypePool>(alloc);
 	types->dedup.init(1 << 21, 1 << 8, 1 << 20, 1 << 10);
 	types->structures.init({ memory, structures_size }, Range{ STRUCTURES_CAPACITIES }, Range{ STRUCTURES_COMMITS });
+	types->scratch.init({ memory + structures_size, SCRATCH_CAPACITY }, SCRATCH_COMMIT_INCREMENT);
 	types->memory = { memory, structures_size };
 
 	// Reserve `0` as `TypeId::INVALID`.
