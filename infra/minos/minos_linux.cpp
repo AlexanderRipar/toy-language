@@ -27,17 +27,6 @@
 #include <signal.h>
 #include <dirent.h>
 
-// TODO: Remove
-#if COMPILER_CLANG
-	#pragma clang diagnostic push
-	#pragma clang diagnostic ignored "-Wunused-parameter" // unused parameter
-#elif COMPILER_GCC
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wunused-parameter" // unused parameter
-#else
-	#error("Unsupported compiler")
-#endif
-
 
 
 struct Mutex
@@ -1041,7 +1030,7 @@ bool minos::thread_wait_timeout(ThreadHandle handle, u32 milliseconds, u32* opt_
 	return true;
 }
 
-bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_mode, NewMode new_mode, AccessPattern pattern, const CompletionInitializer* opt_completion, bool inheritable, FileHandle* out) noexcept
+bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_mode, NewMode new_mode, AccessPattern pattern, const CompletionInitializer* opt_completion, [[maybe_unused]] bool inheritable, FileHandle* out) noexcept
 {
 	if (filepath.count() > PATH_MAX)
 		return false;
@@ -1500,7 +1489,7 @@ static s32 syscall_pidfd_open(pid_t pid, u32 flags) noexcept
 	return static_cast<s32>(syscall(SYS_pidfd_open, pid, flags));
 }
 
-bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_line, Range<char8> working_directory, Range<GenericHandle> inherited_handles, bool inheritable, ProcessHandle* out) noexcept
+bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_line, Range<char8> working_directory, Range<GenericHandle> inherited_handles, [[maybe_unused]] bool inheritable, ProcessHandle* out) noexcept
 {
 	const pid_t parent_pid = getpid();
 
@@ -1651,7 +1640,7 @@ bool minos::process_wait_timeout(ProcessHandle handle, u32 milliseconds, u32* op
 	return process_wait_impl(handle, &ts, opt_out_result);
 }
 
-bool minos::shm_create(Access access, u64 bytes, ShmHandle* out) noexcept
+bool minos::shm_create([[maybe_unused]] Access access, u64 bytes, ShmHandle* out) noexcept
 {
 	const s32 fd = memfd_create("minos_memfd", MFD_CLOEXEC);
 
@@ -2168,14 +2157,5 @@ u64 minos::exact_timestamp_ticks_per_second() noexcept
 {
 	return static_cast<u64>(1'000'000'000);
 }
-
-// TODO: Remove
-#if COMPILER_CLANG
-	#pragma clang diagnostic pop
-#elif COMPILER_GCC
-#pragma GCC diagnostic pop
-#else
-	#error("Unknown compiler")
-#endif
 
 #endif
