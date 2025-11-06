@@ -18,12 +18,12 @@ struct alignas(8) Closure
 	TypeId type_id;
 
 	#if COMPILER_GCC
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	alignas(8) byte attach[];
 	#if COMPILER_GCC
-	#pragma GCC diagnostic pop
+		#pragma GCC diagnostic pop
 	#endif
 };
 

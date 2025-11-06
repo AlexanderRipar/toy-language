@@ -140,12 +140,12 @@ struct alignas(8) TypeStructure
 	};
 
 	#if COMPILER_GCC
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	alignas(8) byte attach[];
 	#if COMPILER_GCC
-	#pragma GCC diagnostic pop
+		#pragma GCC diagnostic pop
 	#endif
 };
 
@@ -525,12 +525,12 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 		}
 
 		#if COMPILER_GCC
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Wimplicit-fallthrough" // this statement may fall through
+			#pragma GCC diagnostic push
+			#pragma GCC diagnostic ignored "-Wimplicit-fallthrough" // this statement may fall through
 		#endif
 	}
 		#if COMPILER_GCC
-		#pragma GCC diagnostic pop
+			#pragma GCC diagnostic pop
 		#endif
 
 	// Fallthrough from `ArrayLiteral` to `Array`.

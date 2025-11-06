@@ -16,12 +16,12 @@ struct alignas(8) IdentifierEntry
 	u8 m_attachment;
 
 	#if COMPILER_GCC
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	char8 m_chars[];
 	#if COMPILER_GCC
-	#pragma GCC diagnostic pop
+		#pragma GCC diagnostic pop
 	#endif
 
 	static constexpr u32 stride() noexcept

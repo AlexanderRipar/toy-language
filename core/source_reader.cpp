@@ -32,12 +32,12 @@ struct SourceFileByPathEntry
 	u32 id_entry_index;
 
 	#if COMPILER_GCC
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	char8 path[];
 	#if COMPILER_GCC
-	#pragma GCC diagnostic pop
+		#pragma GCC diagnostic pop
 	#endif
 
 	static constexpr u32 stride() noexcept

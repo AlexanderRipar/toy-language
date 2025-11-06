@@ -30,12 +30,12 @@ struct ScopeMap
 	bool next_outer_closes;
 
 	#if COMPILER_GCC
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	u64 occupied_bits[];
 	#if COMPILER_GCC
-	#pragma GCC diagnostic pop
+		#pragma GCC diagnostic pop
 	#endif
 
 	// IdentifierId names[];
