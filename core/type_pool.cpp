@@ -58,7 +58,6 @@ struct alignas(8) CommonMemberData
 		#if COMPILER_CLANG
 		#pragma clang diagnostic push
 		#pragma clang diagnostic ignored "-Wnested-anon-types" // anonymous types declared in an anonymous union are an extension
-		#pragma clang diagnostic ignored "-Wgnu-anonymous-struct" // anonymous structs are a GNU extension
 		#elif COMPILER_GCC
 		#pragma GCC diagnostic push
 		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ prohibits anonymous structs

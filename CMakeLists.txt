@@ -83,7 +83,8 @@ function(set_common_target_options NAME)
 			-Wall
 			-Wpedantic
 			-Wextra
-			-Wno-c99-extensions # flexible array members are a C99 feature
+			-Wno-c99-extensions       # flexible array members are a C99 feature
+			-Wno-gnu-anonymous-struct # anonymous structs are a GNU extension
 			-g
 		)
 	else()
