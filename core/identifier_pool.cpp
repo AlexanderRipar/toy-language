@@ -15,17 +15,12 @@ struct alignas(8) IdentifierEntry
 
 	u8 m_attachment;
 
-	#if COMPILER_CLANG
-	#pragma clang diagnostic push
-	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
-	#elif COMPILER_GCC
+	#if COMPILER_GCC
 	#pragma GCC diagnostic push
 	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	char8 m_chars[];
-	#if COMPILER_CLANG
-	#pragma clang diagnostic pop
-	#elif COMPILER_GCC
+	#if COMPILER_GCC
 	#pragma GCC diagnostic pop
 	#endif
 

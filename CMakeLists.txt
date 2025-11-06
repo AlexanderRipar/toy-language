@@ -71,13 +71,23 @@ function(set_common_target_options NAME)
 			/wd4611 # interaction between '_setjmp' and C++ object destruction is non-portable
 			"$<$<NOT:$<CONFIG:Debug>>:/Zi>"
 		)
-	else()
+	elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
 		target_compile_options(${NAME} PRIVATE
 			-Wall
 			-Wpedantic
 			-Wextra
 			-g
 		)
+	elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
+		target_compile_options(${NAME} PRIVATE
+			-Wall
+			-Wpedantic
+			-Wextra
+			-Wno-c99-extensions # flexible array members are a C99 feature
+			-g
+		)
+	else()
+		message(FATAL_ERROR "Unknown compiler id ${CMAKE_CXX_COMPILER_ID}")
 	endif()
 endfunction()
 

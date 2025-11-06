@@ -17,17 +17,12 @@ struct alignas(8) Closure
 
 	TypeId type_id;
 
-	#if COMPILER_CLANG
-	#pragma clang diagnostic push
-	#pragma clang diagnostic ignored "-Wc99-extensions" // flexible array members are a C99 feature
-	#elif COMPILER_GCC
+	#if COMPILER_GCC
 	#pragma GCC diagnostic push
 	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	alignas(8) byte attach[];
-	#if COMPILER_CLANG
-	#pragma clang diagnostic pop
-	#elif COMPILER_GCC
+	#if COMPILER_GCC
 	#pragma GCC diagnostic pop
 	#endif
 };
