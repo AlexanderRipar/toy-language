@@ -68,6 +68,7 @@ function(set_common_target_options NAME)
 			/W4
 			/wd4200 # nonstandard extension used: zero-sized array in struct/union
 			/wd4201 # nonstandard extension used: nameless struct/union
+			/wd4611 # interaction between '_setjmp' and C++ object destruction is non-portable
 			"$<$<NOT:$<CONFIG:Debug>>:/Zi>"
 		)
 	else()

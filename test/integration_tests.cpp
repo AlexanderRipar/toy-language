@@ -13,10 +13,6 @@ static void run_integration_test(Range<char8> filepath, bool is_std, bool expect
 
 	jmp_buf error_buf;
 
-	#if COMPILER_MSVC
-		#pragma warning(push)
-		#pragma warning(disable: 4611) // C4611: interaction between '_setjmp' and C++ object destruction is non-portable
-	#endif
 	if (setjmp(error_buf) == 0)
 	{
 		set_error_handling_context(core.errors, &error_buf);
@@ -29,9 +25,6 @@ static void run_integration_test(Range<char8> filepath, bool is_std, bool expect
 	{
 		TEST_EQUAL(expect_failure, true);
 	}
-	#if COMPILER_MSVC
-	#pragma warning(pop)
-	#endif
 
 	release_core_data(&core);
 
