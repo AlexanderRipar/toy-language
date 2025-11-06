@@ -2886,9 +2886,9 @@ static void parse_file(Parser* parser) noexcept
 
 
 
-Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept
+Parser* create_parser(HandlePool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept
 {
-	Parser* const parser = static_cast<Parser*>(alloc_from_pool(pool, sizeof(Parser), alignof(Parser)));
+	Parser* const parser = static_cast<Parser*>(alloc_handle_from_pool(pool, sizeof(Parser), alignof(Parser)));
 
 	parser->builder = asts;
 	parser->lexer.u8_type_id = type_create_numeric(types, TypeTag::Integer, NumericType{ 8, false });

@@ -990,7 +990,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 
 
 
-TypePool* create_type_pool(AllocPool* alloc) noexcept
+TypePool* create_type_pool(HandlePool* alloc) noexcept
 {
 	static constexpr u32 STRUCTURES_CAPACITIES[MAX_STRUCTURE_SIZE_LOG2 - MIN_STRUCTURE_SIZE_LOG2 + 1] = {
 		131072, 65536, 65536, 32768, 16384,
@@ -1012,7 +1012,7 @@ TypePool* create_type_pool(AllocPool* alloc) noexcept
 	if (memory == nullptr)
 		panic("Could not reserve memory for TypePool (0x%X).\n", minos::last_error());
 
-	TypePool* const types = static_cast<TypePool*>(alloc_from_pool(alloc, sizeof(TypePool), alignof(TypePool)));
+	TypePool* const types = static_cast<TypePool*>(alloc_handle_from_pool(alloc, sizeof(TypePool), alignof(TypePool)));
 	types->dedup.init(1 << 21, 1 << 8, 1 << 20, 1 << 10);
 	types->structures.init({ memory, structures_size }, Range{ STRUCTURES_CAPACITIES }, Range{ STRUCTURES_COMMITS });
 	types->memory = { memory, structures_size };

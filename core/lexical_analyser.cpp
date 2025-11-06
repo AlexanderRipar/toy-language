@@ -509,7 +509,7 @@ static void resolve_names_root(LexicalAnalyser* lex, AstNode* root) noexcept
 
 
 
-LexicalAnalyser* create_lexical_analyser(AllocPool* alloc, IdentifierPool* identifiers, AstPool* asts, ErrorSink* errors) noexcept
+LexicalAnalyser* create_lexical_analyser(HandlePool* alloc, IdentifierPool* identifiers, AstPool* asts, ErrorSink* errors) noexcept
 {
 	static constexpr u32 SCOPE_POOL_CAPACITIES[MAX_SCOPE_MAP_SIZE_LOG2 - MIN_SCOPE_MAP_SIZE_LOG2 + 1] = {
 		MAX_AST_DEPTH     , MAX_AST_DEPTH    , MAX_AST_DEPTH    , MAX_AST_DEPTH / 2, MAX_AST_DEPTH / 2 ,
@@ -533,7 +533,7 @@ LexicalAnalyser* create_lexical_analyser(AllocPool* alloc, IdentifierPool* ident
 	if (memory == nullptr)
 		panic("Could not reserve memory for LexicalAnalyser (0x%X).\n", minos::last_error());
 
-	LexicalAnalyser* const lex = static_cast<LexicalAnalyser*>(alloc_from_pool(alloc, sizeof(LexicalAnalyser), alignof(LexicalAnalyser)));
+	LexicalAnalyser* const lex = static_cast<LexicalAnalyser*>(alloc_handle_from_pool(alloc, sizeof(LexicalAnalyser), alignof(LexicalAnalyser)));
 	lex->scope_pool.init({ memory, scope_pool_size }, Range{ SCOPE_POOL_CAPACITIES }, Range{ SCOPE_POOL_COMMITS });
 	lex->scopes_top = -1;
 	lex->identifiers = identifiers;

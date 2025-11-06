@@ -280,9 +280,9 @@ static SourceLocation source_location_from_source_file_and_source_id(SourceReade
 
 
 
-SourceReader* create_source_reader(AllocPool* pool) noexcept
+SourceReader* create_source_reader(HandlePool* pool) noexcept
 {
-	SourceReader* const reader = static_cast<SourceReader*>(alloc_from_pool(pool, sizeof(SourceReader), alignof(SourceReader)));
+	SourceReader* const reader = static_cast<SourceReader*>(alloc_handle_from_pool(pool, sizeof(SourceReader), alignof(SourceReader)));
 
 	reader->known_files_by_path.init(1 << 24, 1 << 10, 1 << 23, 1 << 13);
 

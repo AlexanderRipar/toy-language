@@ -76,9 +76,9 @@ struct IdentifierPool
 	IndexMap<Range<char8>, IdentifierEntry> map;
 };
 
-IdentifierPool* create_identifier_pool(AllocPool* alloc) noexcept
+IdentifierPool* create_identifier_pool(HandlePool* alloc) noexcept
 {
-	IdentifierPool* const identifiers = static_cast<IdentifierPool*>(alloc_from_pool(alloc, sizeof(IdentifierPool), alignof(IdentifierPool)));
+	IdentifierPool* const identifiers = static_cast<IdentifierPool*>(alloc_handle_from_pool(alloc, sizeof(IdentifierPool), alignof(IdentifierPool)));
 
 	identifiers->map.init(1u << 24, 1u << 15, 1u << 31, 1u << 18);
 

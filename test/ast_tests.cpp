@@ -218,12 +218,12 @@ struct MockedPools
 {
 	AstPool* asts;
 
-	AllocPool* alloc;
+	HandlePool* alloc;
 };
 
 static MockedPools create_mocked_pools() noexcept
 {
-	AllocPool* const alloc = create_alloc_pool(4096, 4096);
+	HandlePool* const alloc = create_handle_pool(4096, 4096);
 
 	AstPool* const asts = create_ast_pool(alloc);
 
@@ -234,7 +234,7 @@ static void release_mocked_pools(MockedPools mock) noexcept
 {
 	release_ast_pool(mock.asts);
 
-	release_alloc_pool(mock.alloc);
+	release_handle_pool(mock.alloc);
 }
 
 

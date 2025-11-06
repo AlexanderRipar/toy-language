@@ -1294,9 +1294,9 @@ static void print_config_help_node(const Config* defaults, const ConfigHeader* n
 
 
 
-Config* create_config(AllocPool* alloc, Range<char8> filepath) noexcept
+Config* create_config(HandlePool* alloc, Range<char8> filepath) noexcept
 {
-	Config* const config = static_cast<Config*>(alloc_from_pool(alloc, sizeof(Config), alignof(Config)));
+	Config* const config = static_cast<Config*>(alloc_handle_from_pool(alloc, sizeof(Config), alignof(Config)));
 
 	*config = Config{};
 

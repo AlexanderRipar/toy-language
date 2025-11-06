@@ -52,9 +52,9 @@ struct alignas(u32) NameBinding
 // Pool for allocating other core handles.
 // Amortizes memory allocation overhead for fixed-size elements of the
 // structures referenced by handles.
-struct AllocPool;
+struct HandlePool;
 
-// Creates an `AllocPool`.
+// Creates a `HandlePool`.
 //
 // `reserve` indicates as the maximum cumulative size of all allocations made
 // from the pool. Note that the actual allocatable size may be lower due to
@@ -65,15 +65,15 @@ struct AllocPool;
 // requested.
 // Note that both parameters may be rounded up internally, e.g. to satisfy the
 // system's allocation granularity.
-AllocPool* create_alloc_pool(u32 reserve, u32 commit_increment) noexcept;
+HandlePool* create_handle_pool(u32 reserve, u32 commit_increment) noexcept;
 
 // Releases the memory held by `pool`.
 // This invalidates all handles that were previosly allocated from `pool`.
-void release_alloc_pool(AllocPool* pool) noexcept;
+void release_handle_pool(HandlePool* pool) noexcept;
 
 // Allocates a chunk of `bytes` bytes of memory from `pool`, satisfying the
 // alignment indicated `alignment`.
-void* alloc_from_pool(AllocPool* pool, u32 bytes, u32 alignment) noexcept;
+void* alloc_handle_from_pool(HandlePool* pool, u32 bytes, u32 alignment) noexcept;
 
 
 
@@ -140,7 +140,7 @@ struct Config
 
 // Parses the file at `filepath` into a `Config` struct that is allocated into
 // `alloc`. The file is expected to be in [TOML](https://toml.io) format.
-Config* create_config(AllocPool* alloc, Range<char8> filepath) noexcept;
+Config* create_config(HandlePool* alloc, Range<char8> filepath) noexcept;
 
 // Releases resources associated with a `Config` that was previously returned
 // from `create_config`.
@@ -195,7 +195,7 @@ enum class IdentifierId : u32
 // Creates an `IdentifierPool`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `IdentifierPool` can be freed using
 // `release_identifier_pool`.
-IdentifierPool* create_identifier_pool(AllocPool* alloc) noexcept;
+IdentifierPool* create_identifier_pool(HandlePool* alloc) noexcept;
 
 // Releases the resources associated with the given `IdentifierPool`.
 void release_identifier_pool(IdentifierPool* identifiers) noexcept;
@@ -1241,7 +1241,7 @@ inline constexpr AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
 // Creates an `AstPool`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `AstPool` can be freed using
 // `release_ast_pool`.
-AstPool* create_ast_pool(AllocPool* alloc) noexcept;
+AstPool* create_ast_pool(HandlePool* alloc) noexcept;
 
 // Releases the resources associated with the given `AstPool`.
 void release_ast_pool(AstPool* asts) noexcept;
@@ -1481,7 +1481,7 @@ struct PartialValueIterator
 	const void* subheader;
 };
 
-PartialValuePool* create_partial_value_pool(AllocPool* alloc) noexcept;
+PartialValuePool* create_partial_value_pool(HandlePool* alloc) noexcept;
 
 void release_partial_value_pool(PartialValuePool* partials) noexcept;
 
@@ -1602,7 +1602,7 @@ struct SourceLocation
 // Creates a `SourceReader`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `SourceReader` can be freed using
 // `release_source_reader`.
-SourceReader* create_source_reader(AllocPool* pool) noexcept;
+SourceReader* create_source_reader(HandlePool* pool) noexcept;
 
 // Releases the resources associated with the given ``SourceReader`.
 void release_source_reader(SourceReader* reader) noexcept;
@@ -1646,7 +1646,7 @@ struct ErrorSink;
 // Creates a `ErrorSink`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `ErrorSink` can be freed using
 // `release_error_sink`.
-ErrorSink* create_error_sink(AllocPool* pool, SourceReader* reader, IdentifierPool* identifiers, minos::FileHandle log_file) noexcept;
+ErrorSink* create_error_sink(HandlePool* pool, SourceReader* reader, IdentifierPool* identifiers, minos::FileHandle log_file) noexcept;
 
 // Releases the resources associated with the given `ErrorSink`.
 void release_error_sink(ErrorSink* errors) noexcept;
@@ -1716,7 +1716,7 @@ void print_error(const SourceLocation* location, const char8* format, va_list ar
 
 struct LexicalAnalyser;
 
-LexicalAnalyser* create_lexical_analyser(AllocPool* alloc, IdentifierPool* identifiers, AstPool* asts, ErrorSink* errors) noexcept;
+LexicalAnalyser* create_lexical_analyser(HandlePool* alloc, IdentifierPool* identifiers, AstPool* asts, ErrorSink* errors) noexcept;
 
 void release_lexical_analyser(LexicalAnalyser* lex) noexcept;
 
@@ -1747,7 +1747,7 @@ enum class GlobalValueId : u32
 // Creates a `GlobalValuePool`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `GlobalValuePool` can be freed using
 // `release_global_value_pool`.
-GlobalValuePool* create_global_value_pool(AllocPool* alloc) noexcept;
+GlobalValuePool* create_global_value_pool(HandlePool* alloc) noexcept;
 
 // Releases the resources associated with the given `GlobalValuePool`.
 void release_global_value_pool(GlobalValuePool* globals) noexcept;
@@ -2128,7 +2128,7 @@ struct SignatureType
 // Creates a `TypePool`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `TypePool` can be freed using
 // `release_type_pool`.
-TypePool* create_type_pool(AllocPool* alloc) noexcept;
+TypePool* create_type_pool(HandlePool* alloc) noexcept;
 
 // Releases the resources associated with the given `TypePool`.
 void release_type_pool(TypePool* types) noexcept;
@@ -2386,7 +2386,7 @@ struct ClosureInstance
 	MutRange<byte> values;
 };
 
-ClosurePool* create_closure_pool(AllocPool* alloc, TypePool* types) noexcept;
+ClosurePool* create_closure_pool(HandlePool* alloc, TypePool* types) noexcept;
 
 void release_closure_pool(ClosurePool* closures) noexcept;
 
@@ -2409,7 +2409,7 @@ struct Parser;
 // Creates a `Parser`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `Parser` can be freed using
 // `release_parser`.
-Parser* create_parser(AllocPool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept;
+Parser* create_parser(HandlePool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept;
 
 // Releases the resources associated with the given `Parser`.
 void release_parser(Parser* parser) noexcept;
@@ -2542,7 +2542,7 @@ enum class ArecId : s32
 // Creates an `Interpreter`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `Interpreter` can be freed using
 // `release_interpreter`.
-Interpreter* create_interpreter(AllocPool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, PartialValuePool* partials, ClosurePool* closures, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle type_log_file, minos::FileHandle ast_log_file, bool log_prelude) noexcept;
+Interpreter* create_interpreter(HandlePool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, PartialValuePool* partials, ClosurePool* closures, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle type_log_file, minos::FileHandle ast_log_file, bool log_prelude) noexcept;
 
 // Releases the resources associated with the given `Interpreter`.
 void release_interpreter(Interpreter* interp) noexcept;
@@ -2570,7 +2570,7 @@ const char8* tag_name(ValueKind type_kind) noexcept;
 
 struct CoreData
 {
-	AllocPool* alloc;
+	HandlePool* alloc;
 
 	Config* config;
 

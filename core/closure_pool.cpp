@@ -73,7 +73,7 @@ static Closure* closure_from_id(ClosurePool* closures, ClosureId id) noexcept
 
 
 
-ClosurePool* create_closure_pool(AllocPool* alloc, TypePool* types) noexcept
+ClosurePool* create_closure_pool(HandlePool* alloc, TypePool* types) noexcept
 {
 	static constexpr u32 CLOSURES_CAPACITIES[MAX_CLOSURE_SIZE_LOG2 - MIN_CLOSURE_SIZE_LOG2 + 1] = {
 		16384, 8192, 4096, 2048, 1024,
@@ -97,7 +97,7 @@ ClosurePool* create_closure_pool(AllocPool* alloc, TypePool* types) noexcept
 	if (memory == nullptr)
 		panic("Could not reserve memory for ClosurePool (0x%X).\n", minos::last_error());
 
-	ClosurePool* const closures = static_cast<ClosurePool*>(alloc_from_pool(alloc, sizeof(ClosurePool), alignof(ClosurePool)));
+	ClosurePool* const closures = static_cast<ClosurePool*>(alloc_handle_from_pool(alloc, sizeof(ClosurePool), alignof(ClosurePool)));
 	closures->types = types;
 	closures->closures.init({ memory, closures_size }, Range{ CLOSURES_CAPACITIES }, Range{ CLOSURES_COMMITS });
 	closures->memory = { memory, closures_size };

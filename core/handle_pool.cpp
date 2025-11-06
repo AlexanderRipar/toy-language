@@ -1,6 +1,6 @@
 #include "core.hpp"
 
-struct AllocPool
+struct HandlePool
 {
 	u32 reserve;
 
@@ -11,7 +11,7 @@ struct AllocPool
 	u32 used;
 };
 
-AllocPool* create_alloc_pool(u32 reserve, u32 commit_increment) noexcept
+HandlePool* create_handle_pool(u32 reserve, u32 commit_increment) noexcept
 {
 	ASSERT_OR_IGNORE(commit_increment != 0);
 
@@ -23,28 +23,28 @@ AllocPool* create_alloc_pool(u32 reserve, u32 commit_increment) noexcept
 
 	reserve = next_multiple(reserve, commit_increment);
 
-	AllocPool* const pool = static_cast<AllocPool*>(minos::mem_reserve(reserve));
+	HandlePool* const pool = static_cast<HandlePool*>(minos::mem_reserve(reserve));
 
 	if (pool == nullptr)
-		panic("Could not reserve %u bytes of memory for AllocPool (0x%X)\n", reserve, minos::last_error());
+		panic("Could not reserve %u bytes of memory for HandlePool (0x%X)\n", reserve, minos::last_error());
 
 	if (!minos::mem_commit(pool, commit_increment))
-		panic("Could not commit initial %u bytes of memory for AllocPool (0x%X)", commit_increment, minos::last_error());
+		panic("Could not commit initial %u bytes of memory for HandlePool (0x%X)", commit_increment, minos::last_error());
 
 	pool->reserve = reserve;
 	pool->commit_increment = commit_increment;
 	pool->commit = commit_increment;
-	pool->used = sizeof(AllocPool);
+	pool->used = sizeof(HandlePool);
 
 	return pool;
 }
 
-void release_alloc_pool(AllocPool* pool) noexcept
+void release_handle_pool(HandlePool* pool) noexcept
 {
 	minos::mem_unreserve(pool, pool->reserve);
 }
 
-void* alloc_from_pool(AllocPool* pool, u32 bytes, u32 alignment) noexcept
+void* alloc_handle_from_pool(HandlePool* pool, u32 bytes, u32 alignment) noexcept
 {
 	ASSERT_OR_IGNORE(is_pow2(alignment));
 
@@ -55,12 +55,12 @@ void* alloc_from_pool(AllocPool* pool, u32 bytes, u32 alignment) noexcept
 	if (new_pool_used > pool->commit)
 	{
 		if (new_pool_used > pool->reserve)
-		panic("Could not allocate %u bytes from AllocPool of size %u as it was already full\n", bytes, pool->reserve);
+		panic("Could not allocate %u bytes from HandlePool of size %u as it was already full\n", bytes, pool->reserve);
 
 		const u32 new_pool_commit = next_multiple(static_cast<u32>(new_pool_used), pool->commit_increment);
 
 		if (!minos::mem_commit(reinterpret_cast<byte*>(pool) + pool->commit, new_pool_commit - pool->commit))
-			panic("Could not commit %u bytes of memory at offset %u in AllocPool of size %u (0x%X)\n", new_pool_commit - pool->commit, pool->commit, pool->reserve, minos::last_error());
+			panic("Could not commit %u bytes of memory at offset %u in HandlePool of size %u (0x%X)\n", new_pool_commit - pool->commit, pool->commit, pool->reserve, minos::last_error());
 
 		pool->commit = new_pool_commit;
 	}

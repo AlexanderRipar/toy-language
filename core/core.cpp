@@ -18,7 +18,7 @@ static minos::FileHandle get_log_file(bool enable, Range<char8> filepath, minos:
 
 CoreData create_core_data(Range<char8> config_filepath) noexcept
 {
-	AllocPool* const alloc = create_alloc_pool(1u << 24, 1u << 18);
+	HandlePool* const alloc = create_handle_pool(1u << 24, 1u << 18);
 
 	Config* const config = create_config(alloc, config_filepath);
 
@@ -66,5 +66,5 @@ void release_core_data(CoreData* core) noexcept
 	release_lexical_analyser(core->lex);
 	release_interpreter(core->interp);
 
-	release_alloc_pool(core->alloc);
+	release_handle_pool(core->alloc);
 }

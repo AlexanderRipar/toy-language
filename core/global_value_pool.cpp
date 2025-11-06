@@ -16,7 +16,7 @@ struct GlobalValuePool
 	MutRange<byte> memory;
 };
 
-GlobalValuePool* create_global_value_pool(AllocPool* alloc) noexcept
+GlobalValuePool* create_global_value_pool(HandlePool* alloc) noexcept
 {
 	static constexpr u64 VALUES_SIZE = (static_cast<u64>(1) << 28) * sizeof(ValueInfo);
 
@@ -25,7 +25,7 @@ GlobalValuePool* create_global_value_pool(AllocPool* alloc) noexcept
 	if (memory == nullptr)
 		panic("Could not reserve memory for GlobalValuePool (0x%X).\n", minos::last_error());
 
-	GlobalValuePool* const globals = static_cast<GlobalValuePool*>(alloc_from_pool(alloc, sizeof(GlobalValuePool), alignof(GlobalValuePool)));
+	GlobalValuePool* const globals = static_cast<GlobalValuePool*>(alloc_handle_from_pool(alloc, sizeof(GlobalValuePool), alignof(GlobalValuePool)));
 	globals->values.init(MutRange<byte>{ memory, VALUES_SIZE }, 1 << 11);
 	globals->memory = MutRange<byte>{ memory, VALUES_SIZE };
 

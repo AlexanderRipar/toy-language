@@ -36,9 +36,9 @@ struct ErrorSink
 	jmp_buf* error_jmp_buf;
 };
 
-[[nodiscard]] ErrorSink* create_error_sink(AllocPool* alloc, SourceReader* reader, IdentifierPool* identifiers, minos::FileHandle log_file) noexcept
+[[nodiscard]] ErrorSink* create_error_sink(HandlePool* alloc, SourceReader* reader, IdentifierPool* identifiers, minos::FileHandle log_file) noexcept
 {
-	ErrorSink* const errors = static_cast<ErrorSink*>(alloc_from_pool(alloc, sizeof(ErrorSink), alignof(ErrorSink)));
+	ErrorSink* const errors = static_cast<ErrorSink*>(alloc_handle_from_pool(alloc, sizeof(ErrorSink), alignof(ErrorSink)));
 
 	FILE* log_file_ptr;
 

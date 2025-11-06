@@ -5,12 +5,12 @@ struct DummyTypePool
 {
 	TypePool* types;
 
-	AllocPool* alloc;
+	HandlePool* alloc;
 };
 
 static DummyTypePool create_dummy_types() noexcept
 {
-	AllocPool* const alloc = create_alloc_pool(1 << 12, 1 << 12);
+	HandlePool* const alloc = create_handle_pool(1 << 12, 1 << 12);
 
 	TypePool* const types = create_type_pool(alloc);
 
@@ -22,7 +22,7 @@ static void release_dummy_types(DummyTypePool dummy) noexcept
 {
 	release_type_pool(dummy.types);
 
-	release_alloc_pool(dummy.alloc);
+	release_handle_pool(dummy.alloc);
 }
 
 static MemberInfo dummy_member() noexcept
