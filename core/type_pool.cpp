@@ -92,27 +92,9 @@ using FullMemberData = UserMemberData;
 
 struct CompositeType
 {
-	#if COMPILER_GCC
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ prohibits anonymous structs
-	#endif
-	union
-	{
-		struct
-		{
-			u64 size;
-		} general;
-
-		struct
-		{
-			ArecId completion_arec_id;
-
-			u32 unused_;
-		} file;
-	};
-	#if COMPILER_GCC
-	#pragma GCC diagnostic pop
-	#endif
+	// If `disposition` is `TypeDisposition::File, this holds the file's root
+	// arec id. Otherwise it holds the composite type's size.
+	u64 size_or_file_completion_arec_id;
 
 	u64 stride;
 
@@ -304,9 +286,11 @@ static MemberInfo fill_member_info(const CompositeType* composite, const CommonM
 	{
 		ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::File && composite->member_stride == sizeof(FileMemberData));
 
+		const ArecId file_arec_id = static_cast<ArecId>(static_cast<u32>(composite->size_or_file_completion_arec_id));
+
 		info.offset = 0;
-		info.type_completion_arec_id = composite->file.completion_arec_id;
-		info.value_completion_arec_id = composite->file.completion_arec_id;
+		info.type_completion_arec_id = file_arec_id;
+		info.value_completion_arec_id = file_arec_id;
 	}
 
 	return info;
@@ -710,7 +694,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 		if (a_attach->disposition != b_attach->disposition
 		 || a_attach->stride != b_attach->stride
 		 || a_attach->align_log2 != b_attach->align_log2
-		 || a_attach->general.size != b_attach->general.size
+		 || a_attach->size_or_file_completion_arec_id != b_attach->size_or_file_completion_arec_id
 		 || a_attach->member_count != b_attach->member_count)
 		{
 			eq_state_pop(seen);
@@ -1068,7 +1052,7 @@ TypeId type_create_composite(TypePool* types, TypeTag tag, TypeId global_scope_t
 	const u64 reserve_size = sizeof(CompositeType) + static_cast<u64>(initial_member_capacity) * member_stride;
 
 	CompositeType composite{};
-	composite.general.size = 0;
+	composite.size_or_file_completion_arec_id = disposition == TypeDisposition::File ? static_cast<u32>(ArecId::INVALID) : 0;
 	composite.stride = 0;
 	composite.align_log2 = 0;
 	composite.is_open = true;
@@ -1080,9 +1064,6 @@ TypeId type_create_composite(TypePool* types, TypeTag tag, TypeId global_scope_t
 	composite.global_scope_type_id = global_scope_type_id;
 	composite.capacity = static_cast<u16>(next_pow2(sizeof(TypeStructure) + reserve_size, static_cast<u64>(32)));
 	composite.used = sizeof(TypeStructure) + sizeof(CompositeType);
-
-	if (disposition == TypeDisposition::File)
-		composite.file.completion_arec_id = ArecId::INVALID;
 
 	TypeStructure* const structure = make_structure(types, tag, range::from_object_bytes(&composite), reserve_size, distinct_source_id);
 
@@ -1110,9 +1091,9 @@ void type_set_composite_file_completion_arec_id(TypePool* types, TypeId type_id,
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
 
-	ASSERT_OR_IGNORE(composite->is_open && composite->member_count == 0 && composite->file.completion_arec_id == ArecId::INVALID);
+	ASSERT_OR_IGNORE(composite->is_open && composite->member_count == 0 && composite->size_or_file_completion_arec_id == static_cast<u32>(ArecId::INVALID));
 
-	composite->file.completion_arec_id = completion_arec_id;
+	composite->size_or_file_completion_arec_id = static_cast<u32>(completion_arec_id);
 }
 
 TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align, u64 stride) noexcept
@@ -1133,7 +1114,7 @@ TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align,
 	{
 		ASSERT_OR_IGNORE(align != 0 && is_pow2(align));
 
-		composite->general.size = size;
+		composite->size_or_file_completion_arec_id = size;
 		composite->align_log2 = count_trailing_zeros_assume_one(align);
 		composite->stride = stride;
 	}
@@ -1141,7 +1122,7 @@ TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align,
 	{
 		ASSERT_OR_IGNORE(size == 0 && align == 0 && stride == 0);
 
-		composite->stride = next_multiple(composite->general.size, static_cast<u64>(1) << composite->align_log2);
+		composite->stride = next_multiple(composite->size_or_file_completion_arec_id, static_cast<u64>(1) << composite->align_log2);
 	}
 
 	composite->is_open = false;
@@ -1203,11 +1184,11 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInfo init)
 	{
 		const TypeMetrics metrics = type_metrics_from_id(types, init.type.complete);
 
-		const u64 member_begin = next_multiple(composite->general.size, static_cast<u64>(metrics.align));
+		const u64 member_begin = next_multiple(composite->size_or_file_completion_arec_id, static_cast<u64>(metrics.align));
 
 		init.offset = member_begin;
 
-		composite->general.size = member_begin + metrics.size;
+		composite->size_or_file_completion_arec_id = member_begin + metrics.size;
 
 		const u8 align_log2 = count_trailing_zeros_assume_one(metrics.align);
 
@@ -1300,11 +1281,11 @@ void type_set_composite_member_info(TypePool* types, TypeId type_id, u16 rank, T
 		{
 			const TypeMetrics metrics = type_metrics_from_id(types, member_type_id);
 
-			const u64 member_begin = next_multiple(composite->general.size, static_cast<u64>(metrics.align));
+			const u64 member_begin = next_multiple(composite->size_or_file_completion_arec_id, static_cast<u64>(metrics.align));
 
 			static_cast<BlockOrSignatureOrLiteralMemberData*>(member)->offset = member_begin;
 
-			composite->general.size = member_begin + metrics.size;
+			composite->size_or_file_completion_arec_id = member_begin + metrics.size;
 
 			const u8 align_log2 = count_trailing_zeros_assume_one(metrics.align);
 
@@ -1589,8 +1570,8 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 		ASSERT_OR_IGNORE(!composite->is_open);
 
 		return composite->disposition == TypeDisposition::File
-			? TypeMetrics{ 0, 0, 1}
-			: TypeMetrics{ composite->general.size, composite->stride, static_cast<u32>(1) << composite->align_log2 };
+			? TypeMetrics{ 0, 0, 1 }
+			: TypeMetrics{ composite->size_or_file_completion_arec_id, composite->stride, static_cast<u32>(1) << composite->align_log2 };
 	}
 
 	case TypeTag::TailArray:
