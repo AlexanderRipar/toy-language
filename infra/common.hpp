@@ -49,7 +49,14 @@ using f64 = double;
 
 #ifdef NDEBUG
 	#define ASSERT_OR_IGNORE(x) do {} while (false)
-	#define ASSERT_UNREACHABLE do { 1 / 0; } while (false)
+
+	#if defined(COMPILER_MSVC)
+		#define ASSERT_UNREACHABLE __assume(false)
+	#elif defined(COMPILER_GCC) || defined(COMPILER_CLANG)
+		#define ASSERT_UNREACHABLE __builtin_unreachable()
+	#else
+		#error("Unsupported compiler")
+	#endif
 #else
 	NORETURN void assert_unreachable_helper(const char8* file, u32 line) noexcept;
 
