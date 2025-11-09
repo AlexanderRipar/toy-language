@@ -44,11 +44,9 @@ public:
 
 	void init(MutRange<byte> memory, Index commit_increment) noexcept
 	{
-		const u32 page_bytes = minos::page_bytes();
-
 		ASSERT_OR_IGNORE(reinterpret_cast<u64>(memory.begin()) % alignof(T) == 0 && memory.count() % sizeof(T) == 0);
 
-		ASSERT_OR_IGNORE((reinterpret_cast<u64>(memory.begin()) & (page_bytes - 1)) == 0 && (memory.count() & (page_bytes - 1)) == 0);
+		ASSERT_OR_IGNORE((reinterpret_cast<u64>(memory.begin()) & (minos::page_bytes() - 1)) == 0 && (memory.count() & (minos::page_bytes() - 1)) == 0);
 
 		ASSERT_OR_IGNORE(memory.count() >= commit_increment * sizeof(T));
 
