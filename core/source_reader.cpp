@@ -11,14 +11,7 @@
 
 static u32 hash_file_identity(u64 file_id, u32 device_id) noexcept
 {
-	struct
-	{
-		u64 file_id;
-
-		u32 device_id;
-	} id { file_id, device_id };
-
-	return fnv1a(range::from_object_bytes(&id));
+	return fnv1a_step(fnv1a(range::from_object_bytes(&file_id)), range::from_object_bytes(&device_id));
 }
 
 
