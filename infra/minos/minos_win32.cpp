@@ -1439,7 +1439,8 @@ u64 minos::exact_timestamp() noexcept
 {
 	LARGE_INTEGER result;
 
-	ASSERT_OR_IGNORE(QueryPerformanceCounter(&result) != 0);
+	if (!QueryPerformanceCounter(&result))
+		ASSERT_UNREACHABLE;
 
 	return result.QuadPart;
 }
@@ -1448,7 +1449,8 @@ u64 minos::exact_timestamp_ticks_per_second() noexcept
 {
 	LARGE_INTEGER result;
 
-	ASSERT_OR_IGNORE(QueryPerformanceFrequency(&result) != 0);
+	if (!QueryPerformanceFrequency(&result))
+		ASSERT_UNREACHABLE;
 
 	return result.QuadPart;
 }
