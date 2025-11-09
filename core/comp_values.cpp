@@ -339,14 +339,17 @@ bool bitwise_neg(u16 bits, MutRange<byte> dst, Range<byte> operand) noexcept
 
 void bitwise_not(u16 bits, MutRange<byte> dst, Range<byte> operand) noexcept
 {
-	ASSERT_OR_IGNORE(bits >= 8 && bits <= 64 && is_pow2(bits));
-
 	ASSERT_OR_IGNORE(dst.count() != 0
 	              && dst.count() == operand.count()
-	              && dst.count() == bits / 8);
+	              && dst.count() == (bits + 7) / 8);
 
-	for (u64 i = 0; i != dst.count(); ++i)
+	const u16 bytes = bits >> 3;
+
+	for (u64 i = 0; i != bytes; ++i)
 		dst[i] = ~operand[i];
+
+	if ((bits & 7) != 0)
+		dst[bytes] = operand[bytes] ^ static_cast<byte>((1 << bits) - 1);
 }
 
 
