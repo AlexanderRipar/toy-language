@@ -758,13 +758,11 @@ enum class AstFlag : u8
 
 	Definition_IsPub            = 0x01,
 	Definition_IsMut            = 0x02,
-	Definition_IsAuto           = 0x04,
-	Definition_HasType          = 0x08,
+	Definition_HasType          = 0x04,
 
 	Parameter_IsEval            = 0x01,
 	Parameter_IsMut             = 0x02,
-	Parameter_IsAuto            = 0x04,
-	Parameter_HasType           = 0x08,
+	Parameter_HasType           = 0x04,
 
 	If_HasWhere                 = 0x01,
 	If_HasElse                  = 0x02,
