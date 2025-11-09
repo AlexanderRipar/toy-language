@@ -2333,7 +2333,7 @@ const void* type_attachment_from_id_raw(TypePool* types, TypeId type_id) noexcep
 template<typename T>
 const T* type_attachment_from_id(TypePool* types, TypeId type_id) noexcept
 {
-	#ifndef _NDEBUG
+	#ifndef NDEBUG
 		const TypeTag tag = type_tag_from_id(types, type_id);
 
 		if constexpr (is_same_cpp_type<T, ReferenceType>)
@@ -2346,7 +2346,7 @@ const T* type_attachment_from_id(TypePool* types, TypeId type_id) noexcept
 			ASSERT_OR_IGNORE(tag == TypeTag::Func || tag == TypeTag::Builtin);
 		else
 			static_assert(false, "Unexpected attachment passed to type_attachment_from_id");
-	#endif // !_NDEBUG
+	#endif // !NDEBUG
 
 	return reinterpret_cast<const T*>(type_attachment_from_id_raw(types, type_id));
 }

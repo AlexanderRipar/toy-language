@@ -632,7 +632,7 @@ static void m_io_uring_unregister_file(minos::FileHandle file) noexcept
 
 	const u32 slot = (reinterpret_cast<u64>(file.m_rep) >> (32 + MINOS_IO_URING_MAX_COUNT_LOG2));
 
-#ifndef _NDEBUG
+#ifndef NDEBUG
 	const s32 expected_fd = static_cast<s32>(reinterpret_cast<u64>(file.m_rep));
 
 	const s32 actual_fd = ring->data.registered_files[slot - 1].exchange(-1, std::memory_order_release);
@@ -640,7 +640,7 @@ static void m_io_uring_unregister_file(minos::FileHandle file) noexcept
 	ASSERT_OR_IGNORE(expected_fd == actual_fd);
 #else
 	ring->data.registered_flies[slot - 1].store(-1, std::memory_order_release);
-#endif
+#endif // !NDEBUG
 
 	io_uring_files_update update;
 	update.offset = slot - 1;
