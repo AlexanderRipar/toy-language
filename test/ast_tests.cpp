@@ -15,6 +15,8 @@ static constexpr u8 NODE_QWORDS = sizeof(AstNode) / sizeof(u64);
 
 static void push_node(DummyTree* tree, AstNode node, u8 data_qwords = 0, const void* data = nullptr) noexcept
 {
+	ASSERT_OR_IGNORE(data_qwords == 0 || data != nullptr);
+
 	const u32 required_qwords = NODE_QWORDS + data_qwords;
 
 	if (tree->index + required_qwords > array_count(tree->nodes))
@@ -22,7 +24,8 @@ static void push_node(DummyTree* tree, AstNode node, u8 data_qwords = 0, const v
 
 	memcpy(tree->nodes + tree->index, &node, sizeof(AstNode));
 
-	memcpy(tree->nodes + tree->index + NODE_QWORDS, data, data_qwords * sizeof(u32));
+	if (data_qwords != 0)
+		memcpy(tree->nodes + tree->index + NODE_QWORDS, data, data_qwords * sizeof(u32));
 
 	tree->index += required_qwords;
 }
