@@ -308,33 +308,43 @@ void bitwise_shift_right(u16 bits, MutRange<byte> dst, Range<byte> lhs, u64 rhs,
 
 bool bitwise_neg(u16 bits, MutRange<byte> dst, Range<byte> operand) noexcept
 {
-	ASSERT_OR_IGNORE(bits >= 8 && bits <= 64 && is_pow2(bits));
-
 	ASSERT_OR_IGNORE(dst.count() != 0
 	              && dst.count() == operand.count()
-	              && dst.count() == bits / 8);
+	              && dst.count() == (bits + 7) / 8);
 
-	s64 value;
+	bitwise_not(bits, dst, operand);
 
-	if (bits == 8)
-		value = *reinterpret_cast<const s8*>(operand.begin());
-	else if (bits == 16)
-		value = *reinterpret_cast<const s16*>(operand.begin());
-	else if (bits == 32)
-		value = *reinterpret_cast<const s32*>(operand.begin());
-	else if (bits == 64)
-		value = *reinterpret_cast<const s64*>(operand.begin());
-	else
-		ASSERT_UNREACHABLE;
+	const u16 bytes = bits >> 3;
 
-	const s64 most_negative = static_cast<s64>(static_cast<u64>(1) << (bits - 1));
+	for (u16 i = 0; i != bytes; ++i)
+	{
+		const byte prev = dst[i];
 
-	if (value == most_negative)
-		return false;
+		dst[i] = prev + 1;
 
-	memcpy(dst.begin(), &value, dst.count());
+		if (prev != 0xFF)
+			return true;
+	}
 
-	return true;
+	if ((bits & 7) != 0)
+	{
+		const byte mask = (1 << (bits & 7)) - 1;
+
+		const byte prev = dst[bytes];
+
+		const byte prev_masked = prev & mask;
+
+		if (prev_masked != mask)
+		{
+			dst[bytes] = prev_masked | (prev & ~mask) + 1;
+
+			return true;
+		}
+	}
+
+	// We are dealing with the most negative representable number, which, in
+	// two's complement, doesn't have a positive equivalent. As such, fail.
+	return false;
 }
 
 void bitwise_not(u16 bits, MutRange<byte> dst, Range<byte> operand) noexcept
