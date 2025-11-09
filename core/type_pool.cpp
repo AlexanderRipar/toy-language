@@ -1093,7 +1093,7 @@ void release_type_pool(TypePool* types) noexcept
 
 
 
-TypeId type_create_simple(TypePool* types, TypeTag tag) noexcept
+TypeId type_create_simple([[maybe_unused]] TypePool* types, TypeTag tag) noexcept
 {
 	ASSERT_OR_IGNORE(tag >= TypeTag::Void && tag <= TypeTag::Divergent);
 
