@@ -639,7 +639,7 @@ static void m_io_uring_unregister_file(minos::FileHandle file) noexcept
 
 	ASSERT_OR_IGNORE(expected_fd == actual_fd);
 #else
-	ring->data.registered_flies[slot - 1].store(-1, std::memory_order_release);
+	ring->data.registered_files[slot - 1].store(-1, std::memory_order_release);
 #endif // !NDEBUG
 
 	io_uring_files_update update;
