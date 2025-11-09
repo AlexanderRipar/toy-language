@@ -56,7 +56,7 @@ extern bool g_ignore_debugbreaks;
 				fprintf(stderr, "%s%s%.*s:\n    Assertion `%s %s %s` failed\n    (%s:%u)\n", \
 					__FUNCTION__, \
 					test_name_.begin() == nullptr ? "" : "@", \
-					static_cast<s32>(test_name_.count()), test_name_.begin(), \
+					static_cast<s32>(test_name_.count()), test_name_.begin() == nullptr ? "" : test_name_.begin(), \
 					#a, #relation, #b, \
 					__FILE__, __LINE__ \
 				); \
@@ -71,7 +71,7 @@ extern bool g_ignore_debugbreaks;
 			if (!((function((a), (b), (c))) relation (expected))) { \
 				fprintf(stderr, "%s%s%.*s:\n    Assertion `%s(%s, %s, %s) %s %s` failed\n    (%s:%u)\n", \
 					__FUNCTION__, test_name_.begin() == nullptr ? "" : "@", \
-					static_cast<s32>(test_name_.count()), test_name_.begin(), \
+					static_cast<s32>(test_name_.count()), test_name_.begin() == nullptr ? "" : test_name_.begin(), \
 					#function, #a, #b, #c, #relation, #expected, \
 					__FILE__, __LINE__ \
 				); \
