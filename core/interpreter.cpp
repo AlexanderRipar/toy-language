@@ -4354,7 +4354,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		u16 max_shift_log2_ceil;
 
-		NumericType lhs_type;
+		NumericType lhs_type{};
 
 		if (lhs_type_tag == TypeTag::CompInteger)
 		{
