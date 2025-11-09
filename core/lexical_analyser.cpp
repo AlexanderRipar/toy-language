@@ -409,7 +409,7 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 			ScopeEntry entry;
 			entry.rank = scope->used;
-			entry.is_global = scope->is_global || has_flag(node, AstFlag::Definition_IsGlobal);
+			entry.is_global = scope->is_global;
 
 			scope = scope_map_add(lex, scope, attach->identifier_id, entry, node);
 

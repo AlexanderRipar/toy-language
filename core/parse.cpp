@@ -33,7 +33,6 @@ enum class Token : u8
 		KwdLet,               // let
 		KwdPub,               // pub
 		KwdMut,               // mut
-		KwdGlobal,            // global
 		KwdAuto,              // auto
 		KwdUnreachable,       // unreachable
 		KwdUndefined,         // undefined
@@ -139,7 +138,6 @@ const char8* token_name(Token token) noexcept
 		"let",
 		"pub",
 		"mut",
-		"global",
 		"auto",
 		"unreachable",
 		"undefined",
@@ -255,7 +253,6 @@ static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
 	range::from_literal_string("auto",        static_cast<u8>(Token::KwdAuto)),
 	range::from_literal_string("unreachable", static_cast<u8>(Token::KwdUnreachable)),
 	range::from_literal_string("undefined",   static_cast<u8>(Token::KwdUndefined)),
-	range::from_literal_string("global",      static_cast<u8>(Token::KwdGlobal)),
 	range::from_literal_string("return",      static_cast<u8>(Token::KwdReturn)),
 	range::from_literal_string("leave",       static_cast<u8>(Token::KwdLeave)),
 	range::from_literal_string("yield",       static_cast<u8>(Token::KwdYield)),
@@ -1626,7 +1623,6 @@ static bool is_definition_start(Token token) noexcept
 	return token == Token::KwdLet
 		|| token == Token::KwdPub
 		|| token == Token::KwdMut
-		|| token == Token::KwdGlobal
 		|| token == Token::KwdAuto;
 }
 
@@ -1671,16 +1667,6 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'mut' encountered more than once.\n");
 
 				flags |= AstFlag::Definition_IsMut;
-			}
-			else if (lexeme.token == Token::KwdGlobal)
-			{
-				if (is_param)
-					source_error(parser->lexer.errors, lexeme.source_id, "Function parameters must not be 'global'.\n");
-
-				if ((flags & AstFlag::Definition_IsGlobal) != AstFlag::EMPTY)
-					source_error(parser->lexer.errors, lexeme.source_id, "Definition modifier 'global' encountered more than once.\n");
-
-				flags |= AstFlag::Definition_IsGlobal;
 			}
 			else if (lexeme.token == Token::KwdAuto)
 			{

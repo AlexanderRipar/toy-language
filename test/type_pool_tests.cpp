@@ -31,7 +31,6 @@ static MemberInfo dummy_member() noexcept
 	member.name = static_cast<IdentifierId>(42);
 	member.type.complete = TypeId::INVALID;
 	member.value.complete = GlobalValueId::INVALID;
-	member.is_global = false;
 	member.is_pub = true;
 	member.is_mut = true;
 	member.has_pending_type = false;

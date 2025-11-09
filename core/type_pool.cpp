@@ -64,11 +64,9 @@ struct alignas(8) CommonMemberData
 
 	bool is_mut : 1;
 
-	bool is_global : 1;
-
 	bool is_comptime_known : 1;
 
-	bool unused_1_ : 2;
+	bool unused_1_ : 3;
 
 	u8 unused_2_[3];
 };
@@ -261,7 +259,6 @@ static MemberInfo fill_member_info(const CompositeType* composite, const CommonM
 	info.name = member->name;
 	info.is_pub = member->is_pub;
 	info.is_mut = member->is_mut;
-	info.is_global = member->is_global;
 	info.is_comptime_known = member->is_comptime_known;
 	info.has_pending_type = member->has_pending_type;
 	info.has_pending_value = member->has_pending_value;
@@ -516,37 +513,13 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 
 			if (from_member->name == IdentifierId::INVALID)
 			{
-				// Get next non-global member, or return `false` if there is no
-				// such member.
-				while (true)
-				{
-					if (to_attach->member_count <= to_rank)
-					{
-						types->scratch.pop_by(required_seen_qwords);
-
-						return false;
-					}
-
-					to_member = member_at(to_attach, to_rank);
-
-					if (!to_member->is_global)
-						break;
-
-					to_rank += 1;
-				}
+				to_member = member_at(to_attach, to_rank);
 			}
 			else
 			{
 				u16 found_rank;
 
 				if (!find_member_by_name(to_attach, from_member->name, &found_rank, &to_member))
-				{
-					types->scratch.pop_by(required_seen_qwords);
-
-					return false;
-				}
-
-				if (to_member->is_global)
 				{
 					types->scratch.pop_by(required_seen_qwords);
 
@@ -581,9 +554,6 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 				continue;
 
 			const CommonMemberData* const to_member = member_at(to_attach, i);
-
-			if (to_member->is_global)
-				continue;
 
 			if (to_member->value.complete == GlobalValueId::INVALID)
 			{
@@ -812,7 +782,6 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 			 || a_member->has_pending_value != b_member->has_pending_value
 			 || a_member->is_pub != b_member->is_pub
 			 || a_member->is_mut != b_member->is_mut
-			 || a_member->is_global != b_member->is_global
 			 || a_member->is_comptime_known != b_member->is_comptime_known
 			 || a_member->unused_1_ != b_member->unused_1_
 			 || a_member->unused_2_[0] != b_member->unused_2_[0]
@@ -1302,7 +1271,6 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInfo init)
 	raw_dst->has_pending_value = init.has_pending_value;
 	raw_dst->is_pub = init.is_pub;
 	raw_dst->is_mut = init.is_mut;
-	raw_dst->is_global = init.is_global;
 	raw_dst->is_comptime_known = init.is_comptime_known;
 	raw_dst->unused_1_ = {};
 	raw_dst->unused_2_[0] = {};
@@ -1312,7 +1280,6 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInfo init)
 	ASSERT_OR_IGNORE(composite->disposition != TypeDisposition::File
 	             || (init.has_pending_type
 	              && init.has_pending_value
-	              && init.is_global
 	              && init.type_completion_arec_id == ArecId::INVALID
 	              && init.value_completion_arec_id == ArecId::INVALID
 	              && init.offset == 0));

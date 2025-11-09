@@ -767,9 +767,6 @@ static IdentifierInfo identifier_info_from_global_member(Interpreter* interp, Ty
 
 static IdentifierInfo identifier_info_from_arec_and_member(Interpreter* interp, Arec* arec, MemberInfo member) noexcept
 {
-	if (member.is_global)
-		return identifier_info_from_global_member(interp, arec->type_id, member);
-
 	const u64 size = type_metrics_from_id(interp->types, member.type.complete).size;
 
 	if (size > UINT32_MAX)
@@ -803,7 +800,7 @@ static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name, 
 		if (!type_member_by_name(interp->types, instance->type_id, name, &member))
 			ASSERT_UNREACHABLE;
 
-		ASSERT_OR_IGNORE(!member.is_global && !member.has_pending_type);
+		ASSERT_OR_IGNORE(!member.has_pending_type);
 
 		const TypeMetrics metrics = type_metrics_from_id(interp->types, member.type.complete);
 
@@ -1076,7 +1073,6 @@ static MemberInfo delayed_member_from(Interpreter* interp, AstNode* definition) 
 	member_init.name = attach.identifier_id;
 	member_init.type.pending = is_some(info.type) ? id_from_ast_node(interp->asts, get_ptr(info.type)) : AstNodeId::INVALID;
 	member_init.value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
-	member_init.is_global = has_flag(definition, AstFlag::Definition_IsGlobal);
 	member_init.is_pub = has_flag(definition, AstFlag::Definition_IsPub);
 	member_init.is_mut = has_flag(definition, AstFlag::Definition_IsMut);
 	member_init.has_pending_type = true;
@@ -1193,27 +1189,16 @@ static void convert_composite_literal_to_composite(Interpreter* interp, const As
 				source_error(interp->errors, source_id_of(interp->asts, error_source), "Destination type of composite literal conversion has no member `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
 			}
 
-			if (dst_member.is_global)
-			{
-				const Range<char8> name = identifier_name_from_id(interp->identifiers, dst_member.name);
-
-				source_error(interp->errors, source_id_of(interp->asts, error_source), "Cannot initialize global member `%.*s` in composite initializer.\n", static_cast<s32>(name.count()), name.begin());
-			}
-
 			rank = dst_member.rank + 1;
 		}
 		else 
 		{
-			do
-			{
-				if (rank == dst_member_count)
-					source_error(interp->errors, source_id_of(interp->asts, error_source), "Too many members in composite literal to convert to destination type.\n");
+			if (rank == dst_member_count)
+				source_error(interp->errors, source_id_of(interp->asts, error_source), "Too many members in composite literal to convert to destination type.\n");
 
-				dst_member = type_member_by_rank(interp->types, dst->type_id, static_cast<u16>(rank));
+			dst_member = type_member_by_rank(interp->types, dst->type_id, static_cast<u16>(rank));
 
-				rank += 1;
-			}
-			while (dst_member.is_global);
+			rank += 1;
 		}
 
 		ASSERT_OR_IGNORE(!src_member.has_pending_type && !dst_member.has_pending_type);
@@ -1267,9 +1252,6 @@ static void convert_composite_literal_to_composite(Interpreter* interp, const As
 			continue;
 
 		MemberInfo member = type_member_by_rank(interp->types, dst->type_id, static_cast<u16>(i));
-
-		if (member.is_global)
-			continue;
 
 		if (member.has_pending_value)
 		{
@@ -1619,9 +1601,6 @@ static CompareResult compare(Interpreter* interp, TypeId common_type_id, Range<b
 			if (member.has_pending_type || member.has_pending_value)
 				source_error(interp->errors, source_id_of(interp->asts, error_source), "Tried comparing values of incomplete composite type.\n");
 
-			if (member.is_global)
-				continue;
-
 			const TypeMetrics metrics = type_metrics_from_id(interp->types, member.type.complete);
 
 			const Range<byte> lhs_member{ lhs.begin() + member.offset, metrics.size };
@@ -1755,8 +1734,6 @@ static EvalRst fill_spec_sized(Interpreter* interp, EvalSpec spec, const AstNode
 
 static EvalRst evaluate_global_member(Interpreter* interp, AstNode* node, EvalSpec spec, TypeId surrounding_type_id, MemberInfo member) noexcept
 {
-	ASSERT_OR_IGNORE(member.is_global);
-
 	if (complete_member(interp, surrounding_type_id, member))
 		member = type_member_by_rank(interp->types, surrounding_type_id, member.rank);
 
@@ -1784,8 +1761,6 @@ static EvalRst evaluate_global_member(Interpreter* interp, AstNode* node, EvalSp
 
 static EvalRst evaluate_local_member(Interpreter* interp, AstNode* node, EvalSpec spec, TypeId surrounding_type_id, MemberInfo member, MutRange<byte> lhs_value) noexcept
 {
-	ASSERT_OR_IGNORE(!member.is_global);
-
 	if (complete_member(interp, surrounding_type_id, member))
 		member = type_member_by_rank(interp->types, surrounding_type_id, member.rank);
 
@@ -2404,27 +2379,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 						source_error(interp->errors, source_id_of(interp->asts, node), "Target type of composite initializer does not have a member `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
 					}
 
-					if (member.is_global)
-					{
-						const Range<char8> name = identifier_name_from_id(interp->identifiers, member.name);
-
-						source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Cannot initialize global member `%.*s` in composite initializer.\n", static_cast<s32>(name.count()), name.begin());
-					}
-
 					rank = member.rank + 1;
 				}
 				else
 				{
-					do
-					{
-						if (rank == target_member_count)
-							source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Too many members in composite literal.\n");
+					if (rank == target_member_count)
+						source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Too many members in composite literal.\n");
 
-						member = type_member_by_rank(interp->types, spec.type_id, rank);
+					member = type_member_by_rank(interp->types, spec.type_id, rank);
 
-						rank += 1;
-					}
-					while (member.is_global);
+					rank += 1;
 				}
 
 				u64* const seen_members_elem = seen_members + (member.rank >> 6);
@@ -2475,9 +2439,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 				MemberInfo member = type_member_by_rank(interp->types, spec.type_id, static_cast<u16>(i));
 
-				if (member.is_global)
-					continue;
-
 				ASSERT_OR_IGNORE(!member.has_pending_type);
 
 				if (member.has_pending_value)
@@ -2516,7 +2477,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				member_init.name = names[i];
 				member_init.type.complete = values[i].type_id;
 				member_init.value.complete = GlobalValueId::INVALID;
-				member_init.is_global = false;
 				member_init.is_pub = false;
 				member_init.is_mut = false;
 				member_init.has_pending_type = false;
@@ -2547,7 +2507,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			{
 				const MemberInfo member = next(&it);
 
-				ASSERT_OR_IGNORE(!member.has_pending_type && !member.is_global);
+				ASSERT_OR_IGNORE(!member.has_pending_type);
 
 				const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member.type.complete);
 
@@ -2573,7 +2533,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		definition->name = attach.identifier_id;
 		definition->type.pending = is_some(info.type) ? id_from_ast_node(interp->asts, get_ptr(info.type)) : AstNodeId::INVALID;
 		definition->value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
-		definition->is_global = has_flag(node, AstFlag::Definition_IsGlobal);
 		definition->is_pub = has_flag(node, AstFlag::Definition_IsPub);
 		definition->is_mut = has_flag(node, AstFlag::Definition_IsMut);
 		definition->has_pending_type = true;
@@ -2611,9 +2570,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				if (is_none(info.value))
 					source_error(interp->errors, source_id_of(interp->asts, stmt), "Block-level definition must have a value.\n");
 
-				if (has_flag(stmt, AstFlag::Definition_IsGlobal))
-					source_error(interp->errors, source_id_of(interp->asts, stmt), "`global` is not (yet) supported on block-level definitions.\n");
-
 				if (has_flag(stmt, AstFlag::Definition_IsPub))
 					source_error(interp->errors, source_id_of(interp->asts, stmt), "`pub` is not supported on block-level definitions.\n");
 
@@ -2633,7 +2589,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 					member_init.name = attachment_of<AstDefinitionData>(stmt)->identifier_id;
 					member_init.type.complete = type_id;
 					member_init.value.complete = GlobalValueId::INVALID;
-					member_init.is_global = false;
 					member_init.is_pub = false;
 					member_init.is_mut = has_flag(stmt, AstFlag::Definition_IsMut);
 					member_init.has_pending_type = false;
@@ -2677,7 +2632,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 					member_init.name = attachment_of<AstDefinitionData>(stmt)->identifier_id;
 					member_init.type.complete = value_rst.success.type_id;
 					member_init.value.complete = GlobalValueId::INVALID;
-					member_init.is_global = false;
 					member_init.is_pub = false;
 					member_init.is_mut = has_flag(stmt, AstFlag::Definition_IsMut);
 					member_init.has_pending_type = false;
@@ -2927,7 +2881,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				source_error(interp->errors, source_id_of(interp->asts, param), "Exceeded maximum of 64 function parameters.\n");
 
 			MemberInfo param_member = delayed_member_from(interp, param);
-			param_member.is_global = false;
 			param_member.type_completion_arec_id = ArecId::INVALID;
 			param_member.value_completion_arec_id = ArecId::INVALID;
 
@@ -4543,10 +4496,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				source_error(interp->errors, source_id_of(interp->asts, node), "Left-hand-side of `.` has no member named `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
 			}
 
-			if (member.is_global)
-				rst = evaluate_global_member(interp, node, spec, lhs_rst.success.type_id, member);
-			else
-				rst = evaluate_local_member(interp, node, spec, lhs_rst.success.type_id, member, lhs_rst.success.bytes);
+			rst = evaluate_local_member(interp, node, spec, lhs_rst.success.type_id, member, lhs_rst.success.bytes);
 		}
 		else if (lhs_type_tag == TypeTag::Type)
 		{
@@ -4562,13 +4512,6 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				const Range<char8> name = identifier_name_from_id(interp->identifiers, attach.identifier_id);
 
 				source_error(interp->errors, source_id_of(interp->asts, node), "Left-hand-side of `.` has no member named `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
-			}
-
-			if (!member.is_global)
-			{
-				const Range<char8> name = identifier_name_from_id(interp->identifiers, attach.identifier_id);
-
-				source_error(interp->errors, source_id_of(interp->asts, node), "Member `%.*s` cannot be accessed through a type, as it is not global.\n", static_cast<s32>(name.count()), name.begin());
 			}
 
 			rst = evaluate_global_member(interp, node, spec, type_id, member);
@@ -5126,11 +5069,7 @@ static void type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file
 		if (node->tag != AstTag::Definition)
 			source_error(interp->errors, source_id_of(interp->asts, node), "Currently only definitions are supported on a file's top-level.\n");
 
-		if (has_flag(node, AstFlag::Definition_IsGlobal))
-			source_warning(interp->errors, source_id_of(interp->asts, node), "Redundant 'global' modifier. Top-level definitions are implicitly global.\n");
-
 		MemberInfo member = delayed_member_from(interp, node);
-		member.is_global = true;
 		member.type_completion_arec_id = ArecId::INVALID;
 		member.value_completion_arec_id = ArecId::INVALID;
 
@@ -5234,7 +5173,6 @@ static TypeId make_func_type_from_array(TypePool* types, TypeId return_type_id, 
 		member_init.name = params[i].name;
 		member_init.type.complete = params[i].type;
 		member_init.value.complete = GlobalValueId::INVALID;
-		member_init.is_global = false;
 		member_init.is_pub = false;
 		member_init.is_mut = false;
 		member_init.is_comptime_known = params[i].is_comptime_known;
@@ -5287,7 +5225,7 @@ static T get_builtin_arg(Interpreter* interp, Arec* arec, IdentifierId name) noe
 	if (!type_member_by_name(interp->types, arec->type_id, name, &member))
 		ASSERT_UNREACHABLE;
 
-	ASSERT_OR_IGNORE(!member.is_global && !member.has_pending_type);
+	ASSERT_OR_IGNORE(!member.has_pending_type);
 
 	const TypeMetrics metrics = type_metrics_from_id(interp->types, member.type.complete);
 
@@ -5480,7 +5418,6 @@ static void builtin_add_type_member(Interpreter* interp, Arec* arec, [[maybe_unu
 	member_init.value = definition.value;
 	member_init.is_pub = definition.is_pub;
 	member_init.is_mut = definition.is_mut;
-	member_init.is_global = definition.is_global;
 	member_init.has_pending_type = definition.has_pending_type;
 	member_init.has_pending_value = definition.has_pending_value;
 	member_init.is_comptime_known = false;

@@ -760,7 +760,6 @@ enum class AstFlag : u8
 	Definition_IsMut            = 0x02,
 	Definition_IsAuto           = 0x04,
 	Definition_HasType          = 0x08,
-	Definition_IsGlobal         = 0x10,
 
 	Parameter_IsEval            = 0x01,
 	Parameter_IsMut             = 0x02,
@@ -1995,10 +1994,6 @@ struct Definition
 
 	ArecId value_completion_arec_id;
 
-	// Whether the member is global. If this is `true`, the value of `offset`
-	// is undefined.
-	bool is_global : 1;
-
 	// Whether the member is public.
 	bool is_pub : 1;
 
@@ -2021,8 +2016,6 @@ struct MemberInfo
 	bool is_pub : 1;
 
 	bool is_mut : 1;
-
-	bool is_global : 1;
 
 	bool is_comptime_known : 1;
 

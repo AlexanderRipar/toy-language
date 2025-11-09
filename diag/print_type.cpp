@@ -132,12 +132,11 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 			{
 				const MemberInfo member = next(&it);
 
-				diag::buf_printf(ctx, "%s%*s%s%s%s",
+				diag::buf_printf(ctx, "%s%*s%s%s",
 					has_members ? "" : "\n",
 					(indent + 1) * 2, "",
 					member.is_pub ? "pub " : "",
-					member.is_mut ? "mut " : "",
-					member.is_global ? "global " : ""
+					member.is_mut ? "mut " : ""
 				);
 
 				if (member.name < IdentifierId::FirstNatural)
@@ -155,10 +154,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 					);
 				}
 
-				if (member.is_global)
-					diag::buf_printf(ctx, ":: ");
-				else
-					diag::buf_printf(ctx, "(%+" PRId64 ") :: ", member.offset);
+				diag::buf_printf(ctx, "(%+" PRId64 ") :: ", member.offset);
 
 				if (member.has_pending_type)
 				{

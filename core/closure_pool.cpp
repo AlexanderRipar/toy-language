@@ -124,7 +124,6 @@ ClosureBuilderId closure_add_value(ClosurePool* closures, ClosureBuilderId build
 	member_init.name = name;
 	member_init.type = value_type_id;
 	member_init.value.complete = GlobalValueId::INVALID;
-	member_init.is_global = false;
 	member_init.is_pub = false;
 	member_init.is_mut = false;
 	member_init.has_pending_type = false;
