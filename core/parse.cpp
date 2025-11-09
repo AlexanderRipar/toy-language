@@ -1634,7 +1634,7 @@ static AstBuilderToken parse_definition(Parser* parser, bool is_implicit, bool i
 
 	if (is_param && lexeme.token == Token::KwdEval)
 	{
-		flags |= AstFlag::Parameter_IsEval;
+		flags |= AstFlag::Definition_IsEval;
 
 		lexeme = next(&parser->lexer);
 	}
