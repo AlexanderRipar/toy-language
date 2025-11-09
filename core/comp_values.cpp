@@ -336,7 +336,7 @@ bool bitwise_neg(u16 bits, MutRange<byte> dst, Range<byte> operand) noexcept
 
 		if (prev_masked != mask)
 		{
-			dst[bytes] = prev_masked | (prev & ~mask) + 1;
+			dst[bytes] = (prev_masked | (prev & ~mask)) + 1;
 
 			return true;
 		}
