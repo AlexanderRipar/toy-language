@@ -794,11 +794,9 @@ void minos::mem_unreserve(void* ptr, u64 bytes) noexcept
 
 void minos::mem_decommit(void* ptr, u64 bytes) noexcept
 {
-	const u64 page_mask = page_bytes() - 1;
+	ASSERT_OR_IGNORE((reinterpret_cast<u64>(ptr) & (page_bytes() - 1)) == 0);
 
-	ASSERT_OR_IGNORE((reinterpret_cast<u64>(ptr) & page_mask) == 0);
-
-	ASSERT_OR_IGNORE((bytes & page_mask) == 0);
+	ASSERT_OR_IGNORE((bytes & (page_bytes() - 1)) == 0);
 
 	if (mprotect(ptr, bytes, PROT_NONE) != 0)
 		panic("mprotect(PROT_NONE) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
