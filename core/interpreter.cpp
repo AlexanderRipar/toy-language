@@ -692,7 +692,7 @@ static bool complete_member(Interpreter* interp, TypeId surrounding_type_id, Mem
 
 		AstNode* const type = ast_node_from_id(interp->asts, member.type.pending);
 
-		const EvalRst type_rst = evaluate(interp, type, EvalSpec{
+		[[maybe_unused]] const EvalRst type_rst = evaluate(interp, type, EvalSpec{
 			ValueKind::Value,
 			range::from_object_bytes_mut(&member_type_id),
 			type_create_simple(interp->types, TypeTag::Type)
@@ -717,7 +717,7 @@ static bool complete_member(Interpreter* interp, TypeId surrounding_type_id, Mem
 
 			new_member_value_id = alloc_global_value(interp->globals, metrics.size, metrics.align);
 
-			const EvalRst value_rst = evaluate(interp, value, EvalSpec{
+			[[maybe_unused]] const EvalRst value_rst = evaluate(interp, value, EvalSpec{
 				ValueKind::Value,
 				global_value_get_mut(interp->globals, new_member_value_id),
 				member_type_id
@@ -2039,7 +2039,7 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 
 			AstNode* const arg_value = ast_node_from_id(interp->asts, args[i]);
 
-			const EvalRst arg_rst = evaluate(interp, arg_value, EvalSpec{
+			[[maybe_unused]] const EvalRst arg_rst = evaluate(interp, arg_value, EvalSpec{
 				ValueKind::Value,
 				attach.mut_subrange(param.offset, param_metrics.size),
 				param.type.complete
@@ -2077,7 +2077,7 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 	{
 		AstNode* const return_type = ast_node_from_id(interp->asts, signature_type->return_type.partial_root);
 
-		EvalRst return_type_rst = evaluate(interp, return_type, EvalSpec{
+		[[maybe_unused]] EvalRst return_type_rst = evaluate(interp, return_type, EvalSpec{
 			ValueKind::Value,
 			range::from_object_bytes_mut(&return_type_id),
 			type_create_simple(interp->types, TypeTag::Type)
@@ -2621,7 +2621,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				{
 					TypeId type_id;
 
-					const EvalRst type_rst = evaluate(interp, get_ptr(info.type), EvalSpec{
+					[[maybe_unused]] const EvalRst type_rst = evaluate(interp, get_ptr(info.type), EvalSpec{
 						ValueKind::Value,
 						range::from_object_bytes_mut(&type_id),
 						type_create_simple(interp->types, TypeTag::Type)
@@ -2659,7 +2659,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 					MutRange<byte> attach = arec_attach(interp, block_arec);
 
-					const EvalRst value_rst = evaluate(interp, get_ptr(info.value), EvalSpec{
+					[[maybe_unused]] const EvalRst value_rst = evaluate(interp, get_ptr(info.value), EvalSpec{
 						ValueKind::Value,
 						attach.mut_subrange(member.offset, metrics.size),
 						type_id
@@ -3593,16 +3593,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			AstNode* const body = ast_node_from_id(interp->asts, static_cast<AstNodeId>(callee_value.body_ast_node_id));
 
-			const EvalRst call_rst = evaluate(interp, body, EvalSpec{
+			[[maybe_unused]] const EvalRst call_rst = evaluate(interp, body, EvalSpec{
 				ValueKind::Value,
 				temp_location,
 				rst.success.type_id
 			});
 
+			ASSERT_OR_IGNORE(call_rst.tag == EvalTag::Success);
+
 			if (callee_value.closure_id != ClosureId::INVALID)
 				interp->active_closures.pop_by(1);
-
-			ASSERT_OR_IGNORE(call_rst.tag == EvalTag::Success);
 		}
 
 		if (needs_conversion)
@@ -5169,7 +5169,7 @@ static void type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file
 
 			TypeId member_type_id;
 
-			const EvalRst member_type_rst = evaluate(interp, type, EvalSpec{
+			[[maybe_unused]] const EvalRst member_type_rst = evaluate(interp, type, EvalSpec{
 				ValueKind::Value,
 				range::from_object_bytes_mut(&member_type_id),
 				type_create_simple(interp->types, TypeTag::Type)
