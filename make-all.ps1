@@ -24,14 +24,24 @@ if ($IsLinux)
 
 	$specs = @(
 		@{
-			jobname = 'build-clang-linux'
-			command = 'cmake -S . -B build/clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang' +
-			      ' && cmake --build build/clang --target ' + $targets + ' 2>&1'
+			jobname = 'build-clang-linux-deb'
+			command = 'wsl -- cmake -S . -B build/clang-deb -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=debug' +
+			           ' `&`& cmake --build build/clang-deb --target ' + $targets + ' 2`>`&1'
 		},
 		@{
-			jobname = 'build-gcc-linux'
-			command = 'cmake -S . -B build/gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc' +
-			      ' && cmake --build build/gcc --target ' + $targets + ' 2>&1'
+			jobname = 'build-clang-linux-rel'
+			command = 'wsl -- cmake -S . -B build/clang-rel -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=release' +
+			           ' `&`& cmake --build build/clang-rel --target ' + $targets + ' 2`>`&1'
+		},
+		@{
+			jobname = 'build-gcc-linux-deb'
+			command = 'wsl -- cmake -S . -B build/gcc-deb -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc  -DCMAKE_BUILD_TYPE=debug' +
+			           ' `&`& cmake --build build/gcc-deb --target ' + $targets + ' 2`>`&1'
+		},
+		@{
+			jobname = 'build-gcc-linux-rel'
+			command = 'wsl -- cmake -S . -B build/gcc-rel -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc  -DCMAKE_BUILD_TYPE=release' +
+			           ' `&`& cmake --build build/gcc-rel --target ' + $targets + ' 2`>`&1'
 		}
 	)
 }
@@ -39,19 +49,34 @@ elseif ($IsWindows)
 {
 	$specs = @(
 		@{
-			jobname = 'build-clang-linux'
-			command = 'wsl -- cmake -S . -B build/clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang' +
-			           ' `&`& cmake --build build/clang --target ' + $targets + ' 2`>`&1'
+			jobname = 'build-clang-linux-deb'
+			command = 'wsl -- cmake -S . -B build/clang-deb -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=debug' +
+			           ' `&`& cmake --build build/clang-deb --target ' + $targets + ' 2`>`&1'
 		},
 		@{
-			jobname = 'build-gcc-linux'
-			command = 'wsl -- cmake -S . -B build/gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc' +
-			           ' `&`& cmake --build build/gcc --target ' + $targets + ' 2`>`&1'
+			jobname = 'build-clang-linux-rel'
+			command = 'wsl -- cmake -S . -B build/clang-rel -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=release' +
+			           ' `&`& cmake --build build/clang-rel --target ' + $targets + ' 2`>`&1'
 		},
 		@{
-			jobname = 'build-msvc-windows'
-			command = 'cmake -S . -B build/msvc -DCMAKE_CXX_COMPILER=msvc -DCMAKE_C_COMPILER=msvc' +
-			      ' && cmake --build build/msvc --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
+			jobname = 'build-gcc-linux-deb'
+			command = 'wsl -- cmake -S . -B build/gcc-deb -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc  -DCMAKE_BUILD_TYPE=debug' +
+			           ' `&`& cmake --build build/gcc-deb --target ' + $targets + ' 2`>`&1'
+		},
+		@{
+			jobname = 'build-gcc-linux-rel'
+			command = 'wsl -- cmake -S . -B build/gcc-rel -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc  -DCMAKE_BUILD_TYPE=release' +
+			           ' `&`& cmake --build build/gcc-rel --target ' + $targets + ' 2`>`&1'
+		},
+		@{
+			jobname = 'build-msvc-windows-deb'
+			command = 'cmake -S . -B build/msvc-deb -DCMAKE_CXX_COMPILER=msvc -DCMAKE_C_COMPILER=msvc' +
+			      ' && cmake --build build/msvc-deb --config debug --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
+		},
+		@{
+			jobname = 'build-msvc-windows-rel'
+			command = 'cmake -S . -B build/msvc-rel -DCMAKE_CXX_COMPILER=msvc -DCMAKE_C_COMPILER=msvc' +
+			      ' && cmake --build build/msvc-rel --config release --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
 		}
 	)
 }
