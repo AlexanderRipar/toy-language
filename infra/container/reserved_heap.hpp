@@ -104,7 +104,7 @@ public:
 			if (!minos::mem_commit(head, m_commit_increments[category]))
 				panic("Failed to allocate additional storage for %u byte entries in ReservedHead (0x%X).\n", static_cast<u32>(1) << (category + MinSizeLog2), minos::last_error());
 
-			alloc_begin = static_cast<byte*>(m_memory) + m_commit_heads[category];
+			alloc_begin = static_cast<byte*>(head);
 
 			m_commit_heads[category] += m_commit_increments[category];
 

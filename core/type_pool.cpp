@@ -48,38 +48,51 @@ struct EqualityState
 	HolotypeInfo delayed[256];
 };
 
-struct alignas(8) CommonMemberData
+struct DelayableTypeIdAndFlags
 {
-	DelayableTypeId type;
+	u32 delayable_type_id_bits : 28;
+
+	u32 is_pending : 1;
+
+	u32 is_pub : 1;
+
+	u32 is_mut : 1;
+
+	u32 is_eval : 1;
+};
+
+// Used for Block and Composite Literal types.
+struct alignas(8) InternalMemberData2
+{
+	DelayableTypeIdAndFlags type_and_flags;
+
+	u32 offset;
+};
+
+struct alignas(8) FileMemberData2
+{
+	DelayableTypeIdAndFlags type_and_flags;
+
+	DelayableValueId value;
+};
+
+struct alignas(8) ParameterListMemberData2
+{	
+	DelayableTypeIdAndFlags type_and_flags;
+
+	u32 offset;
 
 	DelayableValueId value;
 
-	IdentifierId name;
-
-	bool has_pending_type : 1;
-
-	bool has_pending_value : 1;
-
-	bool is_pub : 1;
-
-	bool is_mut : 1;
-
-	bool is_comptime_known : 1;
-
-	bool unused_1_ : 3;
-
-	u8 unused_2_[3];
+	u32 unused_ = 0;
 };
 
-struct alignas(8) FileMemberData : CommonMemberData {};
-
-struct alignas(8) BlockOrSignatureOrLiteralMemberData : CommonMemberData
+struct alignas(8) UserMemberData2
 {
-	s64 offset;
-};
+	DelayableTypeIdAndFlags type_and_flags;
 
-struct alignas(8) UserMemberData : CommonMemberData
-{
+	DelayableValueId value;
+
 	s64 offset;
 
 	ArecId type_completion_arec_id;
@@ -87,35 +100,42 @@ struct alignas(8) UserMemberData : CommonMemberData
 	ArecId value_completion_arec_id;
 };
 
-using FullMemberData = UserMemberData;
-
-struct CompositeType
+struct CompositeMembers
 {
-	// If `disposition` is `TypeDisposition::File, this holds the file's root
-	// arec id. Otherwise it holds the composite type's size.
-	u64 size_or_file_completion_arec_id;
-
-	u64 stride;
-
-	u8 align_log2;
-
-	bool is_open : 1;
-
-	bool is_fixed : 1;
-
-	u16 member_count;
-
-	u16 incomplete_member_count;
-
 	TypeDisposition disposition;
 
 	u8 member_stride;
 
+	u32 count;
+
+	IdentifierId* names;
+
+	void* members;
+};
+
+struct CompositeType
+{
+	u64 size;
+
+	u64 stride;
+
+	u8 align_log2 : 6;
+
+	u8 is_open : 1;
+
+	u8 is_fixed : 1;
+
+	TypeDisposition disposition;
+
+	u16 member_used;
+
+	u16 member_capacity;
+
+	u16 alloc_size;
+
+	ArecId file_completion_arec_id;
+
 	TypeId global_scope_type_id;
-
-	u16 capacity;
-
-	u16 used;
 
 	// IdentifierId[header->member_count];
 
@@ -206,6 +226,13 @@ struct alignas(8) DeduplicatedTypeInfo
 	}
 };
 
+struct CompositeTypeAllocInfo
+{
+	u16 alloc_size;
+
+	u16 member_capacity;
+};
+
 struct TypePool
 {
 	IndexMap<DeduplicatedTypeInit, DeduplicatedTypeInfo> dedup;
@@ -220,29 +247,85 @@ struct TypePool
 
 
 
-static CommonMemberData* member_at(CompositeType* composite, u32 index) noexcept
+static u8 members_stride_for(TypeDisposition disposition) noexcept
 {
-	byte* const base = reinterpret_cast<byte*>(composite + 1);
+	static constexpr u8 MEMBER_STRIDES[] = {
+		0,
+		sizeof(InternalMemberData2),
+		sizeof(FileMemberData2),
+		sizeof(ParameterListMemberData2),
+		sizeof(UserMemberData2),
+	};
 
-	return reinterpret_cast<CommonMemberData*>(base + composite->member_stride * index);
+	ASSERT_OR_IGNORE(disposition == TypeDisposition::Internal || disposition == TypeDisposition::File || disposition == TypeDisposition::ParameterList || disposition == TypeDisposition::User);
+
+	return MEMBER_STRIDES[static_cast<u8>(disposition)];
 }
 
-static const CommonMemberData* member_at(const CompositeType* composite, u32 index) noexcept
+static CompositeTypeAllocInfo composite_type_alloc_info(TypeDisposition disposition, u64 member_count) noexcept
 {
-	return member_at(const_cast<CompositeType*>(composite), index);
-}
+	static constexpr u16 MEMBER_CAPACITIES[3][11] = {
+		{ 2, 6, 18, 38, 82, 166, 338, 678, 1362, 2726, 5458, },
+		{ 0, 4, 10, 22, 48, 100, 202, 406,  816, 1636, 3274, },
+		{ 0, 2,  6, 16, 34,  70, 144, 290,  582, 1168, 2338, },
+	};
 
-static bool find_member_by_name(const CompositeType* composite, IdentifierId name, u16* out_rank, const CommonMemberData** out_data) noexcept
-{
-	for (u32 i = 0; i != composite->member_count; ++i)
+	const u8 member_stride = members_stride_for(disposition);
+
+	ASSERT_OR_IGNORE(member_stride == 8 || member_stride == 16 || member_stride == 24);
+
+	const u8 stride_index = (member_stride >> 3) - 1;
+
+	for (u32 i = 0; i != array_count(MEMBER_CAPACITIES[0]); ++i)
 	{
-		const CommonMemberData* const member = member_at(composite, i);
+		const u16 member_capacity = MEMBER_CAPACITIES[stride_index][i];
 
-		if (member->name == name)
+		if (member_capacity >= member_count)
+		{
+			const u16 alloc_size = static_cast<u16>(64 << i);
+
+			CompositeTypeAllocInfo rst;
+			rst.alloc_size = static_cast<u16>(alloc_size - sizeof(TypeStructure));
+			rst.member_capacity = static_cast<u16>(member_capacity);
+
+			return rst;
+		}
+	}
+
+	ASSERT_UNREACHABLE;
+}
+
+static CompositeMembers composite_members(CompositeType* composite) noexcept
+{
+	CompositeMembers result;
+	result.disposition = composite->disposition;
+	result.member_stride = members_stride_for(composite->disposition);
+	result.count = composite->member_used;
+	result.names = reinterpret_cast<IdentifierId*>(composite + 1);
+	result.members = result.names + composite->member_capacity;
+
+	return result;
+}
+
+static CompositeMembers composite_members(const CompositeType* composite) noexcept
+{
+	return composite_members(const_cast<CompositeType*>(composite));
+}
+
+static void* member_at(const CompositeMembers* members, u32 index) noexcept
+{
+	return static_cast<byte*>(members->members) + static_cast<u64>(members->member_stride) * index;
+}
+
+static bool find_member_by_name(const CompositeMembers* members, IdentifierId name, u16* out_rank, const void** out_data) noexcept
+{
+	for (u32 i = 0; i != members->count; ++i)
+	{
+		if (members->names[i] == name)
 		{
 			*out_rank = static_cast<u16>(i);
 
-			*out_data = member;
+			*out_data = member_at(members, i);
 
 			return true;
 		}
@@ -251,49 +334,137 @@ static bool find_member_by_name(const CompositeType* composite, IdentifierId nam
 	return false;
 }
 
-static MemberInfo fill_member_info(const CompositeType* composite, const CommonMemberData* member, u16 rank) noexcept
+static MemberInfo fill_member_info(const CompositeType* composite, u16 rank, const void* data) noexcept
 {
-	MemberInfo info{};
-	info.type = member->type;
-	info.value = member->value;
-	info.name = member->name;
-	info.is_pub = member->is_pub;
-	info.is_mut = member->is_mut;
-	info.is_comptime_known = member->is_comptime_known;
-	info.has_pending_type = member->has_pending_type;
-	info.has_pending_value = member->has_pending_value;
-	info.rank = rank;
+	MemberInfo rst{};
 
-	if (composite->member_stride >= sizeof(UserMemberData))
+	switch (composite->disposition)
 	{
-		const UserMemberData* const full = static_cast<const UserMemberData*>(member);
+	case TypeDisposition::Internal:
+	{
+		const InternalMemberData2* const member = static_cast<const InternalMemberData2*>(data);
 
-		info.offset = full->offset;
-		info.type_completion_arec_id = full->type_completion_arec_id;
-		info.value_completion_arec_id = full->value_completion_arec_id;
+		rst.type.complete = static_cast<TypeId>(member->type_and_flags.delayable_type_id_bits);
+		rst.value.complete = GlobalValueId::INVALID;
+		rst.is_pub = member->type_and_flags.is_pub;
+		rst.is_mut = member->type_and_flags.is_mut;
+		rst.is_eval = member->type_and_flags.is_eval;
+		rst.is_pending = member->type_and_flags.is_pending;
+		rst.rank = rank;
+		rst.type_completion_arec_id = composite->file_completion_arec_id;
+		rst.value_completion_arec_id = composite->file_completion_arec_id;
+		rst.offset = static_cast<s64>(static_cast<u64>(member->offset));
+
+		return rst;
 	}
-	else if (composite->member_stride >= sizeof(BlockOrSignatureOrLiteralMemberData))
+
+	case TypeDisposition::File:
 	{
-		ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::Block || composite->disposition == TypeDisposition::Signature || composite->disposition == TypeDisposition::Literal);
+		const FileMemberData2* const member = static_cast<const FileMemberData2*>(data);
 
-		const BlockOrSignatureOrLiteralMemberData* const full = static_cast<const BlockOrSignatureOrLiteralMemberData*>(member);
+		rst.type.complete = static_cast<TypeId>(member->type_and_flags.delayable_type_id_bits);
+		rst.value = member->value;
+		rst.is_pub = member->type_and_flags.is_pub;
+		rst.is_mut = member->type_and_flags.is_mut;
+		rst.is_eval = member->type_and_flags.is_eval;
+		rst.is_pending = member->type_and_flags.is_pending;
+		rst.rank = rank;
+		rst.type_completion_arec_id = composite->file_completion_arec_id;
+		rst.value_completion_arec_id = composite->file_completion_arec_id;
+		rst.offset = 0;
 
-		info.offset = full->offset;
-		info.type_completion_arec_id = ArecId::INVALID;
-		info.value_completion_arec_id = ArecId::INVALID;
+		return rst;
+	}
+
+	case TypeDisposition::ParameterList:
+	{
+		const ParameterListMemberData2* const member = static_cast<const ParameterListMemberData2*>(data);
+
+		rst.type.complete = static_cast<TypeId>(member->type_and_flags.delayable_type_id_bits);
+		rst.value = member->value;
+		rst.is_pub = member->type_and_flags.is_pub;
+		rst.is_mut = member->type_and_flags.is_mut;
+		rst.is_eval = member->type_and_flags.is_eval;
+		rst.is_pending = member->type_and_flags.is_pending;
+		rst.rank = rank;
+		rst.type_completion_arec_id = ArecId::INVALID;
+		rst.value_completion_arec_id = ArecId::INVALID;
+		rst.offset = static_cast<s64>(static_cast<u64>(member->offset));
+
+		return rst;
+	}
+
+	case TypeDisposition::User:
+	{
+		const UserMemberData2* const member = static_cast<const UserMemberData2*>(data);
+
+		rst.type.complete = static_cast<TypeId>(member->type_and_flags.delayable_type_id_bits);
+		rst.value = member->value;
+		rst.is_pub = member->type_and_flags.is_pub;
+		rst.is_mut = member->type_and_flags.is_mut;
+		rst.is_eval = member->type_and_flags.is_eval;
+		rst.is_pending = member->type_and_flags.is_pending;
+		rst.rank = rank;
+		rst.type_completion_arec_id = member->type_completion_arec_id;
+		rst.value_completion_arec_id = member->value_completion_arec_id;
+		rst.offset = static_cast<s64>(static_cast<u64>(member->offset));
+
+		return rst;
+	}
+
+	case TypeDisposition::INVALID:
+		; // Fallthrough to unreachable
+	}
+
+	ASSERT_UNREACHABLE;
+}
+
+static s64 member_offset(TypeDisposition disposition, const void* data) noexcept
+{
+	if (disposition == TypeDisposition::Internal)
+	{
+		return static_cast<s64>(static_cast<u64>(static_cast<const InternalMemberData2*>(data)->offset));
+	}
+	else if (disposition == TypeDisposition::File)
+	{
+		return 0;
+	}
+	else if (disposition == TypeDisposition::ParameterList)
+	{
+		return static_cast<s64>(static_cast<u64>(static_cast<const ParameterListMemberData2*>(data)->offset));
 	}
 	else
 	{
-		ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::File && composite->member_stride == sizeof(FileMemberData));
+		ASSERT_OR_IGNORE(disposition == TypeDisposition::User);
 
-		const ArecId file_arec_id = static_cast<ArecId>(static_cast<u32>(composite->size_or_file_completion_arec_id));
-
-		info.offset = 0;
-		info.type_completion_arec_id = file_arec_id;
-		info.value_completion_arec_id = file_arec_id;
+		return static_cast<const UserMemberData2*>(data)->offset;
 	}
+}
 
-	return info;
+static GlobalValueId member_value(TypeDisposition disposition, const void* data) noexcept
+{
+	if (disposition == TypeDisposition::Internal)
+	{
+		return GlobalValueId::INVALID;
+	}
+	else if (disposition == TypeDisposition::File)
+	{
+		ASSERT_OR_IGNORE(!static_cast<const FileMemberData2*>(data)->type_and_flags.is_pending);
+
+		return static_cast<const FileMemberData2*>(data)->value.complete;
+	}
+	else if (disposition == TypeDisposition::ParameterList)
+	{
+		ASSERT_OR_IGNORE(!static_cast<const ParameterListMemberData2*>(data)->type_and_flags.is_pending);
+
+		return static_cast<const ParameterListMemberData2*>(data)->value.complete;
+	}
+	else
+	{
+		ASSERT_OR_IGNORE(disposition == TypeDisposition::User && !static_cast<const UserMemberData2*>(data)->type_and_flags.is_pending);
+
+		return static_cast<const UserMemberData2*>(data)->value.complete;
+	}
 }
 
 static TypeId id_from_structure(const TypePool* types, const TypeStructure* structure) noexcept
@@ -495,7 +666,9 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 
 		const CompositeType* const to_attach = reinterpret_cast<const CompositeType*>(to->attach);
 
-		const u32 required_seen_qwords = to_attach->member_count / 64 + 63;
+		ASSERT_OR_IGNORE(from_attach->disposition == TypeDisposition::Internal && to_attach->disposition == TypeDisposition::User);
+
+		const u32 required_seen_qwords = to_attach->member_used / 64 + 63;
 	
 		u64* seen_member_bits = static_cast<u64*>(types->scratch.reserve(required_seen_qwords));
 
@@ -503,23 +676,31 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 
 		u32 to_rank = 0;
 
+		const CompositeMembers from_members = composite_members(from_attach);
+
+		const CompositeMembers to_members = composite_members(to_attach);
+
 		// Check whether all members in `from` have a corresponding non-global
 		// member in `to` of a type they can be converted to.
-		for (u32 i = 0; i != from_attach->member_count; ++i)
+		for (u32 i = 0; i != from_attach->member_used; ++i)
 		{
-			const CommonMemberData* const from_member = member_at(from_attach, i);
+			InternalMemberData2* const from_member = static_cast<InternalMemberData2*>(member_at(&from_members, i));
 
-			const CommonMemberData* to_member;
+			const IdentifierId from_name = from_members.names[i];
 
-			if (from_member->name == IdentifierId::INVALID)
+			const UserMemberData2* to_member;
+
+			if (from_name == IdentifierId::INVALID)
 			{
-				to_member = member_at(to_attach, to_rank);
+				to_member = static_cast<const UserMemberData2*>(member_at(&to_members, to_rank));
 			}
 			else
 			{
 				u16 found_rank;
 
-				if (!find_member_by_name(to_attach, from_member->name, &found_rank, &to_member))
+				const void* raw_to_member;
+
+				if (!find_member_by_name(&to_members, from_name, &found_rank, &raw_to_member))
 				{
 					types->scratch.pop_by(required_seen_qwords);
 
@@ -527,14 +708,18 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 				}
 
 				to_rank = found_rank;
+
+				to_member = static_cast<const UserMemberData2*>(raw_to_member);
 			}
 
-			ASSERT_OR_IGNORE(!from_member->has_pending_type && from_member->value.complete == GlobalValueId::INVALID);
-
-			if (to_member->has_pending_type)
+			if (to_member->type_and_flags.is_pending)
 				TODO("Implement implicit convertability check from composite literal to incomplete type");
 
-			if (!type_can_implicitly_convert_from_to(types, from_member->type.complete, to_member->type.complete))
+			const TypeId from_member_type_id = static_cast<TypeId>(from_member->type_and_flags.delayable_type_id_bits);
+
+			const TypeId to_member_type_id = static_cast<TypeId>(to_member->type_and_flags.delayable_type_id_bits);
+
+			if (!type_can_implicitly_convert_from_to(types, from_member_type_id, to_member_type_id))
 			{
 				types->scratch.pop_by(required_seen_qwords);
 
@@ -548,12 +733,12 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 
 		// Check whether all members of `to` that are not contained in `from`
 		// have a default value.
-		for (u32 i = 0; i != to_attach->member_count; ++i)
+		for (u32 i = 0; i != to_attach->member_used; ++i)
 		{
 			if ((seen_member_bits[i >> 6] & (static_cast<u64>(1) << (i & 63))) != 0)
 				continue;
 
-			const CommonMemberData* const to_member = member_at(to_attach, i);
+			const UserMemberData2* const to_member = static_cast<const UserMemberData2*>(member_at(&to_members, i));
 
 			if (to_member->value.complete == GlobalValueId::INVALID)
 			{
@@ -752,67 +937,51 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 
 		const CompositeType* const b_attach = reinterpret_cast<CompositeType*>(b->attach);
 
-		ASSERT_OR_IGNORE(a_attach->disposition != TypeDisposition::Block && b_attach->disposition != TypeDisposition::Block);
-
 		if (a_attach->disposition != b_attach->disposition
 		 || a_attach->stride != b_attach->stride
 		 || a_attach->align_log2 != b_attach->align_log2
-		 || a_attach->size_or_file_completion_arec_id != b_attach->size_or_file_completion_arec_id
-		 || a_attach->member_count != b_attach->member_count)
+		 || a_attach->size != b_attach->size
+		 || a_attach->member_used != b_attach->member_used
+		 || a_attach->file_completion_arec_id != b_attach->file_completion_arec_id)
 		{
 			eq_state_pop(seen);
 
 			return TypeEq::Unequal;
 		}
 
-		ASSERT_OR_IGNORE(a_attach->member_stride == b_attach->member_stride);
-
 		TypeEq result = TypeEq::Equal;
 
-		for (u16 rank = 0; rank != a_attach->member_count; ++rank)
-		{
-			const CommonMemberData* const a_member = member_at(a_attach, rank);
-			
-			const CommonMemberData* const b_member = member_at(b_attach, rank);
+		const CompositeMembers a_members = composite_members(a_attach);
 
-			// Include unused reserved members in the comparison to allow
-			// comparing entire 64-bit values.
-			if (a_member->name != b_member->name
-			 || a_member->has_pending_type != b_member->has_pending_type
-			 || a_member->has_pending_value != b_member->has_pending_value
-			 || a_member->is_pub != b_member->is_pub
-			 || a_member->is_mut != b_member->is_mut
-			 || a_member->is_comptime_known != b_member->is_comptime_known
-			 || a_member->unused_1_ != b_member->unused_1_
-			 || a_member->unused_2_[0] != b_member->unused_2_[0]
-			 || a_member->unused_2_[1] != b_member->unused_2_[1]
-			 || a_member->unused_2_[2] != b_member->unused_2_[2])
+		const CompositeMembers b_members = composite_members(b_attach);
+
+		for (u16 rank = 0; rank != a_attach->member_used; ++rank)
+		{
+			const void* const a_member = member_at(&a_members, rank);
+			
+			const void* const b_member = member_at(&b_members, rank);
+
+			const DelayableTypeIdAndFlags a_type_and_flags = *static_cast<const DelayableTypeIdAndFlags*>(a_member);
+			
+			const DelayableTypeIdAndFlags b_type_and_flags = *static_cast<const DelayableTypeIdAndFlags*>(b_member);
+
+			if (a_type_and_flags.is_pending != b_type_and_flags.is_pending)
+				TODO("Handle pending composite member types in `type_is_equal_noloop`");
+
+			if (a_type_and_flags.is_pub != b_type_and_flags.is_pub
+			 || a_type_and_flags.is_mut != b_type_and_flags.is_mut
+			 || a_type_and_flags.is_eval != b_type_and_flags.is_eval
+			 || member_offset(a_attach->disposition, a_member) != member_offset(b_attach->disposition, b_member)
+			 || member_value(a_attach->disposition, a_member) != member_value(b_attach->disposition, b_member))
 			{
 				eq_state_pop(seen);
 			
 				return TypeEq::Unequal;
 			}
 
-			if (a_attach->member_stride > sizeof(CommonMemberData))
-			{
-				const FullMemberData* const a_full_member = static_cast<const FullMemberData*>(a_member);
+			const TypeId a_member_type_id = static_cast<TypeId>(a_type_and_flags.delayable_type_id_bits);
 
-				const FullMemberData* const b_full_member = static_cast<const FullMemberData*>(b_member);
-
-				if (a_full_member->offset != b_full_member->offset)
-				{
-					eq_state_pop(seen);
-
-					return TypeEq::Unequal;
-				}
-			}
-
-			if (a_member->has_pending_type || b_member->has_pending_type)
-				TODO("Handle pending composite member types in `type_is_equal_noloop`.");
-
-			const TypeId a_member_type_id = a_member->type.complete;
-
-			const TypeId b_member_type_id = b_member->type.complete;
+			const TypeId b_member_type_id = static_cast<TypeId>(b_type_and_flags.delayable_type_id_bits);
 
 			const TypeEq member_result = type_is_equal_noloop(types, a_member_type_id, b_member_type_id, seen, false);
 
@@ -825,19 +994,6 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 
 			if (result == TypeEq::Equal)
 				result = member_result;
-
-			if (a_member->has_pending_value || b_member->has_pending_value)
-				TODO("Handle pending composite member default values in `type_is_equal_noloop`.");
-
-			if (a_member->value.complete != GlobalValueId::INVALID && b_member->value.complete != GlobalValueId::INVALID)
-				TODO("Handle composite member default values in `type_is_equal_noloop`.");
-
-			if (a_member->value.complete != GlobalValueId::INVALID || b_member->value.complete != GlobalValueId::INVALID)
-			{
-				eq_state_pop(seen);
-
-				return TypeEq::Unequal;
-			}
 		}
 
 		if (result == TypeEq::Equal)
@@ -1107,32 +1263,26 @@ TypeId type_create_signature(TypePool* types, TypeTag tag, SignatureType attach)
 
 TypeId type_create_composite(TypePool* types, TypeTag tag, TypeId global_scope_type_id, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept
 {
-	ASSERT_OR_IGNORE((tag == TypeTag::Composite || tag == TypeTag::CompositeLiteral)
-	              && disposition != TypeDisposition::INVALID);
+	ASSERT_OR_IGNORE(tag == TypeTag::Composite || tag == TypeTag::CompositeLiteral);
 
-	const u8 member_stride = disposition == TypeDisposition::File
-		? sizeof(FileMemberData)
-		: disposition == TypeDisposition::User
-		? sizeof(UserMemberData)
-		: sizeof(BlockOrSignatureOrLiteralMemberData);
+	ASSERT_OR_IGNORE(disposition != TypeDisposition::INVALID);
 
-	const u64 reserve_size = sizeof(CompositeType) + static_cast<u64>(initial_member_capacity) * member_stride;
+	const CompositeTypeAllocInfo alloc_info = composite_type_alloc_info(disposition, initial_member_capacity);
 
 	CompositeType composite{};
-	composite.size_or_file_completion_arec_id = disposition == TypeDisposition::File ? static_cast<u32>(ArecId::INVALID) : 0;
+	composite.size = 0;
 	composite.stride = 0;
 	composite.align_log2 = 0;
 	composite.is_open = true;
 	composite.is_fixed = is_fixed_member_capacity;
-	composite.member_count = 0;
-	composite.incomplete_member_count = 0;
 	composite.disposition = disposition;
-	composite.member_stride = member_stride;
+	composite.member_used = 0;
+	composite.member_capacity = alloc_info.member_capacity;
+	composite.alloc_size = alloc_info.alloc_size;
+	composite.file_completion_arec_id = ArecId::INVALID;
 	composite.global_scope_type_id = global_scope_type_id;
-	composite.capacity = static_cast<u16>(next_pow2(sizeof(TypeStructure) + reserve_size, static_cast<u64>(32)));
-	composite.used = sizeof(TypeStructure) + sizeof(CompositeType);
 
-	TypeStructure* const structure = make_structure(types, tag, range::from_object_bytes(&composite), reserve_size, distinct_source_id);
+	TypeStructure* const structure = make_structure(types, tag, range::from_object_bytes(&composite), alloc_info.alloc_size, distinct_source_id);
 
 	const TypeId structure_type_id = id_from_structure(types, structure);
 
@@ -1158,9 +1308,13 @@ void type_set_composite_file_completion_arec_id(TypePool* types, TypeId type_id,
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
 
-	ASSERT_OR_IGNORE(composite->is_open && composite->member_count == 0 && composite->size_or_file_completion_arec_id == static_cast<u32>(ArecId::INVALID));
+	ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::File
+	              && composite->is_open
+	              && composite->member_used == 0
+	              && composite->file_completion_arec_id == ArecId::INVALID
+	);
 
-	composite->size_or_file_completion_arec_id = static_cast<u32>(completion_arec_id);
+	composite->file_completion_arec_id = completion_arec_id;
 }
 
 TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align, u64 stride) noexcept
@@ -1181,15 +1335,15 @@ TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align,
 	{
 		ASSERT_OR_IGNORE(align != 0 && is_pow2(align));
 
-		composite->size_or_file_completion_arec_id = size;
+		composite->size = size;
 		composite->align_log2 = count_trailing_zeros_assume_one(align);
 		composite->stride = stride;
 	}
-	else if (composite->disposition != TypeDisposition::File)
+	else
 	{
 		ASSERT_OR_IGNORE(size == 0 && align == 0 && stride == 0);
 
-		composite->stride = next_multiple(composite->size_or_file_completion_arec_id, static_cast<u64>(1) << composite->align_log2);
+		composite->stride = next_multiple(composite->size, static_cast<u64>(1) << composite->align_log2);
 	}
 
 	composite->is_open = false;
@@ -1197,9 +1351,9 @@ TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align,
 	return id_from_structure(types, structure);
 }
 
-bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInfo init) noexcept
+bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInit init) noexcept
 {
-	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && init.rank == 0);
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
 	TypeStructure* const structure = structure_from_id(types, type_id);
 
@@ -1213,49 +1367,64 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInfo init)
 
 	ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::User || init.offset == 0);
 
-	ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::Literal || init.name != IdentifierId::INVALID);
+	ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::Internal || init.name != IdentifierId::INVALID);
+
+	CompositeMembers members = composite_members(composite);
 
 	if (init.name != IdentifierId::INVALID)
 	{
-		for (u16 i = 0; i != composite->member_count; ++i)
-		{
-			const CommonMemberData* const existing = member_at(composite, i);
+		u16 unused_rank;
 
-			if (existing->name == init.name)
-				return false;
-		}
+		const void* unused_data;
+
+		if (find_member_by_name(&members, init.name, &unused_rank, &unused_data))
+			return false;
 	}
 
-	if (composite->capacity < composite->used + composite->member_stride)
+	if (composite->member_capacity == composite->member_used)
 	{
 		ASSERT_OR_IGNORE(!composite->is_fixed);
 
-		const MutRange<byte> to_dealloc = { reinterpret_cast<byte*>(direct_structure), composite->capacity };
+		const u16 old_member_capacity = composite->member_capacity;
 
-		const Range<byte> composite_bytes = { reinterpret_cast<byte*>(composite), composite->used };
+		const CompositeTypeAllocInfo alloc_info = composite_type_alloc_info(composite->disposition, old_member_capacity + 1);
 
-		direct_structure = make_structure(types, TypeTag::Composite, composite_bytes, composite_bytes.count() + composite->member_stride, direct_structure->distinct_source_id);
+		const MutRange<byte> to_dealloc = { reinterpret_cast<byte*>(direct_structure), composite->alloc_size };
 
-		types->structures.dealloc(to_dealloc);
+		const Range<byte> to_copy = { reinterpret_cast<byte*>(composite), sizeof(CompositeType) };
 
-		composite = reinterpret_cast<CompositeType*>(direct_structure->attach);
+		direct_structure = make_structure(types, TypeTag::Composite, to_copy, alloc_info.alloc_size, direct_structure->distinct_source_id);
 
 		structure->indirection_type_id = id_from_structure(types, direct_structure);
 
-		// This can only ever increase by a factor of 2 due to how the
-		// `TypePool.structures` heap is specified.
-		composite->capacity *= 2;
+		composite = reinterpret_cast<CompositeType*>(direct_structure->attach);
+
+		composite->alloc_size = alloc_info.alloc_size;
+
+		composite->member_capacity = alloc_info.member_capacity;
+
+		const CompositeMembers new_members = composite_members(composite);
+
+		memcpy(new_members.names, members.names, old_member_capacity * sizeof(IdentifierId));
+
+		memcpy(new_members.members, members.members, old_member_capacity * members.member_stride);
+
+		members = new_members;
+
+		types->structures.dealloc(to_dealloc);
 	}
 
-	if (composite->disposition != TypeDisposition::User && composite->disposition != TypeDisposition::File && !init.has_pending_type)
+	if (!init.is_pending && (composite->disposition == TypeDisposition::Internal || composite->disposition == TypeDisposition::ParameterList))
 	{
+		ASSERT_OR_IGNORE(init.offset == 0);
+
 		const TypeMetrics metrics = type_metrics_from_id(types, init.type.complete);
 
-		const u64 member_begin = next_multiple(composite->size_or_file_completion_arec_id, static_cast<u64>(metrics.align));
+		const u64 member_begin = next_multiple(composite->size, static_cast<u64>(metrics.align));
 
 		init.offset = member_begin;
 
-		composite->size_or_file_completion_arec_id = member_begin + metrics.size;
+		composite->size = member_begin + metrics.size;
 
 		const u8 align_log2 = count_trailing_zeros_assume_one(metrics.align);
 
@@ -1263,55 +1432,98 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInfo init)
 			composite->align_log2 = align_log2;
 	}
 
-	CommonMemberData* const raw_dst = member_at(composite, composite->member_count);
-	raw_dst->type = init.type;
-	raw_dst->value = init.value;
-	raw_dst->name = init.name;
-	raw_dst->has_pending_type = init.has_pending_type;
-	raw_dst->has_pending_value = init.has_pending_value;
-	raw_dst->is_pub = init.is_pub;
-	raw_dst->is_mut = init.is_mut;
-	raw_dst->is_comptime_known = init.is_comptime_known;
-	raw_dst->unused_1_ = {};
-	raw_dst->unused_2_[0] = {};
-	raw_dst->unused_2_[1] = {};
-	raw_dst->unused_2_[2] = {};
+	members.names[composite->member_used] = init.name;
 
-	ASSERT_OR_IGNORE(composite->disposition != TypeDisposition::File
-	             || (init.has_pending_type
-	              && init.has_pending_value
-	              && init.type_completion_arec_id == ArecId::INVALID
-	              && init.value_completion_arec_id == ArecId::INVALID
-	              && init.offset == 0));
+	void* const member_data = member_at(&members, composite->member_used);
 
-	if (composite->disposition == TypeDisposition::User)
+	switch (composite->disposition)
 	{
-		ASSERT_OR_IGNORE(init.name != IdentifierId::INVALID
-		              && init.has_pending_type != (init.type_completion_arec_id == ArecId::INVALID)
-		              && init.has_pending_value != (init.value_completion_arec_id == ArecId::INVALID)
-		              && (!init.has_pending_value || init.value.pending != AstNodeId::INVALID));
-
-		UserMemberData* const dst = static_cast<UserMemberData*>(raw_dst);
-		dst->offset = init.offset;
-		dst->type_completion_arec_id = init.type_completion_arec_id;
-		dst->value_completion_arec_id = init.value_completion_arec_id;
-	}
-	else if (composite->disposition != TypeDisposition::File)
+	case TypeDisposition::Internal:
 	{
-		ASSERT_OR_IGNORE(init.type_completion_arec_id == ArecId::INVALID);
-		ASSERT_OR_IGNORE(init.value_completion_arec_id == ArecId::INVALID);
-		ASSERT_OR_IGNORE(composite->disposition != TypeDisposition::Block || (!init.has_pending_type && !init.has_pending_value && init.value.complete == GlobalValueId::INVALID));
+		ASSERT_OR_IGNORE(!init.is_pending
+		              && !init.is_eval
+		              && !init.is_pub
+		              && init.offset <= UINT32_MAX
+		              && init.value.complete == GlobalValueId::INVALID
+		              && init.type_completion_arec_id == ArecId::INVALID
+		              && init.value_completion_arec_id == ArecId::INVALID
+		);
 
-		BlockOrSignatureOrLiteralMemberData* const dst = static_cast<BlockOrSignatureOrLiteralMemberData*>(raw_dst);
-		dst->offset = init.offset;
+		InternalMemberData2* const member = static_cast<InternalMemberData2*>(member_data);
+		member->type_and_flags.delayable_type_id_bits = static_cast<u32>(init.type.complete);
+		member->type_and_flags.is_pending = false;
+		member->type_and_flags.is_pub = false;
+		member->type_and_flags.is_mut = init.is_mut;
+		member->type_and_flags.is_eval = false;
+		member->offset = static_cast<u32>(init.offset);
+
+		break;
 	}
 
-	if (init.has_pending_type || init.has_pending_value)
-		composite->incomplete_member_count += 1;
+	case TypeDisposition::File:
+	{
+		ASSERT_OR_IGNORE(init.is_eval
+		              && init.offset == 0
+		              && init.value.complete != GlobalValueId::INVALID
+		              && init.type_completion_arec_id == ArecId::INVALID
+		              && init.value_completion_arec_id == ArecId::INVALID
+		);
 
-	composite->member_count += 1;
+		FileMemberData2* const member = static_cast<FileMemberData2*>(member_data);
+		member->type_and_flags.delayable_type_id_bits = static_cast<u32>(init.type.complete);
+		member->type_and_flags.is_pending = init.is_pending;
+		member->type_and_flags.is_pub = init.is_pub;
+		member->type_and_flags.is_mut = init.is_mut;
+		member->type_and_flags.is_eval = true;
+		member->value = init.value;
 
-	composite->used += composite->member_stride;
+		break;
+	}
+
+	case TypeDisposition::ParameterList:
+	{
+		ASSERT_OR_IGNORE(!init.is_pub
+		              && init.offset <= UINT32_MAX
+		              && init.type_completion_arec_id == ArecId::INVALID
+		              && init.value_completion_arec_id == ArecId::INVALID
+		);
+
+		ParameterListMemberData2* const member = static_cast<ParameterListMemberData2*>(member_data);
+		member->type_and_flags.delayable_type_id_bits = static_cast<u32>(init.type.complete);
+		member->type_and_flags.is_pending = init.is_pending;
+		member->type_and_flags.is_pub = false;
+		member->type_and_flags.is_mut = init.is_mut;
+		member->type_and_flags.is_eval = init.is_eval;
+		member->offset = static_cast<u32>(init.offset);
+		member->value = init.value;
+		member->unused_ = 0;
+
+		break;
+	}
+
+	case TypeDisposition::User:
+	{
+		ASSERT_OR_IGNORE(!init.is_eval);
+
+		UserMemberData2* const member = static_cast<UserMemberData2*>(member_data);
+		member->type_and_flags.delayable_type_id_bits = static_cast<u32>(init.type.complete);
+		member->type_and_flags.is_pending = init.is_pending;
+		member->type_and_flags.is_pub = init.is_pub;
+		member->type_and_flags.is_mut = init.is_mut;
+		member->type_and_flags.is_eval = false;
+		member->value = init.value;
+		member->offset = init.offset;
+		member->type_completion_arec_id = init.type_completion_arec_id;
+		member->value_completion_arec_id = init.value_completion_arec_id;
+
+		break;
+	}
+	
+	case TypeDisposition::INVALID:
+		ASSERT_UNREACHABLE;
+	}
+
+	composite->member_used += 1;
 
 	return true;
 }
@@ -1320,65 +1532,96 @@ void type_set_composite_member_info(TypePool* types, TypeId type_id, u16 rank, T
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
+	ASSERT_OR_IGNORE(member_type_id != TypeId::INVALID);
+
 	TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
 
-	ASSERT_OR_IGNORE(rank < composite->member_count);
+	ASSERT_OR_IGNORE(rank < composite->member_used);
 
-	CommonMemberData* const member = member_at(composite, rank);
+	const CompositeMembers members = composite_members(composite);
 
-	if (!member->has_pending_type && !member->has_pending_value)
+	void* const member_data = member_at(&members, rank);
+
+	DelayableTypeIdAndFlags* const member_type_and_flags = static_cast<DelayableTypeIdAndFlags*>(member_data);
+
+	if (!member_type_and_flags->is_pending)
 		return;
 
-	ASSERT_OR_IGNORE(composite->incomplete_member_count != 0);
+	member_type_and_flags->delayable_type_id_bits = static_cast<u32>(member_type_id);
+	member_type_and_flags->is_pending = false;
 
-	if (member->has_pending_type)
+	if (composite->disposition == TypeDisposition::Internal || composite->disposition == TypeDisposition::ParameterList)
 	{
-		ASSERT_OR_IGNORE(member_type_id != TypeId::INVALID);
+		const TypeMetrics metrics = type_metrics_from_id(types, member_type_id);
 
-		member->type.complete = member_type_id;
-		member->has_pending_type = false;
+		const u64 member_begin = next_multiple(composite->size, static_cast<u64>(metrics.align));
 
-		if (composite->disposition != TypeDisposition::User && composite->disposition != TypeDisposition::File)
-		{
-			const TypeMetrics metrics = type_metrics_from_id(types, member_type_id);
+		ASSERT_OR_IGNORE(member_begin <= UINT32_MAX);
 
-			const u64 member_begin = next_multiple(composite->size_or_file_completion_arec_id, static_cast<u64>(metrics.align));
+		if (composite->disposition == TypeDisposition::Internal)
+			static_cast<InternalMemberData2*>(member_data)->offset = static_cast<u32>(member_begin);
+		else if (composite->disposition == TypeDisposition::ParameterList)
+			static_cast<ParameterListMemberData2*>(member_data)->offset = static_cast<u32>(member_begin);
+		else
+			ASSERT_UNREACHABLE;
 
-			static_cast<BlockOrSignatureOrLiteralMemberData*>(member)->offset = member_begin;
+		composite->size = member_begin + metrics.size;
 
-			composite->size_or_file_completion_arec_id = member_begin + metrics.size;
+		const u8 align_log2 = count_trailing_zeros_assume_one(metrics.align);
 
-			const u8 align_log2 = count_trailing_zeros_assume_one(metrics.align);
-
-			if (composite->align_log2 < align_log2)
-				composite->align_log2 = align_log2;
-		}
+		if (composite->align_log2 < align_log2)
+			composite->align_log2 = align_log2;
 	}
 
-	if (member->has_pending_value)
+	switch (composite->disposition)
 	{
-		ASSERT_OR_IGNORE(member_value_id != GlobalValueId::INVALID);
+	case TypeDisposition::Internal:
+	{
+		ASSERT_OR_IGNORE(member_value_id == GlobalValueId::INVALID);
+
+		break;
+	}
+
+	case TypeDisposition::File:
+	{
+		FileMemberData2* const member = static_cast<FileMemberData2*>(member_data);
+
+		ASSERT_OR_IGNORE(member->value.pending != AstNodeId::INVALID);
 
 		member->value.complete = member_value_id;
-		member->has_pending_value = false;
 
-		if (composite->member_stride == sizeof(UserMemberData))
-			static_cast<UserMemberData*>(member)->value_completion_arec_id = ArecId::INVALID;
+		break;
 	}
-	
-	if (composite->member_stride == sizeof(UserMemberData))
+
+	case TypeDisposition::ParameterList:
 	{
-		UserMemberData* const full = static_cast<UserMemberData*>(member);
+		ParameterListMemberData2* const member = static_cast<ParameterListMemberData2*>(member_data);
 
-		full->type_completion_arec_id = ArecId::INVALID;
-		full->value_completion_arec_id = ArecId::INVALID;
+		ASSERT_OR_IGNORE((member->value.pending == AstNodeId::INVALID) == (member_value_id == GlobalValueId::INVALID));
+
+		member->value.complete = member_value_id;
+
+		break;
 	}
 
-	composite->incomplete_member_count -= 1;
+	case TypeDisposition::User:
+	{
+		UserMemberData2* const member = static_cast<UserMemberData2*>(member_data);
+
+		ASSERT_OR_IGNORE((member->value.pending == AstNodeId::INVALID) == (member_value_id == GlobalValueId::INVALID));
+
+		member->value.complete = member_value_id;
+
+		break;
+	}
+
+	case TypeDisposition::INVALID:
+		ASSERT_UNREACHABLE;
+	}
 }
 
 TypeId type_copy_composite(TypePool* types, TypeId type_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept
@@ -1391,26 +1634,44 @@ TypeId type_copy_composite(TypePool* types, TypeId type_id, u32 initial_member_c
 
 	const CompositeType* const old_composite = reinterpret_cast<const CompositeType*>(old_structure->attach);
 
-	if (old_composite->member_count > initial_member_capacity)
-		initial_member_capacity = old_composite->incomplete_member_count;
+	u16 member_capacity;
 
-	const u32 adj_member_capacity = !old_composite->is_open || old_composite->member_count > initial_member_capacity
-		? old_composite->member_count
-		: initial_member_capacity;
+	u16 alloc_size;
 
-	const u64 reserve_size = sizeof(CompositeType) + adj_member_capacity * old_composite->member_stride;
+	if (!old_composite->is_open || old_composite->member_used > initial_member_capacity)
+	{
+		member_capacity = old_composite->member_used;
 
-	const Range<byte> to_copy{ reinterpret_cast<const byte*>(old_composite), sizeof(CompositeType) + old_composite->member_count * old_composite->member_stride };
+		alloc_size = old_composite->alloc_size;
+	}
+	else
+	{
+		const CompositeTypeAllocInfo alloc_info = composite_type_alloc_info(old_composite->disposition, initial_member_capacity);
 
-	TypeStructure* const new_structure = make_structure(types, TypeTag::Composite, to_copy, reserve_size, old_structure->distinct_source_id);
+		member_capacity = alloc_info.member_capacity;
+
+		alloc_size = alloc_info.alloc_size;
+	}
+
+	const Range<byte> to_copy{ reinterpret_cast<const byte*>(old_composite), sizeof(CompositeType) + old_composite->member_used * sizeof(IdentifierId) };
+
+	TypeStructure* const new_structure = make_structure(types, TypeTag::Composite, to_copy, alloc_size, old_structure->distinct_source_id);
 
 	CompositeType* const new_composite = reinterpret_cast<CompositeType*>(new_structure->attach);
 
 	new_composite->is_fixed = is_fixed_member_capacity;
+	new_composite->alloc_size = alloc_size;
+	new_composite->member_capacity = member_capacity;
+
+	const CompositeMembers old_members = composite_members(old_composite);
+
+	const CompositeMembers new_members = composite_members(new_composite);
+
+	memcpy(new_members.members, old_members.members, old_members.count * old_members.member_stride);
 
 	const TypeId new_structure_type_id = id_from_structure(types, new_structure);
 
-	if (is_fixed_member_capacity)
+	if (is_fixed_member_capacity || !old_composite->is_open)
 		return new_structure_type_id;
 
 	TypeStructure* const indirection = make_indirection(types, new_structure_type_id);
@@ -1432,7 +1693,7 @@ u32 type_get_composite_member_count(TypePool* types, TypeId type_id) noexcept
 
 	ASSERT_OR_IGNORE(!composite->is_open);
 
-	return composite->member_count;
+	return composite->member_used;
 }
 
 void type_discard(TypePool* types, TypeId type_id) noexcept
@@ -1445,7 +1706,7 @@ void type_discard(TypePool* types, TypeId type_id) noexcept
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
 
-	types->structures.dealloc({ reinterpret_cast<byte*>(structure), composite->capacity });
+	types->structures.dealloc({ reinterpret_cast<byte*>(structure), composite->alloc_size });
 }
 
 
@@ -1634,9 +1895,7 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 
 		ASSERT_OR_IGNORE(!composite->is_open);
 
-		return composite->disposition == TypeDisposition::File
-			? TypeMetrics{ 0, 0, 1 }
-			: TypeMetrics{ composite->size_or_file_completion_arec_id, composite->stride, static_cast<u32>(1) << composite->align_log2 };
+		return TypeMetrics{ composite->size, composite->stride, static_cast<u32>(1) << composite->align_log2 };
 	}
 
 	case TypeTag::TailArray:
@@ -1663,7 +1922,7 @@ TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept
 	return static_cast<TypeTag>(structure->tag_bits);
 }
 
-const MemberInfo type_member_by_rank(TypePool* types, TypeId type_id, u16 rank)
+const MemberInfo type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank)
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
@@ -1673,14 +1932,14 @@ const MemberInfo type_member_by_rank(TypePool* types, TypeId type_id, u16 rank)
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
-	ASSERT_OR_IGNORE(composite->member_count > rank);
+	ASSERT_OR_IGNORE(composite->member_used > rank);
 
-	const CommonMemberData* const member = member_at(composite, rank);
+	const CompositeMembers members = composite_members(composite);
 
-	return fill_member_info(composite, member, rank);
+	return fill_member_info(composite, rank, member_at(&members, rank));
 }
 
-bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, MemberInfo* out) noexcept
+bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId name, MemberInfo* out) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
@@ -1689,17 +1948,36 @@ bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, Mem
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
+
+	const CompositeMembers members = composite_members(composite);
 
 	u16 rank;
 
-	const CommonMemberData* member;
+	const void* member;
 
-	if (!find_member_by_name(composite, name, &rank, &member))
+	if (!find_member_by_name(&members, name, &rank, &member))
 		return false;
 
-	*out = fill_member_info(composite, member, rank);
+	*out = fill_member_info(composite, rank, member);
 
 	return true;
+}
+
+IdentifierId type_member_name_by_rank(TypePool* types, TypeId type_id, u16 rank) noexcept
+{
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
+
+	const TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
+
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
+
+	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
+
+	ASSERT_OR_IGNORE(composite->member_used > rank);
+
+	const CompositeMembers members = composite_members(composite);
+
+	return members.names[rank];
 }
 
 const void* type_attachment_from_id_raw(TypePool* types, TypeId type_id) noexcept
@@ -1764,9 +2042,15 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(direct_structure->attach);
 
+	const CompositeMembers members = composite_members(composite);
+
 	MemberIterator it;
-	it.structure = composite->member_count == 0 ? nullptr : composite->is_fixed ? direct_structure : structure;
+	it.structure = composite->member_used == 0 ? nullptr : composite->is_fixed ? direct_structure : structure;
+	it.names = members.names;
+	it.members = members.members;
 	it.types = types;
+	it.member_stride = members.member_stride;
+	it.is_indirect = !composite->is_fixed;
 	it.rank = 0;
 
 	return it;
@@ -1780,16 +2064,34 @@ MemberInfo next(MemberIterator* it) noexcept
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
+	CompositeMembers members;
+
+	if (it->names == reinterpret_cast<const IdentifierId*>(composite + 1))
+	{
+		members.disposition = composite->disposition;
+		members.member_stride = it->member_stride;
+		members.count = composite->member_used;
+		members.names = const_cast<IdentifierId*>(it->names);
+		members.members = const_cast<void*>(it->members);
+	}
+	else
+	{
+		members = composite_members(composite);
+
+		it->names = members.names;
+		it->members = members.members;
+	}
+
 	const u16 curr_rank = it->rank;
 
-	const CommonMemberData* const curr_member = member_at(composite, curr_rank);
+	const void* const curr_member = member_at(&members, curr_rank);
 
 	it->rank = curr_rank + 1;
 
-	if (composite->member_count == it->rank)
+	if (composite->member_used == it->rank)
 		it->structure = nullptr;
 
-	return fill_member_info(composite, curr_member, curr_rank);
+	return fill_member_info(composite, curr_rank, curr_member);
 }
 
 bool has_next(const MemberIterator* it) noexcept

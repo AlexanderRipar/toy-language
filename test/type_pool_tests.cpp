@@ -25,18 +25,16 @@ static void release_dummy_types(DummyTypePool dummy) noexcept
 	release_handle_pool(dummy.alloc);
 }
 
-static MemberInfo dummy_member() noexcept
+static MemberInit dummy_member() noexcept
 {
-	MemberInfo member{};
+	MemberInit member{};
 	member.name = static_cast<IdentifierId>(42);
 	member.type.complete = TypeId::INVALID;
 	member.value.complete = GlobalValueId::INVALID;
 	member.is_pub = true;
 	member.is_mut = true;
-	member.has_pending_type = false;
-	member.has_pending_value = false;
-	member.is_comptime_known = true;
-	member.rank = 0;
+	member.is_pending = false;
+	member.is_eval = false;
 	member.type_completion_arec_id = ArecId::INVALID;
 	member.value_completion_arec_id = ArecId::INVALID;
 	member.offset = 0;
@@ -253,7 +251,7 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 
 	TEST_UNEQUAL(composite, TypeId::INVALID);
 
-	MemberInfo member = dummy_member();
+	MemberInit member = dummy_member();
 	member.type.complete = type_create_simple(dummy.types, TypeTag::Boolean);
 
 	TEST_EQUAL(type_add_composite_member(dummy.types, composite, member), true);
@@ -268,7 +266,23 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 
 		static_assert(sizeof(interned_member) == sizeof(member));
 
-		TEST_MEM_EQUAL(&member, &interned_member, sizeof(member));
+		TEST_EQUAL(member.is_eval, interned_member.is_eval);
+
+		TEST_EQUAL(member.is_mut, interned_member.is_mut);
+
+		TEST_EQUAL(member.is_pub, interned_member.is_pub);
+
+		TEST_EQUAL(member.is_pending, interned_member.is_pending);
+
+		TEST_EQUAL(member.offset, interned_member.offset);
+
+		TEST_EQUAL(member.type.complete, interned_member.type.complete);
+
+		TEST_EQUAL(member.value.complete, interned_member.value.complete);
+
+		TEST_EQUAL(member.type_completion_arec_id, interned_member.value_completion_arec_id);
+
+		TEST_EQUAL(member.value_completion_arec_id, interned_member.value_completion_arec_id);
 
 		member_count += 1;
 	}
@@ -328,7 +342,7 @@ static void composites_with_empty_composite_member_are_equal() noexcept
 
 	const TypeId b = type_create_composite(dummy.types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	MemberInfo member = dummy_member();
+	MemberInit member = dummy_member();
 
 	member.type.complete = x;
 	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
@@ -421,7 +435,7 @@ static void composites_with_same_distinct_source_and_pointers_to_self_are_equal(
 
 	DummyTypePool dummy = create_dummy_types();
 
-	MemberInfo member = dummy_member();
+	MemberInit member = dummy_member();
 
 	ReferenceType reference{};
 	reference.is_opt = false;
@@ -469,7 +483,7 @@ static void composites_with_same_distinct_source_and_pointers_to_each_other_are_
 
 	DummyTypePool dummy = create_dummy_types();
 
-	MemberInfo member = dummy_member();
+	MemberInit member = dummy_member();
 
 	ReferenceType reference{};
 	reference.is_opt = false;
@@ -517,7 +531,7 @@ static void composites_with_same_distinct_source_and_pointers_to_self_and_differ
 
 	DummyTypePool dummy = create_dummy_types();
 
-	MemberInfo member = dummy_member();
+	MemberInit member = dummy_member();
 
 	ReferenceType reference{};
 	reference.is_opt = false;
@@ -583,7 +597,7 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 	reference.is_multi = false;
 	reference.is_mut = false;
 
-	MemberInfo member = dummy_member();
+	MemberInit member = dummy_member();
 
 	const TypeId a1 = type_create_composite(dummy.types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::User, SourceId::INVALID, 0, false);
 
@@ -668,7 +682,7 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 	reference.is_multi = false;
 	reference.is_mut = false;
 
-	MemberInfo member = dummy_member();
+	MemberInit member = dummy_member();
 
 	const TypeId a1 = type_create_composite(dummy.types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::User, SourceId::INVALID, 0, false);
 
@@ -757,7 +771,7 @@ static void pair_types_with_same_element_types_are_considered_equal() noexcept
 
 	const TypeId b = type_create_composite(dummy.types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	MemberInfo member = dummy_member();
+	MemberInit member = dummy_member();
 	member.type.complete = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, false });
 
 	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);

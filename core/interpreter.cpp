@@ -669,25 +669,17 @@ static MutRange<byte> stack_shrink_and_lift(Interpreter* interp, u32 mark, MutRa
 
 static bool complete_member(Interpreter* interp, TypeId surrounding_type_id, MemberInfo member) noexcept
 {
-	if (!member.has_pending_type && !member.has_pending_value)
+	if (!member.is_pending)
 		return false;
 
 	const u32 mark = stack_mark(interp);
 
 	TypeId member_type_id = TypeId::INVALID;
 
-	GlobalValueId new_member_value_id = GlobalValueId::INVALID;
-
-	TypeId new_member_type_id = TypeId::INVALID;
-
-	if (!member.has_pending_type)
+	if (member.type.pending != AstNodeId::INVALID)
 	{
-		member_type_id = member.type.complete;
+		// Complete type.
 
-		new_member_type_id = TypeId::INVALID;
-	}
-	else if (member.type.pending != AstNodeId::INVALID)
-	{
 		const ArecRestoreInfo restore = set_active_arec_id(interp, member.type_completion_arec_id);
 
 		AstNode* const type = ast_node_from_id(interp->asts, member.type.pending);
@@ -700,13 +692,15 @@ static bool complete_member(Interpreter* interp, TypeId surrounding_type_id, Mem
 
 		ASSERT_OR_IGNORE(type_rst.tag == EvalTag::Success && member_type_id != TypeId::INVALID);
 
-		new_member_type_id = member_type_id;
-
 		arec_restore(interp, restore);
 	}
 
-	if (member.has_pending_value)
+	GlobalValueId member_value_id = GlobalValueId::INVALID;
+
+	if (member.value.pending != AstNodeId::INVALID)
 	{
+		// Complete value.
+
 		AstNode* const value = ast_node_from_id(interp->asts, member.value.pending);
 
 		const ArecRestoreInfo restore = set_active_arec_id(interp, member.value_completion_arec_id);
@@ -715,11 +709,11 @@ static bool complete_member(Interpreter* interp, TypeId surrounding_type_id, Mem
 		{
 			const TypeMetrics metrics = type_metrics_from_id(interp->types, member_type_id);
 
-			new_member_value_id = alloc_global_value(interp->globals, metrics.size, metrics.align);
+			member_value_id = alloc_global_value(interp->globals, metrics.size, metrics.align);
 
 			[[maybe_unused]] const EvalRst value_rst = evaluate(interp, value, EvalSpec{
 				ValueKind::Value,
-				global_value_get_mut(interp->globals, new_member_value_id),
+				global_value_get_mut(interp->globals, member_value_id),
 				member_type_id
 			});
 
@@ -733,11 +727,11 @@ static bool complete_member(Interpreter* interp, TypeId surrounding_type_id, Mem
 
 			const TypeMetrics metrics = type_metrics_from_id(interp->types, value_rst.success.type_id);
 
-			new_member_type_id = value_rst.success.type_id;
+			member_type_id = value_rst.success.type_id;
 
-			new_member_value_id = alloc_global_value(interp->globals, metrics.size, metrics.align);
+			member_value_id = alloc_global_value(interp->globals, metrics.size, metrics.align);
 
-			range::mem_copy(global_value_get_mut(interp->globals, new_member_value_id), value_bytes(value_rst.success));
+			range::mem_copy(global_value_get_mut(interp->globals, member_value_id), value_bytes(value_rst.success));
 		}
 
 		arec_restore(interp, restore);
@@ -745,7 +739,7 @@ static bool complete_member(Interpreter* interp, TypeId surrounding_type_id, Mem
 
 	stack_shrink(interp, mark);
 
-	type_set_composite_member_info(interp->types, surrounding_type_id, member.rank, new_member_type_id, new_member_value_id);
+	type_set_composite_member_info(interp->types, surrounding_type_id, member.rank, member_type_id, member_value_id);
 
 	return true;
 }
@@ -755,7 +749,7 @@ static bool complete_member(Interpreter* interp, TypeId surrounding_type_id, Mem
 static IdentifierInfo identifier_info_from_global_member(Interpreter* interp, TypeId surrounding_type_id, MemberInfo member) noexcept
 {
 	if (complete_member(interp, surrounding_type_id, member))
-		member = type_member_by_rank(interp->types, surrounding_type_id, member.rank);
+		member = type_member_info_by_rank(interp->types, surrounding_type_id, member.rank);
 
 	return make_identifier_info(
 		global_value_get_mut(interp->globals, member.value.complete),
@@ -797,10 +791,10 @@ static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name, 
 
 		MemberInfo member;
 
-		if (!type_member_by_name(interp->types, instance->type_id, name, &member))
+		if (!type_member_info_by_name(interp->types, instance->type_id, name, &member))
 			ASSERT_UNREACHABLE;
 
-		ASSERT_OR_IGNORE(!member.has_pending_type);
+		ASSERT_OR_IGNORE(!member.is_pending);
 
 		const TypeMetrics metrics = type_metrics_from_id(interp->types, member.type.complete);
 
@@ -831,9 +825,9 @@ static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name, 
 
 		ASSERT_OR_IGNORE(global_scope_type_id != TypeId::INVALID);
 
-		MemberInfo member = type_member_by_rank(interp->types, global_scope_type_id, binding.rank);
+		MemberInfo member = type_member_info_by_rank(interp->types, global_scope_type_id, binding.rank);
 
-		ASSERT_OR_IGNORE(member.name == name);
+		ASSERT_OR_IGNORE(type_member_name_by_rank(interp->types, global_scope_type_id, binding.rank) == name);
 
 		// Since we are in a global context, the member has to be global.
 		return identifier_info_from_global_member(interp, global_scope_type_id, member);
@@ -851,9 +845,9 @@ static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name, 
 			out -= 1;
 		}
 
-		MemberInfo member = type_member_by_rank(interp->types, arec->type_id, binding.rank);
+		MemberInfo member = type_member_info_by_rank(interp->types, arec->type_id, binding.rank);
 
-		ASSERT_OR_IGNORE(member.name == name);
+		ASSERT_OR_IGNORE(type_member_name_by_rank(interp->types, arec->type_id, binding.rank) == name);
 
 		if (static_cast<ArecKind>(arec->kind) == ArecKind::Unbound)
 			return make_unbound_identifier_info(arec);
@@ -1059,7 +1053,7 @@ static ShiftAmountResult shift_amount(Interpreter* interp, Range<byte> value, Ty
 	}
 }
 
-static MemberInfo delayed_member_from(Interpreter* interp, AstNode* definition) noexcept
+static MemberInit delayed_member_from(Interpreter* interp, AstNode* definition) noexcept
 {
 	ASSERT_OR_IGNORE(definition->tag == AstTag::Definition || definition->tag == AstTag::Parameter);
 
@@ -1069,15 +1063,14 @@ static MemberInfo delayed_member_from(Interpreter* interp, AstNode* definition) 
 
 	const DefinitionInfo info = get_definition_info(definition);
 
-	MemberInfo member_init{};
+	MemberInit member_init{};
 	member_init.name = attach.identifier_id;
 	member_init.type.pending = is_some(info.type) ? id_from_ast_node(interp->asts, get_ptr(info.type)) : AstNodeId::INVALID;
 	member_init.value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
+	member_init.is_pending = true;
 	member_init.is_pub = has_flag(definition, AstFlag::Definition_IsPub);
 	member_init.is_mut = has_flag(definition, AstFlag::Definition_IsMut);
-	member_init.has_pending_type = true;
-	member_init.has_pending_value = is_some(info.value);
-	member_init.rank = 0;
+	member_init.is_eval = has_flag(definition, AstFlag::Definition_IsEval);
 	member_init.type_completion_arec_id = active_arec_id(interp);
 	member_init.value_completion_arec_id = active_arec_id(interp);
 	member_init.offset = 0;
@@ -1178,30 +1171,30 @@ static void convert_composite_literal_to_composite(Interpreter* interp, const As
 	{
 		const MemberInfo src_member = next(&it);
 
+		const IdentifierId src_name = type_member_name_by_rank(interp->types, src.type_id, src_member.rank);
+
 		MemberInfo dst_member;
 
-		if (src_member.name != IdentifierId::INVALID)
+		if (src_name != IdentifierId::INVALID)
 		{
-			if (!type_member_by_name(interp->types, dst->type_id, src_member.name, &dst_member))
+			if (!type_member_info_by_name(interp->types, dst->type_id, src_name, &dst_member))
 			{
-				const Range<char8> name = identifier_name_from_id(interp->identifiers, src_member.name);
+				const Range<char8> name = identifier_name_from_id(interp->identifiers, src_name);
 
 				source_error(interp->errors, source_id_of(interp->asts, error_source), "Destination type of composite literal conversion has no member `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
 			}
 
-			rank = dst_member.rank + 1;
+			rank = dst_member.rank;
 		}
 		else 
 		{
 			if (rank == dst_member_count)
 				source_error(interp->errors, source_id_of(interp->asts, error_source), "Too many members in composite literal to convert to destination type.\n");
 
-			dst_member = type_member_by_rank(interp->types, dst->type_id, static_cast<u16>(rank));
-
-			rank += 1;
+			dst_member = type_member_info_by_rank(interp->types, dst->type_id, static_cast<u16>(rank));
 		}
 
-		ASSERT_OR_IGNORE(!src_member.has_pending_type && !dst_member.has_pending_type);
+		ASSERT_OR_IGNORE(!src_member.is_pending && !dst_member.is_pending);
 
 		u64* const seen_members_elem = seen_members + (dst_member.rank >> 6);
 
@@ -1209,7 +1202,7 @@ static void convert_composite_literal_to_composite(Interpreter* interp, const As
 
 		if ((*seen_members_elem & member_bit) != 0)
 		{
-			const Range<char8> name = identifier_name_from_id(interp->identifiers, dst_member.name);
+			const Range<char8> name = identifier_name_from_id(interp->identifiers, type_member_name_by_rank(interp->types, dst->type_id, static_cast<u16>(rank)));
 
 			source_error(interp->errors, source_id_of(interp->asts, error_source), "Member `%.*s` mapped more than once during composite literal conversion.\n", static_cast<s32>(name.count()), name.begin());
 		}
@@ -1236,10 +1229,12 @@ static void convert_composite_literal_to_composite(Interpreter* interp, const As
 		}
 		else
 		{
-			const Range<char8> name = identifier_name_from_id(interp->identifiers, dst_member.name);
+			const Range<char8> name = identifier_name_from_id(interp->identifiers, type_member_name_by_rank(interp->types, dst->type_id, static_cast<u16>(rank)));
 
 			source_error(interp->errors, source_id_of(interp->asts, error_source), "Member `%.*s` cannot be initialized from composite literal member because their types do not match.\n", static_cast<s32>(name.count()), name.begin());
 		}
+
+		rank += 1;
 	}
 
 	for (u32 i = 0; i != dst_member_count; ++i)
@@ -1251,17 +1246,17 @@ static void convert_composite_literal_to_composite(Interpreter* interp, const As
 		if ((seen_members_elem & member_bit) != 0)
 			continue;
 
-		MemberInfo member = type_member_by_rank(interp->types, dst->type_id, static_cast<u16>(i));
+		MemberInfo member = type_member_info_by_rank(interp->types, dst->type_id, static_cast<u16>(i));
 
-		if (member.has_pending_value)
+		if (member.is_pending)
 		{
 			if (complete_member(interp, dst->type_id, member))
-				member = type_member_by_rank(interp->types, dst->type_id, member.rank);
+				member = type_member_info_by_rank(interp->types, dst->type_id, member.rank);
 		}
 
 		if (member.value.complete == GlobalValueId::INVALID)
 		{
-			const Range<char8> name = identifier_name_from_id(interp->identifiers, member.name);
+			const Range<char8> name = identifier_name_from_id(interp->identifiers, type_member_name_by_rank(interp->types, dst->type_id, member.rank));
 
 			source_error(interp->errors, source_id_of(interp->asts, error_source), "Composite initializer is missing initializer for member `%.*s` of target type which lacks a default value.\n", static_cast<s32>(name.count()), name.begin());
 		}
@@ -1598,7 +1593,7 @@ static CompareResult compare(Interpreter* interp, TypeId common_type_id, Range<b
 		{
 			const MemberInfo member = next(&it);
 
-			if (member.has_pending_type || member.has_pending_value)
+			if (member.is_pending)
 				source_error(interp->errors, source_id_of(interp->asts, error_source), "Tried comparing values of incomplete composite type.\n");
 
 			const TypeMetrics metrics = type_metrics_from_id(interp->types, member.type.complete);
@@ -1735,7 +1730,7 @@ static EvalRst fill_spec_sized(Interpreter* interp, EvalSpec spec, const AstNode
 static EvalRst evaluate_global_member(Interpreter* interp, AstNode* node, EvalSpec spec, TypeId surrounding_type_id, MemberInfo member) noexcept
 {
 	if (complete_member(interp, surrounding_type_id, member))
-		member = type_member_by_rank(interp->types, surrounding_type_id, member.rank);
+		member = type_member_info_by_rank(interp->types, surrounding_type_id, member.rank);
 
 	EvalRst rst = fill_spec(interp, spec, node, true, member.is_mut, member.type.complete);
 
@@ -1762,7 +1757,7 @@ static EvalRst evaluate_global_member(Interpreter* interp, AstNode* node, EvalSp
 static EvalRst evaluate_local_member(Interpreter* interp, AstNode* node, EvalSpec spec, TypeId surrounding_type_id, MemberInfo member, MutRange<byte> lhs_value) noexcept
 {
 	if (complete_member(interp, surrounding_type_id, member))
-		member = type_member_by_rank(interp->types, surrounding_type_id, member.rank);
+		member = type_member_info_by_rank(interp->types, surrounding_type_id, member.rank);
 
 	const TypeMetrics metrics = type_metrics_from_id(interp->types, member.type.complete);
 
@@ -1918,7 +1913,7 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 
 			MemberInfo param;
 
-			if (!type_member_by_name(interp->types, parameter_list_type_id, arg_identifier_id, &param))
+			if (!type_member_info_by_name(interp->types, parameter_list_type_id, arg_identifier_id, &param))
 			{
 				const Range<char8> name = identifier_name_from_id(interp->identifiers, arg_identifier_id);
 
@@ -1984,9 +1979,9 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 
 		if ((args_mask & static_cast<u64>(1) << i) != 0)
 		{
-			const bool has_pending_type = param.has_pending_type;
+			const bool is_pending = param.is_pending;
 
-			if (has_pending_type)
+			if (is_pending)
 			{
 				// Finagle param's completion arecs to be the parameter list
 				// arec currently being constructed to make it possible to
@@ -1996,7 +1991,7 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 				param.value_completion_arec_id = parameter_list_arec_id;
 
 				if (complete_member(interp, parameter_list_type_id, param))
-					param = type_member_by_rank(interp->types, parameter_list_type_id, param.rank);
+					param = type_member_info_by_rank(interp->types, parameter_list_type_id, param.rank);
 			}
 			else if (type_tag_from_id(interp->types, param.type.complete) == TypeTag::Func)
 			{
@@ -2005,7 +2000,7 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 
 			const TypeMetrics param_metrics = type_metrics_from_id(interp->types, param.type.complete);
 
-			if (has_pending_type)
+			if (is_pending)
 			{
 				arec_grow(interp, parameter_list_arec_id, param.offset + param_metrics.size);
 
@@ -2024,10 +2019,10 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 		}
 		else if (param.value.complete != GlobalValueId::INVALID)
 		{
-			if (param.has_pending_value)
+			if (param.is_pending)
 			{
 				if (complete_member(interp, parameter_list_type_id, param))
-					param = type_member_by_rank(interp->types, parameter_list_type_id, param.rank);
+					param = type_member_info_by_rank(interp->types, parameter_list_type_id, param.rank);
 			}
 
 			const TypeMetrics param_metrics = type_metrics_from_id(interp->types, param.type.complete);
@@ -2038,7 +2033,7 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 		}
 		else
 		{
-			const Range<char8> name = identifier_name_from_id(interp->identifiers, param.name);
+			const Range<char8> name = identifier_name_from_id(interp->identifiers, type_member_name_by_rank(interp->types, parameter_list_type_id, param.rank));
 
 			source_error(interp->errors, source_id_of(interp->asts, callee), "Missing argument for parameter `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
 		}
@@ -2372,7 +2367,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 				if (names[i] != IdentifierId::INVALID)
 				{
-					if (!type_member_by_name(interp->types, spec.type_id, names[i], &member))
+					if (!type_member_info_by_name(interp->types, spec.type_id, names[i], &member))
 					{
 						const Range<char8> name = identifier_name_from_id(interp->identifiers, names[i]);
 
@@ -2386,7 +2381,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 					if (rank == target_member_count)
 						source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Too many members in composite literal.\n");
 
-					member = type_member_by_rank(interp->types, spec.type_id, rank);
+					member = type_member_info_by_rank(interp->types, spec.type_id, rank);
 
 					rank += 1;
 				}
@@ -2397,14 +2392,14 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	
 				if ((*seen_members_elem & member_bit) != 0)
 				{
-					const Range<char8> name = identifier_name_from_id(interp->identifiers, member.name);
+					const Range<char8> name = identifier_name_from_id(interp->identifiers, type_member_name_by_rank(interp->types, spec.type_id, member.rank));
 
 					source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Member `%.*s` initialized more than once in composite literal.\n", static_cast<s32>(name.count()), name.begin());
 				}
 
 				*seen_members_elem |= member_bit;
 
-				ASSERT_OR_IGNORE(!member.has_pending_type);
+				ASSERT_OR_IGNORE(!member.is_pending);
 
 				const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member.type.complete);
 
@@ -2422,7 +2417,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				}
 				else
 				{
-					const Range<char8> name = identifier_name_from_id(interp->identifiers, member.name);
+					const Range<char8> name = identifier_name_from_id(interp->identifiers, type_member_name_by_rank(interp->types, spec.type_id, member.rank));
 
 					source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Cannot convert value of composite literal member `%.*s` to desired type.\n", static_cast<s32>(name.count()), name.begin());
 				}
@@ -2437,19 +2432,17 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				if ((seen_members_elem & member_bit) != 0)
 					continue;
 
-				MemberInfo member = type_member_by_rank(interp->types, spec.type_id, static_cast<u16>(i));
+				MemberInfo member = type_member_info_by_rank(interp->types, spec.type_id, static_cast<u16>(i));
 
-				ASSERT_OR_IGNORE(!member.has_pending_type);
-
-				if (member.has_pending_value)
+				if (member.is_pending)
 				{
 					if (complete_member(interp, spec.type_id, member))
-						member = type_member_by_rank(interp->types, spec.type_id, member.rank);
+						member = type_member_info_by_rank(interp->types, spec.type_id, member.rank);
 				}
 
 				if (member.value.complete == GlobalValueId::INVALID)
 				{
-					const Range<char8> name = identifier_name_from_id(interp->identifiers, member.name);
+					const Range<char8> name = identifier_name_from_id(interp->identifiers, type_member_name_by_rank(interp->types, spec.type_id, member.rank));
 
 					source_error(interp->errors, source_id_of(interp->asts, node), "Composite initializer is missing initializer for member `%.*s` of target type which lacks a default value.\n", static_cast<s32>(name.count()), name.begin());
 				}
@@ -2469,20 +2462,18 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 		else
 		{
-			const TypeId rst_type_id = type_create_composite(interp->types, TypeTag::CompositeLiteral, active_arec_global_scope_type_id(interp), TypeDisposition::Literal, source_id_of(interp->asts, node), member_count, true);
+			const TypeId rst_type_id = type_create_composite(interp->types, TypeTag::CompositeLiteral, active_arec_global_scope_type_id(interp), TypeDisposition::Internal, source_id_of(interp->asts, node), member_count, true);
 
 			for (u32 i = 0; i != member_count; ++i)
 			{
-				MemberInfo member_init;
+				MemberInit member_init;
 				member_init.name = names[i];
 				member_init.type.complete = values[i].type_id;
 				member_init.value.complete = GlobalValueId::INVALID;
+				member_init.is_pending = false;
 				member_init.is_pub = false;
 				member_init.is_mut = false;
-				member_init.has_pending_type = false;
-				member_init.has_pending_value = false;
-				member_init.is_comptime_known = false;
-				member_init.rank = 0;
+				member_init.is_eval = false;
 				member_init.type_completion_arec_id = ArecId::INVALID;
 				member_init.value_completion_arec_id = ArecId::INVALID;
 				member_init.offset = 0;
@@ -2507,7 +2498,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			{
 				const MemberInfo member = next(&it);
 
-				ASSERT_OR_IGNORE(!member.has_pending_type);
+				ASSERT_OR_IGNORE(!member.is_pending);
 
 				const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member.type.complete);
 
@@ -2547,7 +2538,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	{
 		const TypeId global_scope_type_id = active_arec_global_scope_type_id(interp);
 
-		const TypeId block_type_id = type_create_composite(interp->types, TypeTag::Composite, global_scope_type_id, TypeDisposition::Block, SourceId::INVALID, 0, false);
+		const TypeId block_type_id = type_create_composite(interp->types, TypeTag::Composite, global_scope_type_id, TypeDisposition::Internal, SourceId::INVALID, 0, false);
 
 		const ArecId block_arec_id = arec_push(interp, block_type_id, 0, 1, active_arec_id(interp), ArecKind::Normal, global_scope_type_id, source_id_of(interp->asts, node), active_arec(interp)->caller_arec_id);
 
@@ -2585,16 +2576,14 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 					ASSERT_OR_IGNORE(type_rst.tag == EvalTag::Success);
 
-					MemberInfo member_init;
+					MemberInit member_init;
 					member_init.name = attachment_of<AstDefinitionData>(stmt)->identifier_id;
 					member_init.type.complete = type_id;
 					member_init.value.complete = GlobalValueId::INVALID;
+					member_init.is_pending = false;
 					member_init.is_pub = false;
 					member_init.is_mut = has_flag(stmt, AstFlag::Definition_IsMut);
-					member_init.has_pending_type = false;
-					member_init.has_pending_value = false;
-					member_init.is_comptime_known = false;
-					member_init.rank = 0;
+					member_init.is_eval = false;
 					member_init.type_completion_arec_id = ArecId::INVALID;
 					member_init.value_completion_arec_id = ArecId::INVALID;
 					member_init.offset = 0;
@@ -2606,7 +2595,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 						source_error(interp->errors, source_id_of(interp->asts, stmt), "Variable with name `%.*s` is already defined.\n", static_cast<s32>(name.count()), name.begin());
 					}
 
-					const MemberInfo member = type_member_by_rank(interp->types, block_type_id, definition_count);
+					const MemberInfo member = type_member_info_by_rank(interp->types, block_type_id, definition_count);
 
 					const TypeMetrics metrics = type_metrics_from_id(interp->types, type_id);
 
@@ -2628,16 +2617,14 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 					ASSERT_OR_IGNORE(value_rst.tag == EvalTag::Success);
 
-					MemberInfo member_init;
+					MemberInit member_init;
 					member_init.name = attachment_of<AstDefinitionData>(stmt)->identifier_id;
 					member_init.type.complete = value_rst.success.type_id;
 					member_init.value.complete = GlobalValueId::INVALID;
 					member_init.is_pub = false;
 					member_init.is_mut = has_flag(stmt, AstFlag::Definition_IsMut);
-					member_init.has_pending_type = false;
-					member_init.has_pending_value = false;
-					member_init.is_comptime_known = false;
-					member_init.rank = 0;
+					member_init.is_eval= false;
+					member_init.is_pending = false;
 					member_init.type_completion_arec_id = ArecId::INVALID;
 					member_init.value_completion_arec_id = ArecId::INVALID;
 					member_init.offset = 0;
@@ -2649,7 +2636,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 						source_error(interp->errors, source_id_of(interp->asts, stmt), "Variable with name `%.*s` is already defined.\n", static_cast<s32>(name.count()), name.begin());
 					}
 
-					const MemberInfo member = type_member_by_rank(interp->types, block_type_id, definition_count);
+					const MemberInfo member = type_member_info_by_rank(interp->types, block_type_id, definition_count);
 
 					const TypeMetrics metrics = type_metrics_from_id(interp->types, value_rst.success.type_id);
 
@@ -2861,7 +2848,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const TypeId global_scope_type_id = active_arec_global_scope_type_id(interp);
 
-		const TypeId parameter_list_type_id = type_create_composite(interp->types, TypeTag::Composite, global_scope_type_id, TypeDisposition::Signature, SourceId::INVALID, 0, false);
+		const TypeId parameter_list_type_id = type_create_composite(interp->types, TypeTag::Composite, global_scope_type_id, TypeDisposition::ParameterList, SourceId::INVALID, 0, false);
 
 		const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, 0, 1, active_arec_id(interp), ArecKind::Unbound, global_scope_type_id, source_id_of(interp->asts, node), active_arec(interp)->caller_arec_id);
 
@@ -2880,7 +2867,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			if (param_count == 63)
 				source_error(interp->errors, source_id_of(interp->asts, param), "Exceeded maximum of 64 function parameters.\n");
 
-			MemberInfo param_member = delayed_member_from(interp, param);
+			MemberInit param_member = delayed_member_from(interp, param);
 			param_member.type_completion_arec_id = ArecId::INVALID;
 			param_member.value_completion_arec_id = ArecId::INVALID;
 
@@ -2908,10 +2895,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			const MemberInfo member = next(&members);
 
-			if (!member.has_pending_type && !member.has_pending_value)
+			if (!member.is_pending)
 				continue;
-
-			ASSERT_OR_IGNORE(member.has_pending_type || member.has_pending_value);
 
 			TypeId member_type_id = TypeId::INVALID;
 
@@ -2919,11 +2904,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			bool type_is_unbound = false;
 
-			if (!member.has_pending_type)
-			{
-				member_type_id = member.type.complete;
-			}
-			else if (member.type.pending != AstNodeId::INVALID)
+			if (member.type.pending != AstNodeId::INVALID)
 			{
 				AstNode* const type = ast_node_from_id(interp->asts, member.type.pending);
 
@@ -2944,7 +2925,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				}
 			}
 
-			if (member.has_pending_value)
+			if (member.value.pending != AstNodeId::INVALID)
 			{
 				AstNode* const value = ast_node_from_id(interp->asts, member.value.pending);
 
@@ -3005,10 +2986,10 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				}
 			}
 
-			ASSERT_OR_IGNORE((member_type_id != TypeId::INVALID && (member_value_id != GlobalValueId::INVALID || !member.has_pending_value))
+			ASSERT_OR_IGNORE((member_type_id != TypeId::INVALID && (member_value_id != GlobalValueId::INVALID || member.value.pending == AstNodeId::INVALID))
 			              || (member_type_id == TypeId::INVALID && member_value_id == GlobalValueId::INVALID));
 
-			if (member_type_id != TypeId::INVALID)				
+			if (member_type_id != TypeId::INVALID)
 				type_set_composite_member_info(interp->types, parameter_list_type_id, member.rank, member_type_id, member_value_id);
 		}
 
@@ -3070,15 +3051,13 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 				DefinitionInfo param_info = get_definition_info(param);
 
-				if (is_some(param_info.type) && !member.has_pending_type)
+				if (is_some(param_info.type) && !member.is_pending)
 				{
 					add_partial_value_to_builder_sized(interp, get_ptr(param_info.type), type_type_id, range::from_object_bytes(&member.type.complete), sizeof(TypeId), alignof(TypeId));
 				}
 
-				if (is_some(param_info.value) && !member.has_pending_value)
+				if (is_some(param_info.value) && !member.is_pending)
 				{
-					ASSERT_OR_IGNORE(!member.has_pending_type);
-
 					Range<byte> value_src = global_value_get(interp->globals, member.value.complete);
 
 					add_partial_value_to_builder(interp, get_ptr(param_info.value), member.type.complete, value_src);
@@ -4489,7 +4468,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			MemberInfo member;
 
-			if (!type_member_by_name(interp->types, lhs_rst.success.type_id, attach.identifier_id, &member))
+			if (!type_member_info_by_name(interp->types, lhs_rst.success.type_id, attach.identifier_id, &member))
 			{
 				const Range<char8> name = identifier_name_from_id(interp->identifiers, attach.identifier_id);
 
@@ -4507,7 +4486,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			MemberInfo member;
 
-			if (!type_member_by_name(interp->types, type_id, attach.identifier_id, &member))
+			if (!type_member_info_by_name(interp->types, type_id, attach.identifier_id, &member))
 			{
 				const Range<char8> name = identifier_name_from_id(interp->identifiers, attach.identifier_id);
 
@@ -5069,11 +5048,12 @@ static void type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file
 		if (node->tag != AstTag::Definition)
 			source_error(interp->errors, source_id_of(interp->asts, node), "Currently only definitions are supported on a file's top-level.\n");
 
-		MemberInfo member = delayed_member_from(interp, node);
-		member.type_completion_arec_id = ArecId::INVALID;
-		member.value_completion_arec_id = ArecId::INVALID;
+		MemberInit member_init = delayed_member_from(interp, node);
+		member_init.is_eval = true;
+		member_init.type_completion_arec_id = ArecId::INVALID;
+		member_init.value_completion_arec_id = ArecId::INVALID;
 
-		if (!type_add_composite_member(interp->types, file_type_id, member))
+		if (!type_add_composite_member(interp->types, file_type_id, member_init))
 		{
 			const Range<char8> name = identifier_name_from_id(interp->identifiers, attachment_of<AstDefinitionData>(node)->identifier_id);
 
@@ -5091,10 +5071,8 @@ static void type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file
 	{
 		const MemberInfo member = next(&members);
 
-		if (!member.has_pending_type)
+		if (!member.is_pending)
 			continue;
-
-		ASSERT_OR_IGNORE(member.has_pending_type && member.has_pending_value);
 
 		AstNode* const value = ast_node_from_id(interp->asts, member.value.pending);
 
@@ -5165,19 +5143,18 @@ static void type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file
 
 static TypeId make_func_type_from_array(TypePool* types, TypeId return_type_id, u8 param_count, const BuiltinParamInfo* params) noexcept
 {
-	const TypeId parameter_list_type_id = type_create_composite(types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::Signature, SourceId::INVALID, param_count, true);
+	const TypeId parameter_list_type_id = type_create_composite(types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::ParameterList, SourceId::INVALID, param_count, true);
 
 	for (u8 i = 0; i != param_count; ++i)
 	{
-		MemberInfo member_init{};
+		MemberInit member_init{};
 		member_init.name = params[i].name;
 		member_init.type.complete = params[i].type;
 		member_init.value.complete = GlobalValueId::INVALID;
+		member_init.is_pending = false;
 		member_init.is_pub = false;
 		member_init.is_mut = false;
-		member_init.is_comptime_known = params[i].is_comptime_known;
-		member_init.has_pending_type = false;
-		member_init.has_pending_value = false;
+		member_init.is_eval = params[i].is_comptime_known;
 		member_init.type_completion_arec_id = ArecId::INVALID;
 		member_init.value_completion_arec_id = ArecId::INVALID;
 		member_init.offset = 0;
@@ -5222,10 +5199,10 @@ static T get_builtin_arg(Interpreter* interp, Arec* arec, IdentifierId name) noe
 {
 	MemberInfo member;
 
-	if (!type_member_by_name(interp->types, arec->type_id, name, &member))
+	if (!type_member_info_by_name(interp->types, arec->type_id, name, &member))
 		ASSERT_UNREACHABLE;
 
-	ASSERT_OR_IGNORE(!member.has_pending_type);
+	ASSERT_OR_IGNORE(!member.is_pending);
 
 	const TypeMetrics metrics = type_metrics_from_id(interp->types, member.type.complete);
 
@@ -5412,16 +5389,14 @@ static void builtin_add_type_member(Interpreter* interp, Arec* arec, [[maybe_unu
 
 	const s64 offset = get_builtin_arg<s64>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("offset")));
 
-	MemberInfo member_init{};
+	MemberInit member_init{};
 	member_init.name = definition.name;
 	member_init.type = definition.type;
 	member_init.value = definition.value;
 	member_init.is_pub = definition.is_pub;
 	member_init.is_mut = definition.is_mut;
-	member_init.has_pending_type = definition.has_pending_type;
-	member_init.has_pending_value = definition.has_pending_value;
-	member_init.is_comptime_known = false;
-	member_init.rank = 0;
+	member_init.is_pending= definition.has_pending_type || definition.has_pending_value;
+	member_init.is_eval = false;
 	member_init.type_completion_arec_id = definition.type_completion_arec_id;
 	member_init.value_completion_arec_id = definition.value_completion_arec_id;
 	member_init.offset = offset;

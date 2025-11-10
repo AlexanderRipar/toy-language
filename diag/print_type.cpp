@@ -132,6 +132,8 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 			{
 				const MemberInfo member = next(&it);
 
+				const IdentifierId member_name = type_member_name_by_rank(types, composite_type_id, member.rank);
+
 				diag::buf_printf(ctx, "%s%*s%s%s",
 					has_members ? "" : "\n",
 					(indent + 1) * 2, "",
@@ -139,15 +141,15 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 					member.is_mut ? "mut " : ""
 				);
 
-				if (member.name < IdentifierId::FirstNatural)
+				if (member_name < IdentifierId::FirstNatural)
 				{
 					diag::buf_printf(ctx, "\"_%u\" ",
-						static_cast<u32>(member.name)
+						static_cast<u32>(member_name)
 					);
 				}
 				else
 				{
-					const Range<char8> name = identifier_name_from_id(identifiers, member.name);
+					const Range<char8> name = identifier_name_from_id(identifiers, member_name);
 
 					diag::buf_printf(ctx, "\"%.*s\" ",
 						static_cast<s32>(name.count()), name.begin()
@@ -156,7 +158,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 				diag::buf_printf(ctx, "(%+" PRId64 ") :: ", member.offset);
 
-				if (member.has_pending_type)
+				if (member.is_pending)
 				{
 					diag::buf_printf(ctx, "<INCOMPLETE>\n");
 				}

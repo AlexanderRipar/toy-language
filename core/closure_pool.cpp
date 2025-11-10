@@ -120,16 +120,14 @@ ClosureBuilderId closure_add_value(ClosurePool* closures, ClosureBuilderId build
 
 	const u64 aligned_begin = next_multiple(closure->used, static_cast<u16>(value_metrics.align));
 
-	MemberInfo member_init{};
+	MemberInit member_init;
 	member_init.name = name;
 	member_init.type = value_type_id;
 	member_init.value.complete = GlobalValueId::INVALID;
 	member_init.is_pub = false;
 	member_init.is_mut = false;
-	member_init.has_pending_type = false;
-	member_init.has_pending_value = false;
-	member_init.is_comptime_known = false;
-	member_init.rank = 0;
+	member_init.is_pending = false;
+	member_init.is_eval = false;
 	member_init.type_completion_arec_id = ArecId::INVALID;
 	member_init.value_completion_arec_id = ArecId::INVALID;
 	member_init.offset = aligned_begin;

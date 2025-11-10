@@ -1901,11 +1901,10 @@ enum class TypeTag : u8
 enum class TypeDisposition : u8
 {
 	INVALID = 0,
+	Internal,
 	File,
+	ParameterList,
 	User,
-	Signature,
-	Block,
-	Literal,
 };
 
 // Allocation metrics returned by `type_metrics_by_id`, describing the size,
@@ -1935,11 +1934,17 @@ struct MemberIterator
 {
 	const void* structure;
 
+	const IdentifierId* names;
+
+	const void* members;
+
 	TypePool* types;
 
-	u16 rank;
+	u8 member_stride;
 
 	bool is_indirect;
+
+	u16 rank;
 };
 
 // Representation of either a `TypeId` or the `AstNodeId` of the expression
@@ -2000,23 +2005,42 @@ struct Definition
 	bool has_pending_value : 1;
 };
 
+struct MemberInit
+{
+	IdentifierId name;
+
+	DelayableTypeId type;
+
+	DelayableValueId value;
+
+	bool is_pending : 1;
+
+	bool is_pub : 1;
+
+	bool is_mut : 1;
+
+	bool is_eval : 1;
+
+	ArecId type_completion_arec_id;
+
+	ArecId value_completion_arec_id;
+
+	s64 offset;
+};
+
 struct MemberInfo
 {
 	DelayableTypeId type;
 
 	DelayableValueId value;
 
-	IdentifierId name;
+	bool is_pending : 1;
 
 	bool is_pub : 1;
 
 	bool is_mut : 1;
 
-	bool is_comptime_known : 1;
-
-	bool has_pending_type : 1;
-
-	bool has_pending_value : 1;
+	bool is_eval : 1;
 
 	u16 rank;
 
@@ -2212,7 +2236,7 @@ TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align,
 // The member is initialized with the data in `member`.
 // Returns `true` if the member was successfully added, and `false` if there
 // was a name collision with an existing member.
-bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInfo init) noexcept;
+bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInit init) noexcept;
 
 // Sets the type and / or value of the member at position `rank` in the
 // composite type identified by `type_id`.
@@ -2307,9 +2331,11 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
 // For types created by `create_open_type`, this is `TypeTag::Composite`.
 TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept;
 
-const MemberInfo type_member_by_rank(TypePool* types, TypeId type_id, u16 rank);
+const MemberInfo type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank);
 
-bool type_member_by_name(TypePool* types, TypeId type_id, IdentifierId name, MemberInfo* out) noexcept;
+bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId name, MemberInfo* out) noexcept;
+
+IdentifierId type_member_name_by_rank(TypePool* types, TypeId type_id, u16 rank) noexcept;
 
 // Do not call this function directly. Use `type_attachment_from_id` instead.
 const void* type_attachment_from_id_raw(TypePool* types, TypeId type_id) noexcept;
