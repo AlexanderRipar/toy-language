@@ -1293,10 +1293,10 @@ static u32 path_to_absolute_impl(Range<char8> path, MutRange<char8> out_buf, boo
 		trimmed_path = path_utf16;
 	}
 
-	s32 path_chars_utf8 = WideCharToMultiByte(CP_UTF8, 0, path_utf16, path_chars, out_buf.begin(), static_cast<s32>(out_buf.count()), nullptr, nullptr);
+	s32 path_chars_utf8 = WideCharToMultiByte(CP_UTF8, 0, trimmed_path, path_chars, out_buf.begin(), static_cast<s32>(out_buf.count()), nullptr, nullptr);
 
 	if (path_chars_utf8 == 0)
-		path_chars_utf8 = WideCharToMultiByte(CP_UTF8, 0, path_utf16, path_chars, nullptr, 0, nullptr, nullptr);
+		path_chars_utf8 = WideCharToMultiByte(CP_UTF8, 0, trimmed_path, path_chars, nullptr, 0, nullptr, nullptr);
 
 	return path_chars_utf8;
 }
