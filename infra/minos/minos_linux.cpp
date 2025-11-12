@@ -1186,15 +1186,20 @@ bool minos::file_write(FileHandle handle, Range<byte> buffer, u64 offset) noexce
 	{
 		const s64 end_offset = lseek(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), 0, SEEK_END);
 
-		if (end_offset == -1)
+		ASSERT_OR_IGNORE(end_offset >= -1);
+
+		// If we are dealing with a pipe, socket or FIFO, lseek will fail with
+		// ESPIPE, but as the device is append-only in this case we can just
+		// ignore the error.
+		if (end_offset == -1 && errno != ESPIPE)
 			panic("lseek failed (0x%X - %s)\n", errno, strerror(errno));
 
-		ASSERT_OR_IGNORE(end_offset >= 0);
-
-		offset = static_cast<u64>(end_offset);
+		return write(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), buffer.begin(), buffer.count()) == static_cast<s64>(buffer.count());
 	}
-
-	return pwrite(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), buffer.begin(), buffer.count(), offset) == static_cast<s64>(buffer.count());
+	else
+	{
+		return pwrite(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), buffer.begin(), buffer.count(), offset) == static_cast<s64>(buffer.count());
+	}
 }
 
 bool minos::file_write_async(FileHandle handle, Range<byte> buffer, Overlapped* overlapped) noexcept
