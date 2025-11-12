@@ -77,6 +77,16 @@ elseif ($IsWindows)
 			jobname = 'build-msvc-windows-rel'
 			command = 'cmake -S . -B build/msvc-rel -DCMAKE_CXX_COMPILER=msvc -DCMAKE_C_COMPILER=msvc' +
 			      ' && cmake --build build/msvc-rel --config release --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
+		},
+		@{
+			jobname = 'build-clang-cl-windows-deb'
+			command = 'cmake -S . -B build/clang-cl-deb -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -Tclangcl' +
+			      ' && cmake --build build/clang-cl-deb --config debug --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
+		},
+		@{
+			jobname = 'build-clang-cl-windows-rel'
+			command = 'cmake -S . -B build/clang-cl-rel -DCMAKE_CXX_COMPILER=cclang++ -DCMAKE_C_COMPILER=clang -Tclangcl' +
+			      ' && cmake --build build/clang-cl-rel --config release --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
 		}
 	)
 }
