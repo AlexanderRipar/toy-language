@@ -1660,44 +1660,21 @@ void release_error_sink(ErrorSink* errors) noexcept;
 // `format` supports the same syntax as `printf`.
 NORETURN void source_error(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
 
-// Prints the given `format` string alongside source information derived from
-// `source_id` to the diagnostic log file configured with `errors`, then exits
-// the program with an exit code indicating failure.
-// Instead of accepting variadic arguments, this version of the function
-// accepts a `va_list`, enabling nested variadic calls.
-NORETURN void vsource_error(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
-
 // Equivalent to `source_error`, but does not exit the program, instead
 // returning normally.
 // This allows diagnosing multiple errors and then exiting the program via
 // `error_exit` when no further progress is possible.
 void source_error_nonfatal(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
 
-// Equivalent to `vsource_error`, but does not exit the program, instead
-// returning normally.
-// This allows diagnosing multiple errors and then exiting the program via
-// `error_exit` when no further progress is possible.
-void vsource_error_nonfatal(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
-
 // Prints the given `format` string alongside source information derived from
 // `source_id` to the diagnostic log file configured with `errors`.
 // `format` supports the same syntax as `printf`.
 void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
 
-// Prints the given `format` string alongside source information derived from
-// `source_id` to the diagnostic log file configured with `errors`.
-// `format` supports the same syntax as `printf`.
-void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept;
-
 // Prints the given `format` string to the diagnostic log file configured with
 // `errors`.
 // `format` supports the same syntax as `printf`.
 void error_diagnostic(ErrorSink* errors, const char8* format, ...) noexcept;
-
-// Prints the given `format` string to the diagnostic log file configured with
-// `errors`.
-// `format` supports the same syntax as `printf`.
-void verror_diagnostic(ErrorSink* errors, const char8* format, va_list args) noexcept;
 
 // Takes a pointer to a `jmp_buf` on which `setjmp` has previously been called.
 // When one of `source_error`, `vsource_error` or `error_exit` is called next,

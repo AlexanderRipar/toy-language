@@ -86,56 +86,30 @@ void release_error_sink([[maybe_unused]] ErrorSink* errors) noexcept
 
 NORETURN void source_error(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept
 {
+	const SourceLocation location = source_location_from_source_id(errors->reader, source_id);
+
 	va_list args;
 
 	va_start(args, format);
 
-	vsource_error(errors, source_id, format, args);
-}
-
-NORETURN void vsource_error(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept
-{
-	const SourceLocation location = source_location_from_source_id(errors->reader, source_id);
-
 	print_error_to(errors->log_file, &location, format, args);
+
+	va_end(args);
 
 	error_exit(errors);
 }
 
 void source_error_nonfatal(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept
 {
+	const SourceLocation location = source_location_from_source_id(errors->reader, source_id);
+
 	va_list args;
 
 	va_start(args, format);
 
-	vsource_error_nonfatal(errors, source_id, format, args);
+	print_error_to(errors->log_file, &location, format, args);
 
 	va_end(args);
-}
-
-void vsource_error_nonfatal(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept
-{
-	const SourceLocation location = source_location_from_source_id(errors->reader, source_id);
-
-	print_error_to(errors->log_file, &location, format, args);
-}
-
-void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept
-{
-	va_list args;
-
-	va_start(args, format);
-
-	vsource_warning(errors, source_id, format, args);
-
-	va_end(args);
-}
-
-void vsource_warning(ErrorSink* errors, SourceId source_id, const char8* format, va_list args) noexcept
-{
-	const SourceLocation location = source_location_from_source_id(errors->reader, source_id);
-
-	print_error_to(errors->log_file, &location, format, args);
 }
 
 void error_diagnostic(ErrorSink* errors, const char8* format, ...) noexcept
@@ -144,15 +118,10 @@ void error_diagnostic(ErrorSink* errors, const char8* format, ...) noexcept
 
 	va_start(args, format);
 
-	verror_diagnostic(errors, format, args);
-
-	va_end(args);
-}
-
-void verror_diagnostic(ErrorSink* errors, const char8* format, va_list args) noexcept
-{
 	if (errors->log_file != nullptr)
 		vfprintf(errors->log_file, format, args);
+
+	va_end(args);
 }
 
 void set_error_handling_context(ErrorSink* errors, jmp_buf* setjmpd_longjmp_buf) noexcept
@@ -165,7 +134,9 @@ void set_error_handling_context(ErrorSink* errors, jmp_buf* setjmpd_longjmp_buf)
 NORETURN void error_exit(ErrorSink* errors) noexcept
 {
 	if (errors->has_error_jmp_buf)
+	{
 		longjmp(*errors->error_jmp_buf, 1);
+	}
 	else
 	{
 		DEBUGBREAK;
