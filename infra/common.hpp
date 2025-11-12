@@ -5,13 +5,7 @@
 #include <cstdarg>
 #include <inttypes.h>
 
-#if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
-	#include <intrin.h>
-	#define COMPILER_MSVC 1
-	#define COMPILER_NAME "msvc"
-	#define NORETURN __declspec(noreturn)
-	#define DEBUGBREAK __debugbreak()
-#elif defined(__clang__)
+#if defined(__clang__)
 	#define COMPILER_CLANG 1
 	#define COMPILER_NAME "clang"
 	#define NORETURN [[noreturn]]
@@ -25,6 +19,12 @@
 	#define COMPILER_NAME "gcc"
 	#define NORETURN __attribute__ ((noreturn))
 	#define DEBUGBREAK raise(SIGTRAP)
+#elif defined(_MSC_VER) && !defined(__INTEL_COMPILER)
+	#include <intrin.h>
+	#define COMPILER_MSVC 1
+	#define COMPILER_NAME "msvc"
+	#define NORETURN __declspec(noreturn)
+	#define DEBUGBREAK __debugbreak()
 #else
 	#error("Unsupported compiler")
 #endif
