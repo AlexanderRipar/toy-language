@@ -182,8 +182,6 @@ static ScopeMap* scope_map_grow(LexicalAnalyser* lex, ScopeMap* old_scope) noexc
 	const u32 new_capacity = old_scope->capacity * 2;
 
 	ScopeMap* const new_scope = scope_map_alloc_sized(lex, old_scope->is_global, new_capacity);
-	new_scope->capacity = new_capacity;
-	new_scope->used = 0;
 
 	const ScopeMapInfo old_info = scope_map_info(old_scope);
 
