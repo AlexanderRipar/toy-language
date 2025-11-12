@@ -518,7 +518,8 @@ static TypeStructure* make_structure(TypePool* types, TypeTag tag, Range<byte> a
 	structure->holotype_id_bits = static_cast<u32>(id_from_structure(types, structure));
 	structure->distinct_source_id = distinct_source_id;
 
-	memcpy(structure->attach, attach.begin(), attach.count());
+	if (attach.count() != 0)
+		memcpy(structure->attach, attach.begin(), attach.count());
 
 	return structure;
 }
