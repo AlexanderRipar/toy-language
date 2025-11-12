@@ -79,14 +79,14 @@ elseif ($IsWindows)
 			      ' && cmake --build build/msvc-rel --config release --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
 		},
 		@{
-			jobname = 'win32-clang-cl-deb'
-			command = 'cmake -S . -B build/clang-cl-deb -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -Tclangcl' +
-			      ' && cmake --build build/clang-cl-deb --config debug --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
+			jobname = 'win32-clangcl-deb'
+			command = 'cmake -S . -B build/clangcl-deb -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -Tclangcl' +
+			      ' && cmake --build build/clangcl-deb --config debug --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
 		},
 		@{
-			jobname = 'win32-clang-cl-rel'
-			command = 'cmake -S . -B build/clang-cl-rel -DCMAKE_CXX_COMPILER=cclang++ -DCMAKE_C_COMPILER=clang -Tclangcl' +
-			      ' && cmake --build build/clang-cl-rel --config release --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
+			jobname = 'win32-clangcl-rel'
+			command = 'cmake -S . -B build/clangcl-rel -DCMAKE_CXX_COMPILER=cclang++ -DCMAKE_C_COMPILER=clang -Tclangcl' +
+			      ' && cmake --build build/clangcl-rel --config release --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
 		}
 	)
 }
