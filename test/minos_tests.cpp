@@ -13,6 +13,20 @@
 	#error HELPER_PROCESS_PATH was not defined. Build with cmake to correct this.
 #endif
 
+#ifdef NDEBUG
+	#define COMPILER_MODE "rel"
+#else
+	#define COMPILER_MODE "dbg"
+#endif
+
+#ifdef _WIN32
+	#define COMPILER_PLATFORM "win32"
+#else
+	#define COMPILER_PLATFORM "linux"
+#endif
+
+#define TEST_DIRECTORY  "minos_fs_data/dynamic_data/" COMPILER_PLATFORM "-" COMPILER_NAME "-" COMPILER_MODE
+
 static constexpr u32 TIMEOUT_TEST_MILLIS = 70;
 
 static u32 log10_ceil(u64 n) noexcept
@@ -889,7 +903,7 @@ static void file_create_with_new_file_path_and_new_mode_create_succeeds() noexce
 	minos::FileHandle file;
 
 	TEST_EQUAL(minos::file_create(
-			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_A"),
+			range::from_literal_string(TEST_DIRECTORY "/DELETEME_A"),
 			minos::Access::Read,
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
@@ -1159,7 +1173,7 @@ static void file_write_on_empty_file_appends_to_that_file() noexcept
 	minos::FileHandle file;
 
 	TEST_EQUAL(minos::file_create(
-			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_B"),
+			range::from_literal_string(TEST_DIRECTORY "/DELETEME_B"),
 			minos::Access::Read | minos::Access::Write,
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
@@ -1191,7 +1205,7 @@ static void file_write_on_existing_file_part_overwrites_it() noexcept
 	minos::FileHandle file;
 
 	TEST_EQUAL(minos::file_create(
-			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_C"),
+			range::from_literal_string(TEST_DIRECTORY "/DELETEME_C"),
 			minos::Access::Read | minos::Access::Write,
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
@@ -1239,7 +1253,7 @@ static void file_write_unbuffered_file_with_page_alignment_on_existing_file_part
 	minos::FileHandle file;
 
 	TEST_EQUAL(minos::file_create(
-			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_D"),
+			range::from_literal_string(TEST_DIRECTORY "/DELETEME_D"),
 			minos::Access::Read | minos::Access::Write,
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
@@ -1293,7 +1307,7 @@ static void file_write_unbuffered_file_with_page_alignment_on_unaligned_file_end
 	minos::FileHandle file;
 
 	TEST_EQUAL(minos::file_create(
-			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_E"),
+			range::from_literal_string(TEST_DIRECTORY "/DELETEME_E"),
 			minos::Access::Read | minos::Access::Write,
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
@@ -1411,7 +1425,7 @@ static void file_resize_to_grow_empty_file_succeeds() noexcept
 	minos::FileHandle file;
 
 	TEST_EQUAL(minos::file_create(
-			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_F"),
+			range::from_literal_string(TEST_DIRECTORY "/DELETEME_F"),
 			minos::Access::Read | minos::Access::Write,
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
@@ -1441,7 +1455,7 @@ static void file_resize_to_grow_file_succeeds() noexcept
 	minos::FileHandle file;
 
 	TEST_EQUAL(minos::file_create(
-			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_G"),
+			range::from_literal_string(TEST_DIRECTORY "/DELETEME_G"),
 			minos::Access::Read | minos::Access::Write,
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
@@ -1473,7 +1487,7 @@ static void file_resize_to_shrink_file_succeeds() noexcept
 	minos::FileHandle file;
 
 	TEST_EQUAL(minos::file_create(
-			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_H"),
+			range::from_literal_string(TEST_DIRECTORY "/DELETEME_H"),
 			minos::Access::Read | minos::Access::Write,
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
@@ -1505,7 +1519,7 @@ static void file_resize_to_empty_file_succeeds() noexcept
 	minos::FileHandle file;
 
 	TEST_EQUAL(minos::file_create(
-			range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_I"),
+			range::from_literal_string(TEST_DIRECTORY "/DELETEME_I"),
 			minos::Access::Read | minos::Access::Write,
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
@@ -2557,18 +2571,17 @@ static void sem_wait_and_post_work_across_processes() noexcept
 	MINOS_TEST_END;
 }
 
-
 static void directory_enumeration_create_on_empty_directory_returns_no_more_files() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	TEST_EQUAL(minos::directory_create(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_empty_dir")), true);
+	TEST_EQUAL(minos::directory_create(range::from_literal_string(TEST_DIRECTORY "/DELETEME_empty_dir")), true);
 
 	minos::DirectoryEnumerationHandle enumeration;
 
 	minos::DirectoryEnumerationResult result;
 
-	TEST_EQUAL(minos::directory_enumeration_create(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_empty_dir"), &enumeration, &result), minos::DirectoryEnumerationStatus::NoMoreFiles);
+	TEST_EQUAL(minos::directory_enumeration_create(range::from_literal_string(TEST_DIRECTORY "/DELETEME_empty_dir"), &enumeration, &result), minos::DirectoryEnumerationStatus::NoMoreFiles);
 
 	minos::directory_enumeration_close(enumeration);
 
@@ -2677,7 +2690,7 @@ static void directory_create_on_new_path_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	TEST_EQUAL(minos::directory_create(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_DIR_A")), true);
+	TEST_EQUAL(minos::directory_create(range::from_literal_string(TEST_DIRECTORY "/DELETEME_DIR_A")), true);
 
 	MINOS_TEST_END;
 }
@@ -2698,11 +2711,11 @@ static void path_remove_file_on_file_path_succeeds() noexcept
 
 	minos::FileHandle file;
 
-	TEST_EQUAL(minos::file_create(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_J"), minos::Access::Write, minos::ExistsMode::Fail, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &file), true);
+	TEST_EQUAL(minos::file_create(range::from_literal_string(TEST_DIRECTORY "/DELETEME_J"), minos::Access::Write, minos::ExistsMode::Fail, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &file), true);
 
 	minos::file_close(file);
 
-	TEST_EQUAL(minos::path_remove_file(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_J")), true);
+	TEST_EQUAL(minos::path_remove_file(range::from_literal_string(TEST_DIRECTORY "/DELETEME_J")), true);
 
 	MINOS_TEST_END;
 }
@@ -2711,9 +2724,9 @@ static void path_remove_file_on_directory_path_fails() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	TEST_EQUAL(minos::directory_create(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_DIR_B")), true);
+	TEST_EQUAL(minos::directory_create(range::from_literal_string(TEST_DIRECTORY "/DELETEME_DIR_B")), true);
 
-	TEST_EQUAL(minos::path_remove_file(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_DIR_B")), false);
+	TEST_EQUAL(minos::path_remove_file(range::from_literal_string(TEST_DIRECTORY "/DELETEME_DIR_B")), false);
 
 	MINOS_TEST_END;
 }
@@ -2732,9 +2745,9 @@ static void path_remove_directory_on_directory_path_succeeds() noexcept
 {
 	MINOS_TEST_BEGIN;
 
-	TEST_EQUAL(minos::directory_create(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_DIR_C")), true);
+	TEST_EQUAL(minos::directory_create(range::from_literal_string(TEST_DIRECTORY "/DELETEME_DIR_C")), true);
 
-	TEST_EQUAL(minos::path_remove_directory(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_DIR_C")), true);
+	TEST_EQUAL(minos::path_remove_directory(range::from_literal_string(TEST_DIRECTORY "/DELETEME_DIR_C")), true);
 
 	MINOS_TEST_END;
 }
@@ -2745,11 +2758,11 @@ static void path_remove_directory_on_file_path_fails() noexcept
 
 	minos::FileHandle file;
 
-	TEST_EQUAL(minos::file_create(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_K"), minos::Access::Write, minos::ExistsMode::Fail, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &file), true);
+	TEST_EQUAL(minos::file_create(range::from_literal_string(TEST_DIRECTORY "/DELETEME_K"), minos::Access::Write, minos::ExistsMode::Fail, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &file), true);
 
 	minos::file_close(file);
 
-	TEST_EQUAL(minos::path_remove_directory(range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME "/DELETEME_K")), false);
+	TEST_EQUAL(minos::path_remove_directory(range::from_literal_string(TEST_DIRECTORY "/DELETEME_K")), false);
 
 	MINOS_TEST_END;
 }
@@ -3197,7 +3210,7 @@ static void prepare_minos_tests() noexcept
 	// The prefix with COMPILER_NAME is necessary so that different tests
 	// running in parallel - as is done by build-all.ps1 - do not clobber each
 	// other's data.
-	static constexpr Range<char8> individual_directory = range::from_literal_string("minos_fs_data/dynamic_data/" COMPILER_NAME);
+	static constexpr Range<char8> individual_directory = range::from_literal_string(TEST_DIRECTORY);
 
 	if (!minos::path_is_directory(individual_directory))
 	{
