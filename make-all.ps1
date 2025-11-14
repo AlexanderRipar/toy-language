@@ -97,7 +97,6 @@ else
 	exit 1
 }
 
-
 # Start one asynchronous job for each build.
 $jobs = $specs | Foreach-Object {
 	Start-Job `
@@ -127,13 +126,43 @@ while ($jobs.Count -ne 0)
 
 	$job_result = Receive-Job $completed_job
 
+	$job_output = $job_result.output
+
+	if (-not $Verbose)
+	{
+		$job_output = @($job_output |
+			Select-String -NotMatch -Pattern "^gmake(\[\d+\])?: Warning:  Clock skew detected.  Your build may be incomplete.$",
+											 "^gmake(\[\d+\])?: Warning: File '.+' has modification time \d+(\.\d+)? s in the future$",
+											 "^\[ *\d+\%] (Building CXX object|Linking CXX executable) ",
+											 "^MSBuild version ", "^  Building Custom Rule ",
+											 "^  Generating Code...$",
+											 "^  Compiling...$",
+											 "^  \w+\.cpp$",
+											 "^  \d+>Checking Build System$",
+											 "^-- Selecting Windows SDK version ",
+											 "^-- Configuring done \(\d+(\.\d+)?s\)$",
+											 "^-- Generating done \(\d+(\.\d+)?s\)$",
+											 "^-- Build files have been written to: ").Line
+
+		if ($completed_job.Name.Contains('msvc') -or $completed_job.Name.Contains('clangcl'))
+		{
+			$job_output = ($job_output -replace '^  ') -replace '\s*\[.+\.vcxproj\]$' -replace '^(?<tgt>.+)\.vcxproj -> .+', 'Built target ${tgt}'
+		}
+		else
+		{
+			$job_output = $job_output -replace '^\[\s*\d+%\] '
+		}
+	}
+
 	Write-Output ''
 	Write-Output ''
 	Write-Output "################# $($completed_job.Name) #################"
 	Write-Output ''
-	Write-Output $job_result.output
 
-	# Write-Output @('', '', "################# $($completed_job.Name) #################", '') + $job_result.output
+	if ($job_output)
+	{
+		Write-Output $job_output
+	}
 
 	if ($job_result.exitcode -ne 0)
 	{

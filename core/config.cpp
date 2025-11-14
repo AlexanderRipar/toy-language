@@ -267,12 +267,8 @@ static u32 find_line_number(Range<char8> content, u64 offset, u64* out_line_begi
 	return line_number;
 }
 
-NORETURN static void error(ConfigParser* parser, const char8* curr, const char8* format, ...) noexcept
+NORETURN static void config_error(ConfigParser* parser, const char8* curr, CompileError error) noexcept
 {
-	va_list args;
-
-	va_start(args, format);
-
 	const u64 offset = curr - parser->begin;
 
 	u64 line_begin_offset;
@@ -284,7 +280,7 @@ NORETURN static void error(ConfigParser* parser, const char8* curr, const char8*
 	location.context_offset = 0;
 	location.context_chars = 0;
 
-	print_error(&location, format, args);
+	print_error(minos::standard_file_handle(minos::StdFileName::StdErr), &location, error);
 
 	minos::exit_process(1);
 }
@@ -340,7 +336,7 @@ static ConfigToken next(ConfigParser* parser) noexcept
 				parser->curr += 1;
 
 			if (parser->curr == token_beg + 2)
-				error(parser, parser->curr, "Expected at least one digit after hexadecimal prefix '0x'\n");
+				config_error(parser, parser->curr, CompileError::LexNumberWithBaseMissingDigits);
 		}
 		else if (*parser->curr == 'o')
 		{
@@ -350,7 +346,7 @@ static ConfigToken next(ConfigParser* parser) noexcept
 				parser->curr += 1;
 
 			if (parser->curr == token_beg + 2)
-				error(parser, parser->curr, "Expected at least one digit after octal prefix '0o'\n");
+				config_error(parser, parser->curr, CompileError::LexNumberWithBaseMissingDigits);
 		}
 		else if (*parser->curr == 'b')
 		{
@@ -360,7 +356,7 @@ static ConfigToken next(ConfigParser* parser) noexcept
 				parser->curr += 1;
 
 			if (parser->curr == token_beg + 2)
-				error(parser, parser->curr, "Expected at least one digit after binary prefix '0b'\n");
+				config_error(parser, parser->curr, CompileError::LexNumberWithBaseMissingDigits);
 		}
 		else
 		{
@@ -374,7 +370,7 @@ static ConfigToken next(ConfigParser* parser) noexcept
 			parser->curr += 1;
 
 		if (is_dec_digit(*parser->curr) || is_alpha(*parser->curr))
-			error(parser, parser->curr, "Unexpected character '%c' in number\n", *parser->curr);
+			config_error(parser, parser->curr, CompileError::LexNumberUnexpectedCharacterAfterInteger);
 
 		return { ConfigToken::Type::Integer, { token_beg, parser->curr } };
 	}
@@ -390,7 +386,7 @@ static ConfigToken next(ConfigParser* parser) noexcept
 	else if (first < ' ')
 	{
 		if (first != '\0' || parser->curr != parser->end)
-			error(parser, parser->curr, "Unexpected control character U+%02X in config file\n", first);
+			config_error(parser, parser->curr, CompileError::LexConfigUnexpectedControlCharacter);
 
 		return { ConfigToken::Type::End, {} };
 	}
@@ -411,7 +407,7 @@ static ConfigToken next(ConfigParser* parser) noexcept
 				}
 				else if (*parser->curr == '\0')
 				{
-					error(parser, token_beg, "String not ended before end of file\n");
+					config_error(parser, token_beg, CompileError::LexStringMissingEnd);
 				}
 
 				parser->curr += 1;
@@ -431,7 +427,7 @@ static ConfigToken next(ConfigParser* parser) noexcept
 				}
 				else if (*parser->curr == '\0' || *parser->curr == '\r' || *parser->curr == '\n')
 				{
-					error(parser, token_beg, "Single-line string not ended before end of line\n");
+					config_error(parser, token_beg, CompileError::LexConfigSingleLineStringCrossesNewline);
 				}
 
 				parser->curr += 1;
@@ -455,7 +451,7 @@ static ConfigToken next(ConfigParser* parser) noexcept
 				}
 				else if (*parser->curr == '\0')
 				{
-					error(parser, token_beg, "String not ended before end of file\n");
+					config_error(parser, token_beg, CompileError::LexStringMissingEnd);
 				}
 				else if (*parser->curr == '\\')
 				{
@@ -479,7 +475,7 @@ static ConfigToken next(ConfigParser* parser) noexcept
 				}
 				else if (*parser->curr == '\0' || *parser->curr == '\r' || *parser->curr == '\n')
 				{
-					error(parser, token_beg, "Single-line string not ended before end of line\n");
+					config_error(parser, token_beg, CompileError::LexConfigSingleLineStringCrossesNewline);
 				}
 				else if (*parser->curr == '\\')
 				{
@@ -532,7 +528,7 @@ static ConfigToken next(ConfigParser* parser) noexcept
 		return { ConfigToken::Type::Comma, {token_beg, parser->curr } };
 
 	default:
-		error(parser, token_beg, "Unexpected character '%c' (U+%02X)\n", first, first);
+		config_error(parser, token_beg, CompileError::LexConfigUnexpectedCharacter);
 	}
 
 	ASSERT_UNREACHABLE;
@@ -560,14 +556,14 @@ static void parse_name_element(ConfigParser* parser, const ConfigToken& token) n
 	ASSERT_OR_IGNORE(token.type == ConfigToken::Type::Identity);
 
 	if (parser->context_top == array_count(parser->context_stack))
-		error(parser, token.content.begin(), "Key nesting limit exceeded\n");
+		config_error(parser, token.content.begin(), CompileError::ParseConfigKeyNestingLimitExceeded);
 
 	ASSERT_OR_IGNORE(parser->context_top != 0);
 
 	const ConfigHeader* const context = parser->context_stack[parser->context_top - 1];
 
 	if (context->type != ConfigHeader::Type::Container)
-		error(parser, token.content.begin(), "Tried assigning to key '%.*s' that does not expect subkeys\n", static_cast<u32>(token.content.count()), token.content.begin());
+		config_error(parser, token.content.begin(), CompileError::ParseConfigKeyNotExpectingSubkeys);
 
 	for (const ConfigHeader& child : context->container.children)
 	{
@@ -581,7 +577,7 @@ static void parse_name_element(ConfigParser* parser, const ConfigToken& token) n
 		}
 	}
 
-	error(parser, token.content.begin(), "Key '%.*s' does not exist in '%s'\n", static_cast<u32>(token.content.count()), token.content.begin(), context->name);
+	config_error(parser, token.content.begin(), CompileError::ParseConfigKeyDoesNotExist);
 }
 
 static u32 parse_names(ConfigParser* parser) noexcept
@@ -593,7 +589,7 @@ static u32 parse_names(ConfigParser* parser) noexcept
 		const ConfigToken identity = next(parser);
 
 		if (identity.type != ConfigToken::Type::Identity)
-			error(parser, identity.content.begin(), "Expcted key but got '%.*s'\n", static_cast<u32>(identity.content.count()), identity.content.begin());
+			config_error(parser, identity.content.begin(), CompileError::ParseConfigExpectedKey);
 
 		parse_name_element(parser, identity);
 
@@ -642,7 +638,7 @@ static void parse_inline_table(ConfigParser* parser) noexcept
 		token = peek(parser);
 
 		if (token.type != ConfigToken::Type::Set)
-			error(parser, token.content.begin(), "Expected '=' but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
+			config_error(parser, token.content.begin(), CompileError::ParseConfigExpectedEquals);
 
 		parse_value(parser);
 
@@ -653,7 +649,7 @@ static void parse_inline_table(ConfigParser* parser) noexcept
 		if (token.type == ConfigToken::Type::CurlyEnd)
 			return;
 		else if (token.type != ConfigToken::Type::Comma)
-			error(parser, token.content.begin(), "Expected '}' or ',' but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
+			config_error(parser, token.content.begin(), CompileError::ParseConfigExpectedClosingCurlyOrComma);
 	}
 }
 
@@ -672,10 +668,10 @@ static void parse_boolean(ConfigParser* parser) noexcept
 	else if (name_equal(token.content, "false"))
 		value = false;
 	else
-		error(parser, token.content.begin(), "Expected a value but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
+		config_error(parser, token.content.begin(), CompileError::ParseConfigExpectedValue);
 
 	if (context->type != ConfigHeader::Type::Boolean)
-		error(parser, token.content.begin(), "Cannot assign boolean to key '%s' expecting different value\n", context->name);
+		config_error(parser, token.content.begin(), CompileError::ParseConfigWrongValueTypeForKey);
 
 	*reinterpret_cast<bool*>(reinterpret_cast<byte*>(parser->out) + context->target_offset) = value;
 }
@@ -689,7 +685,7 @@ static void parse_integer(ConfigParser* parser) noexcept
 	const ConfigHeader* const context = parser->context_stack[parser->context_top - 1];
 
 	if (context->type != ConfigHeader::Type::Integer)
-		error(parser, token.content.begin(), "Cannot assign integer to key '%s' expecting different value\n", context->name);
+		config_error(parser, token.content.begin(), CompileError::ParseConfigWrongValueTypeForKey);
 
 	const Range<char8> text = token.content;
 
@@ -762,7 +758,13 @@ static void parse_integer(ConfigParser* parser) noexcept
 static void parse_unicode_escape_sequence(ConfigParser* parser, Range<char8> text, u32 escape_chars, CodepointBuffer* out) noexcept
 {
 	if (text.count() < escape_chars)
-		error(parser, text.begin(), escape_chars == 4 ? "\\u escape expects four hex digits but got %llu" : "\\U escape expects eight hex digits but got %llu\n", text.count());
+	{
+		const CompileError error = escape_chars == 4
+			? CompileError::ParseConfigEscapeSequenceLowerUTooFewCharacters
+			: CompileError::ParseConfigEscapeSequenceUpperUTooFewCharacters;
+
+		config_error(parser, text.begin(), error);
+	}
 
 	u32 utf32 = 0;
 
@@ -777,7 +779,7 @@ static void parse_unicode_escape_sequence(ConfigParser* parser, Range<char8> tex
 		else if (c >= 'A' && c <= 'F')
 			utf32 = utf32 * 16 + c - 'A' + 10;
 		else
-			error(parser, text.begin() + i, "Expected hexadecimal escape character but got '%c'\n", c);
+			config_error(parser, text.begin() + i, CompileError::ParseConfigEscapeSequenceUtfInvalidCharacter);
 	}
 
 	if (utf32 <= 0x7F)
@@ -812,7 +814,7 @@ static void parse_unicode_escape_sequence(ConfigParser* parser, Range<char8> tex
 	}
 	else
 	{
-		error(parser, text.begin(), "Escaped codepoint is larger than the maximum unicode codepoint (0x10FFFF)");
+		config_error(parser, text.begin(), CompileError::ParseConfigEscapeSequenceUtfCodepointTooLarge);
 	}
 }
 
@@ -892,7 +894,7 @@ static u32 parse_escape_sequence(ConfigParser* parser, Range<char8> text, Codepo
 	// FALLTHROUGH
 
 	default:
-		error(parser, text.begin(), "Unexpected escape sequence '\\%c'\n", text[1]);
+		config_error(parser, text.begin(), CompileError::ParseConfigEscapeSequenceInvalid);
 	}
 }
 
@@ -903,7 +905,7 @@ static void parse_escaped_string_base(ConfigParser* parser, Range<char8> string)
 	const ConfigHeader* const context = parser->context_stack[parser->context_top - 1];
 
 	if (context->type != ConfigHeader::Type::String && context->type != ConfigHeader::Type::Path)
-		error(parser, string.begin(), "Cannot assign string to key '%s' expecting different value\n", context->name);
+		config_error(parser, string.begin(), CompileError::ParseConfigWrongValueTypeForKey);
 
 	if (string[0] == '\n')
 		string = Range{ string.begin() + 1, string.end() };
@@ -955,7 +957,7 @@ static void parse_escaped_string_base(ConfigParser* parser, Range<char8> string)
 		const u32 path_chars = minos::path_to_absolute_relative_to(value, parser->path_base, MutRange{ path_buf });
 
 		if (path_chars == 0 || path_chars > array_count(path_buf))
-			error(parser, string.begin(), "Resulting absolute path exceeds maximum of %u characters\n", minos::MAX_PATH_CHARS);
+			config_error(parser, string.begin(), CompileError::ParseConfigPathTooLong);
 
 		parser->heap.pop_by(static_cast<u32>(value.count()));
 
@@ -992,7 +994,7 @@ static void parse_literal_string_base(ConfigParser* parser, Range<char8> string)
 	const ConfigHeader* const context = parser->context_stack[parser->context_top - 1];
 
 	if (context->type != ConfigHeader::Type::String && context->type != ConfigHeader::Type::Path)
-		error(parser, string.begin(), "Cannot assign string to key '%s' expecting different value\n", context->name);
+		config_error(parser, string.begin(), CompileError::ParseConfigWrongValueTypeForKey);
 
 	if (string[0] == '\n')
 		string = Range{ string.begin() + 1, string.end() };
@@ -1008,7 +1010,7 @@ static void parse_literal_string_base(ConfigParser* parser, Range<char8> string)
 		const u32 path_chars = minos::path_to_absolute_relative_to(string, parser->path_base, MutRange{ path_buf });
 
 		if (path_chars == 0 || path_chars > array_count(path_buf))
-			error(parser, string.begin(), "Resulting absolute path exceeds maximum of %u characters\n", minos::MAX_PATH_CHARS);
+			config_error(parser, string.begin(), CompileError::ParseConfigPathTooLong);
 
 		value = { reinterpret_cast<const char8*>(parser->heap.begin() + parser->heap.used()), path_chars };
 
@@ -1051,7 +1053,7 @@ static void parse_value(ConfigParser* parser) noexcept
 	switch (token.type)
 	{
 	case ConfigToken::Type::BracketBeg:
-		error(parser, token.content.begin(), "Arrays are currently not supported");
+		TODO("Implement toml array parsing (when necessary)");
 
 	case ConfigToken::Type::CurlyBeg:
 		return parse_inline_table(parser);
@@ -1075,7 +1077,7 @@ static void parse_value(ConfigParser* parser) noexcept
 		return parse_multiline_literal_string(parser);
 
 	default:
-		error(parser, token.content.begin(), "Expected a value but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
+		config_error(parser, token.content.begin(), CompileError::ParseConfigExpectedValue);
 	}
 }
 
@@ -1102,7 +1104,7 @@ static void parse_config(ConfigParser* parser) noexcept
 			token = next(parser);
 
 			if (token.type != ConfigToken::Type::BracketEnd)
-				error(parser, token.content.begin(), "Expected ']' but got %.*s\n", static_cast<u32>(token.content.count()), token.content.begin());
+				config_error(parser, token.content.begin(), CompileError::ParseConfigExpectedClosingBracket);
 
 			break;
 		}
@@ -1114,7 +1116,7 @@ static void parse_config(ConfigParser* parser) noexcept
 			token = next(parser);
 
 			if (token.type != ConfigToken::Type::Set)
-				error(parser, token.content.begin(), "Expected '=' or '.' but got '%.*s'\n", static_cast<u32>(token.content.count()), token.content.begin());
+				config_error(parser, token.content.begin(), CompileError::ParseConfigExpectedEqualsOrDot);
 
 			parse_value(parser);
 
@@ -1129,7 +1131,7 @@ static void parse_config(ConfigParser* parser) noexcept
 		}
 
 		case ConfigToken::Type::DoubleBracketBeg:
-			error(parser, token.content.begin(), "Arrays of Tables are not currently supported\n");
+			TODO("Implement todo arrays-of-tables (when necessary)");
 
 		default:
 			ASSERT_UNREACHABLE;

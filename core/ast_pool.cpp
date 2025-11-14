@@ -554,25 +554,25 @@ static void lower_tags_rec(AstPool* asts, AstNode* src_node, bool lower_where_ex
 	{
 		IfInfo info = get_if_info(src_node);
 
-		lower_tags_expr_with_where(asts, src_node, get_ptr(info.where));
+		lower_tags_expr_with_where(asts, src_node, get(info.where));
 	}
 	else if (lower_where_expr && src_node->tag == AstTag::For && has_flag(src_node, AstFlag::For_HasWhere))
 	{
 		ForInfo info = get_for_info(src_node);
 
-		lower_tags_expr_with_where(asts, src_node, get_ptr(info.where));
+		lower_tags_expr_with_where(asts, src_node, get(info.where));
 	}
 	else if (lower_where_expr && src_node->tag == AstTag::ForEach && has_flag(src_node, AstFlag::ForEach_HasWhere))
 	{
 		ForEachInfo info = get_foreach_info(src_node);
 
-		lower_tags_expr_with_where(asts, src_node, get_ptr(info.where));
+		lower_tags_expr_with_where(asts, src_node, get(info.where));
 	}
 	else if (lower_where_expr && src_node->tag == AstTag::Switch && has_flag(src_node, AstFlag::Switch_HasWhere))
 	{
 		SwitchInfo info = get_switch_info(src_node);
 
-		lower_tags_expr_with_where(asts, src_node, get_ptr(info.where));
+		lower_tags_expr_with_where(asts, src_node, get(info.where));
 	}
 	else if (src_node->tag >= AstTag::OpSetAdd && src_node->tag <= AstTag::OpSetShiftR)
 	{
@@ -1036,10 +1036,10 @@ DefinitionInfo get_definition_info(AstNode* definition) noexcept
 	{
 		AstNode* const type = first_child_of(definition);
 
-		return { some(type), has_next_sibling(type) ? some(next_sibling_of(type)) : none<AstNode>() };
+		return { some(type), has_next_sibling(type) ? some(next_sibling_of(type)) : none<AstNode*>() };
 	}
 
-	return { none<AstNode>(), some(first_child_of(definition)) };
+	return { none<AstNode*>(), some(first_child_of(definition)) };
 }
 
 IfInfo get_if_info(AstNode* node) noexcept
@@ -1179,7 +1179,7 @@ SwitchInfo get_switch_info(AstNode* node) noexcept
 	}
 	else
 	{
-		info.where = none<AstNode>();
+		info.where = none<AstNode*>();
 	}
 
 	info.first_case = curr;
@@ -1205,7 +1205,7 @@ OpSliceOfInfo get_op_slice_of_info(AstNode* node) noexcept
 	}
 	else
 	{
-		info.begin = none<AstNode>();
+		info.begin = none<AstNode*>();
 	}
 
 	if (has_flag(node, AstFlag::OpSliceOf_HasEnd))
@@ -1216,7 +1216,7 @@ OpSliceOfInfo get_op_slice_of_info(AstNode* node) noexcept
 	}
 	else
 	{
-		info.end = none<AstNode>();
+		info.end = none<AstNode*>();
 	}
 
 	ASSERT_OR_IGNORE(!has_next_sibling(curr));

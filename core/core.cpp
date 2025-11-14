@@ -38,10 +38,10 @@ CoreData create_core_data(Range<char8> config_filepath) noexcept
 	core.config = config;
 	core.identifiers = create_identifier_pool(core.alloc);
 	core.reader = create_source_reader(core.alloc);
-	core.errors = create_error_sink(core.alloc, core.reader, core.identifiers, diagnostics_log_file);
 	core.globals = create_global_value_pool(core.alloc);
 	core.types = create_type_pool(core.alloc);
 	core.asts = create_ast_pool(core.alloc);
+	core.errors = create_error_sink(core.alloc, core.reader, core.identifiers, core.asts, diagnostics_log_file);
 	core.parser = create_parser(core.alloc, core.identifiers, core.globals, core.types, core.asts, core.errors);
 	core.partials = create_partial_value_pool(core.alloc);
 	core.closures = create_closure_pool(core.alloc, core.types);

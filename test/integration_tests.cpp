@@ -11,20 +11,9 @@ static void run_integration_test(Range<char8> filepath, bool is_std, bool expect
 		: range::from_literal_string("integration-test-sources/config-success.toml")
 	);
 
-	jmp_buf error_buf;
+	const Maybe<TypeId> import_result = import_file(core.interp, filepath, is_std);
 
-	if (setjmp(error_buf) == 0)
-	{
-		set_error_handling_context(core.errors, &error_buf);
-
-		import_file(core.interp, filepath, is_std);
-
-		TEST_EQUAL(expect_failure, false);
-	}
-	else
-	{
-		TEST_EQUAL(expect_failure, true);
-	}
+	TEST_EQUAL(expect_failure, is_none(import_result));
 
 	release_core_data(&core);
 

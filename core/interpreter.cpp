@@ -5,6 +5,13 @@
 #include "../diag/diag.hpp"
 #include "../infra/container/reserved_vec.hpp"
 
+enum class MemberRst : u8
+{
+	NoOp = 0,
+	Completed,
+	Error,
+};
+
 enum class ArecKind : bool
 {
 	Normal,
@@ -60,7 +67,7 @@ struct ArecRestoreInfo
 	ArecId old_top;
 };
 
-using BuiltinFunc = void (*) (Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept;
+using BuiltinFunc = bool (*) (Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept;
 
 // Representation of a callable, meaning either a builtin or a user-defined
 // function or procedure.
@@ -184,6 +191,7 @@ enum class EvalTag : u8
 {
 	Success,
 	Unbound,
+	Error,
 };
 
 struct EvalValue
@@ -221,11 +229,13 @@ struct IdentifierInfo
 
 	EvalValue success;
 
-	OptPtr<Arec> arec;
+	Maybe<Arec*> arec;
 };
 
 struct CallInfo
 {
+	bool is_ok;
+
 	TypeId return_type_id;
 
 	ArecId parameter_list_arec_id;
@@ -302,7 +312,7 @@ struct Interpreter
 
 
 
-static void convert(Interpreter* interp, const AstNode* error_source, EvalValue* dst, EvalValue src) noexcept;
+static bool convert(Interpreter* interp, const AstNode* error_source, EvalValue* dst, EvalValue src) noexcept;
 
 static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexcept;
 
@@ -315,6 +325,24 @@ static EvalRst eval_unbound(Arec* unbound_in) noexcept
 	EvalRst rst;
 	rst.tag = EvalTag::Unbound;
 	rst.unbound = unbound_in;
+
+	return rst;
+}
+
+static EvalRst eval_error(Interpreter* interp, const AstNode* error_source, CompileError error) noexcept
+{
+	(void) record_error(interp->errors, error_source, error);
+	
+	EvalRst rst;
+	rst.tag = EvalTag::Error;
+
+	return rst;
+}
+
+static EvalRst propagate_error() noexcept
+{
+	EvalRst rst;
+	rst.tag = EvalTag::Error;
 
 	return rst;
 }
@@ -361,7 +389,7 @@ static EvalValue make_value(MutRange<byte> bytes, bool is_location, bool is_mut,
 	return rst;
 }
 
-static IdentifierInfo make_identifier_info(MutRange<byte> location, TypeId type_id, bool is_mut, OptPtr<Arec> arec) noexcept
+static IdentifierInfo identifier_info_success(MutRange<byte> location, TypeId type_id, bool is_mut, Maybe<Arec*> arec) noexcept
 {
 	IdentifierInfo info;
 	info.tag = EvalTag::Success;
@@ -371,11 +399,19 @@ static IdentifierInfo make_identifier_info(MutRange<byte> location, TypeId type_
 	return info;
 }
 
-static IdentifierInfo make_unbound_identifier_info(Arec* arec) noexcept
+static IdentifierInfo identifier_info_unbound(Arec* arec) noexcept
 {
 	IdentifierInfo info;
 	info.tag = EvalTag::Unbound;
 	info.arec = some(arec);
+
+	return info;
+}
+
+static IdentifierInfo identifier_info_error() noexcept
+{
+	IdentifierInfo info;
+	info.tag = EvalTag::Error;
 
 	return info;
 }
@@ -667,10 +703,10 @@ static MutRange<byte> stack_shrink_and_lift(Interpreter* interp, u32 mark, MutRa
 
 
 
-static bool complete_member(Interpreter* interp, TypeId surrounding_type_id, MemberInfo member) noexcept
+static MemberRst complete_member(Interpreter* interp, TypeId surrounding_type_id, MemberInfo member) noexcept
 {
 	if (!member.is_pending)
-		return false;
+		return MemberRst::NoOp;
 
 	const u32 mark = stack_mark(interp);
 
@@ -684,13 +720,18 @@ static bool complete_member(Interpreter* interp, TypeId surrounding_type_id, Mem
 
 		AstNode* const type = ast_node_from_id(interp->asts, member.type.pending);
 
-		[[maybe_unused]] const EvalRst type_rst = evaluate(interp, type, EvalSpec{
+		const EvalRst type_rst = evaluate(interp, type, EvalSpec{
 			ValueKind::Value,
 			range::from_object_bytes_mut(&member_type_id),
 			type_create_simple(interp->types, TypeTag::Type)
 		});
 
-		ASSERT_OR_IGNORE(type_rst.tag == EvalTag::Success && member_type_id != TypeId::INVALID);
+		if (type_rst.tag == EvalTag::Error)
+			return MemberRst::Error;
+		else if (type_rst.tag == EvalTag::Unbound)
+			ASSERT_UNREACHABLE;
+
+		ASSERT_OR_IGNORE(type_rst.tag == EvalTag::Success);
 
 		arec_restore(interp, restore);
 	}
@@ -711,17 +752,27 @@ static bool complete_member(Interpreter* interp, TypeId surrounding_type_id, Mem
 
 			member_value_id = alloc_global_value(interp->globals, metrics.size, metrics.align);
 
-			[[maybe_unused]] const EvalRst value_rst = evaluate(interp, value, EvalSpec{
+			const EvalRst value_rst = evaluate(interp, value, EvalSpec{
 				ValueKind::Value,
 				global_value_get_mut(interp->globals, member_value_id),
 				member_type_id
 			});
+
+			if (value_rst.tag == EvalTag::Error)
+				return MemberRst::Error;
+			else if (value_rst.tag == EvalTag::Unbound)
+				ASSERT_UNREACHABLE;
 
 			ASSERT_OR_IGNORE(value_rst.tag == EvalTag::Success);
 		}
 		else
 		{
 			const EvalRst value_rst = evaluate(interp, value, EvalSpec{ ValueKind::Value });
+
+			if (value_rst.tag == EvalTag::Error)
+				return MemberRst::Error;
+			else if (value_rst.tag == EvalTag::Unbound)
+				ASSERT_UNREACHABLE;
 
 			ASSERT_OR_IGNORE(value_rst.tag == EvalTag::Success);
 
@@ -741,39 +792,46 @@ static bool complete_member(Interpreter* interp, TypeId surrounding_type_id, Mem
 
 	type_set_composite_member_info(interp->types, surrounding_type_id, member.rank, member_type_id, member_value_id);
 
-	return true;
+	return MemberRst::Completed;
 }
 
 
 
 static IdentifierInfo identifier_info_from_global_member(Interpreter* interp, TypeId surrounding_type_id, MemberInfo member) noexcept
 {
-	if (complete_member(interp, surrounding_type_id, member))
-		member = type_member_info_by_rank(interp->types, surrounding_type_id, member.rank);
+	const MemberRst member_rst = complete_member(interp, surrounding_type_id, member);
 
-	return make_identifier_info(
+	if (member_rst == MemberRst::Error)
+		return identifier_info_error();
+	else if (member_rst == MemberRst::Completed)
+		member = type_member_info_by_rank(interp->types, surrounding_type_id, member.rank);
+	else
+		ASSERT_OR_IGNORE(member_rst == MemberRst::NoOp);
+
+	return identifier_info_success(
 		global_value_get_mut(interp->globals, member.value.complete),
 		member.type.complete,
 		member.is_mut,
-		none<Arec>()
+		none<Arec*>()
 	);
 }
 
 static IdentifierInfo identifier_info_from_arec_and_member(Interpreter* interp, Arec* arec, MemberInfo member) noexcept
 {
+	ASSERT_OR_IGNORE(!member.is_pending);
+
 	const u64 size = type_metrics_from_id(interp->types, member.type.complete).size;
 
-	if (size > UINT32_MAX)
-		source_error(interp->errors, SourceId::INVALID, "Size of stack-based location must not exceed 2^32 - 1 bytes.\n");
+	ASSERT_OR_IGNORE(size <= UINT32_MAX);
 
 	const ArecKind kind = static_cast<ArecKind>(arec->kind);
 
 	if (kind == ArecKind::Unbound)
-		return make_unbound_identifier_info(arec);
+		return identifier_info_unbound(arec);
 
 	MutRange<byte> attach = arec_attach(interp, arec);
 
-	return make_identifier_info(
+	return identifier_info_success(
 		attach.mut_subrange(member.offset, size),
 		member.type.complete,
 		member.is_mut,
@@ -798,11 +856,11 @@ static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name, 
 
 		const TypeMetrics metrics = type_metrics_from_id(interp->types, member.type.complete);
 
-		return make_identifier_info(
+		return identifier_info_success(
 			instance->values.mut_subrange(member.offset, metrics.size),
 			member.type.complete,
 			false,
-			none<Arec>()
+			none<Arec*>()
 		);
 	}
 
@@ -850,7 +908,7 @@ static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name, 
 		ASSERT_OR_IGNORE(type_member_name_by_rank(interp->types, arec->type_id, binding.rank) == name);
 
 		if (static_cast<ArecKind>(arec->kind) == ArecKind::Unbound)
-			return make_unbound_identifier_info(arec);
+			return identifier_info_unbound(arec);
 
 		return identifier_info_from_arec_and_member(interp, arec, member);
 	}
@@ -858,24 +916,7 @@ static IdentifierInfo lookup_identifier(Interpreter* interp, IdentifierId name, 
 
 
 
-static void print_stack_trace(Interpreter* interp) noexcept
-{
-	Arec* arec = active_arec(interp);
-
-	while (true)
-	{
-		SourceLocation loc = source_location_from_source_id(interp->reader, arec->source_id);
-
-		error_diagnostic(interp->errors, "    %.*s:%u:%u\n", static_cast<s32>(loc.filepath.count()), loc.filepath.begin(), loc.line_number, loc.column_number);
-
-		if (arec->caller_arec_id == ArecId::INVALID)
-			break;
-
-		arec = arec_from_id(interp, arec->caller_arec_id);
-	}
-}
-
-static ClosureBuilderId close_over_rec(Interpreter* interp, ClosureBuilderId builder_id, AstNode* node, u16 out_adjustment) noexcept
+static Maybe<ClosureBuilderId> close_over_rec(Interpreter* interp, ClosureBuilderId builder_id, AstNode* node, u16 out_adjustment) noexcept
 {
 	if (node->tag == AstTag::Identifier)
 	{
@@ -884,7 +925,7 @@ static ClosureBuilderId close_over_rec(Interpreter* interp, ClosureBuilderId bui
 		// If the identifier is statically known not to be captured - i.e., if
 		// it is at global scope - we must not capture it.
 		if (!attach.binding.is_closed_over)
-			return builder_id;
+			return some(builder_id);
 
 		ASSERT_OR_IGNORE(!attach.binding.is_global);
 
@@ -893,7 +934,7 @@ static ClosureBuilderId close_over_rec(Interpreter* interp, ClosureBuilderId bui
 		// Note that the reason it is still marked as `is_closed_over` is that
 		// it is captured by a nested function.
 		if (attach.binding.out < out_adjustment)
-			return builder_id;
+			return some(builder_id);
 
 		NameBinding adjusted_binding = attach.binding;
 		adjusted_binding.out -= out_adjustment;
@@ -901,9 +942,14 @@ static ClosureBuilderId close_over_rec(Interpreter* interp, ClosureBuilderId bui
 
 		IdentifierInfo info = lookup_identifier(interp, attach.identifier_id, adjusted_binding);
 
-		ASSERT_OR_IGNORE(info.tag == EvalTag::Success);
+		if (info.tag == EvalTag::Error)
+			return none<ClosureBuilderId>();
+		else if (info.tag == EvalTag::Unbound)
+			ASSERT_UNREACHABLE; // Since we are closing over something, it cannot be unbound.
+		else
+			ASSERT_OR_IGNORE(info.tag == EvalTag::Success);
 
-		return closure_add_value(interp->closures, builder_id, attach.identifier_id, info.success.type_id, info.success.bytes.immut());
+		return some(closure_add_value(interp->closures, builder_id, attach.identifier_id, info.success.type_id, info.success.bytes.immut()));
 	}
 	else
 	{
@@ -916,20 +962,30 @@ static ClosureBuilderId close_over_rec(Interpreter* interp, ClosureBuilderId bui
 		{
 			AstNode* const child = next(&it);
 
-			builder_id = close_over_rec(interp, builder_id, child, out_adjustment);
+			const Maybe<ClosureBuilderId> new_builder_id = close_over_rec(interp, builder_id, child, out_adjustment);
+
+			if (is_none(new_builder_id))
+				return none<ClosureBuilderId>();
+
+			builder_id = get(new_builder_id);
 		}
 
-		return builder_id;
+		return some(builder_id);
 	}
 }
 
-static ClosureId close_over_func_body(Interpreter* interp, AstNode* body) noexcept
+static bool close_over_func_body(Interpreter* interp, AstNode* body, ClosureId* out) noexcept
 {
-	ClosureBuilderId builder_id = closure_create(interp->closures);
+	const ClosureBuilderId initial_builder_id = closure_create(interp->closures);
 
-	builder_id = close_over_rec(interp, builder_id, body, 1);
+	const Maybe<ClosureBuilderId> filled_builder_id = close_over_rec(interp, initial_builder_id, body, 1);
 
-	return closure_seal(interp->closures, builder_id);
+	if (is_none(filled_builder_id))
+		return false;
+
+	*out = closure_seal(interp->closures, get(filled_builder_id));
+
+	return true;
 }
 
 static bool u64_from_integer(Range<byte> value, NumericType type, u64* out) noexcept
@@ -1065,8 +1121,8 @@ static MemberInit delayed_member_from(Interpreter* interp, AstNode* definition) 
 
 	MemberInit member_init{};
 	member_init.name = attach.identifier_id;
-	member_init.type.pending = is_some(info.type) ? id_from_ast_node(interp->asts, get_ptr(info.type)) : AstNodeId::INVALID;
-	member_init.value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
+	member_init.type.pending = is_some(info.type) ? id_from_ast_node(interp->asts, get(info.type)) : AstNodeId::INVALID;
+	member_init.value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get(info.value)) : AstNodeId::INVALID;
 	member_init.is_pending = true;
 	member_init.is_pub = has_flag(definition, AstFlag::Definition_IsPub);
 	member_init.is_mut = has_flag(definition, AstFlag::Definition_IsMut);
@@ -1078,7 +1134,7 @@ static MemberInit delayed_member_from(Interpreter* interp, AstNode* definition) 
 	return member_init;
 }
 
-static void convert_comp_integer_to_integer(Interpreter* interp, const AstNode* error_source, EvalValue* dst, CompIntegerValue src) noexcept
+static bool convert_comp_integer_to_integer(Interpreter* interp, const AstNode* error_source, EvalValue* dst, CompIntegerValue src) noexcept
 {
 	ASSERT_OR_IGNORE(!dst->is_location && type_tag_from_id(interp->types, dst->type_id) == TypeTag::Integer);
 
@@ -1089,7 +1145,11 @@ static void convert_comp_integer_to_integer(Interpreter* interp, const AstNode* 
 		s64 signed_value;
 
 		if (!s64_from_comp_integer(src, static_cast<u8>(dst_type.bits), &signed_value))
-			source_error(interp->errors, source_id_of(interp->asts, error_source), "Value of integer literal exceeds bounds of signed %u-bit integer.\n", dst_type.bits);
+		{
+			record_error(interp->errors, error_source, CompileError::ImplictConversionIntegerConstantExceedsTargetBounds);
+
+			return false;
+		}
 
 		const MutRange<byte> value = { reinterpret_cast<byte*>(&signed_value), static_cast<u64>((dst_type.bits + 7) / 8) };
 
@@ -1100,15 +1160,21 @@ static void convert_comp_integer_to_integer(Interpreter* interp, const AstNode* 
 		u64 unsigned_value;
 
 		if (!u64_from_comp_integer(src, static_cast<u8>(dst_type.bits), &unsigned_value))
-			source_error(interp->errors, source_id_of(interp->asts, error_source), "Value of integer literal exceeds bounds of unsigned %u-bit integer.\n", dst_type.bits);
+		{
+			record_error(interp->errors, error_source, CompileError::ImplictConversionIntegerConstantExceedsTargetBounds);
+
+			return false;
+		}
 
 		const MutRange<byte> value = { reinterpret_cast<byte*>(&unsigned_value), static_cast<u64>((dst_type.bits + 7) / 8) };
 
 		value_set(dst, value);
 	}
+
+	return true;
 }
 
-static void convert_comp_float_to_float(Interpreter* interp, EvalValue* dst, CompFloatValue src) noexcept
+static bool convert_comp_float_to_float(Interpreter* interp, EvalValue* dst, CompFloatValue src) noexcept
 {
 	ASSERT_OR_IGNORE(!dst->is_location && type_tag_from_id(interp->types, dst->type_id) == TypeTag::Integer);
 
@@ -1130,9 +1196,11 @@ static void convert_comp_float_to_float(Interpreter* interp, EvalValue* dst, Com
 
 		value_set(dst, range::from_object_bytes_mut(&f64_value));
 	}
+
+	return true;
 }
 
-static void convert_array_to_slice(Interpreter* interp, const AstNode* error_source, EvalValue* dst, EvalValue src) noexcept
+static bool convert_array_to_slice(Interpreter* interp, const AstNode* error_source, EvalValue* dst, EvalValue src) noexcept
 {
 	ASSERT_OR_IGNORE(dst->type_id != TypeId::INVALID
 				  && dst->bytes.count() == sizeof(MutRange<byte>)
@@ -1144,12 +1212,18 @@ static void convert_array_to_slice(Interpreter* interp, const AstNode* error_sou
 	const ReferenceType dst_type = *type_attachment_from_id<ReferenceType>(interp->types, dst->type_id);
 
 	if (!type_is_equal(interp->types, src_type.element_type, dst_type.referenced_type_id))
-		source_error(interp->errors, source_id_of(interp->asts, error_source), "Cannot implicitly convert array to slice with different element type");
+	{
+		record_error(interp->errors, error_source, CompileError::ImplicitConversionTypesCannotConvert);
+
+		return false;
+	}
 
 	value_set(dst, range::from_object_bytes_mut(&src.bytes));
+
+	return true;
 }
 
-static void convert_composite_literal_to_composite(Interpreter* interp, const AstNode* error_source, EvalValue* dst, EvalValue src) noexcept
+static bool convert_composite_literal_to_composite(Interpreter* interp, const AstNode* error_source, EvalValue* dst, EvalValue src) noexcept
 {
 	ASSERT_OR_IGNORE(dst->type_id != TypeId::INVALID && type_tag_from_id(interp->types, dst->type_id) == TypeTag::Composite);
 
@@ -1179,9 +1253,9 @@ static void convert_composite_literal_to_composite(Interpreter* interp, const As
 		{
 			if (!type_member_info_by_name(interp->types, dst->type_id, src_name, &dst_member))
 			{
-				const Range<char8> name = identifier_name_from_id(interp->identifiers, src_name);
+				record_error(interp->errors, error_source, CompileError::ImplicitConversionCompositeLiteralTargetIsMissingMember);
 
-				source_error(interp->errors, source_id_of(interp->asts, error_source), "Destination type of composite literal conversion has no member `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
+				return false;
 			}
 
 			rank = dst_member.rank;
@@ -1189,7 +1263,11 @@ static void convert_composite_literal_to_composite(Interpreter* interp, const As
 		else 
 		{
 			if (rank == dst_member_count)
-				source_error(interp->errors, source_id_of(interp->asts, error_source), "Too many members in composite literal to convert to destination type.\n");
+			{
+				record_error(interp->errors, error_source, CompileError::ImplicitConversionCompositeLiteralTargetHasTooFewMembers);
+
+				return false;
+			}
 
 			dst_member = type_member_info_by_rank(interp->types, dst->type_id, static_cast<u16>(rank));
 		}
@@ -1202,9 +1280,9 @@ static void convert_composite_literal_to_composite(Interpreter* interp, const As
 
 		if ((*seen_members_elem & member_bit) != 0)
 		{
-			const Range<char8> name = identifier_name_from_id(interp->identifiers, type_member_name_by_rank(interp->types, dst->type_id, static_cast<u16>(rank)));
+			record_error(interp->errors, error_source, CompileError::ImplicitConversionCompositeLiteralTargetMemberMappedTwice);
 
-			source_error(interp->errors, source_id_of(interp->asts, error_source), "Member `%.*s` mapped more than once during composite literal conversion.\n", static_cast<s32>(name.count()), name.begin());
+			return false;
 		}
 
 		*seen_members_elem |= member_bit;
@@ -1225,13 +1303,14 @@ static void convert_composite_literal_to_composite(Interpreter* interp, const As
 
 			EvalValue src_value = make_value(src.bytes.mut_subrange(src_member.offset, src_metrics.size), false, true, src_member.type.complete);
 
-			convert(interp, error_source, &dst_value, src_value);
+			if (!convert(interp, error_source, &dst_value, src_value))
+				return false;
 		}
 		else
 		{
-			const Range<char8> name = identifier_name_from_id(interp->identifiers, type_member_name_by_rank(interp->types, dst->type_id, static_cast<u16>(rank)));
+			record_error(interp->errors, error_source, CompileError::ImplicitConversionCompositeLiteralMemberTypesCannotConvert);
 
-			source_error(interp->errors, source_id_of(interp->asts, error_source), "Member `%.*s` cannot be initialized from composite literal member because their types do not match.\n", static_cast<s32>(name.count()), name.begin());
+			return false;
 		}
 
 		rank += 1;
@@ -1250,15 +1329,21 @@ static void convert_composite_literal_to_composite(Interpreter* interp, const As
 
 		if (member.is_pending)
 		{
-			if (complete_member(interp, dst->type_id, member))
-				member = type_member_info_by_rank(interp->types, dst->type_id, member.rank);
+			const MemberRst member_rst = complete_member(interp, dst->type_id, member);
+
+			if (member_rst == MemberRst::Error)
+				return false;
+
+			ASSERT_OR_IGNORE(member_rst == MemberRst::Completed);
+
+			member = type_member_info_by_rank(interp->types, dst->type_id, member.rank);
 		}
 
 		if (member.value.complete == GlobalValueId::INVALID)
 		{
-			const Range<char8> name = identifier_name_from_id(interp->identifiers, type_member_name_by_rank(interp->types, dst->type_id, member.rank));
+			record_error(interp->errors, error_source, CompileError::ImplicitConversionCompositeLiteralSourceIsMissingMember);
 
-			source_error(interp->errors, source_id_of(interp->asts, error_source), "Composite initializer is missing initializer for member `%.*s` of target type which lacks a default value.\n", static_cast<s32>(name.count()), name.begin());
+			return false;
 		}
 
 		const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member.type.complete);
@@ -1271,9 +1356,11 @@ static void convert_composite_literal_to_composite(Interpreter* interp, const As
 	}
 
 	stack_shrink(interp, mark);
+
+	return true;
 }
 
-static void convert(Interpreter* interp, const AstNode* error_source, EvalValue* dst, EvalValue src) noexcept
+static bool convert(Interpreter* interp, const AstNode* error_source, EvalValue* dst, EvalValue src) noexcept
 {
 	ASSERT_OR_IGNORE(dst->type_id != TypeId::INVALID
 				  && dst->bytes.begin() != nullptr
@@ -1286,32 +1373,23 @@ static void convert(Interpreter* interp, const AstNode* error_source, EvalValue*
 	switch (src_type_tag)
 	{
 	case TypeTag::CompInteger:
-	{
-		convert_comp_integer_to_integer(interp, error_source, dst, *value_as<CompIntegerValue>(src));
-
-		return;
-	}
+		return convert_comp_integer_to_integer(interp, error_source, dst, *value_as<CompIntegerValue>(src));
 
 	case TypeTag::CompFloat:
-	{
-		convert_comp_float_to_float(interp, dst, *value_as<CompFloatValue>(src));
+		return convert_comp_float_to_float(interp, dst, *value_as<CompFloatValue>(src));
 
-		return;
+	case TypeTag::Undefined:
+	{
+		range::mem_set(dst->bytes, 0x5A);
+
+		return true;
 	}
 
 	case TypeTag::Array:
-	{
-		convert_array_to_slice(interp, error_source, dst, src);
-
-		return;
-	}
+		return convert_array_to_slice(interp, error_source, dst, src);
 
 	case TypeTag::CompositeLiteral:
-	{
-		convert_composite_literal_to_composite(interp, error_source, dst, src);
-
-		return;
-	}
+		return convert_composite_literal_to_composite(interp, error_source, dst, src);
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
@@ -1593,8 +1671,7 @@ static CompareResult compare(Interpreter* interp, TypeId common_type_id, Range<b
 		{
 			const MemberInfo member = next(&it);
 
-			if (member.is_pending)
-				source_error(interp->errors, source_id_of(interp->asts, error_source), "Tried comparing values of incomplete composite type.\n");
+			ASSERT_OR_IGNORE(!member.is_pending);
 
 			const TypeMetrics metrics = type_metrics_from_id(interp->types, member.type.complete);
 
@@ -1614,6 +1691,7 @@ static CompareResult compare(Interpreter* interp, TypeId common_type_id, Range<b
 	}
 
 	case TypeTag::Definition:
+	case TypeTag::Undefined:
 	case TypeTag::Func:
 	case TypeTag::Builtin:
 	case TypeTag::TailArray:
@@ -1636,8 +1714,8 @@ static EvalRst fill_spec(Interpreter* interp, EvalSpec spec, const AstNode* erro
 {
 	ASSERT_OR_IGNORE(is_location || is_mut);
 
-	if (spec.kind == ValueKind::Location && !is_location)
-		source_error(interp->errors, source_id_of(interp->asts, error_source), "Cannot convert value to location.\n");
+	// This is guaranteed due to lowering in `LexicalAnalyser`.
+	ASSERT_OR_IGNORE(spec.kind != ValueKind::Location || is_location);
 
 	TypeId type_id;
 
@@ -1670,7 +1748,7 @@ static EvalRst fill_spec(Interpreter* interp, EvalSpec spec, const AstNode* erro
 	}
 	else
 	{
-		source_error(interp->errors, source_id_of(interp->asts, error_source), "Cannot convert to desired type.\n");
+		return eval_error(interp, error_source, CompileError::ImplicitConversionTypesCannotConvert);
 	}
 
 	EvalRst rst;
@@ -1685,8 +1763,8 @@ static EvalRst fill_spec_sized(Interpreter* interp, EvalSpec spec, const AstNode
 {
 	ASSERT_OR_IGNORE(is_location || is_mut);
 
-	if (spec.kind == ValueKind::Location && !is_location)
-		source_error(interp->errors, source_id_of(interp->asts, error_source), "Cannot convert value to location.\n");
+	// This is guaranteed due to lowering in `LexicalAnalyser`.
+	ASSERT_OR_IGNORE(spec.kind != ValueKind::Location || is_location);
 
 	TypeId type_id;
 
@@ -1717,7 +1795,7 @@ static EvalRst fill_spec_sized(Interpreter* interp, EvalSpec spec, const AstNode
 	}
 	else
 	{
-		source_error(interp->errors, source_id_of(interp->asts, error_source), "Cannot convert to desired type.\n");
+		return eval_error(interp, error_source, CompileError::ImplicitConversionTypesCannotConvert);
 	}
 
 	EvalRst rst;
@@ -1729,10 +1807,21 @@ static EvalRst fill_spec_sized(Interpreter* interp, EvalSpec spec, const AstNode
 
 static EvalRst evaluate_global_member(Interpreter* interp, AstNode* node, EvalSpec spec, TypeId surrounding_type_id, MemberInfo member) noexcept
 {
-	if (complete_member(interp, surrounding_type_id, member))
+	const MemberRst member_rst = complete_member(interp, surrounding_type_id, member);
+
+	if (member_rst == MemberRst::Error)
+		return propagate_error();
+	else if (member_rst == MemberRst::Completed)
 		member = type_member_info_by_rank(interp->types, surrounding_type_id, member.rank);
+	else
+		ASSERT_OR_IGNORE(member_rst == MemberRst::NoOp);
 
 	EvalRst rst = fill_spec(interp, spec, node, true, member.is_mut, member.type.complete);
+
+	if (rst.tag == EvalTag::Error)
+		return rst;
+
+	ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 	MutRange<byte> value = global_value_get_mut(interp->globals, member.value.complete);
 
@@ -1742,13 +1831,12 @@ static EvalRst evaluate_global_member(Interpreter* interp, AstNode* node, EvalSp
 	}
 	else if (!rst.success.is_location)
 	{
-		convert(interp, node, &rst.success, make_value(value, true, member.is_mut, member.type.complete));
+		if (!convert(interp, node, &rst.success, make_value(value, true, member.is_mut, member.type.complete)))
+			return propagate_error();
 	}
 	else
 	{
-		const Range<char8> name = identifier_name_from_id(interp->identifiers, attachment_of<AstMemberData>(node)->identifier_id);
-
-		source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use member `%.*s` as a location of the desired type, as it requires implicit conversion.\n", static_cast<s32>(name.count()), name.begin());
+		return eval_error(interp, node, CompileError::ImplicitConversionLocationRequired);
 	}
 
 	return rst;
@@ -1756,12 +1844,23 @@ static EvalRst evaluate_global_member(Interpreter* interp, AstNode* node, EvalSp
 
 static EvalRst evaluate_local_member(Interpreter* interp, AstNode* node, EvalSpec spec, TypeId surrounding_type_id, MemberInfo member, MutRange<byte> lhs_value) noexcept
 {
-	if (complete_member(interp, surrounding_type_id, member))
+	const MemberRst member_rst = complete_member(interp, surrounding_type_id, member);
+
+	if (member_rst == MemberRst::Error)
+		return propagate_error();
+	else if (member_rst == MemberRst::Completed)
 		member = type_member_info_by_rank(interp->types, surrounding_type_id, member.rank);
+	else
+		ASSERT_OR_IGNORE(member_rst == MemberRst::NoOp);
 
 	const TypeMetrics metrics = type_metrics_from_id(interp->types, member.type.complete);
 
 	EvalRst rst = fill_spec_sized(interp, spec, node, true, member.is_mut, member.type.complete, metrics.size, metrics.align);
+
+	if (rst.tag == EvalTag::Error)
+		return rst;
+
+	ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 	const MutRange<byte> member_bytes = MutRange<byte>{ lhs_value.begin() + member.offset, metrics.size };
 
@@ -1771,13 +1870,12 @@ static EvalRst evaluate_local_member(Interpreter* interp, AstNode* node, EvalSpe
 	}
 	else if (!rst.success.is_location)
 	{
-		convert(interp, node, &rst.success, make_value(member_bytes, true, member.is_mut, member.type.complete));
+		if (!convert(interp, node, &rst.success, make_value(member_bytes, true, member.is_mut, member.type.complete)))
+			return propagate_error();
 	}
 	else
 	{
-		const Range<char8> name = identifier_name_from_id(interp->identifiers, attachment_of<AstMemberData>(node)->identifier_id);
-
-		source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use member `%.*s` as a location of the desired type, as it requires implicit conversion.\n", static_cast<s32>(name.count()), name.begin());
+		return eval_error(interp, node, CompileError::ImplicitConversionLocationRequired);
 	}
 
 	return rst;
@@ -1807,15 +1905,21 @@ static Arec* check_binary_expr_for_unbound(Interpreter* interp, AstNode* lhs, As
 	}
 }
 
-static bool evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode* node, EvalValue* out_lhs, EvalValue* out_rhs, TypeId* out_common_type_id, Arec** out_unbound) noexcept
+static EvalTag evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode* node, EvalValue* out_lhs, EvalValue* out_rhs, TypeId* out_common_type_id, Arec** out_unbound) noexcept
 {
 	AstNode* const lhs = first_child_of(node);
 
 	const EvalRst lhs_rst = evaluate(interp, lhs, EvalSpec{ ValueKind::Value });
 
+	if (lhs_rst.tag == EvalTag::Error)
+		return EvalTag::Error;
+
 	AstNode* const rhs = next_sibling_of(lhs);
 
 	const EvalRst rhs_rst = evaluate(interp, rhs, EvalSpec{ ValueKind::Value });
+
+	if (rhs_rst.tag == EvalTag::Error)
+		return EvalTag::Error;
 
 	Arec* const unbound = check_binary_expr_for_unbound(interp, lhs, rhs, &lhs_rst, &rhs_rst);
 
@@ -1823,13 +1927,17 @@ static bool evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode* no
 	{
 		*out_unbound = unbound;
 
-		return false;
+		return EvalTag::Unbound;
 	}
 
 	const TypeId common_type_id = type_unify(interp->types, lhs_rst.success.type_id, rhs_rst.success.type_id);
 
 	if (common_type_id == TypeId::INVALID)
-		source_error(interp->errors, source_id_of(interp->asts, node), "Could not unify argument types of `%s`.\n", tag_name(node->tag));
+	{
+		(void) record_error(interp->errors, node, CompileError::UnifyNoCommonArgumentType);
+
+		return EvalTag::Error;
+	}
 
 	if (!type_is_equal(interp->types, common_type_id, lhs_rst.success.type_id))
 	{
@@ -1837,7 +1945,8 @@ static bool evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode* no
 
 		*out_lhs = make_value(stack_push(interp, metrics.size, metrics.align), false, true, common_type_id);
 
-		convert(interp, lhs, out_lhs, lhs_rst.success);
+		if (!convert(interp, lhs, out_lhs, lhs_rst.success))
+			return EvalTag::Error;
 	}
 	else
 	{
@@ -1850,7 +1959,8 @@ static bool evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode* no
 
 		*out_rhs = make_value(stack_push(interp, metrics.size, metrics.align), false, true, common_type_id);
 
-		convert(interp, rhs, out_rhs, rhs_rst.success);
+		if (!convert(interp, rhs, out_rhs, rhs_rst.success))
+			return EvalTag::Error;
 	}
 	else
 	{
@@ -1859,7 +1969,7 @@ static bool evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode* no
 
 	*out_common_type_id = common_type_id;
 
-	return true;
+	return EvalTag::Success;
 }
 
 static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signature_type, AstNode* callee) noexcept
@@ -1904,8 +2014,8 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 		{
 			AstNode* const arg_name = first_child_of(arg);
 
-			if (arg_name->tag != AstTag::ImpliedMember)
-				source_error(interp->errors, source_id_of(interp->asts, arg), "Assignment inside calls is only allowed to named arguments.\n");
+			// TODO: Ensure this in `lexical_analyser`.
+			ASSERT_OR_IGNORE(arg_name->tag == AstTag::ImpliedMember);
 
 			const IdentifierId arg_identifier_id = attachment_of<AstImpliedMemberData>(arg_name)->identifier_id;
 
@@ -1915,18 +2025,18 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 
 			if (!type_member_info_by_name(interp->types, parameter_list_type_id, arg_identifier_id, &param))
 			{
-				const Range<char8> name = identifier_name_from_id(interp->identifiers, arg_identifier_id);
+				(void) record_error(interp->errors, arg, CompileError::CallNoSuchNamedParameter);
 
-				source_error(interp->errors, source_id_of(interp->asts, arg), "Parameter `%.*s` does not exist for the called function.\n", static_cast<s32>(name.count()), name.begin());
+				return CallInfo{ false, TypeId::INVALID, ArecId::INVALID };
 			}
 
 			const u64 arg_bit = static_cast<u64>(1) << param.rank;
 
 			if ((args_mask & arg_bit) != 0)
 			{
-				const Range<char8> name = identifier_name_from_id(interp->identifiers, arg_identifier_id);
+				(void) record_error(interp->errors, arg, CompileError::CallArgumentMappedTwice);
 
-				source_error(interp->errors, source_id_of(interp->asts, arg), "Multiple arguments for parameter `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
+				return CallInfo{ false, TypeId::INVALID, ArecId::INVALID };
 			}
 
 			args_mask |= arg_bit;
@@ -1936,12 +2046,16 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 		else
 		{
 			if (arg_rank == signature_type->param_count)
-				source_error(interp->errors, source_id_of(interp->asts, arg), "Too many arguments supplied to function call.\n");
+			{
+				(void) record_error(interp->errors, arg, CompileError::CallTooManyArgs);
+
+				return CallInfo{ false, TypeId::INVALID, ArecId::INVALID };
+			}
 
 			const u64 arg_bit = static_cast<u64>(1) << arg_rank;
 
-			if ((args_mask & arg_bit) != 0)
-				source_error(interp->errors, source_id_of(interp->asts, arg), "Positional parameter must not follow named parameter.\n");
+			// TODO: Ensure this in `LexicalAnalyser`.
+			ASSERT_OR_IGNORE((args_mask & arg_bit) == 0);
 
 			args_mask |= arg_bit;
 
@@ -1990,8 +2104,14 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 				param.type_completion_arec_id = parameter_list_arec_id;
 				param.value_completion_arec_id = parameter_list_arec_id;
 
-				if (complete_member(interp, parameter_list_type_id, param))
-					param = type_member_info_by_rank(interp->types, parameter_list_type_id, param.rank);
+				const MemberRst member_rst = complete_member(interp, parameter_list_type_id, param);
+
+				if (member_rst == MemberRst::Error)
+					return CallInfo{ false, TypeId::INVALID, ArecId::INVALID };
+
+				ASSERT_OR_IGNORE(member_rst == MemberRst::Completed);
+
+				param = type_member_info_by_rank(interp->types, parameter_list_type_id, param.rank);
 			}
 			else if (type_tag_from_id(interp->types, param.type.complete) == TypeTag::Func)
 			{
@@ -2009,11 +2129,16 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 
 			AstNode* const arg_value = ast_node_from_id(interp->asts, args[i]);
 
-			[[maybe_unused]] const EvalRst arg_rst = evaluate(interp, arg_value, EvalSpec{
+			const EvalRst arg_rst = evaluate(interp, arg_value, EvalSpec{
 				ValueKind::Value,
 				attach.mut_subrange(param.offset, param_metrics.size),
 				param.type.complete
 			});
+
+			if (arg_rst.tag == EvalTag::Error)
+				return CallInfo{ false, TypeId::INVALID, ArecId::INVALID };
+			else if (arg_rst.tag == EvalTag::Unbound)
+				ASSERT_UNREACHABLE;
 
 			ASSERT_OR_IGNORE(arg_rst.tag == EvalTag::Success);
 		}
@@ -2021,8 +2146,14 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 		{
 			if (param.is_pending)
 			{
-				if (complete_member(interp, parameter_list_type_id, param))
-					param = type_member_info_by_rank(interp->types, parameter_list_type_id, param.rank);
+				const MemberRst member_rst = complete_member(interp, parameter_list_type_id, param);
+
+				if (member_rst == MemberRst::Error)
+					return CallInfo{ false, TypeId::INVALID, ArecId::INVALID };
+
+				ASSERT_OR_IGNORE(member_rst == MemberRst::Completed);
+
+				param = type_member_info_by_rank(interp->types, parameter_list_type_id, param.rank);
 			}
 
 			const TypeMetrics param_metrics = type_metrics_from_id(interp->types, param.type.complete);
@@ -2033,9 +2164,9 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 		}
 		else
 		{
-			const Range<char8> name = identifier_name_from_id(interp->identifiers, type_member_name_by_rank(interp->types, parameter_list_type_id, param.rank));
+			(void) record_error(interp->errors, callee, CompileError::CallMissingArg);
 
-			source_error(interp->errors, source_id_of(interp->asts, callee), "Missing argument for parameter `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
+			return CallInfo{ false, TypeId::INVALID, ArecId::INVALID };
 		}
 	}
 
@@ -2047,11 +2178,16 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 	{
 		AstNode* const return_type = ast_node_from_id(interp->asts, signature_type->return_type.partial_root);
 
-		[[maybe_unused]] EvalRst return_type_rst = evaluate(interp, return_type, EvalSpec{
+		EvalRst return_type_rst = evaluate(interp, return_type, EvalSpec{
 			ValueKind::Value,
 			range::from_object_bytes_mut(&return_type_id),
 			type_create_simple(interp->types, TypeTag::Type)
 		});
+
+		if (return_type_rst.tag == EvalTag::Error)
+			return CallInfo{ false, TypeId::INVALID, ArecId::INVALID };
+		else if (return_type_rst.tag == EvalTag::Unbound)
+			ASSERT_UNREACHABLE;
 
 		ASSERT_OR_IGNORE(return_type_rst.tag == EvalTag::Success);
 	}
@@ -2063,7 +2199,7 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 	if (signature_type->parameter_list_is_unbound || signature_type->return_type_is_unbound)
 		pop_partial_value(interp);
 
-	return { return_type_id, parameter_list_arec_id };
+	return { true, return_type_id, parameter_list_arec_id };
 }
 
 static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexcept
@@ -2074,6 +2210,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	{
 		EvalRst rst = fill_spec(interp, spec, node, true, false, applicable_partial.type_id);
 
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 		const MutRange<byte> mutified = MutRange<byte>{ const_cast<byte*>(applicable_partial.data.begin()), applicable_partial.data.count() };
 
 		if (type_is_equal(interp->types, applicable_partial.type_id, rst.success.type_id))
@@ -2082,7 +2223,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 		else
 		{
-			convert(interp, node, &rst.success, make_value(mutified, true, false, applicable_partial.type_id));
+			if (!convert(interp, node, &rst.success, make_value(mutified, true, false, applicable_partial.type_id)))
+				return propagate_error();
 		}
 
 		return rst;
@@ -2092,6 +2234,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		const TypeId type_type_id = type_create_simple(interp->types, TypeTag::Type);
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, type_type_id, sizeof(TypeId), alignof(TypeId));
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		TypeId expression_type = typeinfer(interp, node);
 
@@ -2110,6 +2257,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		const TypeId builtin_type_id = interp->builtin_type_ids[ordinal];
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, builtin_type_id, sizeof(CallableValue), alignof(CallableValue));
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		CallableValue callable = CallableValue::from_builtin(builtin_type_id, ordinal);
 
@@ -2162,15 +2314,23 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 					unified_elem_type_id = type_unify(interp->types, unified_elem_type_id, elem_rst.success.type_id);
 
 					if (unified_elem_type_id == TypeId::INVALID)
-						source_error(interp->errors, source_id_of(interp->asts, elem), "Array literal element cannot be implicitly converted to type of preceding elements.\n");
+					{
+						return eval_error(interp, elem, CompileError::UnifyNoCommonArrayElementType);
+					}
 				}
 			}
-			else
+			else if (elem_rst.tag == EvalTag::Unbound)
 			{
 				if (unbound_in == nullptr || unbound_in > elem_rst.unbound)
 					unbound_in = elem_rst.unbound;
 
 				values[i] = {};
+			}
+			else
+			{
+				ASSERT_OR_IGNORE(elem_rst.tag == EvalTag::Error);
+
+				return propagate_error();
 			}
 		}
 
@@ -2204,6 +2364,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			EvalRst rst = fill_spec(interp, spec, node, false, true, inferred_type_id);
 
+			if (rst.tag == EvalTag::Error)
+				return rst;
+
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 			const ArrayType* const rst_type = type_attachment_from_id<ArrayType>(interp->types, rst.success.type_id);
 
 			unified_elem_type_id = rst_type->element_type;
@@ -2230,7 +2395,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				{
 					EvalValue dst_value = make_value(elem_value_dst, false, true, unified_elem_type_id);
 
-					convert(interp, elem, &dst_value, value);
+					if (!convert(interp, elem, &dst_value, value))
+						return propagate_error();
 				}
 			}
 
@@ -2281,8 +2447,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			{
 				AstNode* const member_dst = first_child_of(member);
 
-				if (member_dst->tag != AstTag::ImpliedMember)
-					source_error(interp->errors, source_id_of(interp->asts, member), "Assignment inside calls is only allowed to named arguments.\n");
+				// TODO: Ensure this in `LexicalAnalyser`.
+				ASSERT_OR_IGNORE(member_dst->tag == AstTag::ImpliedMember);
 
 				member_name = attachment_of<AstImpliedMemberData>(member_dst)->identifier_id;
 
@@ -2305,12 +2471,18 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			{
 				values[i] = member_rst.success;
 			}
-			else
+			else if (member_rst.tag == EvalTag::Unbound)
 			{
 				if (unbound_in == nullptr || unbound_in > member_rst.unbound)
 					unbound_in = member_rst.unbound;
 
 				values[i] = {};
+			}
+			else
+			{
+				ASSERT_OR_IGNORE(member_rst.tag == EvalTag::Error);
+
+				return propagate_error();
 			}
 		}
 
@@ -2351,6 +2523,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			EvalRst rst = fill_spec(interp, spec, node, false, true, spec.type_id);
 
+			if (rst.tag == EvalTag::Error)
+				return rst;
+
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 			const u32 target_member_count = type_get_composite_member_count(interp->types, spec.type_id);
 
 			const u32 seen_members_size = ((member_count + 7) / 8 + sizeof(u64) - 1) & ~(sizeof(u64) - 1);
@@ -2369,9 +2546,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				{
 					if (!type_member_info_by_name(interp->types, spec.type_id, names[i], &member))
 					{
-						const Range<char8> name = identifier_name_from_id(interp->identifiers, names[i]);
-
-						source_error(interp->errors, source_id_of(interp->asts, node), "Target type of composite initializer does not have a member `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
+						return eval_error(interp, node, CompileError::ImplicitConversionCompositeLiteralTargetIsMissingMember);
 					}
 
 					rank = member.rank + 1;
@@ -2379,7 +2554,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				else
 				{
 					if (rank == target_member_count)
-						source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Too many members in composite literal.\n");
+					{
+						return eval_error(interp, node, CompileError::ImplicitConversionCompositeLiteralTargetHasTooFewMembers);
+					}
 
 					member = type_member_info_by_rank(interp->types, spec.type_id, rank);
 
@@ -2392,9 +2569,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	
 				if ((*seen_members_elem & member_bit) != 0)
 				{
-					const Range<char8> name = identifier_name_from_id(interp->identifiers, type_member_name_by_rank(interp->types, spec.type_id, member.rank));
-
-					source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Member `%.*s` initialized more than once in composite literal.\n", static_cast<s32>(name.count()), name.begin());
+					return eval_error(interp, node, CompileError::ImplicitConversionCompositeLiteralTargetMemberMappedTwice);
 				}
 
 				*seen_members_elem |= member_bit;
@@ -2413,13 +2588,12 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				{
 					EvalValue dst_value = make_value(dst, false, true, member.type.complete);
 
-					convert(interp, nodes[i], &dst_value, values[i]);
+					if (!convert(interp, nodes[i], &dst_value, values[i]))
+						return propagate_error();
 				}
 				else
 				{
-					const Range<char8> name = identifier_name_from_id(interp->identifiers, type_member_name_by_rank(interp->types, spec.type_id, member.rank));
-
-					source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Cannot convert value of composite literal member `%.*s` to desired type.\n", static_cast<s32>(name.count()), name.begin());
+					return eval_error(interp, node, CompileError::ImplicitConversionCompositeLiteralMemberTypesCannotConvert);
 				}
 			}
 
@@ -2436,15 +2610,19 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 				if (member.is_pending)
 				{
-					if (complete_member(interp, spec.type_id, member))
-						member = type_member_info_by_rank(interp->types, spec.type_id, member.rank);
+					const MemberRst member_rst = complete_member(interp, spec.type_id, member);
+
+					if (member_rst == MemberRst::Error)
+						return propagate_error();
+
+					ASSERT_OR_IGNORE(member_rst == MemberRst::Completed);
+
+					member = type_member_info_by_rank(interp->types, spec.type_id, member.rank);
 				}
 
 				if (member.value.complete == GlobalValueId::INVALID)
 				{
-					const Range<char8> name = identifier_name_from_id(interp->identifiers, type_member_name_by_rank(interp->types, spec.type_id, member.rank));
-
-					source_error(interp->errors, source_id_of(interp->asts, node), "Composite initializer is missing initializer for member `%.*s` of target type which lacks a default value.\n", static_cast<s32>(name.count()), name.begin());
+					return eval_error(interp, node, CompileError::ImplicitConversionCompositeLiteralSourceIsMissingMember);
 				}
 
 				const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member.type.complete);
@@ -2478,19 +2656,19 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				member_init.value_completion_arec_id = ArecId::INVALID;
 				member_init.offset = 0;
 
+				// TODO: Ensure this in `LexicalAnalyser`.
 				if (!type_add_composite_member(interp->types, rst_type_id, member_init))
-				{
-					ASSERT_OR_IGNORE(names[i] != IdentifierId::INVALID);
-
-					const Range<char8> name = identifier_name_from_id(interp->identifiers, names[i]);
-
-					source_error(interp->errors, source_id_of(interp->asts, nodes[i]), "Composite literal member with name `%.*s` defined more than once.\n", static_cast<s32>(name.count()), name.begin());
-				}
+					ASSERT_UNREACHABLE;
 			}
 
 			type_seal_composite(interp->types, rst_type_id, 0, 0, 0);
 
 			EvalRst rst = fill_spec(interp, spec, node, false, true, rst_type_id);
+
+			if (rst.tag == EvalTag::Error)
+				return rst;
+
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 			MemberIterator it = members_of(interp->types, rst_type_id);
 
@@ -2515,21 +2693,24 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, definition_type_id, sizeof(Definition), alignof(Definition));
 
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 		const DefinitionInfo info = get_definition_info(node);
 
 		const AstDefinitionData attach = *attachment_of<AstDefinitionData>(node);
 
 		Definition* const definition = reinterpret_cast<Definition*>(rst.success.bytes.begin());
-		memset(definition, 0, sizeof(*definition));
 		definition->name = attach.identifier_id;
-		definition->type.pending = is_some(info.type) ? id_from_ast_node(interp->asts, get_ptr(info.type)) : AstNodeId::INVALID;
-		definition->value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get_ptr(info.value)) : AstNodeId::INVALID;
-		definition->is_pub = has_flag(node, AstFlag::Definition_IsPub);
-		definition->is_mut = has_flag(node, AstFlag::Definition_IsMut);
-		definition->has_pending_type = true;
-		definition->has_pending_value = is_some(info.value);
+		definition->type.pending = is_some(info.type) ? id_from_ast_node(interp->asts, get(info.type)) : AstNodeId::INVALID;
+		definition->value.pending = is_some(info.value) ? id_from_ast_node(interp->asts, get(info.value)) : AstNodeId::INVALID;
 		definition->type_completion_arec_id = is_some(info.type) ? active_arec_id(interp) : ArecId::INVALID;
 		definition->value_completion_arec_id = is_some(info.value) ? active_arec_id(interp) : ArecId::INVALID;
+		definition->is_pub = has_flag(node, AstFlag::Definition_IsPub);
+		definition->is_mut = has_flag(node, AstFlag::Definition_IsMut);
+		definition->is_pending = true;
 
 		return rst;
 	}
@@ -2558,21 +2739,26 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			{
 				DefinitionInfo info = get_definition_info(stmt);
 
-				if (is_none(info.value))
-					source_error(interp->errors, source_id_of(interp->asts, stmt), "Block-level definition must have a value.\n");
+				// TODO: Enssure this in `LexicalAnalyser`.
+				ASSERT_OR_IGNORE(is_some(info.value));
 
-				if (has_flag(stmt, AstFlag::Definition_IsPub))
-					source_error(interp->errors, source_id_of(interp->asts, stmt), "`pub` is not supported on block-level definitions.\n");
+				// TODO: Enssure this in `LexicalAnalyser`.
+				ASSERT_OR_IGNORE(!has_flag(stmt, AstFlag::Definition_IsPub));
 
 				if (is_some(info.type))
 				{
 					TypeId type_id;
 
-					[[maybe_unused]] const EvalRst type_rst = evaluate(interp, get_ptr(info.type), EvalSpec{
+					const EvalRst type_rst = evaluate(interp, get(info.type), EvalSpec{
 						ValueKind::Value,
 						range::from_object_bytes_mut(&type_id),
 						type_create_simple(interp->types, TypeTag::Type)
 					});
+
+					if (type_rst.tag == EvalTag::Error)
+						return propagate_error();
+					else if (type_rst.tag == EvalTag::Unbound)
+						ASSERT_UNREACHABLE; // This is guaranteed by `LexicalAnalyser` not allowing blocks in signatures.
 
 					ASSERT_OR_IGNORE(type_rst.tag == EvalTag::Success);
 
@@ -2588,12 +2774,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 					member_init.value_completion_arec_id = ArecId::INVALID;
 					member_init.offset = 0;
 
+					// This is guaranteed due to lowering in `LexicalAnalyser`.
 					if (!type_add_composite_member(interp->types, block_type_id, member_init))
-					{
-						const Range<char8> name = identifier_name_from_id(interp->identifiers, attachment_of<AstDefinitionData>(stmt)->identifier_id);
-
-						source_error(interp->errors, source_id_of(interp->asts, stmt), "Variable with name `%.*s` is already defined.\n", static_cast<s32>(name.count()), name.begin());
-					}
+						ASSERT_UNREACHABLE;
 
 					const MemberInfo member = type_member_info_by_rank(interp->types, block_type_id, definition_count);
 
@@ -2603,17 +2786,27 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 					MutRange<byte> attach = arec_attach(interp, block_arec);
 
-					[[maybe_unused]] const EvalRst value_rst = evaluate(interp, get_ptr(info.value), EvalSpec{
+					const EvalRst value_rst = evaluate(interp, get(info.value), EvalSpec{
 						ValueKind::Value,
 						attach.mut_subrange(member.offset, metrics.size),
 						type_id
 					});
 
+					if (value_rst.tag == EvalTag::Error)
+						return propagate_error();
+					else if (value_rst.tag == EvalTag::Unbound)
+						ASSERT_UNREACHABLE; // This is guaranteed by `LexicalAnalyser` not allowing blocks in signatures.
+
 					ASSERT_OR_IGNORE(value_rst.tag == EvalTag::Success);
 				}
 				else
 				{
-					const EvalRst value_rst = evaluate(interp, get_ptr(info.value), EvalSpec{ ValueKind::Value });
+					const EvalRst value_rst = evaluate(interp, get(info.value), EvalSpec{ ValueKind::Value });
+
+					if (value_rst.tag == EvalTag::Error)
+						return propagate_error();
+					else if (value_rst.tag == EvalTag::Unbound)
+						ASSERT_UNREACHABLE; // This is guaranteed by `LexicalAnalyser` not allowing blocks in signatures.
 
 					ASSERT_OR_IGNORE(value_rst.tag == EvalTag::Success);
 
@@ -2629,12 +2822,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 					member_init.value_completion_arec_id = ArecId::INVALID;
 					member_init.offset = 0;
 
+					// This is guaranteed due to lowering in `LexicalAnalyser`.
 					if (!type_add_composite_member(interp->types, block_type_id, member_init))
-					{
-						const Range<char8> name = identifier_name_from_id(interp->identifiers, attachment_of<AstDefinitionData>(stmt)->identifier_id);
-
-						source_error(interp->errors, source_id_of(interp->asts, stmt), "Variable with name `%.*s` is already defined.\n", static_cast<s32>(name.count()), name.begin());
-					}
+						ASSERT_UNREACHABLE;
 
 					const MemberInfo member = type_member_info_by_rank(interp->types, block_type_id, definition_count);
 
@@ -2670,16 +2860,26 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 				const EvalRst stmt_rst = evaluate(interp, stmt, stmt_spec);
 
-				ASSERT_OR_IGNORE(stmt_rst.tag == EvalTag::Success);
+					if (stmt_rst.tag == EvalTag::Error)
+						return propagate_error();
+					else if (stmt_rst.tag == EvalTag::Unbound)
+						ASSERT_UNREACHABLE; // This is guaranteed by `LexicalAnalyser` not allowing blocks in signatures.
+
+					ASSERT_OR_IGNORE(stmt_rst.tag == EvalTag::Success);
 
 				const TypeMetrics metrics = type_metrics_from_id(interp->types, stmt_rst.success.type_id);
 
-				if (stmt_rst.tag == EvalTag::Unbound)
-					source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use block in unbound context.\n");
+				// TODO: Ensure this in `LexicalAnalyser`.
+				ASSERT_OR_IGNORE(stmt_rst.tag != EvalTag::Unbound);
 
 				if (!has_next_sibling(stmt))
 				{
 					EvalRst rst = fill_spec_sized(interp, spec, node, false, true, stmt_rst.success.type_id, metrics.size, metrics.align);
+
+					if (rst.tag == EvalTag::Error)
+						return rst;
+
+					ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 					// This is super hacky; We basically forget about the stack
 					// memory just allocated for `rst`, move our result down to the
@@ -2717,8 +2917,12 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			type_create_simple(interp->types, TypeTag::Boolean)
 		});
 
-		if (cond_rst.tag == EvalTag::Unbound)
-			TODO("Implement unbound if alternative");
+		if (cond_rst.tag == EvalTag::Error)
+			return propagate_error();
+		else if (cond_rst.tag == EvalTag::Unbound)
+			TODO("Implement unbound if condition");
+
+		ASSERT_OR_IGNORE(cond_rst.tag == EvalTag::Success);
 
 		AstNode* taken;
 
@@ -2728,7 +2932,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 		else if (is_some(info.alternative))
 		{
-			taken = get_ptr(info.alternative);
+			taken = get(info.alternative);
 		}
 		else
 		{
@@ -2741,11 +2945,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			spec.type_id
 		});
 
-		if (rst.tag == EvalTag::Unbound)
+
+		if (rst.tag == EvalTag::Error)
+			return propagate_error();
+		else if (rst.tag == EvalTag::Unbound)
 			TODO("Implement unbound if branch.");
 
-		if (spec.kind == ValueKind::Location)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot convert value to location.\n");
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
+		// This is guaranteed due to lowering in `LexicalAnalyser`.
+		ASSERT_OR_IGNORE(spec.kind != ValueKind::Location);
 
 		return rst;
 	}
@@ -2770,9 +2979,13 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				type_create_simple(interp->types, TypeTag::Boolean)
 			});
 
-			if (cond_rst.tag != EvalTag::Success)
-				source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use `for` in an unbound context.\n");
+			if (cond_rst.tag == EvalTag::Error)
+				return propagate_error();
+			else if (cond_rst.tag == EvalTag::Unbound)
+				TODO("Ensure this is unreachable in `LexicalAnalyser`.");
 
+			ASSERT_OR_IGNORE(cond_rst.tag == EvalTag::Success);
+			
 			if (!cond_val)
 				break;
 
@@ -2784,21 +2997,29 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				type_create_simple(interp->types, TypeTag::Void)				
 			});
 
-			if (body_rst.tag != EvalTag::Success)
-				source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use `for` in an unbound context.\n");
+			if (body_rst.tag == EvalTag::Error)
+				return propagate_error();
+			else if (body_rst.tag == EvalTag::Unbound)
+				TODO("Ensure this is unreachable in `LexicalAnalyser`.");
+
+			ASSERT_OR_IGNORE(body_rst.tag == EvalTag::Success);
 
 			if (is_some(info.step))
 			{
 				byte unused_step_val;
 
-				const EvalRst step_rst = evaluate(interp, get_ptr(info.step), EvalSpec{
+				const EvalRst step_rst = evaluate(interp, get(info.step), EvalSpec{
 					ValueKind::Value,
 					{ &unused_step_val, static_cast<u64>(0) },
 					type_create_simple(interp->types, TypeTag::Void)
 				});
 
-				if (step_rst.tag != EvalTag::Success)
-					source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use `for` in an unbound context.\n");
+				if (step_rst.tag == EvalTag::Error)
+					return propagate_error();
+				else if (step_rst.tag == EvalTag::Unbound)
+					TODO("Ensure this is unreachable in `LexicalAnalyser`.");
+
+				ASSERT_OR_IGNORE(step_rst.tag == EvalTag::Success);
 			}
 		}
 
@@ -2817,19 +3038,30 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			type_create_simple(interp->types, TypeTag::Type)
 		});
 
-		if (signature_rst.tag == EvalTag::Unbound)
-			return signature_rst;
+		if (signature_rst.tag == EvalTag::Error)
+			return propagate_error();
+		else if (signature_rst.tag == EvalTag::Unbound)
+			return eval_unbound(signature_rst.unbound);
 
-		if (type_tag_from_id(interp->types, signature_type_id) != TypeTag::Func)
-			source_error(interp->errors, source_id_of(interp->asts, signature), "Function signature must be of type `Signature`.\n");
+		ASSERT_OR_IGNORE(signature_rst.tag == EvalTag::Success);
+
+		ASSERT_OR_IGNORE(type_tag_from_id(interp->types, signature_type_id) == TypeTag::Func);
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, signature_type_id, sizeof(CallableValue), alignof(CallableValue));
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		AstNode* const body = next_sibling_of(signature);
 
 		const AstNodeId body_id = id_from_ast_node(interp->asts, body);
 
-		const ClosureId closure_id = close_over_func_body(interp, body);
+		ClosureId closure_id;
+		
+		if (!close_over_func_body(interp, body, &closure_id))
+			return propagate_error();
 
 		CallableValue callable = CallableValue::from_function(signature_type_id, body_id, closure_id);
 
@@ -2843,6 +3075,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		const TypeId type_type_id = type_create_simple(interp->types, TypeTag::Type);
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, type_type_id, sizeof(TypeId), alignof(TypeId));
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		SignatureInfo info = get_signature_info(node);
 
@@ -2864,19 +3101,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			ASSERT_OR_IGNORE(param->tag == AstTag::Parameter);
 
-			if (param_count == 63)
-				source_error(interp->errors, source_id_of(interp->asts, param), "Exceeded maximum of 64 function parameters.\n");
+			// TODO: Ensure this in `LexicalAnalyser`.
+			ASSERT_OR_IGNORE(param_count < 63);
 
 			MemberInit param_member = delayed_member_from(interp, param);
 			param_member.type_completion_arec_id = ArecId::INVALID;
 			param_member.value_completion_arec_id = ArecId::INVALID;
 
+			// This is guaranteed due to lowering in `LexicalAnalyser`.
 			if (!type_add_composite_member(interp->types, parameter_list_type_id, param_member))
-			{
-				const Range<char8> name = identifier_name_from_id(interp->identifiers, attachment_of<AstParameterData>(param)->identifier_id);
-				
-				source_error(interp->errors, source_id_of(interp->asts, param), "More than one parameter with name `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
-			}
+				ASSERT_UNREACHABLE;
 
 			param_count += 1;
 		}
@@ -2914,7 +3148,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 					type_create_simple(interp->types, TypeTag::Type)
 				});
 
-				if (type_rst.tag == EvalTag::Unbound)
+				if (type_rst.tag == EvalTag::Error)
+				{
+					return propagate_error();
+				}
+				else if (type_rst.tag == EvalTag::Unbound)
 				{
 					type_is_unbound = true;
 
@@ -2922,6 +3160,10 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 					if (type_rst.unbound < outermost_unbound)
 						outermost_unbound = type_rst.unbound;
+				}
+				else
+				{
+					ASSERT_OR_IGNORE(type_rst.tag == EvalTag::Success);
 				}
 			}
 
@@ -2937,7 +3179,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 						ValueKind::Value,
 					});
 
-					if (value_rst.tag == EvalTag::Unbound)
+					if (value_rst.tag == EvalTag::Error)
+					{
+						return propagate_error();
+					}
+					else if (value_rst.tag == EvalTag::Unbound)
 					{
 						ASSERT_OR_IGNORE(value_rst.unbound != parameter_list_arec);
 
@@ -2981,8 +3227,12 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 						member_type_id
 					});
 
-					if (value_rst.tag == EvalTag::Unbound)
+					if (value_rst.tag == EvalTag::Error)
+						return propagate_error();
+					else if (value_rst.tag == EvalTag::Unbound)
 						TODO("Handle unbound implicitly typed default values.");
+
+					ASSERT_OR_IGNORE(value_rst.tag == EvalTag::Success);
 				}
 			}
 
@@ -2999,7 +3249,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		if (is_some(info.return_type))
 		{
-			AstNode* const return_type = get_ptr(info.return_type);
+			AstNode* const return_type = get(info.return_type);
 
 			EvalRst return_type_rst = evaluate(interp, return_type, EvalSpec{
 				ValueKind::Value,
@@ -3007,10 +3257,23 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				type_create_simple(interp->types, TypeTag::Type)
 			});
 
-			has_unbound_return_type = return_type_rst.tag == EvalTag::Unbound;
+			if (return_type_rst.tag == EvalTag::Error)
+			{
+				return propagate_error();
+			}
+			else if (return_type_rst.tag == EvalTag::Unbound)
+			{
+				has_unbound_return_type = true;
 
-			if (has_unbound_return_type && return_type_rst.unbound < outermost_unbound)
-				outermost_unbound = return_type_rst.unbound;
+				if (return_type_rst.unbound < outermost_unbound)
+					outermost_unbound = return_type_rst.unbound;
+			}
+			else
+			{
+				ASSERT_OR_IGNORE(return_type_rst.tag == EvalTag::Success);
+
+				has_unbound_return_type = false;
+			}
 		}
 		else
 		{
@@ -3053,14 +3316,14 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 				if (is_some(param_info.type) && !member.is_pending)
 				{
-					add_partial_value_to_builder_sized(interp, get_ptr(param_info.type), type_type_id, range::from_object_bytes(&member.type.complete), sizeof(TypeId), alignof(TypeId));
+					add_partial_value_to_builder_sized(interp, get(param_info.type), type_type_id, range::from_object_bytes(&member.type.complete), sizeof(TypeId), alignof(TypeId));
 				}
 
 				if (is_some(param_info.value) && !member.is_pending)
 				{
 					Range<byte> value_src = global_value_get(interp->globals, member.value.complete);
 
-					add_partial_value_to_builder(interp, get_ptr(param_info.value), member.type.complete, value_src);
+					add_partial_value_to_builder(interp, get(param_info.value), member.type.complete, value_src);
 				}
 			}
 
@@ -3094,7 +3357,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			signature_type.return_type_is_unbound = has_unbound_return_type;
 
 			if (has_unbound_return_type)
-				signature_type.return_type.partial_root = id_from_ast_node(interp->asts, get_ptr(info.return_type));
+				signature_type.return_type.partial_root = id_from_ast_node(interp->asts, get(info.return_type));
 			else
 				signature_type.return_type.complete = return_type_id;
 
@@ -3108,19 +3371,19 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 	case AstTag::Unreachable:
 	{
-		source_error_nonfatal(interp->errors, source_id_of(interp->asts, node), "Reached `unreachable`.\n");
-
-		print_stack_trace(interp);
-
-		error_exit(interp->errors);
+		return eval_error(interp, node, CompileError::UnreachableReached);
 	}
 
 	case AstTag::Undefined:
 	{
-		if (spec.type_id == TypeId::INVALID)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Type of `undefined` must be inferrable from context.\n");
+		const TypeId undefined_type_id = type_create_simple(interp->types, TypeTag::Undefined);
 
-		EvalRst rst = fill_spec(interp, spec, node, false, true, spec.type_id);
+		EvalRst rst = fill_spec(interp, spec, node, false, true, undefined_type_id);
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		// We are returning uninitialized memory, so we might as well add a
 		// nice debug pattern <3
@@ -3135,10 +3398,19 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const IdentifierInfo info = lookup_identifier(interp, attach.identifier_id, attach.binding);
 
-		if (info.tag == EvalTag::Unbound)
-			return eval_unbound(get_ptr(info.arec));
+		if (info.tag == EvalTag::Error)
+			return propagate_error();
+		else if (info.tag == EvalTag::Unbound)
+			return eval_unbound(get(info.arec));
+		else
+			ASSERT_OR_IGNORE(info.tag == EvalTag::Success);
 
 		EvalRst rst = fill_spec(interp, spec, node, true, info.success.is_mut, info.success.type_id);
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		if (type_is_equal(interp->types, info.success.type_id, rst.success.type_id))
 		{
@@ -3146,13 +3418,12 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 		else if (!rst.success.is_location)
 		{
-			convert(interp, node, &rst.success, info.success);
+			if (!convert(interp, node, &rst.success, info.success))
+				return propagate_error();
 		}
 		else
 		{
-			const Range<char8> name = identifier_name_from_id(interp->identifiers, attach.identifier_id);
-
-			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot treat identifier '%.*s' as location as it requires an implicit conversion to conform to the desired type.\n", static_cast<s32>(name.count()), name.begin());
+			return eval_error(interp, node, CompileError::ImplicitConversionLocationRequired);
 		}
 
 		return rst;
@@ -3164,12 +3435,22 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, comp_integer_type_id, sizeof(CompIntegerValue), alignof(CompIntegerValue));
 
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 		CompIntegerValue value = attachment_of<AstLitIntegerData>(node)->value;
 
 		if (type_is_equal(interp->types, rst.success.type_id, comp_integer_type_id))
+		{
 			value_set(&rst.success, range::from_object_bytes_mut(&value));
+		}
 		else
-			convert_comp_integer_to_integer(interp, node, &rst.success, value);
+		{
+			if (!convert_comp_integer_to_integer(interp, node, &rst.success, value))
+				return propagate_error();
+		}
 
 		return rst;
 	}
@@ -3179,6 +3460,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		const TypeId comp_float_type_id = type_create_simple(interp->types, TypeTag::CompFloat);
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, comp_float_type_id, sizeof(CompFloatValue), alignof(CompFloatValue));
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		CompFloatValue value = attachment_of<AstLitFloatData>(node)->value;
 
@@ -3217,14 +3503,26 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst rst = fill_spec(interp, spec, node, false, true, attach.string_type_id);
 
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 		MutRange<byte> value = global_value_get_mut(interp->globals, attach.string_value_id);
 
 		if (type_is_equal(interp->types, rst.success.type_id, attach.string_type_id))
+		{
 			value_set(&rst.success, value);
+		}
 		else if (!rst.success.is_location)
-			convert_array_to_slice(interp, node, &rst.success, make_value(value, false, true, attach.string_type_id));
+		{
+			if (!convert_array_to_slice(interp, node, &rst.success, make_value(value, false, true, attach.string_type_id)))
+				return propagate_error();
+		}
 		else
-			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot treat string litearal as location as it requires an implicit conversion to conform to the desired type.\n");
+		{
+			return eval_error(interp, node, CompileError::ImplicitConversionLocationRequired);
+		}
 
 		return rst;
 	}
@@ -3239,8 +3537,12 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst sliced_rst = evaluate(interp, info.sliced, EvalSpec{ ValueKind::Value });
 
-		if (sliced_rst.tag == EvalTag::Unbound)
+		if (sliced_rst.tag == EvalTag::Error)
+			return propagate_error();
+		else if (sliced_rst.tag == EvalTag::Unbound)
 			sliced_unbound = sliced_rst.unbound;
+		else
+			ASSERT_OR_IGNORE(sliced_rst.tag == EvalTag::Success);
 
 		Arec* begin_unbound = nullptr;
 
@@ -3248,12 +3550,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		if (is_some(info.begin))
 		{
-			AstNode* const begin = get_ptr(info.begin);
+			AstNode* const begin = get(info.begin);
 
 			begin_rst = evaluate(interp, begin, EvalSpec{ ValueKind::Value });
 
-			if (begin_rst.tag == EvalTag::Unbound)
+			if (begin_rst.tag == EvalTag::Error)
+				return propagate_error();
+			else if (begin_rst.tag == EvalTag::Unbound)
 				begin_unbound = begin_rst.unbound;
+			else
+				ASSERT_OR_IGNORE(begin_rst.tag == EvalTag::Success);
 		}
 
 		Arec* end_unbound = nullptr;
@@ -3262,12 +3568,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		if (is_some(info.end))
 		{
-			AstNode* const end = get_ptr(info.end);
+			AstNode* const end = get(info.end);
 
 			end_rst = evaluate(interp, end, EvalSpec{ ValueKind::Value });
 
-			if (end_rst.tag == EvalTag::Unbound)
+			if (end_rst.tag == EvalTag::Error)
+				return propagate_error();
+			else if (end_rst.tag == EvalTag::Unbound)
 				end_unbound = end_rst.unbound;
+			else
+				ASSERT_OR_IGNORE(end_rst.tag == EvalTag::Success);
 		}
 
 		if (sliced_unbound != nullptr || begin_unbound != nullptr || end_unbound != nullptr)
@@ -3343,7 +3653,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			const ReferenceType* const ptr_type = type_attachment_from_id<ReferenceType>(interp->types, sliced_rst.success.type_id);
 
 			if (!ptr_type->is_multi)
-				source_error(interp->errors, source_id_of(interp->asts, info.sliced), "Left-hand-side of slicing operator must be of multi-pointer and not single-pointer type.\n");
+				return eval_error(interp, info.sliced, CompileError::SliceOperatorInvalidLhsType);
 
 			elem_type_id = ptr_type->referenced_type_id;
 
@@ -3359,7 +3669,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 		else
 		{
-			source_error(interp->errors, source_id_of(interp->asts, info.sliced), "Left-hand-side of slicing operator must be of array, slice or multi-pointer type.\n");
+			return eval_error(interp, info.sliced, CompileError::SliceOperatorInvalidLhsType);
 		}
 
 		byte* begin_ptr;
@@ -3373,18 +3683,18 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			if (begin_type_tag == TypeTag::CompInteger)
 			{
 				if (!u64_from_comp_integer(*value_as<CompIntegerValue>(begin_rst.success), 64, &begin_index))
-					source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.begin)), "Begin index of slicing operator must fit into unsigned 64-bit integer.\n");
+					return eval_error(interp, get(info.end), CompileError::SliceOperatorIndexTooLarge);
 			}
 			else if (begin_type_tag == TypeTag::Integer)
 			{
 				const NumericType begin_type = *type_attachment_from_id<NumericType>(interp->types, begin_rst.success.type_id);
 
 				if (!u64_from_integer(begin_rst.success.bytes.immut(), begin_type, &begin_index))
-					source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.begin)), "Begin index of slicing operator must fit into unsigned 64-bit integer.\n");
+					return eval_error(interp, get(info.end), CompileError::SliceOperatorIndexTooLarge);
 			}
 			else
 			{
-				source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.begin)), "Begin index of slicing operator must be of integer type.\n");
+				return eval_error(interp, get(info.begin), CompileError::SliceOperatorInvalidIndexType);
 			}
 
 			begin_ptr = first_elem + begin_index * elem_metrics.stride;
@@ -3405,18 +3715,18 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			if (end_type_tag == TypeTag::CompInteger)
 			{
 				if (!u64_from_comp_integer(*value_as<CompIntegerValue>(end_rst.success), 64, &end_index))
-					source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.end)), "End index of slicing operator must fit into unsigned 64-bit integer.\n");
+					return eval_error(interp, get(info.end), CompileError::SliceOperatorIndexTooLarge);
 			}
 			else if (end_type_tag == TypeTag::Integer)
 			{
 				const NumericType begin_type = *type_attachment_from_id<NumericType>(interp->types, end_rst.success.type_id);
 
 				if (!u64_from_integer(end_rst.success.bytes.immut(), begin_type, &end_index))
-					source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.end)), "End index of slicing operator must fit into unsigned 64-bit integer.\n");
+					return eval_error(interp, get(info.end), CompileError::SliceOperatorIndexTooLarge);
 			}
 			else
 			{
-				source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.end)), "End index of slicing operator must be of integer type.\n");
+				return eval_error(interp, get(info.end), CompileError::SliceOperatorInvalidIndexType);
 			}
 
 			end_ptr = first_elem + end_index * elem_metrics.stride;
@@ -3427,17 +3737,17 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 		else
 		{
-			source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.end)), "End index of slicing operator cannot be elided with left-hand-side of multi-pointer type, as the end cannot be derived.\n");
+			return eval_error(interp, get(info.begin), CompileError::SliceOperatorMultiPtrElidedEndIndex);
 		}
 
 		if (has_byte_count && begin_ptr > first_elem + byte_count)
-			source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.begin)), "Begin index of slicing operator must be less than the element count of the indexed array or slice.\n");
+			return eval_error(interp, get(info.begin), CompileError::SliceOperatorIndexOutOfBounds);
 
 		if (has_byte_count && end_ptr > first_elem + byte_count)
-			source_error(interp->errors, source_id_of(interp->asts, get_ptr(info.end)), "End index of slicing operator must be less than the element count of the indexed array or slice.\n");
+			return eval_error(interp, get(info.end), CompileError::SliceOperatorIndexOutOfBounds);
 
 		if (begin_ptr > end_ptr)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Begin index of slicing operator must be less than or equal to end index.\n");
+			return eval_error(interp, get(info.end), CompileError::SliceOperatorIndicesReversed);
 
 		MutRange<byte> rst_slice{ begin_ptr, end_ptr };
 
@@ -3450,6 +3760,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		const TypeId slice_type_id = type_create_reference(interp->types, TypeTag::Slice, slice_type);
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, slice_type_id, sizeof(MutRange<byte>), alignof(MutRange<byte>));
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		value_set(&rst.success, range::from_object_bytes_mut(&rst_slice));
 
@@ -3473,23 +3788,28 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		stack_shrink(interp, callee_mark);
 
-		EvalRst rst;
-
-		if (callee_rst.tag == EvalTag::Unbound)
-		{
+		if (callee_rst.tag == EvalTag::Error)
+			return propagate_error();
+		else if (callee_rst.tag == EvalTag::Unbound)
 			TODO("Implement unbound callees");
-		}
+		else
+			ASSERT_OR_IGNORE(callee_rst.tag == EvalTag::Success);
 
 		const TypeTag callee_type_tag = type_tag_from_id(interp->types, callee_rst.success.type_id);
 
 		if (callee_type_tag != TypeTag::Func && callee_type_tag != TypeTag::Builtin)
-			source_error(interp->errors, source_id_of(interp->asts, callee), "Cannot implicitly convert callee to callable type.\n");
+			return eval_error(interp, callee, CompileError::ImplicitConversionTypesCannotConvert);
 
 		const SignatureType* const signature_type = type_attachment_from_id<SignatureType>(interp->types, callee_value.signature_type_id);
 
 		const CallInfo call_info = setup_call_args(interp, signature_type, callee);
 
-		rst = fill_spec(interp, spec, node, false, true, call_info.return_type_id);
+		EvalRst rst = fill_spec(interp, spec, node, false, true, call_info.return_type_id);
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		const u32 mark = stack_mark(interp);
 
@@ -3512,7 +3832,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			Arec* const parameter_list_arec = arec_from_id(interp, call_info.parameter_list_arec_id);
 
-			interp->builtin_values[callee_value.ordinal](interp, parameter_list_arec, temp_location);
+			if (!interp->builtin_values[callee_value.ordinal](interp, parameter_list_arec, temp_location))
+				return propagate_error();
 		}
 		else
 		{
@@ -3531,14 +3852,22 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				rst.success.type_id
 			});
 
-			ASSERT_OR_IGNORE(call_rst.tag == EvalTag::Success);
+			if (call_rst.tag == EvalTag::Error)
+				return propagate_error();
+			else if (call_rst.tag == EvalTag::Unbound)
+				ASSERT_UNREACHABLE;
+			else
+				ASSERT_OR_IGNORE(call_rst.tag == EvalTag::Success);
 
 			if (callee_value.closure_id != ClosureId::INVALID)
 				interp->active_closures.pop_by(1);
 		}
 
 		if (needs_conversion)
-			convert(interp, node, &rst.success, make_value(temp_location, false, true, call_info.return_type_id));
+		{
+			if (!convert(interp, node, &rst.success, make_value(temp_location, false, true, call_info.return_type_id)))
+				return propagate_error();
+		}
 
 		arec_pop(interp, call_info.parameter_list_arec_id);
 
@@ -3558,6 +3887,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, type_type_id, sizeof(TypeId), alignof(TypeId));
 
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 		const u32 mark = stack_mark(interp);
 
 		AstNode* const referenced = first_child_of(node);
@@ -3570,8 +3904,12 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			type_type_id
 		});
 
-		if (referenced_rst.tag == EvalTag::Unbound)
+		if (referenced_rst.tag == EvalTag::Error)
+			return propagate_error();
+		else if (referenced_rst.tag == EvalTag::Unbound)
 			return eval_unbound(referenced_rst.unbound);
+		else
+			ASSERT_OR_IGNORE(referenced_rst.tag == EvalTag::Success);
 
 		ReferenceType reference_type{};
 		reference_type.referenced_type_id = referenced_type_id;
@@ -3600,11 +3938,19 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			ValueKind::Location
 		});
 
-		if (operand_rst.tag == EvalTag::Unbound)
+		if (operand_rst.tag == EvalTag::Error)
+		{
+			return propagate_error();
+		}
+		else if (operand_rst.tag == EvalTag::Unbound)
 		{
 			stack_shrink(interp, mark);
 
 			return eval_unbound(operand_rst.unbound);
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(operand_rst.tag == EvalTag::Success);
 		}
 		
 		// Create and initialize pointer type.
@@ -3617,7 +3963,12 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		const TypeId ptr_type_id = type_create_reference(interp->types, TypeTag::Ptr, ptr_type);
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, ptr_type_id, sizeof(void*), alignof(void*));
-		
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 		byte* address = operand_rst.success.bytes.begin();
 		
 		value_set(&rst.success, range::from_object_bytes_mut(&address));
@@ -3637,24 +3988,37 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			ValueKind::Value
 		});
 
-		if (operand_rst.tag == EvalTag::Unbound)
+		if (operand_rst.tag == EvalTag::Error)
+		{
+			return propagate_error();
+		}
+		else if (operand_rst.tag == EvalTag::Unbound)
 		{
 			stack_shrink(interp, mark);
 
 			return eval_unbound(operand_rst.unbound);
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(operand_rst.tag == EvalTag::Success);
 		}
 
 		// type if of the reference, contains type info of the derefed type
 		TypeId reference_type_id = operand_rst.success.type_id;
 
 		if (type_tag_from_id(interp->types, reference_type_id) != TypeTag::Ptr)
-			source_error(interp->errors, source_id_of(interp->asts, operand), "Operand of `.*` must be a pointer.\n");
+			return eval_error(interp, operand, CompileError::DerefInvalidOperandType);
 
 		const ReferenceType* reference_type = type_attachment_from_id<ReferenceType>(interp->types, reference_type_id);
 		
 		TypeId dereferenced_type = reference_type->referenced_type_id;
 		
 		EvalRst rst = fill_spec(interp, spec, node, true, reference_type->is_mut, dereferenced_type);
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		byte* const ptr = *value_as<byte*>(operand_rst.success);
 
@@ -3675,10 +4039,28 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst operand_rst = evaluate(interp, operand, EvalSpec{ ValueKind::Value });
 
-		if (operand_rst.tag == EvalTag::Unbound)
+		if (operand_rst.tag == EvalTag::Error)
+		{
+			return propagate_error();
+		}
+		else if (operand_rst.tag == EvalTag::Unbound)
+		{
+			stack_shrink(interp, mark);
+
 			return eval_unbound(operand_rst.unbound);
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(operand_rst.tag == EvalTag::Success);
+		}
+		
 
 		EvalRst rst = fill_spec(interp, spec, node, false, true, operand_rst.success.type_id);
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		EvalValue operand_casted;
 
@@ -3692,7 +4074,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			operand_casted = make_value(stack_push(interp, metrics.size, metrics.align), false, true, rst.success.type_id);
 
-			convert(interp, node, &operand_casted, operand_rst.success);
+			if (!convert(interp, node, &operand_casted, operand_rst.success))
+				return propagate_error();
 		}
 
 		const TypeTag type_tag = type_tag_from_id(interp->types, rst.success.type_id);
@@ -3705,7 +4088,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 		else
 		{
-			source_error(interp->errors, source_id_of(interp->asts, node), "`~` can only be applied to integer operands.\n");
+			return eval_error(interp, node, CompileError::BitNotInvalidOperandType);
 		}
 
 		rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
@@ -3719,6 +4102,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, bool_type_id, sizeof(bool), alignof(bool));
 
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 		const u32 mark = stack_mark(interp);
 
 		AstNode* const operand = first_child_of(node);
@@ -3731,11 +4119,19 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			bool_type_id
 		});
 
-		if (operand_rst.tag == EvalTag::Unbound)
+		if (operand_rst.tag == EvalTag::Error)
+		{
+			return propagate_error();
+		}
+		else if (operand_rst.tag == EvalTag::Unbound)
 		{
 			stack_shrink(interp, mark);
 
 			return eval_unbound(operand_rst.unbound);
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(operand_rst.tag == EvalTag::Success);
 		}
 
 		operand_value = !operand_value;
@@ -3755,10 +4151,27 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst operand_rst = evaluate(interp, operand, EvalSpec{ ValueKind::Value });
 
-		if (operand_rst.tag == EvalTag::Unbound)
+		if (operand_rst.tag == EvalTag::Error)
+		{
+			return propagate_error();
+		}
+		else if (operand_rst.tag == EvalTag::Unbound)
+		{
+			stack_shrink(interp, mark);
+
 			return eval_unbound(operand_rst.unbound);
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(operand_rst.tag == EvalTag::Success);
+		}
 
 		EvalRst rst = fill_spec(interp, spec, node, false, true, operand_rst.success.type_id);
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		EvalValue operand_casted;
 
@@ -3772,7 +4185,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			operand_casted = make_value(stack_push(interp, metrics.size, metrics.align), false, true, rst.success.type_id);
 
-			convert(interp, node, &operand_casted, operand_rst.success);
+			if (!convert(interp, node, &operand_casted, operand_rst.success))
+				return propagate_error();
 		}
 
 		const TypeTag type_tag = type_tag_from_id(interp->types, rst.success.type_id);
@@ -3812,14 +4226,14 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			const NumericType* const type = type_attachment_from_id<NumericType>(interp->types, rst.success.type_id);
 
-			if (type->is_signed)
-				source_error(interp->errors, source_id_of(interp->asts, node), "Cannot negate unsigned integer.\n");
+			if (!type->is_signed)
+				return eval_error(interp, node, CompileError::NegateInvalidOperandType);
 
 			bitwise_neg(type->bits, rst.success.bytes, operand_casted.bytes.immut());
 		}
 		else
 		{
-			source_error(interp->errors, source_id_of(interp->asts, node), "Unary `-` can only be applied to integer or float-point operands.\n");
+			return eval_error(interp, node, CompileError::NegateInvalidOperandType);
 		}
 
 		rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
@@ -3829,15 +4243,19 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 	case AstTag::UOpPos:
 	{
-		if (spec.kind == ValueKind::Location)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot convert value to location.\n");
+		// This is guaranteed due to lowering in `LexicalAnalyser`.
+		ASSERT_OR_IGNORE(spec.kind == ValueKind::Location);
 
 		AstNode* const operand = first_child_of(node);
 
 		EvalRst operand_rst = evaluate(interp, operand, spec);
 
-		if (operand_rst.tag == EvalTag::Unbound)
+		if (operand_rst.tag == EvalTag::Error)
+			return propagate_error();
+		else if (operand_rst.tag == EvalTag::Unbound)
 			return eval_unbound(operand_rst.unbound);
+		else
+			ASSERT_OR_IGNORE(operand_rst.tag == EvalTag::Success);
 
 		const TypeTag type_tag = type_tag_from_id(interp->types, operand_rst.success.type_id);
 
@@ -3845,7 +4263,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		 && type_tag != TypeTag::Integer
 		 && type_tag != TypeTag::CompFloat
 		 && type_tag != TypeTag::Float)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Unary `+` can only be applied to integer or float-point operands.\n");
+			return eval_error(interp, node, CompileError::UnaryPlusInvalidOperandType);
 
 		return operand_rst;
 	}
@@ -3867,16 +4285,22 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			ValueKind::Value
 		});
 
+		if (lhs_rst.tag == EvalTag::Error)
+			return propagate_error();
+
 		AstNode* const rhs = next_sibling_of(lhs);
 
 		EvalRst rhs_rst = evaluate(interp, rhs, EvalSpec{
 			ValueKind::Value
 		});
 
+		if (rhs_rst.tag == EvalTag::Error)
+			return propagate_error();
+
 		const TypeId unified_type_id = type_unify(interp->types, lhs_rst.success.type_id, rhs_rst.success.type_id);
 
 		if (unified_type_id == TypeId::INVALID)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Incompatible operand types passed to `%s` operator.\n", tag_name(node->tag));
+			return eval_error(interp, node, CompileError::UnifyNoCommonArgumentType);
 
 		const TypeTag unified_type_tag = type_tag_from_id(interp->types, unified_type_id);
 
@@ -3884,7 +4308,13 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		 && unified_type_tag != TypeTag::Float
 		 && unified_type_tag != TypeTag::CompInteger
 		 && unified_type_tag != TypeTag::CompFloat)
-			source_error(interp->errors, source_id_of(interp->asts, lhs), "The `%s` operator is only supported for Integer and Float values!\n", tag_name(node->tag));
+		{
+			const CompileError error = node->tag == AstTag::OpMod || node->tag == AstTag::OpAddTC || node->tag == AstTag::OpSubTC || node->tag == AstTag::OpMulTC
+				? CompileError::BinaryOperatorIntegerInvalidArgumentType
+				: CompileError::BinaryOperatorNumericInvalidArgumentType;
+
+			return eval_error(interp, node, error);
+		}
 
 		const TypeMetrics metrics = type_metrics_from_id(interp->types, unified_type_id);
 
@@ -3898,7 +4328,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			lhs_casted = make_value(stack_push(interp, metrics.size, metrics.align), false, true, unified_type_id);
 
-			convert(interp, lhs, &lhs_casted, lhs_rst.success);
+			if (!convert(interp, lhs, &lhs_casted, lhs_rst.success))
+				return propagate_error();
 		}
 
 		EvalValue rhs_casted;
@@ -3911,10 +4342,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			rhs_casted = make_value(stack_push(interp, metrics.size, metrics.align), false, true, unified_type_id);
 
-			convert(interp, rhs, &rhs_casted, rhs_rst.success);
+			if (!convert(interp, rhs, &rhs_casted, rhs_rst.success))
+				return propagate_error();
 		}
 
 		EvalRst rst = fill_spec(interp, spec, node, false, true, unified_type_id);
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		if (unified_type_tag == TypeTag::Float)
 		{
@@ -3922,7 +4359,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			 || node->tag == AstTag::OpAddTC
 			 || node->tag == AstTag::OpSubTC
 			 || node->tag == AstTag::OpMulTC)
-				source_error(interp->errors, source_id_of(interp->asts, node), "Operator `%s` does not support floating-point operands.\n", tag_name(node->tag));
+				return eval_error(interp, node, CompileError::BinaryOperatorIntegerInvalidArgumentType);
 
 			const NumericType* const type = type_attachment_from_id<NumericType>(interp->types, unified_type_id);
 
@@ -3975,7 +4412,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			 || node->tag == AstTag::OpAddTC
 			 || node->tag == AstTag::OpSubTC
 			 || node->tag == AstTag::OpMulTC)
-				source_error(interp->errors, source_id_of(interp->asts, node), "Operator `%s` does not support floating-point operands.\n", tag_name(node->tag));
+				return eval_error(interp, node, CompileError::BinaryOperatorIntegerInvalidArgumentType);
 
 			const CompFloatValue lhs_value = *value_as<CompFloatValue>(lhs_casted);
 
@@ -4004,7 +4441,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			{
 				ASSERT_OR_IGNORE(rst_type_tag == TypeTag::Float);
 
-				convert(interp, node, &rst.success, make_value(range::from_object_bytes_mut(&rst_value), false, true, unified_type_id));
+				if (!convert(interp, node, &rst.success, make_value(range::from_object_bytes_mut(&rst_value), false, true, unified_type_id)))
+					return propagate_error();
 			}
 		}
 		else if (unified_type_tag == TypeTag::Integer)
@@ -4030,7 +4468,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				ASSERT_UNREACHABLE;
 
 			if (!rst_ok)
-				source_error(interp->errors, source_id_of(interp->asts, node), "Overflow encountered while evaluating operator `%s`.\n", tag_name(node->tag));
+				return eval_error(interp, node, CompileError::ArithmeticOverflow);
 		}
 		else if (unified_type_tag == TypeTag::CompInteger)
 		{
@@ -4055,7 +4493,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			else if (node->tag == AstTag::OpDiv)
 			{
 				if (!comp_integer_div(lhs_value, rhs_value, &rst_value))
-					source_error(interp->errors, source_id_of(interp->asts, node), "Tried dividing by 0.\n");
+					return eval_error(interp, node, CompileError::DivideByZero);
 			}
 			else
 			{
@@ -4093,12 +4531,20 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		Arec* unbound;
 
-		if (!evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound))
+		const EvalTag eval_tag = evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound);
+
+		if (eval_tag == EvalTag::Unbound)
 		{
 			stack_shrink(interp, mark);
 
 			return eval_unbound(unbound);
 		}
+		else if (eval_tag == EvalTag::Error)
+		{
+			return propagate_error();
+		}
+
+		ASSERT_OR_IGNORE(eval_tag == EvalTag::Success);
 
 		const TypeTag common_type_tag = type_tag_from_id(interp->types, common_type_id);
 
@@ -4108,16 +4554,26 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			rst = fill_spec_sized(interp, spec, node, false, true, common_type_id, sizeof(CompIntegerValue), alignof(CompIntegerValue));
 
+			if (rst.tag == EvalTag::Error)
+				return rst;
+
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 			CompIntegerValue value;
 
 			if (!comp_integer_bit_and(*value_as<CompIntegerValue>(lhs_casted), *value_as<CompIntegerValue>(rhs_casted), &value))
-				source_error(interp->errors, source_id_of(interp->asts, node), "Cannot apply operator `&` to negative compile-time integer value.\n");
+				TODO("Fix comp_integer_bit_and to work with negative values");
 
 			value_set(&rst.success, range::from_object_bytes_mut(&value));
 		}
 		else if (common_type_tag == TypeTag::Boolean)
 		{
 			rst = fill_spec_sized(interp, spec, node, false, true, common_type_id, sizeof(bool), alignof(bool));
+
+			if (rst.tag == EvalTag::Error)
+				return rst;
+
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 			bool value = *value_as<bool>(lhs_casted) && *value_as<bool>(rhs_casted);
 
@@ -4127,12 +4583,17 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			rst = fill_spec(interp, spec, node, false, true, common_type_id);
 
+			if (rst.tag == EvalTag::Error)
+				return rst;
+
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 			for (u32 i = 0; i != rst.success.bytes.count(); ++i)
 				rst.success.bytes[i] = lhs_casted.bytes[i] & rhs_casted.bytes[i];
 		}
 		else
 		{
-			source_error(interp->errors, source_id_of(interp->asts, node), "Operator `&` only works on integer or boolean typed values.\n");
+			return eval_error(interp, node, CompileError::BinaryOperatorIntegerOrBoolInvalidArgumentType);
 		}
 
 		rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
@@ -4152,12 +4613,20 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		Arec* unbound;
 
-		if (!evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound))
+		const EvalTag eval_tag = evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound);
+
+		if (eval_tag == EvalTag::Unbound)
 		{
 			stack_shrink(interp, mark);
 
 			return eval_unbound(unbound);
 		}
+		else if (eval_tag == EvalTag::Error)
+		{
+			return propagate_error();
+		}
+
+		ASSERT_OR_IGNORE(eval_tag == EvalTag::Success);
 
 		const TypeTag common_type_tag = type_tag_from_id(interp->types, common_type_id);
 
@@ -4167,16 +4636,26 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			rst = fill_spec_sized(interp, spec, node, false, true, common_type_id, sizeof(CompIntegerValue), alignof(CompIntegerValue));
 
+			if (rst.tag == EvalTag::Error)
+				return rst;
+
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 			CompIntegerValue value;
 
 			if (!comp_integer_bit_or(*value_as<CompIntegerValue>(lhs_casted), *value_as<CompIntegerValue>(rhs_casted), &value))
-				source_error(interp->errors, source_id_of(interp->asts, node), "Cannot apply operator `|` to negative compile-time integer value.\n");
+				TODO("Fix comp_integer_bit_or to work with negative values");
 
 			value_set(&rst.success, range::from_object_bytes_mut(&value));
 		}
 		else if (common_type_tag == TypeTag::Boolean)
 		{
 			rst = fill_spec_sized(interp, spec, node, false, true, common_type_id, sizeof(bool), alignof(bool));
+
+			if (rst.tag == EvalTag::Error)
+				return rst;
+
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 			bool value = *value_as<bool>(lhs_casted) || *value_as<bool>(rhs_casted);
 
@@ -4186,12 +4665,17 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			rst = fill_spec(interp, spec, node, false, true, common_type_id);
 
+			if (rst.tag == EvalTag::Error)
+				return rst;
+
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 			for (u32 i = 0; i != rst.success.bytes.count(); ++i)
 				rst.success.bytes[i] = lhs_casted.bytes[i] | rhs_casted.bytes[i];
 		}
 		else
 		{
-			source_error(interp->errors, source_id_of(interp->asts, node), "Operator `|` only works on integer or boolean typed values.\n");
+			return eval_error(interp, node, CompileError::BinaryOperatorIntegerOrBoolInvalidArgumentType);
 		}
 
 		rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
@@ -4211,12 +4695,20 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		Arec* unbound;
 
-		if (!evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound))
+		const EvalTag eval_tag = evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound);
+
+		if (eval_tag == EvalTag::Unbound)
 		{
 			stack_shrink(interp, mark);
 
 			return eval_unbound(unbound);
 		}
+		else if (eval_tag == EvalTag::Error)
+		{
+			return propagate_error();
+		}
+
+		ASSERT_OR_IGNORE(eval_tag == EvalTag::Success);
 
 		const TypeTag common_type_tag = type_tag_from_id(interp->types, common_type_id);
 
@@ -4226,16 +4718,26 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			rst = fill_spec_sized(interp, spec, node, false, true, common_type_id, sizeof(CompIntegerValue), alignof(CompIntegerValue));
 
+			if (rst.tag == EvalTag::Error)
+				return rst;
+
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 			CompIntegerValue value;
 
 			if (!comp_integer_bit_xor(*value_as<CompIntegerValue>(lhs_casted), *value_as<CompIntegerValue>(rhs_casted), &value))
-				source_error(interp->errors, source_id_of(interp->asts, node), "Cannot apply operator `^` to negative compile-time integer value.\n");
+				TODO("Fix comp_integer_bit_xor to work with negative values");
 
 			value_set(&rst.success, range::from_object_bytes_mut(&value));
 		}
 		else if (common_type_tag == TypeTag::Boolean)
 		{
 			rst = fill_spec_sized(interp, spec, node, false, true, common_type_id, sizeof(bool), alignof(bool));
+
+			if (rst.tag == EvalTag::Error)
+				return rst;
+
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 			bool value = *value_as<bool>(lhs_casted) ^ *value_as<bool>(rhs_casted);
 
@@ -4245,12 +4747,17 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			rst = fill_spec(interp, spec, node, false, true, common_type_id);
 
+			if (rst.tag == EvalTag::Error)
+				return rst;
+
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 			for (u32 i = 0; i != rst.success.bytes.count(); ++i)
 				rst.success.bytes[i] = lhs_casted.bytes[i] ^ rhs_casted.bytes[i];
 		}
 		else
 		{
-			source_error(interp->errors, source_id_of(interp->asts, node), "Operator `^` only works on integer or boolean typed values.\n");
+			return eval_error(interp, node, CompileError::BinaryOperatorIntegerOrBoolInvalidArgumentType);
 		}
 
 		rst.success.bytes = stack_shrink_and_lift(interp, mark, rst.success.bytes);
@@ -4267,11 +4774,17 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst lhs_rst = evaluate(interp, lhs, spec);
 
+		if (lhs_rst.tag == EvalTag::Error)
+			return propagate_error();
+
 		AstNode* const rhs = next_sibling_of(lhs);
 
 		EvalRst rhs_rst = evaluate(interp, rhs, EvalSpec{
 			ValueKind::Value
 		});
+
+		if (lhs_rst.tag == EvalTag::Error)
+			return propagate_error();
 
 		Arec* const unbound = check_binary_expr_for_unbound(interp, lhs, rhs, &lhs_rst, &rhs_rst);
 
@@ -4300,7 +4813,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 		else
 		{
-			source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must be of integer type.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
+			return eval_error(interp, node, CompileError::BinaryOperatorIntegerInvalidArgumentType);
 		}
 
 		u16 shift;
@@ -4308,15 +4821,20 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		const ShiftAmountResult shift_rst = shift_amount(interp, rhs_rst.success.bytes.immut(), rhs_rst.success.type_id, max_shift_log2_ceil, &shift);
 
 		if (shift_rst == ShiftAmountResult::Negative)
-			source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must not be negative.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
+			return eval_error(interp, node, CompileError::ShiftRHSNegative);
 		else if (shift_rst == ShiftAmountResult::TooLarge)
-			source_error(interp->errors, source_id_of(interp->asts, rhs), "%s-shifting by 2^16 or more is not supported.\n", node->tag == AstTag::OpShiftL ? "Left" : "Right");
+			return eval_error(interp, node, CompileError::ShiftRHSTooLarge);
 		else if (shift_rst == ShiftAmountResult::UnsupportedType)
-			source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must be of integer type.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
+			return eval_error(interp, node, CompileError::BinaryOperatorIntegerInvalidArgumentType);
 
 		ASSERT_OR_IGNORE(shift_rst == ShiftAmountResult::InRange);
 
 		EvalRst rst = fill_spec(interp, spec, node, false, true, lhs_rst.success.type_id);
+
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		if (lhs_type_tag == TypeTag::CompInteger)
 		{
@@ -4329,14 +4847,14 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			if (node->tag == AstTag::OpShiftL)
 			{
 				if (!comp_integer_shift_left(lhs_value, rhs_value, &shifted))
-					source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must not be negative.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
+					ASSERT_UNREACHABLE;
 			}
 			else
 			{
 				ASSERT_OR_IGNORE(node->tag == AstTag::OpShiftR);
 
 				if (!comp_integer_shift_right(lhs_value, rhs_value, &shifted))
-					source_error(interp->errors, source_id_of(interp->asts, rhs), "Right-hand-side of `%s` must not be negative.\n", node->tag == AstTag::OpShiftL ? "<<" : ">>");
+					ASSERT_UNREACHABLE;
 			}
 
 			const TypeTag rst_type_tag = type_tag_from_id(interp->types, rst.success.type_id);
@@ -4349,7 +4867,8 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			{
 				ASSERT_OR_IGNORE(rst_type_tag == TypeTag::Integer);
 
-				convert(interp, node, &rst.success, make_value(range::from_object_bytes_mut(&shifted), false, true, lhs_rst.success.type_id));
+				if (!convert(interp, node, &rst.success, make_value(range::from_object_bytes_mut(&shifted), false, true, lhs_rst.success.type_id)))
+					return propagate_error();
 			}
 		}
 		else
@@ -4380,6 +4899,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, bool_type_id, sizeof(bool), alignof(bool));
 
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 		const u32 mark = stack_mark(interp);
 
 		AstNode* const lhs = first_child_of(node);
@@ -4392,14 +4916,23 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			bool_type_id
 		});
 
-		// Since we might short-circuit here we can't look at `rhs` to see
-		// whether it should be put into a partial value, so just return right
-		// away.
-		if (lhs_rst.tag == EvalTag::Unbound)
+		if (lhs_rst.tag == EvalTag::Error)
 		{
+			return propagate_error();
+		}
+		else if (lhs_rst.tag == EvalTag::Unbound)
+		{
+			// Since we might short-circuit here we can't look at `rhs` to see
+			// whether it should be put into a partial value, so just return right
+			// away.
+
 			stack_shrink(interp, mark);
 
 			return eval_unbound(lhs_rst.unbound);
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(lhs_rst.tag == EvalTag::Success);
 		}
 
 		// Short-circuit. If we are performing and `and`, short-circuit iff lhs
@@ -4424,13 +4957,21 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			bool_type_id
 		});
 
-		if (rhs_rst.tag == EvalTag::Unbound)
+		if (lhs_rst.tag == EvalTag::Error)
+		{
+			return propagate_error();
+		}
+		else if (rhs_rst.tag == EvalTag::Unbound)
 		{
 			add_partial_value_to_builder_sized(interp, lhs, bool_type_id, lhs_rst.success.bytes.immut(), sizeof(bool), alignof(bool));
 
 			stack_shrink(interp, mark);
 
 			return eval_unbound(rhs_rst.unbound);
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(rhs_rst.tag == EvalTag::Success);
 		}
 
 		// Since we're here, we know that `lhs` did not short-circuit, so it
@@ -4453,11 +4994,19 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst lhs_rst = evaluate(interp, lhs, EvalSpec{ ValueKind::Location });
 
-		if (lhs_rst.tag == EvalTag::Unbound)
+		if (lhs_rst.tag == EvalTag::Error)
+		{
+			return propagate_error();
+		}
+		else if (lhs_rst.tag == EvalTag::Unbound)
 		{
 			stack_shrink(interp, mark);
 
 			return eval_unbound(lhs_rst.unbound);
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(lhs_rst.tag == EvalTag::Success);
 		}
 
 		const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_rst.success.type_id);
@@ -4469,11 +5018,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			MemberInfo member;
 
 			if (!type_member_info_by_name(interp->types, lhs_rst.success.type_id, attach.identifier_id, &member))
-			{
-				const Range<char8> name = identifier_name_from_id(interp->identifiers, attach.identifier_id);
-
-				source_error(interp->errors, source_id_of(interp->asts, node), "Left-hand-side of `.` has no member named `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
-			}
+				return eval_error(interp, node, CompileError::MemberNoSuchName);
 
 			rst = evaluate_local_member(interp, node, spec, lhs_rst.success.type_id, member, lhs_rst.success.bytes);
 		}
@@ -4482,22 +5027,18 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			const TypeId type_id = *value_as<TypeId>(lhs_rst.success);
 
 			if (type_tag_from_id(interp->types, type_id) != TypeTag::Composite)
-				source_error(interp->errors, source_id_of(interp->asts, node), "Left-hand-side of `.` cannot be a non-composite type.\n");;
+				return eval_error(interp, node, CompileError::MemberInvalidLhsType);
 
 			MemberInfo member;
 
 			if (!type_member_info_by_name(interp->types, type_id, attach.identifier_id, &member))
-			{
-				const Range<char8> name = identifier_name_from_id(interp->identifiers, attach.identifier_id);
-
-				source_error(interp->errors, source_id_of(interp->asts, node), "Left-hand-side of `.` has no member named `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
-			}
+				return eval_error(interp, node, CompileError::MemberNoSuchName);
 
 			rst = evaluate_global_member(interp, node, spec, type_id, member);
 		}
 		else
 		{
-			source_error(interp->errors, source_id_of(interp->asts, node), "Left-hand-side of `.` must be either a composite value or a composite type.\n");
+			return eval_error(interp, node, CompileError::MemberInvalidLhsType);
 		}
 
 		stack_shrink(interp, mark);
@@ -4516,6 +5057,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, bool_type_id, sizeof(bool), alignof(bool));
 
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 		const u32 mark = stack_mark(interp);
 
 		EvalValue lhs_casted;
@@ -4526,19 +5072,27 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		Arec* unbound;
 
-		if (!evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound))
+		const EvalTag eval_tag = evaluate_commonly_typed_binary_expr(interp, node, &lhs_casted, &rhs_casted, &common_type_id, &unbound);
+
+		if (eval_tag == EvalTag::Unbound)
 		{
 			stack_shrink(interp, mark);
 
 			return eval_unbound(unbound);
 		}
+		else if (eval_tag == EvalTag::Error)
+		{
+			return propagate_error();
+		}
+
+		ASSERT_OR_IGNORE(eval_tag == EvalTag::Success);
 
 		const CompareResult result = compare(interp, common_type_id, lhs_casted.bytes.immut(), rhs_casted.bytes.immut(), node);
 
 		if (result.tag == CompareTag::INVALID)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot compare values of the given type.\n");
+			return eval_error(interp, node, CompileError::CompareIncomparableType);
 		else if (result.tag == CompareTag::Equality && node->tag != AstTag::OpCmpNE && node->tag != AstTag::OpCmpEQ)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot order values of the given type.\n");
+			return eval_error(interp, node, CompileError::CompareUnorderedType);
 
 		bool bool_result;
 
@@ -4574,11 +5128,15 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			ValueKind::Location
 		});
 
-		if (lhs_rst.tag == EvalTag::Unbound)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use `=` operator in unbound context.\n");
+		if (lhs_rst.tag == EvalTag::Error)
+			return propagate_error();
+		else if (lhs_rst.tag == EvalTag::Unbound)
+			TODO("Ensure this is unreachable in `LexicalAnalyser`");
+		else
+			ASSERT_OR_IGNORE(lhs_rst.tag == EvalTag::Success);
 
 		if (!lhs_rst.success.is_mut)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Left-hand-side of `=` operator must be mutable.\n");
+			return eval_error(interp, node, CompileError::SetLhsNotMutable);
 
 		AstNode* const rhs = next_sibling_of(lhs);
 
@@ -4588,8 +5146,12 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			lhs_rst.success.type_id
 		});
 
-		if (rhs_rst.tag == EvalTag::Unbound)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use `=` operator in unbound context.\n");
+		if (rhs_rst.tag == EvalTag::Error)
+			return propagate_error();
+		else if (rhs_rst.tag == EvalTag::Unbound)
+			TODO("Ensure this is unreachable in `LexicalAnalyser`");
+		else
+			ASSERT_OR_IGNORE(rhs_rst.tag == EvalTag::Success);
 
 		stack_shrink(interp, mark);
 
@@ -4602,37 +5164,19 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		EvalRst rst = fill_spec_sized(interp, spec, node, false, true, type_type_id, sizeof(TypeId), alignof(TypeId));
 
+		if (rst.tag == EvalTag::Error)
+			return rst;
+
+		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
+
 		const u32 mark = stack_mark(interp);
 
 		AstNode* const count = first_child_of(node);
 
 		const EvalRst count_rst = evaluate(interp, count, EvalSpec{ ValueKind::Value });
 
-		u64 count_u64 = 0;
-
-		if (count_rst.tag == EvalTag::Success)
-		{
-			const TypeTag count_type_tag = type_tag_from_id(interp->types, count_rst.success.type_id);
-
-			if (count_type_tag == TypeTag::CompInteger)
-			{
-				const CompIntegerValue count_value = *value_as<CompIntegerValue>(count_rst.success);
-
-				if (!u64_from_comp_integer(count_value, 64, &count_u64))
-					source_error(interp->errors, source_id_of(interp->asts, count), "Array element count must fit into unsigned 64-bit integer.\n");
-			}
-			else if (count_type_tag == TypeTag::Integer)
-			{
-				const NumericType count_type = *type_attachment_from_id<NumericType>(interp->types, count_rst.success.type_id);
-
-				if (!u64_from_integer(count_rst.success.bytes.immut(), count_type, &count_u64))
-					source_error(interp->errors, source_id_of(interp->asts, count), "Array element count must fit into unsigned 64-bit integer.\n");
-			}
-			else
-			{
-				source_error(interp->errors, source_id_of(interp->asts, count), "Array element count must have an integer type.\n");
-			}
-		}
+		if (count_rst.tag == EvalTag::Error)
+			return propagate_error();
 
 		AstNode* const elem_type = next_sibling_of(count);
 
@@ -4644,6 +5188,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			type_type_id
 		});
 
+		if (elem_type_rst.tag == EvalTag::Error)
+			return propagate_error();
+
 		Arec* const unbound = check_binary_expr_for_unbound(interp, count, elem_type, &count_rst, &elem_type_rst);
 
 		if (unbound != nullptr)
@@ -4651,6 +5198,31 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			stack_shrink(interp, mark);
 
 			return eval_unbound(unbound);
+		}
+
+		ASSERT_OR_IGNORE(count_rst.tag == EvalTag::Success && elem_type_rst.tag == EvalTag::Success);
+
+		u64 count_u64 = 0;
+
+		const TypeTag count_type_tag = type_tag_from_id(interp->types, count_rst.success.type_id);
+
+		if (count_type_tag == TypeTag::CompInteger)
+		{
+			const CompIntegerValue count_value = *value_as<CompIntegerValue>(count_rst.success);
+
+			if (!u64_from_comp_integer(count_value, 64, &count_u64))
+				return eval_error(interp, count, CompileError::TypeArrayCountTooLarge);
+		}
+		else if (count_type_tag == TypeTag::Integer)
+		{
+			const NumericType count_type = *type_attachment_from_id<NumericType>(interp->types, count_rst.success.type_id);
+
+			if (!u64_from_integer(count_rst.success.bytes.immut(), count_type, &count_u64))
+				return eval_error(interp, count, CompileError::TypeArrayCountTooLarge);
+		}
+		else
+		{
+			return eval_error(interp, count, CompileError::TypeArrayCountInvalidType);
 		}
 
 		TypeId array_type_id = type_create_array(interp->types, TypeTag::Array, ArrayType{ count_u64, elem_type_id });
@@ -4680,7 +5252,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		byte* arrayish_begin = nullptr;
 
-		if (arrayish_rst.tag == EvalTag::Success)
+		if (arrayish_rst.tag == EvalTag::Error)
+		{
+			return propagate_error();
+		}
+		else if (arrayish_rst.tag == EvalTag::Success)
 		{
 			const TypeTag arrayish_type_tag = type_tag_from_id(interp->types, arrayish_rst.success.type_id);
 
@@ -4721,7 +5297,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				const ReferenceType* const ptr_type = type_attachment_from_id<ReferenceType>(interp->types, arrayish_rst.success.type_id);
 
 				if (!ptr_type->is_multi || ptr_type->is_opt)
-					source_error(interp->errors, source_id_of(interp->asts, arrayish), "Left-hand-side of index operator must have array, slice, or multi-pointer type.\n");
+					return eval_error(interp, arrayish, CompileError::ArrayIndexLhsInvalidType);
 
 				void* const ptr = *value_as<void*>(arrayish_rst.success);
 
@@ -4739,7 +5315,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			}
 			else
 			{
-				source_error(interp->errors, source_id_of(interp->asts, arrayish), "Left-hand-side of index operator must have array, slice, or multi-pointer type.\n");
+				return eval_error(interp, arrayish, CompileError::ArrayIndexLhsInvalidType);
 			}
 		}
 
@@ -4751,7 +5327,11 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		u64 index_u64 = 0;
 
-		if (index_rst.tag == EvalTag::Success)
+		if (index_rst.tag == EvalTag::Error)
+		{
+			return propagate_error();
+		}
+		else if (index_rst.tag == EvalTag::Success)
 		{
 			const TypeTag index_type_tag = type_tag_from_id(interp->types, index_rst.success.type_id);
 
@@ -4760,18 +5340,18 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 				const CompIntegerValue index_value = *value_as<CompIntegerValue>(index_rst.success);
 
 				if (!u64_from_comp_integer(index_value, 64, &index_u64))
-					source_error(interp->errors, source_id_of(interp->asts, index), "Right-hand-side of index operator must fit into unsigned 64-bit integer.\n");
+					return eval_error(interp, arrayish, CompileError::ArrayIndexRhsTooLarge);
 			}
 			else if (index_type_tag == TypeTag::Integer)
 			{
 				const NumericType index_type = *type_attachment_from_id<NumericType>(interp->types, index_rst.success.type_id);
 
 				if (!u64_from_integer(index_rst.success.bytes.immut(), index_type, &index_u64))
-					source_error(interp->errors, source_id_of(interp->asts, index), "Right-hand-side of index operator must fit into unsigned 64-bit integer.\n");
+					return eval_error(interp, arrayish, CompileError::ArrayIndexRhsTooLarge);
 			}
 			else
 			{
-				source_error(interp->errors, source_id_of(interp->asts, arrayish), "Right-hand-side of index operator must have integer type.\n");
+				return eval_error(interp, arrayish, CompileError::ArrayIndexRhsInvalidType);
 			}
 		}
 
@@ -4796,14 +5376,14 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			const u64 offset = index_u64 * elem_metrics.stride;
 
 			if (offset + elem_metrics.size > arrayish_size)
-				source_error(interp->errors, source_id_of(interp->asts, node), "Index %" PRIu64 " exceeds element count of %" PRIu64 ".\n", index_u64, arrayish_size / elem_metrics.stride);
+				return eval_error(interp, arrayish, CompileError::ArrayIndexOutOfBounds);
 
-			EvalRst rst;
+			EvalRst rst = fill_spec_sized(interp, spec, node, arrayish_rst.success.is_location, elem_is_mut || !arrayish_rst.success.is_location, elem_type_id, elem_metrics.size, elem_metrics.align);
 
-			if (rst.success.is_location && !arrayish_rst.success.is_location)
-				source_error(interp->errors, source_id_of(interp->asts, node), "Cannot use index operator with non-location left-hand-side as a location.\n");
+			if (rst.tag == EvalTag::Error)
+				return rst;
 
-			rst = fill_spec_sized(interp, spec, node, arrayish_rst.success.is_location, elem_is_mut || !arrayish_rst.success.is_location, elem_type_id, elem_metrics.size, elem_metrics.align);
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 			value_set(&rst.success, MutRange<byte>{ arrayish_begin + offset, elem_metrics.size });
 
@@ -4884,12 +5464,12 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 
 		IdentifierInfo info = lookup_identifier(interp, attach.identifier_id, attach.binding);
 
-		if (info.tag != EvalTag::Success)
-		{
-			const Range<char8> name = identifier_name_from_id(interp->identifiers, attach.identifier_id);
-
-			source_error(interp->errors, source_id_of(interp->asts, node), "Identifier '%.*s' is not bound yet, so its type cannot be inferred.\n", static_cast<s32>(name.count()), name.begin());
-		}
+		if (info.tag == EvalTag::Error)
+			TODO("Make typeinfer fallible");
+		if (info.tag == EvalTag::Unbound)
+			TODO("Identifier is not bound yet, so its type cannot be inferred.\n");
+		else
+			ASSERT_OR_IGNORE(info.tag == EvalTag::Success);
 
 		const TypeTag type_tag = type_tag_from_id(interp->types, info.success.type_id);
 
@@ -4915,7 +5495,9 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 		const TypeId rhs_type_id = typeinfer(interp, rhs);
 
 		if (type_unify(interp->types, lhs_type_id, rhs_type_id) == TypeId::INVALID)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Could not unify argument types of `%s`.\n", tag_name(node->tag));
+		{
+			TODO("");
+		}
 
 		return type_create_simple(interp->types, TypeTag::Boolean);
 	}
@@ -5015,7 +5597,7 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 	ASSERT_UNREACHABLE;
 }
 
-static void type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file_type_source_id, TypeId* out) noexcept
+static bool type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file_type_source_id, TypeId* out) noexcept
 {
 	ASSERT_OR_IGNORE(file->tag == AstTag::File);
 
@@ -5045,20 +5627,17 @@ static void type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file
 	{
 		AstNode* const node = next(&ast_it);
 
-		if (node->tag != AstTag::Definition)
-			source_error(interp->errors, source_id_of(interp->asts, node), "Currently only definitions are supported on a file's top-level.\n");
+		// TODO: Ensure this in `lexical_analyser`.
+		ASSERT_OR_IGNORE(node->tag == AstTag::Definition);
 
 		MemberInit member_init = delayed_member_from(interp, node);
 		member_init.is_eval = true;
 		member_init.type_completion_arec_id = ArecId::INVALID;
 		member_init.value_completion_arec_id = ArecId::INVALID;
 
+		// This is guaranteed due to lowering in `LexicalAnalyser`.
 		if (!type_add_composite_member(interp->types, file_type_id, member_init))
-		{
-			const Range<char8> name = identifier_name_from_id(interp->identifiers, attachment_of<AstDefinitionData>(node)->identifier_id);
-
-			source_error(interp->errors, source_id_of(interp->asts, node), "More than one top-level definition with name `%.*s`.\n", static_cast<s32>(name.count()), name.begin());
-		}
+			ASSERT_UNREACHABLE;
 	}
 
 	type_seal_composite(interp->types, file_type_id, 0, 0, 0);
@@ -5092,8 +5671,12 @@ static void type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file
 				type_create_simple(interp->types, TypeTag::Type)
 			});
 
-			// This must succeed as we are on the top level.
-			ASSERT_OR_IGNORE(member_type_rst.tag == EvalTag::Success);
+			if (member_type_rst.tag == EvalTag::Error)
+				return false;
+			else if (member_type_rst.tag == EvalTag::Unbound)
+				ASSERT_UNREACHABLE; // This cannot be unbound as we are on the top level.
+			else
+				ASSERT_OR_IGNORE(member_type_rst.tag == EvalTag::Success);
 
 			const TypeMetrics metrics = type_metrics_from_id(interp->types, member_type_id);
 
@@ -5116,7 +5699,12 @@ static void type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file
 
 		const EvalRst value_rst = evaluate(interp, value, value_spec);
 
-		ASSERT_OR_IGNORE(value_rst.tag == EvalTag::Success);
+			if (value_rst.tag == EvalTag::Error)
+				return false;
+			else if (value_rst.tag == EvalTag::Unbound)
+				ASSERT_UNREACHABLE; // This cannot be unbound as we are on the top level.
+			else
+				ASSERT_OR_IGNORE(value_rst.tag == EvalTag::Success);
 
 		if (member_value_id == GlobalValueId::INVALID)
 		{
@@ -5135,6 +5723,8 @@ static void type_from_file_ast(Interpreter* interp, AstNode* file, SourceId file
 	}
 
 	arec_pop(interp, file_arec_id);
+
+	return true;
 }
 
 
@@ -5213,7 +5803,7 @@ static T get_builtin_arg(Interpreter* interp, Arec* arec, IdentifierId name) noe
 	return *reinterpret_cast<T*>(value.begin());
 }
 
-static void builtin_integer(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_integer(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const u8 bits = get_builtin_arg<u8>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("bits")));
 
@@ -5222,46 +5812,58 @@ static void builtin_integer(Interpreter* interp, Arec* arec, MutRange<byte> into
 	const TypeId rst = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ bits, is_signed });
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
+
+	return true;
 }
 
-static void builtin_float(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_float(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const u8 bits = get_builtin_arg<u8>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("bits")));
 
 	const TypeId rst = type_create_numeric(interp->types, TypeTag::Float, NumericType{ bits, true });
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
+
+	return true;
 }
 
-static void builtin_type(Interpreter* interp, [[maybe_unused]] Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_type(Interpreter* interp, [[maybe_unused]] Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId rst = type_create_simple(interp->types, TypeTag::Type);
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
+
+	return true;
 }
 
-static void builtin_definition(Interpreter* interp, [[maybe_unused]] Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_definition(Interpreter* interp, [[maybe_unused]] Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId rst = type_create_simple(interp->types, TypeTag::Definition);
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
+
+	return true;
 }
 
-static void builtin_type_info(Interpreter* interp, [[maybe_unused]] Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_type_info(Interpreter* interp, [[maybe_unused]] Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId rst = type_create_simple(interp->types, TypeTag::TypeInfo);
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
+
+	return true;
 }
 
-static void builtin_typeof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_typeof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId rst = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("arg")));
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
+
+	return true;
 }
 
-static void builtin_returntypeof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_returntypeof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId arg = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("arg")));
 
@@ -5273,9 +5875,11 @@ static void builtin_returntypeof(Interpreter* interp, Arec* arec, MutRange<byte>
 		TODO("Implement `_returntypeof` for unbound return types");
 
 	range::mem_copy(into, range::from_object_bytes(&signature_type->return_type.complete));
+
+	return true;
 }
 
-static void builtin_sizeof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_sizeof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId arg = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("arg")));
 
@@ -5284,9 +5888,11 @@ static void builtin_sizeof(Interpreter* interp, Arec* arec, MutRange<byte> into)
 	const CompIntegerValue rst = comp_integer_from_u64(metrics.size);
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
+
+	return true;
 }
 
-static void builtin_alignof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_alignof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId arg = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("arg")));
 
@@ -5295,9 +5901,11 @@ static void builtin_alignof(Interpreter* interp, Arec* arec, MutRange<byte> into
 	const CompIntegerValue rst = comp_integer_from_u64(metrics.align);
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
+
+	return true;
 }
 
-static void builtin_strideof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_strideof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId arg = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("arg")));
 
@@ -5306,9 +5914,11 @@ static void builtin_strideof(Interpreter* interp, Arec* arec, MutRange<byte> int
 	const CompIntegerValue rst = comp_integer_from_u64(metrics.align);
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
+
+	return true;
 }
 
-static void builtin_offsetof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_offsetof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	(void) interp;
 
@@ -5319,7 +5929,7 @@ static void builtin_offsetof(Interpreter* interp, Arec* arec, MutRange<byte> int
 	TODO("Implement.");
 }
 
-static void builtin_nameof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_nameof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	(void) interp;
 
@@ -5330,7 +5940,7 @@ static void builtin_nameof(Interpreter* interp, Arec* arec, MutRange<byte> into)
 	TODO("Implement.");
 }
 
-static void builtin_import(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_import(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const Range<char8> path = get_builtin_arg<Range<char8>>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("path")));
 
@@ -5351,12 +5961,12 @@ static void builtin_import(Interpreter* interp, Arec* arec, MutRange<byte> into)
 		const u32 path_base_parent_chars = minos::path_to_absolute_directory(path_base, MutRange{ path_base_parent_buf });
 
 		if (path_base_parent_chars == 0 || path_base_parent_chars > array_count(path_base_parent_buf))
-			source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Failed to get parent directory from `from` source file (0x%X).\n", minos::last_error());
+			panic("Failed to get parent directory from `from` source file (0x%X).\n", minos::last_error());
 
 		const u32 absolute_path_chars = minos::path_to_absolute_relative_to(path, Range{ path_base_parent_buf , path_base_parent_chars }, MutRange{ absolute_path_buf });
 
 		if (absolute_path_chars == 0 || absolute_path_chars > array_count(absolute_path_buf))
-			source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Failed to make `path` %.*s absolute relative to `from` %.*s (0x%X).\n", static_cast<s32>(path.count()), path.begin(), static_cast<s32>(path_base.count()), path_base.begin(), minos::last_error());
+			panic("Failed to make `path` %.*s absolute relative to `from` %.*s (0x%X).\n", static_cast<s32>(path.count()), path.begin(), static_cast<s32>(path_base.count()), path_base.begin(), minos::last_error());
 
 		absolute_path = Range{ absolute_path_buf, absolute_path_chars };
 	}
@@ -5367,21 +5977,30 @@ static void builtin_import(Interpreter* interp, Arec* arec, MutRange<byte> into)
 		absolute_path = path;
 	}
 
-	const TypeId rst = import_file(interp, absolute_path, is_std);
+	const Maybe<TypeId> rst = import_file(interp, absolute_path, is_std);
 
-	range::mem_copy(into, range::from_object_bytes(&rst));
+	if (is_none(rst))
+		return false;
+
+	const TypeId file_type_id = get(rst);
+
+	range::mem_copy(into, range::from_object_bytes(&file_type_id));
+
+	return true;
 }
 
-static void builtin_create_type_builder(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_create_type_builder(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const SourceId source_id = get_builtin_arg<SourceId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("source_id")));
 
 	const TypeId rst = type_create_composite(interp->types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::User, source_id, 0, false);
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
+
+	return true;
 }
 
-static void builtin_add_type_member(Interpreter* interp, Arec* arec, [[maybe_unused]] MutRange<byte> into) noexcept
+static bool builtin_add_type_member(Interpreter* interp, Arec* arec, [[maybe_unused]] MutRange<byte> into) noexcept
 {
 	const TypeId builder = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("builder")));
 
@@ -5395,16 +6014,18 @@ static void builtin_add_type_member(Interpreter* interp, Arec* arec, [[maybe_unu
 	member_init.value = definition.value;
 	member_init.is_pub = definition.is_pub;
 	member_init.is_mut = definition.is_mut;
-	member_init.is_pending= definition.has_pending_type || definition.has_pending_value;
+	member_init.is_pending = definition.is_pending;
 	member_init.is_eval = false;
 	member_init.type_completion_arec_id = definition.type_completion_arec_id;
 	member_init.value_completion_arec_id = definition.value_completion_arec_id;
 	member_init.offset = offset;
 
 	type_add_composite_member(interp->types, builder, member_init);
+
+	return true;
 }
 
-static void builtin_complete_type(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_complete_type(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const TypeId builder = get_builtin_arg<TypeId>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("builder")));
 
@@ -5415,13 +6036,25 @@ static void builtin_complete_type(Interpreter* interp, Arec* arec, MutRange<byte
 	const u64 stride = get_builtin_arg<u64>(interp, arec, id_from_identifier(interp->identifiers, range::from_literal_string("stride")));
 
 	if (align > UINT32_MAX)
-		source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Alignment %" PRIu64 " passed to `_complete_type` must not exceed the maximum supported value of %u.\n", align, static_cast<u32>(1) << 31);
+	{
+		record_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, CompileError::BuiltinCompleteTypeAlignTooLarge);
+
+		return false;
+	}
 
 	if (align == 0)
-		source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Alignment %" PRIu64 " passed to `_complete_type` must not be 0.\n", align);
+	{
+		record_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, CompileError::BuiltinCompleteTypeAlignZero);
+
+		return false;
+	}
 
 	if (!is_pow2(align))
-		source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Alignment %" PRIu64 " passed to `_complete_type` must be a power of two.\n", align);
+	{
+		record_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, CompileError::BuiltinCompleteTypeAlignNotPowTwo);
+
+		return false;
+	}
 
 	const TypeId direct_type_id = type_seal_composite(interp->types, builder, size, static_cast<u32>(align), stride);
 
@@ -5435,18 +6068,22 @@ static void builtin_complete_type(Interpreter* interp, Arec* arec, MutRange<byte
 	}
 
 	range::mem_copy(into, range::from_object_bytes(&direct_type_id));
+
+	return true;
 }
 
-static void builtin_source_id(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_source_id(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const Arec* const calling_arec = arec_from_id(interp, arec->caller_arec_id);
 
 	const SourceId rst = calling_arec->source_id;
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
+
+	return true;
 }
 
-static void builtin_caller_source_id(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_caller_source_id(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	const Arec* const calling_arec = arec_from_id(interp, arec->caller_arec_id);
 
@@ -5455,9 +6092,11 @@ static void builtin_caller_source_id(Interpreter* interp, Arec* arec, MutRange<b
 	const SourceId rst = caller_arec->source_id;
 
 	range::mem_copy(into, range::from_object_bytes(&rst));
+
+	return true;
 }
 
-static void builtin_definition_typeof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
+static bool builtin_definition_typeof(Interpreter* interp, Arec* arec, MutRange<byte> into) noexcept
 {
 	// TODO: Change `Definition` into a reference type so that its members can
 	//       be meaningfully set here, to avoid multiple evaluations.
@@ -5466,7 +6105,7 @@ static void builtin_definition_typeof(Interpreter* interp, Arec* arec, MutRange<
 
 	TypeId type_id;
 
-	if (!definition.has_pending_type)
+	if (!definition.is_pending)
 	{
 		type_id = definition.type.complete;
 	}
@@ -5486,12 +6125,16 @@ static void builtin_definition_typeof(Interpreter* interp, Arec* arec, MutRange<
 
 		arec_restore(interp, restore);
 
-		if (rst.tag == EvalTag::Unbound)
-			source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Cannot use `_definition_typeof` in unbound context.\n");
+		if (rst.tag == EvalTag::Error)
+			return false;
+		else if (rst.tag == EvalTag::Unbound)
+			TODO("Implement _definition_typeof in unbound context");
+		else
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 	}
 	else
 	{
-		ASSERT_OR_IGNORE(definition.has_pending_value && definition.value.pending != AstNodeId::INVALID && definition.value_completion_arec_id != ArecId::INVALID);
+		ASSERT_OR_IGNORE(definition.value.pending != AstNodeId::INVALID && definition.value_completion_arec_id != ArecId::INVALID);
 
 		AstNode* const value = ast_node_from_id(interp->asts, definition.value.pending);
 
@@ -5503,13 +6146,19 @@ static void builtin_definition_typeof(Interpreter* interp, Arec* arec, MutRange<
 
 		arec_restore(interp, restore);
 
-		if (rst.tag == EvalTag::Unbound)
-			source_error(interp->errors, arec_from_id(interp, arec->caller_arec_id)->source_id, "Cannot use `_definition_typeof` in unbound context.\n");
+		if (rst.tag == EvalTag::Error)
+			return false;
+		else if (rst.tag == EvalTag::Unbound)
+			TODO("Implement _definition_typeof in unbound context");
+		else
+			ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
 		type_id = rst.success.type_id;
 	}
 
 	range::mem_copy(into, range::from_object_bytes(&type_id));
+
+	return true;
 }
 
 
@@ -5743,9 +6392,11 @@ static void init_prelude_type(Interpreter* interp, Config* config, IdentifierPoo
 
 	AstNode* const prelude_ast = complete_ast(asts);
 
-	set_prelude_scope(interp->lex, prelude_ast);
+	if (!set_prelude_scope(interp->lex, prelude_ast))
+		panic("Failed to create builtin prelude.\n");
 
-	type_from_file_ast(interp, prelude_ast, SourceId::INVALID, &interp->prelude_type_id);
+	if (!type_from_file_ast(interp, prelude_ast, SourceId::INVALID, &interp->prelude_type_id))
+		panic("Failed to create standard prelude.\n");
 
 	if (interp->type_log_file.m_rep != nullptr && interp->log_prelude)
 	{
@@ -5838,7 +6489,7 @@ void release_interpreter(Interpreter* interp) noexcept
 	minos::mem_unreserve(interp->memory.begin(), interp->memory.count());
 }
 
-TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noexcept
+Maybe<TypeId> import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noexcept
 {
 	SourceFileRead read = read_source_file(interp->reader, filepath);
 
@@ -5846,11 +6497,16 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 
 	if (read.source_file->root_type != TypeId::INVALID)
 	{
-		return read.source_file->root_type;
+		return some(read.source_file->root_type);
 	}
 	else if (read.source_file->root_ast == AstNodeId::INVALID)
 	{
-		root = parse(interp->parser, read.content, read.source_file->source_id_base, is_std);
+		const Maybe<AstNode*> parsed_root = parse(interp->parser, read.content, read.source_file->source_id_base, is_std);
+
+		if (is_none(parsed_root))
+			return none<TypeId>();
+
+		root = get(parsed_root);
 
 		read.source_file->root_ast = id_from_ast_node(interp->asts, root);
 	}
@@ -5859,7 +6515,8 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 		root = ast_node_from_id(interp->asts, read.source_file->root_ast);
 	}
 
-	type_from_file_ast(interp, root, read.source_file->source_id_base, &read.source_file->root_type);
+	if (!type_from_file_ast(interp, root, read.source_file->source_id_base, &read.source_file->root_type))
+		return none<TypeId>();
 
 	const TypeId file_type_id = read.source_file->root_type;
 
@@ -5870,7 +6527,7 @@ TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noex
 		diag::print_type(interp->type_log_file, interp->identifiers, interp->types, file_type_id, &file_type_location);
 	}
 
-	return file_type_id;
+	return some(file_type_id);
 }
 
 const char8* tag_name(Builtin builtin) noexcept

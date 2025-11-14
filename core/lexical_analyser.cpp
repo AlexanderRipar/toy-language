@@ -136,9 +136,9 @@ static void scope_map_add_nogrow(LexicalAnalyser* lex, ScopeMap* scope, Identifi
 		{
 			if (info.names[index] == name)
 			{
-				const Range<char8> name_str = identifier_name_from_id(lex->identifiers, name);
+				(void) record_error(lex->errors, error_source, CompileError::ScopeDuplicateName);
 
-				source_error_nonfatal(lex->errors, source_id_of(lex->asts, error_source), "Name `%.*s` defined more than once.\n", static_cast<s32>(name_str.count()), name_str.begin());
+				lex->has_error = true;
 
 				return;
 			}
@@ -274,17 +274,23 @@ static bool scope_map_get(ScopeMap* scope, IdentifierId name, ScopeEntry* out) n
 	}
 }
 
-static ScopeMap* scope_map_add(LexicalAnalyser* lex, ScopeMap* scope, IdentifierId name, ScopeEntry entry, const AstNode* error_source) noexcept
+static Maybe<ScopeMap*> scope_map_add(LexicalAnalyser* lex, ScopeMap* scope, IdentifierId name, ScopeEntry entry, const AstNode* error_source) noexcept
 {
 	if (scope->used == MAX_SCOPE_ENTRY_COUNT)
-		source_error(lex->errors, source_id_of(lex->asts, error_source), "Exceeded maximum of %u definitions in a single scope.\n", MAX_SCOPE_ENTRY_COUNT);
+	{
+		(void) record_error(lex->errors,error_source, CompileError::ScopeTooManyDefinitions);
+
+		lex->has_error = true;
+
+		return none<ScopeMap*>();
+	}
 
 	if (static_cast<u32>(scope->used) * 3 > scope->capacity * 2)
 		scope = scope_map_grow(lex, scope);
 
 	scope_map_add_nogrow<true>(lex, scope, name, entry, error_source);
 
-	return scope;
+	return some(scope);
 }
 
 
@@ -366,9 +372,7 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 			}
 		}
 
-		const Range<char> name = identifier_name_from_id(lex->identifiers, attach->identifier_id);
-
-		source_error_nonfatal(lex->errors, source_id_of(lex->asts, node), "Identifier `%.*s` is not defined.\n", static_cast<s32>(name.count()), name.begin());
+		(void) record_error(lex->errors, node, CompileError::ScopeDuplicateName);
 
 		lex->has_error = true;
 	}
@@ -409,7 +413,12 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 			entry.rank = scope->used;
 			entry.is_global = scope->is_global;
 
-			scope = scope_map_add(lex, scope, attach->identifier_id, entry, node);
+			const Maybe<ScopeMap*> new_scope = scope_map_add(lex, scope, attach->identifier_id, entry, node);
+
+			if (is_none(new_scope))
+				return;
+
+			scope = get(new_scope);
 
 			lex->scopes[lex->scopes_top] = scope;
 		}
@@ -457,7 +466,12 @@ static void resolve_names_root(LexicalAnalyser* lex, AstNode* root) noexcept
 		entry.rank = rank;
 		entry.is_global = true;
 
-		scope = scope_map_add(lex, scope, attach->identifier_id, entry, node);
+		const Maybe<ScopeMap*> new_scope = scope_map_add(lex, scope, attach->identifier_id, entry, node);
+
+		if (is_none(new_scope))
+			return;
+
+		scope = get(new_scope);
 
 		rank += 1;
 	}
@@ -490,9 +504,6 @@ static void resolve_names_root(LexicalAnalyser* lex, AstNode* root) noexcept
 			resolve_names_rec(lex, node, true);
 		}
 	}
-
-	if (lex->has_error)
-		error_exit(lex->errors);
 }
 
 
@@ -538,16 +549,18 @@ void release_lexical_analyser(LexicalAnalyser* lex) noexcept
 	minos::mem_unreserve(lex->memory.begin(), lex->memory.count());
 }
 
-void set_prelude_scope(LexicalAnalyser* lex, AstNode* prelude) noexcept
+bool set_prelude_scope(LexicalAnalyser* lex, AstNode* prelude) noexcept
 {
 	ASSERT_OR_IGNORE(prelude->tag == AstTag::File && lex->scopes_top == -1);
 
 	resolve_names_root(lex, prelude);
 
-	ASSERT_OR_IGNORE(lex->scopes_top == 0);	
+	ASSERT_OR_IGNORE(lex->scopes_top == 0);
+
+	return !lex->has_error;
 }
 
-void resolve_names(LexicalAnalyser* lex, AstNode* root) noexcept
+bool resolve_names(LexicalAnalyser* lex, AstNode* root) noexcept
 {
 	ASSERT_OR_IGNORE(root->tag == AstTag::File && lex->scopes_top == 0);
 
@@ -556,4 +569,6 @@ void resolve_names(LexicalAnalyser* lex, AstNode* root) noexcept
 	pop_scope(lex);
 
 	ASSERT_OR_IGNORE(lex->scopes_top == 0);
+
+	return !lex->has_error;
 }

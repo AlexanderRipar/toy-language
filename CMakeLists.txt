@@ -15,7 +15,7 @@ set(INFRA_SOURCES
 	infra/common.cpp
 	infra/hash.hpp
 	infra/inplace_sort.hpp
-	infra/optptr.hpp
+	infra/opt.hpp
 	infra/range.hpp
 )
 
@@ -48,7 +48,7 @@ set(DIAG_SOURCES
 set(INTERFACE_HEADERS
 	core/core.hpp
 	infra/common.hpp
-	infra/optptr.hpp
+	infra/opt.hpp
 	infra/minos/minos.hpp
 )
 

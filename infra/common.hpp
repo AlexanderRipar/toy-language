@@ -221,6 +221,17 @@ constexpr bool is_same_cpp_type = false;
 template <typename T>
 constexpr bool is_same_cpp_type<T, T> = true;
 
+template<typename T>
+constexpr bool is_ptr_type = false;
+template<typename T>
+constexpr bool is_ptr_type<T*> = true;
+template<typename T>
+constexpr bool is_ptr_type<T* const> = true;
+template<typename T>
+constexpr bool is_ptr_type<T* volatile> = true;
+template<typename T>
+constexpr bool is_ptr_type<T* const volatile> = true;
+
 NORETURN void panic(const char8* format, ...) noexcept;
 
 NORETURN void vpanic(const char8* format, va_list args) noexcept;

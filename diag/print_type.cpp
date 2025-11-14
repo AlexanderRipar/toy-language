@@ -25,6 +25,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::Builtin:
 	case TypeTag::TypeBuilder:
 	case TypeTag::Divergent:
+	case TypeTag::Undefined:
 	case TypeTag::Trait:
 	case TypeTag::TypeInfo:
 	case TypeTag::TailArray:

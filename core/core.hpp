@@ -4,7 +4,7 @@
 #include <csetjmp>
 
 #include "../infra/common.hpp"
-#include "../infra/optptr.hpp"
+#include "../infra/opt.hpp"
 #include "../infra/minos/minos.hpp"
 
 
@@ -1097,15 +1097,15 @@ struct SignatureInfo
 
 	// Optional `AstNode` containing the function's return type expression if
 	// it has one.
-	OptPtr<AstNode> return_type;
+	Maybe<AstNode*> return_type;
 
 	// Optional `AstNode` with tag `AstTag::Expects` containing the function's
 	// `expects` clause if it has one.
-	OptPtr<AstNode> expects;
+	Maybe<AstNode*> expects;
 
 	// Optional `AstNode` with tag `AstTag::Ensures` containing the function's
 	// `ensures` clause if it has one.
-	OptPtr<AstNode> ensures;
+	Maybe<AstNode*> ensures;
 };
 
 // Neatly structured summary of the child structure of an `AstNode` with tag
@@ -1115,11 +1115,11 @@ struct DefinitionInfo
 {
 	// An optional `AstNode` containing the definition's explicit type
 	// expression if it has one.
-	OptPtr<AstNode> type;
+	Maybe<AstNode*> type;
 
 	// An optional `AstNode` containing the definition's value expression if it
 	// has one.
-	OptPtr<AstNode> value;
+	Maybe<AstNode*> value;
 };
 
 // Neatly structured summary of the child structure of an `AstNode` with tag
@@ -1137,11 +1137,11 @@ struct IfInfo
 	// Optional `AstNode` containing the if's alternative, i.e., the expression
 	// executed if the condition evaluted to `false`. In other words, the
 	// `else` branch. If there is no alternative, this is `none`.
-	OptPtr<AstNode> alternative;
+	Maybe<AstNode*> alternative;
 
 	// Optional `AstNode` with tag `AstTag::Where` containing the if's `where`
 	// clause if it has one.
-	OptPtr<AstNode> where;
+	Maybe<AstNode*> where;
 };
 
 // Neatly structured summary of the child structure of an `AstNode` with tag
@@ -1152,17 +1152,17 @@ struct ForInfo
 	AstNode* condition;
 
 	// Optional `AstNode` containing the for's step if it has one.
-	OptPtr<AstNode> step;
+	Maybe<AstNode*> step;
 
 	// Optional `AstNode` with tag `AstTag::Where` containing the for's `where`
 	// clause if it has one.
-	OptPtr<AstNode> where;
+	Maybe<AstNode*> where;
 
 	// `AstNode` containing the for's body.
 	AstNode* body;
 
 	// Optional `AstNode` containing the for's `finally` clause if it has one.
-	OptPtr<AstNode> finally;
+	Maybe<AstNode*> finally;
 };
 
 // Neatly structured summary of the child structure of an `AstNode` with tag
@@ -1175,27 +1175,27 @@ struct ForEachInfo
 
 	// Optional `AstNode` with tag `AstTag::Defintion` containing the foreach's
 	// index definition if it has one.
-	OptPtr<AstNode> index;
+	Maybe<AstNode*> index;
 
 	// `AstNode` containing the expression over which the foreach is iterating.
 	AstNode* iterated;
 
 	// Optional `AstNode` with tag `AstTag::Where` containing the foreach's
 	// `where` clause if it has one.
-	OptPtr<AstNode> where;
+	Maybe<AstNode*> where;
 
 	// `AstNode` containing the foreach's body.
 	AstNode* body;
 
 	// `AstNode` containing the foreach's `finally` clause if it has one.
-	OptPtr<AstNode> finally;
+	Maybe<AstNode*> finally;
 };
 
 struct SwitchInfo
 {
 	AstNode* switched;
 
-	OptPtr<AstNode> where;
+	Maybe<AstNode*> where;
 
 	AstNode* first_case;
 };
@@ -1204,9 +1204,9 @@ struct OpSliceOfInfo
 {
 	AstNode* sliced;
 
-	OptPtr<AstNode> begin;
+	Maybe<AstNode*> begin;
 
-	OptPtr<AstNode> end;
+	Maybe<AstNode*> end;
 };
 
 
@@ -1646,49 +1646,175 @@ Range<char8> source_file_path_from_source_id(SourceReader* reader, SourceId sour
 // convenient `SourceId`-based, printf-like interface.
 struct ErrorSink;
 
+enum class CompileError
+{
+	INVALID = 0,
+	ImplictConversionIntegerConstantExceedsTargetBounds,
+	ImplicitConversionTypesCannotConvert,
+	ImplicitConversionCompositeLiteralTargetIsMissingMember,
+	ImplicitConversionCompositeLiteralTargetHasTooFewMembers,
+	ImplicitConversionCompositeLiteralTargetMemberMappedTwice,
+	ImplicitConversionCompositeLiteralMemberTypesCannotConvert,
+	ImplicitConversionCompositeLiteralSourceIsMissingMember,
+	ImplicitConversionLocationRequired,
+	UnifyNoCommonArgumentType,
+	UnifyNoCommonArrayElementType,
+	CallNoSuchNamedParameter,
+	CallArgumentMappedTwice,
+	CallTooManyArgs,
+	CallMissingArg,
+	SliceOperatorInvalidLhsType,
+	SliceOperatorInvalidIndexType,
+	SliceOperatorMultiPtrElidedEndIndex,
+	SliceOperatorIndexOutOfBounds,
+	SliceOperatorIndicesReversed,
+	SliceOperatorIndexTooLarge,
+	DerefInvalidOperandType,
+	BitNotInvalidOperandType,
+	NegateInvalidOperandType,
+	UnaryPlusInvalidOperandType,
+	BinaryOperatorNumericInvalidArgumentType,
+	BinaryOperatorIntegerInvalidArgumentType,
+	BinaryOperatorIntegerOrBoolInvalidArgumentType,
+	ArithmeticOverflow,
+	DivideByZero,
+	ShiftRHSNegative,
+	ShiftRHSTooLarge,
+	MemberNoSuchName,
+	MemberInvalidLhsType,
+	CompareIncomparableType,
+	CompareUnorderedType,
+	SetLhsNotMutable,
+	TypeArrayCountInvalidType,
+	TypeArrayCountTooLarge,
+	ArrayIndexLhsInvalidType,
+	ArrayIndexRhsInvalidType,
+	ArrayIndexRhsTooLarge,
+	ArrayIndexOutOfBounds,
+	BuiltinCompleteTypeAlignTooLarge,
+	BuiltinCompleteTypeAlignZero,
+	BuiltinCompleteTypeAlignNotPowTwo,
+	UnreachableReached,
+	ScopeTooManyDefinitions,
+	ScopeDuplicateName,
+	LexUnexpectedCharacter,
+	LexNullCharacter,
+	LexCommentMismatchedBegin,
+	LexCommentMismatchedEnd,
+	LexBuiltinUnknown,
+	LexNumberWithBaseMissingDigits,
+	LexNumberUnexpectedCharacterAfterDecimalPoint,
+	LexNumberUnexpectedCharacterAfterInteger,
+	LexNumberUnexpectedCharacterAfterFloat,
+	LexNumberFloatTooLarge,
+	LexCharacterBadSurrogateCodeUnit,
+	LexCharacterBadLeadCodeUnit,
+	LexCharacterEscapeSequenceLowerXBadChar,
+	LexCharacterEscapeSequenceUpperXInvalidChar,
+	LexCharacterEscapeSequenceUpperXCodepointTooLarge,
+	LexCharacterEscapeSequenceUInvalidChar,
+	LexCharacterEscapeSequenceUnknown,
+	LexCharacterExpectedEnd,
+	LexStringTooLong,
+	LexStringCrossesNewline,
+	LexStringMissingEnd,
+	LexIdentifierInitialUnderscore,
+	LexConfigUnexpectedControlCharacter,
+	LexConfigSingleLineStringCrossesNewline,
+	LexConfigUnexpectedCharacter,
+	ParseUnaryOperatorMissingOperand,
+	ParseBinaryOperatorMissingOperand,
+	ParseOpenOperandCountTooLarge,
+	ParseOpenOperatorCountTooLarge,
+	ParseOperatorOperandCountMismatch,
+	ParseFunctionParameterIsPub,
+	ParseDefinitionMultiplePub,
+	ParseDefinitionMultipleMut,
+	ParseDefinitionMissingName,
+	ParseDefinitionMissingEquals,
+	ParseForeachExpectThinArrowLeft,
+	ParseCaseMissingThinArrowRight,
+	ParseSwitchMissingCase,
+	ParseSignatureMissingParenthesisAfterProc,
+	ParseSignatureMissingParenthesisAfterFunc,
+	ParseSignatureMissingParenthesisAfterTrait,
+	ParseSignatureTooManyParameters,
+	ParseSignatureUnexpectedParameterListEnd,
+	ParseTraitMissingSetOrExpects,
+	ParseTraitMissingSet,
+	ParseUnexpectedTopLevelExpr,
+	ParseCompositeLiteralUnexpectedToken,
+	ParseArrayLiteralUnexpectedToken,
+	ParseArrayTypeUnexpectedToken,
+	ParseImpliedMemberUnexpectedToken,
+	ParseExprExpectOperand,
+	ParseCallTooManyArguments,
+	ParseCallUnexpectedToken,
+	ParseSliceUnexpectedToken,
+	ParseArrayIndexUnexpectedToken,
+	ParseCatchMissingThinArrowRightAfterDefinition,
+	ParseMemberUnexpectedToken,
+	ParseConfigKeyNestingLimitExceeded,
+	ParseConfigKeyNotExpectingSubkeys,
+	ParseConfigKeyDoesNotExist,
+	ParseConfigExpectedKey,
+	ParseConfigExpectedEquals,
+	ParseConfigExpectedClosingCurlyOrComma,
+	ParseConfigExpectedValue,
+	ParseConfigWrongValueTypeForKey,
+	ParseConfigEscapeSequenceLowerUTooFewCharacters,
+	ParseConfigEscapeSequenceUpperUTooFewCharacters,
+	ParseConfigEscapeSequenceUtfInvalidCharacter,
+	ParseConfigEscapeSequenceUtfCodepointTooLarge,
+	ParseConfigEscapeSequenceInvalid,
+	ParseConfigPathTooLong,
+	ParseConfigExpectedClosingBracket,
+	ParseConfigExpectedEqualsOrDot,
+};
+
+struct ErrorRecord
+{
+	CompileError error;
+
+	SourceId source_id;
+};
+
 // Creates a `ErrorSink`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `ErrorSink` can be freed using
 // `release_error_sink`.
-ErrorSink* create_error_sink(HandlePool* pool, SourceReader* reader, IdentifierPool* identifiers, minos::FileHandle log_file) noexcept;
+ErrorSink* create_error_sink(HandlePool* pool, SourceReader* reader, IdentifierPool* identifiers, AstPool* asts, minos::FileHandle log_file) noexcept;
 
 // Releases the resources associated with the given `ErrorSink`.
 void release_error_sink(ErrorSink* errors) noexcept;
 
-// Prints the given `format` string alongside source information derived from
-// `source_id` to the diagnostic log file configured with `errors`, then exits
-// the program with an exit code indicating failure.
-// `format` supports the same syntax as `printf`.
-NORETURN void source_error(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
+// Records the given `error` into the `ErrorSink`, associating it with the
+// given `source_id`.
+// Future calls to `get_errors` or `print_errors` will include an `ErrorRecord`
+// with members corresponding to the given arguments.
+void record_error(ErrorSink* errors, SourceId source_id, CompileError error) noexcept;
 
-// Equivalent to `source_error`, but does not exit the program, instead
-// returning normally.
-// This allows diagnosing multiple errors and then exiting the program via
-// `error_exit` when no further progress is possible.
-void source_error_nonfatal(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
+// Records the given `error` into the `ErrorSink`, associating it with the
+// `SourceId` returned by
+// `source_id_of(<AstPool passed to create_error_sink>, source_node)`.
+// Future calls to `get_errors` or `print_errors` will include an `ErrorRecord`
+// with members corresponding to the given arguments.
+void record_error(ErrorSink* errors, const AstNode* source_node, CompileError error) noexcept;
 
-// Prints the given `format` string alongside source information derived from
-// `source_id` to the diagnostic log file configured with `errors`.
-// `format` supports the same syntax as `printf`.
-void source_warning(ErrorSink* errors, SourceId source_id, const char8* format, ...) noexcept;
+// Prints all errors added to the given `ErrorSink` by previous calls to
+// `record_error` to its log file, in the order they were added.
+// If there is no log file (i.e., if the `log_file` argument of
+// `create_error_sink` was `minos::FileHandle{}`), then no errors are printed.
+void print_errors(ErrorSink* errors) noexcept;
 
-// Prints the given `format` string to the diagnostic log file configured with
-// `errors`.
-// `format` supports the same syntax as `printf`.
-void error_diagnostic(ErrorSink* errors, const char8* format, ...) noexcept;
+// Returns a range of `ErrorRecords` representing all previous calls to
+// `record_error` on the given `ErrorSink`.
+Range<ErrorRecord> get_errors(ErrorSink* errors) noexcept;
 
-// Takes a pointer to a `jmp_buf` on which `setjmp` has previously been called.
-// When one of `source_error`, `vsource_error` or `error_exit` is called next,
-// `longjmp` will be called with that `jmp_buf` and `1` passed for the `status`
-// argument (`setjmp`'s return).
-void set_error_handling_context(ErrorSink* errors, jmp_buf* setjmpd_longjmp_buf) noexcept;
-
-NORETURN void error_exit(ErrorSink* errors) noexcept;
-
-// Helper for allowing printing in the same format as that provided by
-// `[v]source_[error|warning]` without an `ErrorSink`. This is mainly intended
-// for supporting error reporting from `Config` parsing, as `ErrorSink` is
-// necessarily created after the config has been parsed.
-void print_error(const SourceLocation* location, const char8* format, va_list args) noexcept;
+// Appends the message for the given `CompileError` to `dst`, prefixing it with
+// the `location`.
+// This is mainly intended for usage with `Config` parsing, as there is no
+// `ErrorSink` available at that point.
+void print_error(minos::FileHandle dst, const SourceLocation* location, CompileError error) noexcept;
 
 
 
@@ -1700,9 +1826,9 @@ LexicalAnalyser* create_lexical_analyser(HandlePool* alloc, IdentifierPool* iden
 
 void release_lexical_analyser(LexicalAnalyser* lex) noexcept;
 
-void set_prelude_scope(LexicalAnalyser* lex, AstNode* prelude) noexcept;
+bool set_prelude_scope(LexicalAnalyser* lex, AstNode* prelude) noexcept;
 
-void resolve_names(LexicalAnalyser* lex, AstNode* root) noexcept;
+bool resolve_names(LexicalAnalyser* lex, AstNode* root) noexcept;
 
 
 
@@ -1819,6 +1945,9 @@ enum class TypeTag : u8
 	// type irrelevant. This can be implicitly converted to anything else.
 	// No additional structural data is stored.
 	Divergent,
+
+	// Tag of the `undefined` type, used for the `undefined` keyword.
+	Undefined,
 
 	// Tag of integer types. Its structure is represented by a `NumericType`.
 	Integer,
@@ -1977,9 +2106,7 @@ struct Definition
 	// Whether the member is mutable.
 	bool is_mut : 1;
 
-	bool has_pending_type : 1;
-
-	bool has_pending_value : 1;
+	bool is_pending : 1;
 };
 
 struct MemberInit
@@ -2420,7 +2547,7 @@ void release_parser(Parser* parser) noexcept;
 // with subsequent bytes receiving subsequent `SourceId`s.
 // If `is_std` is `true`, builtins are allowed, otherwise they are disallowed.
 // `filepath` is used for logging.
-AstNode* parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std) noexcept;
+Maybe<AstNode*> parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std) noexcept;
 
 
 
@@ -2555,7 +2682,7 @@ void release_interpreter(Interpreter* interp) noexcept;
 // if it is `false` they are disallowed.
 // Returns a `TypeId` referencing a type that contains all top-level
 //  definitions in the imported files as global members.
-TypeId import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noexcept;
+Maybe<TypeId> import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noexcept;
 
 
 // Retrieves a string representing the given `tag`.

@@ -23,13 +23,20 @@ s32 main(s32 argc, const char8** argv)
 	{
 		CoreData core = create_core_data(range::from_cstring(argv[2]));
 
-		(void) import_file(core.interp, core.config->entrypoint.filepath, false);
+		const Maybe<TypeId> main_file_type_id = import_file(core.interp, core.config->entrypoint.filepath, false);
 
 		release_core_data(&core);
 
-		fprintf(stderr, "\nCompleted successfully\n");
+		if (is_none(main_file_type_id))
+		{
+			print_errors(core.errors);
 
-		return EXIT_SUCCESS;
+			return EXIT_FAILURE;
+		}
+		else
+		{
+			return EXIT_SUCCESS;
+		}
 	}
 	else
 	{

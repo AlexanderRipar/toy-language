@@ -632,6 +632,11 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 		return true;
 	}
 
+	case TypeTag::Undefined:
+	{
+		return true;
+	}
+
 	case TypeTag::Slice:
 	{
 		if (to_tag != TypeTag::Slice)
@@ -1158,6 +1163,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 	case TypeTag::TypeInfo:
 	case TypeTag::TypeBuilder:
 	case TypeTag::Divergent:
+	case TypeTag::Undefined:
 	case TypeTag::Integer:
 	case TypeTag::Float:
 		break; // Fallthrough to unreachable.
@@ -1204,7 +1210,7 @@ TypePool* create_type_pool(HandlePool* alloc) noexcept
 	types->structures.alloc(sizeof(TypeStructure));
 
 	// Reserve simple types for use with `type_create_simple`.
-	for (u8 ordinal = static_cast<u8>(TypeTag::Void); ordinal != static_cast<u8>(TypeTag::Divergent) + 1; ++ordinal)
+	for (u8 ordinal = static_cast<u8>(TypeTag::Void); ordinal != static_cast<u8>(TypeTag::Undefined) + 1; ++ordinal)
 		(void) make_structure(types, static_cast<TypeTag>(ordinal), {}, 0, SourceId::INVALID);
 
 	return types;
@@ -1221,7 +1227,7 @@ void release_type_pool(TypePool* types) noexcept
 
 TypeId type_create_simple([[maybe_unused]] TypePool* types, TypeTag tag) noexcept
 {
-	ASSERT_OR_IGNORE(tag >= TypeTag::Void && tag <= TypeTag::Divergent);
+	ASSERT_OR_IGNORE(tag >= TypeTag::Void && tag <= TypeTag::Undefined);
 
 	const TypeId type_id = static_cast<TypeId>((static_cast<u32>(tag) - 1) * 2);
 
@@ -1847,6 +1853,11 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 		return { 0, 0, 1 };
 	}
 
+	case TypeTag::Undefined:
+	{
+		return { 0, 0, 1 };
+	}
+
 	case TypeTag::Integer:
 	case TypeTag::Float:
 	{
@@ -2006,6 +2017,7 @@ const char8* tag_name(TypeTag tag) noexcept
 		"TypeInfo",
 		"TypeBuilder",
 		"Divergent",
+		"Undefined",
 		"Integer",
 		"Float",
 		"Slice",
