@@ -316,7 +316,7 @@ static bool convert(Interpreter* interp, const AstNode* error_source, EvalValue*
 
 static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexcept;
 
-static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept;
+static Maybe<TypeId> typeinfer(Interpreter* interp, AstNode* node) noexcept;
 
 
 
@@ -2240,7 +2240,12 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		ASSERT_OR_IGNORE(rst.tag == EvalTag::Success);
 
-		TypeId expression_type = typeinfer(interp, node);
+		const Maybe<TypeId> inferred_expression_type = typeinfer(interp, node);
+
+		if (is_none(inferred_expression_type))
+			return propagate_error();
+
+		TypeId expression_type = get(inferred_expression_type);
 
 		value_set(&rst.success, range::from_object_bytes_mut(&expression_type));
 
@@ -5437,7 +5442,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	ASSERT_UNREACHABLE;
 }
 
-static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
+static Maybe<TypeId> typeinfer(Interpreter* interp, AstNode* node) noexcept
 {
 	switch (node->tag)
 	{
@@ -5447,13 +5452,13 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 
 		ASSERT_OR_IGNORE(ordinal < array_count(interp->builtin_type_ids));
 
-		return interp->builtin_type_ids[ordinal];
+		return some(interp->builtin_type_ids[ordinal]);
 	}
 
 	case AstTag::Block:
 	{
 		if (!has_children(node))
-			return type_create_simple(interp->types, TypeTag::Void);
+			return some(type_create_simple(interp->types, TypeTag::Void));
 
 		panic("typeinfer(%s) for non-empty blocks not yet implemented.\n", tag_name(node->tag));
 	}
@@ -5465,7 +5470,7 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 		IdentifierInfo info = lookup_identifier(interp, attach.identifier_id, attach.binding);
 
 		if (info.tag == EvalTag::Error)
-			TODO("Make typeinfer fallible");
+			return none<TypeId>();
 		if (info.tag == EvalTag::Unbound)
 			TODO("Identifier is not bound yet, so its type cannot be inferred.\n");
 		else
@@ -5474,32 +5479,36 @@ static TypeId typeinfer(Interpreter* interp, AstNode* node) noexcept
 		const TypeTag type_tag = type_tag_from_id(interp->types, info.success.type_id);
 
 		if (type_tag == TypeTag::TypeInfo)
-			return *value_as<TypeId>(info.success);
+			return some(*value_as<TypeId>(info.success));
 
-		return info.success.type_id;
+		return some(info.success.type_id);
 	}
 
 	case AstTag::LitInteger:
 	{
-		return type_create_simple(interp->types, TypeTag::CompInteger);
+		return some(type_create_simple(interp->types, TypeTag::CompInteger));
 	}
 
 	case AstTag::OpCmpEQ:
 	{
 		AstNode* const lhs = first_child_of(node);
 
-		const TypeId lhs_type_id = typeinfer(interp, lhs);
+		const Maybe<TypeId> lhs_type_id = typeinfer(interp, lhs);
+
+		if (is_none(lhs_type_id))
+			return none<TypeId>();
 
 		AstNode* const rhs = next_sibling_of(lhs);
 
-		const TypeId rhs_type_id = typeinfer(interp, rhs);
+		const Maybe<TypeId> rhs_type_id = typeinfer(interp, rhs);
 
-		if (type_unify(interp->types, lhs_type_id, rhs_type_id) == TypeId::INVALID)
-		{
-			TODO("");
-		}
+		if (is_none(rhs_type_id))
+			return none<TypeId>();
 
-		return type_create_simple(interp->types, TypeTag::Boolean);
+		if (type_unify(interp->types, get(lhs_type_id), get(rhs_type_id)) == TypeId::INVALID)
+			return none<TypeId>();
+
+		return some(type_create_simple(interp->types, TypeTag::Boolean));
 	}
 
 	case AstTag::CompositeInitializer:
