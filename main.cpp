@@ -35,6 +35,8 @@ s32 main(s32 argc, const char8** argv)
 		}
 		else
 		{
+			fprintf(stderr, "Success\n");
+
 			return EXIT_SUCCESS;
 		}
 	}
