@@ -24,9 +24,9 @@ if ($IsLinux)
 
 	$specs = @(
 		@{
-			jobname = 'linux-clang-deb'
-			command = 'wsl -- cmake -S . -B build/clang-deb -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=debug' +
-			           ' `&`& cmake --build build/clang-deb --target ' + $targets + ' 2`>`&1'
+			jobname = 'linux-clang-dbg'
+			command = 'wsl -- cmake -S . -B build/clang-dbg -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=debug' +
+			           ' `&`& cmake --build build/clang-dbg --target ' + $targets + ' 2`>`&1'
 		},
 		@{
 			jobname = 'linux-clang-rel'
@@ -34,9 +34,9 @@ if ($IsLinux)
 			           ' `&`& cmake --build build/clang-rel --target ' + $targets + ' 2`>`&1'
 		},
 		@{
-			jobname = 'linux-gcc-deb'
-			command = 'wsl -- cmake -S . -B build/gcc-deb -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc  -DCMAKE_BUILD_TYPE=debug' +
-			           ' `&`& cmake --build build/gcc-deb --target ' + $targets + ' 2`>`&1'
+			jobname = 'linux-gcc-dbg'
+			command = 'wsl -- cmake -S . -B build/gcc-dbg -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc  -DCMAKE_BUILD_TYPE=debug' +
+			           ' `&`& cmake --build build/gcc-dbg --target ' + $targets + ' 2`>`&1'
 		},
 		@{
 			jobname = 'linux-gcc-rel'
@@ -49,9 +49,9 @@ elseif ($IsWindows)
 {
 	$specs = @(
 		@{
-			jobname = 'linux-clang-deb'
-			command = 'wsl -- cmake -S . -B build/linux-clang-deb -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=debug' +
-			           ' `&`& cmake --build build/linux-clang-deb --target ' + $targets + ' 2`>`&1'
+			jobname = 'linux-clang-dbg'
+			command = 'wsl -- cmake -S . -B build/linux-clang-dbg -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=debug' +
+			           ' `&`& cmake --build build/linux-clang-dbg --target ' + $targets + ' 2`>`&1'
 		},
 		@{
 			jobname = 'linux-clang-rel'
@@ -59,9 +59,9 @@ elseif ($IsWindows)
 			           ' `&`& cmake --build build/linux-clang-rel --target ' + $targets + ' 2`>`&1'
 		},
 		@{
-			jobname = 'linux-gcc-deb'
-			command = 'wsl -- cmake -S . -B build/linux-gcc-deb -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc  -DCMAKE_BUILD_TYPE=debug' +
-			           ' `&`& cmake --build build/linux-gcc-deb --target ' + $targets + ' 2`>`&1'
+			jobname = 'linux-gcc-dbg'
+			command = 'wsl -- cmake -S . -B build/linux-gcc-dbg -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc  -DCMAKE_BUILD_TYPE=debug' +
+			           ' `&`& cmake --build build/linux-gcc-dbg --target ' + $targets + ' 2`>`&1'
 		},
 		@{
 			jobname = 'linux-gcc-rel'
@@ -69,9 +69,9 @@ elseif ($IsWindows)
 			           ' `&`& cmake --build build/linux-gcc-rel --target ' + $targets + ' 2`>`&1'
 		},
 		@{
-			jobname = 'win32-msvc-deb'
-			command = 'cmake -S . -B build/win32-msvc-deb -DCMAKE_CXX_COMPILER=msvc -DCMAKE_C_COMPILER=msvc' +
-			      ' && cmake --build build/win32-msvc-deb --config debug --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
+			jobname = 'win32-msvc-dbg'
+			command = 'cmake -S . -B build/win32-msvc-dbg -DCMAKE_CXX_COMPILER=msvc -DCMAKE_C_COMPILER=msvc' +
+			      ' && cmake --build build/win32-msvc-dbg --config debug --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
 		},
 		@{
 			jobname = 'win32-msvc-rel'
@@ -79,9 +79,9 @@ elseif ($IsWindows)
 			      ' && cmake --build build/win32-msvc-rel --config release --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
 		},
 		@{
-			jobname = 'win32-clangcl-deb'
-			command = 'cmake -S . -B build/win32-clangcl-deb -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -Tclangcl' +
-			      ' && cmake --build build/win32-clangcl-deb --config debug --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
+			jobname = 'win32-clangcl-dbg'
+			command = 'cmake -S . -B build/win32-clangcl-dbg -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -Tclangcl' +
+			      ' && cmake --build build/win32-clangcl-dbg --config debug --target ' + ($targets -creplace ' all ', ' ALL_BUILD ') + ' 2>&1'
 		},
 		@{
 			jobname = 'win32-clangcl-rel'
