@@ -31,8 +31,8 @@ static MemberInit dummy_member() noexcept
 	member.name = static_cast<IdentifierId>(42);
 	member.type_id = TypeId::INVALID;
 	member.default_id = none<ForeverValueId>();
-	member.is_pub = true;
-	member.is_mut = true;
+	member.is_pub = false;
+	member.is_mut = false;
 	member.is_eval = false;
 	member.offset = 0;
 
@@ -226,7 +226,11 @@ static void type_create_composite_creates_composite_type_with_no_members() noexc
 
 	while (has_next(&it))
 	{
-		(void) next(&it);
+		MemberInfo unused_member_info;
+
+		OpcodeId unused_member_initializer;
+
+		TEST_EQUAL(next(&it, &unused_member_info, &unused_member_initializer), true);
 
 		member_count += 1;
 	}
@@ -259,21 +263,26 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 
 	while (has_next(&it))
 	{
-		const MemberInfo interned_member = next(&it);
+		MemberInfo interned_member_info;
+		
+		OpcodeId interned_member_initializer;
 
-		static_assert(sizeof(interned_member) == sizeof(member));
+		TEST_EQUAL(next(&it, &interned_member_info, &interned_member_initializer), true);
 
-		TEST_EQUAL(member.is_eval, interned_member.is_eval);
 
-		TEST_EQUAL(member.is_mut, interned_member.is_mut);
+		static_assert(sizeof(interned_member_info) == sizeof(member));
 
-		TEST_EQUAL(member.is_pub, interned_member.is_pub);
+		TEST_EQUAL(member.is_eval, interned_member_info.is_eval);
 
-		TEST_EQUAL(member.offset, interned_member.offset);
+		TEST_EQUAL(member.is_mut, interned_member_info.is_mut);
 
-		TEST_EQUAL(member.type_id, interned_member.type_id);
+		TEST_EQUAL(member.is_pub, interned_member_info.is_pub);
 
-		TEST_EQUAL(member.default_id, interned_member.value_or_default_id);
+		TEST_EQUAL(member.offset, interned_member_info.offset);
+
+		TEST_EQUAL(member.type_id, interned_member_info.type_id);
+
+		TEST_EQUAL(member.default_id, interned_member_info.value_or_default_id);
 
 		member_count += 1;
 	}
