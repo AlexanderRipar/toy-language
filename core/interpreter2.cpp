@@ -5439,6 +5439,30 @@ bool evaluate_file_definition_by_name(Interpreter* interp, TypeId file_type, Ide
 	return interpret_opcodes(interp, initializer_code);
 }
 
+bool evaluate_all_file_definitions(Interpreter* interp, TypeId file_type) noexcept
+{
+	MemberIterator it = members_of(interp->types, file_type);
+
+	bool is_ok = true;
+
+	while (has_next(&it))
+	{
+		MemberInfo unused_member_info;
+		
+		OpcodeId member_initializer;
+		
+		if (next(&it, &unused_member_info, &member_initializer))
+			continue;
+
+		const Opcode* const initializer_code = opcode_from_id(interp->opcodes, member_initializer);
+
+		if (!interpret_opcodes(interp, initializer_code))
+			is_ok = false;
+	}
+
+	return is_ok;
+}
+
 const char8* tag_name(Builtin builtin) noexcept
 {
 	static constexpr const char8* BUILTIN_NAMES[] = {

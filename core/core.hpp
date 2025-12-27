@@ -2900,6 +2900,8 @@ Maybe<TypeId> import_file(Interpreter* interp, Range<char8> path, bool is_std) n
 
 bool evaluate_file_definition_by_name(Interpreter* interp, TypeId file_type, IdentifierId name) noexcept;
 
+bool evaluate_all_file_definitions(Interpreter* interp, TypeId file_type) noexcept;
+
 const char8* tag_name(Builtin builtin) noexcept;
 
 
