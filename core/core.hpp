@@ -15,8 +15,6 @@
 // information.
 enum class TypeId : u32;
 
-enum class ArecId : s32;
-
 // Id used to identify a particular source code location.
 // This encodes the location's file, line and column. See `SourceReader` for
 // further information.
