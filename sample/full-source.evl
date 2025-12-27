@@ -1,0 +1,370 @@
+let comptime_one = 1
+
+let u32_one: u32 = 1
+
+
+
+let func_to_1 = func(a: u32) -> u32 => 1
+
+let u32_identity = func(a: u32) -> u32 => a
+
+
+
+let u32_one_equality = func(a: u32) -> Bool => a == 1
+
+let u32_equality = func(a: u32, b: u32) -> Bool => a == b
+
+
+
+let void_func = func() -> Void => {}
+
+let u32_identity_with_block = func(a: u32) -> u32 => { a }
+
+let u32_from_block = u32_identity_with_block(42)
+
+let u32_identity_with_block_and_one_definition = func(a: u32) -> u32 => {
+	let n = a
+
+	a
+}
+
+let u32_identity_with_block_and_two_definitions = func(a: u32) -> u32 => {
+	let b = a
+
+	let c = b
+
+	c
+}
+
+
+
+let TypeIdentity = func(T: Type) -> Type => T
+
+let type_identity_bool_true: TypeIdentity(Bool) = 1 == 1
+
+
+
+let func_with_inner_type_definition = func() -> Void => {
+	let Tj: Type = u32
+
+	{}
+}
+
+let call_with_block = func_with_inner_type_definition()
+
+let func_with_inner_type_definition_and_use = func() -> Void => {
+	let Tj: Type = u32
+
+	let tj: Tj = 1
+
+	{}
+}
+
+let generic_identity = func(eval TheType: Type, t: TheType) -> TheType => t
+
+let map_single = func(eval AType: Type, t: AType, tf: func(x: AType) -> AType) -> AType => tf(t)
+
+let generic_identity_u32 = generic_identity(u32, 1)
+
+let generic_identity_bool = generic_identity(Bool, false)
+
+let map_single_u32 = map_single(u32, 1, func(x: u32) -> u32 => x)
+
+let map_single_bool = map_single(Bool, false, func(x: Bool) -> Bool => x)
+
+let ten_u32s: [10]u32 = .[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+let five = ten_u32s[4]
+
+let five_u64s_by_name: [five]u64 = .[0, 1, 2, 3, 4]
+
+let five_u64s_by_value: [ten_u32s[4]]u64 = .[5, 6, 7, 8, 9]
+
+let a_one: u32 = 1
+
+let a_one_from_another_one: u32 = a_one
+
+let init_array_of_seven = func(T: Type, t: T) -> [7]T => .[t, t, t, t, t, t, t]
+
+let array_of_seven_u32_ones = init_array_of_seven(u32, 1)
+
+let array_of_one_bool: [array_of_seven_u32_ones[6]]Bool = .[true]
+
+let make_u32_closure = func(n: u32) -> (func() -> u32) => (func() -> u32 => n)
+
+let closed_two_u32 = make_u32_closure(2)
+
+let two_bools_from_closure: [closed_two_u32()]Bool = .[true, false]
+
+let make_generic_closure = func(T: Type, t: T) -> (func() -> T) => (func() -> T => t)
+
+let closed_four_generic_u64 = make_generic_closure(u64, 4)
+
+let four_s8s_from_generic_closure: [closed_four_generic_u64()]s8 = .[2, 7, 42, 127]
+
+let make_generic_closure_with_one_block = func(T: Type, t: T) -> (func() -> T) => { func() -> T => t }
+
+let uuu_f = make_generic_closure_with_one_block(u32, 5)
+
+let uuu = uuu_f()
+
+let uuu_d = make_generic_closure_with_one_block(u32, 5)()
+
+let make_generic_closure_with_two_blocks = func(T: Type, t: T) -> (func() -> T) => { func() -> T => t }
+
+let vvv_f = make_generic_closure_with_two_blocks(u8, 255)
+
+let vvv = vvv_f()
+
+let vvv_d = make_generic_closure_with_two_blocks(u8, 255)()
+
+let make_generic_closure_with_three_blocks = func(T: Type, t: T) -> (func() -> T) => { { { func() -> T => t } } }
+
+let www_f = make_generic_closure_with_three_blocks(Bool, true)
+
+let www = www_f()
+
+let www_d = make_generic_closure_with_three_blocks(Bool, true)()
+
+let such_a_silly_closure = func(T: Type, t: T) -> (func() -> T) => { { { func() -> T => { { t } } } } }
+
+let xxx_f = such_a_silly_closure(Type, s32)
+
+let xxx = xxx_f()
+
+let xxx_d = such_a_silly_closure(Type, s32)()
+
+let make_generic_closure_curried = func(T: Type) -> (func(t: T) -> (func() -> T)) => { func(t: T) -> (func() -> T) => (func() -> T => { { t } }) }
+
+let make_curried_u32_closure = make_generic_closure_curried(u32)
+
+let make_curried_u32_10 = make_curried_u32_closure(10)
+
+let ten_from_curried_closure = make_curried_u32_10()
+
+let array_of_ten_from_curried_closure: [ten_from_curried_closure]s16 = .[
+	1, 2, 3, 4, 5,
+	1, 2, 3, 4, 5,
+]
+
+let ten_from_direct_curried_closure = make_generic_closure_curried(u32)(10)()
+
+let array_of_ten_from_direct_curried_closure: [ten_from_direct_curried_closure]s16 = .[
+	1, 2, 3, 4, 5,
+	1, 2, 3, 4, 5,
+]
+
+let conditional_result_array_literal_of_two_u64s = if false then
+		1
+	else if true then
+		.[1, closed_four_generic_u64()]
+	else
+		.[]
+
+let mutated = {
+	mut x: u32 = 400
+
+	x = 5
+
+	x
+}
+
+mut mutated_array: [mutated]u16 = .[1, 2, 3, 4, 5]
+
+let array_mutation_result = {
+	mutated_array[1] = 0
+
+	mutated_array[1]
+}
+
+let empty_array_from_mutated_size: [array_mutation_result]u64 = .[]
+
+let loop_result_mut_5 = {
+	mut n = 0
+
+	for n == 0
+		n = 5
+
+	n
+}
+
+let slice_type = []u32
+
+let func_taking_slice = func(s: []s8) -> Void => {}
+
+let func_taking_mut_slice = func(s: []mut s8) -> Void => {}
+
+let ptr_type = *u8
+
+let func_taking_ptr = func(p: ptr_type) -> Void => {}
+
+let func_taking_mut_ptr_type = func(p: *mut Bool) -> Void => {}
+
+let multi_ptr_type = [*]u8
+
+let func_taking_multi_ptr = func(p: [*]Void) -> Void => {}
+
+let func_taking_mut_multi_ptr_type = func(p: [*]mut Type) -> Void => {}
+
+let opt_ptr_type = ?u8
+
+let func_taking_opt_ptr = func(p: ?u8) -> Void => {}
+
+let func_taking_mut_opt_ptr = func(p: ?mut u8) -> Void => {}
+
+let opt_multi_ptr_type = [?]u8
+
+let func_taking_opt_multi_ptr = func(p: [?]u8) -> Void => {}
+
+let func_taking_mut_opt_multi_ptr = func(p: [?]mut u8) -> Void => {}
+
+let variadic_func = func(args: ...u8) -> Void => {}
+
+let max = func(T: Type, a: T, b: T) -> T => if a > b then a else b
+
+let align_to = func(T: Type, size: T, align: T) -> T => {
+	std.assert((align & (align - 1)) == 0)
+
+	{ (size + align - 1) & ~(align - 1) }
+}
+
+let Pair = func(fst: Definition, snd: Definition) -> Type => {
+	let tb = std.create_type_builder()
+
+	let fst_type: Type = std.definition_typeof(fst)
+
+	let fst_size = sizeof(fst_type)
+
+	let fst_align = alignof(fst_type)
+
+	std.add_type_member(tb, fst, 0)
+
+
+	let snd_type: Type = std.definition_typeof(snd)
+
+	let snd_size = sizeof(snd_type)
+
+	let snd_align = alignof(snd_type)
+
+	let snd_offset = 4 // align_to(s64, fst_size, snd_align)
+
+	std.add_type_member(tb, snd, snd_offset)
+
+
+	let size = 8 // snd_offset + snd_size
+
+	let align = 4 // max(u64, fst_align, snd_align)
+
+	let stride = 8 // align_to(u64, size, align)
+
+	std.complete_type(tb, .size = size, .align = align, .stride = stride)
+}
+
+let MyPair = Pair(let x: u32, let y: u32)
+
+let imported = import("import.evl")
+
+let from_imported = imported.import_member
+
+let pointed_x = 5
+
+let pointed_y = 1
+
+let pointer_to_x = pointed_x.&
+
+let dereferenced_x = pointer_to_x.*
+
+let deref_array: [dereferenced_x]s8 = .[1, 2, 3, 4, 5]
+
+let dereferenced_ptr_equal_array_of_one_elem = if pointed_x == dereferenced_x then
+		.[1]
+	else
+		.[0, 0]
+
+let ptr_ref_then_deref_then_ref_addr_equal_array_of_one_elem = if pointed_x.&.*.& == pointer_to_x then
+		.[1]
+	else
+		.[0, 0]
+
+let ptrs_to_unequal_are_unequal_array_of_one_elem = if pointed_x.& == pointed_y.& then
+		.[]
+	else
+		.[1]
+
+let check = std.assert(true)
+
+
+
+let one = 1
+
+let six: s8 = 5 + 1
+
+let seven = six + one
+
+let two: u8 = one + one
+
+let test_add_array: [two]s8 = .[1, 2]
+
+let float_one = 1.0
+
+let float_half = float_one + 0.5
+
+
+
+let fib_upto = func(T: Type, n: T) -> [n]T => {
+
+	mut result: [n]T = undefined
+
+	mut prev: T = 0
+
+	mut curr: T = 1
+
+	mut i = 0
+
+	for i != n, i = i + 1
+	{
+		result[i] = curr
+
+		let tmp = curr
+
+		curr = curr + prev
+
+		prev = tmp
+	}
+
+	result
+}
+
+let fib_u8_upto_10 = fib_upto(u8, 10)
+
+mut plusequald = 5
+
+let plusequald_rst = {
+	plusequald += 1
+
+	plusequald
+}
+
+let plusequald_array_of_six_u64: [plusequald]u64 = .[1, 2, 3, 4, 5, 6]
+
+let xs: [2]u32 = .[1, 2]
+
+let x0to2 = xs[..]
+
+let fib_u16_upto_5 = fib_upto(.n = 5, .T = u16)
+
+let pair: MyPair = .{ 1, 2 }
+
+let two_elem_array_from_member: [pair.y]u32 = .[0, 1]
+
+let raw_initializer = .{ .y = 2, .x = 1 }
+
+let pair_from_raw_initializer: MyPair = raw_initializer
+
+let two_elem_array_from_indirectly_initialized_member: [pair_from_raw_initializer.y]u8 = undefined
+
+let generic_func = func(T: Type, t: T) -> T => t
+
+let func_calling_generic_func = func() -> u32 => generic_func(u32, 1)
+
+let nested_generic_func_result = func_calling_generic_func()

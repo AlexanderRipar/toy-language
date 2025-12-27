@@ -29,10 +29,11 @@ set(CORE_SOURCES
 	core/comp_values.cpp
 	core/config.cpp
 	core/error_sink.cpp
-	core/global_value_pool.cpp
+	core/global_value_pool2.cpp
 	core/identifier_pool.cpp
-	core/interpreter.cpp
+	core/interpreter2.cpp
 	core/lexical_analyser.cpp
+	core/opcode_pool.cpp
 	core/parse.cpp
 	core/source_reader.cpp
 	core/type_pool.cpp
@@ -42,6 +43,7 @@ set(DIAG_SOURCES
 	diag/diag.hpp
 	diag/diag.cpp
 	diag/print_ast.cpp
+	diag/print_opcodes.cpp
 	diag/print_type.cpp
 )
 

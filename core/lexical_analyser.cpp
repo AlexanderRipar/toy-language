@@ -14,9 +14,13 @@ static constexpr u16 MAX_SCOPE_ENTRY_COUNT = static_cast<u16>(1 << 15);
 
 struct ScopeEntry
 {
-	u16 rank : 15;
-	
-	u16 is_global : 1;
+	u16 rank;
+
+	u16 closure_source_rank;
+
+	u8 closure_source_out;
+
+	bool closure_source_is_closure;
 };
 
 struct ScopeMap
@@ -27,7 +31,7 @@ struct ScopeMap
 
 	bool is_global;
 
-	bool next_outer_closes;
+	bool has_closure;
 
 	#if COMPILER_GCC
 		#pragma GCC diagnostic push
@@ -54,9 +58,11 @@ struct LexicalAnalyser
 {
 	ReservedHeap<MIN_SCOPE_MAP_SIZE_LOG2, MAX_SCOPE_MAP_SIZE_LOG2> scope_pool;
 	
-	s32 scopes_top = 0;
+	s32 scopes_top;
 
 	ScopeMap* scopes[MAX_AST_DEPTH];
+
+	ScopeMap* closures[MAX_AST_DEPTH];
 
 	IdentifierPool* identifiers;
 
@@ -64,12 +70,14 @@ struct LexicalAnalyser
 
 	ErrorSink* errors;
 
+	GlobalFileIndex active_file_index;
+
 	bool has_error;
+
+	GlobalFileIndex prelude_file_index;
 
 	MutRange<byte> memory;
 };
-
-static_assert(sizeof(ScopeEntry) == 2);
 
 
 
@@ -99,7 +107,7 @@ static ScopeMap* scope_map_alloc_sized(LexicalAnalyser* lex, bool is_global, u32
 	scope->capacity = capacity;
 	scope->used = 0;
 	scope->is_global = is_global;
-	scope->next_outer_closes = false;
+	scope->has_closure = false;
 	memset(scope->occupied_bits, 0, sizeof(u64) * ((capacity + 63) / 64));
 
 	return scope;
@@ -302,7 +310,6 @@ static void push_scope(LexicalAnalyser* lex, ScopeMap* scope) noexcept
 	lex->scopes_top += 1;
 
 	lex->scopes[lex->scopes_top] = scope;
-
 }
 
 static void pop_scope(LexicalAnalyser* lex) noexcept
@@ -314,6 +321,102 @@ static void pop_scope(LexicalAnalyser* lex) noexcept
 	lex->scopes_top -= 1;
 }
 
+static void set_closure(LexicalAnalyser* lex, ScopeMap* closure) noexcept
+{
+	static_assert(sizeof(LexicalAnalyser::scopes) == sizeof(LexicalAnalyser::closures));
+
+	ASSERT_OR_IGNORE(static_cast<u64>(lex->scopes_top) < array_count(lex->scopes));
+
+	ASSERT_OR_IGNORE(!lex->scopes[lex->scopes_top]->has_closure);
+
+	lex->scopes[lex->scopes_top]->has_closure = true;
+
+	lex->closures[lex->scopes_top] = closure;
+}
+
+
+
+static void set_func_closure_list(LexicalAnalyser* lex, AstNode* node, ScopeMap* closure) noexcept
+{
+	if (closure->used == 0)
+	{
+		attachment_of<AstFuncData>(node)->closure_list_id = none<ClosureListId>();
+
+		return;
+	}
+
+	ClosureList* const list = alloc_closure_list(lex->asts, closure->used);
+
+	ScopeMapInfo info = scope_map_info(closure);
+
+	const u64* occupied_bits = closure->occupied_bits;
+
+	for (u16 i = 0; i != closure->capacity; ++i)
+	{
+		const u64 mask = static_cast<u64>(1) << (i & 63);
+
+		if ((occupied_bits[i / 64] & mask) == 0)
+			continue;
+
+		const ScopeEntry src = info.entries[i];
+
+		ClosureListEntry* const dst = list->entries + src.rank;
+		dst->source_rank = src.closure_source_rank;
+		dst->source_out = src.closure_source_out;
+		dst->source_is_closure = src.closure_source_is_closure;
+	}
+
+	const ClosureListId list_id = id_from_closure_list(lex->asts, list);
+
+	attachment_of<AstFuncData>(node)->closure_list_id = some(list_id);
+}
+
+static u16 add_name_to_closures(LexicalAnalyser* lex, IdentifierId name, u16 closed_over_rank, s32 scope_index) noexcept
+{
+	bool closure_source_is_closure = false;
+
+	s32 source_index = scope_index;
+
+	for (s32 i = scope_index + 1; i <= lex->scopes_top; ++i)
+	{
+		if (!lex->scopes[i]->has_closure)
+			continue;
+
+		ScopeMap* const closure = lex->closures[i];
+
+		ScopeEntry closure_entry;
+
+		if (!scope_map_get(closure, name, &closure_entry))
+		{
+			closure_entry.rank = closure->used;
+			closure_entry.closure_source_rank = closed_over_rank;
+			closure_entry.closure_source_is_closure = closure_source_is_closure;
+			closure_entry.closure_source_out = static_cast<u8>(i - source_index);
+
+			// This addition can never fail, as we just checked whether the
+			// name is already present. As such, we pass a dummy `nullptr` as
+			// the `error_source`, and don't check our result.
+			const Maybe<ScopeMap*> new_closure = scope_map_add(lex, closure, name, closure_entry, nullptr);
+
+			lex->closures[i] = get(new_closure);
+		}
+
+		ASSERT_OR_IGNORE(closure_entry.closure_source_rank == closed_over_rank && closure_entry.closure_source_is_closure == closure_source_is_closure);
+
+		closed_over_rank = closure_entry.rank;
+
+		source_index = i;
+
+		closure_source_is_closure = true;
+	}
+
+	// Check that we have entered `name` into at least one closure.
+	// Otherwise something has gone quite wrong.
+	ASSERT_OR_IGNORE(closure_source_is_closure);
+
+	return closed_over_rank;
+}
+
 
 
 static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) noexcept
@@ -322,51 +425,287 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 	const AstTag tag = node->tag;
 
+	ASSERT_OR_IGNORE(do_pop || tag == AstTag::Signature);
+
+	if (tag == AstTag::Identifier)
+	{
+		// This is the meat of the algorithm.
+		// We traverse the active scopes from innermost to outermost, looking
+		// for a definition matching `node`'s `IdentifierId`.
+		// Scoped and global variables are pretty easily handled here, but
+		// closed-over ones are more problematic, since we need to record not
+		// only in which closure `node` needs to look up its value, but also
+		// where the closure itself can find the closed-over value when it is
+		// constructed. Note that this second component must be relative to
+		// the closure's construction point, and not relative to `node`, and
+		// gets recorded into the closure list of the relevant signature
+		// attachment instead of the `NameBinding` of `node`.
+
+		AstIdentifierData* const attachment = attachment_of<AstIdentifierData>(node);
+
+		const IdentifierId name = attachment->identifier_id;
+
+		NameBinding* const binding = &attachment->binding;
+
+		bool is_closed_over = false;
+
+		for (s32 i = lex->scopes_top; i >= 0; --i)
+		{
+			ScopeMap* const scope = lex->scopes[i];
+
+			ScopeEntry scope_entry;
+
+			if (scope_map_get(scope, name, &scope_entry))
+			{
+				if (scope->is_global)
+				{
+					// Global takes precedence over closed-over variables, as
+					// globals are never closed over.
+
+					// The global's file index can be either the prelude index
+					// (in case `i` is 0) or the file index of the file that is
+					// currently being analysed.
+					const u16 file_index_bits = i == 0
+						? static_cast<u16>(lex->prelude_file_index)
+						: static_cast<u16>(lex->active_file_index);
+
+					binding->global.is_global_ = true;
+					binding->global.file_index_bits = file_index_bits;
+					binding->global.rank = scope_entry.rank;
+				}
+				else if (is_closed_over)
+				{
+					// Make sure that `name` is closed-over in all closures
+					// between its definition and its use. 
+					const u16 rank_in_closure = add_name_to_closures(lex, name, scope_entry.rank, i);
+
+					binding->closed.is_global_ = false;
+					binding->closed.is_scoped_ = false;
+					binding->closed.unused_ = 0;
+					binding->closed.rank_in_closure = rank_in_closure;
+				}
+				else
+				{
+					binding->scoped.is_global_ = false;
+					binding->scoped.is_scoped_ = true;
+					binding->scoped.unused_ = 0;
+					binding->scoped.out = static_cast<u16>(lex->scopes_top - i);
+					binding->scoped.rank = scope_entry.rank;
+				}
+
+				// Return, as we have found a match.
+				return;
+			}
+			else if (scope->has_closure)
+			{
+				is_closed_over = true;
+			}
+		}
+
+		// We have traversed up to the outermost scope without finding a match.
+		// As such, we need to indicate an error.
+
+		(void) record_error(lex->errors, node, CompileError::ScopeNameNotDefined);
+
+		lex->has_error = true;
+	}
+	else if (tag == AstTag::Func)
+	{
+		AstNode* const signature = first_child_of(node);
+
+		// Defer popping of the signature scope, as it remains active for the
+		// body.
+		resolve_names_rec(lex, signature, false);
+
+		AstNode* const body = next_sibling_of(signature);
+
+		// Since we are traversing a function body, we might encounter
+		// closed-over variables from the surrounding scope. To keep track of
+		// these, we create and associate a closure `ScopeMap` with the current
+		// scope.
+		ScopeMap* const new_closure = scope_map_alloc(lex, false);
+		set_closure(lex, new_closure);
+
+		resolve_names_rec(lex, body, true);
+
+		ScopeMap* const filled_closure = lex->closures[lex->scopes_top];
+
+		set_func_closure_list(lex, node, filled_closure);
+
+		scope_map_dealloc(lex, filled_closure);
+
+		// Now pop the signature scope that was pushed and not popped by the
+		// recursion on `signature`.
+		pop_scope(lex);
+	}
+	else
+	{
+		bool needs_pop = false;
+
+		if (tag == AstTag::Definition || tag == AstTag::Parameter)
+		{
+			ASSERT_OR_IGNORE(lex->scopes_top >= 0);
+
+			const IdentifierId name = tag == AstTag::Definition
+				? attachment_of<AstDefinitionData>(node)->identifier_id
+				: attachment_of<AstParameterData>(node)->identifier_id;
+
+			ScopeMap* const scope = lex->scopes[lex->scopes_top];
+
+			ScopeEntry entry;
+			entry.rank = scope->used;
+
+			const Maybe<ScopeMap*> new_scope = scope_map_add(lex, scope, name, entry, node);
+
+			if (is_none(new_scope))
+				return;
+
+			lex->scopes[lex->scopes_top] = get(new_scope);
+		}
+		else if (tag == AstTag::Block || tag == AstTag::Signature)
+		{
+			// Push a new scope, later popping it if `do_pop` is `true` and
+			// leaving it on the stack to be popped externally otherwise.
+
+			ASSERT_OR_IGNORE(static_cast<u32>(lex->scopes_top + 1) < array_count(lex->scopes));
+
+			ScopeMap* const scope = scope_map_alloc(lex, false);
+
+			push_scope(lex, scope);
+
+			needs_pop = do_pop;
+		}
+
+		// Traverse node's children recursively.
+
+		AstDirectChildIterator it = direct_children_of(node);
+
+		while (has_next(&it))
+		{
+			AstNode* const child = next(&it);
+
+			resolve_names_rec(lex, child, true);
+		}
+
+		if (needs_pop)
+			pop_scope(lex);
+	}
+
+	/*
+	const AstTag tag = node->tag;
+
 	if (tag == AstTag::Identifier)
 	{
 		ASSERT_OR_IGNORE(!has_children(node));
 
 		AstIdentifierData* const attach = attachment_of<AstIdentifierData>(node);
 
-		ASSERT_OR_IGNORE(attach->identifier_id != IdentifierId::INVALID);
+		const IdentifierId name = attach->identifier_id;
 
-		s32 offset_start = lex->scopes_top;
+		ASSERT_OR_IGNORE(name != IdentifierId::INVALID);
 
-		bool is_global = false;
+		NameBinding* const binding = &attach->binding;
 
 		bool is_in_closure = false;
 
 		bool is_in_nested_closure = false;
 
+		s32 active_closure_index = 0;
+
+		s32 source_closure_index = 0;
+
 		for (s32 i = lex->scopes_top; i >= 0; --i)
 		{
 			ScopeMap* const scope = lex->scopes[i];
-
-			if (!is_global && scope->is_global)
-			{
-				offset_start = i;
-
-				is_global = true;
-			}
-
-			ASSERT_OR_IGNORE(is_global || !scope->is_global);
 
 			ScopeEntry entry;
 
 			if (scope_map_get(scope, attach->identifier_id, &entry))
 			{
-				attach->binding.out = static_cast<u16>(offset_start - i);
-				attach->binding.is_global = is_global || entry.is_global;
-				attach->binding.is_closed_over = is_in_closure && !is_global;
-				attach->binding.is_closed_over_closure = is_in_nested_closure && !is_global;
-				attach->binding.rank = entry.rank;
+				if (scope->is_global)
+				{
+					binding->global.kind_ = NameBindingKind::Global;
+					binding->global.file = lex->active_file_index;
+					binding->global.rank = entry.rank;
+					binding->global.unused_ = 0;
+				}
+				else if (is_in_closure)
+				{
+					ASSERT_OR_IGNORE(lex->closures_top >= 0);
+
+					ScopeMap* closure = lex->closures[lex->closures_top];
+
+					ScopeEntry closure_entry;
+
+					const bool is_first_appearance_in_closure = !scope_map_get(closure, attach->identifier_id, &closure_entry);
+
+					if (is_first_appearance_in_closure)
+					{
+						closure_entry.rank = closure->used;
+
+						Maybe<ScopeMap*> new_closure = scope_map_add(lex, closure, attach->identifier_id, closure_entry, node);
+
+						if (is_none(new_closure))
+							ASSERT_UNREACHABLE;
+
+						closure = get(new_closure);
+
+						lex->closures[lex->closures_top] = closure;
+					}
+
+					binding->closed_over.kind_ = is_in_nested_closure ? NameBindingKind::ClosedOverClosure : NameBindingKind::ClosedOverScope;
+					binding->closed_over.rank_in_closure = closure_entry.rank;
+					binding->closed_over.is_first_appearance = is_first_appearance_in_closure;
+					binding->closed_over.unused_ = 0;
+
+					if (is_in_nested_closure)
+					{
+						ScopeMap* source_closure = lex->closures[source_closure_index];
+
+						ScopeEntry source_closure_entry;
+
+						if (!scope_map_get(source_closure, name, &source_closure_entry))
+						{
+							source_closure_entry.rank = closure->used;
+
+							Maybe<ScopeMap*> new_closure = scope_map_add(lex, closure, attach->identifier_id, source_closure_entry, node);
+
+							if (is_none(new_closure))
+								ASSERT_UNREACHABLE;
+
+							source_closure = get(new_closure);
+
+							lex->closures[source_closure_index] = source_closure;
+						}
+
+						binding->closed_over.source_out = 0;
+						binding->closed_over.source_rank = source_closure_entry.rank;
+					}
+					else
+					{
+						binding->closed_over.source_out = static_cast<u16>(active_closure_index - i);
+						binding->closed_over.source_rank = entry.rank;
+					}
+				}
+				else
+				{
+					binding->scope.kind_ = NameBindingKind::Scoped;
+					binding->scope.out = static_cast<u16>(lex->scopes_top - i);
+					binding->scope.rank = entry.rank;
+					binding->scope.unused_ = 0;
+				}
 
 				return;
 			}
 
 			if (scope->next_outer_closes)
 			{
-				is_in_nested_closure = is_in_closure;
+				if (!is_in_closure)
+					active_closure_index = i;
+				else
+					is_in_nested_closure = true;
+
+				source_closure_index = i;
 
 				is_in_closure = true;
 			}
@@ -385,9 +724,14 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 		ASSERT_OR_IGNORE(signature->tag == AstTag::Signature);
 
+		ASSERT_OR_IGNORE(lex->closures_top <= lex->scopes_top);
+
 		resolve_names_rec(lex, signature, false);
 
 		lex->scopes[lex->scopes_top]->next_outer_closes = true;
+
+		lex->closures_top += 1;
+		lex->closures[lex->closures_top] = scope_map_alloc(lex, false);
 
 		AstNode* const body = next_sibling_of(signature);
 
@@ -411,7 +755,6 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 			ScopeEntry entry;
 			entry.rank = scope->used;
-			entry.is_global = scope->is_global;
 
 			const Maybe<ScopeMap*> new_scope = scope_map_add(lex, scope, attach->identifier_id, entry, node);
 
@@ -441,10 +784,13 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 		if (needs_pop && do_pop)
 			pop_scope(lex);
 	}
+	*/
 }
 
-static void resolve_names_root(LexicalAnalyser* lex, AstNode* root) noexcept
+static void resolve_names_root(LexicalAnalyser* lex, AstNode* root, GlobalFileIndex file_index) noexcept
 {
+	lex->active_file_index = file_index;
+
 	ScopeMap* scope = scope_map_alloc(lex, true);
 
 	u16 rank = 0;
@@ -464,7 +810,6 @@ static void resolve_names_root(LexicalAnalyser* lex, AstNode* root) noexcept
 
 		ScopeEntry entry;
 		entry.rank = rank;
-		entry.is_global = true;
 
 		const Maybe<ScopeMap*> new_scope = scope_map_add(lex, scope, attach->identifier_id, entry, node);
 
@@ -549,22 +894,24 @@ void release_lexical_analyser(LexicalAnalyser* lex) noexcept
 	minos::mem_unreserve(lex->memory.begin(), lex->memory.count());
 }
 
-bool set_prelude_scope(LexicalAnalyser* lex, AstNode* prelude) noexcept
+bool set_prelude_scope(LexicalAnalyser* lex, AstNode* prelude, GlobalFileIndex file_index) noexcept
 {
 	ASSERT_OR_IGNORE(prelude->tag == AstTag::File && lex->scopes_top == -1);
 
-	resolve_names_root(lex, prelude);
+	lex->prelude_file_index = file_index;
+
+	resolve_names_root(lex, prelude, file_index);
 
 	ASSERT_OR_IGNORE(lex->scopes_top == 0);
 
 	return !lex->has_error;
 }
 
-bool resolve_names(LexicalAnalyser* lex, AstNode* root) noexcept
+bool resolve_names(LexicalAnalyser* lex, AstNode* root, GlobalFileIndex file_index) noexcept
 {
 	ASSERT_OR_IGNORE(root->tag == AstTag::File && lex->scopes_top == 0);
 
-	resolve_names_root(lex, root);
+	resolve_names_root(lex, root, file_index);
 
 	pop_scope(lex);
 

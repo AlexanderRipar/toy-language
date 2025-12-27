@@ -15,6 +15,8 @@ struct AstPool
 
 	ReservedVec<SourceId> source_builder;
 
+	ReservedVec<ClosureList> closure_lists;
+
 	MutRange<byte> memory;
 };
 
@@ -344,7 +346,7 @@ static IdentifierId lower_locs_rec_promote_value_to_definition(AstPool* asts, As
 		// been lowered into `synth_definition`.
 		AstNode* const child = next(&it);
 
-		AstNode* const synth_definition = make_synth_node(asts, AstDefinitionData{ synth_id }, AstFlag::EMPTY, node->structure_flags & ~AstNode::STRUCTURE_LAST_SIBLING, source_id_of(asts, node));
+		AstNode* const synth_definition = make_synth_node(asts, AstDefinitionData{ synth_id }, AstFlag::EMPTY, node->structure_flags & ~AstNode::STRUCTURE_LAST_SIBLING, source_id_of_ast_node(asts, node));
 
 		synth_id = next_synth_id(synth_id);
 
@@ -401,7 +403,7 @@ static IdentifierId lower_locs_rec(AstPool* asts, AstNode* node, IdentifierId sy
 
 	if (needs_location(node->tag) && !provides_location(first_child_of(node)->tag))
 	{
-		AstNode* const synth_identifier = make_synth_node(asts, AstIdentifierData{ synth_id, NameBinding{ 0, false, false, false, 0 } }, AstFlag::EMPTY, node->structure_flags | AstNode::STRUCTURE_NO_CHILDREN, source_id_of(asts, node));
+		AstNode* const synth_identifier = make_synth_node(asts, AstIdentifierData{ synth_id, NameBinding{} }, AstFlag::EMPTY, node->structure_flags | AstNode::STRUCTURE_NO_CHILDREN, source_id_of_ast_node(asts, node));
 
 		synth_id = next_synth_id(synth_id);
 
@@ -519,7 +521,7 @@ static void lower_tags_set_op(AstPool* asts, AstNode* src_node) noexcept
 
 	AstNode* const dst_set_lhs_deref = make_synth_node(asts, AstTag::UOpDeref, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING, src_source);
 
-	AstNode* const dst_set_lhs_identifier = make_synth_node(asts, AstIdentifierData{ IdentifierId::FirstSynth, NameBinding{ 0, false, false, false, 0 } }, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, src_source);
+	AstNode* const dst_set_lhs_identifier = make_synth_node(asts, AstIdentifierData{ IdentifierId::FirstSynth, NameBinding{} }, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, src_source);
 
 	close_synth_node(asts, dst_set_lhs_identifier);
 
@@ -531,7 +533,7 @@ static void lower_tags_set_op(AstPool* asts, AstNode* src_node) noexcept
 
 	AstNode* const dst_set_rhs_deref = make_synth_node(asts, AstTag::UOpDeref, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING, src_source);
 
-	AstNode* const dst_set_rhs_identifier = make_synth_node(asts, AstIdentifierData{ IdentifierId::FirstSynth, NameBinding{ 0, false, false, false, 0 } }, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, src_source);
+	AstNode* const dst_set_rhs_identifier = make_synth_node(asts, AstIdentifierData{ IdentifierId::FirstSynth, NameBinding{} }, AstFlag::EMPTY, AstNode::STRUCTURE_FIRST_SIBLING | AstNode::STRUCTURE_LAST_SIBLING | AstNode::STRUCTURE_NO_CHILDREN, src_source);
 
 	close_synth_node(asts, dst_set_rhs_identifier);
 	
@@ -639,17 +641,21 @@ AstPool* create_ast_pool(HandlePool* alloc) noexcept
 {
 	AstPool* const asts = alloc_handle_from_pool<AstPool>(alloc);
 
-	const u64 nodes_reserve_size = (static_cast<u64>(1) << 30) * sizeof(AstNode);
+	static constexpr u64 nodes_reserve_size = (static_cast<u64>(1) << 30) * sizeof(AstNode);
 
-	const u64 sources_reserve_size = (static_cast<u64>(1) << 30) * sizeof(SourceId);
+	static constexpr u64 sources_reserve_size = (static_cast<u64>(1) << 30) * sizeof(SourceId);
 
-	const u64 node_builder_reserve_size = (static_cast<u64>(1) << 26) * sizeof(AstNode);
+	static constexpr u64 node_builder_reserve_size = (static_cast<u64>(1) << 26) * sizeof(AstNode);
 
-	const u64 source_builder_reserve_size = (static_cast<u64>(1) << 26) * sizeof(SourceId);
+	static constexpr u64 source_builder_reserve_size = (static_cast<u64>(1) << 26) * sizeof(SourceId);
 
-	const u64 partial_signatures_reserve_size = (static_cast<u64>(1) << 28) * sizeof(u64);
+	static constexpr u64 closure_lists_reserve_size = (static_cast<u64>(1) << 24) * sizeof(ClosureListEntry);
 
-	const u64 total_size = nodes_reserve_size + sources_reserve_size + node_builder_reserve_size + source_builder_reserve_size + partial_signatures_reserve_size;
+	static constexpr u64 total_size = nodes_reserve_size
+	                     + sources_reserve_size
+	                     + node_builder_reserve_size
+	                     + source_builder_reserve_size
+	                     + closure_lists_reserve_size;
 
 	byte* const memory = static_cast<byte*>(minos::mem_reserve(total_size));
 
@@ -670,11 +676,18 @@ AstPool* create_ast_pool(HandlePool* alloc) noexcept
 	asts->source_builder.init({ memory + byte_offset, source_builder_reserve_size }, static_cast<u32>(1) << 16);
 	byte_offset += source_builder_reserve_size;
 
+	asts->closure_lists.init({ memory + byte_offset, closure_lists_reserve_size }, static_cast<u32>(1) << 12);
+	byte_offset += closure_lists_reserve_size;
+
+	ASSERT_OR_IGNORE(byte_offset == total_size);
+
 	asts->memory = { memory, total_size };
 
 	(void) asts->nodes.reserve();
 
 	(void) asts->sources.reserve();
+
+	(void) asts->closure_lists.reserve();
 
 	return asts;
 }
@@ -686,7 +699,7 @@ void release_ast_pool(AstPool* asts) noexcept
 
 AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept
 {
-	return AstNodeId{ static_cast<u32>(node - asts->nodes.begin()) };
+	return static_cast<AstNodeId>(static_cast<u32>(node - asts->nodes.begin()));
 }
 
 AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept
@@ -732,7 +745,7 @@ AstNode* first_child_of(AstNode* node) noexcept
 	return node + node->own_qwords;
 }
 
-SourceId source_id_of(const AstPool* asts, const AstNode* node) noexcept
+SourceId source_id_of_ast_node(const AstPool* asts, const AstNode* node) noexcept
 {
 	const u64 index = node - asts->nodes.begin();
 
@@ -801,6 +814,29 @@ AstNode* complete_ast(AstPool* asts) noexcept
 	asts->source_builder.reset(1 << 17);
 
 	return root;
+}
+
+
+
+ClosureList* alloc_closure_list(AstPool* asts, u16 entry_count) noexcept
+{
+	ClosureList* const list = asts->closure_lists.reserve(entry_count + 1);
+	list->count = entry_count;
+	list->unused_ = 0;
+
+	return list;
+}
+
+ClosureListId id_from_closure_list(AstPool* asts, ClosureList* closure_list) noexcept
+{
+	return static_cast<ClosureListId>(closure_list  - asts->closure_lists.begin());
+}
+
+ClosureList* closure_list_from_id(AstPool* asts, ClosureListId id) noexcept
+{
+	ASSERT_OR_IGNORE(id != ClosureListId::INVALID);
+
+	return asts->closure_lists.begin() + static_cast<u32>(id);
 }
 
 

@@ -295,7 +295,7 @@ struct Lexeme
 
 		struct
 		{
-			GlobalValueId value_id;
+			ForeverValueId value_id;
 			
 			TypeId type_id;
 		} string;
@@ -320,7 +320,7 @@ struct RawLexeme
 
 		struct
 		{
-			GlobalValueId value_id;
+			ForeverValueId value_id;
 
 			TypeId type_id;
 		} string;
@@ -340,7 +340,7 @@ struct RawLexeme
 
 	RawLexeme(Token token, Builtin builtin) noexcept : token{ token }, builtin{ builtin } {}
 
-	RawLexeme(Token token, GlobalValueId string_value_id, TypeId string_type_id) noexcept : token{ token }, string{ string_value_id, string_type_id } {}
+	RawLexeme(Token token, ForeverValueId string_value_id, TypeId string_type_id) noexcept : token{ token }, string{ string_value_id, string_type_id } {}
 };
 
 // Operator Description Tuple. Consists of:
@@ -392,7 +392,7 @@ struct Lexer
 
 	IdentifierPool* identifiers;
 
-	GlobalValuePool* globals;
+	GlobalValuePool2* globals;
 
 	TypePool* types;
 
@@ -1078,15 +1078,17 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 
 	buffer_index += bytes_to_copy;
 
-	const TypeId string_type_id = type_create_array(lexer->types, TypeTag::Array, ArrayType{ buffer_index, lexer->u8_type_id });
+	const TypeId string_type_id = type_create_array(lexer->types, TypeTag::Array, ArrayType{ buffer_index, some(lexer->u8_type_id) });
 
-	const GlobalValueId string_value_id = alloc_global_value(lexer->globals, buffer_index, 1);
+	const MutRange<byte> string_bytes{ reinterpret_cast<byte*>(buffer), buffer_index };
 
-	global_value_set(lexer->globals, string_value_id, 0, Range{ reinterpret_cast<const byte*>(buffer), buffer_index });
+	const CTValue string_value{ string_bytes, alignof(u8), false, string_type_id };
+
+	const ForeverValueId forever_value_id = forever_value_alloc_initialized2(lexer->globals, false, string_value);
 
 	lexer->curr = curr + 1;
 
-	return { Token::LitString, string_value_id, string_type_id };
+	return { Token::LitString, forever_value_id, string_type_id };
 }
 
 static RawLexeme raw_next(Lexer* lexer) noexcept
@@ -2200,7 +2202,7 @@ static AstBuilderToken parse_func(Parser* parser) noexcept
 
 	parse_expr(parser, true);
 
-	return push_node(parser->builder, signature_token, func_source_id, flags, AstTag::Func);
+	return push_node(parser->builder, signature_token, func_source_id, flags, AstFuncData{ ClosureListId::INVALID });
 }
 
 static AstBuilderToken parse_trait(Parser* parser) noexcept
@@ -2350,7 +2352,7 @@ static AstBuilderToken parse_expr(Parser* parser, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(parser->builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstIdentifierData{ lexeme.identifier_id, NameBinding{ 0, false, false, false, 0 } });
+				const AstBuilderToken value_token = push_node(parser->builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstIdentifierData{ lexeme.identifier_id, NameBinding{} });
 
 				push_operand(parser, &stack, value_token);
 			}
@@ -2890,6 +2892,8 @@ static bool parse_file(Parser* parser) noexcept
 
 	AstBuilderToken first_child_token = AstBuilderToken::NO_CHILDREN;
 
+	u32 member_count = 0;
+
 	while (true)
 	{
 		const Lexeme lexeme = peek(&parser->lexer);
@@ -2901,18 +2905,21 @@ static bool parse_file(Parser* parser) noexcept
 
 		const AstBuilderToken curr_token = parse_definition_or_impl(parser, &is_definition);
 
+		if (is_definition)
+			member_count += 1;
+
 		if (first_child_token == AstBuilderToken::NO_CHILDREN)
 			first_child_token = curr_token;
 	};
 
-	push_node(parser->builder, first_child_token, SourceId{ parser->lexer.source_id_base }, AstFlag::EMPTY, AstTag::File);
+	push_node(parser->builder, first_child_token, SourceId{ parser->lexer.source_id_base }, AstFlag::EMPTY, AstFileData{ member_count });
 	
 	return !parser->lexer.has_errors;
 }
 
 
 
-Parser* create_parser(HandlePool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept
+Parser* create_parser(HandlePool* pool, IdentifierPool* identifiers, GlobalValuePool2* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept
 {
 	Parser* const parser = alloc_handle_from_pool<Parser>(pool);
 

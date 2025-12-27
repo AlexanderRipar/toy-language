@@ -1211,7 +1211,7 @@ static bool convert_array_to_slice(Interpreter* interp, const AstNode* error_sou
 
 	const ReferenceType dst_type = *type_attachment_from_id<ReferenceType>(interp->types, dst->type_id);
 
-	if (!type_is_equal(interp->types, src_type.element_type, dst_type.referenced_type_id))
+	if (!type_is_equal(interp->types, get(src_type.element_type), dst_type.referenced_type_id))
 	{
 		record_error(interp->errors, error_source, CompileError::ImplicitConversionTypesCannotConvert);
 
@@ -1635,14 +1635,14 @@ static CompareResult compare(Interpreter* interp, TypeId common_type_id, Range<b
 	{
 		const ArrayType type = *type_attachment_from_id<ArrayType>(interp->types, common_type_id);
 
-		if (type.element_type == TypeId::INVALID)
+		if (is_none(type.element_type))
 		{
 			ASSERT_OR_IGNORE(type.element_count == 0 && lhs.count() == 0);
 
 			return CompareResult{ CompareEquality::Equal };
 		}
 
-		const TypeMetrics metrics = type_metrics_from_id(interp->types, type.element_type);
+		const TypeMetrics metrics = type_metrics_from_id(interp->types, get(type.element_type));
 
 		for (u64 i = 0; i != type.element_count; ++i)
 		{
@@ -1650,7 +1650,7 @@ static CompareResult compare(Interpreter* interp, TypeId common_type_id, Range<b
 
 			const Range<byte> rhs_elem{ rhs.begin() + i * metrics.stride, metrics.size };
 
-			const CompareResult result = compare(interp, type.element_type, lhs_elem, rhs_elem, error_source);
+			const CompareResult result = compare(interp, get(type.element_type), lhs_elem, rhs_elem, error_source);
 
 			if (result.tag == CompareTag::INVALID)
 				return CompareResult{};
@@ -1930,14 +1930,16 @@ static EvalTag evaluate_commonly_typed_binary_expr(Interpreter* interp, AstNode*
 		return EvalTag::Unbound;
 	}
 
-	const TypeId common_type_id = type_unify(interp->types, lhs_rst.success.type_id, rhs_rst.success.type_id);
+	const Maybe<TypeId> maybe_common_type_id = type_unify(interp->types, lhs_rst.success.type_id, rhs_rst.success.type_id);
 
-	if (common_type_id == TypeId::INVALID)
+	if (is_none(maybe_common_type_id))
 	{
 		(void) record_error(interp->errors, node, CompileError::UnifyNoCommonArgumentType);
 
 		return EvalTag::Error;
 	}
+
+	const TypeId common_type_id = get(maybe_common_type_id);
 
 	if (!type_is_equal(interp->types, common_type_id, lhs_rst.success.type_id))
 	{
@@ -1987,7 +1989,7 @@ static CallInfo setup_call_args(Interpreter* interp, const SignatureType* signat
 
 	const TypeMetrics parameter_list_metrics = type_metrics_from_id(interp->types, parameter_list_type_id);
 
-	const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, parameter_list_metrics.size, parameter_list_metrics.align, ArecId::INVALID, ArecKind::Normal, global_scope_type_id, source_id_of(interp->asts, callee), caller_arec_id);
+	const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, parameter_list_metrics.size, parameter_list_metrics.align, ArecId::INVALID, ArecKind::Normal, global_scope_type_id, source_id_of_ast_node(interp->asts, callee), caller_arec_id);
 
 	Arec* const parameter_list_arec = arec_from_id(interp, parameter_list_arec_id);
 
@@ -2296,7 +2298,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		Arec* unbound_in = nullptr;
 
-		TypeId unified_elem_type_id = TypeId::INVALID;
+		Maybe<TypeId> unified_elem_type_id = none<TypeId>();
 
 		for (u32 i = 0; i != elem_count; ++i)
 		{
@@ -2310,18 +2312,16 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			{
 				values[i] = elem_rst.success;
 
-				if (unified_elem_type_id == TypeId::INVALID)
+				if (is_none(unified_elem_type_id))
 				{
-					unified_elem_type_id = elem_rst.success.type_id;
+					unified_elem_type_id = some(elem_rst.success.type_id);
 				}
 				else
 				{
-					unified_elem_type_id = type_unify(interp->types, unified_elem_type_id, elem_rst.success.type_id);
+					unified_elem_type_id = type_unify(interp->types, get(unified_elem_type_id), elem_rst.success.type_id);
 
-					if (unified_elem_type_id == TypeId::INVALID)
-					{
+					if (is_none(unified_elem_type_id))
 						return eval_error(interp, elem, CompileError::UnifyNoCommonArrayElementType);
-					}
 				}
 			}
 			else if (elem_rst.tag == EvalTag::Unbound)
@@ -2378,9 +2378,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 			unified_elem_type_id = rst_type->element_type;
 
-			const TypeMetrics elem_metrics = unified_elem_type_id == TypeId::INVALID
+			const TypeMetrics elem_metrics = is_none(unified_elem_type_id)
 				? TypeMetrics{ 0, 0, 1 }
-				: type_metrics_from_id(interp->types, unified_elem_type_id);
+				: type_metrics_from_id(interp->types, get(unified_elem_type_id));
 
 			elems = direct_children_of(node);
 
@@ -2392,13 +2392,13 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 				MutRange<byte> elem_value_dst = rst.success.bytes.mut_subrange(i * elem_metrics.stride, elem_metrics.size);
 
-				if (type_is_equal(interp->types, value.type_id, unified_elem_type_id))
+				if (type_is_equal(interp->types, value.type_id, get(unified_elem_type_id)))
 				{
 					range::mem_copy(elem_value_dst, value.bytes.immut());
 				}
 				else
 				{
-					EvalValue dst_value = make_value(elem_value_dst, false, true, unified_elem_type_id);
+					EvalValue dst_value = make_value(elem_value_dst, false, true, get(unified_elem_type_id));
 
 					if (!convert(interp, elem, &dst_value, value))
 						return propagate_error();
@@ -2645,7 +2645,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		}
 		else
 		{
-			const TypeId rst_type_id = type_create_composite(interp->types, TypeTag::CompositeLiteral, active_arec_global_scope_type_id(interp), TypeDisposition::Internal, source_id_of(interp->asts, node), member_count, true);
+			const TypeId rst_type_id = type_create_composite(interp->types, TypeTag::CompositeLiteral, active_arec_global_scope_type_id(interp), TypeDisposition::Initializer, source_id_of_ast_node(interp->asts, node), member_count, true);
 
 			for (u32 i = 0; i != member_count; ++i)
 			{
@@ -2724,9 +2724,9 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 	{
 		const TypeId global_scope_type_id = active_arec_global_scope_type_id(interp);
 
-		const TypeId block_type_id = type_create_composite(interp->types, TypeTag::Composite, global_scope_type_id, TypeDisposition::Internal, SourceId::INVALID, 0, false);
+		const TypeId block_type_id = type_create_composite(interp->types, TypeTag::Composite, global_scope_type_id, TypeDisposition::Initializer, SourceId::INVALID, 0, false);
 
-		const ArecId block_arec_id = arec_push(interp, block_type_id, 0, 1, active_arec_id(interp), ArecKind::Normal, global_scope_type_id, source_id_of(interp->asts, node), active_arec(interp)->caller_arec_id);
+		const ArecId block_arec_id = arec_push(interp, block_type_id, 0, 1, active_arec_id(interp), ArecKind::Normal, global_scope_type_id, source_id_of_ast_node(interp->asts, node), active_arec(interp)->caller_arec_id);
 
 		Arec* const block_arec = active_arec(interp);
 
@@ -3092,7 +3092,7 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 
 		const TypeId parameter_list_type_id = type_create_composite(interp->types, TypeTag::Composite, global_scope_type_id, TypeDisposition::ParameterList, SourceId::INVALID, 0, false);
 
-		const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, 0, 1, active_arec_id(interp), ArecKind::Unbound, global_scope_type_id, source_id_of(interp->asts, node), active_arec(interp)->caller_arec_id);
+		const ArecId parameter_list_arec_id = arec_push(interp, parameter_list_type_id, 0, 1, active_arec_id(interp), ArecKind::Unbound, global_scope_type_id, source_id_of_ast_node(interp->asts, node), active_arec(interp)->caller_arec_id);
 
 		Arec* const parameter_list_arec = arec_from_id(interp, parameter_list_arec_id);
 
@@ -3623,9 +3623,28 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		{
 			const ArrayType* const array_type = type_attachment_from_id<ArrayType>(interp->types, sliced_rst.success.type_id);
 
-			elem_type_id = array_type->element_type;
+			if (is_none(array_type->element_type))
+			{
+				ASSERT_OR_IGNORE(array_type->element_count == 0);
 
-			elem_metrics = type_metrics_from_id(interp->types, array_type->element_type);
+				if (spec.type_id == TypeId::INVALID)
+					return eval_error(interp, node, CompileError::SliceOperatorUntypedArrayLiteral);
+
+				const TypeTag spec_tag = type_tag_from_id(interp->types, spec.type_id);
+
+				if (spec_tag != TypeTag::Slice)
+					return eval_error(interp, node, CompileError::ImplicitConversionTypesCannotConvert);
+
+				const ReferenceType* const slice_type = type_attachment_from_id<ReferenceType>(interp->types, spec.type_id);
+
+				elem_type_id = slice_type->referenced_type_id;
+			}
+			else
+			{
+				elem_type_id = get(array_type->element_type);
+			}
+
+			elem_metrics = type_metrics_from_id(interp->types, elem_type_id);
 
 			first_elem = sliced_rst.success.bytes.begin();
 
@@ -4302,10 +4321,12 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 		if (rhs_rst.tag == EvalTag::Error)
 			return propagate_error();
 
-		const TypeId unified_type_id = type_unify(interp->types, lhs_rst.success.type_id, rhs_rst.success.type_id);
+		const Maybe<TypeId> maybe_unified_type_id = type_unify(interp->types, lhs_rst.success.type_id, rhs_rst.success.type_id);
 
-		if (unified_type_id == TypeId::INVALID)
+		if (is_none(maybe_unified_type_id))
 			return eval_error(interp, node, CompileError::UnifyNoCommonArgumentType);
+
+		const TypeId unified_type_id = get(maybe_unified_type_id);
 
 		const TypeTag unified_type_tag = type_tag_from_id(interp->types, unified_type_id);
 
@@ -5269,9 +5290,12 @@ static EvalRst evaluate(Interpreter* interp, AstNode* node, EvalSpec spec) noexc
 			{
 				const ArrayType* const array_type = type_attachment_from_id<ArrayType>(interp->types, arrayish_rst.success.type_id);
 
-				elem_metrics = type_metrics_from_id(interp->types, array_type->element_type);
+				if (is_none(array_type->element_type))
+					return eval_error(interp, node, CompileError::ArrayIndexOutOfBounds);
 
-				elem_type_id = array_type->element_type;
+				elem_metrics = type_metrics_from_id(interp->types, get(array_type->element_type));
+
+				elem_type_id = get(array_type->element_type);
 
 				elem_is_mut = arrayish_rst.success.is_mut;
 
@@ -5505,7 +5529,7 @@ static Maybe<TypeId> typeinfer(Interpreter* interp, AstNode* node) noexcept
 		if (is_none(rhs_type_id))
 			return none<TypeId>();
 
-		if (type_unify(interp->types, get(lhs_type_id), get(rhs_type_id)) == TypeId::INVALID)
+		if (is_none(type_unify(interp->types, get(lhs_type_id), get(rhs_type_id))))
 			return none<TypeId>();
 
 		return some(type_create_simple(interp->types, TypeTag::Boolean));
@@ -6504,11 +6528,11 @@ Maybe<TypeId> import_file(Interpreter* interp, Range<char8> filepath, bool is_st
 
 	AstNode* root;
 
-	if (read.source_file->root_type != TypeId::INVALID)
+	if (read.source_file->type != TypeId::INVALID)
 	{
-		return some(read.source_file->root_type);
+		return some(read.source_file->type);
 	}
-	else if (read.source_file->root_ast == AstNodeId::INVALID)
+	else if (read.source_file->ast == AstNodeId::INVALID)
 	{
 		const Maybe<AstNode*> parsed_root = parse(interp->parser, read.content, read.source_file->source_id_base, is_std);
 
@@ -6517,17 +6541,17 @@ Maybe<TypeId> import_file(Interpreter* interp, Range<char8> filepath, bool is_st
 
 		root = get(parsed_root);
 
-		read.source_file->root_ast = id_from_ast_node(interp->asts, root);
+		read.source_file->ast = id_from_ast_node(interp->asts, root);
 	}
 	else
 	{
-		root = ast_node_from_id(interp->asts, read.source_file->root_ast);
+		root = ast_node_from_id(interp->asts, read.source_file->ast);
 	}
 
-	if (!type_from_file_ast(interp, root, read.source_file->source_id_base, &read.source_file->root_type))
+	if (!type_from_file_ast(interp, root, read.source_file->source_id_base, &read.source_file->type))
 		return none<TypeId>();
 
-	const TypeId file_type_id = read.source_file->root_type;
+	const TypeId file_type_id = read.source_file->type;
 
 	if (interp->type_log_file.m_rep != nullptr)
 	{

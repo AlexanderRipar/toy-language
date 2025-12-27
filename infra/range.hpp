@@ -427,6 +427,22 @@ public:
 namespace range
 {
 	template<typename T>
+	inline const T* access_as(Range<byte> r) noexcept
+	{
+		ASSERT_OR_IGNORE(r.count() == sizeof(T));
+
+		return reinterpret_cast<const T*>(r.begin());
+	}
+
+	template<typename T>
+	inline T* access_as(MutRange<byte> r) noexcept
+	{
+		ASSERT_OR_IGNORE(r.count() == sizeof(T));
+
+		return reinterpret_cast<T*>(r.begin());
+	}
+
+	template<typename T>
 	inline Range<byte> from_object_bytes(const T* t) noexcept
 	{
 		return { reinterpret_cast<const byte*>(t), sizeof(T) };

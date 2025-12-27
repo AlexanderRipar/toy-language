@@ -1,8 +1,6 @@
 entrypoint.filepath = 'source.evl'
 
-std.filepath = 'std/std.evl'
+std.prelude.filepath = 'std/prelude.evl'
 
-logging.asts.enable = true
-
-logging.imports.enable = true
-logging.imports.enable-prelude = true
+logging.imports.opcodes.enable = true
+logging.imports.types.enable = true

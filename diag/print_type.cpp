@@ -80,7 +80,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 		diag::buf_printf(ctx, "%s[%" PRIu64 "]", tag == TypeTag::ArrayLiteral ? "." : "", array->element_count);
 
-		print_type_impl(ctx, identifiers, types, array->element_type, indent + 1, true);
+		print_type_impl(ctx, identifiers, types, is_some(array->element_type) ? get(array->element_type) : TypeId::INVALID, indent + 1, true);
 
 		return;
 	}
@@ -89,13 +89,13 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::Composite:
 	case TypeTag::CompositeLiteral:
 	{
-		const SignatureType* signature_type;
+		const SignatureType2* signature_type;
 
 		TypeId composite_type_id;
 
 		if (tag == TypeTag::Func)
 		{
-			signature_type = type_attachment_from_id<SignatureType>(types, type_id);
+			signature_type = type_attachment_from_id<SignatureType2>(types, type_id);
 
 			composite_type_id = signature_type->parameter_list_type_id;
 		}
@@ -159,14 +159,7 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 				diag::buf_printf(ctx, "(%+" PRId64 ") :: ", member.offset);
 
-				if (member.is_pending)
-				{
-					diag::buf_printf(ctx, "<INCOMPLETE>\n");
-				}
-				else
-				{
-					print_type_impl(ctx, identifiers, types, member.type.complete, indent + 1, true);
-				}
+				print_type_impl(ctx, identifiers, types, member.type_id, indent + 1, true);
 
 				has_members = true;
 			}
@@ -176,10 +169,10 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 		if (tag == TypeTag::Func)
 		{
-			if (signature_type->return_type_is_unbound)
-				diag::buf_printf(ctx, "<INCOMPLETE>\n");
+			if (signature_type->has_templated_return_type)
+				diag::buf_printf(ctx, "<TEMPLATED>\n");
 			else
-				print_type_impl(ctx, identifiers, types, signature_type->return_type.complete, indent + 1, true);
+				print_type_impl(ctx, identifiers, types, signature_type->return_type.type_id, indent + 1, true);
 		}
 
 		return;
@@ -193,19 +186,15 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	ASSERT_UNREACHABLE;
 }
 
-void diag::print_type(minos::FileHandle out, IdentifierPool* identifiers, TypePool* types, TypeId type_id, const SourceLocation* source) noexcept
+void diag::print_type(minos::FileHandle out, IdentifierPool* identifiers, TypePool* types, TypeId type_id) noexcept
 {
 	PrintContext ctx;
 	ctx.curr = ctx.buf;
 	ctx.file = out;
 
-	diag::buf_printf(&ctx, "\n#### TYPE [%.*s:%u:%u] ####\n\n",
-		static_cast<s32>(source->filepath.count()), source->filepath.begin(),
-		source->line_number,
-		source->column_number
-	);
-
 	print_type_impl(&ctx, identifiers, types, type_id, 0, false);
+
+	diag::buf_printf(&ctx, "\n");
 
 	diag::buf_flush(&ctx);
 }

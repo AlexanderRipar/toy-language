@@ -52,6 +52,7 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Index of slicing operator must be less than the element count of the indexed array or slice.\n",
 		"Begin index of slicing operator must be less than or equal to end index.\n",
 		"Index of slicing operator must fit into unsigned 64-bit integer.\n",
+		"Left-hand-side of slicing operator occurring in untyped context cannot be an empty array literal.\n",
 		"Operand of `.*` must be a pointer.\n",
 		"`~` can only be applied to integer operands.\n",
 		"Unary `-` can only be applied to signed integer or float-point operands.\n",
@@ -65,6 +66,7 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Shifting by 2^16 or more is not supported.\n",
 		"Left-hand-side of `.` has no member with the given name.\n",
 		"Left-hand-side of `.` must be either a composite value or a composite type.\n",
+		"`.` with a type-valued left-hand-side can only access global members.\n",
 		"Cannot compare values of the given type.\n",
 		"Cannot order values of the given type.\n",
 		"Left-hand-side of `=` operator must be mutable.\n",
@@ -78,8 +80,10 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Alignment passed to `_complete_type` must not be zero.\n",
 		"Alignment passed to `_complete_type` must be a power of two.\n",
 		"Reached `unreachable`.\n",
+		"Total size of closed-over values in single closure exceeds supported maximum of 2^32 - 1.\n",
 		"Exceeded maximum number of definitions in a single scope.\n",
 		"More than one definition with the same name in the same scope.\n",
+		"Name not defined\n",
 		"Unexpected character in source file.\n",
 		"Null character in source file.\n",
 		"`/*` without matching `*/`.\n",
@@ -221,6 +225,8 @@ void release_error_sink([[maybe_unused]] ErrorSink* errors) noexcept
 
 void record_error(ErrorSink* errors, SourceId source_id, CompileError error) noexcept
 {
+	DEBUGBREAK;
+
 	const u32 prev_error_count = errors->error_count;
 
 	errors->error_count = prev_error_count + 1;
@@ -231,7 +237,7 @@ void record_error(ErrorSink* errors, SourceId source_id, CompileError error) noe
 
 void record_error(ErrorSink* errors, const AstNode* source_node, CompileError error) noexcept
 {
-	record_error(errors, source_id_of(errors->asts, source_node), error);
+	record_error(errors, source_id_of_ast_node(errors->asts, source_node), error);
 }
 
 void print_errors(ErrorSink* errors) noexcept

@@ -29,11 +29,12 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 			);
 		}
 
-		diag::buf_printf(ctx, " %c%u/%u]",
-			attach->binding.is_global ? 'g' : attach->binding.is_closed_over_closure ? 'C' : attach->binding.is_closed_over ? 'c' : 's',
-			attach->binding.out,
-			attach->binding.rank
-		);
+		if (attach->binding.is_global)
+			diag::buf_printf(ctx, " g%u@%u", attach->binding.global.rank, attach->binding.global.file_index_bits);
+		else if (attach->binding.is_scoped)
+			diag::buf_printf(ctx, " s%u@%u", attach->binding.scoped.rank, attach->binding.scoped.out);
+		else
+			diag::buf_printf(ctx, " c%u", attach->binding.closed.rank_in_closure);
 	}
 	else if (node->tag == AstTag::Definition || node->tag == AstTag::Parameter || node->tag == AstTag::Member || node->tag == AstTag::ImpliedMember)
 	{
@@ -80,13 +81,11 @@ static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifie
 	);
 }
 
-void diag::print_ast(minos::FileHandle out, IdentifierPool* identifiers, AstNode* root, Range<char8> source) noexcept
+void diag::print_ast(minos::FileHandle out, IdentifierPool* identifiers, AstNode* root) noexcept
 {
 	PrintContext ctx;
 	ctx.file = out;
 	ctx.curr = ctx.buf;
-
-	buf_printf(&ctx, "\n#### AST [%.*s] ####\n\n", static_cast<s32>(source.count()), source.begin());
 
 	AstPreorderIterator it = preorder_ancestors_of(root);
 
@@ -120,7 +119,7 @@ void diag::print_ast(minos::FileHandle out, IdentifierPool* identifiers, AstNode
 		prev_depth -= 1;
 	}
 
-	buf_printf(&ctx, "}\n");
+	buf_printf(&ctx, "}\n\n");
 
 	buf_flush(&ctx);
 }

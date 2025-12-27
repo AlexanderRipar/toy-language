@@ -104,7 +104,7 @@ ClosureBuilderId closure_create(ClosurePool* closures) noexcept
 	closure->used = sizeof(Closure);
 	closure->capacity_log2 = count_trailing_zeros_assume_one(static_cast<u16>(memory.count()));
 	closure->align_log2 = 0;
-	closure->type_id = type_create_composite(closures->types, TypeTag::Composite, TypeId::INVALID, TypeDisposition::User, SourceId::INVALID, 1, false);
+	closure->type_id = type_create_composite(closures->types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 1, false);
 
 	return id_from_closure(closures, closure);
 }
@@ -122,14 +122,11 @@ ClosureBuilderId closure_add_value(ClosurePool* closures, ClosureBuilderId build
 
 	MemberInit member_init;
 	member_init.name = name;
-	member_init.type = value_type_id;
-	member_init.value.complete = GlobalValueId::INVALID;
+	member_init.type_id = value_type_id;
+	member_init.default_id = none<ForeverValueId>();
 	member_init.is_pub = false;
 	member_init.is_mut = false;
-	member_init.is_pending = false;
 	member_init.is_eval = false;
-	member_init.type_completion_arec_id = ArecId::INVALID;
-	member_init.value_completion_arec_id = ArecId::INVALID;
 	member_init.offset = aligned_begin;
 
 	if (!type_add_composite_member(closures->types, closure->type_id, member_init))

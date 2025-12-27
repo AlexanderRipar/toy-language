@@ -295,7 +295,7 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noe
 	SourceFileByPathEntry* const path_entry = reader->known_files_by_path.value_from(filepath, fnv1a(filepath.as_byte_range()));
 
 	if (path_entry->id_entry_index != 0)
-		return { &reader->known_files_by_identity.value_from(path_entry->id_entry_index)->data, {} };
+		return SourceFileRead{ &reader->known_files_by_identity.value_from(path_entry->id_entry_index)->data, {} };
 
 	// Try lookup via file identity. This is exact, meaning there is a match
 	// here if and only if the file has already been seen.
@@ -318,14 +318,17 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noe
 	path_entry->id_entry_index = reader->known_files_by_identity.index_from(id_entry);
 
 	if (id_entry->data.file.m_rep != nullptr)
-		return { &id_entry->data, {} };
+		return SourceFileRead{ &id_entry->data, {} };
 
 	// File has not been read in yet. Do so.
 
 	id_entry->path_entry_index = reader->known_files_by_path.index_from(path_entry);
 	id_entry->data.file = file;
-	id_entry->data.root_ast = AstNodeId::INVALID;
+	id_entry->data.ast = AstNodeId::INVALID;
+	id_entry->data.type = TypeId::INVALID;
 	id_entry->data.source_id_base = SourceId{ reader->curr_source_id_base };
+	id_entry->data.file_index = GlobalFileIndex::INVALID;
+	id_entry->data.has_error = false;
 
 	if (fileinfo.bytes + reader->curr_source_id_base > UINT32_MAX)
 		panic("Could not read source file %.*s as the maximum total capacity of 4gb of source code was exceeded.\n", static_cast<s32>(filepath.count()), filepath.begin());
@@ -351,7 +354,7 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noe
 	if (bytes_read != fileinfo.bytes)
 		panic("Could only read %u out of %" PRIu64 " bytes from source file %.*s (0x%X)\n", bytes_read, fileinfo.bytes, static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
 
-	return { &id_entry->data, Range{ content, fileinfo.bytes + 1 } };
+	return SourceFileRead{ &id_entry->data, Range{ content, fileinfo.bytes + 1 } };
 }
 
 void release_read([[maybe_unused]] SourceReader* reader, SourceFileRead read) noexcept

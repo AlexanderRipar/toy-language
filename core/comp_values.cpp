@@ -659,6 +659,49 @@ bool comp_integer_from_comp_float(CompFloatValue value, bool round, CompIntegerV
 	return true;
 }
 
+bool bits_from_comp_integer(CompIntegerValue value, u32 bits, bool is_signed, byte* out) noexcept
+{
+	if (!is_inlined(value))
+		panic("Unexpected non-inlined `CompIntegerValue`.\n");
+
+	const s64 s64_value = static_cast<s64>(value.rep) >> 1;
+
+	const bool negative = is_negative(value);
+
+	if (!is_signed && negative)
+		return false;
+
+	if (bits < 64)
+	{
+		const u64 used_bits = negative ? ~static_cast<u64>(s64_value) : static_cast<u64>(s64_value);
+
+		if ((static_cast<u64>(1) << bits) <= used_bits)
+			return false;
+	}
+
+	const u32 full_byte_size = bits / 8;
+
+	const u32 copy_size = full_byte_size > 8 ? 8 : full_byte_size;
+
+	memcpy(out, &s64_value, copy_size);
+
+	if (full_byte_size != copy_size)
+		memset(out + copy_size, negative ? 0xFF : 0, full_byte_size - copy_size);
+
+	if (bits % 8 != 0)
+	{
+		const u8 update_mask = static_cast<u8>((1 << (bits % 8)) - 1);
+
+		const u8 updated_part = bits < 64 ? (s64_value >> (bits & ~7)) & update_mask : negative ? update_mask : 0;
+
+		const u8 preserved_part = out[full_byte_size] & ~update_mask;
+
+		out[full_byte_size] = preserved_part | updated_part;
+	}
+
+	return true;
+}
+
 bool u64_from_comp_integer(CompIntegerValue value, u8 bits, u64* out) noexcept
 {
 	ASSERT_OR_IGNORE(bits <= 64);
@@ -854,6 +897,14 @@ bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntege
 	*out = { lhs.rep ^ rhs.rep };
 
 	return true;
+}
+
+CompIntegerValue comp_integer_bit_not(CompIntegerValue value) noexcept
+{
+	if (!is_inlined(value))
+		panic("Unexpected non-inlined `CompIntegerValue`.\n");
+
+	return CompIntegerValue{ (~value.rep) ^ 1 };
 }
 
 StrongCompareOrdering comp_integer_compare(CompIntegerValue lhs, CompIntegerValue rhs) noexcept

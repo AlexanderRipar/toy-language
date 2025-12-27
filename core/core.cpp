@@ -27,9 +27,11 @@ CoreData create_core_data(Range<char8> config_filepath) noexcept
 	if (config_log_file.m_rep != nullptr)
 		print_config(config_log_file, config);
 
-	const minos::FileHandle ast_log_file = get_log_file(config->logging.asts.enable, config->logging.asts.log_filepath, minos::StdFileName::StdOut);
+	const minos::FileHandle imported_asts_log_file = get_log_file(config->logging.imports.asts.enable, config->logging.imports.asts.log_filepath, minos::StdFileName::StdOut);
 
-	const minos::FileHandle imports_log_file = get_log_file(config->logging.imports.enable, config->logging.imports.log_filepath, minos::StdFileName::StdOut);
+	const minos::FileHandle imported_opcodes_log_file = get_log_file(config->logging.imports.opcodes.enable, config->logging.imports.opcodes.log_filepath, minos::StdFileName::StdOut);
+
+	const minos::FileHandle imported_types_log_file = get_log_file(config->logging.imports.types.enable, config->logging.imports.types.log_filepath, minos::StdFileName::StdOut);
 
 	const minos::FileHandle diagnostics_log_file = get_log_file(config->logging.diagnostics.enable, config->logging.diagnostics.log_filepath, minos::StdFileName::StdErr);
 
@@ -38,15 +40,16 @@ CoreData create_core_data(Range<char8> config_filepath) noexcept
 	core.config = config;
 	core.identifiers = create_identifier_pool(core.alloc);
 	core.reader = create_source_reader(core.alloc);
-	core.globals = create_global_value_pool(core.alloc);
+	core.globals = create_global_value_pool2(core.alloc);
 	core.types = create_type_pool(core.alloc);
 	core.asts = create_ast_pool(core.alloc);
 	core.errors = create_error_sink(core.alloc, core.reader, core.identifiers, core.asts, diagnostics_log_file);
 	core.parser = create_parser(core.alloc, core.identifiers, core.globals, core.types, core.asts, core.errors);
+	core.opcodes = create_opcode_pool(core.alloc, core.asts);
 	core.partials = create_partial_value_pool(core.alloc);
 	core.closures = create_closure_pool(core.alloc, core.types);
 	core.lex = create_lexical_analyser(core.alloc, core.identifiers, core.asts, core.errors);
-	core.interp = create_interpreter(core.alloc, core.config, core.reader, core.parser, core.types, core.asts, core.identifiers, core.globals, core.partials, core.closures, core.lex, core.errors, imports_log_file, ast_log_file, config->logging.imports.enable_prelude);
+	core.interp = create_interpreter2(core.alloc, core.asts, core.types, core.globals, core.opcodes, core.reader, core.parser, core.identifiers, core.lex, core.errors, imported_asts_log_file, imported_opcodes_log_file, imported_types_log_file);
 
 	return core;
 }
@@ -57,14 +60,15 @@ void release_core_data(CoreData* core) noexcept
 	release_identifier_pool(core->identifiers);
 	release_source_reader(core->reader);
 	release_error_sink(core->errors);
-	release_global_value_pool(core->globals);
+	release_global_value_pool2(core->globals);
 	release_type_pool(core->types);
 	release_ast_pool(core->asts);
 	release_parser(core->parser);
+	release_opcode_pool(core->opcodes);
 	release_partial_value_pool(core->partials);
 	release_closure_pool(core->closures);
 	release_lexical_analyser(core->lex);
-	release_interpreter(core->interp);
+	release_interpreter2(core->interp);
 
 	release_handle_pool(core->alloc);
 }

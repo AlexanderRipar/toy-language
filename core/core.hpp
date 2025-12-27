@@ -14,6 +14,8 @@
 // These are necessary because the modules defining them would otherwise appear
 // after those using them.
 
+struct GlobalValuePool2;
+
 // Id used to refer to a type in the `TypePool`. See `TypePool` for further
 // information.
 enum class TypeId : u32;
@@ -27,23 +29,69 @@ enum class ArecId : s32;
 // further information.
 enum class SourceId : u32;
 
-// Id used to reference values with global lifetime.
-// This includes the values of global variables, as well as default values. See
-// `GlobalValuePool` for further information
-enum class GlobalValueId : u32;
+enum class Builtin : u8;
 
-struct alignas(u32) NameBinding
-{
-	u16 out : 13;
+enum class ForeverValueId : u32;
 
-	u16 is_global : 1;
+enum class ClosureId2 : u32;
 
-	u16 is_closed_over : 1;
+enum class Opcode : u8;
 
-	u16 is_closed_over_closure : 1;
+enum class OpcodeId : u32;
 
-	u16 rank;
-};
+enum class GlobalFileIndex : u16;
+
+	union alignas(4) NameBinding
+	{
+		u32 unused_ = 0;
+
+		#if COMPILER_GCC
+			#pragma GCC diagnostic push
+			#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids anonymous strcuts
+		#endif
+		struct
+		{
+			u16 is_global : 1;
+
+			u16 is_scoped : 1;
+		};
+		#if COMPILER_GCC
+			#pragma GCC diagnostic pop
+		#endif
+
+		struct
+		{
+			u16 is_global_ : 1;
+
+			u16 is_scoped_ : 1;
+
+			u16 unused_ : 6;
+
+			u16 out : 8;
+
+			u16 rank;
+		} scoped;
+
+		struct
+		{
+			u16 is_global_ : 1;
+
+			u16 file_index_bits : 15;
+
+			u16 rank;
+		} global;
+
+		struct
+		{
+			u16 is_global_ : 1;
+
+			u16 is_scoped_ : 1;
+
+			u16 unused_ : 14;
+			
+			u16 rank_in_closure;
+		} closed;
+	};
 
 
 
@@ -103,27 +151,36 @@ struct Config
 
 	struct
 	{
-		Range<char8> filepath = range::from_literal_string("std.evl");
+		struct
+		{
+			Range<char8> filepath = range::from_literal_string("prelude.evl");
+		} prelude;
 	} std;
 
 	struct
 	{
 		struct
 		{
-			bool enable = false;
+			struct
+			{
+				bool enable = false;
 
-			bool enable_prelude = false;
+				Range<char8> log_filepath = {};
+			} asts;
 
-			Range<char8> log_filepath = {};
-		} asts;
+			struct
+			{
+				bool enable = false;
 
-		struct
-		{
-			bool enable = false;
+				Range<char8> log_filepath = {};
+			} opcodes;
 
-			bool enable_prelude = false;
+			struct
+			{
+				bool enable = false;
 
-			Range<char8> log_filepath = {};
+				Range<char8> log_filepath = {};
+			} types;
 		} imports;
 
 		struct
@@ -280,6 +337,8 @@ CompIntegerValue comp_integer_from_s64(s64 value) noexcept;
 // integer value corresponding to the given floating point `value`.
 bool comp_integer_from_comp_float(CompFloatValue value, bool round, CompIntegerValue* out) noexcept;
 
+bool bits_from_comp_integer(CompIntegerValue value, u32 bits, bool is_signed, byte* out) noexcept;
+
 // Attempts to extract the value of the given `CompIntegerValue` into a `u64`.
 // If the value is outside the range of a 64-bit unsigned integer, `false` is
 // returned and `*out` is left uninitialized. Otherwise `true` is returned and
@@ -346,6 +405,8 @@ bool comp_integer_bit_or(CompIntegerValue lhs, CompIntegerValue rhs, CompInteger
 // uninitialized.
 // Otherwise returns `true` and sets `*out` to the resulting value.
 bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+
+CompIntegerValue comp_integer_bit_not(CompIntegerValue value) noexcept;
 
 // Compares the values represented by two `CompIntegerValues`. Returns `true`
 // if they are equal, `false` otherwise.
@@ -858,6 +919,11 @@ enum class AstBuilderToken : u32
 	NO_CHILDREN = ~0u,
 };
 
+enum class ClosureListId : u32
+{
+	INVALID = 0,
+};
+
 // Result of a call to `next(AstPreorderIterator*)` or
 // `next(AstPostorderIterator)`. See `AstPreorderIterator` and
 // `AstPostorderIterator` for further details.
@@ -964,6 +1030,16 @@ struct AstFlatIterator
 	AstNode* end;
 };
 
+struct alignas(8) AstFileData
+{
+	// Tag used for sanity checks in debug builds.
+	static constexpr AstTag TAG = AstTag::File;
+
+	u32 member_count;
+
+	u32 unused_ = 0;
+};
+
 // Attachment of an `AstNode` with tag `AstTag::LitInteger`.
 struct alignas(8) AstLitIntegerData
 {
@@ -1051,9 +1127,9 @@ struct alignas(8) AstLitStringData
 	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::LitString;
 
-	// `GlobalValueId` of the global `u8` array representing this string's
+	// `ForeverValueId` of the global `u8` array representing this string's
 	// value.
-	GlobalValueId string_value_id;
+	ForeverValueId string_value_id;
 
 	// `TypeId` of the `u8` array representing this string's value.
 	TypeId string_type_id;
@@ -1085,6 +1161,15 @@ struct alignas(8) AstParameterData
 	// Padding to ensure consistent binary representation and avoid compiler
 	// warnings regarding padding due to `alignas`.
 	u32 unused_ = 0;
+};
+
+struct alignas(8) AstFuncData
+{
+	static constexpr AstTag TAG = AstTag::Func;
+
+	Maybe<ClosureListId> closure_list_id;
+
+	u32 unused_;
 };
 
 // Neatly structured summary of the child structure of an `AstNode` with tag
@@ -1209,6 +1294,31 @@ struct OpSliceOfInfo
 	Maybe<AstNode*> end;
 };
 
+struct ClosureListEntry
+{
+	u16 source_rank;
+
+	u8 source_out;
+
+	bool source_is_closure;
+};
+
+struct alignas(4) ClosureList
+{
+	u16 count;
+
+	u16 unused_;
+
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
+	#endif
+	ClosureListEntry entries[];
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
+};
+
 
 
 // Bitwise `or` of two `AstFlag`s
@@ -1312,6 +1422,13 @@ AstNode* complete_ast(AstPool* asts) noexcept;
 
 
 
+ClosureList* alloc_closure_list(AstPool* asts, u16 entry_count) noexcept;
+
+ClosureListId id_from_closure_list(AstPool* asts, ClosureList* closure_list) noexcept;
+
+ClosureList* closure_list_from_id(AstPool* asts, ClosureListId id) noexcept;
+
+
 // Checks whether `node` has any child nodes.
 // If it does, returns `true`, otherwise returns `false`.
 bool has_children(const AstNode* node) noexcept;
@@ -1368,7 +1485,7 @@ inline const T* attachment_of(const AstNode* node) noexcept
 	return reinterpret_cast<const T*>(node + 1);
 }
 
-SourceId source_id_of(const AstPool* asts, const AstNode* node) noexcept;
+SourceId source_id_of_ast_node(const AstPool* asts, const AstNode* node) noexcept;
 
 
 
@@ -1544,17 +1661,21 @@ struct SourceFile
 
 	// Id of the root of the associated AST. If the file has not yet been
 	// parsed, this is set to `AstNodeId::INVALID`.
-	AstNodeId root_ast;
+	AstNodeId ast;
 
 	// Id of the type representing the file. If the file has not yet started to
 	// be typechecked, this is set to `TypeId::INVALID`. As soon as
 	// typechecking starts, it is set to the relevant open type id, to allow
 	// pseudo-circular references (e.g., importing the file from inside
 	// itself).
-	TypeId root_type;
+	TypeId type;
 
 	// `SourceId` of the first byte in this file.
 	SourceId source_id_base;
+
+	GlobalFileIndex file_index;
+
+	bool has_error;
 };
 
 // Combination of a `SourceFile` and its contents. This is returned by
@@ -1566,8 +1687,8 @@ struct SourceFileRead
 	// Pointer to the `SourceFile` associated with this read.
 	SourceFile* source_file;
 
-	// Content read from the file. This is only valid if
-	// `source_file->root_ast` is `AstNodeId::INVALID`.
+	// Content read from the file. This is only valid if for the initial read,
+	// which can be determined by checking for `begin() != nullptr`.
 	// Otherwise, the file has already been parsed into the AST rooted at that
 	// id, meaning that its contents are not actually required.
 	Range<char8> content;
@@ -1615,7 +1736,7 @@ void release_source_reader(SourceReader* reader) noexcept;
 // the return value points to the `SourceFile` returned from the previous call,
 // while the `content` member is empty.
 // Due to the way this function interacts with `parse` in `import_file`,
-// `source_file->root_ast` will be `AstNodeId::INVALID` if and only if this is
+// `source_file->ast` will be `AstNodeId::INVALID` if and only if this is
 // the first read of the file (meaning `content` contains the file's contents).
 // If this is a first read, `release_read` must be called once the file's
 // content is no longer needed.
@@ -1669,6 +1790,7 @@ enum class CompileError
 	SliceOperatorIndexOutOfBounds,
 	SliceOperatorIndicesReversed,
 	SliceOperatorIndexTooLarge,
+	SliceOperatorUntypedArrayLiteral,
 	DerefInvalidOperandType,
 	BitNotInvalidOperandType,
 	NegateInvalidOperandType,
@@ -1682,6 +1804,7 @@ enum class CompileError
 	ShiftRHSTooLarge,
 	MemberNoSuchName,
 	MemberInvalidLhsType,
+	MemberNonGlobalAccessedThroughType,
 	CompareIncomparableType,
 	CompareUnorderedType,
 	SetLhsNotMutable,
@@ -1695,8 +1818,10 @@ enum class CompileError
 	BuiltinCompleteTypeAlignZero,
 	BuiltinCompleteTypeAlignNotPowTwo,
 	UnreachableReached,
+	ClosureTooLarge,
 	ScopeTooManyDefinitions,
 	ScopeDuplicateName,
+	ScopeNameNotDefined,
 	LexUnexpectedCharacter,
 	LexNullCharacter,
 	LexCommentMismatchedBegin,
@@ -1795,7 +1920,7 @@ void record_error(ErrorSink* errors, SourceId source_id, CompileError error) noe
 
 // Records the given `error` into the `ErrorSink`, associating it with the
 // `SourceId` returned by
-// `source_id_of(<AstPool passed to create_error_sink>, source_node)`.
+// `source_id_of_ast_node(<AstPool passed to create_error_sink>, source_node)`.
 // Future calls to `get_errors` or `print_errors` will include an `ErrorRecord`
 // with members corresponding to the given arguments.
 void record_error(ErrorSink* errors, const AstNode* source_node, CompileError error) noexcept;
@@ -1826,58 +1951,9 @@ LexicalAnalyser* create_lexical_analyser(HandlePool* alloc, IdentifierPool* iden
 
 void release_lexical_analyser(LexicalAnalyser* lex) noexcept;
 
-bool set_prelude_scope(LexicalAnalyser* lex, AstNode* prelude) noexcept;
+bool set_prelude_scope(LexicalAnalyser* lex, AstNode* prelude, GlobalFileIndex file_index) noexcept;
 
-bool resolve_names(LexicalAnalyser* lex, AstNode* root) noexcept;
-
-
-
-
-
-// Pool for storing program values with global lifetime during compilation.
-// This includes the values of global definitions, as well as the default
-// values of non-global definitions.
-struct GlobalValuePool;
-
-// Id used to refer to a value in a `GlobalValuePool`.
-// The main purposes of this are that it allows storing a reference in 4
-// instead of 8 bytes, and also being resitant to serialization.
-enum class GlobalValueId : u32
-{
-	// Value reserved for indicating the absence of a `GlobalValue`.
-	// This will never be returned from `alloc_global_value` and must not be
-	// passed to `global_value_from_id`.
-	INVALID = 0,
-};
-
-// Creates a `GlobalValuePool`, allocating the necessary storage from `alloc`.
-// Resources associated with the created `GlobalValuePool` can be freed using
-// `release_global_value_pool`.
-GlobalValuePool* create_global_value_pool(HandlePool* alloc) noexcept;
-
-// Releases the resources associated with the given `GlobalValuePool`.
-void release_global_value_pool(GlobalValuePool* globals) noexcept;
-
-// Allocates a global value of the given `type`, `size` and `align` in
-// `globals`.
-// Never returns `GlobalValueId::INVALID`.
-GlobalValueId alloc_global_value(GlobalValuePool* globals, u64 size, u32 align) noexcept;
-
-// Retrieves a range over the data of the global value identified by `value_id`
-// from `globals`.
-// `value_id` must not be `GlobalValueId::INVALID`.
-Range<byte> global_value_get(const GlobalValuePool* globals, GlobalValueId value_id) noexcept;
-
-// Same as `global_value_get`, but retrieves a mutable range instead of an
-// immutable one.
-MutRange<byte> global_value_get_mut(GlobalValuePool* globals, GlobalValueId value_id) noexcept;
-
-// Sets all or part of the data of the global value identified by `value_id` in
-// `globals`. All bytes of `data` are copied into the destination at, starting
-// at `offset`. This means that `data.count() + offset` must be less than or
-// equal to the size of the value identified by `value_id`. Additionally
-// `value_id` must not be `GlobalValueId::INVALID`.
-void global_value_set(GlobalValuePool* globals, GlobalValueId value_id, u64 offset, Range<byte> data) noexcept;
+bool resolve_names(LexicalAnalyser* lex, AstNode* root, GlobalFileIndex file_index) noexcept;
 
 
 
@@ -2007,10 +2083,17 @@ enum class TypeTag : u8
 enum class TypeDisposition : u8
 {
 	INVALID = 0,
-	Internal,
+	Initializer,
 	File,
 	ParameterList,
 	User,
+};
+
+enum class TypeRelation : u8
+{
+	Equal,
+	Convertible,
+	Unrelated, 
 };
 
 // Allocation metrics returned by `type_metrics_by_id`, describing the size,
@@ -2053,92 +2136,28 @@ struct MemberIterator
 	u16 rank;
 };
 
-// Representation of either a `TypeId` or the `AstNodeId` of the expression
-// evaluating or typechecking to the type. Information about whether this
-// represents a complete or a pending type must be tracked externally. The same
-// applies to the typechecking or evaluation context required to complete the
-// pending type.
-union DelayableTypeId
-{
-	// Completed `DependentTypeId`.
-	TypeId complete;
-
-	// `AstNodeId` from which the `TypeId` can be evaluated or typechecked,
-	// depending on the context in which this occurs. 
-	AstNodeId pending;
-
-	DelayableTypeId() noexcept = default;
-	
-	DelayableTypeId(TypeId complete) noexcept : complete{ complete } {}
-	
-	DelayableTypeId(AstNodeId pending) noexcept : pending{ pending } {}
-};
-
-// Representation of either a `GlobalValueId` or the `AstNodeId` of the
-// expression evaluating to the value. Information about whether this
-// represents a complete or a pending value must be tracked externally. The
-// same applies to the evaluation context required to complete the pending
-// value.
-union DelayableValueId
-{
-	// Completed `GlobalValueId`.
-	GlobalValueId complete;
-
-	// `AstNodeId` from which the `GlobalValueId` can be evaluated.
-	AstNodeId pending;
-};
-
-struct Definition
-{
-	IdentifierId name;
-
-	DelayableTypeId type;
-
-	DelayableValueId value;
-
-	ArecId type_completion_arec_id;
-
-	ArecId value_completion_arec_id;
-
-	// Whether the member is public.
-	bool is_pub : 1;
-
-	// Whether the member is mutable.
-	bool is_mut : 1;
-
-	bool is_pending : 1;
-};
-
 struct MemberInit
 {
 	IdentifierId name;
 
-	DelayableTypeId type;
+	TypeId type_id;
 
-	DelayableValueId value;
-
-	bool is_pending : 1;
+	Maybe<ForeverValueId> default_id;
 
 	bool is_pub : 1;
 
 	bool is_mut : 1;
 
 	bool is_eval : 1;
-
-	ArecId type_completion_arec_id;
-
-	ArecId value_completion_arec_id;
 
 	s64 offset;
 };
 
 struct MemberInfo
 {
-	DelayableTypeId type;
+	TypeId type_id;
 
-	DelayableValueId value;
-
-	bool is_pending : 1;
+	Maybe<ForeverValueId> value_or_default_id;
 
 	bool is_pub : 1;
 
@@ -2146,11 +2165,9 @@ struct MemberInfo
 
 	bool is_eval : 1;
 
+	bool is_global : 1;
+
 	u16 rank;
-
-	ArecId type_completion_arec_id;
-
-	ArecId value_completion_arec_id;
 
 	s64 offset;
 };
@@ -2202,50 +2219,40 @@ struct ArrayType
 	u64 element_count;
 
 	// `TypeId` of the array's elements.
-	TypeId element_type;
+	Maybe<TypeId> element_type;
 
 	// Explicit padding to allow consistent hashing without incurring undefined
 	// behaviour by accessing structure padding.
 	u32 unused_ = 0;
 };
 
-// Structural data for `Func` and `Builtin` types.
-struct SignatureType
+struct SignatureType2
 {
-	// If `parameter_list_is_unbound` is `true`, this identifies a closed,
-	// incomplete type, which can be copied and completed using per-callsite
-	// argument values to obtain a complete parameter list record.
-	// Otherwise it identifies the signature's parameter list record.
 	TypeId parameter_list_type_id;
 
-	// If `return_type_is_unbound` is `true`, this is identifies the root AST
-	// node from which the return type can be evaluated given per-callsite
-	// argument values.
-	// Otherwise it identifies the signature's return type.
 	union
 	{
-		TypeId complete;
+		TypeId type_id;
 
-		AstNodeId partial_root;
+		OpcodeId completion_id;
 	} return_type;
 
-	// If `parameter_list_is_unbound` or `return_type_is_unbound` is `true`,
-	// this refers to a partial value which is used while completing
-	// `return_type_id` and `parameter_list_type_id`.
-	PartialValueId partial_value_id;
+	Maybe<ClosureId2> closure_id;
 
-	// Number of parameters accepted by the function. This is at most 64.
-	u8 param_count;
+	bool is_func;
 
-	// `true` if this is a `proc` signature, `false` otherwise (i.e., if this
-	// is a `func` signature).
-	bool is_proc;
+	bool has_templated_parameter_list;
 
-	// See `parameter_list_type_id`.
-	bool parameter_list_is_unbound;
+	bool has_templated_return_type;
 
-	// See `return_type_id`.
-	bool return_type_is_unbound;
+	u8 parameter_count;
+};
+
+enum class MemberByNameRst : u8
+{
+	Ok,
+	Incomplete,
+	NotFound,
 };
 
 
@@ -2282,7 +2289,7 @@ TypeId type_create_array(TypePool* types, TypeTag tag, ArrayType attach) noexcep
 // Creates a "signature", i.e. a `Builtin` or `Function` type.
 // This takes a tag indicating which type to create, along with a
 // `SignatureType` further describing it.
-TypeId type_create_signature(TypePool* types, TypeTag tag, SignatureType attach) noexcept;
+TypeId type_create_signature(TypePool* types, TypeTag tag, SignatureType2 attach) noexcept;
 
 // Creates a composite type with no members that can have members added by
 // calling `type_add_composite_member` on it.
@@ -2320,9 +2327,7 @@ TypeId type_create_signature(TypePool* types, TypeTag tag, SignatureType attach)
 // Call `type_set_composite_member_info` to set the type or value of a member
 // that was added with `has_pending_type` or `has_pending_value` respectively
 // set to `true`.
-TypeId type_create_composite(TypePool* types, TypeTag tag, TypeId global_scope_type_id, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
-
-void type_set_composite_file_completion_arec_id(TypePool* types, TypeId type_id, ArecId completion_arec_id) noexcept;
+TypeId type_create_composite(TypePool* types, TypeTag tag, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
 
 // Seals an open composite type, preventing the addition of further members and
 // setting the type's metrics (`size`, `align` and `stride`).
@@ -2342,19 +2347,13 @@ TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align,
 // was a name collision with an existing member.
 bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInit init) noexcept;
 
-// Sets the type and / or value of the member at position `rank` in the
-// composite type identified by `type_id`.
-// If `info.has_type` is true, the member's type is set to `info.type`, which
-// must not be `TypeId::INVALID`. Note that the member must have been
-// initialized with `has_pending_type` set to `true`, and must not have had its
-// type set by a preceding call to this function.
-// If `info.has_value` is true, the member's (default-) value is set to
-// `info.value`, which must not be `GlobalValueId::INVALID`. Note that the
-// member must have been initialized with `has_pending_value` set to `true`,
-// and must not have had its value set by a preceding call to this function.
-// Note that both `info.has_type` and `info.has_value` may be `false`, in which
-// case this function is effectively a no-op.
-void type_set_composite_member_info(TypePool* types, TypeId type_id, u16 rank, TypeId member_type_id, GlobalValueId member_value_id) noexcept;
+void type_add_file_member(TypePool* types, TypeId type_id, IdentifierId name, OpcodeId completion_opcode, bool is_pub, bool is_mut) noexcept;
+
+void type_add_templated_parameter_list_member(TypePool* types, TypeId type_id, IdentifierId name, OpcodeId completion_opcode, bool is_eval, bool is_mut) noexcept;
+
+void type_set_templated_parameter_list_member_info(TypePool* types, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> member_default_id) noexcept;
+
+void type_set_file_member_info(TypePool* types, TypeId type_id, u16 rank, TypeId member_type_id, ForeverValueId value_id) noexcept;
 
 TypeId type_copy_composite(TypePool* types, TypeId type_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
 
@@ -2365,6 +2364,8 @@ u32 type_get_composite_member_count(TypePool* types, TypeId type_id) noexcept;
 void type_discard(TypePool* types, TypeId type_id) noexcept;
 
 
+
+TypeRelation type_relation_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept;
 
 // Checks whether `type_id_a` and `type_id_b` refer to the same type or
 // non-distinct aliases of the same type.
@@ -2400,19 +2401,11 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 // `type_id_b` is an `Integer`, `type_id_b` is returned.
 // If `type_id_a` and `type_id_b` do not share a common type, `TypeId::INVALID`
 // is returned.
-TypeId type_unify(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
+Maybe<TypeId> type_unify(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
+
 
 
 TypeDisposition type_disposition_from_id(TypePool* types, TypeId type_id) noexcept;
-
-// Retrieves the type representing the global scope that the composite type
-// referenced by `type_id` was defined in.
-// If the type has no parent global scope, `TypeId::INVALID` is returned. This
-// is only the case for the type representing the global scope of the
-// hard-coded prelude.
-// Other types representing global scopes (i.e. types returned by
-// `import_file`) return the id of the hard-coded prelude's global scope type.
-TypeId type_global_scope_from_id(TypePool* types, TypeId type_id) noexcept;
 
 // Checks whether `type_metrics_from_id` may be called on `type_id`.
 // This returns false iff `type_id` refers to a composite type that has a
@@ -2435,9 +2428,9 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
 // For types created by `create_open_type`, this is `TypeTag::Composite`.
 TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept;
 
-const MemberInfo type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank);
+bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberInfo* out_info, OpcodeId* out_initializer);
 
-bool type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId name, MemberInfo* out) noexcept;
+MemberByNameRst type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId name, MemberInfo* out_info, OpcodeId* out_initializer) noexcept;
 
 IdentifierId type_member_name_by_rank(TypePool* types, TypeId type_id, u16 rank) noexcept;
 
@@ -2460,7 +2453,7 @@ const T* type_attachment_from_id(TypePool* types, TypeId type_id) noexcept
 			ASSERT_OR_IGNORE(tag == TypeTag::Integer || tag == TypeTag::Float);
 		else if constexpr (is_same_cpp_type<T, ArrayType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Array || tag == TypeTag::ArrayLiteral);
-		else if constexpr (is_same_cpp_type<T, SignatureType>)
+		else if constexpr (is_same_cpp_type<T, SignatureType2>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Func || tag == TypeTag::Builtin);
 		else
 			static_assert(false, "Unexpected attachment passed to type_attachment_from_id");
@@ -2530,6 +2523,62 @@ ClosureInstance closure_instance(ClosurePool* closures, ClosureId closure_id) no
 
 
 
+struct GlobalValuePool2;
+
+struct CTValue
+{
+	MutRange<byte> bytes;
+
+	u32 align : 31;
+
+	u32 is_mut : 1;
+
+	TypeId type;
+};
+
+enum class ForeverValueId : u32
+{
+	INVALID = 0,
+};
+
+enum class GlobalFileIndex : u16
+{
+	INVALID = 0,
+};
+
+struct ForeverCTValue
+{
+	CTValue value;
+
+	ForeverValueId id;
+};
+
+GlobalValuePool2* create_global_value_pool2(HandlePool* handles) noexcept;
+
+void release_global_value_pool2(GlobalValuePool2* globals) noexcept;
+
+GlobalFileIndex file_values_reserve2(GlobalValuePool2* globals, TypeId file_type_id, u16 definition_count) noexcept;
+
+void file_value_set_initializer(GlobalValuePool2* globals, GlobalFileIndex file_index, u16 rank, OpcodeId initializer) noexcept;
+
+TypeId type_id_from_global_file_index(GlobalValuePool2* globals, GlobalFileIndex file_index) noexcept;
+
+bool file_value_get2(GlobalValuePool2* globals, GlobalFileIndex file_index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept;
+
+ForeverValueId file_value_alloc_initialized2(GlobalValuePool2* globals, GlobalFileIndex file_index, u16 rank, bool is_mut, CTValue initializer) noexcept;
+
+ForeverCTValue file_value_alloc_uninitialized2(GlobalValuePool2* globals, GlobalFileIndex file_index, u16 rank, bool is_mut, TypeId type, TypeMetrics metrics) noexcept;
+
+ForeverValueId forever_value_alloc_initialized2(GlobalValuePool2* globals, bool is_mut, CTValue initializer) noexcept;
+
+ForeverCTValue forever_value_alloc_uninitialized2(GlobalValuePool2* globals, bool is_mut, TypeId type, TypeMetrics metrics) noexcept;
+
+CTValue forever_value_get2(GlobalValuePool2* globals, ForeverValueId id) noexcept;
+
+
+
+
+
 // Parser, structuring source code into an Abstract Syntax Tree for further
 // processing.
 struct Parser;
@@ -2537,7 +2586,7 @@ struct Parser;
 // Creates a `Parser`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `Parser` can be freed using
 // `release_parser`.
-Parser* create_parser(HandlePool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept;
+Parser* create_parser(HandlePool* pool, IdentifierPool* identifiers, GlobalValuePool2* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept;
 
 // Releases the resources associated with the given `Parser`.
 void release_parser(Parser* parser) noexcept;
@@ -2547,15 +2596,304 @@ void release_parser(Parser* parser) noexcept;
 // with subsequent bytes receiving subsequent `SourceId`s.
 // If `is_std` is `true`, builtins are allowed, otherwise they are disallowed.
 // `filepath` is used for logging.
-Maybe<AstNode*> parse(Parser* parser, Range<char8> content, SourceId base_source_id, bool is_std) noexcept;
+Maybe<AstNode*> parse(Parser* parser, Range<char8> content, SourceId source_id_base, bool is_std) noexcept;
 
 
 
 
 
-// Typechecks and interprets expressions. This is the component that exerts.
-// control flow over all the others, calling into them as required.
-struct Interpreter;
+struct OpcodePool;
+
+// let f = func(T: Type, t: T) -> T => t
+//
+// [SignatureBeginGeneric 2]
+// [LoadGlobal `Type`]
+// [DynSignatureCloseOver]
+// [EndSignatureClosure]
+// [LoadSignatureClosed 0 <Type>]
+// [ParamInit `T` .type]
+// [LoadMember 0 0 <T>]
+// [ParamInit `t` .type]
+// [LoadMember 0 0 <T>]
+// [SignatureEndGeneric]
+// [CodeRef {addr} <t>]
+// [Bind]
+//
+// [LoadLocal 0 0 <t>]
+// [End]
+//
+//
+// let g = func(T: Type, t: T) -> (func() -> T) => (func() -> T => t)
+//
+// [SignatureBeginGeneric .func 2]
+// [LoadGlobal `Type`]
+// [DynSignatureCloseOver]
+// [EndSignatureClosure]
+// [LoadSignatureClosed 0 <Type>]
+// [ParamInit `T` .type]
+// [LoadMember 0 0 <T>]
+// [ParamInit `t` .type]
+// [SignatureBegin .func 1]
+// [LoadMember 0 0 <T>]
+// [SignatureEnd]
+// [SignatureEndGeneric]
+// [CodeRef {addr} <(func() -> T => t)]
+// [BindBody]
+// [End]
+//
+// [SignatureBegin .func]
+// [LoadMember 1 0 <T>]
+// [SignatureEnd]
+// [ClosureBegin]
+// [LoadMember t]
+// [CloseOver]
+// [ClosureEnd]
+// [CodeRef {addr} <t>]
+// [BindBodyWithClosure]
+// [End]
+//
+// [LoadClosed 0 <t>]
+// [End]
+//
+//
+// let c = g(u32, 1)
+//
+// [LoadGlobal 0 1 <g>]
+// [LoadGlobal 1 {x} <u32>]
+// [LoadInteger 1]
+// [Bind 2 #next 2]
+// [Call]
+// [End]
+//
+//
+// let one = c()
+//
+// [LoadGlobal 0 2 <c>]
+// [Bind 0]
+// [Call]
+// [End]
+//
+//
+// let c2 = g(.t = 1, .T = u64)
+//
+// [LoadGlobal 0 1 <g>]
+// [LoadInteger 1]
+// [LoadGlobal 1 {y} <u64>]
+// [Bind 2 #name `t` #name `T`]
+// [Call]
+// [InitGlobalAndEnd 0 4 <c2>]
+//
+//
+// let arr = .[0, 1, c()]
+//
+// [LoadInteger 0]
+// [LoadInteger 1]
+// [LoadGlobal 0 2 <c>]
+// [Bind 0]
+// [Call]
+// [ArrayInitializer 3]
+// [ElemNext 3]
+// [ArrayEnd]
+// [End]
+//
+//
+// let fn = func(x : u32) -> u32 = if x == 0 then 0 else fn(x - 1)
+//
+// [SignatureBegin 1]
+// [LoadGlobal 1 {x} <u32>]
+// [InitParam `x` .type]
+// [LoadGlobal 1 {x} <u32>]
+// [SignatureEnd]
+// [CodeRef {addr} <if x == 0 then 0 else fn(x - 1)>]
+//
+// [LoadMember 0 0 <x>]
+// [LoadInteger 0]
+// [CmpEqual]
+// [IfElse {addr1} <0> {addr2} <f(x - 1)>]
+// [End]
+//
+// [LoadInteger 0]
+// [End]
+//
+// [LoadGlobal 0 6 <fn>]
+// [LoadMember 0 0 <x>]
+// [LoadInteger 1]
+// [Add]
+// [Bind 1 #next 1]
+// [Call]
+// [End]
+enum class Opcode : u8
+{
+	INVALID = 0,
+	EndCode,
+	SetWriteCtx,
+	ScopeBegin,
+	ScopeEnd,
+	ScopeAllocTyped,
+	ScopeAllocUntyped,
+	FileGlobalAllocTyped,
+	FileGlobalAllocUntyped,
+	PopClosure,
+	LoadScope,
+	LoadGlobal,
+	LoadMember,
+	LoadClosure,
+	LoadBuiltin,
+	ExecBuiltin,
+	Signature,
+	DynSignature,
+	BindBody,
+	BindBodyWithClosure,
+	Args,
+	Call,
+	Return,
+	CompleteParamTypedNoDefault,
+	CompleteParamTypedWithDefault,
+	CompleteParamUntyped,
+	ArrayPreInit,
+	ArrayPostInit,
+	CompositePreInit,
+	CompositePostInit,
+	If,
+	IfElse,
+	Loop,
+	LoopFinally,
+	Switch,
+	AddressOf,
+	Dereference,
+	Slice,
+	Index,
+	BinaryArithmeticOp,
+	Shift,
+	BinaryBitwiseOp,
+	BitNot,
+	LogicalAnd,
+	LogicalOr,
+	LogicalNot,
+	Compare,
+	Negate,
+	UnaryPlus,
+	ArrayType,
+	ReferenceType,
+	Undefined,
+	Unreachable,
+	ValueInteger,
+	ValueFloat,
+	ValueString,
+	ValueVoid,
+	DiscardVoid,
+};
+
+enum class OpcodeSliceKind : u8
+{
+	NoBounds,
+	BeginBound,
+	EndBound,
+	BothBounds,
+};
+
+enum class OpcodeBinaryArithmeticOpKind : u8
+{
+	Add,
+	Sub,
+	Mul,
+	Div,
+	AddTC,
+	SubTC,
+	MulTC,
+	Mod,
+};
+
+enum class OpcodeShiftKind : bool
+{
+	Left,
+	Right,
+};
+
+enum class OpcodeBinaryBitwiseOpKind : u8
+{
+	And,
+	Or,
+	Xor,
+};
+
+enum class OpcodeCompareKind : u8
+{
+	LessThan,
+	GreaterThan,
+	LessThanOrEqual,
+	GreaterThanOrEqual,
+	NotEqual,
+	Equal,
+};
+
+struct OpcodeReferenceTypeFlags
+{
+	u8 tag : 5;
+
+	u8 is_opt : 1;
+
+	u8 is_multi : 1;
+
+	u8 is_mut : 1;
+};
+
+struct OpcodeSignatureFlags
+{
+	u8 is_func : 1;
+
+	u8 has_templated_parameter_list : 1;
+
+	u8 has_templated_return_type : 1;
+
+	u8 unused_ : 5;
+};
+
+struct OpcodeSignaturePerParameterFlags
+{
+	u8 has_type : 1;
+
+	u8 has_default : 1;
+
+	u8 is_mut : 1;
+
+	u8 is_eval : 1;
+
+	u8 is_templated : 1;
+
+	u8 unused_ : 3;
+};
+
+enum class OpcodeId : u32
+{
+	INVALID = 0,
+};
+
+OpcodePool* create_opcode_pool(HandlePool* handles, AstPool* asts) noexcept;
+
+void release_opcode_pool(OpcodePool* opcodes) noexcept;
+
+const Maybe<Opcode*> opcodes_from_file_member_ast(OpcodePool* opcodes, AstNode* node, GlobalFileIndex file_index, u16 rank) noexcept;
+
+const OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept;
+
+OpcodeId id_from_opcode(OpcodePool* opcodes, const Opcode* code);
+
+const Opcode* opcode_from_id(OpcodePool* opcodes, OpcodeId id) noexcept;
+
+SourceId source_id_of_opcode(OpcodePool* opcodes, const Opcode* code) noexcept;
+
+const char8* tag_name(Opcode op) noexcept;
+
+
+
+
+struct Interpreter2;
+
+enum class ClosureId2 : u32
+{
+	INVALID = 0,
+};
 
 // Builtin functions that the compiler needs to evaluate in a special way.
 // These include functions that expose type, type creation, as well as
@@ -2654,44 +2992,17 @@ enum class Builtin : u8
 	MAX,
 };
 
-enum class ValueKind : bool
-{
-	Value = false,
-	Location = true,
-};
+Interpreter2* create_interpreter2(HandlePool* handles, AstPool* asts, TypePool* types, GlobalValuePool2* globals, OpcodePool* opcodes, SourceReader* reader, Parser* parser, IdentifierPool* identifiers, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle asts_log_file, minos::FileHandle imported_opcodes_log_file, minos::FileHandle types_log_file) noexcept;
 
-enum class ArecId : s32
-{
-	INVALID = -1,
-};
+void release_interpreter2(Interpreter2* interp) noexcept;
 
+bool import_prelude(Interpreter2* interp, Range<char8> path) noexcept;
 
+Maybe<TypeId> import_file(Interpreter2* interp, Range<char8> path, bool is_std) noexcept;
 
-// Creates an `Interpreter`, allocating the necessary storage from `alloc`.
-// Resources associated with the created `Interpreter` can be freed using
-// `release_interpreter`.
-Interpreter* create_interpreter(HandlePool* alloc, Config* config, SourceReader* reader, Parser* parser, TypePool* types, AstPool* asts, IdentifierPool* identifiers, GlobalValuePool* globals, PartialValuePool* partials, ClosurePool* closures, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle type_log_file, minos::FileHandle ast_log_file, bool log_prelude) noexcept;
+bool evaluate_file_definition_by_name(Interpreter2* interp, TypeId file_type, IdentifierId name) noexcept;
 
-// Releases the resources associated with the given `Interpreter`.
-void release_interpreter(Interpreter* interp) noexcept;
-
-
-// Imports the source file specified by `filepath`, reading, parsing and
-// typechecking it as necessary (i.e., if it has not been done by a previous
-// import of the given file). If `is_std` is `true`, builtins are allowed,
-// if it is `false` they are disallowed.
-// Returns a `TypeId` referencing a type that contains all top-level
-//  definitions in the imported files as global members.
-Maybe<TypeId> import_file(Interpreter* interp, Range<char8> filepath, bool is_std) noexcept;
-
-
-// Retrieves a string representing the given `tag`.
-// If `tag` is not an enumerant of `TypeTag`, it is treated as
-// `TypeTag::INVALID`.
 const char8* tag_name(Builtin builtin) noexcept;
-
-const char8* tag_name(ValueKind type_kind) noexcept;
-
 
 
 
@@ -2708,7 +3019,7 @@ struct CoreData
 
 	ErrorSink* errors;
 
-	GlobalValuePool* globals;
+	GlobalValuePool2* globals;
 
 	TypePool* types;
 
@@ -2716,13 +3027,15 @@ struct CoreData
 
 	Parser* parser;
 
+	OpcodePool* opcodes;
+
 	PartialValuePool* partials;
 
 	ClosurePool* closures;
 
 	LexicalAnalyser* lex;
 
-	Interpreter* interp;
+	Interpreter2* interp;
 };
 
 CoreData create_core_data(Range<char8> config_filepath) noexcept;
