@@ -29,7 +29,7 @@ struct alignas(8) Callable
 {
 	OpcodeId body_id;
 
-	Maybe<ClosureId2> closure_id;
+	Maybe<ClosureId> closure_id;
 };
 
 enum class CompareTag : u8
@@ -167,7 +167,7 @@ struct Interpreter
 
 	ReservedVec<CTValue> write_ctxs;
 
-	ReservedVec<ClosureId2> active_closures;
+	ReservedVec<ClosureId> active_closures;
 
 	ReservedVec<ScopeMember> closure_members;
 
@@ -498,7 +498,7 @@ static T* value_as(CTValue* value) noexcept
 
 
 
-static ClosureId2 create_closure(Interpreter* interp, u32 value_count) noexcept
+static ClosureId create_closure(Interpreter* interp, u32 value_count) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= value_count);
 
@@ -523,7 +523,7 @@ static ClosureId2 create_closure(Interpreter* interp, u32 value_count) noexcept
 
 	interp->values.pop_by(value_count);
 
-	return static_cast<ClosureId2>(closure_members - interp->closure_members.begin());
+	return static_cast<ClosureId>(closure_members - interp->closure_members.begin());
 }
 
 static const Opcode* convert_into_assume_convertible(Interpreter* interp, const Opcode* code, CTValue src, CTValue dst) noexcept
@@ -1961,7 +1961,7 @@ static const Opcode* handle_load_closure(Interpreter* interp, const Opcode* code
 
 	code = code_attach(code, &rank);
 
-	const ClosureId2 closure = interp->active_closures.end()[-1];
+	const ClosureId closure = interp->active_closures.end()[-1];
 
 	const ScopeMember* const member = interp->closure_members.begin() + static_cast<u32>(closure) + rank;
 
@@ -1986,7 +1986,7 @@ static const Opcode* handle_load_builtin(Interpreter* interp, const Opcode* code
 
 	Callable body;
 	body.body_id = info.body;
-	body.closure_id = none<ClosureId2>();
+	body.closure_id = none<ClosureId>();
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&body);
 
@@ -2155,7 +2155,7 @@ static const Opcode* handle_signature(Interpreter* interp, const Opcode* code, C
 	SignatureType2 attach{};
 	attach.parameter_list_type_id = parameter_list_type;
 	attach.return_type.type_id = return_type;
-	attach.closure_id = none<ClosureId2>();
+	attach.closure_id = none<ClosureId>();
 	attach.is_func = signature_flags.is_func;
 	attach.has_templated_parameter_list = false;
 	attach.has_templated_return_type = false;
@@ -2195,7 +2195,7 @@ static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* cod
 	else
 		return_completion = none<OpcodeId>();
 
-	const ClosureId2 closure = create_closure(interp, closed_over_value_count);
+	const ClosureId closure = create_closure(interp, closed_over_value_count);
 
 	CTValue* value = interp->values.end() - value_count;
 
@@ -2338,7 +2338,7 @@ static const Opcode* handle_bind_body(Interpreter* interp, const Opcode* code, C
 
 	Callable callable{};
 	callable.body_id = body_id;
-	callable.closure_id = none<ClosureId2>();
+	callable.closure_id = none<ClosureId>();
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&callable);
 
@@ -2355,7 +2355,7 @@ static const Opcode* handle_bind_body_with_closure(Interpreter* interp, const Op
 
 	code = code_attach(code, &closed_over_value_count);
 
-	const ClosureId2 closure_id = create_closure(interp, closed_over_value_count);
+	const ClosureId closure_id = create_closure(interp, closed_over_value_count);
 
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -4990,7 +4990,7 @@ static TypeId make_func_type_from_array(TypePool* types, TypeId return_type, u8 
 	SignatureType2 signature_type{};
 	signature_type.parameter_list_type_id = parameter_list_type;
 	signature_type.return_type.type_id = return_type;
-	signature_type.closure_id = none<ClosureId2>();
+	signature_type.closure_id = none<ClosureId>();
 	signature_type.is_func = true;
 	signature_type.has_templated_parameter_list = false;
 	signature_type.has_templated_return_type = false;
@@ -5284,7 +5284,7 @@ Interpreter* create_interpreter(HandlePool* handles, AstPool* asts, TypePool* ty
 	static constexpr u32 WRITE_CTXS_RESERVE_SIZE = sizeof(CTValue) << 17;
 	static constexpr u32 WRITE_CTXS_COMMIT_INCREMENT_COUNT = 512;
 
-	static constexpr u32 ACTIVE_CLOSURES_RESERVE_SIZE = sizeof(ClosureId2) << 15;
+	static constexpr u32 ACTIVE_CLOSURES_RESERVE_SIZE = sizeof(ClosureId) << 15;
 	static constexpr u32 ACTIVE_CLOSURES_COMMIT_INCREMENT_COUNT = 1024;
 
 	static constexpr u32 CLOSURE_MEMBERS_RESERVE_SIZE = sizeof(ScopeMember) << 22;
@@ -5375,7 +5375,7 @@ Interpreter* create_interpreter(HandlePool* handles, AstPool* asts, TypePool* ty
 
 	interp->memory = MutRange<byte>{ memory, TOTAL_RESERVE_SIZE };
 
-	// Reserve `ClosureId2::INVALID`.
+	// Reserve `ClosureId::INVALID`.
 	interp->closure_members.reserve();
 
 	init_builtin_infos(interp);

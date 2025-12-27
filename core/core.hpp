@@ -28,7 +28,7 @@ enum class Builtin : u8;
 
 enum class ForeverValueId : u32;
 
-enum class ClosureId2 : u32;
+enum class ClosureId : u32;
 
 enum class Opcode : u8;
 
@@ -2177,7 +2177,7 @@ struct SignatureType2
 		OpcodeId completion_id;
 	} return_type;
 
-	Maybe<ClosureId2> closure_id;
+	Maybe<ClosureId> closure_id;
 
 	bool is_func;
 
@@ -2793,7 +2793,7 @@ const char8* tag_name(Opcode op) noexcept;
 
 struct Interpreter;
 
-enum class ClosureId2 : u32
+enum class ClosureId : u32
 {
 	INVALID = 0,
 };
