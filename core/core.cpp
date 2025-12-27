@@ -40,7 +40,7 @@ CoreData create_core_data(Range<char8> config_filepath) noexcept
 	core.config = config;
 	core.identifiers = create_identifier_pool(core.alloc);
 	core.reader = create_source_reader(core.alloc);
-	core.globals = create_global_value_pool2(core.alloc);
+	core.globals = create_global_value_pool(core.alloc);
 	core.types = create_type_pool(core.alloc);
 	core.asts = create_ast_pool(core.alloc);
 	core.errors = create_error_sink(core.alloc, core.reader, core.identifiers, core.asts, diagnostics_log_file);
@@ -58,7 +58,7 @@ void release_core_data(CoreData* core) noexcept
 	release_identifier_pool(core->identifiers);
 	release_source_reader(core->reader);
 	release_error_sink(core->errors);
-	release_global_value_pool2(core->globals);
+	release_global_value_pool(core->globals);
 	release_type_pool(core->types);
 	release_ast_pool(core->asts);
 	release_parser(core->parser);

@@ -2426,7 +2426,7 @@ bool has_next(const MemberIterator* it) noexcept;
 
 
 
-struct GlobalValuePool2;
+struct GlobalValuePool;
 
 struct CTValue
 {
@@ -2456,27 +2456,27 @@ struct ForeverCTValue
 	ForeverValueId id;
 };
 
-GlobalValuePool2* create_global_value_pool2(HandlePool* handles) noexcept;
+GlobalValuePool* create_global_value_pool(HandlePool* handles) noexcept;
 
-void release_global_value_pool2(GlobalValuePool2* globals) noexcept;
+void release_global_value_pool(GlobalValuePool* globals) noexcept;
 
-GlobalFileIndex file_values_reserve2(GlobalValuePool2* globals, TypeId file_type_id, u16 definition_count) noexcept;
+GlobalFileIndex file_values_reserve(GlobalValuePool* globals, TypeId file_type_id, u16 definition_count) noexcept;
 
-void file_value_set_initializer(GlobalValuePool2* globals, GlobalFileIndex file_index, u16 rank, OpcodeId initializer) noexcept;
+void file_value_set_initializer(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, OpcodeId initializer) noexcept;
 
-TypeId type_id_from_global_file_index(GlobalValuePool2* globals, GlobalFileIndex file_index) noexcept;
+TypeId type_id_from_global_file_index(GlobalValuePool* globals, GlobalFileIndex file_index) noexcept;
 
-bool file_value_get2(GlobalValuePool2* globals, GlobalFileIndex file_index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept;
+bool file_value_get(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept;
 
-ForeverValueId file_value_alloc_initialized2(GlobalValuePool2* globals, GlobalFileIndex file_index, u16 rank, bool is_mut, CTValue initializer) noexcept;
+ForeverValueId file_value_alloc_initialized(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, bool is_mut, CTValue initializer) noexcept;
 
-ForeverCTValue file_value_alloc_uninitialized2(GlobalValuePool2* globals, GlobalFileIndex file_index, u16 rank, bool is_mut, TypeId type, TypeMetrics metrics) noexcept;
+ForeverCTValue file_value_alloc_uninitialized(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, bool is_mut, TypeId type, TypeMetrics metrics) noexcept;
 
-ForeverValueId forever_value_alloc_initialized2(GlobalValuePool2* globals, bool is_mut, CTValue initializer) noexcept;
+ForeverValueId forever_value_alloc_initialized(GlobalValuePool* globals, bool is_mut, CTValue initializer) noexcept;
 
-ForeverCTValue forever_value_alloc_uninitialized2(GlobalValuePool2* globals, bool is_mut, TypeId type, TypeMetrics metrics) noexcept;
+ForeverCTValue forever_value_alloc_uninitialized(GlobalValuePool* globals, bool is_mut, TypeId type, TypeMetrics metrics) noexcept;
 
-CTValue forever_value_get2(GlobalValuePool2* globals, ForeverValueId id) noexcept;
+CTValue forever_value_get(GlobalValuePool* globals, ForeverValueId id) noexcept;
 
 
 
@@ -2489,7 +2489,7 @@ struct Parser;
 // Creates a `Parser`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `Parser` can be freed using
 // `release_parser`.
-Parser* create_parser(HandlePool* pool, IdentifierPool* identifiers, GlobalValuePool2* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept;
+Parser* create_parser(HandlePool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept;
 
 // Releases the resources associated with the given `Parser`.
 void release_parser(Parser* parser) noexcept;
@@ -2895,7 +2895,7 @@ enum class Builtin : u8
 	MAX,
 };
 
-Interpreter2* create_interpreter2(HandlePool* handles, AstPool* asts, TypePool* types, GlobalValuePool2* globals, OpcodePool* opcodes, SourceReader* reader, Parser* parser, IdentifierPool* identifiers, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle asts_log_file, minos::FileHandle imported_opcodes_log_file, minos::FileHandle types_log_file) noexcept;
+Interpreter2* create_interpreter2(HandlePool* handles, AstPool* asts, TypePool* types, GlobalValuePool* globals, OpcodePool* opcodes, SourceReader* reader, Parser* parser, IdentifierPool* identifiers, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle asts_log_file, minos::FileHandle imported_opcodes_log_file, minos::FileHandle types_log_file) noexcept;
 
 void release_interpreter2(Interpreter2* interp) noexcept;
 
@@ -2922,7 +2922,7 @@ struct CoreData
 
 	ErrorSink* errors;
 
-	GlobalValuePool2* globals;
+	GlobalValuePool* globals;
 
 	TypePool* types;
 

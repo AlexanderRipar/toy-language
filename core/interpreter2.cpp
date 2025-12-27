@@ -135,7 +135,7 @@ struct Interpreter2
 
 	TypePool* types;
 
-	GlobalValuePool2* globals;
+	GlobalValuePool* globals;
 
 	OpcodePool* opcodes;
 
@@ -510,7 +510,7 @@ static ClosureId2 create_closure(Interpreter2* interp, u32 value_count) noexcept
 	{
 		const CTValue src = values[i];
 
-		const ForeverValueId value_id = forever_value_alloc_initialized2(interp->globals, false, src);
+		const ForeverValueId value_id = forever_value_alloc_initialized(interp->globals, false, src);
 
 		ScopeMember* const dst = closure_members + i;
 
@@ -679,7 +679,7 @@ static const Opcode* convert_into_assume_convertible(Interpreter2* interp, const
 
 			const MutRange<byte> default_dst = dst.bytes.mut_subrange(member.offset, member_metrics.size);
 
-			const CTValue default_src = forever_value_get2(interp->globals, get(member.value_or_default_id));
+			const CTValue default_src = forever_value_get(interp->globals, get(member.value_or_default_id));
 
 			range::mem_copy(default_dst, default_src.bytes.immut());
 		}
@@ -1751,7 +1751,7 @@ static const Opcode* handle_file_global_alloc_typed(Interpreter2* interp, const 
 
 	const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member_type);
 
-	const ForeverCTValue value = file_value_alloc_uninitialized2(interp->globals, index, rank, is_mut, member_type, member_metrics);
+	const ForeverCTValue value = file_value_alloc_uninitialized(interp->globals, index, rank, is_mut, member_type, member_metrics);
 
 	const TypeId file_type = type_id_from_global_file_index(interp->globals, index);
 
@@ -1784,7 +1784,7 @@ static const Opcode* handle_file_global_alloc_untyped(Interpreter2* interp, cons
 
 	CTValue* const top = interp->values.end() - 1;
 
-	const ForeverValueId value_id = file_value_alloc_initialized2(interp->globals, index, rank, is_mut, *top);
+	const ForeverValueId value_id = file_value_alloc_initialized(interp->globals, index, rank, is_mut, *top);
 
 	const TypeId file_type = type_id_from_global_file_index(interp->globals, index);
 
@@ -1847,7 +1847,7 @@ static const Opcode* handle_load_global(Interpreter2* interp, const Opcode* code
 	
 	OpcodeId global_code;
 
-	if (!file_value_get2(interp->globals, index, rank, &global_value, &global_code))
+	if (!file_value_get(interp->globals, index, rank, &global_value, &global_code))
 	{
 		push_activation(interp, code_activation - 1);
 
@@ -1897,7 +1897,7 @@ static const Opcode* handle_load_member(Interpreter2* interp, const Opcode* code
 		{
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
-			CTValue value = forever_value_get2(interp->globals, get(info.value_or_default_id));
+			CTValue value = forever_value_get(interp->globals, get(info.value_or_default_id));
 
 			return poppush_location_value(interp, code, write_ctx, value);
 		}
@@ -1936,7 +1936,7 @@ static const Opcode* handle_load_member(Interpreter2* interp, const Opcode* code
 		{
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
-			CTValue value = forever_value_get2(interp->globals, get(info.value_or_default_id));
+			CTValue value = forever_value_get(interp->globals, get(info.value_or_default_id));
 
 			return poppush_location_value(interp, code, write_ctx, value);
 		}
@@ -1965,7 +1965,7 @@ static const Opcode* handle_load_closure(Interpreter2* interp, const Opcode* cod
 
 	const ScopeMember* const member = interp->closure_members.begin() + static_cast<u32>(closure) + rank;
 
-	const CTValue closure_value = forever_value_get2(interp->globals, static_cast<ForeverValueId>(member->offset));
+	const CTValue closure_value = forever_value_get(interp->globals, static_cast<ForeverValueId>(member->offset));
 
 	return push_location_value(interp, code, write_ctx, closure_value);
 }
@@ -2098,7 +2098,7 @@ static const Opcode* handle_signature(Interpreter2* interp, const Opcode* code, 
 
 			ASSERT_OR_IGNORE(type_is_equal(interp->types, parameter_type, default_value->type));
 
-			const ForeverValueId default_id = forever_value_alloc_initialized2(interp->globals, false, *default_value);
+			const ForeverValueId default_id = forever_value_alloc_initialized(interp->globals, false, *default_value);
 
 			parameter_default = some(default_id);
 		}
@@ -2125,7 +2125,7 @@ static const Opcode* handle_signature(Interpreter2* interp, const Opcode* code, 
 
 			parameter_type = default_value->type;
 
-			const ForeverValueId default_id = forever_value_alloc_initialized2(interp->globals, false, *default_value);
+			const ForeverValueId default_id = forever_value_alloc_initialized(interp->globals, false, *default_value);
 
 			parameter_default = some(default_id);
 		}
@@ -2240,7 +2240,7 @@ static const Opcode* handle_dyn_signature(Interpreter2* interp, const Opcode* co
 
 				const TypeMetrics parameter_metrics = type_metrics_from_id(interp->types, parameter_type);
 
-				const ForeverCTValue default_dst = forever_value_alloc_uninitialized2(interp->globals, false, parameter_type, parameter_metrics);
+				const ForeverCTValue default_dst = forever_value_alloc_uninitialized(interp->globals, false, parameter_type, parameter_metrics);
 
 				if (convert_into(interp, code, *default_value, default_dst.value) == nullptr)
 					return nullptr;
@@ -2270,7 +2270,7 @@ static const Opcode* handle_dyn_signature(Interpreter2* interp, const Opcode* co
 
 				parameter_type = default_value->type;
 
-				const ForeverValueId default_id = forever_value_alloc_initialized2(interp->globals, false, *default_value);
+				const ForeverValueId default_id = forever_value_alloc_initialized(interp->globals, false, *default_value);
 
 				parameter_default = some(default_id);
 			}
@@ -2608,7 +2608,7 @@ static const Opcode* handle_call(Interpreter2* interp, const Opcode* code, CTVal
 
 			if (static_cast<s32>(callback_id) < 0)
 			{
-				CTValue default_value = forever_value_get2(interp->globals, static_cast<ForeverValueId>(-static_cast<s32>(callback_id)));
+				CTValue default_value = forever_value_get(interp->globals, static_cast<ForeverValueId>(-static_cast<s32>(callback_id)));
 
 				if (convert_into(interp, code, default_value, interp->write_ctxs.end()[-1]) == nullptr)
 					ASSERT_UNREACHABLE;
@@ -2752,7 +2752,7 @@ static const Opcode* handle_complete_param_typed_with_default(Interpreter2* inte
 
 	const TypeId parameter_list_type = argument_pack->parameter_list_type;
 
-	ForeverCTValue default_dst = forever_value_alloc_uninitialized2(interp->globals, false, parameter_type, parameter_metrics);
+	ForeverCTValue default_dst = forever_value_alloc_uninitialized(interp->globals, false, parameter_type, parameter_metrics);
 
 	if (convert_into(interp, code, *default_value, default_dst.value) == nullptr)
 		return nullptr;
@@ -2784,7 +2784,7 @@ static const Opcode* handle_complete_param_untyped(Interpreter2* interp, const O
 
 	const TypeId parameter_list_type = argument_pack->parameter_list_type;
 
-	const ForeverValueId default_id = forever_value_alloc_initialized2(interp->globals, false, *default_value);
+	const ForeverValueId default_id = forever_value_alloc_initialized(interp->globals, false, *default_value);
 
 	type_set_templated_parameter_list_member_info(interp->types, parameter_list_type, rank, default_value->type, some(default_id));
 
@@ -3094,7 +3094,7 @@ static const Opcode* handle_composite_preinit(Interpreter2* interp, const Opcode
 
 			const MutRange<byte> default_dst = write_ctx->bytes.mut_subrange(defaulted_member_info.offset, defaulted_member_metrics.size);
 
-			const Range<byte> default_src = forever_value_get2(interp->globals, get(defaulted_member_info.value_or_default_id)).bytes.immut();
+			const Range<byte> default_src = forever_value_get(interp->globals, get(defaulted_member_info.value_or_default_id)).bytes.immut();
 
 			range::mem_copy(default_dst, default_src);
 		}
@@ -3179,7 +3179,7 @@ static const Opcode* handle_composite_preinit(Interpreter2* interp, const Opcode
 
 		const MutRange<byte> default_dst = write_ctx->bytes.mut_subrange(defaulted_member_info.offset, defaulted_member_metrics.size);
 
-		const Range<byte> default_src = forever_value_get2(interp->globals, get(defaulted_member_info.value_or_default_id)).bytes.immut();
+		const Range<byte> default_src = forever_value_get(interp->globals, get(defaulted_member_info.value_or_default_id)).bytes.immut();
 
 		range::mem_copy(default_dst, default_src);
 	}
@@ -4639,7 +4639,7 @@ static const Opcode* handle_value_string(Interpreter2* interp, const Opcode* cod
 
 	code = code_attach(code, &value_id);
 
-	CTValue value = forever_value_get2(interp->globals, value_id);
+	CTValue value = forever_value_get(interp->globals, value_id);
 
 	return push_temporary_value(interp, code, write_ctx, value);
 }
@@ -4751,7 +4751,7 @@ static Maybe<TypeId> import_file_or_prelude(Interpreter2* interp, Range<char8> p
 
 	const TypeId type = type_create_composite(interp->types, TypeTag::Composite, TypeDisposition::File, root_source_id, root_data->member_count, true);
 
-	const GlobalFileIndex file_index = file_values_reserve2(interp->globals, type, static_cast<u16>(root_data->member_count));
+	const GlobalFileIndex file_index = file_values_reserve(interp->globals, type, static_cast<u16>(root_data->member_count));
 
 	read.source_file->ast = id_from_ast_node(interp->asts, ast);
 	read.source_file->type = type;
@@ -5255,7 +5255,7 @@ static void init_builtin_infos(Interpreter2* interp) noexcept
 
 
 
-Interpreter2* create_interpreter2(HandlePool* handles, AstPool* asts, TypePool* types, GlobalValuePool2* globals, OpcodePool* opcodes, SourceReader* reader, Parser* parser, IdentifierPool* identifiers, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle imported_asts_log_file, minos::FileHandle imported_opcodes_log_file, minos::FileHandle imported_types_log_file) noexcept
+Interpreter2* create_interpreter2(HandlePool* handles, AstPool* asts, TypePool* types, GlobalValuePool* globals, OpcodePool* opcodes, SourceReader* reader, Parser* parser, IdentifierPool* identifiers, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle imported_asts_log_file, minos::FileHandle imported_opcodes_log_file, minos::FileHandle imported_types_log_file) noexcept
 {
 	static constexpr u32 SCOPES_RESERVE_SIZE = sizeof(Scope) << 18;
 	static constexpr u32 SCOPES_COMMIT_INCREMENT_COUNT = 2048;

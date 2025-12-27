@@ -393,7 +393,7 @@ struct Lexer
 
 	IdentifierPool* identifiers;
 
-	GlobalValuePool2* globals;
+	GlobalValuePool* globals;
 
 	TypePool* types;
 
@@ -1085,7 +1085,7 @@ static RawLexeme scan_string_token(Lexer* lexer) noexcept
 
 	const CTValue string_value{ string_bytes, alignof(u8), false, string_type_id };
 
-	const ForeverValueId forever_value_id = forever_value_alloc_initialized2(lexer->globals, false, string_value);
+	const ForeverValueId forever_value_id = forever_value_alloc_initialized(lexer->globals, false, string_value);
 
 	lexer->curr = curr + 1;
 
@@ -2920,7 +2920,7 @@ static bool parse_file(Parser* parser) noexcept
 
 
 
-Parser* create_parser(HandlePool* pool, IdentifierPool* identifiers, GlobalValuePool2* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept
+Parser* create_parser(HandlePool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept
 {
 	Parser* const parser = alloc_handle_from_pool<Parser>(pool);
 

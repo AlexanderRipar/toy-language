@@ -29,7 +29,7 @@ struct alignas(8) ForeverValue
 	u32 data_align : 30;
 };
 
-struct GlobalValuePool2
+struct GlobalValuePool
 {
 	ReservedVec<GlobalFile> files;
 
@@ -40,7 +40,7 @@ struct GlobalValuePool2
 	MutRange<byte> memory;
 };
 
-GlobalValuePool2* create_global_value_pool2(HandlePool* handles) noexcept
+GlobalValuePool* create_global_value_pool(HandlePool* handles) noexcept
 {
 	static constexpr u32 FILES_RESERVE_SIZE = 65536;
 
@@ -61,9 +61,9 @@ GlobalValuePool2* create_global_value_pool2(HandlePool* handles) noexcept
 	byte* const memory = static_cast<byte*>(minos::mem_reserve(TOTAL_RESERVE_SIZE));
 
 	if (memory == nullptr)
-		panic("Failed to allocate memory for GlobalValuePool2 (0x%X).\n", minos::last_error());
+		panic("Failed to allocate memory for GlobalValuePool (0x%X).\n", minos::last_error());
 
-	GlobalValuePool2* const globals = alloc_handle_from_pool<GlobalValuePool2>(handles);
+	GlobalValuePool* const globals = alloc_handle_from_pool<GlobalValuePool>(handles);
 
 	u64 offset = 0;
 
@@ -89,12 +89,12 @@ GlobalValuePool2* create_global_value_pool2(HandlePool* handles) noexcept
 	return globals;
 }
 
-void release_global_value_pool2(GlobalValuePool2* globals) noexcept
+void release_global_value_pool(GlobalValuePool* globals) noexcept
 {
 	minos::mem_unreserve(globals->memory.begin(), globals->memory.count());
 }
 
-GlobalFileIndex file_values_reserve2(GlobalValuePool2* globals, TypeId file_type_id, u16 definition_count) noexcept
+GlobalFileIndex file_values_reserve(GlobalValuePool* globals, TypeId file_type_id, u16 definition_count) noexcept
 {
 	GlobalFile file;
 	file.first_value_id = static_cast<ForeverValueId>(globals->forever_values.used());
@@ -107,7 +107,7 @@ GlobalFileIndex file_values_reserve2(GlobalValuePool2* globals, TypeId file_type
 	return static_cast<GlobalFileIndex>(globals->files.used() - 1);
 }
 
-void file_value_set_initializer(GlobalValuePool2* globals, GlobalFileIndex file_index, u16 rank, OpcodeId initializer) noexcept
+void file_value_set_initializer(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, OpcodeId initializer) noexcept
 {
 	ASSERT_OR_IGNORE(file_index != GlobalFileIndex::INVALID);
 
@@ -128,7 +128,7 @@ void file_value_set_initializer(GlobalValuePool2* globals, GlobalFileIndex file_
 	value->initializer = initializer;
 }
 
-TypeId type_id_from_global_file_index(GlobalValuePool2* globals, GlobalFileIndex file_index) noexcept
+TypeId type_id_from_global_file_index(GlobalValuePool* globals, GlobalFileIndex file_index) noexcept
 {
 	ASSERT_OR_IGNORE(file_index != GlobalFileIndex::INVALID);
 
@@ -137,7 +137,7 @@ TypeId type_id_from_global_file_index(GlobalValuePool2* globals, GlobalFileIndex
 	return file.type_id;
 }
 
-bool file_value_get2(GlobalValuePool2* globals, GlobalFileIndex file_index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept
+bool file_value_get(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept
 {
 	ASSERT_OR_IGNORE(file_index != GlobalFileIndex::INVALID);
 
@@ -171,7 +171,7 @@ bool file_value_get2(GlobalValuePool2* globals, GlobalFileIndex file_index, u16 
 	}
 }
 
-ForeverValueId file_value_alloc_initialized2(GlobalValuePool2* globals, GlobalFileIndex file_index, u16 rank, bool is_mut, CTValue initializer) noexcept
+ForeverValueId file_value_alloc_initialized(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, bool is_mut, CTValue initializer) noexcept
 {
 	ASSERT_OR_IGNORE(file_index != GlobalFileIndex::INVALID && static_cast<u16>(file_index) < globals->files.used());
 
@@ -203,7 +203,7 @@ ForeverValueId file_value_alloc_initialized2(GlobalValuePool2* globals, GlobalFi
 	return value_id;
 }
 
-ForeverCTValue file_value_alloc_uninitialized2(GlobalValuePool2* globals, GlobalFileIndex file_index, u16 rank, bool is_mut, TypeId type, TypeMetrics metrics) noexcept
+ForeverCTValue file_value_alloc_uninitialized(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, bool is_mut, TypeId type, TypeMetrics metrics) noexcept
 {
 	ASSERT_OR_IGNORE(file_index != GlobalFileIndex::INVALID && static_cast<u16>(file_index) < globals->files.used());
 
@@ -237,7 +237,7 @@ ForeverCTValue file_value_alloc_uninitialized2(GlobalValuePool2* globals, Global
 	return ForeverCTValue{ ct_value, value_id };
 }
 
-ForeverValueId forever_value_alloc_initialized2(GlobalValuePool2* globals, bool is_mut, CTValue initializer) noexcept
+ForeverValueId forever_value_alloc_initialized(GlobalValuePool* globals, bool is_mut, CTValue initializer) noexcept
 {
 	const ForeverValueId value_id = static_cast<ForeverValueId>(globals->forever_values.used());
 
@@ -264,7 +264,7 @@ ForeverValueId forever_value_alloc_initialized2(GlobalValuePool2* globals, bool 
 	return value_id;
 }
 
-ForeverCTValue forever_value_alloc_uninitialized2(GlobalValuePool2* globals, bool is_mut, TypeId type, TypeMetrics metrics) noexcept
+ForeverCTValue forever_value_alloc_uninitialized(GlobalValuePool* globals, bool is_mut, TypeId type, TypeMetrics metrics) noexcept
 {
 	const ForeverValueId forever_value_id = static_cast<ForeverValueId>(globals->forever_values.used());
 
@@ -291,7 +291,7 @@ ForeverCTValue forever_value_alloc_uninitialized2(GlobalValuePool2* globals, boo
 	return ForeverCTValue{ ct_value, forever_value_id };
 }
 
-CTValue forever_value_get2(GlobalValuePool2* globals, ForeverValueId id) noexcept
+CTValue forever_value_get(GlobalValuePool* globals, ForeverValueId id) noexcept
 {
 	ASSERT_OR_IGNORE(id != ForeverValueId::INVALID && static_cast<u32>(id) < globals->forever_values.used());
 
