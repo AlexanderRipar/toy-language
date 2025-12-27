@@ -131,15 +131,19 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 			while (has_next(&it))
 			{
-				const MemberInfo member = next(&it);
+				MemberInfo member_info;
+				
+				OpcodeId member_initializer;
+				
+				const bool is_complete = next(&it, &member_info, &member_initializer);
 
-				const IdentifierId member_name = type_member_name_by_rank(types, composite_type_id, member.rank);
+				const IdentifierId member_name = type_member_name_by_rank(types, composite_type_id, member_info.rank);
 
 				diag::buf_printf(ctx, "%s%*s%s%s",
 					has_members ? "" : "\n",
 					(indent + 1) * 2, "",
-					member.is_pub ? "pub " : "",
-					member.is_mut ? "mut " : ""
+					member_info.is_pub ? "pub " : "",
+					member_info.is_mut ? "mut " : ""
 				);
 
 				if (member_name < IdentifierId::FirstNatural)
@@ -157,9 +161,16 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 					);
 				}
 
-				diag::buf_printf(ctx, "(%+" PRId64 ") :: ", member.offset);
+				if (is_complete)
+				{
+					diag::buf_printf(ctx, "(%+" PRId64 ") :: ", member_info.offset);
 
-				print_type_impl(ctx, identifiers, types, member.type_id, indent + 1, true);
+					print_type_impl(ctx, identifiers, types, member_info.type_id, indent + 1, true);
+				}
+				else
+				{
+					diag::buf_printf(ctx, ":: OpcodeId<%u>", static_cast<u32>(member_initializer));
+				}
 
 				has_members = true;
 			}

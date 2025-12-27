@@ -605,9 +605,14 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 
 		while (has_next(&it))
 		{
-			const MemberInfo src_member = next(&it);
+			MemberInfo src_member_info;
 
-			const IdentifierId src_name = type_member_name_by_rank(interp->types, src.type, src_member.rank);
+			OpcodeId unused_src_initializer;
+
+			if (!next(&it, &src_member_info, &unused_src_initializer))
+				TODO("Figure out what to do when converting incomplete types and if this can even reasonably happen");
+
+			const IdentifierId src_name = type_member_name_by_rank(interp->types, src.type, src_member_info.rank);
 
 			MemberInfo dst_member;
 
@@ -644,11 +649,11 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 
 			const TypeMetrics dst_metrics = type_metrics_from_id(interp->types, dst_member.type_id);
 
-			const TypeMetrics src_metrics = type_metrics_from_id(interp->types, src_member.type_id);
+			const TypeMetrics src_metrics = type_metrics_from_id(interp->types, src_member_info.type_id);
 
 			const CTValue dst_member_value{ dst.bytes.mut_subrange(dst_member.offset, dst_metrics.size), dst_metrics.align, true, dst_member.type_id };
 
-			const CTValue src_member_value{ src.bytes.mut_subrange(src_member.offset, src_metrics.size), src_metrics.align, false, src_member.type_id };
+			const CTValue src_member_value{ src.bytes.mut_subrange(src_member_info.offset, src_metrics.size), src_metrics.align, false, src_member_info.type_id };
 
 			if (convert_into(interp, code, src_member_value, dst_member_value) == nullptr)
 				return nullptr;
@@ -1066,7 +1071,12 @@ static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId typ
 
 		while (has_next(&it))
 		{
-			const MemberInfo member = next(&it);
+			MemberInfo member;
+			
+			OpcodeId unused_initializer;
+			
+			if (!next(&it, &member, &unused_initializer))
+				TODO("Figure out what to do when comparing incomplete types and if it can even reasonably happen");
 
 			const TypeMetrics metrics = type_metrics_from_id(interp->types, member.type_id);
 
@@ -3231,11 +3241,16 @@ static const Opcode* handle_composite_postinit(Interpreter* interp, const Opcode
 		if (!has_next(&it))
 			ASSERT_UNREACHABLE;
 
-		MemberInfo member = next(&it);
+		MemberInfo member_info;
+		
+		OpcodeId unused_initializer;
+		
+		if (!next(&it, &member_info, &unused_initializer))
+			TODO("Figure out what to do when post-initializing incomplete types and if it can even reasonably happen");
 
 		CTValue value = values[i];
 
-		range::mem_copy(initializer.bytes.mut_subrange(member.offset, value.bytes.count()), value.bytes.immut());
+		range::mem_copy(initializer.bytes.mut_subrange(member_info.offset, value.bytes.count()), value.bytes.immut());
 	}
 
 	return push_location_value(interp, code, write_ctx, initializer);
@@ -5406,11 +5421,11 @@ Maybe<TypeId> import_file(Interpreter* interp, Range<char8> path, bool is_std) n
 
 bool evaluate_file_definition_by_name(Interpreter* interp, TypeId file_type, IdentifierId name) noexcept
 {
-	MemberInfo member_info;
+	MemberInfo unused_member_info;
 
 	OpcodeId member_initializer;
 
-	const MemberByNameRst rst = type_member_info_by_name(interp->types, file_type, name, &member_info, &member_initializer);
+	const MemberByNameRst rst = type_member_info_by_name(interp->types, file_type, name, &unused_member_info, &member_initializer);
 
 	if (rst == MemberByNameRst::NotFound)
 		return false;

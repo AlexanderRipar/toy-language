@@ -2014,7 +2014,7 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 	return it;
 }
 
-MemberInfo next(MemberIterator* it) noexcept
+bool next(MemberIterator* it, MemberInfo* out_info, OpcodeId* out_completion_id) noexcept
 {
 	ASSERT_OR_IGNORE(has_next(it));
 
@@ -2049,14 +2049,7 @@ MemberInfo next(MemberIterator* it) noexcept
 	if (composite->member_used == it->rank)
 		it->structure = nullptr;
 
-	MemberInfo rst;
-
-	OpcodeId unused_initializer;
-
-	if (!fill_member_info(composite, curr_rank, curr_member, &rst, &unused_initializer))
-		ASSERT_UNREACHABLE;
-
-	return rst;
+	return fill_member_info(composite, curr_rank, curr_member, out_info, out_completion_id);
 }
 
 bool has_next(const MemberIterator* it) noexcept

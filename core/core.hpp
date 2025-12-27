@@ -2411,7 +2411,7 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept;
 // Retrieves the next element of `iterator`. This function may only be called
 // exactly once after `has_next` called on the same iterator has returned
 // `true`.
-MemberInfo next(MemberIterator* it) noexcept;
+bool next(MemberIterator* it, MemberInfo* out_info, OpcodeId* out_initializer_id) noexcept;
 
 // Checks whether `iterator` has an element to be returned by a future call to
 // `next`. This call is idempotent.
