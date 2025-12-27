@@ -2938,4 +2938,6 @@ CoreData create_core_data(Range<char8> config_filepath) noexcept;
 
 void release_core_data(CoreData* core) noexcept;
 
+bool run_compilation(CoreData* core, bool main_is_std) noexcept;
+
 #endif // CORE_INCLUDE_GUARD
