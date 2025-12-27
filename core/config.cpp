@@ -150,6 +150,7 @@ static constexpr ConfigHeader CONFIG_ROOTS[] = {
 	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_ENTRYPOINT }, "entrypoint", "Entrypoint configuration"),
 	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_STD }, "std", "Standard library configuration"),
 	ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_LOGGING }, "logging", "Debug log configuration"),
+	ConfigHeader::make_boolean(offsetof(Config, compile_all), "compile-all", "Whether to compile all top-level definitions. Defaults to `false`"),
 };
 
 static constexpr ConfigHeader CONFIG = ConfigHeader::make_container(Range<ConfigHeader>{ CONFIG_ROOTS }, "config", "");

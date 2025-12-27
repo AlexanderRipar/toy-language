@@ -187,6 +187,7 @@ struct Config
 		} diagnostics;
 	} logging;
 
+	bool compile_all = false;
 
 	void* m_heap_ptr;
 
