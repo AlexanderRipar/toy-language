@@ -2778,7 +2778,7 @@ void release_opcode_pool(OpcodePool* opcodes) noexcept;
 
 const Maybe<Opcode*> opcodes_from_file_member_ast(OpcodePool* opcodes, AstNode* node, GlobalFileIndex file_index, u16 rank) noexcept;
 
-const OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept;
+OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept;
 
 OpcodeId id_from_opcode(OpcodePool* opcodes, const Opcode* code);
 

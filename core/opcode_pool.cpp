@@ -1588,7 +1588,7 @@ const Maybe<Opcode*> opcodes_from_file_member_ast(OpcodePool* opcodes, AstNode* 
 	return some(first_opcode);
 }
 
-const OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept
+OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept
 {
 	const OpcodeId first_opcode_id = static_cast<OpcodeId>(opcodes->codes.used());
 
