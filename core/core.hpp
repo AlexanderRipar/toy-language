@@ -2486,43 +2486,6 @@ bool has_next(const MemberIterator* it) noexcept;
 
 
 
-struct ClosurePool;
-
-enum class ClosureBuilderId : u32
-{
-	INVALID = 0,
-};
-
-enum class ClosureId : u32
-{
-	INVALID = 0,
-};
-
-struct ClosureInstance
-{
-	TypeId type_id;
-
-	u32 align;
-
-	MutRange<byte> values;
-};
-
-ClosurePool* create_closure_pool(HandlePool* alloc, TypePool* types) noexcept;
-
-void release_closure_pool(ClosurePool* closures) noexcept;
-
-ClosureBuilderId closure_create(ClosurePool* closures) noexcept;
-
-ClosureBuilderId closure_add_value(ClosurePool* closures, ClosureBuilderId builder_id, IdentifierId name, TypeId value_type_id, Range<byte> value) noexcept;
-
-ClosureId closure_seal(ClosurePool* closures, ClosureBuilderId builder_id) noexcept;
-
-ClosureInstance closure_instance(ClosurePool* closures, ClosureId closure_id) noexcept;
-
-
-
-
-
 struct GlobalValuePool2;
 
 struct CTValue
@@ -3030,8 +2993,6 @@ struct CoreData
 	OpcodePool* opcodes;
 
 	PartialValuePool* partials;
-
-	ClosurePool* closures;
 
 	LexicalAnalyser* lex;
 

@@ -47,7 +47,6 @@ CoreData create_core_data(Range<char8> config_filepath) noexcept
 	core.parser = create_parser(core.alloc, core.identifiers, core.globals, core.types, core.asts, core.errors);
 	core.opcodes = create_opcode_pool(core.alloc, core.asts);
 	core.partials = create_partial_value_pool(core.alloc);
-	core.closures = create_closure_pool(core.alloc, core.types);
 	core.lex = create_lexical_analyser(core.alloc, core.identifiers, core.asts, core.errors);
 	core.interp = create_interpreter2(core.alloc, core.asts, core.types, core.globals, core.opcodes, core.reader, core.parser, core.identifiers, core.lex, core.errors, imported_asts_log_file, imported_opcodes_log_file, imported_types_log_file);
 
@@ -66,7 +65,6 @@ void release_core_data(CoreData* core) noexcept
 	release_parser(core->parser);
 	release_opcode_pool(core->opcodes);
 	release_partial_value_pool(core->partials);
-	release_closure_pool(core->closures);
 	release_lexical_analyser(core->lex);
 	release_interpreter2(core->interp);
 

@@ -24,7 +24,6 @@ set(CORE_SOURCES
 	core/core.cpp
 	core/handle_pool.cpp
 	core/ast_pool.cpp
-	core/closure_pool.cpp
 	core/partial_value_pool.cpp
 	core/comp_values.cpp
 	core/config.cpp
