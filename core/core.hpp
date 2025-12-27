@@ -1573,61 +1573,6 @@ const char8* tag_name(AstTag tag) noexcept;
 
 
 
-struct PartialValuePool;
-
-enum class PartialValueBuilderId : u32
-{
-	INVALID = 0,
-};
-
-enum class PartialValueId : u32
-{
-	INVALID = 0,
-};
-
-struct PartialValue
-{
-	AstNode* node;
-
-	TypeId type_id;
-
-	Range<byte> data;
-};
-
-struct PartialValueIterator
-{
-	const void* header;
-
-	const void* subheader;
-};
-
-PartialValuePool* create_partial_value_pool(HandlePool* alloc) noexcept;
-
-void release_partial_value_pool(PartialValuePool* partials) noexcept;
-
-PartialValueBuilderId create_partial_value_builder(PartialValuePool* partials, AstNode* root) noexcept;
-
-MutRange<byte> partial_value_builder_add_value(PartialValuePool* partials, PartialValueBuilderId id, AstNode* node, TypeId typeId, u64 size, u32 align) noexcept;
-
-PartialValueId complete_partial_value_builder(PartialValuePool* partials, PartialValueBuilderId id) noexcept;
-
-void discard_partial_value_builder(PartialValuePool* partials, PartialValueBuilderId id) noexcept;
-
-void merge_partial_value_builders(PartialValuePool* partials, PartialValueBuilderId dst_id, PartialValueBuilderId src_id) noexcept;
-
-
-AstNode* root_of(PartialValuePool* partials, PartialValueId id) noexcept;
-
-PartialValueIterator values_of(PartialValuePool* partials, PartialValueId id) noexcept;
-
-bool has_next(const PartialValueIterator* it) noexcept;
-
-PartialValue next(PartialValueIterator* it) noexcept;
-
-
-
-
-
 // Source file reader.
 // This handles reading and deduplication of source files, associating them
 // with ASTs, and mapping `SourceId`s to files and concrete `SourceLocations`.
@@ -2991,8 +2936,6 @@ struct CoreData
 	Parser* parser;
 
 	OpcodePool* opcodes;
-
-	PartialValuePool* partials;
 
 	LexicalAnalyser* lex;
 
