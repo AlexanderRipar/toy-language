@@ -47,7 +47,7 @@ CoreData create_core_data(Range<char8> config_filepath) noexcept
 	core.parser = create_parser(core.alloc, core.identifiers, core.globals, core.types, core.asts, core.errors);
 	core.opcodes = create_opcode_pool(core.alloc, core.asts);
 	core.lex = create_lexical_analyser(core.alloc, core.identifiers, core.asts, core.errors);
-	core.interp = create_interpreter2(core.alloc, core.asts, core.types, core.globals, core.opcodes, core.reader, core.parser, core.identifiers, core.lex, core.errors, imported_asts_log_file, imported_opcodes_log_file, imported_types_log_file);
+	core.interp = create_interpreter(core.alloc, core.asts, core.types, core.globals, core.opcodes, core.reader, core.parser, core.identifiers, core.lex, core.errors, imported_asts_log_file, imported_opcodes_log_file, imported_types_log_file);
 
 	return core;
 }
@@ -64,7 +64,7 @@ void release_core_data(CoreData* core) noexcept
 	release_parser(core->parser);
 	release_opcode_pool(core->opcodes);
 	release_lexical_analyser(core->lex);
-	release_interpreter2(core->interp);
+	release_interpreter(core->interp);
 
 	release_handle_pool(core->alloc);
 }

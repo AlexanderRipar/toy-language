@@ -129,7 +129,7 @@ struct BuiltinParamInfo
 	bool is_comptime_known;
 };
 
-struct Interpreter2
+struct Interpreter
 {
 	AstPool* asts;
 
@@ -188,11 +188,11 @@ struct Interpreter2
 	minos::FileHandle imported_types_log_file;
 };
 
-using OpcodeHandlerFunc = const Opcode* (*) (Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept;
+using OpcodeHandlerFunc = const Opcode* (*) (Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept;
 
 
 
-static void log_ast(Interpreter2* interp, AstNode* node) noexcept
+static void log_ast(Interpreter* interp, AstNode* node) noexcept
 {
 	const SourceId source_id = source_id_of_ast_node(interp->asts, node);
 
@@ -207,7 +207,7 @@ static void log_ast(Interpreter2* interp, AstNode* node) noexcept
 	diag::print_ast(interp->imported_asts_log_file, interp->identifiers, node);
 }
 
-static void log_opcodes(Interpreter2* interp, const Opcode* code) noexcept
+static void log_opcodes(Interpreter* interp, const Opcode* code) noexcept
 {
 	const SourceId source_id = source_id_of_opcode(interp->opcodes, code);
 
@@ -227,7 +227,7 @@ static void log_opcodes(Interpreter2* interp, const Opcode* code) noexcept
 
 
 
-static const Opcode* record_interpreter_error(Interpreter2* interp, const Opcode* code, CompileError error) noexcept
+static const Opcode* record_interpreter_error(Interpreter* interp, const Opcode* code, CompileError error) noexcept
 {
 	const SourceId source_id = source_id_of_opcode(interp->opcodes, code - 1);
 
@@ -240,9 +240,9 @@ static const Opcode* record_interpreter_error(Interpreter2* interp, const Opcode
 
 
 
-static const Opcode* convert_into(Interpreter2* interp, const Opcode* code, CTValue src, CTValue dst) noexcept;
+static const Opcode* convert_into(Interpreter* interp, const Opcode* code, CTValue src, CTValue dst) noexcept;
 
-static CTValue alloc_temporary_value_uninit(Interpreter2* interp, u64 size, u32 align, TypeId type) noexcept
+static CTValue alloc_temporary_value_uninit(Interpreter* interp, u64 size, u32 align, TypeId type) noexcept
 {
 	if (size >= UINT32_MAX)
 		panic("Maximum size of temporary value exceeded.\n");
@@ -254,7 +254,7 @@ static CTValue alloc_temporary_value_uninit(Interpreter2* interp, u64 size, u32 
 	return CTValue{ MutRange<byte>{ bytes, size }, align, true, type };
 }
 
-static CTValue alloc_temporary_value(Interpreter2* interp, CTValue value) noexcept
+static CTValue alloc_temporary_value(Interpreter* interp, CTValue value) noexcept
 {
 	CTValue temporary_value = alloc_temporary_value_uninit(interp, value.bytes.count(), value.align, value.type);
 
@@ -263,7 +263,7 @@ static CTValue alloc_temporary_value(Interpreter2* interp, CTValue value) noexce
 	return temporary_value;
 }
 
-static const Opcode* push_location_value(Interpreter2* interp, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
+static const Opcode* push_location_value(Interpreter* interp, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
 {
 	if (write_ctx != nullptr)
 	{
@@ -277,7 +277,7 @@ static const Opcode* push_location_value(Interpreter2* interp, const Opcode* cod
 	}
 }
 
-static const Opcode* push_temporary_value(Interpreter2* interp, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
+static const Opcode* push_temporary_value(Interpreter* interp, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
 {
 	if (write_ctx != nullptr)
 	{
@@ -293,7 +293,7 @@ static const Opcode* push_temporary_value(Interpreter2* interp, const Opcode* co
 	}
 }
 
-static const Opcode* poppush_location_value(Interpreter2* interp, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
+static const Opcode* poppush_location_value(Interpreter* interp, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -313,7 +313,7 @@ static const Opcode* poppush_location_value(Interpreter2* interp, const Opcode* 
 	}
 }
 
-static const Opcode* poppush_temporary_value(Interpreter2* interp, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
+static const Opcode* poppush_temporary_value(Interpreter* interp, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -344,7 +344,7 @@ struct SeenSet
 	u16 count;
 };
 
-static SeenSet seen_set_init(Interpreter2* interp, u16 count, u16 leading_1_count) noexcept
+static SeenSet seen_set_init(Interpreter* interp, u16 count, u16 leading_1_count) noexcept
 {
 	ASSERT_OR_IGNORE(leading_1_count <= count);
 
@@ -474,12 +474,12 @@ static bool seen_set_next_unseen(SeenSet seen, u16 begin, u16* out_index) noexce
 
 
 
-static void push_activation(Interpreter2* interp, OpcodeId id) noexcept
+static void push_activation(Interpreter* interp, OpcodeId id) noexcept
 {
 	interp->activations.append(id);
 }
 
-static void push_activation(Interpreter2* interp, const Opcode* code) noexcept
+static void push_activation(Interpreter* interp, const Opcode* code) noexcept
 {
 	const OpcodeId id = id_from_opcode(interp->opcodes, code);
 
@@ -498,7 +498,7 @@ static T* value_as(CTValue* value) noexcept
 
 
 
-static ClosureId2 create_closure(Interpreter2* interp, u32 value_count) noexcept
+static ClosureId2 create_closure(Interpreter* interp, u32 value_count) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= value_count);
 
@@ -526,7 +526,7 @@ static ClosureId2 create_closure(Interpreter2* interp, u32 value_count) noexcept
 	return static_cast<ClosureId2>(closure_members - interp->closure_members.begin());
 }
 
-static const Opcode* convert_into_assume_convertible(Interpreter2* interp, const Opcode* code, CTValue src, CTValue dst) noexcept
+static const Opcode* convert_into_assume_convertible(Interpreter* interp, const Opcode* code, CTValue src, CTValue dst) noexcept
 {
 	const TypeTag src_type_tag = type_tag_from_id(interp->types, src.type);
 
@@ -760,7 +760,7 @@ static const Opcode* convert_into_assume_convertible(Interpreter2* interp, const
 	ASSERT_UNREACHABLE;
 }
 
-static const Opcode* convert_into(Interpreter2* interp, const Opcode* code, CTValue src, CTValue dst) noexcept
+static const Opcode* convert_into(Interpreter* interp, const Opcode* code, CTValue src, CTValue dst) noexcept
 {
 	const TypeRelation relation = type_relation_from_to(interp->types, src.type, dst.type);
 
@@ -784,7 +784,7 @@ static const Opcode* convert_into(Interpreter2* interp, const Opcode* code, CTVa
 	}
 }
 
-static const Opcode* convert_alloc_temporary(Interpreter2* interp, const Opcode* code, CTValue src, CTValue dst, CTValue* out) noexcept
+static const Opcode* convert_alloc_temporary(Interpreter* interp, const Opcode* code, CTValue src, CTValue dst, CTValue* out) noexcept
 {
 	const TypeRelation relation = type_relation_from_to(interp->types, src.type, dst.type);
 
@@ -808,7 +808,7 @@ static const Opcode* convert_alloc_temporary(Interpreter2* interp, const Opcode*
 	}
 }
 
-static Maybe<TypeId> unify(Interpreter2* interp, const Opcode* code, CTValue* lhs, CTValue* rhs) noexcept
+static Maybe<TypeId> unify(Interpreter* interp, const Opcode* code, CTValue* lhs, CTValue* rhs) noexcept
 {
 	const Maybe<TypeId> unified_type = type_unify(interp->types, lhs->type, rhs->type);
 
@@ -830,7 +830,7 @@ static Maybe<TypeId> unify(Interpreter2* interp, const Opcode* code, CTValue* lh
 	return some(type);
 }
 
-static CompareResult compare(Interpreter2* interp, const Opcode* code, TypeId type, Range<byte> lhs, Range<byte> rhs) noexcept
+static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId type, Range<byte> lhs, Range<byte> rhs) noexcept
 {
 	const TypeTag type_tag = type_tag_from_id(interp->types, type);
 
@@ -1104,7 +1104,7 @@ static CompareResult compare(Interpreter2* interp, const Opcode* code, TypeId ty
 	ASSERT_UNREACHABLE;
 }
 
-static const Opcode* scope_alloc_typed_member(Interpreter2* interp, const Opcode* code, bool is_mut, TypeId type) noexcept
+static const Opcode* scope_alloc_typed_member(Interpreter* interp, const Opcode* code, bool is_mut, TypeId type) noexcept
 {
 	ScopeMember* const member = interp->scope_members.reserve();
 
@@ -1134,7 +1134,7 @@ static const Opcode* scope_alloc_typed_member(Interpreter2* interp, const Opcode
 
 
 
-static bool u64_from_value(Interpreter2* interp, const Opcode* code, CTValue value, u64* out) noexcept
+static bool u64_from_value(Interpreter* interp, const Opcode* code, CTValue value, u64* out) noexcept
 {
 	const TypeTag type_tag = type_tag_from_id(interp->types, value.type);
 
@@ -1206,7 +1206,7 @@ static const Opcode* code_attach(const Opcode* code, T* out) noexcept
 	return code + sizeof(T);
 }
 
-static CTValue get_builtin_param_raw(Interpreter2* interp, u8 rank) noexcept
+static CTValue get_builtin_param_raw(Interpreter* interp, u8 rank) noexcept
 {
 	ASSERT_OR_IGNORE(interp->scopes.used() >= 1);
 
@@ -1222,7 +1222,7 @@ static CTValue get_builtin_param_raw(Interpreter2* interp, u8 rank) noexcept
 }
 
 template<typename T>
-static T get_builtin_param(Interpreter2* interp, u8 rank) noexcept
+static T get_builtin_param(Interpreter* interp, u8 rank) noexcept
 {
 	CTValue value = get_builtin_param_raw(interp, rank);
 
@@ -1233,7 +1233,7 @@ static T get_builtin_param(Interpreter2* interp, u8 rank) noexcept
 
 
 
-static const Opcode* builtin_integer(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_integer(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	const u8 bits = get_builtin_param<u8>(interp, 0);
 
@@ -1248,7 +1248,7 @@ static const Opcode* builtin_integer(Interpreter2* interp, const Opcode* code, C
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_float(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_float(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	const u8 bits = get_builtin_param<u8>(interp, 0);
 
@@ -1261,7 +1261,7 @@ static const Opcode* builtin_float(Interpreter2* interp, const Opcode* code, CTV
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_type(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_type(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
 
@@ -1270,7 +1270,7 @@ static const Opcode* builtin_type(Interpreter2* interp, const Opcode* code, CTVa
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_definition(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_definition(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
 
@@ -1281,7 +1281,7 @@ static const Opcode* builtin_definition(Interpreter2* interp, const Opcode* code
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_typeinfo(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_typeinfo(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
 
@@ -1292,7 +1292,7 @@ static const Opcode* builtin_typeinfo(Interpreter2* interp, const Opcode* code, 
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_typeof(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_typeof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	CTValue arg = get_builtin_param_raw(interp, 0);
 
@@ -1303,7 +1303,7 @@ static const Opcode* builtin_typeof(Interpreter2* interp, const Opcode* code, CT
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_returntypeof(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_returntypeof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	const TypeId type = get_builtin_param<TypeId>(interp, 0);
 
@@ -1326,7 +1326,7 @@ static const Opcode* builtin_returntypeof(Interpreter2* interp, const Opcode* co
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_sizeof(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_sizeof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	CTValue arg = get_builtin_param_raw(interp, 0);
 
@@ -1363,7 +1363,7 @@ static const Opcode* builtin_sizeof(Interpreter2* interp, const Opcode* code, CT
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
 }
 
-static const Opcode* builtin_alignof(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_alignof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	CTValue arg = get_builtin_param_raw(interp, 0);
 
@@ -1400,7 +1400,7 @@ static const Opcode* builtin_alignof(Interpreter2* interp, const Opcode* code, C
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
 }
 
-static const Opcode* builtin_strideof(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_strideof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	CTValue arg = get_builtin_param_raw(interp, 0);
 
@@ -1437,7 +1437,7 @@ static const Opcode* builtin_strideof(Interpreter2* interp, const Opcode* code, 
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
 }
 
-static const Opcode* builtin_offsetof(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_offsetof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	(void) interp;
 
@@ -1448,7 +1448,7 @@ static const Opcode* builtin_offsetof(Interpreter2* interp, const Opcode* code, 
 	TODO("Implement");
 }
 
-static const Opcode* builtin_nameof(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_nameof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	(void) interp;
 
@@ -1459,7 +1459,7 @@ static const Opcode* builtin_nameof(Interpreter2* interp, const Opcode* code, CT
 	TODO("Implement");
 }
 
-static const Opcode* builtin_import(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_import(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	const Range<char8> path = get_builtin_param<Range<char8>>(interp, 0);
 
@@ -1508,7 +1508,7 @@ static const Opcode* builtin_import(Interpreter2* interp, const Opcode* code, CT
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_create_type_builder(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_create_type_builder(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	const SourceId source_id = get_builtin_param<SourceId>(interp, 0);
 
@@ -1521,7 +1521,7 @@ static const Opcode* builtin_create_type_builder(Interpreter2* interp, const Opc
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_builder_type });
 }
 
-static const Opcode* builtin_add_type_member(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_add_type_member(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	(void) interp;
 
@@ -1532,7 +1532,7 @@ static const Opcode* builtin_add_type_member(Interpreter2* interp, const Opcode*
 	TODO("Implement");
 }
 
-static const Opcode* builtin_complete_type(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_complete_type(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	const TypeId builder = get_builtin_param<TypeId>(interp, 0);
 
@@ -1560,7 +1560,7 @@ static const Opcode* builtin_complete_type(Interpreter2* interp, const Opcode* c
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_source_id(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_source_id(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	const TypeId source_id_type = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ 32, false });
 
@@ -1571,7 +1571,7 @@ static const Opcode* builtin_source_id(Interpreter2* interp, const Opcode* code,
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(SourceId), true, source_id_type });
 }
 
-static const Opcode* builtin_caller_source_id(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_caller_source_id(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	(void) interp;
 
@@ -1582,7 +1582,7 @@ static const Opcode* builtin_caller_source_id(Interpreter2* interp, const Opcode
 	TODO("Implement");
 }
 
-static const Opcode* builtin_definition_typeof(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_definition_typeof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	(void) interp;
 
@@ -1595,7 +1595,7 @@ static const Opcode* builtin_definition_typeof(Interpreter2* interp, const Opcod
 
 
 
-static const Opcode* handle_end_code([[maybe_unused]] Interpreter2* interp, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_end_code([[maybe_unused]] Interpreter* interp, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -1604,7 +1604,7 @@ static const Opcode* handle_end_code([[maybe_unused]] Interpreter2* interp, [[ma
 	return nullptr;
 }
 
-static const Opcode* handle_set_write_ctx(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_set_write_ctx(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -1622,7 +1622,7 @@ static const Opcode* handle_set_write_ctx(Interpreter2* interp, const Opcode* co
 	return code;
 }
 
-static const Opcode* handle_scope_begin(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_scope_begin(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -1637,7 +1637,7 @@ static const Opcode* handle_scope_begin(Interpreter2* interp, const Opcode* code
 	return code;
 }
 
-static const Opcode* handle_scope_end(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_scope_end(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->scopes.used() >= 1);
 
@@ -1661,7 +1661,7 @@ static const Opcode* handle_scope_end(Interpreter2* interp, const Opcode* code, 
 	return code;
 }
 
-static const Opcode* handle_scope_alloc_typed(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_scope_alloc_typed(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->scopes.used() >= 1);
 
@@ -1687,7 +1687,7 @@ static const Opcode* handle_scope_alloc_typed(Interpreter2* interp, const Opcode
 	return scope_alloc_typed_member(interp, code, is_mut, type);
 }
 
-static const Opcode* handle_scope_alloc_untyped(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_scope_alloc_untyped(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->scopes.used() >= 1);
 
@@ -1720,7 +1720,7 @@ static const Opcode* handle_scope_alloc_untyped(Interpreter2* interp, const Opco
 	return code;
 }
 
-static const Opcode* handle_file_global_alloc_typed(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_global_alloc_typed(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -1764,7 +1764,7 @@ static const Opcode* handle_file_global_alloc_typed(Interpreter2* interp, const 
 	return code;
 }
 
-static const Opcode* handle_file_global_alloc_untyped(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_global_alloc_untyped(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -1795,7 +1795,7 @@ static const Opcode* handle_file_global_alloc_untyped(Interpreter2* interp, cons
 	return code;
 }
 
-static const Opcode* handle_pop_closure(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_pop_closure(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->active_closures.used() >= 1);
 
@@ -1806,7 +1806,7 @@ static const Opcode* handle_pop_closure(Interpreter2* interp, const Opcode* code
 	return code;
 }
 
-static const Opcode* handle_load_scope(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_scope(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->scopes.used() >= 1);
 
@@ -1831,7 +1831,7 @@ static const Opcode* handle_load_scope(Interpreter2* interp, const Opcode* code,
 	return push_location_value(interp, code, write_ctx, loaded_value);
 }
 
-static const Opcode* handle_load_global(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_global(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	const Opcode* const code_activation = code;
 
@@ -1859,7 +1859,7 @@ static const Opcode* handle_load_global(Interpreter2* interp, const Opcode* code
 	}
 }
 
-static const Opcode* handle_load_member(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_member(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -1953,7 +1953,7 @@ static const Opcode* handle_load_member(Interpreter2* interp, const Opcode* code
 	}
 }
 
-static const Opcode* handle_load_closure(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_closure(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->active_closures.used() != 0);
 
@@ -1970,7 +1970,7 @@ static const Opcode* handle_load_closure(Interpreter2* interp, const Opcode* cod
 	return push_location_value(interp, code, write_ctx, closure_value);
 }
 
-static const Opcode* handle_load_builtin(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_builtin(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	u8 ordinal;
 
@@ -1993,7 +1993,7 @@ static const Opcode* handle_load_builtin(Interpreter2* interp, const Opcode* cod
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(Callable), true, info.signature_type });
 }
 
-static const Opcode* handle_exec_builtin(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_exec_builtin(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	static constexpr OpcodeHandlerFunc HANDLERS[] = {
 		nullptr,
@@ -2047,7 +2047,7 @@ static const Opcode* handle_exec_builtin(Interpreter2* interp, const Opcode* cod
 	return HANDLERS[ordinal](interp, code, write_ctx);
 }
 
-static const Opcode* handle_signature(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_signature(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	OpcodeSignatureFlags signature_flags;
 
@@ -2170,7 +2170,7 @@ static const Opcode* handle_signature(Interpreter2* interp, const Opcode* code, 
 	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_dyn_signature(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	OpcodeSignatureFlags signature_flags;
 
@@ -2320,7 +2320,7 @@ static const Opcode* handle_dyn_signature(Interpreter2* interp, const Opcode* co
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_bind_body(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_bind_body(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	OpcodeId body_id;
 
@@ -2345,7 +2345,7 @@ static const Opcode* handle_bind_body(Interpreter2* interp, const Opcode* code, 
 	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(Callable), true, signature_type });
 }
 
-static const Opcode* handle_bind_body_with_closure(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_bind_body_with_closure(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	OpcodeId body_id;
 
@@ -2376,7 +2376,7 @@ static const Opcode* handle_bind_body_with_closure(Interpreter2* interp, const O
 	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(Callable), true, signature_type });
 }
 
-static const Opcode* handle_args(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_args(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -2494,7 +2494,7 @@ static const Opcode* handle_args(Interpreter2* interp, const Opcode* code, [[may
 	return code;
 }
 
-static const Opcode* handle_call(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_call(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -2623,7 +2623,7 @@ static const Opcode* handle_call(Interpreter2* interp, const Opcode* code, CTVal
 	}
 }
 
-static const Opcode* handle_return(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_return(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->call_stack.used() >= 1);
 
@@ -2687,7 +2687,7 @@ static const Opcode* handle_return(Interpreter2* interp, const Opcode* code, [[m
 	return code;
 }
 
-static const Opcode* handle_complete_param_typed_no_default(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_complete_param_typed_no_default(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -2721,7 +2721,7 @@ static const Opcode* handle_complete_param_typed_no_default(Interpreter2* interp
 	return code;
 }
 
-static const Opcode* handle_complete_param_typed_with_default(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_complete_param_typed_with_default(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 2);
 
@@ -2766,7 +2766,7 @@ static const Opcode* handle_complete_param_typed_with_default(Interpreter2* inte
 	return code;
 }
 
-static const Opcode* handle_complete_param_untyped(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_complete_param_untyped(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -2793,7 +2793,7 @@ static const Opcode* handle_complete_param_untyped(Interpreter2* interp, const O
 	return code;
 }
 
-static const Opcode* handle_array_preinit(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx != nullptr);
 
@@ -2885,7 +2885,7 @@ static const Opcode* handle_array_preinit(Interpreter2* interp, const Opcode* co
 	return code;
 }
 
-static const Opcode* handle_array_postinit(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	u16 total_element_count;
 
@@ -3023,7 +3023,7 @@ static const Opcode* handle_array_postinit(Interpreter2* interp, const Opcode* c
 	return push_location_value(interp, code, write_ctx, rst);
 }
 
-static const Opcode* handle_composite_preinit(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx != nullptr);
 
@@ -3187,7 +3187,7 @@ static const Opcode* handle_composite_preinit(Interpreter2* interp, const Opcode
 	return code;
 }
 
-static const Opcode* handle_composite_postinit(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_composite_postinit(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	u16 member_count;
 
@@ -3241,7 +3241,7 @@ static const Opcode* handle_composite_postinit(Interpreter2* interp, const Opcod
 	return push_location_value(interp, code, write_ctx, initializer);
 }
 
-static const Opcode* handle_if(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_if(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -3278,7 +3278,7 @@ static const Opcode* handle_if(Interpreter2* interp, const Opcode* code, [[maybe
 	}
 }
 
-static const Opcode* handle_if_else(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_if_else(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -3312,7 +3312,7 @@ static const Opcode* handle_if_else(Interpreter2* interp, const Opcode* code, [[
 	return next;
 }
 
-static const Opcode* handle_loop(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_loop(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -3349,7 +3349,7 @@ static const Opcode* handle_loop(Interpreter2* interp, const Opcode* code, [[may
 	}
 }
 
-static const Opcode* handle_loop_finally(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_loop_finally(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -3392,7 +3392,7 @@ static const Opcode* handle_loop_finally(Interpreter2* interp, const Opcode* cod
 	}
 }
 
-static const Opcode* handle_switch(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_switch(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	(void) interp;
 
@@ -3403,7 +3403,7 @@ static const Opcode* handle_switch(Interpreter2* interp, const Opcode* code, CTV
 	TODO("Implement");
 }
 
-static const Opcode* handle_address_of(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_address_of(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -3426,7 +3426,7 @@ static const Opcode* handle_address_of(Interpreter2* interp, const Opcode* code,
 	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(byte*), true, result_type });
 }
 
-static const Opcode* handle_dereference(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_dereference(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -3453,7 +3453,7 @@ static const Opcode* handle_dereference(Interpreter2* interp, const Opcode* code
 	return poppush_location_value(interp, code, write_ctx, CTValue{ bytes, metrics.align, ptr_type.is_mut, ptr_type.referenced_type_id });
 }
 
-static const Opcode* handle_slice(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	OpcodeSliceKind kind;
 
@@ -3623,7 +3623,7 @@ static const Opcode* handle_slice(Interpreter2* interp, const Opcode* code, CTVa
 	}
 }
 
-static const Opcode* handle_index(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_index(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 2);
 
@@ -3700,7 +3700,7 @@ static const Opcode* handle_index(Interpreter2* interp, const Opcode* code, CTVa
 	}
 }
 
-static const Opcode* handle_binary_arithmetic_op(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 2);
 
@@ -3990,7 +3990,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter2* interp, const Opc
 	}
 }
 
-static const Opcode* handle_shift(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_shift(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 2);
 
@@ -4066,7 +4066,7 @@ static const Opcode* handle_shift(Interpreter2* interp, const Opcode* code, CTVa
 	}
 }
 
-static const Opcode* handle_binary_bitwise_op(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_binary_bitwise_op(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 2);
 
@@ -4190,7 +4190,7 @@ static const Opcode* handle_binary_bitwise_op(Interpreter2* interp, const Opcode
 	}
 }
 
-static const Opcode* handle_bit_not(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_bit_not(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -4260,7 +4260,7 @@ static const Opcode* handle_bit_not(Interpreter2* interp, const Opcode* code, CT
 	}
 }
 
-static const Opcode* handle_logical_and(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_logical_and(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 2);
 
@@ -4292,7 +4292,7 @@ static const Opcode* handle_logical_and(Interpreter2* interp, const Opcode* code
 	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, lhs->align, true, lhs_type });
 }
 
-static const Opcode* handle_logical_or(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_logical_or(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 2);
 
@@ -4326,7 +4326,7 @@ static const Opcode* handle_logical_or(Interpreter2* interp, const Opcode* code,
 	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, lhs->align, true, lhs_type });
 }
 
-static const Opcode* handle_logical_not(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_logical_not(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -4346,7 +4346,7 @@ static const Opcode* handle_logical_not(Interpreter2* interp, const Opcode* code
 	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(bool), true, type });
 }
 
-static const Opcode* handle_compare(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_compare(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 2);
 
@@ -4410,7 +4410,7 @@ static const Opcode* handle_compare(Interpreter2* interp, const Opcode* code, CT
 	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(bool), true, bool_type });
 }
 
-static const Opcode* handle_negate(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_negate(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -4514,7 +4514,7 @@ static const Opcode* handle_negate(Interpreter2* interp, const Opcode* code, CTV
 	}
 }
 
-static const Opcode* handle_unary_plus(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_unary_plus(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -4530,7 +4530,7 @@ static const Opcode* handle_unary_plus(Interpreter2* interp, const Opcode* code,
 	return poppush_temporary_value(interp, code, write_ctx, *top);
 }
 
-static const Opcode* handle_array_type(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_array_type(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 2);
 
@@ -4554,7 +4554,7 @@ static const Opcode* handle_array_type(Interpreter2* interp, const Opcode* code,
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_reference_type(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_reference_type(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 2);
 
@@ -4581,7 +4581,7 @@ static const Opcode* handle_reference_type(Interpreter2* interp, const Opcode* c
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_undefined(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_undefined(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	if (write_ctx == nullptr)
 	{
@@ -4598,7 +4598,7 @@ static const Opcode* handle_undefined(Interpreter2* interp, const Opcode* code, 
 	}
 }
 
-static const Opcode* handle_unreachable([[maybe_unused]] Interpreter2* interp, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_unreachable([[maybe_unused]] Interpreter* interp, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	(void) record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Output or something idk.
 
@@ -4607,7 +4607,7 @@ static const Opcode* handle_unreachable([[maybe_unused]] Interpreter2* interp, [
 	exit(2);
 }
 
-static const Opcode* handle_value_integer(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_value_integer(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	CompIntegerValue value;
 
@@ -4620,7 +4620,7 @@ static const Opcode* handle_value_integer(Interpreter2* interp, const Opcode* co
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
 }
 
-static const Opcode* handle_value_float(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_value_float(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	CompFloatValue value;
 
@@ -4633,7 +4633,7 @@ static const Opcode* handle_value_float(Interpreter2* interp, const Opcode* code
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompFloatValue), true, comp_float_type });
 }
 
-static const Opcode* handle_value_string(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_value_string(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ForeverValueId value_id;
 
@@ -4644,7 +4644,7 @@ static const Opcode* handle_value_string(Interpreter2* interp, const Opcode* cod
 	return push_temporary_value(interp, code, write_ctx, value);
 }
 
-static const Opcode* handle_value_void(Interpreter2* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_value_void(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	const TypeId void_type = type_create_simple(interp->types, TypeTag::Void);
 
@@ -4653,7 +4653,7 @@ static const Opcode* handle_value_void(Interpreter2* interp, const Opcode* code,
 	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, 1, true, void_type });
 }
 
-static const Opcode* handle_discard_void(Interpreter2* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_discard_void(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -4673,7 +4673,7 @@ static const Opcode* handle_discard_void(Interpreter2* interp, const Opcode* cod
 
 
 
-static bool type_from_ast(Interpreter2* interp, AstNode* ast, TypeId file_type, GlobalFileIndex file_index) noexcept
+static bool type_from_ast(Interpreter* interp, AstNode* ast, TypeId file_type, GlobalFileIndex file_index) noexcept
 {
 	AstDirectChildIterator it = direct_children_of(ast);
 
@@ -4720,7 +4720,7 @@ static bool type_from_ast(Interpreter2* interp, AstNode* ast, TypeId file_type, 
 	return is_ok;
 }
 
-static Maybe<TypeId> import_file_or_prelude(Interpreter2* interp, Range<char8> path, bool is_prelude, bool is_std, SourceFile** out_file) noexcept
+static Maybe<TypeId> import_file_or_prelude(Interpreter* interp, Range<char8> path, bool is_prelude, bool is_std, SourceFile** out_file) noexcept
 {
 	SourceFileRead read = read_source_file(interp->reader, path);
 
@@ -4791,7 +4791,7 @@ static Maybe<TypeId> import_file_or_prelude(Interpreter2* interp, Range<char8> p
 	return some(type);
 }
 
-static bool interpret_opcodes(Interpreter2* interp, const Opcode* ops) noexcept
+static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 {
 	static constexpr OpcodeHandlerFunc HANDLERS[] = {
 		nullptr,                                   // INVALID
@@ -5014,7 +5014,7 @@ static TypeId make_func_type(TypePool* types, TypeId return_type, Params... para
 	}
 }
 
-static void init_builtin_infos(Interpreter2* interp) noexcept
+static void init_builtin_infos(Interpreter* interp) noexcept
 {
 	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
 
@@ -5255,7 +5255,7 @@ static void init_builtin_infos(Interpreter2* interp) noexcept
 
 
 
-Interpreter2* create_interpreter2(HandlePool* handles, AstPool* asts, TypePool* types, GlobalValuePool* globals, OpcodePool* opcodes, SourceReader* reader, Parser* parser, IdentifierPool* identifiers, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle imported_asts_log_file, minos::FileHandle imported_opcodes_log_file, minos::FileHandle imported_types_log_file) noexcept
+Interpreter* create_interpreter(HandlePool* handles, AstPool* asts, TypePool* types, GlobalValuePool* globals, OpcodePool* opcodes, SourceReader* reader, Parser* parser, IdentifierPool* identifiers, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle imported_asts_log_file, minos::FileHandle imported_opcodes_log_file, minos::FileHandle imported_types_log_file) noexcept
 {
 	static constexpr u32 SCOPES_RESERVE_SIZE = sizeof(Scope) << 18;
 	static constexpr u32 SCOPES_COMMIT_INCREMENT_COUNT = 2048;
@@ -5313,9 +5313,9 @@ Interpreter2* create_interpreter2(HandlePool* handles, AstPool* asts, TypePool* 
 	byte* const memory = static_cast<byte*>(minos::mem_reserve(TOTAL_RESERVE_SIZE));
 
 	if (memory == nullptr)
-		panic("Failed to allocate memory for Interpreter2 (0x%X).\n", minos::last_error());
+		panic("Failed to allocate memory for Interpreter (0x%X).\n", minos::last_error());
 
-	Interpreter2* const interp = alloc_handle_from_pool<Interpreter2>(handles);
+	Interpreter* const interp = alloc_handle_from_pool<Interpreter>(handles);
 
 	interp->asts = asts;
 	interp->types = types;
@@ -5383,12 +5383,12 @@ Interpreter2* create_interpreter2(HandlePool* handles, AstPool* asts, TypePool* 
 	return interp;
 }
 
-void release_interpreter2(Interpreter2* interp) noexcept
+void release_interpreter(Interpreter* interp) noexcept
 {
 	minos::mem_unreserve(interp->memory.begin(), interp->memory.count());
 }
 
-bool import_prelude(Interpreter2* interp, Range<char8> path) noexcept
+bool import_prelude(Interpreter* interp, Range<char8> path) noexcept
 {
 	SourceFile* prelude_file;
 
@@ -5397,14 +5397,14 @@ bool import_prelude(Interpreter2* interp, Range<char8> path) noexcept
 	return is_some(maybe_prelude);
 }
 
-Maybe<TypeId> import_file(Interpreter2* interp, Range<char8> path, bool is_std) noexcept
+Maybe<TypeId> import_file(Interpreter* interp, Range<char8> path, bool is_std) noexcept
 {
 	SourceFile* unused_file;
 
 	return import_file_or_prelude(interp, path, false, is_std, &unused_file);
 }
 
-bool evaluate_file_definition_by_name(Interpreter2* interp, TypeId file_type, IdentifierId name) noexcept
+bool evaluate_file_definition_by_name(Interpreter* interp, TypeId file_type, IdentifierId name) noexcept
 {
 	MemberInfo member_info;
 

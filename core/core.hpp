@@ -2791,7 +2791,7 @@ const char8* tag_name(Opcode op) noexcept;
 
 
 
-struct Interpreter2;
+struct Interpreter;
 
 enum class ClosureId2 : u32
 {
@@ -2895,15 +2895,15 @@ enum class Builtin : u8
 	MAX,
 };
 
-Interpreter2* create_interpreter2(HandlePool* handles, AstPool* asts, TypePool* types, GlobalValuePool* globals, OpcodePool* opcodes, SourceReader* reader, Parser* parser, IdentifierPool* identifiers, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle asts_log_file, minos::FileHandle imported_opcodes_log_file, minos::FileHandle types_log_file) noexcept;
+Interpreter* create_interpreter(HandlePool* handles, AstPool* asts, TypePool* types, GlobalValuePool* globals, OpcodePool* opcodes, SourceReader* reader, Parser* parser, IdentifierPool* identifiers, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle asts_log_file, minos::FileHandle imported_opcodes_log_file, minos::FileHandle types_log_file) noexcept;
 
-void release_interpreter2(Interpreter2* interp) noexcept;
+void release_interpreter(Interpreter* interp) noexcept;
 
-bool import_prelude(Interpreter2* interp, Range<char8> path) noexcept;
+bool import_prelude(Interpreter* interp, Range<char8> path) noexcept;
 
-Maybe<TypeId> import_file(Interpreter2* interp, Range<char8> path, bool is_std) noexcept;
+Maybe<TypeId> import_file(Interpreter* interp, Range<char8> path, bool is_std) noexcept;
 
-bool evaluate_file_definition_by_name(Interpreter2* interp, TypeId file_type, IdentifierId name) noexcept;
+bool evaluate_file_definition_by_name(Interpreter* interp, TypeId file_type, IdentifierId name) noexcept;
 
 const char8* tag_name(Builtin builtin) noexcept;
 
@@ -2934,7 +2934,7 @@ struct CoreData
 
 	LexicalAnalyser* lex;
 
-	Interpreter2* interp;
+	Interpreter* interp;
 };
 
 CoreData create_core_data(Range<char8> config_filepath) noexcept;
