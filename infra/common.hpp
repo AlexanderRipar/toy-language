@@ -9,7 +9,7 @@
 	#define COMPILER_CLANG 1
 	#define COMPILER_NAME "clang"
 	#define NORETURN [[noreturn]]
-	#define DEBUGBREAK __builtin_debugtrap()
+	#define DEBUGBREAK do { if (perform_debugbreak_helper()) __builtin_debugtrap(); } while (false)
 	#if !__has_builtin(__builtin_debugtrap)
 		#error("Required __builtin_debugtrap not supported by used clang version")
 	#endif
@@ -18,13 +18,13 @@
 	#define COMPILER_GCC 1
 	#define COMPILER_NAME "gcc"
 	#define NORETURN __attribute__ ((noreturn))
-	#define DEBUGBREAK raise(SIGTRAP)
+	#define DEBUGBREAK do { if (perform_debugbreak_helper()) raise(SIGTRAP); } while (false)
 #elif defined(_MSC_VER) && !defined(__INTEL_COMPILER)
 	#include <intrin.h>
 	#define COMPILER_MSVC 1
 	#define COMPILER_NAME "msvc"
 	#define NORETURN __declspec(noreturn)
-	#define DEBUGBREAK __debugbreak()
+	#define DEBUGBREAK do { if (perform_debugbreak_helper()) __debugbreak(); } while (false)
 #else
 	#error("Unsupported compiler")
 #endif
@@ -66,6 +66,8 @@ using f64 = double;
 
 	#define ASSERT_UNREACHABLE assert_unreachable_helper(__FILE__, __LINE__)
 #endif
+
+bool perform_debugbreak_helper() noexcept;
 
 template<typename T, bool assume_one>
 static constexpr u8 ctz_shim_(T n) noexcept

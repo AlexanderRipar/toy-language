@@ -25,6 +25,11 @@ NORETURN void assert_or_ignore_helper(const char8* file, u32 line, const char8* 
 }
 #endif // !NDEBUG
 
+bool perform_debugbreak_helper() noexcept
+{
+	return minos::has_debugger_attached();
+}
+
 NORETURN void panic(const char8* format, ...) noexcept
 {
 	va_list args;
