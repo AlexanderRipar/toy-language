@@ -1,12 +1,9 @@
 #ifndef CORE_INCLUDE_GUARD
 #define CORE_INCLUDE_GUARD
 
-#include <csetjmp>
-
 #include "../infra/common.hpp"
 #include "../infra/opt.hpp"
 #include "../infra/minos/minos.hpp"
-
 
 
 

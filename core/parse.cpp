@@ -2,6 +2,7 @@
 
 #include <cstdarg>
 #include <cstdlib>
+#include <csetjmp>
 #include <errno.h>
 
 #include "../diag/diag.hpp"
