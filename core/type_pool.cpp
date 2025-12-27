@@ -23,6 +23,7 @@ static TypeStructure* make_structure(TypePool* types, TypeTag tag, Range<byte> a
 static TypeId id_from_structure(const TypePool* types, const TypeStructure* structure) noexcept;
 
 
+
 enum class TypeEq : u8
 {
 	Equal,
@@ -62,14 +63,14 @@ struct TypeIdAndFlags
 };
 
 // Used for Composite Literal types.
-struct alignas(8) InitializerMemberData2
+struct alignas(8) InitializerMemberData
 {
 	TypeIdAndFlags type_and_flags;
 
 	u32 offset;
 };
 
-struct alignas(8) FileMemberData2
+struct alignas(8) FileMemberData
 {
 	TypeIdAndFlags type_and_flags;
 
@@ -81,7 +82,7 @@ struct alignas(8) FileMemberData2
 	};
 };
 
-struct alignas(8) ParameterListOrUserMemberData2
+struct alignas(8) ParameterListOrUserMemberData
 {
 	TypeIdAndFlags type_and_flags;
 
@@ -129,9 +130,9 @@ struct CompositeType
 	// IdentifierId[header->member_count];
 
 	// Depending on header->disposition:
-	// ::Initializer           -> InitializerMemberData2[header->member_count];
+	// ::Initializer           -> InitializerMemberData[header->member_count];
 	// ::File                  -> FileMemberData[header->member_count];
-	// ::ParameterList, ::User -> ParameterListOrUserMemberData2[header->member_count];
+	// ::ParameterList, ::User -> ParameterListOrUserMemberData[header->member_count];
 };
 
 struct alignas(8) TypeStructure
@@ -235,14 +236,13 @@ struct TypePool
 
 
 
-
 static u8 members_stride_for(TypeDisposition disposition) noexcept
 {
 	static constexpr u8 MEMBER_STRIDES[] = {
-		sizeof(InitializerMemberData2),
-		sizeof(FileMemberData2),
-		sizeof(ParameterListOrUserMemberData2),
-		sizeof(ParameterListOrUserMemberData2),
+		sizeof(InitializerMemberData),
+		sizeof(FileMemberData),
+		sizeof(ParameterListOrUserMemberData),
+		sizeof(ParameterListOrUserMemberData),
 	};
 
 	ASSERT_OR_IGNORE(disposition == TypeDisposition::Initializer || disposition == TypeDisposition::File || disposition == TypeDisposition::ParameterList || disposition == TypeDisposition::User);
@@ -371,7 +371,7 @@ static bool fill_member_info(const CompositeType* composite, u16 rank, const voi
 	{
 	case TypeDisposition::Initializer:
 	{
-		const InitializerMemberData2* const member = static_cast<const InitializerMemberData2*>(data);
+		const InitializerMemberData* const member = static_cast<const InitializerMemberData*>(data);
 
 		ASSERT_OR_IGNORE(
 			!member->type_and_flags.is_pending
@@ -394,7 +394,7 @@ static bool fill_member_info(const CompositeType* composite, u16 rank, const voi
 
 	case TypeDisposition::File:
 	{
-		const FileMemberData2* const member = static_cast<const FileMemberData2*>(data);
+		const FileMemberData* const member = static_cast<const FileMemberData*>(data);
 
 		if (member->type_and_flags.is_pending)
 		{
@@ -420,7 +420,7 @@ static bool fill_member_info(const CompositeType* composite, u16 rank, const voi
 	case TypeDisposition::ParameterList:
 	case TypeDisposition::User:
 	{
-		const ParameterListOrUserMemberData2* const member = static_cast<const ParameterListOrUserMemberData2*>(data);
+		const ParameterListOrUserMemberData* const member = static_cast<const ParameterListOrUserMemberData*>(data);
 
 		if (member->type_and_flags.is_pending)
 		{
@@ -673,15 +673,15 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 		// member in `to` of a type they can be converted to.
 		for (u32 i = 0; i != from_attach->member_used; ++i)
 		{
-			InitializerMemberData2* const from_member = static_cast<InitializerMemberData2*>(member_at(&from_members, i));
+			InitializerMemberData* const from_member = static_cast<InitializerMemberData*>(member_at(&from_members, i));
 
 			const IdentifierId from_name = from_members.names[i];
 
-			const ParameterListOrUserMemberData2* to_member;
+			const ParameterListOrUserMemberData* to_member;
 
 			if (from_name == IdentifierId::INVALID)
 			{
-				to_member = static_cast<const ParameterListOrUserMemberData2*>(member_at(&to_members, to_rank));
+				to_member = static_cast<const ParameterListOrUserMemberData*>(member_at(&to_members, to_rank));
 			}
 			else
 			{
@@ -698,7 +698,7 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 
 				to_rank = found_rank;
 
-				to_member = static_cast<const ParameterListOrUserMemberData2*>(raw_to_member);
+				to_member = static_cast<const ParameterListOrUserMemberData*>(raw_to_member);
 			}
 
 			if (to_member->type_and_flags.is_pending)
@@ -727,7 +727,7 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 			if ((seen_member_bits[i >> 6] & (static_cast<u64>(1) << (i & 63))) != 0)
 				continue;
 
-			const ParameterListOrUserMemberData2* const to_member = static_cast<const ParameterListOrUserMemberData2*>(member_at(&to_members, i));
+			const ParameterListOrUserMemberData* const to_member = static_cast<const ParameterListOrUserMemberData*>(member_at(&to_members, i));
 
 			if (is_none(to_member->default_id))
 			{
@@ -967,9 +967,9 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 
 			if (a_attach->disposition == TypeDisposition::Initializer)
 			{
-				const InitializerMemberData2* const a_typed_member = static_cast<const InitializerMemberData2*>(a_member);
+				const InitializerMemberData* const a_typed_member = static_cast<const InitializerMemberData*>(a_member);
 
-				const InitializerMemberData2* const b_typed_member = static_cast<const InitializerMemberData2*>(b_member);
+				const InitializerMemberData* const b_typed_member = static_cast<const InitializerMemberData*>(b_member);
 
 				if (a_typed_member->offset != b_typed_member->offset)
 				{
@@ -980,9 +980,9 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 			}
 			else if (a_attach->disposition == TypeDisposition::File)
 			{
-				FileMemberData2* const a_typed_member = static_cast<FileMemberData2*>(a_member);
+				FileMemberData* const a_typed_member = static_cast<FileMemberData*>(a_member);
 
-				FileMemberData2* const b_typed_member = static_cast<FileMemberData2*>(b_member);
+				FileMemberData* const b_typed_member = static_cast<FileMemberData*>(b_member);
 
 				if (a_typed_member->value_id != b_typed_member->value_id)
 				{
@@ -995,9 +995,9 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 			{
 				ASSERT_OR_IGNORE(a_attach->disposition == TypeDisposition::ParameterList || a_attach->disposition == TypeDisposition::User);
 
-				const ParameterListOrUserMemberData2* const a_typed_member = static_cast<const ParameterListOrUserMemberData2*>(a_member);
+				const ParameterListOrUserMemberData* const a_typed_member = static_cast<const ParameterListOrUserMemberData*>(a_member);
 
-				const ParameterListOrUserMemberData2* const b_typed_member = static_cast<const ParameterListOrUserMemberData2*>(b_member);
+				const ParameterListOrUserMemberData* const b_typed_member = static_cast<const ParameterListOrUserMemberData*>(b_member);
 
 				if (a_typed_member->offset != b_typed_member->offset
 				 || a_typed_member->default_id != b_typed_member->default_id
@@ -1426,7 +1426,7 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInit init)
 		              && is_none(init.default_id)
 		);
 
-		InitializerMemberData2* const member = static_cast<InitializerMemberData2*>(member_data);
+		InitializerMemberData* const member = static_cast<InitializerMemberData*>(member_data);
 		member->type_and_flags.type_id_bits = static_cast<u32>(init.type_id);
 		member->type_and_flags.is_pending = false;
 		member->type_and_flags.is_pub = false;
@@ -1441,7 +1441,7 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInit init)
 			(composite->disposition == TypeDisposition::User && !init.is_pub && !init.is_eval)
 		);
 
-		ParameterListOrUserMemberData2* const member = static_cast<ParameterListOrUserMemberData2*>(member_data);
+		ParameterListOrUserMemberData* const member = static_cast<ParameterListOrUserMemberData*>(member_data);
 		member->type_and_flags.type_id_bits = static_cast<u32>(init.type_id);
 		member->type_and_flags.is_pending = false;
 		member->type_and_flags.is_pub = false;
@@ -1479,7 +1479,7 @@ void type_add_file_member(TypePool* types, TypeId type_id, IdentifierId name, Op
 
 	members.names[composite->member_used] = name;
 
-	FileMemberData2* const member = static_cast<FileMemberData2*>(member_at(&members, composite->member_used));
+	FileMemberData* const member = static_cast<FileMemberData*>(member_at(&members, composite->member_used));
 	member->type_and_flags.type_id_bits = static_cast<u32>(TypeId::INVALID);
 	member->type_and_flags.is_pending = true;
 	member->type_and_flags.is_pub = is_pub;
@@ -1513,7 +1513,7 @@ void type_add_templated_parameter_list_member(TypePool* types, TypeId type_id, I
 
 	members.names[composite->member_used] = name;
 
-	ParameterListOrUserMemberData2* const member = static_cast<ParameterListOrUserMemberData2*>(member_at(&members, composite->member_used));
+	ParameterListOrUserMemberData* const member = static_cast<ParameterListOrUserMemberData*>(member_at(&members, composite->member_used));
 	member->type_and_flags.type_id_bits = static_cast<u32>(TypeId::INVALID);
 	member->type_and_flags.is_pending = true;
 	member->type_and_flags.is_pub = false;
@@ -1543,7 +1543,7 @@ void type_set_file_member_info(TypePool* types, TypeId type_id, u16 rank, TypeId
 
 	const CompositeMembers members = composite_members(composite);
 
-	FileMemberData2* const member = static_cast<FileMemberData2*>(member_at(&members, rank));
+	FileMemberData* const member = static_cast<FileMemberData*>(member_at(&members, rank));
 
 	ASSERT_OR_IGNORE(member->type_and_flags.is_pending);
 
@@ -1574,7 +1574,7 @@ void type_set_templated_parameter_list_member_info(TypePool* types, TypeId type_
 
 	const u64 member_offset = (composite->size + metrics.align - 1) & ~static_cast<u64>(metrics.align - 1);
 
-	ParameterListOrUserMemberData2* const member = static_cast<ParameterListOrUserMemberData2*>(member_at(&members, rank));
+	ParameterListOrUserMemberData* const member = static_cast<ParameterListOrUserMemberData*>(member_at(&members, rank));
 
 	ASSERT_OR_IGNORE(member->type_and_flags.is_pending);
 
