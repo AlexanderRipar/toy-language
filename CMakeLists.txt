@@ -29,7 +29,7 @@ set(CORE_SOURCES
 	core/error_sink.cpp
 	core/global_value_pool2.cpp
 	core/identifier_pool.cpp
-	core/interpreter2.cpp
+	core/interpreter.cpp
 	core/lexical_analyser.cpp
 	core/opcode_pool.cpp
 	core/parse.cpp
