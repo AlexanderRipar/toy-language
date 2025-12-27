@@ -396,11 +396,17 @@ static bool fill_member_info(const CompositeType* composite, u16 rank, const voi
 	{
 		const FileMemberData* const member = static_cast<const FileMemberData*>(data);
 
+		ASSERT_OR_IGNORE(!member->type_and_flags.is_eval);
+
 		if (member->type_and_flags.is_pending)
 		{
 			*out_completion_id = member->completion_id;
 
 			out_info->rank = rank;
+			out_info->is_pub = member->type_and_flags.is_pub;
+			out_info->is_mut = member->type_and_flags.is_mut;
+			out_info->is_eval = member->type_and_flags.is_eval;
+			out_info->is_global = true;
 
 			return false;
 		}
@@ -427,6 +433,10 @@ static bool fill_member_info(const CompositeType* composite, u16 rank, const voi
 			*out_completion_id = member->parameter_completion_id;
 
 			out_info->rank = rank;
+			out_info->is_pub = member->type_and_flags.is_pub;
+			out_info->is_mut = member->type_and_flags.is_mut;
+			out_info->is_eval = member->type_and_flags.is_eval;
+			out_info->is_global = false;
 
 			return false;
 		}
