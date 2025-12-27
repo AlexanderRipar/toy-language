@@ -36,57 +36,57 @@ enum class OpcodeId : u32;
 
 enum class GlobalFileIndex : u16;
 
-	union alignas(4) NameBinding
+union alignas(4) NameBinding
+{
+	u32 unused_ = 0;
+
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids anonymous strcuts
+	#endif
+	struct
 	{
-		u32 unused_ = 0;
+		u16 is_global : 1;
 
-		#if COMPILER_GCC
-			#pragma GCC diagnostic push
-			#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids anonymous strcuts
-		#endif
-		struct
-		{
-			u16 is_global : 1;
-
-			u16 is_scoped : 1;
-		};
-		#if COMPILER_GCC
-			#pragma GCC diagnostic pop
-		#endif
-
-		struct
-		{
-			u16 is_global_ : 1;
-
-			u16 is_scoped_ : 1;
-
-			u16 unused_ : 6;
-
-			u16 out : 8;
-
-			u16 rank;
-		} scoped;
-
-		struct
-		{
-			u16 is_global_ : 1;
-
-			u16 file_index_bits : 15;
-
-			u16 rank;
-		} global;
-
-		struct
-		{
-			u16 is_global_ : 1;
-
-			u16 is_scoped_ : 1;
-
-			u16 unused_ : 14;
-			
-			u16 rank_in_closure;
-		} closed;
+		u16 is_scoped : 1;
 	};
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
+
+	struct
+	{
+		u16 is_global_ : 1;
+
+		u16 is_scoped_ : 1;
+
+		u16 unused_ : 6;
+
+		u16 out : 8;
+
+		u16 rank;
+	} scoped;
+
+	struct
+	{
+		u16 is_global_ : 1;
+
+		u16 file_index_bits : 15;
+
+		u16 rank;
+	} global;
+
+	struct
+	{
+		u16 is_global_ : 1;
+
+		u16 is_scoped_ : 1;
+
+		u16 unused_ : 14;
+		
+		u16 rank_in_closure;
+	} closed;
+};
 
 
 
