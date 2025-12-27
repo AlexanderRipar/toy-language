@@ -15,8 +15,6 @@
 // information.
 enum class TypeId : u32;
 
-enum class ValueKind : bool;
-
 enum class ArecId : s32;
 
 // Id used to identify a particular source code location.
