@@ -14,8 +14,6 @@
 // These are necessary because the modules defining them would otherwise appear
 // after those using them.
 
-struct GlobalValuePool2;
-
 // Id used to refer to a type in the `TypePool`. See `TypePool` for further
 // information.
 enum class TypeId : u32;
