@@ -1,2 +1,3 @@
-entrypoint.filepath = 'unused'
-std.filepath = '../../sample/std/std.evl'
+compile-all = true
+
+std.prelude.filepath = '../../sample/std/prelude.evl'
