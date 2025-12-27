@@ -1107,7 +1107,7 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 		u64 u64_value;
 
 		if (u64_from_comp_integer(value, 64, &u64_value))
-			diag::buf_printf(ctx, "CompIntegerValue<%s%" PRIu64 ">", is_negative ? "-" : "", u64_value);
+			diag::buf_printf(ctx, " CompIntegerValue<%s%" PRIu64 ">", is_negative ? "-" : "", u64_value);
 		else
 			diag::buf_printf(ctx, " CompIntegerValue<%sBIG>", is_negative ? "-" : "");
 
