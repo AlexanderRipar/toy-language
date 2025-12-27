@@ -6,14 +6,15 @@ static void run_integration_test(Range<char8> filepath, bool is_std, bool expect
 {
 	TEST_BEGIN_NAMED(filepath);
 
-	CoreData core = create_core_data(expect_failure
+	const Range<char8> config_filepath = expect_failure
 		? range::from_literal_string("integration-test-sources/config-failure.toml")
-		: range::from_literal_string("integration-test-sources/config-success.toml")
-	);
+		: range::from_literal_string("integration-test-sources/config-success.toml");
 
-	const Maybe<TypeId> import_result = import_file(core.interp, filepath, is_std);
+	CoreData core = create_core_data(config_filepath);
 
-	TEST_EQUAL(expect_failure, is_none(import_result));
+	core.config->entrypoint.filepath = filepath;
+
+	TEST_EQUAL(!run_compilation(&core, is_std), expect_failure);
 
 	release_core_data(&core);
 
