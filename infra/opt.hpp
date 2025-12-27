@@ -24,6 +24,8 @@ struct Maybe
 {
 	T t;
 
+	Maybe() noexcept = default;
+
 	bool is_none_() const noexcept
 	{
 		if constexpr (is_ptr_type<T>)
@@ -64,6 +66,10 @@ struct Maybe
 	{
 		return t != rhs.t;
 	}
+
+private:
+
+	Maybe(T t) noexcept : t{ t } {}
 };
 
 template<typename T>
