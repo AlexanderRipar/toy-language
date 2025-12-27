@@ -26,8 +26,6 @@ enum class ForeverValueId : u32;
 
 enum class ClosureId : u32;
 
-enum class Opcode : u8;
-
 enum class OpcodeId : u32;
 
 enum class GlobalFileIndex : u16;
