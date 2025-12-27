@@ -1976,7 +1976,7 @@ static const Opcode* handle_load_builtin(Interpreter2* interp, const Opcode* cod
 
 	code = code_attach(code, &ordinal);
 
-	ASSERT_OR_IGNORE(ordinal != 0 && ordinal - 1 < array_count(interp->builtin_infos));
+	ASSERT_OR_IGNORE(ordinal != 0 && static_cast<u64>(ordinal - 1) < array_count(interp->builtin_infos));
 
 	const BuiltinInfo info = interp->builtin_infos[ordinal - 1];
 
