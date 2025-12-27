@@ -1164,7 +1164,7 @@ struct alignas(8) AstFuncData
 
 	Maybe<ClosureListId> closure_list_id;
 
-	u32 unused_;
+	u32 unused_ = 0;
 };
 
 // Neatly structured summary of the child structure of an `AstNode` with tag
