@@ -2161,4 +2161,51 @@ u64 minos::exact_timestamp_ticks_per_second() noexcept
 	return static_cast<u64>(1'000'000'000);
 }
 
+bool minos::has_debugger_attached() noexcept
+{
+	// This is really just a quick-and-dirty check. For instance, we only check
+	// the first few bytes of /proc/self/status.
+	//  We also assume that there is no debugger if we could not open the
+	// status file (which I believe could e.g. happen when running in
+	// `chroot`ed environment), although I am not sure how to do better in that
+	// case.
+
+	const int status_fd = open("/proc/self/status", O_RDONLY);
+
+	// If we cannot open our own status file, assume there is no debugger.
+	if (status_fd == -1)
+		return false;
+
+	char8 buffer[8193];
+
+	const ssize_t read_size = read(status_fd, buffer, sizeof(buffer) - 1);
+
+	if (close(status_fd) < 0)
+		panic("Failed to close fd for /proc/self/status (0x%X - %s)\n", last_error(), strerror(last_error()));
+
+	// If we cannot read our own status file, assume there is no debugger.
+	if (read_size < 0)
+		return false;
+
+	buffer[read_size] = '\0';
+
+	static constexpr const char8 PID_HEADER[] = "TracerPid:";
+
+	const char8* const pid_base = strstr(buffer, PID_HEADER);
+
+	// If the status file does not contain info on a tracer,
+	// assume there is no debugger.
+	if (pid_base == nullptr)
+		return false;
+
+	const char8* pid = pid_base + sizeof(PID_HEADER);
+
+	while (*pid == ' ')
+		pid += 1;
+
+	// If the tracer's pid is nonzero, then we definitely have a debugger
+	// attached. Otherwise, we assume that there is no debugger attached.
+	return *pid >= '1' && *pid <= '9';
+}
+
 #endif

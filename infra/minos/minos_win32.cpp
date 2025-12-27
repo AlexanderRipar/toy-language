@@ -1455,4 +1455,9 @@ u64 minos::exact_timestamp_ticks_per_second() noexcept
 	return result.QuadPart;
 }
 
+bool minos::has_debugger_attached() noexcept
+{
+	return static_cast<bool>(IsDebuggerPresent());
+}
+
 #endif // defined(_WIN32)

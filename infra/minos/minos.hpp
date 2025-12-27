@@ -497,6 +497,8 @@ namespace minos
 	[[nodiscard]] u64 exact_timestamp() noexcept;
 
 	[[nodiscard]] u64 exact_timestamp_ticks_per_second() noexcept;
+
+	[[nodiscard]] bool has_debugger_attached() noexcept;
 }
 
 #endif // MINSO_HPP_INCLUDE_GUARD
