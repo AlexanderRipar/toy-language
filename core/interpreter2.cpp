@@ -5427,16 +5427,24 @@ bool evaluate_file_definition_by_name(Interpreter* interp, TypeId file_type, Ide
 
 	const MemberByNameRst rst = type_member_info_by_name(interp->types, file_type, name, &unused_member_info, &member_initializer);
 
-	if (rst == MemberByNameRst::NotFound)
-		return false;
-	else if (rst == MemberByNameRst::Ok)
+	if (rst == MemberByNameRst::Ok)
+	{
 		return true;
+	}
+	else if (rst == MemberByNameRst::NotFound)
+	{
+		record_error(interp->errors, SourceId::INVALID, CompileError::ArithmeticOverflow); // TODO: Error code.
 
-	ASSERT_OR_IGNORE(rst == MemberByNameRst::Incomplete);
+		return false;
+	}
+	else
+	{
+		ASSERT_OR_IGNORE(rst == MemberByNameRst::Incomplete);
 
-	const Opcode* const initializer_code = opcode_from_id(interp->opcodes, member_initializer);
+		const Opcode* const initializer_code = opcode_from_id(interp->opcodes, member_initializer);
 
-	return interpret_opcodes(interp, initializer_code);
+		return interpret_opcodes(interp, initializer_code);
+	}
 }
 
 bool evaluate_all_file_definitions(Interpreter* interp, TypeId file_type) noexcept
