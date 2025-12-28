@@ -1316,9 +1316,7 @@ static const Opcode* builtin_typeof(Interpreter* interp, const Opcode* code, CTV
 
 	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
 
-	const MutRange<byte> bytes = range::from_object_bytes_mut(&arg.type);
-
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(interp, code, write_ctx, CTValue{ arg.bytes, alignof(TypeId), true, type_type });
 }
 
 static const Opcode* builtin_returntypeof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
