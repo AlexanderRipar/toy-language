@@ -393,6 +393,8 @@ static bool opcodes_from_signature(OpcodePool* opcodes, AstNode* node, bool expe
 	}
 	else
 	{
+		TODO("This is currently broken as we don't deal with signature-level closed-over values at all. They are actually expected in their own u16 field in the attachment.");
+
 		const u32 attach_size = sizeof(OpcodeSignatureFlags)
 		                      + 2 * sizeof(u8)
 		                      + parameter_count * (sizeof(IdentifierId) + sizeof(OpcodeSignaturePerParameterFlags))
