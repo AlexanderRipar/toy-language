@@ -81,7 +81,8 @@ bool run_compilation(CoreData* core, bool main_is_std) noexcept
 
 	if (core->config->compile_all)
 	{
-		evaluate_all_file_definitions(core->interp, get(main_file_type_id));
+		if (!evaluate_all_file_definitions(core->interp, get(main_file_type_id)))
+			return false;
 	}
 	else
 	{
