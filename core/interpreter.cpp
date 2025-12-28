@@ -3045,16 +3045,8 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 
 	code = code_attach(code, &names_count);
 
-	if (type_tag == TypeTag::CompositeLiteral)
-	{
-		interp->write_ctxs.append(*write_ctx);
-
-		return code + 2 * sizeof(u16) + names_count * (sizeof(IdentifierId) + sizeof(u16));
-	}
-	else if (type_tag != TypeTag::Composite)
-	{
+	if (type_tag != TypeTag::CompositeLiteral && type_tag != TypeTag::Composite)
 		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
-	}
 
 	const u32 member_count = type_get_composite_member_count(interp->types, dst_type);
 
