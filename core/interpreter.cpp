@@ -4948,7 +4948,6 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 			write_ctx = nullptr;
 		}
 
-
 		const u8 ordinal = bits & 0x7F;
 
 		ASSERT_OR_IGNORE(ordinal != 0 && ordinal < array_count(HANDLERS));
@@ -4971,8 +4970,6 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 			ops = opcode_from_id(interp->opcodes, interp->activations.end()[-1]);
 
 			interp->activations.pop_by(1);
-
-			return interp->is_ok;
 		}
 	}
 }
