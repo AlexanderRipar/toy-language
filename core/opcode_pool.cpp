@@ -28,13 +28,13 @@ struct Fixup
 
 struct OpcodePool
 {
+	AstPool* asts;
+
 	ReservedVec<Opcode> codes;
 
 	ReservedVec<SourceMapping> sources;
 
 	ReservedVec<Fixup> fixups;
-
-	AstPool* asts;
 
 	MutRange<byte> memory;
 };
