@@ -685,7 +685,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 	case AstTag::Block:
 	{
-		u16* const definition_count_dst = reinterpret_cast<u16*>(emit_opcode_raw(opcodes, Opcode::ScopeBegin, false, node, sizeof(u16)));
+		byte* const attach = emit_opcode_raw(opcodes, Opcode::ScopeBegin, false, node, sizeof(u16));
 
 		u16 definition_count = 0;
 
@@ -726,7 +726,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		if (requires_dummy_void)
 			emit_opcode(opcodes, Opcode::ValueVoid, expects_write_ctx, node);
 
-		*definition_count_dst = definition_count;
+		memcpy(attach, &definition_count, sizeof(u16));
 
 		emit_opcode(opcodes, Opcode::ScopeEnd, false, node);
 
