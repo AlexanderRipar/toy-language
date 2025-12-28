@@ -35,6 +35,8 @@ s32 main(s32 argc, const char8** argv)
 		{
 			print_errors(core.errors);
 
+			fprintf(stderr, "\nFailure\n");
+
 			release_core_data(&core);
 
 			return EXIT_FAILURE;
