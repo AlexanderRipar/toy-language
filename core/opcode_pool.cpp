@@ -72,7 +72,7 @@ static void put_opcode_attachs(byte* dst, Attach attach, Attachs... attachs) noe
 }
 
 template<typename ...Attachs>
-static void emit_opcode_with(OpcodePool* opcodes, Opcode code, bool expects_write_ctx, AstNode* node, Attachs... attachs) noexcept
+static void emit_opcode(OpcodePool* opcodes, Opcode code, bool expects_write_ctx, AstNode* node, Attachs... attachs) noexcept
 {
 	constexpr u32 attach_size = (0 + ... + sizeof(Attachs));
 
@@ -144,9 +144,9 @@ static u16 emit_func_closure_values(OpcodePool* opcodes, AstNode* node) noexcept
 		const ClosureListEntry entry = list->entries[i];
 
 		if (entry.source_is_closure)
-			emit_opcode_with(opcodes, Opcode::LoadClosure, false, node, entry.source_rank);
+			emit_opcode(opcodes, Opcode::LoadClosure, false, node, entry.source_rank);
 		else
-			emit_opcode_with(opcodes, Opcode::LoadScope, false, node, entry.source_out, entry.source_rank);
+			emit_opcode(opcodes, Opcode::LoadScope, false, node, entry.source_out, entry.source_rank);
 	}
 
 	return list->count;
@@ -196,14 +196,14 @@ static bool opcodes_from_scope_definition(OpcodePool* opcodes, AstNode* node) no
 		if (!opcodes_from_expression(opcodes, get(info.type), false))
 			return false;
 
-		emit_opcode_with(opcodes, Opcode::ScopeAllocTyped, false, node, is_mut);
+		emit_opcode(opcodes, Opcode::ScopeAllocTyped, false, node, is_mut);
 	}
 
 	if (!opcodes_from_expression(opcodes, get(info.value), has_type))
 		return false;
 
 	if (!has_type)
-		emit_opcode_with(opcodes, Opcode::ScopeAllocUntyped, false, node, is_mut);
+		emit_opcode(opcodes, Opcode::ScopeAllocUntyped, false, node, is_mut);
 
 	return true;
 }
@@ -466,7 +466,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 	{
 	case AstTag::Builtin:
 	{
-		emit_opcode_with(opcodes, Opcode::LoadBuiltin, expects_write_ctx, node, static_cast<Builtin>(node->flags));
+		emit_opcode(opcodes, Opcode::LoadBuiltin, expects_write_ctx, node, static_cast<Builtin>(node->flags));
 
 		return true;
 	}
@@ -641,7 +641,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 			// TODO: Allow for element indices in initializers in the AST.
 			const u16 index_count = 0;
 
-			emit_opcode_with(opcodes, Opcode::ArrayPreInit, true, node, index_count, element_count);
+			emit_opcode(opcodes, Opcode::ArrayPreInit, true, node, index_count, element_count);
 
 			it = direct_children_of(node);
 
@@ -675,7 +675,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 			// TODO: Allow for element indices in initializers in the AST.
 			const u16 index_count = 0;
 
-			emit_opcode_with(opcodes, Opcode::ArrayPostInit, false, node, total_element_count, index_count, element_count);
+			emit_opcode(opcodes, Opcode::ArrayPostInit, false, node, total_element_count, index_count, element_count);
 		}
 
 		return true;
@@ -717,16 +717,16 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 				if (is_last)
 					requires_dummy_void = false;
 				else
-					emit_opcode_with(opcodes, Opcode::DiscardVoid, false, child);
+					emit_opcode(opcodes, Opcode::DiscardVoid, false, child);
 			}
 		}
 
 		if (requires_dummy_void)
-			emit_opcode_with(opcodes, Opcode::ValueVoid, expects_write_ctx, node);
+			emit_opcode(opcodes, Opcode::ValueVoid, expects_write_ctx, node);
 
 		*definition_count_dst = definition_count;
 
-		emit_opcode_with(opcodes, Opcode::ScopeEnd, false, node);
+		emit_opcode(opcodes, Opcode::ScopeEnd, false, node);
 
 		return true;
 	}
@@ -737,7 +737,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		if (is_some(info.where))
 		{
-			emit_opcode_with(opcodes, Opcode::ScopeBegin, false, get(info.where));
+			emit_opcode(opcodes, Opcode::ScopeBegin, false, get(info.where));
 
 			if (!opcodes_from_where(opcodes, get(info.where)))
 				return false;
@@ -760,18 +760,18 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 			emit_fixup(opcodes, alternative_dst, alternative_node, expects_write_ctx);
 
-			emit_opcode_with(opcodes, Opcode::IfElse, false, node, OpcodeId::INVALID, OpcodeId::INVALID);
+			emit_opcode(opcodes, Opcode::IfElse, false, node, OpcodeId::INVALID, OpcodeId::INVALID);
 		}
 		else
 		{
 			if (expects_write_ctx)
 				return false; // TODO: Error message
 
-			emit_opcode_with(opcodes, Opcode::If, false, node, OpcodeId::INVALID);
+			emit_opcode(opcodes, Opcode::If, false, node, OpcodeId::INVALID);
 		}
 
 		if (is_some(info.where))
-			emit_opcode_with(opcodes, Opcode::ScopeEnd, false, get(info.where));
+			emit_opcode(opcodes, Opcode::ScopeEnd, false, get(info.where));
 
 		return true;
 	}
@@ -784,7 +784,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		if (is_some(info.where))
 		{
-			emit_opcode_with(opcodes, Opcode::ScopeBegin, false, get(info.where));
+			emit_opcode(opcodes, Opcode::ScopeBegin, false, get(info.where));
 
 			opcodes_from_where(opcodes, get(info.where));
 		}
@@ -812,15 +812,15 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 			const AstNodeId finally_node = id_from_ast_node(opcodes->asts, get(info.finally));
 			emit_fixup(opcodes, finally_dst, finally_node, expects_write_ctx);
 
-			emit_opcode_with(opcodes, Opcode::LoopFinally, false, node, condition_id, OpcodeId::INVALID, OpcodeId::INVALID);
+			emit_opcode(opcodes, Opcode::LoopFinally, false, node, condition_id, OpcodeId::INVALID, OpcodeId::INVALID);
 		}
 		else
 		{
-			emit_opcode_with(opcodes, Opcode::Loop, false, node, condition_id, OpcodeId::INVALID);
+			emit_opcode(opcodes, Opcode::Loop, false, node, condition_id, OpcodeId::INVALID);
 		}
 
 		if (is_some(info.where))
-			emit_opcode_with(opcodes, Opcode::ScopeEnd, false, get(info.where));
+			emit_opcode(opcodes, Opcode::ScopeEnd, false, get(info.where));
 
 		return true;
 	}
@@ -839,9 +839,9 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		const OpcodeId body_fixup_dst = static_cast<OpcodeId>(opcodes->codes.used() + 1);
 
 		if (closed_over_value_count != 0)
-			emit_opcode_with(opcodes, Opcode::BindBodyWithClosure, expects_write_ctx, node, OpcodeId::INVALID, closed_over_value_count);
+			emit_opcode(opcodes, Opcode::BindBodyWithClosure, expects_write_ctx, node, OpcodeId::INVALID, closed_over_value_count);
 		else
-			emit_opcode_with(opcodes, Opcode::BindBody, expects_write_ctx, node, OpcodeId::INVALID);
+			emit_opcode(opcodes, Opcode::BindBody, expects_write_ctx, node, OpcodeId::INVALID);
 
 		const AstNodeId body_fixup_node = id_from_ast_node(opcodes->asts, body);
 
@@ -857,14 +857,14 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 	case AstTag::Unreachable:
 	{
-		emit_opcode_with(opcodes, Opcode::Unreachable, expects_write_ctx, node);
+		emit_opcode(opcodes, Opcode::Unreachable, expects_write_ctx, node);
 
 		return true;
 	}
 
 	case AstTag::Undefined:
 	{
-		emit_opcode_with(opcodes, Opcode::Undefined, expects_write_ctx, node);
+		emit_opcode(opcodes, Opcode::Undefined, expects_write_ctx, node);
 
 		return true;
 	}
@@ -874,25 +874,25 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		const NameBinding binding = attachment_of<AstIdentifierData>(node)->binding;
 
 		if (binding.is_global)
-			emit_opcode_with(opcodes, Opcode::LoadGlobal, expects_write_ctx, node, static_cast<GlobalFileIndex>(binding.global.file_index_bits), binding.global.rank);
+			emit_opcode(opcodes, Opcode::LoadGlobal, expects_write_ctx, node, static_cast<GlobalFileIndex>(binding.global.file_index_bits), binding.global.rank);
 		else if (binding.is_scoped)
-			emit_opcode_with(opcodes, Opcode::LoadScope, expects_write_ctx, node, binding.scoped.out, binding.scoped.rank);
+			emit_opcode(opcodes, Opcode::LoadScope, expects_write_ctx, node, binding.scoped.out, binding.scoped.rank);
 		else
-			emit_opcode_with(opcodes, Opcode::LoadClosure, expects_write_ctx, node, binding.closed.rank_in_closure);
+			emit_opcode(opcodes, Opcode::LoadClosure, expects_write_ctx, node, binding.closed.rank_in_closure);
 
 		return true;
 	}
 
 	case AstTag::LitInteger:
 	{
-		emit_opcode_with(opcodes, Opcode::ValueInteger, expects_write_ctx, node, attachment_of<AstLitIntegerData>(node)->value);
+		emit_opcode(opcodes, Opcode::ValueInteger, expects_write_ctx, node, attachment_of<AstLitIntegerData>(node)->value);
 
 		return true;
 	}
 
 	case AstTag::LitFloat:
 	{
-		emit_opcode_with(opcodes, Opcode::ValueFloat, expects_write_ctx, node, attachment_of<AstLitFloatData>(node)->value);
+		emit_opcode(opcodes, Opcode::ValueFloat, expects_write_ctx, node, attachment_of<AstLitFloatData>(node)->value);
 
 		return true;
 	}
@@ -901,14 +901,14 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 	{
 		CompIntegerValue value = comp_integer_from_u64(attachment_of<AstLitCharData>(node)->codepoint);
 
-		emit_opcode_with(opcodes, Opcode::ValueInteger, expects_write_ctx, node, value);
+		emit_opcode(opcodes, Opcode::ValueInteger, expects_write_ctx, node, value);
 
 		return true;
 	}
 
 	case AstTag::LitString:
 	{
-		emit_opcode_with(opcodes, Opcode::ValueString, expects_write_ctx, node, attachment_of<AstLitStringData>(node)->string_value_id);
+		emit_opcode(opcodes, Opcode::ValueString, expects_write_ctx, node, attachment_of<AstLitStringData>(node)->string_value_id);
 
 		return true;
 	}
@@ -940,7 +940,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 			? OpcodeSliceKind::EndBound
 			: OpcodeSliceKind::NoBounds;
 
-		emit_opcode_with(opcodes, Opcode::Slice, expects_write_ctx, node, kind);
+		emit_opcode(opcodes, Opcode::Slice, expects_write_ctx, node, kind);
 
 		return true;
 	}
@@ -952,7 +952,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		if (!opcodes_from_expression(opcodes, operand, true))
 			return false;
 
-		emit_opcode_with(opcodes, Opcode::Return, false, node);
+		emit_opcode(opcodes, Opcode::Return, false, node);
 
 		return true;
 	}
@@ -975,7 +975,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		if (argument_count == 0)
 		{
-			emit_opcode_with(opcodes, Opcode::Call, expects_write_ctx, node);
+			emit_opcode(opcodes, Opcode::Call, expects_write_ctx, node);
 
 			return true;
 		}
@@ -1027,7 +1027,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 			argument_index += 1;
 		}
 
-		emit_opcode_with(opcodes, Opcode::Call, expects_write_ctx, node);
+		emit_opcode(opcodes, Opcode::Call, expects_write_ctx, node);
 
 		return true;
 	}
@@ -1045,7 +1045,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		flags.is_multi = false;
 		flags.is_mut = has_flag(node, AstFlag::Type_IsMut);
 
-		emit_opcode_with(opcodes, Opcode::ReferenceType, expects_write_ctx, node, flags);
+		emit_opcode(opcodes, Opcode::ReferenceType, expects_write_ctx, node, flags);
 
 		return true;
 	}
@@ -1063,7 +1063,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		flags.is_multi = true;
 		flags.is_mut = has_flag(node, AstFlag::Type_IsMut);
 
-		emit_opcode_with(opcodes, Opcode::ReferenceType, expects_write_ctx, node, flags);
+		emit_opcode(opcodes, Opcode::ReferenceType, expects_write_ctx, node, flags);
 
 		return true;
 	}
@@ -1081,7 +1081,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		flags.is_multi = true;
 		flags.is_mut = has_flag(node, AstFlag::Type_IsMut);
 
-		emit_opcode_with(opcodes, Opcode::ReferenceType, expects_write_ctx, node, flags);
+		emit_opcode(opcodes, Opcode::ReferenceType, expects_write_ctx, node, flags);
 
 		return true;
 	}
@@ -1093,7 +1093,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		if (!opcodes_from_expression(opcodes, operand, false))
 			return false;
 
-		emit_opcode_with(opcodes, Opcode::AddressOf, expects_write_ctx, node);
+		emit_opcode(opcodes, Opcode::AddressOf, expects_write_ctx, node);
 
 		return true;
 	}
@@ -1105,7 +1105,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		if (!opcodes_from_expression(opcodes, operand, false))
 			return false;
 
-		emit_opcode_with(opcodes, Opcode::Dereference, expects_write_ctx, node);
+		emit_opcode(opcodes, Opcode::Dereference, expects_write_ctx, node);
 
 		return true;
 	}
@@ -1117,7 +1117,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		if (!opcodes_from_expression(opcodes, operand, false))
 			return false;
 
-		emit_opcode_with(opcodes, Opcode::BitNot, expects_write_ctx, node);
+		emit_opcode(opcodes, Opcode::BitNot, expects_write_ctx, node);
 
 		return true;
 	}
@@ -1129,7 +1129,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		if (!opcodes_from_expression(opcodes, operand, false))
 			return false;
 
-		emit_opcode_with(opcodes, Opcode::LogicalNot, expects_write_ctx, node);
+		emit_opcode(opcodes, Opcode::LogicalNot, expects_write_ctx, node);
 
 		return true;
 	}
@@ -1147,7 +1147,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		flags.is_multi = false;
 		flags.is_mut = has_flag(node, AstFlag::Type_IsMut);
 
-		emit_opcode_with(opcodes, Opcode::ReferenceType, expects_write_ctx, node, flags);
+		emit_opcode(opcodes, Opcode::ReferenceType, expects_write_ctx, node, flags);
 
 		return true;
 	}
@@ -1165,7 +1165,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		flags.is_multi = false;
 		flags.is_mut = has_flag(node, AstFlag::Type_IsMut);
 
-		emit_opcode_with(opcodes, Opcode::ReferenceType, expects_write_ctx, node, flags);
+		emit_opcode(opcodes, Opcode::ReferenceType, expects_write_ctx, node, flags);
 
 		return true;
 	}
@@ -1177,7 +1177,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		if (!opcodes_from_expression(opcodes, operand, false))
 			return false;
 
-		emit_opcode_with(opcodes, Opcode::Negate, expects_write_ctx, node);
+		emit_opcode(opcodes, Opcode::Negate, expects_write_ctx, node);
 
 		return true;
 	}
@@ -1189,7 +1189,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		if (!opcodes_from_expression(opcodes, operand, false))
 			return false;
 
-		emit_opcode_with(opcodes, Opcode::UnaryPlus, expects_write_ctx, node);
+		emit_opcode(opcodes, Opcode::UnaryPlus, expects_write_ctx, node);
 
 		return true;
 	}
@@ -1215,7 +1215,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		const OpcodeBinaryArithmeticOpKind kind = static_cast<OpcodeBinaryArithmeticOpKind>(static_cast<u8>(node->tag) - static_cast<u8>(AstTag::OpAdd));
 
-		emit_opcode_with(opcodes, Opcode::BinaryArithmeticOp, expects_write_ctx, node, kind);
+		emit_opcode(opcodes, Opcode::BinaryArithmeticOp, expects_write_ctx, node, kind);
 
 		return true;
 	}
@@ -1236,7 +1236,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		const OpcodeBinaryBitwiseOpKind kind = static_cast<OpcodeBinaryBitwiseOpKind>(static_cast<u8>(node->tag) - static_cast<u8>(AstTag::OpBitAnd));
 
-		emit_opcode_with(opcodes, Opcode::BinaryBitwiseOp, expects_write_ctx, node, kind);
+		emit_opcode(opcodes, Opcode::BinaryBitwiseOp, expects_write_ctx, node, kind);
 
 		return true;
 	}
@@ -1256,7 +1256,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		const OpcodeShiftKind kind = static_cast<OpcodeShiftKind>(static_cast<u8>(node->tag) - static_cast<u8>(AstTag::OpShiftL));
 
-		emit_opcode_with(opcodes, Opcode::Shift, expects_write_ctx, node, kind);
+		emit_opcode(opcodes, Opcode::Shift, expects_write_ctx, node, kind);
 
 		return true;
 	}
@@ -1273,7 +1273,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		if (!opcodes_from_expression(opcodes, rhs, false))
 			return false;
 
-		emit_opcode_with(opcodes, Opcode::LogicalAnd, expects_write_ctx, node);
+		emit_opcode(opcodes, Opcode::LogicalAnd, expects_write_ctx, node);
 
 		return true;
 	}
@@ -1290,7 +1290,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		if (!opcodes_from_expression(opcodes, rhs, false))
 			return false;
 
-		emit_opcode_with(opcodes, Opcode::LogicalOr, expects_write_ctx, node);
+		emit_opcode(opcodes, Opcode::LogicalOr, expects_write_ctx, node);
 
 		return true;
 	}
@@ -1304,7 +1304,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		const IdentifierId member_name = attachment_of<AstMemberData>(node)->identifier_id;
 
-		emit_opcode_with(opcodes, Opcode::LoadMember, expects_write_ctx, node, member_name);
+		emit_opcode(opcodes, Opcode::LoadMember, expects_write_ctx, node, member_name);
 
 		return true;
 	}
@@ -1328,7 +1328,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		const OpcodeCompareKind kind = static_cast<OpcodeCompareKind>(static_cast<u8>(node->tag) - static_cast<u8>(AstTag::OpCmpLT));
 
-		emit_opcode_with(opcodes, Opcode::Compare, expects_write_ctx, node, kind);
+		emit_opcode(opcodes, Opcode::Compare, expects_write_ctx, node, kind);
 
 		return true;
 	}
@@ -1342,7 +1342,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		if (!opcodes_from_expression(opcodes, lhs, false))
 			return false;
 
-		emit_opcode_with(opcodes, Opcode::SetWriteCtx, false, node);
+		emit_opcode(opcodes, Opcode::SetWriteCtx, false, node);
 
 		AstNode* const rhs = next_sibling_of(lhs);
 
@@ -1364,7 +1364,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		if (!opcodes_from_expression(opcodes, rhs, false))
 			return false;
 
-		emit_opcode_with(opcodes, Opcode::ArrayType, expects_write_ctx, node);
+		emit_opcode(opcodes, Opcode::ArrayType, expects_write_ctx, node);
 
 		return true;
 	}
@@ -1381,7 +1381,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		if (!opcodes_from_expression(opcodes, rhs, false))
 			return false;
 
-		emit_opcode_with(opcodes, Opcode::Index, expects_write_ctx, node);
+		emit_opcode(opcodes, Opcode::Index, expects_write_ctx, node);
 
 		return true;
 	}
@@ -1488,15 +1488,15 @@ static bool complete_fixups(OpcodePool* opcodes) noexcept
 
 		// Handle emission of the template parameter completion opcodes if necessary.
 		if (curr.has_template_parameter_type && curr.has_template_parameter_value)
-			emit_opcode_with(opcodes, Opcode::CompleteParamTypedWithDefault, false, node, curr.template_parameter_rank);
+			emit_opcode(opcodes, Opcode::CompleteParamTypedWithDefault, false, node, curr.template_parameter_rank);
 		else if (curr.has_template_parameter_type)
-			emit_opcode_with(opcodes, Opcode::CompleteParamTypedNoDefault, false, node, curr.template_parameter_rank);
+			emit_opcode(opcodes, Opcode::CompleteParamTypedNoDefault, false, node, curr.template_parameter_rank);
 		else if (curr.has_template_parameter_value)
-			emit_opcode_with(opcodes, Opcode::CompleteParamUntyped, false, node, curr.template_parameter_rank);
+			emit_opcode(opcodes, Opcode::CompleteParamUntyped, false, node, curr.template_parameter_rank);
 		else if (curr.is_func_body)
-			emit_opcode_with(opcodes, Opcode::Return, false, node);
+			emit_opcode(opcodes, Opcode::Return, false, node);
 
-		emit_opcode_with(opcodes, Opcode::EndCode, false, node);
+		emit_opcode(opcodes, Opcode::EndCode, false, node);
 	}
 
 	return true;
@@ -1573,16 +1573,16 @@ const Maybe<Opcode*> opcodes_from_file_member_ast(OpcodePool* opcodes, AstNode* 
 		if (!opcodes_from_expression(opcodes, get(info.type), false))
 			return none<Opcode*>();
 
-		emit_opcode_with(opcodes, Opcode::FileGlobalAllocTyped, false, node, is_mut, file_index, rank);
+		emit_opcode(opcodes, Opcode::FileGlobalAllocTyped, false, node, is_mut, file_index, rank);
 	}
 
 	if (!opcodes_from_expression(opcodes, get(info.value), has_type))
 		return none<Opcode*>();
 
 	if (!has_type)
-		emit_opcode_with(opcodes, Opcode::FileGlobalAllocUntyped, false, node, is_mut, file_index, rank);
+		emit_opcode(opcodes, Opcode::FileGlobalAllocUntyped, false, node, is_mut, file_index, rank);
 
-	emit_opcode_with(opcodes, Opcode::EndCode, false, node);
+	emit_opcode(opcodes, Opcode::EndCode, false, node);
 
 	if (!complete_fixups(opcodes))
 		return none<Opcode*>();
@@ -1594,11 +1594,11 @@ OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept
 {
 	const OpcodeId first_opcode_id = static_cast<OpcodeId>(opcodes->codes.used());
 
-	emit_opcode_with(opcodes, Opcode::ExecBuiltin, false, nullptr, builtin);
+	emit_opcode(opcodes, Opcode::ExecBuiltin, false, nullptr, builtin);
 
-	emit_opcode_with(opcodes, Opcode::Return, false, nullptr);
+	emit_opcode(opcodes, Opcode::Return, false, nullptr);
 
-	emit_opcode_with(opcodes, Opcode::EndCode, false, nullptr);
+	emit_opcode(opcodes, Opcode::EndCode, false, nullptr);
 
 	return first_opcode_id;
 }
