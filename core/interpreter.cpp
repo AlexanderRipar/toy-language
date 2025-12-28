@@ -3052,14 +3052,14 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 
 	const u32 member_count = type_get_composite_member_count(interp->types, dst_type);
 
-	u16 leading_initializer_count;
+	u16 leading_member_count;
 
-	code = code_attach(code, &leading_initializer_count);
+	code = code_attach(code, &leading_member_count);
 
-	if (member_count < leading_initializer_count)
+	if (member_count < leading_member_count)
 		return record_interpreter_error(interp, code, CompileError::ImplicitConversionCompositeLiteralTargetHasTooFewMembers);
 
-	for (u16 i = 0; i != leading_initializer_count; ++i)
+	for (u16 i = 0; i != leading_member_count; ++i)
 	{
 		MemberInfo member_info;
 
@@ -3079,7 +3079,7 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 
 	if (names_count == 0)
 	{
-		for (u16 i = leading_initializer_count; i != member_count; ++i)
+		for (u16 i = leading_member_count; i != member_count; ++i)
 		{
 			MemberInfo defaulted_member_info;
 
@@ -3106,7 +3106,7 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 		return code;
 	}
 
-	SeenSet seen = seen_set_init(interp, static_cast<u16>(member_count), leading_initializer_count);
+	SeenSet seen = seen_set_init(interp, static_cast<u16>(member_count), leading_member_count);
 
 	for (u16 i = 0; i != names_count; ++i)
 	{
@@ -3162,7 +3162,7 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 		}
 	}
 
-	u16 unseen_index = leading_initializer_count;
+	u16 unseen_index = leading_member_count;
 
 	while (seen_set_next_unseen(seen, unseen_index, &unseen_index))
 	{
