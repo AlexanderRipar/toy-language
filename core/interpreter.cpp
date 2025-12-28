@@ -3741,7 +3741,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 
 	CTValue* const lhs = interp->values.end() - 2;
 	
-	CTValue* const rhs = lhs - 1;
+	CTValue* const rhs = lhs + 1;
 
 	const Maybe<TypeId> unified_type = unify(interp, code, lhs, rhs);
 
