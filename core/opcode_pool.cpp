@@ -1594,7 +1594,7 @@ OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept
 {
 	const OpcodeId first_opcode_id = static_cast<OpcodeId>(opcodes->codes.used());
 
-	emit_opcode(opcodes, Opcode::ExecBuiltin, false, nullptr, builtin);
+	emit_opcode(opcodes, Opcode::ExecBuiltin, true, nullptr, builtin);
 
 	emit_opcode(opcodes, Opcode::Return, false, nullptr);
 
