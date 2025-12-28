@@ -3114,9 +3114,9 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 
 		code = code_attach(code, &name);
 
-		u16 following_initializer_count;
+		u16 following_member_count;
 
-		code = code_attach(code, &following_initializer_count);
+		code = code_attach(code, &following_member_count);
 
 		MemberInfo named_member_info;
 
@@ -3131,10 +3131,10 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 
 		ASSERT_OR_IGNORE(!named_member_info.is_global);
 
-		if (member_count < static_cast<u32>(named_member_info.rank) + 1 + following_initializer_count)
+		if (member_count < static_cast<u32>(named_member_info.rank) + 1 + following_member_count)
 			return record_interpreter_error(interp, code, CompileError::ImplicitConversionCompositeLiteralTargetHasTooFewMembers);
 
-		if (!seen_set_set(seen, named_member_info.rank, following_initializer_count + 1))
+		if (!seen_set_set(seen, named_member_info.rank, following_member_count + 1))
 			return record_interpreter_error(interp, code, CompileError::ImplicitConversionCompositeLiteralTargetMemberMappedTwice);
 
 		const TypeMetrics named_member_metrics = type_metrics_from_id(interp->types, named_member_info.type_id);
@@ -3143,7 +3143,7 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 
 		interp->write_ctxs.append(CTValue{ named_bytes, named_member_metrics.align, write_ctx->is_mut, named_member_info.type_id });
 
-		for (u16 j = 0; j != following_initializer_count; ++j)
+		for (u16 j = 0; j != following_member_count; ++j)
 		{
 			MemberInfo following_member_info;
 
