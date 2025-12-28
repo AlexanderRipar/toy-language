@@ -266,6 +266,10 @@ void print_error(minos::FileHandle dst, const SourceLocation* location, CompileE
 
 	const char8* const message = error_message_of(error);
 
+	const u32 error_offset_in_context = location->column_number < location->context_offset + 1
+		? 0
+		: location->column_number - location->context_offset - 1;
+
 	fprintf(c_fileptr,
 		" %.*s:%u:%u: %s\n"
 		" %5u | %.*s\n"
@@ -276,6 +280,6 @@ void print_error(minos::FileHandle dst, const SourceLocation* location, CompileE
 		message,
 		location->line_number,
 		static_cast<s32>(location->context_chars), location->context,
-		static_cast<s32>(location->context_offset), ""
+		static_cast<s32>(error_offset_in_context), ""
 	);
 }
