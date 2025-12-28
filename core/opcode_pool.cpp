@@ -41,7 +41,7 @@ struct OpcodePool
 
 
 
-static byte* emit_opcode(OpcodePool* opcodes, Opcode code, bool expects_write_ctx, AstNode* node, u32 attach_size) noexcept
+static byte* emit_opcode_raw(OpcodePool* opcodes, Opcode code, bool expects_write_ctx, AstNode* node, u32 attach_size) noexcept
 {
 	const OpcodeId opcode_id = static_cast<OpcodeId>(opcodes->codes.used());
 
@@ -76,7 +76,7 @@ static void emit_opcode_with(OpcodePool* opcodes, Opcode code, bool expects_writ
 {
 	constexpr u32 attach_size = (0 + ... + sizeof(Attachs));
 
-	byte* const attach_dst = emit_opcode(opcodes, code, expects_write_ctx, node, attach_size);
+	byte* const attach_dst = emit_opcode_raw(opcodes, code, expects_write_ctx, node, attach_size);
 
 	put_opcode_attachs(attach_dst, attachs...);
 }
@@ -365,7 +365,7 @@ static bool opcodes_from_signature(OpcodePool* opcodes, AstNode* node, bool expe
 		                      + 2 * sizeof(u8)
 		                      + parameter_count * (sizeof(IdentifierId) + sizeof(OpcodeSignaturePerParameterFlags));
 
-		byte* attach = emit_opcode(opcodes, Opcode::Signature, expects_write_ctx, node, attach_size);
+		byte* attach = emit_opcode_raw(opcodes, Opcode::Signature, expects_write_ctx, node, attach_size);
 
 		OpcodeSignatureFlags flags;
 		flags.is_func = !has_flag(node, AstFlag::Signature_IsProc);
@@ -399,7 +399,7 @@ static bool opcodes_from_signature(OpcodePool* opcodes, AstNode* node, bool expe
 							  + templated_parameter_count * sizeof(OpcodeId)
 							  + (has_templated_return_type ? sizeof(OpcodeId) : 0);
 
-		byte* attach = emit_opcode(opcodes, Opcode::DynSignature, expects_write_ctx, node, attach_size);
+		byte* attach = emit_opcode_raw(opcodes, Opcode::DynSignature, expects_write_ctx, node, attach_size);
 
 		OpcodeSignatureFlags flags;
 		flags.is_func = !has_flag(node, AstFlag::Signature_IsProc);
@@ -500,7 +500,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 			const u32 attach_size = 2 * sizeof(u16) + named_member_count * (sizeof(IdentifierId) + sizeof(u16));
 
-			byte* attach = emit_opcode(opcodes, Opcode::CompositePreInit, true, node, attach_size);
+			byte* attach = emit_opcode_raw(opcodes, Opcode::CompositePreInit, true, node, attach_size);
 
 			memcpy(attach, &named_member_count, sizeof(u16));
 
@@ -580,7 +580,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 				member_count += 1;
 			}
 
-			byte* attach = emit_opcode(opcodes, Opcode::CompositePostInit, false, node, sizeof(u16) + member_count * sizeof(IdentifierId));
+			byte* attach = emit_opcode_raw(opcodes, Opcode::CompositePostInit, false, node, sizeof(u16) + member_count * sizeof(IdentifierId));
 
 			memcpy(attach, &member_count, sizeof(u16));
 
@@ -683,7 +683,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 	case AstTag::Block:
 	{
-		u16* const definition_count_dst = reinterpret_cast<u16*>(emit_opcode(opcodes, Opcode::ScopeBegin, false, node, sizeof(u16)));
+		u16* const definition_count_dst = reinterpret_cast<u16*>(emit_opcode_raw(opcodes, Opcode::ScopeBegin, false, node, sizeof(u16)));
 
 		u16 definition_count = 0;
 
@@ -969,7 +969,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		for (AstNode* argument = callee; has_next_sibling(argument); argument = next_sibling_of(argument))
 			argument_count += 1;
 
-		byte* const attach = emit_opcode(opcodes, Opcode::Args, false, node, sizeof(u8) + argument_count * (sizeof(IdentifierId) + sizeof(OpcodeId)));
+		byte* const attach = emit_opcode_raw(opcodes, Opcode::Args, false, node, sizeof(u8) + argument_count * (sizeof(IdentifierId) + sizeof(OpcodeId)));
 
 		memcpy(attach, &argument_count, sizeof(u8));
 
