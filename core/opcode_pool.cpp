@@ -130,8 +130,6 @@ static void emit_fixup_for_function_body(OpcodePool* opcodes, OpcodeId dst_id, A
 
 
 
-static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool expects_write_ctx) noexcept;
-
 static u16 emit_func_closure_values(OpcodePool* opcodes, AstNode* node) noexcept
 {
 	const Maybe<ClosureListId> list_id = attachment_of<AstFuncData>(node)->closure_list_id;
@@ -153,6 +151,35 @@ static u16 emit_func_closure_values(OpcodePool* opcodes, AstNode* node) noexcept
 
 	return list->count;
 }
+
+static bool is_templated(AstNode* node) noexcept
+{
+	AstFlatIterator it = flat_ancestors_of(node);
+
+	while (has_next(&it))
+	{
+		AstNode* const curr = next(&it);
+
+		// Blocks cannot be handled here as they introduce a scope, meaning our
+		// binding's `out` would become meaningless in the flat iteration
+		// pattern used here.
+		ASSERT_OR_IGNORE(curr->tag != AstTag::Block);
+
+		if (curr->tag != AstTag::Identifier)
+			continue;
+
+		const NameBinding binding = attachment_of<AstIdentifierData>(curr)->binding;
+
+		if (!binding.is_global && (!binding.is_scoped || binding.scoped.out == 0))
+			return true;
+	}
+
+	return false;
+}
+
+
+
+static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool expects_write_ctx) noexcept;
 
 static bool opcodes_from_scope_definition(OpcodePool* opcodes, AstNode* node) noexcept
 {
@@ -194,31 +221,6 @@ static bool opcodes_from_where(OpcodePool* opcodes, AstNode* node) noexcept
 	}
 
 	return true;
-}
-
-static bool is_templated(AstNode* node) noexcept
-{
-	AstFlatIterator it = flat_ancestors_of(node);
-
-	while (has_next(&it))
-	{
-		AstNode* const curr = next(&it);
-
-		// Blocks cannot be handled here as they introduce a scope, meaning our
-		// binding's `out` would become meaningless in the flat iteration
-		// pattern used here.
-		ASSERT_OR_IGNORE(curr->tag != AstTag::Block);
-
-		if (curr->tag != AstTag::Identifier)
-			continue;
-
-		const NameBinding binding = attachment_of<AstIdentifierData>(curr)->binding;
-
-		if (!binding.is_global && (!binding.is_scoped || binding.scoped.out == 0))
-			return true;
-	}
-
-	return false;
 }
 
 static bool opcodes_from_parameter(OpcodePool* opcodes, AstNode* node, u8 rank, IdentifierId* out_name, OpcodeSignaturePerParameterFlags* out_flags, u32* out_fixup_index) noexcept
