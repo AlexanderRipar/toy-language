@@ -1912,6 +1912,13 @@ static const Opcode* handle_load_member(Interpreter* interp, const Opcode* code,
 		}
 		else if (rst == MemberByNameRst::Incomplete)
 		{
+			// Push back the write_ctx if we have one, so it's still there on the
+			// next go around.
+			if (write_ctx != nullptr)
+				interp->write_ctxs.append(*write_ctx);
+
+			// We'll try again after having evaluated the global value's
+			// initializer. Push this instruction as an activation.
 			push_activation(interp, code_activation - 1);
 
 			return opcode_from_id(interp->opcodes, initializer_id);
