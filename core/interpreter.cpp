@@ -3848,7 +3848,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 				}
 			}
 
-			const MutRange<byte> bytes{ reinterpret_cast<byte*>(result), static_cast<u64>(integer_type.bits / 8) };
+			const MutRange<byte> bytes{ reinterpret_cast<byte*>(&result), static_cast<u64>(integer_type.bits / 8) };
 
 			return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, rhs->align, true, type });
 		}
