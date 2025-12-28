@@ -3191,8 +3191,10 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 	return code;
 }
 
-static const Opcode* handle_composite_postinit(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_composite_postinit(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
 	u16 member_count;
 
 	code = code_attach(code, &member_count);
