@@ -530,7 +530,15 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 {
 	const TypeTag src_type_tag = type_tag_from_id(interp->types, src.type);
 
-	switch (src_type_tag)
+	const TypeTag dst_type_tag = type_tag_from_id(interp->types, dst.type);
+
+	if (dst_type_tag == TypeTag::TypeInfo)
+	{
+		range::mem_copy(dst.bytes, range::from_object_bytes(&src.type));
+
+		return code;
+	}
+	else switch (src_type_tag)
 	{
 	case TypeTag::CompInteger:
 	{
