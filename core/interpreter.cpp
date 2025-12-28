@@ -2895,8 +2895,10 @@ static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* cod
 	return code;
 }
 
-static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
 	u16 total_element_count;
 
 	code = code_attach(code, &total_element_count);
