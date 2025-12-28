@@ -4951,13 +4951,19 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 
 		const bool consumes_write_ctx = (bits & 0x80) != 0;
 
+		CTValue write_ctx_value;
+
 		CTValue* write_ctx;
 
 		if (consumes_write_ctx)
 		{
 			ASSERT_OR_IGNORE(interp->write_ctxs.used() >= 1);
 
-			write_ctx = interp->write_ctxs.end() - 1;
+			write_ctx_value = interp->write_ctxs.end()[-1];
+
+			interp->write_ctxs.pop_by(1);
+
+			write_ctx = &write_ctx_value;
 		}
 		else
 		{
@@ -4971,9 +4977,6 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 		const OpcodeHandlerFunc handler = HANDLERS[ordinal];
 
 		ops = handler(interp, ops + 1, write_ctx);
-
-		if (write_ctx != nullptr)
-			interp->write_ctxs.pop_by(1);
 
 		if (ops == nullptr)
 		{
