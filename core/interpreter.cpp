@@ -2633,7 +2633,7 @@ static const Opcode* handle_call(Interpreter* interp, const Opcode* code, CTValu
 	}
 }
 
-static const Opcode* handle_return(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_return(Interpreter* interp, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->call_stack.used() >= 1);
 
@@ -2694,7 +2694,7 @@ static const Opcode* handle_return(Interpreter* interp, const Opcode* code, [[ma
 
 	interp->call_stack.pop_by(1);
 
-	return code;
+	return nullptr;
 }
 
 static const Opcode* handle_complete_param_typed_no_default(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
