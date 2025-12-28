@@ -2767,6 +2767,17 @@ enum class OpcodeId : u32
 	INVALID = 0,
 };
 
+struct OpcodeEffects
+{
+	s32 values_diff;
+
+	s32 scopes_diff;
+
+	s32 write_ctxs_diff;
+
+	s32 closures_diff;
+};
+
 OpcodePool* create_opcode_pool(HandlePool* handles, AstPool* asts) noexcept;
 
 void release_opcode_pool(OpcodePool* opcodes) noexcept;
@@ -2778,6 +2789,8 @@ OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept;
 OpcodeId id_from_opcode(OpcodePool* opcodes, const Opcode* code);
 
 const Opcode* opcode_from_id(OpcodePool* opcodes, OpcodeId id) noexcept;
+
+OpcodeEffects opcode_effects(const Opcode* code) noexcept;
 
 SourceId source_id_of_opcode(OpcodePool* opcodes, const Opcode* code) noexcept;
 
