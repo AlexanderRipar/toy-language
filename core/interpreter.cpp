@@ -3195,17 +3195,17 @@ static const Opcode* handle_composite_postinit(Interpreter* interp, const Opcode
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	u16 member_count;
+	u16 total_member_count;
 
-	code = code_attach(code, &member_count);
+	code = code_attach(code, &total_member_count);
 
-	ASSERT_OR_IGNORE(interp->values.used() >= member_count);
+	ASSERT_OR_IGNORE(interp->values.used() >= total_member_count);
 
-	CTValue* const values = interp->values.end() - member_count;
+	CTValue* const values = interp->values.end() - total_member_count;
 
-	const TypeId initializer_type = type_create_composite(interp->types, TypeTag::CompositeLiteral, TypeDisposition::Initializer, SourceId::INVALID, member_count, true);
+	const TypeId initializer_type = type_create_composite(interp->types, TypeTag::CompositeLiteral, TypeDisposition::Initializer, SourceId::INVALID, total_member_count, true);
 
-	for (u16 i = 0; i != member_count; ++i)
+	for (u16 i = 0; i != total_member_count; ++i)
 	{
 		IdentifierId name;
 
@@ -3232,7 +3232,7 @@ static const Opcode* handle_composite_postinit(Interpreter* interp, const Opcode
 
 	CTValue initializer = alloc_temporary_value_uninit(interp, metrics.size, metrics.align, initializer_type);
 
-	for (u16 i = 0; i != member_count; ++i)
+	for (u16 i = 0; i != total_member_count; ++i)
 	{
 		if (!has_next(&it))
 			ASSERT_UNREACHABLE;
