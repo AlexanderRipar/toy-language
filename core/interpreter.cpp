@@ -1577,9 +1577,21 @@ static const Opcode* builtin_complete_type(Interpreter* interp, const Opcode* co
 
 static const Opcode* builtin_source_id(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
+	ASSERT_OR_IGNORE(interp->call_activation_indices.used() >= 1);
+
 	const TypeId source_id_type = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ 32, false });
 
-	SourceId source_id = source_id_of_opcode(interp->opcodes, code);
+	const u32 caller_activation_index = interp->call_activation_indices.end()[-1];
+
+	ASSERT_OR_IGNORE(caller_activation_index < interp->activations.used());
+
+	const OpcodeId caller_activation = interp->activations.begin()[caller_activation_index];
+
+	const Opcode* const caller_activation_code = opcode_from_id(interp->opcodes, caller_activation);
+
+	SourceId source_id = source_id_of_opcode(interp->opcodes, caller_activation_code);
+
+	ASSERT_OR_IGNORE(source_id != SourceId::INVALID);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&source_id);
 
