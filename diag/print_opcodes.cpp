@@ -35,6 +35,7 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 	case Opcode::SetWriteCtx:
 	case Opcode::ScopeEnd:
 	case Opcode::PopClosure:
+	case Opcode::ExecArgs:
 	case Opcode::Call:
 	case Opcode::Return:
 	case Opcode::AddressOf:
@@ -181,7 +182,7 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 		return code + sizeof(u16);
 	}
 
-	case Opcode::Args:
+	case Opcode::PrepareArgs:
 	{
 		u8 argument_count;
 
@@ -426,6 +427,7 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 	case Opcode::SetWriteCtx:
 	case Opcode::ScopeEnd:
 	case Opcode::PopClosure:
+	case Opcode::ExecArgs:
 	case Opcode::Call:
 	case Opcode::Return:
 	case Opcode::AddressOf:
@@ -696,7 +698,7 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 		return code;
 	}
 
-	case Opcode::Args:
+	case Opcode::PrepareArgs:
 	{
 		u8 argument_count;
 

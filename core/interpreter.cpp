@@ -89,23 +89,6 @@ struct ArgumentPack
 	u32 argument_callbacks_used;
 };
 
-struct CallInfo
-{
-	u32 activation_index;
-
-	u32 scope_index;
-
-	u32 loop_index;
-
-	u32 value_index;
-
-	u32 write_ctx_index;
-
-	u32 active_closure_index;
-
-	u32 argument_pack_index;
-};
-
 struct LoopInfo
 {
 	u32 activation_index;
@@ -161,7 +144,7 @@ struct Interpreter
 
 	ReservedVec<OpcodeId> activations;
 
-	ReservedVec<CallInfo> call_stack;
+	ReservedVec<u32> call_activation_indices;
 
 	ReservedVec<LoopInfo> loop_stack;
 
@@ -1140,8 +1123,6 @@ static const Opcode* scope_alloc_typed_member(Interpreter* interp, const Opcode*
 	member->align = member_metrics.align;
 	member->is_mut = is_mut;
 	member->type = type;
-
-	interp->values.pop_by(1);
 
 	const MutRange<byte> bytes = MutRange<byte>{ member_value, member_metrics.size };
 
@@ -2406,7 +2387,7 @@ static const Opcode* handle_bind_body_with_closure(Interpreter* interp, const Op
 	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(Callable), true, signature_type });
 }
 
-static const Opcode* handle_args(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_prepare_args(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
@@ -2524,8 +2505,10 @@ static const Opcode* handle_args(Interpreter* interp, const Opcode* code, [[mayb
 	return code;
 }
 
-static const Opcode* handle_call(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
 	ASSERT_OR_IGNORE(interp->argument_packs.used() >= 1);
@@ -2568,44 +2551,49 @@ static const Opcode* handle_call(Interpreter* interp, const Opcode* code, CTValu
 				interp->write_ctxs.append(CTValue{ bytes, alignof(TypeId), true, type_type });
 
 				push_activation(interp, code_activation - 1);
-				
+
 				return opcode_from_id(interp->opcodes, argument_pack->return_type.completion);
 			}
 
+			// Look ahead to the following opcode, which must always be an
+			// `Opcode::Call`. If it does not expects a write context, we need
+			// to push one based on the callee's return type, since function
+			// bodies always expect to be called with a write context on the
+			// stack.
+			// Note that we need to slip the return value onto the value stack
+			// as well, but we must do so underneath the current top value,
+			// which is the callee and is required on top by `handle_call`.
+			// Note also that if the call expects its own write context, then
+			// `handle_call` takes care of re-pushing for the callee.
+
+			const Opcode* const call = code;
+
+			ASSERT_OR_IGNORE(static_cast<Opcode>(static_cast<u8>(*call) & 0x7F) == Opcode::Call);
+
+			const bool call_expects_write_ctx = (static_cast<u8>(*call) & 0x80) != 0;
+
+			if (!call_expects_write_ctx)
+			{
+				const TypeMetrics return_type_metrics = type_metrics_from_id(interp->types, argument_pack->return_type.type);
+
+				const CTValue return_value = alloc_temporary_value_uninit(interp, return_type_metrics.size, return_type_metrics.align, argument_pack->return_type.type);
+
+				CTValue* const old_top = interp->values.end() - 1;
+
+				interp->values.append(*old_top);
+
+				*old_top = return_value;
+
+				interp->write_ctxs.append(return_value);
+			}
+
+			// Finally, we get to pop the argument pack and callbacks before
+			// proceeding to the actual call.
 			interp->argument_callbacks.pop_by(argument_pack->count);
 
 			interp->argument_packs.pop_by(1);
 
-			if (write_ctx == nullptr)
-			{
-				const TypeMetrics return_type_metrics = type_metrics_from_id(interp->types, argument_pack->return_type.type);
-
-				interp->write_ctxs.append(alloc_temporary_value_uninit(interp, return_type_metrics.size, return_type_metrics.align, argument_pack->return_type.type));
-			}
-			else
-			{
-				interp->write_ctxs.append(*write_ctx);
-			}
-
-			CallInfo* const call_info = interp->call_stack.reserve();
-			call_info->activation_index = interp->activations.used();
-			call_info->scope_index = interp->scopes.used() - 1;
-			call_info->loop_index = interp->loop_stack.used();
-			call_info->value_index = interp->values.used();
-			call_info->write_ctx_index = interp->write_ctxs.used();
-			call_info->active_closure_index = interp->active_closures.used();
-			call_info->argument_pack_index = interp->argument_packs.used();
-
-			ASSERT_OR_IGNORE(type_tag_from_id(interp->types, interp->values.end()[-1].type) == TypeTag::Func);
-
-			const Callable callable = *value_as<Callable>(interp->values.end() - 1);
-
-			if (is_some(callable.closure_id))
-				interp->active_closures.append(get(callable.closure_id));
-
-			push_activation(interp, code);
-
-			return opcode_from_id(interp->opcodes, callable.body_id);
+			return code;
 		}
 		else
 		{
@@ -2653,66 +2641,44 @@ static const Opcode* handle_call(Interpreter* interp, const Opcode* code, CTValu
 	}
 }
 
+static const Opcode* handle_call(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+
+	ASSERT_OR_IGNORE(type_tag_from_id(interp->types, interp->values.end()[-1].type) == TypeTag::Func);
+
+	const Callable callable = *value_as<Callable>(interp->values.end() - 1);
+
+	interp->values.pop_by(1);
+
+	// If we were called with a write context, re-push it for the callee's use.
+	// Note that if we were called without a write context, `handle_exec_args`
+	// has already taken care of pushing an artificial write context based on
+	// the caller's return type.
+	if (write_ctx != nullptr)
+		interp->write_ctxs.append(*write_ctx);
+
+	if (is_some(callable.closure_id))
+		interp->active_closures.append(get(callable.closure_id));
+
+	interp->call_activation_indices.append(interp->activations.used());
+
+	push_activation(interp, code);
+
+	return opcode_from_id(interp->opcodes, callable.body_id);
+}
+
 static const Opcode* handle_return(Interpreter* interp, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->call_stack.used() >= 1);
+	ASSERT_OR_IGNORE(interp->call_activation_indices.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	CallInfo* const info = interp->call_stack.end() - 1;
+	const u32 callee_activation = interp->call_activation_indices.end()[-1];
 
-	// Scope popping logic. We need to free `scope_data` as well as
-	// `scope_members`, just as in `handle_scope_end` but for a scope that is
-	// arbitrarily far down the stack of scopes instead of always at the top.
-	// Luckily, the logic stays basically the same since no special cleanup
-	// logic is needed apart from shrinking the relevant stacks.
-	// Note that always at least one scope is popped, since the signature scope
-	// introduced by `handle_call` will always be popped by a `handle_return`.
+	interp->call_activation_indices.pop_by(1);
 
-	ASSERT_OR_IGNORE(interp->scopes.used() > info->scope_index);
-
-	const Scope popped_scope = interp->scopes.begin()[info->scope_index];
-
-	interp->temporary_data.pop_to(popped_scope.temporary_data_used);
-
-	if (popped_scope.first_member_index != interp->scope_members.used())
-	{
-		const u32 popped_scope_data_begin = interp->scope_members.begin()[popped_scope.first_member_index].offset;
-
-		interp->scope_members.pop_to(popped_scope.first_member_index);
-
-		interp->scope_data.pop_to(popped_scope_data_begin);
-	}
-
-	// Argument pack popping logic. Pop all argument packs up to the given
-	// index, and adjust the argument callback stack to reflect the new top
-	// pack.
-
-	ASSERT_OR_IGNORE(interp->argument_packs.used() >= info->argument_pack_index);
-
-	if (info->argument_pack_index != 0)
-	{
-		const ArgumentPack* const new_top_pack = interp->argument_packs.begin() + info->argument_pack_index - 1;
-
-		interp->argument_callbacks.pop_to(new_top_pack->argument_callbacks_used);
-	}
-	else
-	{
-		interp->argument_callbacks.pop_to(0);
-	}
-
-	// General stack popping logic. Just shrink all stacks to whatever is
-	// stored in the `CallInfo`.
-
-	interp->activations.pop_to(info->activation_index);
-	interp->scopes.pop_to(info->scope_index);
-	interp->loop_stack.pop_to(info->loop_index);
-	interp->values.pop_to(info->value_index);
-	interp->write_ctxs.pop_to(info->write_ctx_index);
-	interp->active_closures.pop_to(info->active_closure_index);
-	interp->argument_packs.pop_to(info->argument_pack_index);
-
-	interp->call_stack.pop_by(1);
+	interp->activations.pop_to(callee_activation + 1);
 
 	return nullptr;
 }
@@ -4845,7 +4811,8 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 		&handle_dyn_signature,                     // DynSignature
 		&handle_bind_body,                         // BindBody,
 		&handle_bind_body_with_closure,            // BindBodyWithClosure
-		&handle_args,                              // Args
+		&handle_prepare_args,                      // PrepareArgs
+		&handle_exec_args,                         // ExecArgs
 		&handle_call,                              // Call
 		&handle_return,                            // Return
 		&handle_complete_param_typed_no_default,   // CompleteParamTypedNoDefault
@@ -4904,7 +4871,8 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::DynSignature)]                  == &handle_dyn_signature);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::BindBody)]                      == &handle_bind_body);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::BindBodyWithClosure)]           == &handle_bind_body_with_closure);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::Args)]                          == &handle_args);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::PrepareArgs)]                   == &handle_prepare_args);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::ExecArgs)]                      == &handle_exec_args);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::Call)]                          == &handle_call);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::Return)]                        == &handle_return);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CompleteParamTypedNoDefault)]   == &handle_complete_param_typed_no_default);
@@ -4973,6 +4941,8 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 		const u8 ordinal = bits & 0x7F;
 
 		ASSERT_OR_IGNORE(ordinal != 0 && ordinal < array_count(HANDLERS));
+
+		const OpcodeId debug_op_id = id_from_opcode(interp->opcodes, ops);
 
 		const OpcodeHandlerFunc handler = HANDLERS[ordinal];
 
@@ -5306,8 +5276,8 @@ Interpreter* create_interpreter(HandlePool* handles, AstPool* asts, TypePool* ty
 	static constexpr u32 ACTIVATIONS_RESERVE_SIZE = sizeof(OpcodeId) << 22;
 	static constexpr u32 ACTIVATIONS_COMMIT_INCREMENT_COUNT = 4096;
 
-	static constexpr u32 CALL_STACK_RESERVE_SIZE = sizeof(CallInfo) << 18;
-	static constexpr u32 CALL_STACK_COMMIT_INCREMENT_COUNT = 1024;
+	static constexpr u32 CALL_ACTIVATION_INDICES_RESERVE_SIZE = sizeof(u32) << 18;
+	static constexpr u32 CALL_ACTIVATION_INDICES_COMMIT_INCREMENT_COUNT = 1024;
 
 	static constexpr u32 LOOP_STACK_RESERVE_SIZE = sizeof(LoopInfo) << 18;
 	static constexpr u32 LOOP_STACK_COMMIT_INCREMENT_COUNT = 1024;
@@ -5333,7 +5303,7 @@ Interpreter* create_interpreter(HandlePool* handles, AstPool* asts, TypePool* ty
 	                                        + VALUES_RESERVE_SIZE
 	                                        + TEMPORARY_DATA_RESERVE_SIZE
 	                                        + ACTIVATIONS_RESERVE_SIZE
-											+ CALL_STACK_RESERVE_SIZE
+											+ CALL_ACTIVATION_INDICES_RESERVE_SIZE
 											+ LOOP_STACK_RESERVE_SIZE
 	                                        + WRITE_CTXS_RESERVE_SIZE
 	                                        + ACTIVE_CLOSURES_RESERVE_SIZE
@@ -5381,8 +5351,8 @@ Interpreter* create_interpreter(HandlePool* handles, AstPool* asts, TypePool* ty
 	interp->activations.init({ memory + offset, ACTIVATIONS_RESERVE_SIZE }, ACTIVATIONS_COMMIT_INCREMENT_COUNT);
 	offset += ACTIVATIONS_RESERVE_SIZE;
 
-	interp->call_stack.init({ memory + offset, CALL_STACK_RESERVE_SIZE }, CALL_STACK_COMMIT_INCREMENT_COUNT);
-	offset += CALL_STACK_RESERVE_SIZE;
+	interp->call_activation_indices.init({ memory + offset, CALL_ACTIVATION_INDICES_RESERVE_SIZE }, CALL_ACTIVATION_INDICES_COMMIT_INCREMENT_COUNT);
+	offset += CALL_ACTIVATION_INDICES_RESERVE_SIZE;
 
 	interp->loop_stack.init({ memory + offset, LOOP_STACK_RESERVE_SIZE }, LOOP_STACK_COMMIT_INCREMENT_COUNT);
 	offset += LOOP_STACK_RESERVE_SIZE;

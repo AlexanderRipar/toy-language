@@ -1093,7 +1093,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		// normally need to manually adjust and check the current state.
 		// However, in this case there is nothing to update, as `Opcode::PrepareArgs`
 		// has no direct effect on (the recorded part of) the state.
-		byte* const attach = emit_opcode_raw(opcodes, Opcode::Args, false, node, sizeof(u8) + argument_count * (sizeof(IdentifierId) + sizeof(OpcodeId)));
+		byte* const attach = emit_opcode_raw(opcodes, Opcode::PrepareArgs, false, node, sizeof(u8) + argument_count * (sizeof(IdentifierId) + sizeof(OpcodeId)));
 
 		memcpy(attach, &argument_count, sizeof(u8));
 
@@ -1149,6 +1149,8 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 				argument_index += 1;
 			}
 		}
+
+		emit_opcode(opcodes, Opcode::ExecArgs, false, node);
 
 		emit_opcode(opcodes, Opcode::Call, expects_write_ctx, node);
 
@@ -1796,7 +1798,8 @@ OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	switch (op)
 	{
 	case Opcode::EndCode:
-	case Opcode::Args:
+	case Opcode::PrepareArgs:
+	case Opcode::ExecArgs:
 	case Opcode::Return:
 	{
 		ASSERT_OR_IGNORE(!expects_write_ctx);
@@ -2159,7 +2162,8 @@ const char8* tag_name(Opcode op) noexcept
 		"DynSignature",
 		"BindBody",
 		"BindBodyWithClosure",
-		"Args",
+		"PrepareArgs",
+		"ExecArgs",
 		"Call",
 		"Return",
 		"CompleteParamTypedNoDefault",
