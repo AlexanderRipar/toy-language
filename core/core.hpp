@@ -184,6 +184,8 @@ struct Config
 			bool enable = true;
 
 			Range<char8> log_filepath = {};
+
+			s64 source_tab_size = 4;
 		} diagnostics;
 	} logging;
 

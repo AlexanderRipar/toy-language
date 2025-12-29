@@ -138,6 +138,7 @@ static constexpr ConfigHeader CONFIG_LOGGING_CONFIG[] = {
 static constexpr ConfigHeader CONFIG_LOGGING_DIAGNOSTICS[] = {
 	ConfigHeader::make_boolean(offsetof(Config, logging.diagnostics.enable), "enable", "Print diagnostics"),
 	ConfigHeader::make_boolean(offsetof(Config, logging.diagnostics.log_filepath), "log-file", "Path of the log file. Defaults to stderr"),
+	ConfigHeader::make_integer(offsetof(Config, logging.diagnostics.source_tab_size), 1, 32, "source-tab-size", "Number of characters a tab is equivalent to when reporting column numbers"),
 };
 
 static constexpr ConfigHeader CONFIG_LOGGING[] = {
