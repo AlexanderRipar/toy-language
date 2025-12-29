@@ -807,12 +807,6 @@ AstNode* complete_ast(AstPool* asts) noexcept
 
 	asts->source_builder.reset(1 << 17);
 
-	lower_ast(asts, root);
-
-	asts->node_builder.reset(1 << 17);
-
-	asts->source_builder.reset(1 << 17);
-
 	return root;
 }
 
