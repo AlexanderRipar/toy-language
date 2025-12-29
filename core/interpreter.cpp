@@ -2679,6 +2679,8 @@ static const Opcode* handle_return(Interpreter* interp, [[maybe_unused]] const O
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
+	scope_pop(interp);
+
 	const u32 callee_activation = interp->call_activation_indices.end()[-1];
 
 	interp->call_activation_indices.pop_by(1);
