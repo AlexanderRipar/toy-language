@@ -2025,6 +2025,8 @@ OpcodeEffects opcode_effects(const Opcode* code) noexcept
 		memcpy(&total_member_count, code + 1, sizeof(total_member_count));
 
 		rst.values_diff = 1 - static_cast<s32>(total_member_count);
+
+		return rst;
 	}
 
 	case Opcode::If:
