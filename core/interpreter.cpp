@@ -4942,7 +4942,10 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 
 		ASSERT_OR_IGNORE(ordinal != 0 && ordinal < array_count(HANDLERS));
 
-		const OpcodeId debug_op_id = id_from_opcode(interp->opcodes, ops);
+		// A crude helper for looking through the opcode emission logs for the
+		// currently executing operation by its id.
+		// This is actually super-duper helpful for debugging.
+		[[maybe_unused]] const OpcodeId debug_op_id = id_from_opcode(interp->opcodes, ops);
 
 		const OpcodeHandlerFunc handler = HANDLERS[ordinal];
 
