@@ -2505,7 +2505,7 @@ static const Opcode* handle_prepare_args(Interpreter* interp, const Opcode* code
 	return code;
 }
 
-static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
