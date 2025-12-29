@@ -1861,7 +1861,6 @@ OpcodeEffects opcode_effects(const Opcode* code) noexcept
 
 	case Opcode::LoadScope:
 	case Opcode::LoadGlobal:
-	case Opcode::LoadMember:
 	case Opcode::LoadClosure:
 	case Opcode::LoadBuiltin:
 	case Opcode::LoopFinally:
@@ -1930,6 +1929,7 @@ OpcodeEffects opcode_effects(const Opcode* code) noexcept
 		return rst;
 	}
 
+	case Opcode::LoadMember:
 	case Opcode::BindBody:
 	case Opcode::BindBodyWithClosure:
 	case Opcode::Call:
