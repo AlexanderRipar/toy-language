@@ -878,7 +878,7 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &consequent);
 
-		diag::buf_printf(ctx, "consequent=OpcodeId<%u>",
+		diag::buf_printf(ctx, " consequent=OpcodeId<%u>",
 			static_cast<u32>(consequent)
 		);
 
@@ -895,7 +895,7 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &alternative);
 
-		diag::buf_printf(ctx, "consequent=OpcodeId<%u> alternative=OpcodeId<%u>",
+		diag::buf_printf(ctx, " consequent=OpcodeId<%u> alternative=OpcodeId<%u>",
 			static_cast<u32>(consequent),
 			static_cast<u32>(alternative)
 		);
@@ -913,7 +913,7 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &body_id);
 
-		diag::buf_printf(ctx, "cond=OpcodeId<%u> body=OpcodeId<%u>",
+		diag::buf_printf(ctx, " cond=OpcodeId<%u> body=OpcodeId<%u>",
 			static_cast<u32>(condition_id),
 			static_cast<u32>(body_id)
 		);
@@ -935,7 +935,7 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &finally_id);
 
-		diag::buf_printf(ctx, "cond=OpcodeId<%u> body=OpcodeId<%u> finally=OpcodeId<%u>",
+		diag::buf_printf(ctx, " cond=OpcodeId<%u> body=OpcodeId<%u> finally=OpcodeId<%u>",
 			static_cast<u32>(condition_id),
 			static_cast<u32>(body_id),
 			static_cast<u32>(finally_id)
