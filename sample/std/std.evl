@@ -1,11 +1,3 @@
-// Prelude type defining namespace'd primitives.
-// This gets `use`d in the hard-coded prelude that is scoped around every
-// import.
-
-pub prelude = _import("prelude.evl", 1 == 1, _source_id())
-
-
-
 // Composite type creation
 
 pub TypeBuilder: Type = _returntypeof(_create_type_builder)

@@ -40,6 +40,8 @@ pub true: Bool = 1 == 1
 
 pub false: Bool = 1 == 0
 
+let std = _import("std.evl", true, _source_id())
+
 
 
 // Functions
