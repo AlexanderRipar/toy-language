@@ -3285,11 +3285,9 @@ static const Opcode* handle_if(Interpreter* interp, const Opcode* code, [[maybe_
 	}
 }
 
-static const Opcode* handle_if_else(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_if_else(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
-
-	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
 	OpcodeId consequent;
 
@@ -3298,6 +3296,9 @@ static const Opcode* handle_if_else(Interpreter* interp, const Opcode* code, [[m
 	OpcodeId alternative;
 
 	code = code_attach(code, &alternative);
+
+	if (write_ctx != nullptr)
+		interp->write_ctxs.append(*write_ctx);
 
 	CTValue* const top = interp->values.end() - 1;
 
