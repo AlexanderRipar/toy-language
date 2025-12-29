@@ -3357,10 +3357,8 @@ static const Opcode* handle_loop(Interpreter* interp, const Opcode* code, [[mayb
 	}
 }
 
-static const Opcode* handle_loop_finally(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_loop_finally(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(write_ctx == nullptr);
-
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
 	OpcodeId condition_id;
@@ -3374,6 +3372,9 @@ static const Opcode* handle_loop_finally(Interpreter* interp, const Opcode* code
 	OpcodeId finally_id;
 
 	code = code_attach(code, &finally_id);
+
+	if (write_ctx != nullptr)
+		interp->write_ctxs.append(*write_ctx);
 
 	CTValue* const top = interp->values.end() - 1;
 
