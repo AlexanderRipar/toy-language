@@ -3843,6 +3843,8 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 
 			const MutRange<byte> bytes{ reinterpret_cast<byte*>(&result), static_cast<u64>(integer_type.bits / 8) };
 
+			interp->values.pop_by(1);
+
 			return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, rhs->align, true, type });
 		}
 		else
@@ -3877,6 +3879,8 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 					return record_interpreter_error(interp, code, CompileError::DivideByZero);
 			}
 
+			interp->values.pop_by(1);
+
 			return poppush_temporary_value(interp, code, write_ctx, result);
 		}
 	}
@@ -3910,6 +3914,8 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 
 			const MutRange<byte> bytes = range::from_object_bytes_mut(&result);
 
+			interp->values.pop_by(1);
+
 			return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(f32), true, type });
 		}
 		else
@@ -3939,6 +3945,8 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 				ASSERT_UNREACHABLE;
 
 			const MutRange<byte> bytes = range::from_object_bytes_mut(&result);
+
+			interp->values.pop_by(1);
 
 			return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(f64), true, type });
 		}
@@ -3978,6 +3986,8 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&result);
 
+		interp->values.pop_by(1);
+
 		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, type });
 	}
 	else if (type_tag == TypeTag::CompFloat)
@@ -4005,6 +4015,8 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 			ASSERT_UNREACHABLE;
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&result);
+
+		interp->values.pop_by(1);
 
 		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompFloatValue), true, type });
 	}
