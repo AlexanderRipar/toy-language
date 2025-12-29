@@ -2169,7 +2169,7 @@ static const Opcode* handle_signature(Interpreter* interp, const Opcode* code, C
 
 	interp->values.pop_by(value_count - 1);
 
-	ASSERT_OR_IGNORE(value + 1 == interp->values.end());
+	ASSERT_OR_IGNORE(value == interp->values.end());
 
 	SignatureType2 attach{};
 	attach.parameter_list_type_id = parameter_list_type;
