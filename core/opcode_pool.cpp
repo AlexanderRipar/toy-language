@@ -975,58 +975,54 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		memcpy(attach, &argument_count, sizeof(u8));
 
-		if (argument_count == 0)
+		if (argument_count != 0)
 		{
-			emit_opcode(opcodes, Opcode::Call, expects_write_ctx, node);
+			byte* const names_attach = attach + 1;
 
-			return true;
-		}
+			byte* const callbacks_attach = attach + 1 + argument_count * sizeof(IdentifierId);
 
-		byte* const names_attach = attach + 1;
+			u8 argument_index = 0;
 
-		byte* const callbacks_attach = attach + 1 + argument_count * sizeof(IdentifierId);
+			AstNode* argument = next_sibling_of(callee);
 
-		u8 argument_index = 0;
-
-		AstNode* argument = next_sibling_of(callee);
-
-		while (true)
-		{
-			IdentifierId argument_name;
-
-			AstNode* argument_value;
-
-			if (argument->tag == AstTag::OpSet)
+			while (true)
 			{
-				AstNode* const name = first_child_of(argument);
+				IdentifierId argument_name;
 
-				const AstImpliedMemberData* const name_attach = attachment_of<AstImpliedMemberData>(name);
+				AstNode* argument_value;
 
-				argument_name = name_attach->identifier_id;
+				if (argument->tag == AstTag::OpSet)
+				{
+					AstNode* const name = first_child_of(argument);
 
-				argument_value = next_sibling_of(name);
+					const AstImpliedMemberData* const name_attach = attachment_of<AstImpliedMemberData>(name);
+
+					argument_name = name_attach->identifier_id;
+
+					argument_value = next_sibling_of(name);
+				}
+				else
+				{
+					argument_name = IdentifierId::INVALID;
+
+					argument_value = argument;
+				}
+
+				memcpy(names_attach + argument_index * sizeof(IdentifierId), &argument_name, sizeof(IdentifierId));
+
+				const OpcodeId argument_fixup_dst = id_from_opcode(opcodes, reinterpret_cast<const Opcode*>(callbacks_attach + argument_index * sizeof(OpcodeId)));
+
+				const AstNodeId argument_fixup_node = id_from_ast_node(opcodes->asts, argument_value);
+
+				emit_fixup(opcodes, argument_fixup_dst, argument_fixup_node, true);
+
+				if (!has_next_sibling(argument))
+					break;
+
+				argument = next_sibling_of(argument);
+
+				argument_index += 1;
 			}
-			else
-			{
-				argument_name = IdentifierId::INVALID;
-
-				argument_value = argument;
-			}
-
-			memcpy(names_attach + argument_index * sizeof(IdentifierId), &argument_name, sizeof(IdentifierId));
-
-			const OpcodeId callback_dst = id_from_opcode(opcodes, reinterpret_cast<const Opcode*>(callbacks_attach + argument_index * sizeof(OpcodeId)));
-
-			const AstNodeId callback_node = id_from_ast_node(opcodes->asts, argument_value);
-
-			emit_fixup(opcodes, callback_dst, callback_node, true);
-
-			if (!has_next_sibling(argument))
-				break;
-
-			argument = next_sibling_of(argument);
-
-			argument_index += 1;
 		}
 
 		emit_opcode(opcodes, Opcode::Call, expects_write_ctx, node);
