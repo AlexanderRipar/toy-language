@@ -1482,34 +1482,25 @@ static const Opcode* builtin_import(Interpreter* interp, const Opcode* code, CTV
 
 	const SourceId from = get_builtin_param<SourceId>(interp, 2);
 
+	ASSERT_OR_IGNORE(from != SourceId::INVALID);
+
 	char8 absolute_path_buf[8192];
 
-	Range<char8> absolute_path;
+	const Range<char8> path_base = source_file_path_from_source_id(interp->reader, from);
 
-	if (from != SourceId::INVALID)
-	{
-		const Range<char8> path_base = source_file_path_from_source_id(interp->reader, from);
+	char8 path_base_parent_buf[8192];
 
-		char8 path_base_parent_buf[8192];
+	const u32 path_base_parent_chars = minos::path_to_absolute_directory(path_base, MutRange{ path_base_parent_buf });
 
-		const u32 path_base_parent_chars = minos::path_to_absolute_directory(path_base, MutRange{ path_base_parent_buf });
+	if (path_base_parent_chars == 0 || path_base_parent_chars > array_count(path_base_parent_buf))
+		panic("Failed to get parent directory from `from` source file (0x%X).\n", minos::last_error());
 
-		if (path_base_parent_chars == 0 || path_base_parent_chars > array_count(path_base_parent_buf))
-			panic("Failed to get parent directory from `from` source file (0x%X).\n", minos::last_error());
+	const u32 absolute_path_chars = minos::path_to_absolute_relative_to(path, Range{ path_base_parent_buf , path_base_parent_chars }, MutRange{ absolute_path_buf });
 
-		const u32 absolute_path_chars = minos::path_to_absolute_relative_to(path, Range{ path_base_parent_buf , path_base_parent_chars }, MutRange{ absolute_path_buf });
+	if (absolute_path_chars == 0 || absolute_path_chars > array_count(absolute_path_buf))
+		panic("Failed to make `path` %.*s absolute relative to `from` %.*s (0x%X).\n", static_cast<s32>(path.count()), path.begin(), static_cast<s32>(path_base.count()), path_base.begin(), minos::last_error());
 
-		if (absolute_path_chars == 0 || absolute_path_chars > array_count(absolute_path_buf))
-			panic("Failed to make `path` %.*s absolute relative to `from` %.*s (0x%X).\n", static_cast<s32>(path.count()), path.begin(), static_cast<s32>(path_base.count()), path_base.begin(), minos::last_error());
-
-		absolute_path = Range{ absolute_path_buf, absolute_path_chars };
-	}
-	else
-	{
-		// This makes the prelude import of the configured standard library
-		// (which is an absolute path) work.
-		absolute_path = path;
-	}
+	const Range<char8> absolute_path{ absolute_path_buf, absolute_path_chars };
 
 	Maybe<TypeId> file_type = import_file(interp, absolute_path, is_std);
 
