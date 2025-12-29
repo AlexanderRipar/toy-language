@@ -294,7 +294,7 @@ NORETURN static void config_error(ConfigParser* parser, const char8* curr, Compi
 	location.context_offset = 0;
 	location.context_chars = 0;
 
-	print_error(minos::standard_file_handle(minos::StdFileName::StdErr), &location, error);
+	print_error(minos::standard_file_handle(minos::StdFileName::StdErr), &location, error, 4);
 
 	minos::exit_process(1);
 }

@@ -23,6 +23,8 @@ struct ErrorSink
 
 	u32 error_count;
 
+	u8 source_tab_size;
+
 	ReservedVec<ErrorRecord> records;
 
 	minos::FileHandle log_file;
@@ -200,7 +202,7 @@ static FILE* c_fileptr_from_minos(minos::FileHandle filehandle) noexcept
 	}
 }
 
-ErrorSink* create_error_sink(HandlePool* alloc, SourceReader* reader, IdentifierPool* identifiers, AstPool* asts, minos::FileHandle log_file) noexcept
+ErrorSink* create_error_sink(HandlePool* alloc, SourceReader* reader, IdentifierPool* identifiers, AstPool* asts, u8 source_tab_size, minos::FileHandle log_file) noexcept
 {
 	ErrorSink* const errors = alloc_handle_from_pool<ErrorSink>(alloc);
 
@@ -212,6 +214,8 @@ ErrorSink* create_error_sink(HandlePool* alloc, SourceReader* reader, Identifier
 	errors->reader = reader;
 	errors->identifiers = identifiers;
 	errors->asts = asts;
+	errors->error_count = 0;
+	errors->source_tab_size = source_tab_size;
 	errors->records.init({ memory, sizeof(ErrorRecord) * MAX_ERROR_RECORD_COUNT }, 1024);
 	errors->log_file = log_file;
 
@@ -251,7 +255,7 @@ void print_errors(ErrorSink* errors) noexcept
 	{
 		const SourceLocation location = source_location_from_source_id(errors->reader, record.source_id);
 
-		print_error(errors->log_file, &location, record.error);
+		print_error(errors->log_file, &location, record.error, errors->source_tab_size);
 	}
 }
 
@@ -260,7 +264,7 @@ Range<ErrorRecord> get_errors(ErrorSink* errors) noexcept
 	return Range<ErrorRecord>{ errors->records.begin(), errors->records.end() };
 }
 
-void print_error(minos::FileHandle dst, const SourceLocation* location, CompileError error) noexcept
+void print_error(minos::FileHandle dst, const SourceLocation* location, CompileError error, u8 tab_size) noexcept
 {
 	FILE* const c_fileptr = c_fileptr_from_minos(dst);
 
@@ -270,16 +274,38 @@ void print_error(minos::FileHandle dst, const SourceLocation* location, CompileE
 		? 0
 		: location->column_number - location->context_offset - 1;
 
+	u32 tabs_in_context_before_offset = 0;
+
+	for (u32 i = 0; i != error_offset_in_context; ++i)
+	{
+		if (location->context[i] == '\t')
+			tabs_in_context_before_offset += 1;
+	}
+
+	const u32 column_number = location->column_number + location->tabs_before_column_number * (tab_size - 1);
+
+	const u8 log10_column_number = log10_ceil(column_number);
+
 	fprintf(c_fileptr,
 		" %.*s:%u:%u: %s\n"
 		" %5u | %.*s\n"
-		"       | %*s^\n",
+		" %*s   | ",
 		static_cast<s32>(location->filepath.count()), location->filepath.begin(),
 		location->line_number,
-		location->column_number,
+		column_number,
 		message,
 		location->line_number,
 		static_cast<s32>(location->context_chars), location->context,
-		static_cast<s32>(error_offset_in_context), ""
+		static_cast<s32>(log10_column_number), ""
 	);
+
+	for (u32 i = 0; i != error_offset_in_context; ++i)
+	{
+		if (location->context[i] == '\t')
+			fputc('\t', c_fileptr);
+		else
+			fputc(' ', c_fileptr);
+	}
+
+	fputs("^\n", c_fileptr);
 }

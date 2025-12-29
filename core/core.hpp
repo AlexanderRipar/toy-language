@@ -1849,7 +1849,7 @@ struct ErrorRecord
 // Creates a `ErrorSink`, allocating the necessary storage from `alloc`.
 // Resources associated with the created `ErrorSink` can be freed using
 // `release_error_sink`.
-ErrorSink* create_error_sink(HandlePool* pool, SourceReader* reader, IdentifierPool* identifiers, AstPool* asts, minos::FileHandle log_file) noexcept;
+ErrorSink* create_error_sink(HandlePool* pool, SourceReader* reader, IdentifierPool* identifiers, AstPool* asts, u8 source_tab_size, minos::FileHandle log_file) noexcept;
 
 // Releases the resources associated with the given `ErrorSink`.
 void release_error_sink(ErrorSink* errors) noexcept;
@@ -1881,7 +1881,7 @@ Range<ErrorRecord> get_errors(ErrorSink* errors) noexcept;
 // the `location`.
 // This is mainly intended for usage with `Config` parsing, as there is no
 // `ErrorSink` available at that point.
-void print_error(minos::FileHandle dst, const SourceLocation* location, CompileError error) noexcept;
+void print_error(minos::FileHandle dst, const SourceLocation* location, CompileError error, u8 tab_size) noexcept;
 
 
 

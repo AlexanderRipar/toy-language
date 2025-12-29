@@ -43,7 +43,7 @@ CoreData create_core_data(Range<char8> config_filepath) noexcept
 	core.globals = create_global_value_pool(core.alloc);
 	core.types = create_type_pool(core.alloc);
 	core.asts = create_ast_pool(core.alloc);
-	core.errors = create_error_sink(core.alloc, core.reader, core.identifiers, core.asts, diagnostics_log_file);
+	core.errors = create_error_sink(core.alloc, core.reader, core.identifiers, core.asts, static_cast<u8>(core.config->logging.diagnostics.source_tab_size), diagnostics_log_file);
 	core.parser = create_parser(core.alloc, core.identifiers, core.globals, core.types, core.asts, core.errors);
 	core.opcodes = create_opcode_pool(core.alloc, core.asts);
 	core.lex = create_lexical_analyser(core.alloc, core.identifiers, core.asts, core.errors);
