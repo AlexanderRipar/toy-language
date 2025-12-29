@@ -2688,6 +2688,8 @@ enum class Opcode : u8
 	ValueString,
 	ValueVoid,
 	DiscardVoid,
+	CheckTopVoid,
+	CheckWriteCtxVoid,
 };
 
 enum class OpcodeSliceKind : u8

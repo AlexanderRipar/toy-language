@@ -1801,6 +1801,8 @@ OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	case Opcode::PrepareArgs:
 	case Opcode::ExecArgs:
 	case Opcode::Return:
+	case Opcode::CheckTopVoid:
+	case Opcode::CheckWriteCtxVoid:
 	{
 		ASSERT_OR_IGNORE(!expects_write_ctx);
 

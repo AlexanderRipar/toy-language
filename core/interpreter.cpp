@@ -4707,6 +4707,38 @@ static const Opcode* handle_discard_void(Interpreter* interp, const Opcode* code
 	return code;
 }
 
+static const Opcode* handle_check_top_void(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
+	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+
+	CTValue* const top = interp->values.end() - 1;
+
+	const TypeTag type_tag = type_tag_from_id(interp->types, top->type);
+
+	if (type_tag != TypeTag::Void)
+		return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Error code.
+
+	return code;
+}
+
+static const Opcode* handle_check_write_ctx_void(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
+	ASSERT_OR_IGNORE(interp->write_ctxs.used() >= 1);
+
+	CTValue* const top_write_ctx = interp->write_ctxs.end() - 1;
+
+	const TypeTag type_tag = type_tag_from_id(interp->types, top_write_ctx->type);
+
+	if (type_tag != TypeTag::Void)
+		return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Error code.
+
+	return code;
+}
+
 
 
 static bool type_from_ast(Interpreter* interp, AstNode* ast, TypeId file_type, GlobalFileIndex file_index) noexcept
@@ -4889,6 +4921,8 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 		&handle_value_string,                      // ValueString
 		&handle_value_void,                        // ValueVoid
 		&handle_discard_void,                      // DiscardVoid
+		&handle_check_top_void,                    // CheckTopVoid
+		&handle_check_write_ctx_void,              // CheckWriteCtxVoid
 	};
 
 	static_assert(HANDLERS[static_cast<u8>(Opcode::EndCode)]                       == &handle_end_code);
@@ -4949,6 +4983,8 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ValueString)]                   == &handle_value_string);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ValueVoid)]                     == &handle_value_void);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::DiscardVoid)]                   == &handle_discard_void);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::CheckTopVoid)]                  == &handle_check_top_void);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::CheckWriteCtxVoid)]             == &handle_check_write_ctx_void);
 
 	interp->is_ok = true;
 

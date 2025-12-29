@@ -52,6 +52,8 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 	case Opcode::Unreachable:
 	case Opcode::ValueVoid:
 	case Opcode::DiscardVoid:
+	case Opcode::CheckTopVoid:
+	case Opcode::CheckWriteCtxVoid:
 	{
 		return code;
 	}
@@ -444,6 +446,8 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 	case Opcode::Unreachable:
 	case Opcode::ValueVoid:
 	case Opcode::DiscardVoid:
+	case Opcode::CheckTopVoid:
+	case Opcode::CheckWriteCtxVoid:
 	{
 		return code;
 	}
