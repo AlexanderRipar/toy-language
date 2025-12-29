@@ -1644,17 +1644,22 @@ struct SourceLocation
 	// Line number, starting from `1` for the first line in a file.
 	u32 line_number;
 
-	// Column number, starting from `1` for the first character in a file.
+	// Column number in characters, starting from `1` for the first character
+	// in a line.
 	u32 column_number;
 
 	// Byte offset of the first character in `context` from the first character
 	// in the column. This is usually `0`, and only becomes positive for very
 	// long columns, which might not fit into `context` and thus have their
-	// beginning cut off. 
+	// beginning cut off.
 	u32 context_offset;
 
 	// Number of characters stored in `context`.
 	u32 context_chars;
+
+	// Number of tab characters between the start of the line and the character
+	// at `column_number`.
+	u32 tabs_before_column_number;
 
 	// A copy of the text around the location.
 	char8 context[512];

@@ -216,6 +216,13 @@ static SourceLocation build_source_location(Range<char8> filepath, Range<char8> 
 	while (line_end < content.count() && content[line_end] != '\n' && content[line_end] != '\r')
 		line_end += 1;
 
+	u32 tabs_before_offset = 0;
+
+	for (u32 i = line_begin; i != offset; ++i)
+	{
+		if (content[i] == '\t')
+			tabs_before_offset += 1;
+	}
 
 	const u32 column_number = offset - line_begin;
 
@@ -229,6 +236,7 @@ static SourceLocation build_source_location(Range<char8> filepath, Range<char8> 
 	location.column_number = column_number + 1;
 	location.context_offset = context_begin - line_begin;
 	location.context_chars = context_chars;
+	location.tabs_before_column_number = tabs_before_offset;
 	memcpy(location.context, content.begin() + context_begin, context_chars);
 
 	return location;
