@@ -1131,6 +1131,24 @@ static const Opcode* scope_alloc_typed_member(Interpreter* interp, const Opcode*
 	return code;
 }
 
+static void scope_pop(Interpreter* interp) noexcept
+{
+	const Scope scope = interp->scopes.end()[-1];
+
+	interp->scopes.pop_by(1);
+
+	interp->temporary_data.pop_to(scope.temporary_data_used);
+
+	if (scope.first_member_index != interp->scope_members.used())
+	{
+		const u32 scope_data_begin = interp->scope_members.begin()[scope.first_member_index].offset;
+
+		interp->scope_members.pop_to(scope.first_member_index);
+
+		interp->scope_data.pop_to(scope_data_begin);
+	}
+}
+
 
 
 static bool u64_from_value(Interpreter* interp, const Opcode* code, CTValue value, u64* out) noexcept
@@ -1640,20 +1658,7 @@ static const Opcode* handle_scope_end(Interpreter* interp, const Opcode* code, [
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	const Scope scope = interp->scopes.end()[-1];
-
-	interp->scopes.pop_by(1);
-
-	interp->temporary_data.pop_to(scope.temporary_data_used);
-
-	if (scope.first_member_index != interp->scope_members.used())
-	{
-		const u32 scope_data_begin = interp->scope_members.begin()[scope.first_member_index].offset;
-
-		interp->scope_members.pop_to(scope.first_member_index);
-
-		interp->scope_data.pop_to(scope_data_begin);
-	}
+	scope_pop(interp);
 
 	return code;
 }
