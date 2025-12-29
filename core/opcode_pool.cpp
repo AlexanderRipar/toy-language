@@ -2445,6 +2445,8 @@ const char8* tag_name(Opcode op) noexcept
 		"ValueString",
 		"ValueVoid",
 		"DiscardVoid",
+		"CheckTopVoid",
+		"CheckWriteCtxVoid",
 	};
 
 	u8 ordinal = static_cast<u8>(op);
