@@ -24,11 +24,23 @@ struct Fixup
 	bool has_template_parameter_type;
 
 	bool has_template_parameter_value;
+
+	bool allow_return;
+
+	OpcodeEffects initial_state;
+
+	OpcodeEffects return_adjust;
 };
 
 struct OpcodePool
 {
 	AstPool* asts;
+
+	OpcodeEffects state;
+
+	OpcodeEffects return_adjust;
+
+	bool allow_return;
 
 	ReservedVec<Opcode> codes;
 
@@ -79,11 +91,25 @@ static void emit_opcode(OpcodePool* opcodes, Opcode code, bool expects_write_ctx
 	byte* const attach_dst = emit_opcode_raw(opcodes, code, expects_write_ctx, node, attach_size);
 
 	put_opcode_attachs(attach_dst, attachs...);
+
+	const OpcodeEffects effects = opcode_effects(reinterpret_cast<Opcode*>(attach_dst - 1));
+
+	opcodes->state.values_diff += effects.values_diff;
+	opcodes->state.scopes_diff += effects.scopes_diff;
+	opcodes->state.write_ctxs_diff += effects.write_ctxs_diff;
+	opcodes->state.closures_diff += effects.closures_diff;
+
+	ASSERT_OR_IGNORE(
+		opcodes->state.values_diff >= 0
+	 && opcodes->state.scopes_diff >= 0
+	 && opcodes->state.write_ctxs_diff >= 0
+	 && opcodes->state.closures_diff >= 0
+	);
 }
 
 
 
-static void emit_fixup(OpcodePool* opcodes, OpcodeId dst_id, AstNodeId node_id, bool expects_write_ctx) noexcept
+static void emit_fixup(OpcodePool* opcodes, OpcodeId dst_id, AstNodeId node_id, bool expects_write_ctx, bool allow_return, OpcodeEffects initial_state) noexcept
 {
 	Fixup fixup;
 	fixup.fixup_dst = dst_id;
@@ -91,8 +117,19 @@ static void emit_fixup(OpcodePool* opcodes, OpcodeId dst_id, AstNodeId node_id, 
 	fixup.expects_write_ctx = expects_write_ctx;
 	fixup.is_func_body = false;
 	fixup.template_parameter_rank = 0;
-	fixup.has_template_parameter_type = 0;
-	fixup.has_template_parameter_value = 0;
+	fixup.has_template_parameter_type = false;
+	fixup.has_template_parameter_value = false;
+	fixup.allow_return = allow_return;
+
+	fixup.initial_state = initial_state;
+
+	if (allow_return)
+	{
+		fixup.return_adjust.values_diff = opcodes->state.values_diff + opcodes->return_adjust.values_diff;
+		fixup.return_adjust.scopes_diff = opcodes->state.scopes_diff + opcodes->return_adjust.scopes_diff;
+		fixup.return_adjust.write_ctxs_diff = opcodes->state.write_ctxs_diff + opcodes->return_adjust.write_ctxs_diff;
+		fixup.return_adjust.closures_diff = opcodes->state.closures_diff + opcodes->return_adjust.closures_diff;
+	}
 
 	opcodes->fixups.append(fixup);
 }
@@ -107,11 +144,14 @@ static void emit_fixup_for_template_parameter(OpcodePool* opcodes, OpcodeId dst_
 	fixup.template_parameter_rank = rank;
 	fixup.has_template_parameter_type = has_type;
 	fixup.has_template_parameter_value = has_default;
+	fixup.allow_return = false;
+
+	fixup.initial_state = OpcodeEffects{};
 
 	opcodes->fixups.append(fixup);
 }
 
-static void emit_fixup_for_function_body(OpcodePool* opcodes, OpcodeId dst_id, AstNodeId node_id) noexcept
+static void emit_fixup_for_function_body(OpcodePool* opcodes, OpcodeId dst_id, AstNodeId node_id, bool has_closure) noexcept
 {
 	// Set `expects_write_ctx` to `true`, since calls always provide a write
 	// context, meaning that function bodies must always expect one.
@@ -122,8 +162,16 @@ static void emit_fixup_for_function_body(OpcodePool* opcodes, OpcodeId dst_id, A
 	fixup.expects_write_ctx = true;
 	fixup.is_func_body = true;
 	fixup.template_parameter_rank = 0;
-	fixup.has_template_parameter_type = 0;
-	fixup.has_template_parameter_value = 0;
+	fixup.has_template_parameter_type = false;
+	fixup.has_template_parameter_value = false;
+	fixup.allow_return = true;
+
+	fixup.initial_state.values_diff = 0;
+	fixup.initial_state.scopes_diff = 0;
+	fixup.initial_state.write_ctxs_diff = 1;
+	fixup.initial_state.closures_diff = has_closure ? 1 : 0;
+
+	fixup.return_adjust = OpcodeEffects{};
 
 	opcodes->fixups.append(fixup);
 }
@@ -245,7 +293,7 @@ static bool opcodes_from_parameter(OpcodePool* opcodes, AstNode* node, u8 rank, 
 		{ 
 			const AstNodeId type_node = id_from_ast_node(opcodes->asts, get(info.type));
 
-			emit_fixup(opcodes, OpcodeId::INVALID, type_node, false);
+			emit_fixup(opcodes, OpcodeId::INVALID, type_node, false, false, OpcodeEffects{});
 
 			const AstNodeId default_node = id_from_ast_node(opcodes->asts, get(info.value));
 
@@ -365,6 +413,29 @@ static bool opcodes_from_signature(OpcodePool* opcodes, AstNode* node, bool expe
 		                      + 2 * sizeof(u8)
 		                      + parameter_count * (sizeof(IdentifierId) + sizeof(OpcodeSignaturePerParameterFlags));
 
+		// Since we use `emit_opcode_raw` and not `emit_opcode`, we need to
+		// manually adjust and check the current state.
+		if (expects_write_ctx)
+		{
+			ASSERT_OR_IGNORE(opcodes->state.write_ctxs_diff != 0);
+
+			opcodes->state.values_diff -= value_count;
+			opcodes->state.write_ctxs_diff -= 1;
+
+			ASSERT_OR_IGNORE(
+				opcodes->state.values_diff >= 0
+			 && opcodes->state.write_ctxs_diff >= 0
+			);
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(opcodes->state.values_diff != 0);
+
+			opcodes->state.values_diff -= value_count - 1;
+
+			ASSERT_OR_IGNORE(opcodes->state.values_diff >= 0);
+		}
+
 		byte* attach = emit_opcode_raw(opcodes, Opcode::Signature, expects_write_ctx, node, attach_size);
 
 		OpcodeSignatureFlags flags;
@@ -423,8 +494,13 @@ static bool opcodes_from_signature(OpcodePool* opcodes, AstNode* node, bool expe
 		if (has_templated_return_type)
 		{
 			const OpcodeId return_type_fixup_dst = static_cast<OpcodeId>(reinterpret_cast<Opcode*>(attach) - opcodes->codes.begin());
+
 			const AstNodeId return_type_fixup_node = id_from_ast_node(opcodes->asts, get(info.return_type));
-			emit_fixup(opcodes, return_type_fixup_dst, return_type_fixup_node, false);
+
+			OpcodeEffects return_type_fixup_state{};
+			return_type_fixup_state.write_ctxs_diff = 1;
+
+			emit_fixup(opcodes, return_type_fixup_dst, return_type_fixup_node, false, false, return_type_fixup_state);
 
 			const OpcodeId dummy_opcode = OpcodeId::INVALID;
 
@@ -490,6 +566,8 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		{
 			u16 named_member_count = 0;
 
+			s32 write_ctxs_diff = -1;
+
 			AstDirectChildIterator it = direct_children_of(node);
 
 			while (has_next(&it))
@@ -498,6 +576,16 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 				if (member->tag == AstTag::OpSet)
 					named_member_count += 1;
+
+				write_ctxs_diff += 1;
+			}
+
+			// Since we use `emit_opcode_raw` and not `emit_opcode`, we need to
+			// manually adjust and check the current state.
+			{
+				ASSERT_OR_IGNORE(opcodes->state.write_ctxs_diff != 0);
+
+				opcodes->state.write_ctxs_diff = write_ctxs_diff;
 			}
 
 			const u32 attach_size = 2 * sizeof(u16) + named_member_count * (sizeof(IdentifierId) + sizeof(u16));
@@ -580,6 +668,15 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 					return false;
 
 				total_member_count += 1;
+			}
+
+
+			// Since we use `emit_opcode_raw` and not `emit_opcode`, we need to
+			// manually adjust and check the current state.
+			{
+				ASSERT_OR_IGNORE(opcodes->state.values_diff >= total_member_count);
+
+				opcodes->state.values_diff -= total_member_count - 1;
 			}
 
 			byte* attach = emit_opcode_raw(opcodes, Opcode::CompositePostInit, false, node, sizeof(u16) + total_member_count * sizeof(IdentifierId));
@@ -685,6 +782,10 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 	case AstTag::Block:
 	{
+		// Since we use `emit_opcode_raw` and not `emit_opcode`, we need to
+		// manually adjust and check the current state.
+		opcodes->state.scopes_diff += 1;
+
 		byte* const attach = emit_opcode_raw(opcodes, Opcode::ScopeBegin, false, node, sizeof(u16));
 
 		u16 definition_count = 0;
@@ -752,7 +853,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		const AstNodeId consequent_node = id_from_ast_node(opcodes->asts, info.consequent);
 
-		emit_fixup(opcodes, consequent_dst, consequent_node, expects_write_ctx);
+		emit_fixup(opcodes, consequent_dst, consequent_node, expects_write_ctx, opcodes->allow_return, OpcodeEffects{});
 
 		if (is_some(info.alternative))
 		{
@@ -760,7 +861,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 			const AstNodeId alternative_node = id_from_ast_node(opcodes->asts, get(info.alternative));
 
-			emit_fixup(opcodes, alternative_dst, alternative_node, expects_write_ctx);
+			emit_fixup(opcodes, alternative_dst, alternative_node, expects_write_ctx, opcodes->allow_return, OpcodeEffects{});
 
 			emit_opcode(opcodes, Opcode::IfElse, false, node, OpcodeId::INVALID, OpcodeId::INVALID);
 		}
@@ -798,21 +899,21 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		const OpcodeId body_dst = static_cast<OpcodeId>(opcodes->codes.used() + 1 + sizeof(OpcodeId));
 		const AstNodeId body_node = id_from_ast_node(opcodes->asts, info.body);
-		emit_fixup(opcodes, body_dst, body_node, expects_write_ctx);
+		emit_fixup(opcodes, body_dst, body_node, expects_write_ctx, opcodes->allow_return, OpcodeEffects{});
 
 		if (is_some(info.step))
 		{
 			const AstNodeId step_node = id_from_ast_node(opcodes->asts, get(info.step));
 
 			// Use `OpcodeId::INVALID` to indicate that this continues the previous fixup's block.
-			emit_fixup(opcodes, OpcodeId::INVALID, step_node, false);
+			emit_fixup(opcodes, OpcodeId::INVALID, step_node, false, opcodes->allow_return, OpcodeEffects{});
 		}
 
 		if (is_some(info.finally))
 		{
 			const OpcodeId finally_dst = static_cast<OpcodeId>(opcodes->codes.used() + 1 + 2 * sizeof(OpcodeId));
 			const AstNodeId finally_node = id_from_ast_node(opcodes->asts, get(info.finally));
-			emit_fixup(opcodes, finally_dst, finally_node, expects_write_ctx);
+			emit_fixup(opcodes, finally_dst, finally_node, expects_write_ctx, opcodes->allow_return, OpcodeEffects{});
 
 			emit_opcode(opcodes, Opcode::LoopFinally, false, node, condition_id, OpcodeId::INVALID, OpcodeId::INVALID);
 		}
@@ -847,7 +948,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		const AstNodeId body_fixup_node = id_from_ast_node(opcodes->asts, body);
 
-		emit_fixup_for_function_body(opcodes, body_fixup_dst, body_fixup_node);
+		emit_fixup_for_function_body(opcodes, body_fixup_dst, body_fixup_node, closed_over_value_count != 0);
 
 		return true;
 	}
@@ -949,6 +1050,23 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 	case AstTag::Return:
 	{
+		if (!opcodes->allow_return)
+			return false; // TODO: Error message.
+
+		const s32 closures_diff = opcodes->state.closures_diff != 0 || opcodes->return_adjust.closures_diff != 0;
+
+		ASSERT_OR_IGNORE(closures_diff == 0 || closures_diff == 1);
+
+		if (closures_diff != 0)
+			emit_opcode(opcodes, Opcode::PopClosure, false, node);
+
+		const s32 values_diff = opcodes->state.values_diff + opcodes->return_adjust.values_diff;
+		const s32 scopes_diff = opcodes->state.scopes_diff + opcodes->return_adjust.scopes_diff;
+		const s32 write_ctxs_diff = opcodes->state.write_ctxs_diff + opcodes->return_adjust.write_ctxs_diff;
+
+		if (values_diff != 0 || scopes_diff != 0 || write_ctxs_diff != 0)
+			TODO("Discard extra elements");
+
 		AstNode* const operand = first_child_of(node);
 
 		if (!opcodes_from_expression(opcodes, operand, true))
@@ -971,6 +1089,10 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		for (AstNode* argument = callee; has_next_sibling(argument); argument = next_sibling_of(argument))
 			argument_count += 1;
 
+		// Since we use `emit_opcode_raw` and not `emit_opcode`, we need would
+		// normally need to manually adjust and check the current state.
+		// However, in this case there is nothing to update, as `Opcode::PrepareArgs`
+		// has no direct effect on (the recorded part of) the state.
 		byte* const attach = emit_opcode_raw(opcodes, Opcode::Args, false, node, sizeof(u8) + argument_count * (sizeof(IdentifierId) + sizeof(OpcodeId)));
 
 		memcpy(attach, &argument_count, sizeof(u8));
@@ -1014,7 +1136,10 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 				const AstNodeId argument_fixup_node = id_from_ast_node(opcodes->asts, argument_value);
 
-				emit_fixup(opcodes, argument_fixup_dst, argument_fixup_node, true);
+				OpcodeEffects argument_fixup_state{};
+				argument_fixup_state.write_ctxs_diff = 1;
+
+				emit_fixup(opcodes, argument_fixup_dst, argument_fixup_node, true, false, argument_fixup_state);
 
 				if (!has_next_sibling(argument))
 					break;
@@ -1466,6 +1591,10 @@ static bool complete_fixups(OpcodePool* opcodes) noexcept
 		{
 			const Fixup prev = opcodes->fixups.end()[-1];
 
+			opcodes->state = prev.initial_state;
+			opcodes->return_adjust = prev.return_adjust;
+			opcodes->allow_return = prev.allow_return;
+
 			// Fixup continuation is not transitive as that is never needed.
 			ASSERT_OR_IGNORE(prev.fixup_dst != OpcodeId::INVALID);
 
@@ -1477,6 +1606,12 @@ static bool complete_fixups(OpcodePool* opcodes) noexcept
 
 			if (!complete_single_fixup(opcodes, prev))
 				return false;
+		}
+		else
+		{
+			opcodes->state = curr.initial_state;
+			opcodes->return_adjust = curr.return_adjust;
+			opcodes->allow_return = curr.allow_return;
 		}
 
 		if (!complete_single_fixup(opcodes, curr))
@@ -1495,6 +1630,13 @@ static bool complete_fixups(OpcodePool* opcodes) noexcept
 			emit_opcode(opcodes, Opcode::Return, false, node);
 
 		emit_opcode(opcodes, Opcode::EndCode, false, node);
+
+		ASSERT_OR_IGNORE(
+			opcodes->state.values_diff == 0
+		 && opcodes->state.scopes_diff == 0
+		 && opcodes->state.write_ctxs_diff == 0
+		 && opcodes->state.closures_diff == 0
+		);
 	}
 
 	return true;
@@ -1556,6 +1698,11 @@ void release_opcode_pool(OpcodePool* opcodes) noexcept
 
 const Maybe<Opcode*> opcodes_from_file_member_ast(OpcodePool* opcodes, AstNode* node, GlobalFileIndex file_index, u16 rank) noexcept
 {
+	opcodes->state.values_diff = 0;
+	opcodes->state.scopes_diff = 0;
+	opcodes->state.write_ctxs_diff = 0;
+	opcodes->state.closures_diff = 0;
+
 	Opcode* const first_opcode = opcodes->codes.end();
 
 	DefinitionInfo info = get_definition_info(node);
@@ -1585,11 +1732,25 @@ const Maybe<Opcode*> opcodes_from_file_member_ast(OpcodePool* opcodes, AstNode* 
 	if (!complete_fixups(opcodes))
 		return none<Opcode*>();
 
+	ASSERT_OR_IGNORE(
+		opcodes->state.values_diff == 0
+	 && opcodes->state.scopes_diff == 0
+	 && opcodes->state.write_ctxs_diff == 0
+	 && opcodes->state.closures_diff == 0
+	);
+
 	return some(first_opcode);
 }
 
 OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept
 {
+	opcodes->state.values_diff = 0;
+	opcodes->state.scopes_diff = 0;
+	opcodes->state.write_ctxs_diff = 1;
+	opcodes->state.closures_diff = 0;
+
+	opcodes->allow_return = false;
+
 	const OpcodeId first_opcode_id = static_cast<OpcodeId>(opcodes->codes.used());
 
 	emit_opcode(opcodes, Opcode::ExecBuiltin, true, nullptr, builtin);
@@ -1597,6 +1758,13 @@ OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept
 	emit_opcode(opcodes, Opcode::Return, false, nullptr);
 
 	emit_opcode(opcodes, Opcode::EndCode, false, nullptr);
+
+	ASSERT_OR_IGNORE(
+		opcodes->state.values_diff == 0
+	 && opcodes->state.scopes_diff == 0
+	 && opcodes->state.write_ctxs_diff == 0
+	 && opcodes->state.closures_diff == 0
+	);
 
 	return first_opcode_id;
 }
