@@ -218,6 +218,28 @@ inline u8 count_leading_ones(T n) noexcept
 	return clz_shim_<T, false>(~n);
 }
 
+template<typename T>
+inline u8 log10_ceil(T n) noexcept
+{
+	u8 rst = 1;
+
+	while (n >= 10'000)
+	{
+		rst += 4;
+
+		n /= 10'000;
+	}
+
+	if (n >= 1000)
+		return rst + 3;
+	else if (n >= 100)
+		return rst + 2;
+	else if (n >= 10)
+		return rst + 1;
+	else
+		return rst;
+}
+
 template<typename, typename>
 constexpr bool is_same_cpp_type = false;
 template <typename T>
