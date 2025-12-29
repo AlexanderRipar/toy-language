@@ -284,19 +284,23 @@ void print_error(minos::FileHandle dst, const SourceLocation* location, CompileE
 
 	const u32 column_number = location->column_number + location->tabs_before_column_number * (tab_size - 1);
 
-	const u8 log10_column_number = log10_ceil(column_number);
+	const u8 log10_line_number = log10_ceil(location->line_number);
+
+	const s32 error_indicator_preindent = log10_line_number < 5
+		? 5
+		: static_cast<s32>(log10_line_number);
 
 	fprintf(c_fileptr,
 		" %.*s:%u:%u: %s\n"
 		" %5u | %.*s\n"
-		" %*s   | ",
+		" %*s | ",
 		static_cast<s32>(location->filepath.count()), location->filepath.begin(),
 		location->line_number,
 		column_number,
 		message,
 		location->line_number,
 		static_cast<s32>(location->context_chars), location->context,
-		static_cast<s32>(log10_column_number), ""
+		error_indicator_preindent, ""
 	);
 
 	for (u32 i = 0; i != error_offset_in_context; ++i)
