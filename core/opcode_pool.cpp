@@ -552,7 +552,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 		}
 		else
 		{
-			u16 member_count = 0;
+			u16 total_member_count = 0;
 
 			AstDirectChildIterator it = direct_children_of(node);
 
@@ -579,12 +579,12 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 				if (!opcodes_from_expression(opcodes, value, false))
 					return false;
 
-				member_count += 1;
+				total_member_count += 1;
 			}
 
-			byte* attach = emit_opcode_raw(opcodes, Opcode::CompositePostInit, false, node, sizeof(u16) + member_count * sizeof(IdentifierId));
+			byte* attach = emit_opcode_raw(opcodes, Opcode::CompositePostInit, false, node, sizeof(u16) + total_member_count * sizeof(IdentifierId));
 
-			memcpy(attach, &member_count, sizeof(u16));
+			memcpy(attach, &total_member_count, sizeof(u16));
 
 			attach += sizeof(u16);
 
