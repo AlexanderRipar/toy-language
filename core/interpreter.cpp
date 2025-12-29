@@ -3777,6 +3777,13 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 					result_signed = lhs_value_signed % rhs_value_signed;
 				}
 
+				const s64 max_value = static_cast<s64>((static_cast<u64>(1) << (integer_type.bits - 1)) - 1);
+
+				const s64 min_value = -max_value - 1;
+
+				if (result_signed > max_value || result_signed < min_value)
+					return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow);
+
 				result = static_cast<u64>(result_signed);
 			}
 			else
@@ -3811,6 +3818,14 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 						return record_interpreter_error(interp, code, CompileError::DivideByZero);
 
 					result = lhs_value % rhs_value;
+				}
+
+				if (integer_type.bits != 64)
+				{
+					const u64 max_value = (static_cast<u64>(1) << integer_type.bits) - 1;
+
+					if (result > max_value)
+						return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow);
 				}
 			}
 
