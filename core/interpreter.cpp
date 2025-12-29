@@ -4636,11 +4636,9 @@ static const Opcode* handle_undefined(Interpreter* interp, const Opcode* code, C
 
 static const Opcode* handle_unreachable([[maybe_unused]] Interpreter* interp, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	(void) record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Output or something idk.
-
 	DEBUGBREAK;
 
-	exit(2);
+	return record_interpreter_error(interp, code, CompileError::UnreachableReached);
 }
 
 static const Opcode* handle_value_integer(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
