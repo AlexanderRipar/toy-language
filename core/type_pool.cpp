@@ -600,6 +600,7 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 	case TypeTag::TypeInfo:
 	case TypeTag::Integer:
 	case TypeTag::Float:
+	case TypeTag::Array:
 	case TypeTag::Func:
 	case TypeTag::Builtin:
 	case TypeTag::Composite:
@@ -754,44 +755,22 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 
 	case TypeTag::ArrayLiteral:
 	{
-		if (to_tag == TypeTag::Array || to_tag == TypeTag::ArrayLiteral)
-		{
-			const ArrayType* const from_attach = reinterpret_cast<const ArrayType*>(from->attach);
-
-			const ArrayType* const to_attach = reinterpret_cast<const ArrayType*>(to->attach);
-
-			if (from_attach->element_count != to_attach->element_count)
-				return false;
-
-			// An empty array literal with no element type can be converted to
-			// an empty array or array literal with any other element type.
-			if (is_none(from_attach->element_type))
-				return true;
-
-			return type_can_implicitly_convert_from_to(types, get(from_attach->element_type), get(to_attach->element_type));
-		}
-
-		#if COMPILER_GCC
-			#pragma GCC diagnostic push
-			#pragma GCC diagnostic ignored "-Wimplicit-fallthrough" // this statement may fall through
-		#endif
-	}
-		#if COMPILER_GCC
-			#pragma GCC diagnostic pop
-		#endif
-
-	// Fallthrough from `ArrayLiteral` to `Array`.
-
-	case TypeTag::Array:
-	{
-		if (to_tag != TypeTag::Slice)
+		if (to_tag != TypeTag::Array && to_tag != TypeTag::ArrayLiteral)
 			return false;
 
 		const ArrayType* const from_attach = reinterpret_cast<const ArrayType*>(from->attach);
 
-		const ReferenceType* const to_attach = reinterpret_cast<const ReferenceType*>(to->attach);
+		const ArrayType* const to_attach = reinterpret_cast<const ArrayType*>(to->attach);
 
-		return type_is_equal(types, get(from_attach->element_type), to_attach->referenced_type_id);
+		if (from_attach->element_count != to_attach->element_count)
+			return false;
+
+		// An empty array literal with no element type can be converted to
+		// an empty array or array literal with any other element type.
+		if (is_none(from_attach->element_type))
+			return true;
+
+		return type_can_implicitly_convert_from_to(types, get(from_attach->element_type), get(to_attach->element_type));
 	}
 
 	case TypeTag::INVALID:
