@@ -4152,9 +4152,9 @@ static const Opcode* handle_binary_bitwise_op(Interpreter* interp, const Opcode*
 			else
 				ASSERT_UNREACHABLE;
 
-			interp->values.pop_by(1);
-
 			const MutRange<byte> bytes{ reinterpret_cast<byte*>(&result), size };
+
+			interp->values.pop_by(1);
 
 			return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(u16), true, type });
 		}
