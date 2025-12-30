@@ -1686,9 +1686,11 @@ static const Opcode* handle_scope_alloc_typed(Interpreter* interp, const Opcode*
 	if (type_tag != TypeTag::Type)
 		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
 
+	const TypeId member_type = *value_as<TypeId>(top);
+
 	interp->values.pop_by(1);
 
-	return scope_alloc_typed_member(interp, code, is_mut, type);
+	return scope_alloc_typed_member(interp, code, is_mut, member_type);
 }
 
 static const Opcode* handle_scope_alloc_untyped(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
