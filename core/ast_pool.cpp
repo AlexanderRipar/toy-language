@@ -27,8 +27,6 @@ struct AstAllocation
 	SourceId* sources;
 };
 
-static void lower_tags_rec(AstPool* asts, AstNode* src_node, bool lower_where_expr) noexcept;
-
 static AstAllocation alloc_ast(AstPool* asts, u32 qwords) noexcept
 {
 	AstNode* const nodes = static_cast<AstNode*>(asts->nodes.reserve_exact(qwords * sizeof(u64)));
