@@ -780,35 +780,35 @@ static const Opcode* convert_into(Interpreter* interp, const Opcode* code, CTVal
 	}
 }
 
-static Maybe<TypeId> unify(Interpreter* interp, const Opcode* code, CTValue* lhs, CTValue* rhs) noexcept
+static Maybe<TypeId> unify(Interpreter* interp, const Opcode* code, CTValue* inout_lhs, CTValue* inout_rhs) noexcept
 {
-	const TypeRelation relation = type_relation(interp->types, lhs->type, rhs->type);
+	const TypeRelation relation = type_relation(interp->types, inout_lhs->type, inout_rhs->type);
 
 	if (relation == TypeRelation::Equal)
 	{
-		return some(lhs->type < rhs->type ? lhs->type : rhs->type);
+		return some(inout_lhs->type < inout_rhs->type ? inout_lhs->type : inout_rhs->type);
 	}
 	else if (relation == TypeRelation::FirstConvertsToSecond)
 	{
-		const CTValue tmp_value = alloc_temporary_value_uninit(interp, rhs->bytes.count(), rhs->align, rhs->type);
+		const CTValue tmp_value = alloc_temporary_value_uninit(interp, inout_rhs->bytes.count(), inout_rhs->align, inout_rhs->type);
 
-		if (convert_into_assume_convertible(interp, code, *lhs, tmp_value) == nullptr)
+		if (convert_into_assume_convertible(interp, code, *inout_lhs, tmp_value) == nullptr)
 			return none<TypeId>();
 
-		*lhs = tmp_value;
+		*inout_lhs = tmp_value;
 
-		return some(rhs->type);
+		return some(inout_rhs->type);
 	}
 	else if (relation == TypeRelation::SecondConvertsToFirst)
 	{
-		const CTValue tmp_value = alloc_temporary_value_uninit(interp, lhs->bytes.count(), lhs->align, lhs->type);
+		const CTValue tmp_value = alloc_temporary_value_uninit(interp, inout_lhs->bytes.count(), inout_lhs->align, inout_lhs->type);
 
-		if (convert_into_assume_convertible(interp, code, *rhs, tmp_value) == nullptr)
+		if (convert_into_assume_convertible(interp, code, *inout_rhs, tmp_value) == nullptr)
 			return none<TypeId>();
 
-		*rhs = tmp_value;
+		*inout_rhs = tmp_value;
 
-		return some(lhs->type);
+		return some(inout_lhs->type);
 	}
 	else
 	{
