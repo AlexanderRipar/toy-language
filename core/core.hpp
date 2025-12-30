@@ -2034,7 +2034,8 @@ enum class TypeDisposition : u8
 enum class TypeRelation : u8
 {
 	Equal,
-	Convertible,
+	FirstConvertsToSecond,
+	SecondConvertsToFirst,
 	Unrelated, 
 };
 
@@ -2307,7 +2308,7 @@ void type_discard(TypePool* types, TypeId type_id) noexcept;
 
 
 
-TypeRelation type_relation_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept;
+TypeRelation type_relation(TypePool* types, TypeId first_type_id, TypeId second_type_id) noexcept;
 
 // Checks whether `type_id_a` and `type_id_b` refer to the same type or
 // non-distinct aliases of the same type.

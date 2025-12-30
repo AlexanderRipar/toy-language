@@ -1658,15 +1658,18 @@ void type_discard(TypePool* types, TypeId type_id) noexcept
 
 
 
-TypeRelation type_relation_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept
+TypeRelation type_relation(TypePool* types, TypeId first_type_id, TypeId second_type_id) noexcept
 {
-	ASSERT_OR_IGNORE(from_type_id != TypeId::INVALID && to_type_id != TypeId::INVALID);
+	ASSERT_OR_IGNORE(first_type_id != TypeId::INVALID && second_type_id != TypeId::INVALID);
 
-	if (type_is_equal(types, from_type_id, to_type_id))
+	if (type_is_equal(types, first_type_id, second_type_id))
 		return TypeRelation::Equal;
 
-	if (type_can_implicitly_convert_from_to_assume_unequal(types, from_type_id, to_type_id))
-		return TypeRelation::Convertible;
+	if (type_can_implicitly_convert_from_to_assume_unequal(types, first_type_id, second_type_id))
+		return TypeRelation::FirstConvertsToSecond;
+
+	if (type_can_implicitly_convert_from_to_assume_unequal(types, second_type_id, first_type_id))
+		return TypeRelation::SecondConvertsToFirst;
 
 	return TypeRelation::Unrelated;
 }

@@ -758,7 +758,7 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 
 static const Opcode* convert_into(Interpreter* interp, const Opcode* code, CTValue src, CTValue dst) noexcept
 {
-	const TypeRelation relation = type_relation_from_to(interp->types, src.type, dst.type);
+	const TypeRelation relation = type_relation(interp->types, src.type, dst.type);
 
 	if (relation == TypeRelation::Equal)
 	{
@@ -766,13 +766,13 @@ static const Opcode* convert_into(Interpreter* interp, const Opcode* code, CTVal
 
 		return code;
 	}
-	else if (relation == TypeRelation::Convertible)
+	else if (relation == TypeRelation::FirstConvertsToSecond)
 	{
 		return convert_into_assume_convertible(interp, code, src, dst);
 	}
 	else
 	{
-		ASSERT_OR_IGNORE(relation == TypeRelation::Unrelated);
+		ASSERT_OR_IGNORE(relation == TypeRelation::Unrelated || relation == TypeRelation::SecondConvertsToFirst);
 
 		(void) record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
 
@@ -782,7 +782,7 @@ static const Opcode* convert_into(Interpreter* interp, const Opcode* code, CTVal
 
 static const Opcode* convert_alloc_temporary(Interpreter* interp, const Opcode* code, CTValue src, CTValue dst, CTValue* out) noexcept
 {
-	const TypeRelation relation = type_relation_from_to(interp->types, src.type, dst.type);
+	const TypeRelation relation = type_relation(interp->types, src.type, dst.type);
 
 	if (relation == TypeRelation::Equal)
 	{
@@ -790,15 +790,15 @@ static const Opcode* convert_alloc_temporary(Interpreter* interp, const Opcode* 
 
 		return code;
 	}
-	else if (relation == TypeRelation::Convertible)
+	else if (relation == TypeRelation::FirstConvertsToSecond)
 	{
-		CTValue tmp_value = alloc_temporary_value_uninit(interp, dst.bytes.count(), dst.align, dst.type);
+		const CTValue tmp_value = alloc_temporary_value_uninit(interp, dst.bytes.count(), dst.align, dst.type);
 
 		return convert_into_assume_convertible(interp, code, src, tmp_value);
 	}
 	else
 	{
-		ASSERT_OR_IGNORE(relation == TypeRelation::Unrelated);
+		ASSERT_OR_IGNORE(relation == TypeRelation::Unrelated || relation == TypeRelation::SecondConvertsToFirst);
 
 		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
 	}
@@ -806,24 +806,36 @@ static const Opcode* convert_alloc_temporary(Interpreter* interp, const Opcode* 
 
 static Maybe<TypeId> unify(Interpreter* interp, const Opcode* code, CTValue* lhs, CTValue* rhs) noexcept
 {
-	const Maybe<TypeId> unified_type = type_unify(interp->types, lhs->type, rhs->type);
+	const TypeRelation relation = type_relation(interp->types, lhs->type, rhs->type);
 
-	if (is_none(unified_type))
+	if (relation == TypeRelation::Equal)
 	{
+		return some(lhs->type < rhs->type ? lhs->type : rhs->type);
+	}
+	else if (relation == TypeRelation::FirstConvertsToSecond)
+	{
+		const CTValue tmp_value = alloc_temporary_value_uninit(interp, rhs->bytes.count(), rhs->align, rhs->type);
+
+		(void) convert_into_assume_convertible(interp, code, *lhs, tmp_value);
+
+		return some(rhs->type);
+	}
+	else if (relation == TypeRelation::SecondConvertsToFirst)
+	{
+		const CTValue tmp_value = alloc_temporary_value_uninit(interp, lhs->bytes.count(), lhs->align, lhs->type);
+
+		(void) convert_into_assume_convertible(interp, code, *rhs, tmp_value);
+
+		return some(lhs->type);
+	}
+	else
+	{
+		ASSERT_OR_IGNORE(relation == TypeRelation::Unrelated);
+
 		(void) record_interpreter_error(interp, code, CompileError::UnifyNoCommonArgumentType);
 
 		return none<TypeId>();
 	}
-
-	const TypeId type = get(unified_type);
-
-	if (convert_alloc_temporary(interp, code, *lhs, *rhs /* Dirty hack hehe */, lhs) == nullptr)
-		return none<TypeId>();
-
-	if (convert_alloc_temporary(interp, code, *rhs, *lhs /* Dirty hack hehe */, rhs) == nullptr)
-		return none<TypeId>();
-
-	return some(type);
 }
 
 static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId type, Range<byte> lhs, Range<byte> rhs) noexcept
