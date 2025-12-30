@@ -827,8 +827,6 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		u16 definition_count = 0;
 
-		bool requires_dummy_void = true;
-
 		AstDirectChildIterator it = direct_children_of(node);
 
 		while (has_next(&it))
@@ -852,9 +850,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 				opcodes_from_expression(opcodes, child, is_last && expects_write_ctx);
 
-				if (is_last)
-					requires_dummy_void = false;
-				else if (opcodes->state.values_diff == values_depth_before_expr + 1)
+				if (!is_last && opcodes->state.values_diff == values_depth_before_expr + 1)
 					emit_opcode(opcodes, Opcode::DiscardVoid, false, child);
 
 				ASSERT_OR_IGNORE(opcodes->state.values_diff == values_depth_before_expr + (is_last && !expects_write_ctx ? 1 : 0));
