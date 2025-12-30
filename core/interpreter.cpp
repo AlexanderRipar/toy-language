@@ -2533,13 +2533,16 @@ static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [
 
 	while (true)
 	{
-		// If there are still arguments that have not been processed, then we
-		// process the next argument by transferring control to its
-		// initialization callback.
-		// Otherwise, if the return type is templated we complete it.
-		// Otherwise, we proceed to the call.
 		if (argument_pack->index < argument_pack->count)
 		{
+			// If there are still arguments that have not been processed, then
+			// we check whether it is templated. If so, we transfer control to
+			// the template callback and mark the parameter as non-templated so
+			// we know not to do so again on the next round through. Otherwise
+			// we transfer control to the argument value callback, and advance
+			// the argument pack's index since we are done with the current
+			// argument.
+
 			MemberInfo parameter_info;
 
 			OpcodeId parameter_initializer_id;
@@ -2588,37 +2591,37 @@ static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [
 				return opcode_from_id(interp->opcodes, callback_id);
 			}
 		}
-		else
+		else if (argument_pack->has_templated_return_type)
 		{
 			// If the return type is templated, we run its initializer in the
 			// callee scope, with the argument pack's return type as its write
 			// context.
-			if (argument_pack->has_templated_return_type)
-			{
-				// Set `temporary_data_used` to the nonsense value 0, since
-				// this will never really be properly "popped", just
-				// temporarily deactivated by removing it from the scope stack
-				// without any effect on the scope members and temporary data
-				// stacks.
-				Scope* const signature_scope = interp->scopes.reserve();
-				signature_scope->first_member_index = argument_pack->scope_first_member_index;
-				signature_scope->temporary_data_used = interp->temporary_data.used();
 
-				argument_pack->has_just_completed_template_parameter = true;
+			// Set `temporary_data_used` to the nonsense value 0, since
+			// this will never really be properly "popped", just
+			// temporarily deactivated by removing it from the scope stack
+			// without any effect on the scope members and temporary data
+			// stacks.
+			Scope* const signature_scope = interp->scopes.reserve();
+			signature_scope->first_member_index = argument_pack->scope_first_member_index;
+			signature_scope->temporary_data_used = interp->temporary_data.used();
 
-				argument_pack->has_templated_return_type = false;
+			argument_pack->has_just_completed_template_parameter = true;
 
-				const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+			argument_pack->has_templated_return_type = false;
 
-				const MutRange<byte> bytes = range::from_object_bytes_mut(&argument_pack->return_type.type);
+			const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
 
-				interp->write_ctxs.append(CTValue{ bytes, alignof(TypeId), true, type_type });
+			const MutRange<byte> bytes = range::from_object_bytes_mut(&argument_pack->return_type.type);
 
-				push_activation(interp, code_activation - 1);
+			interp->write_ctxs.append(CTValue{ bytes, alignof(TypeId), true, type_type });
 
-				return opcode_from_id(interp->opcodes, argument_pack->return_type.completion);
-			}
+			push_activation(interp, code_activation - 1);
 
+			return opcode_from_id(interp->opcodes, argument_pack->return_type.completion);
+		}
+		else
+		{
 			// Look ahead to the following opcode, which must always be an
 			// `Opcode::Call`. If it does not expects a write context, we need
 			// to push one based on the callee's return type, since function
