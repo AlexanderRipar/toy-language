@@ -74,7 +74,7 @@ struct ArgumentPack
 		OpcodeId completion;
 	} return_type;
 
-	Scope scope;
+	u32 scope_first_member_index;
 
 	u8 index;
 
@@ -2501,8 +2501,7 @@ static const Opcode* handle_prepare_args(Interpreter* interp, const Opcode* code
 		? signature.parameter_list_type_id
 		: type_copy_composite(interp->types, signature.parameter_list_type_id, signature.parameter_count, true);
 	argument_pack->return_type.completion = signature.return_type.completion_id;
-	argument_pack->scope.first_member_index = interp->scope_members.used();
-	argument_pack->scope.temporary_data_used = interp->temporary_data.used();
+	argument_pack->scope_first_member_index = interp->scope_members.used();
 	argument_pack->count = signature.parameter_count;
 	argument_pack->index = 0;
 	argument_pack->has_templated_parameter_list = signature.has_templated_parameter_list;
@@ -2540,14 +2539,20 @@ static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [
 		// initialization callback.
 		if (argument_pack->index == argument_pack->count)
 		{
-			// Set up signature scope.
-			interp->scopes.append(argument_pack->scope);
-
 			// If the return type is templated, we run its initializer in the
 			// callee scope, with the argument pack's return type as its write
 			// context.
 			if (argument_pack->has_templated_return_type)
 			{
+				// Set `temporary_data_used` to the nonsense value 0, since
+				// this will never really be properly "popped", just
+				// temporarily deactivated by removing it from the scope stack
+				// without any effect on the scope members and temporary data
+				// stacks.
+				Scope* const signature_scope = interp->scopes.reserve();
+				signature_scope->first_member_index = argument_pack->scope_first_member_index;
+				signature_scope->temporary_data_used = interp->temporary_data.used();
+
 				argument_pack->has_just_completed_template_parameter = true;
 
 				argument_pack->has_templated_return_type = false;
@@ -2595,6 +2600,17 @@ static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [
 				interp->write_ctxs.append(return_value);
 			}
 
+			// This time the signature scope will actually be popped by a
+			// `Return` in the callee, so we properly set up its
+			// `temporary_data_used` value.
+			// Since all argument and return type data that has been put onto
+			// the temporary stack so far has callee lifetime, we need to put
+			// all of it into the callee scope, leaving the caller (signature)
+			// scope with no initial data.
+			Scope* const signature_scope = interp->scopes.reserve();
+			signature_scope->first_member_index = argument_pack->scope_first_member_index;
+			signature_scope->temporary_data_used = interp->temporary_data.used();
+
 			// Finally, we get to pop the argument pack and callbacks before
 			// proceeding to the actual call.
 			interp->argument_callbacks.pop_by(argument_pack->count);
@@ -2616,7 +2632,14 @@ static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [
 			// deactivate the scope on the next round through `handle_call`.
 			if (!type_member_info_by_rank(interp->types, argument_pack->parameter_list_type, argument_pack->index, &parameter_info, &parameter_initializer_id))
 			{
-				interp->scopes.append(argument_pack->scope);
+				// Set `temporary_data_used` to the nonsense value 0, since
+				// this will never really be properly "popped", just
+				// temporarily deactivated by removing it from the scope stack
+				// without any effect on the scope members and temporary data
+				// stacks.
+				Scope* const signature_scope = interp->scopes.reserve();
+				signature_scope->first_member_index = argument_pack->scope_first_member_index;
+				signature_scope->temporary_data_used = 0;
 
 				argument_pack->has_just_completed_template_parameter = true;
 
