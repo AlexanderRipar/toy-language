@@ -2162,9 +2162,9 @@ static const Opcode* handle_signature(Interpreter* interp, const Opcode* code, C
 
 	const TypeId return_type = *value_as<TypeId>(value);
 
-	interp->values.pop_by(value_count - 1);
+	ASSERT_OR_IGNORE(value == interp->values.end() - 1);
 
-	ASSERT_OR_IGNORE(value == interp->values.end());
+	interp->values.pop_by(value_count - 1);
 
 	SignatureType2 attach{};
 	attach.parameter_list_type_id = parameter_list_type;
