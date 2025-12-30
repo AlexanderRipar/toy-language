@@ -274,14 +274,6 @@ void print_error(minos::FileHandle dst, const SourceLocation* location, CompileE
 		? 0
 		: location->column_number - location->context_offset - 1;
 
-	u32 tabs_in_context_before_offset = 0;
-
-	for (u32 i = 0; i != error_offset_in_context; ++i)
-	{
-		if (location->context[i] == '\t')
-			tabs_in_context_before_offset += 1;
-	}
-
 	const u32 column_number = location->column_number + location->tabs_before_column_number * (tab_size - 1);
 
 	const u8 log10_line_number = log10_ceil(location->line_number);
