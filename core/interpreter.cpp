@@ -2524,15 +2524,15 @@ static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [
 
 	ArgumentPack* const argument_pack = interp->argument_packs.end() - 1;
 
+	if (argument_pack->has_just_completed_template_parameter)
+	{
+		argument_pack->has_just_completed_template_parameter = false;
+
+		interp->scopes.pop_by(1);
+	}
+
 	while (true)
 	{
-		if (argument_pack->has_just_completed_template_parameter)
-		{
-			argument_pack->has_just_completed_template_parameter = false;
-
-			interp->scopes.pop_by(1);
-		}
-
 		// If all arguments have been processed, we can proceed to transfer control
 		// to the callee, or at least complete the return type if it is necessary.
 		// Otherwise, we process the next argument by transferring control to its
