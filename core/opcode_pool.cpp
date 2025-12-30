@@ -1147,7 +1147,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 				memcpy(names_attach + argument_index * sizeof(IdentifierId), &argument_name, sizeof(IdentifierId));
 
-				emit_fixup_for_argument(opcodes, reinterpret_cast<Opcode*>(callbacks_attach + argument_index * sizeof(OpcodeId)), argument);
+				emit_fixup_for_argument(opcodes, reinterpret_cast<Opcode*>(callbacks_attach + argument_index * sizeof(OpcodeId)), argument_value);
 
 				if (!has_next_sibling(argument))
 					break;
