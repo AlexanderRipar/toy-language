@@ -780,30 +780,6 @@ static const Opcode* convert_into(Interpreter* interp, const Opcode* code, CTVal
 	}
 }
 
-static const Opcode* convert_alloc_temporary(Interpreter* interp, const Opcode* code, CTValue src, CTValue dst, CTValue* out) noexcept
-{
-	const TypeRelation relation = type_relation(interp->types, src.type, dst.type);
-
-	if (relation == TypeRelation::Equal)
-	{
-		*out = src;
-
-		return code;
-	}
-	else if (relation == TypeRelation::FirstConvertsToSecond)
-	{
-		const CTValue tmp_value = alloc_temporary_value_uninit(interp, dst.bytes.count(), dst.align, dst.type);
-
-		return convert_into_assume_convertible(interp, code, src, tmp_value);
-	}
-	else
-	{
-		ASSERT_OR_IGNORE(relation == TypeRelation::Unrelated || relation == TypeRelation::SecondConvertsToFirst);
-
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
-	}
-}
-
 static Maybe<TypeId> unify(Interpreter* interp, const Opcode* code, CTValue* lhs, CTValue* rhs) noexcept
 {
 	const TypeRelation relation = type_relation(interp->types, lhs->type, rhs->type);
