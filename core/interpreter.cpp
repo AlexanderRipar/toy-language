@@ -2533,11 +2533,62 @@ static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [
 
 	while (true)
 	{
-		// If all arguments have been processed, we can proceed to transfer control
-		// to the callee, or at least complete the return type if it is necessary.
-		// Otherwise, we process the next argument by transferring control to its
+		// If there are still arguments that have not been processed, then we
+		// process the next argument by transferring control to its
 		// initialization callback.
-		if (argument_pack->index == argument_pack->count)
+		// Otherwise, if the return type is templated we complete it.
+		// Otherwise, we proceed to the call.
+		if (argument_pack->index < argument_pack->count)
+		{
+			MemberInfo parameter_info;
+
+			OpcodeId parameter_initializer_id;
+
+			// If the parameter is incomplete it is templated, so we evaluate
+			// its initializer in the callee's scope.
+			// Since the initializer must not pop the callee scope as we need
+			// it later, we set `has_just_completed_template_member` so that we
+			// deactivate the scope on the next round through `handle_call`.
+			if (!type_member_info_by_rank(interp->types, argument_pack->parameter_list_type, argument_pack->index, &parameter_info, &parameter_initializer_id))
+			{
+				// Set `temporary_data_used` to the nonsense value 0, since
+				// this will never really be properly "popped", just
+				// temporarily deactivated by removing it from the scope stack
+				// without any effect on the scope members and temporary data
+				// stacks.
+				Scope* const signature_scope = interp->scopes.reserve();
+				signature_scope->first_member_index = argument_pack->scope_first_member_index;
+				signature_scope->temporary_data_used = 0;
+
+				argument_pack->has_just_completed_template_parameter = true;
+
+				push_activation(interp, code_activation - 1);
+
+				return opcode_from_id(interp->opcodes, parameter_initializer_id);
+			}
+
+			if (scope_alloc_typed_member(interp, code, parameter_info.is_mut, parameter_info.type_id) == nullptr)
+				return nullptr;
+
+			OpcodeId callback_id = interp->argument_callbacks.end()[-argument_pack->count + argument_pack->index];
+
+			argument_pack->index += 1;
+
+			if (static_cast<s32>(callback_id) < 0)
+			{
+				CTValue default_value = forever_value_get(interp->globals, static_cast<ForeverValueId>(-static_cast<s32>(callback_id)));
+
+				if (convert_into(interp, code, default_value, interp->write_ctxs.end()[-1]) == nullptr)
+					ASSERT_UNREACHABLE;
+			}
+			else
+			{
+				push_activation(interp, code_activation - 1);
+
+				return opcode_from_id(interp->opcodes, callback_id);
+			}
+		}
+		else
 		{
 			// If the return type is templated, we run its initializer in the
 			// callee scope, with the argument pack's return type as its write
@@ -2618,56 +2669,6 @@ static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [
 			interp->argument_packs.pop_by(1);
 
 			return code;
-		}
-		else
-		{
-			MemberInfo parameter_info;
-
-			OpcodeId parameter_initializer_id;
-
-			// If the parameter is incomplete it is templated, so we evaluate
-			// its initializer in the callee's scope.
-			// Since the initializer must not pop the callee scope as we need
-			// it later, we set `has_just_completed_template_member` so that we
-			// deactivate the scope on the next round through `handle_call`.
-			if (!type_member_info_by_rank(interp->types, argument_pack->parameter_list_type, argument_pack->index, &parameter_info, &parameter_initializer_id))
-			{
-				// Set `temporary_data_used` to the nonsense value 0, since
-				// this will never really be properly "popped", just
-				// temporarily deactivated by removing it from the scope stack
-				// without any effect on the scope members and temporary data
-				// stacks.
-				Scope* const signature_scope = interp->scopes.reserve();
-				signature_scope->first_member_index = argument_pack->scope_first_member_index;
-				signature_scope->temporary_data_used = 0;
-
-				argument_pack->has_just_completed_template_parameter = true;
-
-				push_activation(interp, code_activation - 1);
-
-				return opcode_from_id(interp->opcodes, parameter_initializer_id);
-			}
-
-			if (scope_alloc_typed_member(interp, code, parameter_info.is_mut, parameter_info.type_id) == nullptr)
-				return nullptr;
-
-			OpcodeId callback_id = interp->argument_callbacks.end()[-argument_pack->count + argument_pack->index];
-
-			argument_pack->index += 1;
-
-			if (static_cast<s32>(callback_id) < 0)
-			{
-				CTValue default_value = forever_value_get(interp->globals, static_cast<ForeverValueId>(-static_cast<s32>(callback_id)));
-
-				if (convert_into(interp, code, default_value, interp->write_ctxs.end()[-1]) == nullptr)
-					ASSERT_UNREACHABLE;
-			}
-			else
-			{
-				push_activation(interp, code_activation - 1);
-
-				return opcode_from_id(interp->opcodes, callback_id);
-			}
 		}
 	}
 }
