@@ -4193,7 +4193,7 @@ static const Opcode* handle_binary_bitwise_op(Interpreter* interp, const Opcode*
 	{
 		const CompIntegerValue lhs_value = *value_as<CompIntegerValue>(lhs);
 
-		const CompIntegerValue rhs_value = *value_as<CompIntegerValue>(lhs);
+		const CompIntegerValue rhs_value = *value_as<CompIntegerValue>(rhs);
 
 		CompIntegerValue result;
 
