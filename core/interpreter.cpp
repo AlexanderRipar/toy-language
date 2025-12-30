@@ -2531,22 +2531,28 @@ static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [
 		interp->scopes.pop_by(1);
 	}
 
-	while (true)
+	if (argument_pack->index < argument_pack->count)
 	{
-		if (argument_pack->index < argument_pack->count)
+		// If there are still arguments that have not been processed, then
+		// we check whether it is templated. If so, we transfer control to
+		// the template callback and mark the parameter as non-templated so
+		// we know not to do so again on the next round through. Otherwise
+		// we transfer control to the argument value callback, and advance
+		// the argument pack's index since we are done with the current
+		// argument.
+
+		MemberInfo parameter_info;
+
+		OpcodeId parameter_initializer_id;
+
+		OpcodeId callback_id;
+
+		// We loop until we get to a parameter that has an argument. For all
+		// the preceding ones, we set them to their default.
+		// Note that default values are recorded by their negated
+		// `ForeverValueId` being put into the initializer `OpcodeId`.
+		while (true)
 		{
-			// If there are still arguments that have not been processed, then
-			// we check whether it is templated. If so, we transfer control to
-			// the template callback and mark the parameter as non-templated so
-			// we know not to do so again on the next round through. Otherwise
-			// we transfer control to the argument value callback, and advance
-			// the argument pack's index since we are done with the current
-			// argument.
-
-			MemberInfo parameter_info;
-
-			OpcodeId parameter_initializer_id;
-
 			// If the parameter is incomplete it is templated, so we evaluate
 			// its initializer in the callee's scope.
 			// Since the initializer must not pop the callee scope as we need
@@ -2573,106 +2579,104 @@ static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [
 			if (scope_alloc_typed_member(interp, code, parameter_info.is_mut, parameter_info.type_id) == nullptr)
 				return nullptr;
 
-			OpcodeId callback_id = interp->argument_callbacks.end()[-argument_pack->count + argument_pack->index];
+			callback_id = interp->argument_callbacks.end()[-argument_pack->count + argument_pack->index];
 
 			argument_pack->index += 1;
 
-			if (static_cast<s32>(callback_id) < 0)
-			{
-				CTValue default_value = forever_value_get(interp->globals, static_cast<ForeverValueId>(-static_cast<s32>(callback_id)));
+			if (static_cast<s32>(callback_id) >= 0)
+				break;
 
-				if (convert_into(interp, code, default_value, interp->write_ctxs.end()[-1]) == nullptr)
-					ASSERT_UNREACHABLE;
-			}
-			else
-			{
-				push_activation(interp, code_activation - 1);
+			CTValue default_value = forever_value_get(interp->globals, static_cast<ForeverValueId>(-static_cast<s32>(callback_id)));
 
-				return opcode_from_id(interp->opcodes, callback_id);
-			}
+			if (convert_into(interp, code, default_value, interp->write_ctxs.end()[-1]) == nullptr)
+				ASSERT_UNREACHABLE;
 		}
-		else if (argument_pack->has_templated_return_type)
+
+		push_activation(interp, code_activation - 1);
+
+		return opcode_from_id(interp->opcodes, callback_id);
+	}
+	else if (argument_pack->has_templated_return_type)
+	{
+		// If the return type is templated, we run its initializer in the
+		// callee scope, with the argument pack's return type as its write
+		// context.
+
+		// Set `temporary_data_used` to the nonsense value 0, since
+		// this will never really be properly "popped", just
+		// temporarily deactivated by removing it from the scope stack
+		// without any effect on the scope members and temporary data
+		// stacks.
+		Scope* const signature_scope = interp->scopes.reserve();
+		signature_scope->first_member_index = argument_pack->scope_first_member_index;
+		signature_scope->temporary_data_used = interp->temporary_data.used();
+
+		argument_pack->has_just_completed_template_parameter = true;
+
+		argument_pack->has_templated_return_type = false;
+
+		const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+
+		const MutRange<byte> bytes = range::from_object_bytes_mut(&argument_pack->return_type.type);
+
+		interp->write_ctxs.append(CTValue{ bytes, alignof(TypeId), true, type_type });
+
+		push_activation(interp, code_activation - 1);
+
+		return opcode_from_id(interp->opcodes, argument_pack->return_type.completion);
+	}
+	else
+	{
+		// Look ahead to the following opcode, which must always be an
+		// `Opcode::Call`. If it does not expects a write context, we need
+		// to push one based on the callee's return type, since function
+		// bodies always expect to be called with a write context on the
+		// stack.
+		// Note that we need to slip the return value onto the value stack
+		// as well, but we must do so underneath the current top value,
+		// which is the callee and is required on top by `handle_call`.
+		// Note also that if the call expects its own write context, then
+		// `handle_call` takes care of re-pushing for the callee.
+
+		const Opcode* const call = code;
+
+		ASSERT_OR_IGNORE(static_cast<Opcode>(static_cast<u8>(*call) & 0x7F) == Opcode::Call);
+
+		const bool call_expects_write_ctx = (static_cast<u8>(*call) & 0x80) != 0;
+
+		if (!call_expects_write_ctx)
 		{
-			// If the return type is templated, we run its initializer in the
-			// callee scope, with the argument pack's return type as its write
-			// context.
+			const TypeMetrics return_type_metrics = type_metrics_from_id(interp->types, argument_pack->return_type.type);
 
-			// Set `temporary_data_used` to the nonsense value 0, since
-			// this will never really be properly "popped", just
-			// temporarily deactivated by removing it from the scope stack
-			// without any effect on the scope members and temporary data
-			// stacks.
-			Scope* const signature_scope = interp->scopes.reserve();
-			signature_scope->first_member_index = argument_pack->scope_first_member_index;
-			signature_scope->temporary_data_used = interp->temporary_data.used();
+			const CTValue return_value = alloc_temporary_value_uninit(interp, return_type_metrics.size, return_type_metrics.align, argument_pack->return_type.type);
 
-			argument_pack->has_just_completed_template_parameter = true;
+			CTValue* const old_top = interp->values.end() - 1;
 
-			argument_pack->has_templated_return_type = false;
+			interp->values.append(*old_top);
 
-			const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+			*old_top = return_value;
 
-			const MutRange<byte> bytes = range::from_object_bytes_mut(&argument_pack->return_type.type);
-
-			interp->write_ctxs.append(CTValue{ bytes, alignof(TypeId), true, type_type });
-
-			push_activation(interp, code_activation - 1);
-
-			return opcode_from_id(interp->opcodes, argument_pack->return_type.completion);
+			interp->write_ctxs.append(return_value);
 		}
-		else
-		{
-			// Look ahead to the following opcode, which must always be an
-			// `Opcode::Call`. If it does not expects a write context, we need
-			// to push one based on the callee's return type, since function
-			// bodies always expect to be called with a write context on the
-			// stack.
-			// Note that we need to slip the return value onto the value stack
-			// as well, but we must do so underneath the current top value,
-			// which is the callee and is required on top by `handle_call`.
-			// Note also that if the call expects its own write context, then
-			// `handle_call` takes care of re-pushing for the callee.
 
-			const Opcode* const call = code;
+		// This time the signature scope will actually be popped by a
+		// `Return` in the callee, so we properly set up its
+		// `temporary_data_used` value.
+		// Since all argument and return type data that has been put onto
+		// the temporary stack so far has callee lifetime, we need to put
+		// all of it into the callee scope, leaving the caller (signature)
+		// scope with no initial data.
+		Scope* const signature_scope = interp->scopes.reserve();
+		signature_scope->first_member_index = argument_pack->scope_first_member_index;
+		signature_scope->temporary_data_used = interp->temporary_data.used();
 
-			ASSERT_OR_IGNORE(static_cast<Opcode>(static_cast<u8>(*call) & 0x7F) == Opcode::Call);
+		// Finally, we get to pop the argument pack and callbacks before
+		// proceeding to the actual call.
+		interp->argument_callbacks.pop_by(argument_pack->count);
 
-			const bool call_expects_write_ctx = (static_cast<u8>(*call) & 0x80) != 0;
+		interp->argument_packs.pop_by(1);
 
-			if (!call_expects_write_ctx)
-			{
-				const TypeMetrics return_type_metrics = type_metrics_from_id(interp->types, argument_pack->return_type.type);
-
-				const CTValue return_value = alloc_temporary_value_uninit(interp, return_type_metrics.size, return_type_metrics.align, argument_pack->return_type.type);
-
-				CTValue* const old_top = interp->values.end() - 1;
-
-				interp->values.append(*old_top);
-
-				*old_top = return_value;
-
-				interp->write_ctxs.append(return_value);
-			}
-
-			// This time the signature scope will actually be popped by a
-			// `Return` in the callee, so we properly set up its
-			// `temporary_data_used` value.
-			// Since all argument and return type data that has been put onto
-			// the temporary stack so far has callee lifetime, we need to put
-			// all of it into the callee scope, leaving the caller (signature)
-			// scope with no initial data.
-			Scope* const signature_scope = interp->scopes.reserve();
-			signature_scope->first_member_index = argument_pack->scope_first_member_index;
-			signature_scope->temporary_data_used = interp->temporary_data.used();
-
-			// Finally, we get to pop the argument pack and callbacks before
-			// proceeding to the actual call.
-			interp->argument_callbacks.pop_by(argument_pack->count);
-
-			interp->argument_packs.pop_by(1);
-
-			return code;
-		}
+		return code;
 	}
 }
 
