@@ -1107,8 +1107,6 @@ static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId typ
 
 static const Opcode* scope_alloc_typed_member(Interpreter* interp, const Opcode* code, bool is_mut, TypeId type) noexcept
 {
-	ScopeMember* const member = interp->scope_members.reserve();
-
 	const TypeMetrics member_metrics = type_metrics_from_id(interp->types, type);
 
 	if (member_metrics.size >= UINT32_MAX)
@@ -1118,6 +1116,7 @@ static const Opcode* scope_alloc_typed_member(Interpreter* interp, const Opcode*
 
 	byte* const member_value = interp->scope_data.reserve(static_cast<u32>(member_metrics.size));
 
+	ScopeMember* const member = interp->scope_members.reserve();
 	member->offset = static_cast<u32>(member_value - interp->scope_data.begin());
 	member->size = static_cast<u32>(member_metrics.size);
 	member->align = member_metrics.align;
