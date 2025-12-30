@@ -792,7 +792,10 @@ static Maybe<TypeId> unify(Interpreter* interp, const Opcode* code, CTValue* lhs
 	{
 		const CTValue tmp_value = alloc_temporary_value_uninit(interp, rhs->bytes.count(), rhs->align, rhs->type);
 
-		(void) convert_into_assume_convertible(interp, code, *lhs, tmp_value);
+		if (convert_into_assume_convertible(interp, code, *lhs, tmp_value) == nullptr)
+			return none<TypeId>();
+
+		*lhs = tmp_value;
 
 		return some(rhs->type);
 	}
@@ -800,7 +803,10 @@ static Maybe<TypeId> unify(Interpreter* interp, const Opcode* code, CTValue* lhs
 	{
 		const CTValue tmp_value = alloc_temporary_value_uninit(interp, lhs->bytes.count(), lhs->align, lhs->type);
 
-		(void) convert_into_assume_convertible(interp, code, *rhs, tmp_value);
+		if (convert_into_assume_convertible(interp, code, *rhs, tmp_value) == nullptr)
+			return none<TypeId>();
+
+		*rhs = tmp_value;
 
 		return some(lhs->type);
 	}
