@@ -4,7 +4,7 @@ let unused = {
 
 	std.assert(six == 6)
 
-	std.assert(typeof(six) == std.prelude.CompInteger)
+	std.assert(typeof(six) == CompInteger)
 
 	let nine: u32 = 9
 
