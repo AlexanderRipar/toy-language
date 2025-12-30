@@ -3,7 +3,7 @@ let unused = {
 
 	std.assert(two == 2)
 
-	std.assert(typeof(two) == std.prelude.CompInteger)
+	std.assert(typeof(two) == CompInteger)
 
 	let u32_one: u32 = 1
 
