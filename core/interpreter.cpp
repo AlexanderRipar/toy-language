@@ -85,8 +85,6 @@ struct ArgumentPack
 	bool has_templated_return_type : 1;
 
 	bool has_just_completed_template_parameter;
-
-	u32 argument_callbacks_used;
 };
 
 struct LoopInfo
@@ -2502,7 +2500,6 @@ static const Opcode* handle_prepare_args(Interpreter* interp, const Opcode* code
 	argument_pack->has_templated_parameter_list = signature.has_templated_parameter_list;
 	argument_pack->has_templated_return_type = signature.has_templated_return_type;
 	argument_pack->has_just_completed_template_parameter = false;
-	argument_pack->argument_callbacks_used = interp->argument_callbacks.used();
 
 	return code;
 }
