@@ -28,6 +28,7 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 	{
 	case Opcode::INVALID:
 	case Opcode::EndCode:
+	case Opcode::Return:
 	{
 		return nullptr;
 	}
@@ -37,7 +38,6 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 	case Opcode::PopClosure:
 	case Opcode::ExecArgs:
 	case Opcode::Call:
-	case Opcode::Return:
 	case Opcode::AddressOf:
 	case Opcode::Dereference:
 	case Opcode::Index:
@@ -422,6 +422,7 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 	{
 	case Opcode::INVALID:
 	case Opcode::EndCode:
+	case Opcode::Return:
 	{
 		return nullptr;
 	}
@@ -431,7 +432,6 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 	case Opcode::PopClosure:
 	case Opcode::ExecArgs:
 	case Opcode::Call:
-	case Opcode::Return:
 	case Opcode::AddressOf:
 	case Opcode::Dereference:
 	case Opcode::Index:

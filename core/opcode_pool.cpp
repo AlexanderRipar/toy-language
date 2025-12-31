@@ -1590,8 +1590,6 @@ static bool complete_fixup(OpcodePool* opcodes, Fixup fixup) noexcept
 
 		emit_opcode(opcodes, Opcode::Return, false, node);
 
-		emit_opcode(opcodes, Opcode::EndCode, false, node);
-
 		ASSERT_OR_IGNORE(
 			opcodes->state.values_diff == 0
 		 && opcodes->state.scopes_diff == 0
@@ -1994,8 +1992,6 @@ OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept
 	emit_opcode(opcodes, Opcode::ExecBuiltin, true, nullptr, builtin);
 
 	emit_opcode(opcodes, Opcode::Return, false, nullptr);
-
-	emit_opcode(opcodes, Opcode::EndCode, false, nullptr);
 
 	ASSERT_OR_IGNORE(
 		opcodes->state.values_diff == 0
