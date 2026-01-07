@@ -22,11 +22,11 @@ struct alignas(8) ForeverValue
 
 	u32 data_size;
 
-	u32 is_complete : 1;
+	u32 state : 2;
 
 	u32 is_mut : 1;
 
-	u32 data_align : 30;
+	u32 data_align : 29;
 };
 
 struct GlobalValuePool
@@ -39,6 +39,52 @@ struct GlobalValuePool
 
 	MutRange<byte> memory;
 };
+
+
+
+static ForeverValue* forever_value_from_id(GlobalValuePool* globals, ForeverValueId id) noexcept
+{
+	ASSERT_OR_IGNORE(id != ForeverValueId::INVALID && static_cast<u32>(id) < globals->forever_values.used());
+
+	return globals->forever_values.begin() + static_cast<u32>(id);
+}
+
+static GlobalFile* global_file_from_index(GlobalValuePool* globals, GlobalFileIndex file_index) noexcept
+{
+	ASSERT_OR_IGNORE(file_index != GlobalFileIndex::INVALID && static_cast<u16>(file_index) < globals->files.used());
+
+	return globals->files.begin() + static_cast<u16>(file_index);
+}
+
+static ForeverValueId forever_value_id_from_file_and_rank(GlobalValuePool* globals, const GlobalFile* file, u16 rank) noexcept
+{
+	ASSERT_OR_IGNORE(static_cast<u32>(file->first_value_id) + rank < globals->forever_values.used());
+
+	return static_cast<ForeverValueId>(static_cast<u32>(file->first_value_id) + rank);
+}
+
+static ForeverValue* forever_value_from_file_and_rank(GlobalValuePool* globals, const GlobalFile* file, u16 rank) noexcept
+{
+	const ForeverValueId id = forever_value_id_from_file_and_rank(globals, file, rank);
+
+	return forever_value_from_id(globals, id);
+}
+
+static ForeverValueId forever_value_id_from_file_index_and_rank(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank) noexcept
+{
+	const GlobalFile* const file = global_file_from_index(globals, file_index);
+
+	return forever_value_id_from_file_and_rank(globals, file, rank);
+}
+
+static ForeverValue* forever_value_from_file_index_and_rank(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank) noexcept
+{
+	const GlobalFile* const file = global_file_from_index(globals, file_index);
+
+	return forever_value_from_file_and_rank(globals, file, rank);
+}
+
+
 
 GlobalValuePool* create_global_value_pool(HandlePool* handles) noexcept
 {
@@ -109,81 +155,63 @@ GlobalFileIndex file_values_reserve(GlobalValuePool* globals, TypeId file_type_i
 
 void file_value_set_initializer(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, OpcodeId initializer) noexcept
 {
-	ASSERT_OR_IGNORE(file_index != GlobalFileIndex::INVALID);
+	ForeverValue* const value = forever_value_from_file_index_and_rank(globals, file_index, rank);
 
-	ASSERT_OR_IGNORE(static_cast<u16>(file_index) < globals->files.used());
-
-	ASSERT_OR_IGNORE(initializer != OpcodeId::INVALID);
-
-	const GlobalFile file = globals->files.begin()[static_cast<u16>(file_index)];
-
-	const ForeverValueId value_id = static_cast<ForeverValueId>(static_cast<u32>(file.first_value_id) + rank);
-
-	ASSERT_OR_IGNORE(static_cast<u32>(value_id) < globals->forever_values.used());
-
-	ForeverValue* const value = globals->forever_values.begin() + static_cast<u32>(value_id);
-
-	ASSERT_OR_IGNORE(!value->is_complete && value->initializer == OpcodeId::INVALID);
+	ASSERT_OR_IGNORE(value->initializer == OpcodeId::INVALID);
 
 	value->initializer = initializer;
+	value->state = static_cast<u8>(GlobalFileValueState::Uninitialized);
 }
 
-TypeId type_id_from_global_file_index(GlobalValuePool* globals, GlobalFileIndex file_index) noexcept
+GlobalFileValueState file_value_get(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept
 {
-	ASSERT_OR_IGNORE(file_index != GlobalFileIndex::INVALID);
+	const ForeverValueId value_id = forever_value_id_from_file_index_and_rank(globals, file_index, rank);
 
-	const GlobalFile file = globals->files.begin()[static_cast<u16>(file_index)];
+	const ForeverValue* const value = forever_value_from_id(globals, value_id);
 
-	return file.type_id;
-}
+	const GlobalFileValueState state = static_cast<GlobalFileValueState>(value->state);
 
-bool file_value_get(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept
-{
-	ASSERT_OR_IGNORE(file_index != GlobalFileIndex::INVALID);
-
-	ASSERT_OR_IGNORE(static_cast<u16>(file_index) < globals->files.used());
-
-	const GlobalFile file = globals->files.begin()[static_cast<u16>(file_index)];
-
-	const ForeverValueId value_id = static_cast<ForeverValueId>(static_cast<u32>(file.first_value_id) + rank);
-
-	ASSERT_OR_IGNORE(static_cast<u32>(value_id) < globals->forever_values.used());
-
-	const ForeverValue* const value = globals->forever_values.begin() + static_cast<u32>(value_id);
-
-	if (value->is_complete)
+	if (state == GlobalFileValueState::Complete)
 	{
 		const MutRange<byte> bytes{ globals->data.begin() + value->data_offset, value->data_size };
 
 		const CTValue ct_value{ bytes, value->data_align, static_cast<bool>(value->is_mut), value->type };
 
 		*out_value = ForeverCTValue{ ct_value, value_id };
-
-		return true;
 	}
-	else
+	else if (state == GlobalFileValueState::Uninitialized)
 	{
 		ASSERT_OR_IGNORE(value->initializer != OpcodeId::INVALID);
 
 		*out_code = value->initializer;
-
-		return false;
 	}
+	else
+	{
+		ASSERT_OR_IGNORE(state == GlobalFileValueState::Initializing);
+	}
+
+	return state;
 }
 
-ForeverValueId file_value_alloc_initialized(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, bool is_mut, CTValue initializer) noexcept
+void file_value_alloc_prepare(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, bool is_mut) noexcept
 {
-	ASSERT_OR_IGNORE(file_index != GlobalFileIndex::INVALID && static_cast<u16>(file_index) < globals->files.used());
+	ForeverValue* const value = forever_value_from_file_index_and_rank(globals, file_index, rank);
 
-	ASSERT_OR_IGNORE(rank < globals->forever_values.used());
+	ASSERT_OR_IGNORE(static_cast<GlobalFileValueState>(value->state) == GlobalFileValueState::Uninitialized);
 
-	const GlobalFile file = globals->files.begin()[static_cast<u16>(file_index)];
+	value->state = static_cast<u8>(GlobalFileValueState::Initializing);
+	value->is_mut = is_mut;
+}
 
-	const ForeverValueId value_id = static_cast<ForeverValueId>(static_cast<u32>(file.first_value_id) + rank);
+ForeverValueId file_value_alloc_initialized(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, CTValue initializer, TypeId* out_file_type) noexcept
+{
+	const GlobalFile* const file = global_file_from_index(globals, file_index);
 
-	ForeverValue* const value = globals->forever_values.begin() + static_cast<u32>(value_id);
+	const ForeverValueId value_id = forever_value_id_from_file_and_rank(globals, file, rank);
 
-	ASSERT_OR_IGNORE(!value->is_complete);
+	ForeverValue* const value = forever_value_from_id(globals, value_id);
+
+	ASSERT_OR_IGNORE(static_cast<GlobalFileValueState>(value->state) == GlobalFileValueState::Initializing);
 
 	globals->data.pad_to_alignment(initializer.align);
 
@@ -194,28 +222,25 @@ ForeverValueId file_value_alloc_initialized(GlobalValuePool* globals, GlobalFile
 	value->type = initializer.type;
 	value->data_offset = data_offset;
 	value->data_size = static_cast<u32>(initializer.bytes.count());
-	value->is_complete = true;
-	value->is_mut = is_mut;
+	value->state = static_cast<u8>(GlobalFileValueState::Complete);
 	value->data_align = initializer.align;
+
+	*out_file_type = file->type_id;
 
 	memcpy(globals->data.begin() + data_offset, initializer.bytes.begin(), initializer.bytes.count());
 
 	return value_id;
 }
 
-ForeverCTValue file_value_alloc_uninitialized(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, bool is_mut, TypeId type, TypeMetrics metrics) noexcept
+ForeverCTValue file_value_alloc_uninitialized(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, TypeId type, TypeMetrics metrics, TypeId* out_file_type) noexcept
 {
-	ASSERT_OR_IGNORE(file_index != GlobalFileIndex::INVALID && static_cast<u16>(file_index) < globals->files.used());
+	const GlobalFile* const file = global_file_from_index(globals, file_index);
 
-	ASSERT_OR_IGNORE(rank < globals->forever_values.used());
+	const ForeverValueId value_id = forever_value_id_from_file_and_rank(globals, file, rank);
 
-	const GlobalFile file = globals->files.begin()[static_cast<u16>(file_index)];
+	ForeverValue* const value = forever_value_from_id(globals, value_id);
 
-	const ForeverValueId value_id = static_cast<ForeverValueId>(static_cast<u32>(file.first_value_id) + rank);
-
-	ForeverValue* const value = globals->forever_values.begin() + static_cast<u32>(value_id);
-
-	ASSERT_OR_IGNORE(!value->is_complete);
+	ASSERT_OR_IGNORE(static_cast<GlobalFileValueState>(value->state) == GlobalFileValueState::Initializing);
 
 	globals->data.pad_to_alignment(metrics.align);
 
@@ -226,15 +251,24 @@ ForeverCTValue file_value_alloc_uninitialized(GlobalValuePool* globals, GlobalFi
 	value->type = type;
 	value->data_offset = data_offset;
 	value->data_size = static_cast<u32>(metrics.size);
-	value->is_complete = true;
-	value->is_mut = is_mut;
 	value->data_align = metrics.align;
+
+	*out_file_type = file->type_id;
 
 	const MutRange<byte> bytes{ globals->data.begin() + data_offset, metrics.size };
 
-	const CTValue ct_value{ bytes, metrics.align, is_mut, type };
+	const CTValue ct_value{ bytes, metrics.align, value->is_mut, type };
 
 	return ForeverCTValue{ ct_value, value_id };
+}
+
+void file_value_alloc_initialized_complete(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank) noexcept
+{
+	ForeverValue* const value = forever_value_from_file_index_and_rank(globals, file_index, rank);
+
+	ASSERT_OR_IGNORE(static_cast<GlobalFileValueState>(value->state) == GlobalFileValueState::Initializing);
+
+	value->state = static_cast<u8>(GlobalFileValueState::Complete);
 }
 
 ForeverValueId forever_value_alloc_initialized(GlobalValuePool* globals, bool is_mut, CTValue initializer) noexcept
@@ -252,7 +286,7 @@ ForeverValueId forever_value_alloc_initialized(GlobalValuePool* globals, bool is
 	value->type = initializer.type;
 	value->data_offset = data_offset;
 	value->data_size = static_cast<u32>(initializer.bytes.count());
-	value->is_complete = true;
+	value->state = static_cast<u8>(GlobalFileValueState::Complete);
 	value->is_mut = is_mut;
 	value->data_align = initializer.align;
 	globals->forever_values.reserve(static_cast<u32>(initializer.bytes.count()));
@@ -279,7 +313,7 @@ ForeverCTValue forever_value_alloc_uninitialized(GlobalValuePool* globals, bool 
 	value->type = type;
 	value->data_offset = data_offset;
 	value->data_size = static_cast<u32>(metrics.size);
-	value->is_complete = true;
+	value->state = static_cast<u8>(GlobalFileValueState::Complete);
 	value->is_mut = is_mut;
 	value->data_align = metrics.align;
 	globals->forever_values.reserve(static_cast<u32>(metrics.size));
@@ -296,8 +330,6 @@ CTValue forever_value_get(GlobalValuePool* globals, ForeverValueId id) noexcept
 	ASSERT_OR_IGNORE(id != ForeverValueId::INVALID && static_cast<u32>(id) < globals->forever_values.used());
 
 	const ForeverValue* const value = globals->forever_values.begin() + static_cast<u32>(id);
-
-	ASSERT_OR_IGNORE(value->is_complete);
 
 	const MutRange<byte> bytes{ globals->data.begin() + value->data_offset, value->data_size };
 

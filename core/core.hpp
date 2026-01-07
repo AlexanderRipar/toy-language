@@ -2452,6 +2452,13 @@ enum class GlobalFileIndex : u16
 	INVALID = 0,
 };
 
+enum class GlobalFileValueState : u8
+{
+	Complete,
+	Uninitialized,
+	Initializing,
+};
+
 struct ForeverCTValue
 {
 	CTValue value;
@@ -2467,13 +2474,15 @@ GlobalFileIndex file_values_reserve(GlobalValuePool* globals, TypeId file_type_i
 
 void file_value_set_initializer(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, OpcodeId initializer) noexcept;
 
-TypeId type_id_from_global_file_index(GlobalValuePool* globals, GlobalFileIndex file_index) noexcept;
+GlobalFileValueState file_value_get(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept;
 
-bool file_value_get(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept;
+void file_value_alloc_prepare(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, bool is_mut) noexcept;
 
-ForeverValueId file_value_alloc_initialized(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, bool is_mut, CTValue initializer) noexcept;
+ForeverValueId file_value_alloc_initialized(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, CTValue initializer, TypeId* out_file_type) noexcept;
 
-ForeverCTValue file_value_alloc_uninitialized(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, bool is_mut, TypeId type, TypeMetrics metrics) noexcept;
+ForeverCTValue file_value_alloc_uninitialized(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, TypeId type, TypeMetrics metrics, TypeId* out_file_type) noexcept;
+
+void file_value_alloc_initialized_complete(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank) noexcept;
 
 ForeverValueId forever_value_alloc_initialized(GlobalValuePool* globals, bool is_mut, CTValue initializer) noexcept;
 

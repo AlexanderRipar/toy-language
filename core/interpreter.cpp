@@ -87,15 +87,11 @@ struct alignas(8) ArgumentPack
 	bool has_just_completed_template_parameter;
 };
 
-struct alignas(8) GlobalInitialization
+struct alignas(4) GlobalInitialization
 {
 	GlobalFileIndex file_index;
 
 	u16 rank;
-
-	bool is_mut;
-
-	u8 unused_[3];
 };
 
 struct LoopInfo
@@ -1153,15 +1149,6 @@ static void scope_pop(Interpreter* interp) noexcept
 	}
 }
 
-static const Opcode* complete_global(Interpreter* interp, const Opcode* code) noexcept
-{
-	ASSERT_OR_IGNORE(interp->global_initializations.used() >= 1);
-
-	interp->global_initializations.pop_by(1);
-
-	return nullptr;
-}
-
 
 
 static bool u64_from_value(Interpreter* interp, const Opcode* code, CTValue value, u64* out) noexcept
@@ -1742,8 +1729,6 @@ static const Opcode* handle_scope_alloc_untyped(Interpreter* interp, const Opcod
 
 static const Opcode* handle_file_global_alloc_prepare(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->activations.used() >= 1);
-
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
 	bool is_mut;
@@ -1758,10 +1743,11 @@ static const Opcode* handle_file_global_alloc_prepare(Interpreter* interp, const
 
 	code = code_attach(code, &rank);
 
-	GlobalInitialization* const initialization = interp->global_initializations.reserve();
-	initialization->file_index = file_index;
-	initialization->rank = rank;
-	initialization->is_mut = is_mut;
+	file_value_alloc_prepare(interp->globals, file_index, rank, is_mut);
+
+	GlobalInitialization* const init = interp->global_initializations.reserve();
+	init->file_index = file_index;
+	init->rank = rank;
 
 	return code;
 }
@@ -1772,7 +1758,13 @@ static const Opcode* handle_file_global_alloc_complete(Interpreter* interp, cons
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	return complete_global(interp, code);
+	const GlobalInitialization init = interp->global_initializations.end()[-1];
+
+	file_value_alloc_initialized_complete(interp->globals, init.file_index, init.rank);
+
+	interp->global_initializations.pop_by(1);
+
+	return code;
 }
 
 static const Opcode* handle_file_global_alloc_typed(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
@@ -1783,7 +1775,7 @@ static const Opcode* handle_file_global_alloc_typed(Interpreter* interp, const O
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	const GlobalInitialization initialization = interp->global_initializations.end()[-1];
+	const GlobalInitialization init = interp->global_initializations.end()[-1];
 
 	CTValue* const top = interp->values.end() - 1;
 
@@ -1798,11 +1790,11 @@ static const Opcode* handle_file_global_alloc_typed(Interpreter* interp, const O
 
 	const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member_type);
 
-	const ForeverCTValue value = file_value_alloc_uninitialized(interp->globals, initialization.file_index, initialization.rank, initialization.is_mut, member_type, member_metrics);
+	TypeId file_type;
 
-	const TypeId file_type = type_id_from_global_file_index(interp->globals, initialization.file_index);
+	const ForeverCTValue value = file_value_alloc_uninitialized(interp->globals, init.file_index, init.rank, member_type, member_metrics, &file_type);
 
-	type_set_file_member_info(interp->types, file_type, initialization.rank, member_type, value.id);
+	type_set_file_member_info(interp->types, file_type, init.rank, member_type, value.id);
 
 	interp->values.pop_by(1);
 
@@ -1819,19 +1811,21 @@ static const Opcode* handle_file_global_alloc_untyped(Interpreter* interp, const
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	const GlobalInitialization initialization = interp->global_initializations.end()[-1];
+	const GlobalInitialization init = interp->global_initializations.end()[-1];
 
 	CTValue* const top = interp->values.end() - 1;
 
-	const ForeverValueId value_id = file_value_alloc_initialized(interp->globals, initialization.file_index, initialization.rank, initialization.is_mut, *top);
+	TypeId file_type;
 
-	const TypeId file_type = type_id_from_global_file_index(interp->globals, initialization.file_index);
+	const ForeverValueId value_id = file_value_alloc_initialized(interp->globals, init.file_index, init.rank, *top, &file_type);
 
-	type_set_file_member_info(interp->types, file_type, initialization.rank, top->type, value_id);
+	type_set_file_member_info(interp->types, file_type, init.rank, top->type, value_id);
+
+	interp->global_initializations.pop_by(1);
 
 	interp->values.pop_by(1);
 
-	return complete_global(interp, code);
+	return code;
 }
 
 static const Opcode* handle_pop_closure(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
@@ -1886,7 +1880,13 @@ static const Opcode* handle_load_global(Interpreter* interp, const Opcode* code,
 	
 	OpcodeId global_code;
 
-	if (!file_value_get(interp->globals, index, rank, &global_value, &global_code))
+	const GlobalFileValueState state = file_value_get(interp->globals, index, rank, &global_value, &global_code);
+
+	if (state == GlobalFileValueState::Complete)
+	{
+		return push_location_value(interp, code, write_ctx, global_value.value);
+	}
+	else if (state == GlobalFileValueState::Uninitialized)
 	{
 		// Push back the write_ctx if we have one, so it's still there on the
 		// next go around.
@@ -1901,7 +1901,9 @@ static const Opcode* handle_load_global(Interpreter* interp, const Opcode* code,
 	}
 	else
 	{
-		return push_location_value(interp, code, write_ctx, global_value.value);
+		ASSERT_OR_IGNORE(state == GlobalFileValueState::Initializing);
+
+		return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Error code for self-referential initializer.
 	}
 }
 
@@ -5441,6 +5443,9 @@ Interpreter* create_interpreter(HandlePool* handles, AstPool* asts, TypePool* ty
 	static constexpr u32 ARGUMENT_PACKS_RESERVE_SIZE = sizeof(ArgumentPack) << 18;
 	static constexpr u32 ARGUMENT_PACKS_COMMIT_INCREMENT_COUNT = 512;
 
+	static constexpr u32 GLOBAL_INITIALIZATIONS_RESERVE_SIZE = sizeof(GlobalInitialization) << 16;
+	static constexpr u32 GLOBAL_INITIALIZATIONS_COMMIT_INCREMENT_COUNT = 4096 / sizeof(GlobalInitialization);
+
 	static constexpr u64 TOTAL_RESERVE_SIZE = static_cast<u64>(SCOPES_RESERVE_SIZE)
 	                                        + SCOPE_MEMBERS_RESERVE_SIZE
 	                                        + SCOPE_DATA_RESERVE_SIZE
@@ -5453,7 +5458,8 @@ Interpreter* create_interpreter(HandlePool* handles, AstPool* asts, TypePool* ty
 	                                        + ACTIVE_CLOSURES_RESERVE_SIZE
 	                                        + CLOSURE_MEMBERS_RESERVE_SIZE
 	                                        + ARGUMENT_CALLBACKS_RESERVE_SIZE
-	                                        + ARGUMENT_PACKS_RESERVE_SIZE;
+	                                        + ARGUMENT_PACKS_RESERVE_SIZE
+	                                        + GLOBAL_INITIALIZATIONS_RESERVE_SIZE;
 
 	byte* const memory = static_cast<byte*>(minos::mem_reserve(TOTAL_RESERVE_SIZE));
 
@@ -5515,6 +5521,9 @@ Interpreter* create_interpreter(HandlePool* handles, AstPool* asts, TypePool* ty
 
 	interp->argument_packs.init({ memory + offset, ARGUMENT_PACKS_RESERVE_SIZE }, ARGUMENT_PACKS_COMMIT_INCREMENT_COUNT);
 	offset += ARGUMENT_PACKS_RESERVE_SIZE;
+
+	interp->global_initializations.init({ memory + offset, GLOBAL_INITIALIZATIONS_RESERVE_SIZE }, GLOBAL_INITIALIZATIONS_COMMIT_INCREMENT_COUNT);
+	offset += GLOBAL_INITIALIZATIONS_RESERVE_SIZE;
 
 	ASSERT_OR_IGNORE(offset == TOTAL_RESERVE_SIZE);
 
