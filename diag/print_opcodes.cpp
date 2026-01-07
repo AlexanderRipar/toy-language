@@ -29,12 +29,15 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 	case Opcode::INVALID:
 	case Opcode::EndCode:
 	case Opcode::Return:
+	case Opcode::FileGlobalAllocComplete:
+	case Opcode::FileGlobalAllocUntyped:
 	{
 		return nullptr;
 	}
 
 	case Opcode::SetWriteCtx:
 	case Opcode::ScopeEnd:
+	case Opcode::FileGlobalAllocTyped:
 	case Opcode::PopClosure:
 	case Opcode::ExecArgs:
 	case Opcode::Call:
@@ -69,8 +72,7 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 		return code + sizeof(bool);
 	}
 
-	case Opcode::FileGlobalAllocTyped:
-	case Opcode::FileGlobalAllocUntyped:
+	case Opcode::FileGlobalAllocPrepare:
 	{
 		return code + sizeof(bool) + sizeof(GlobalFileIndex) + sizeof(u16);
 	}
@@ -423,12 +425,15 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 	case Opcode::INVALID:
 	case Opcode::EndCode:
 	case Opcode::Return:
+	case Opcode::FileGlobalAllocComplete:
+	case Opcode::FileGlobalAllocUntyped:
 	{
 		return nullptr;
 	}
 
 	case Opcode::SetWriteCtx:
 	case Opcode::ScopeEnd:
+	case Opcode::FileGlobalAllocTyped:
 	case Opcode::PopClosure:
 	case Opcode::ExecArgs:
 	case Opcode::Call:
@@ -475,22 +480,21 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 		return code;
 	}
 
-	case Opcode::FileGlobalAllocTyped:
-	case Opcode::FileGlobalAllocUntyped:
+	case Opcode::FileGlobalAllocPrepare:
 	{
 		bool is_mut;
 
 		code = code_attach(code, &is_mut);
 
-		GlobalFileIndex index;
+		GlobalFileIndex file_index;
 
-		code = code_attach(code, &index);
+		code = code_attach(code, &file_index);
 
 		u16 rank;
 
 		code = code_attach(code, &rank);
 
-		diag::buf_printf(ctx, " is_mut=%s file_index=%u rank=%u", is_mut ? "true" : "false", static_cast<u32>(index), rank);
+		diag::buf_printf(ctx, " is_mut=%s file_index=%u rank=%u", is_mut ? "true" : "false", file_index, rank);
 
 		return code;
 	}

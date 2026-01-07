@@ -63,7 +63,7 @@ struct CompareResult
 	explicit CompareResult(CompareEquality equality) : tag{ CompareTag::Equality }, equality{ equality } {}
 };
 
-struct ArgumentPack
+struct alignas(8) ArgumentPack
 {
 	TypeId parameter_list_type;
 
@@ -85,6 +85,17 @@ struct ArgumentPack
 	bool has_templated_return_type : 1;
 
 	bool has_just_completed_template_parameter;
+};
+
+struct alignas(8) GlobalInitialization
+{
+	GlobalFileIndex file_index;
+
+	u16 rank;
+
+	bool is_mut;
+
+	u8 unused_[3];
 };
 
 struct LoopInfo
@@ -155,6 +166,8 @@ struct Interpreter
 	ReservedVec<OpcodeId> argument_callbacks;
 
 	ReservedVec<ArgumentPack> argument_packs;
+
+	ReservedVec<GlobalInitialization> global_initializations;
 
 	bool is_ok;
 
@@ -1140,6 +1153,15 @@ static void scope_pop(Interpreter* interp) noexcept
 	}
 }
 
+static const Opcode* complete_global(Interpreter* interp, const Opcode* code) noexcept
+{
+	ASSERT_OR_IGNORE(interp->global_initializations.used() >= 1);
+
+	interp->global_initializations.pop_by(1);
+
+	return nullptr;
+}
+
 
 
 static bool u64_from_value(Interpreter* interp, const Opcode* code, CTValue value, u64* out) noexcept
@@ -1718,9 +1740,9 @@ static const Opcode* handle_scope_alloc_untyped(Interpreter* interp, const Opcod
 	return code;
 }
 
-static const Opcode* handle_file_global_alloc_typed(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_global_alloc_prepare(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(interp->activations.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -1728,13 +1750,40 @@ static const Opcode* handle_file_global_alloc_typed(Interpreter* interp, const O
 
 	code = code_attach(code, &is_mut);
 
-	GlobalFileIndex index;
+	GlobalFileIndex file_index;
 
-	code = code_attach(code, &index);
+	code = code_attach(code, &file_index);
 
 	u16 rank;
 
 	code = code_attach(code, &rank);
+
+	GlobalInitialization* const initialization = interp->global_initializations.reserve();
+	initialization->file_index = file_index;
+	initialization->rank = rank;
+	initialization->is_mut = is_mut;
+
+	return code;
+}
+
+static const Opcode* handle_file_global_alloc_complete(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(interp->global_initializations.used() >= 1);
+
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
+	return complete_global(interp, code);
+}
+
+static const Opcode* handle_file_global_alloc_typed(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+
+	ASSERT_OR_IGNORE(interp->global_initializations.used() >= 1);
+
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
+	const GlobalInitialization initialization = interp->global_initializations.end()[-1];
 
 	CTValue* const top = interp->values.end() - 1;
 
@@ -1749,11 +1798,11 @@ static const Opcode* handle_file_global_alloc_typed(Interpreter* interp, const O
 
 	const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member_type);
 
-	const ForeverCTValue value = file_value_alloc_uninitialized(interp->globals, index, rank, is_mut, member_type, member_metrics);
+	const ForeverCTValue value = file_value_alloc_uninitialized(interp->globals, initialization.file_index, initialization.rank, initialization.is_mut, member_type, member_metrics);
 
-	const TypeId file_type = type_id_from_global_file_index(interp->globals, index);
+	const TypeId file_type = type_id_from_global_file_index(interp->globals, initialization.file_index);
 
-	type_set_file_member_info(interp->types, file_type, rank, member_type, value.id);
+	type_set_file_member_info(interp->types, file_type, initialization.rank, member_type, value.id);
 
 	interp->values.pop_by(1);
 
@@ -1766,31 +1815,23 @@ static const Opcode* handle_file_global_alloc_untyped(Interpreter* interp, const
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
+	ASSERT_OR_IGNORE(interp->global_initializations.used() >= 1);
+
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	bool is_mut;
-
-	code = code_attach(code, &is_mut);
-
-	GlobalFileIndex index;
-
-	code = code_attach(code, &index);
-
-	u16 rank;
-
-	code = code_attach(code, &rank);
+	const GlobalInitialization initialization = interp->global_initializations.end()[-1];
 
 	CTValue* const top = interp->values.end() - 1;
 
-	const ForeverValueId value_id = file_value_alloc_initialized(interp->globals, index, rank, is_mut, *top);
+	const ForeverValueId value_id = file_value_alloc_initialized(interp->globals, initialization.file_index, initialization.rank, initialization.is_mut, *top);
 
-	const TypeId file_type = type_id_from_global_file_index(interp->globals, index);
+	const TypeId file_type = type_id_from_global_file_index(interp->globals, initialization.file_index);
 
-	type_set_file_member_info(interp->types, file_type, rank, top->type, value_id);
+	type_set_file_member_info(interp->types, file_type, initialization.rank, top->type, value_id);
 
 	interp->values.pop_by(1);
 
-	return code;
+	return complete_global(interp, code);
 }
 
 static const Opcode* handle_pop_closure(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
@@ -4890,6 +4931,8 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 		&handle_scope_end,                         // ScopeEnd
 		&handle_scope_alloc_typed,                 // ScopeAllocTyped
 		&handle_scope_alloc_untyped,               // ScopeAllocUntyped
+		&handle_file_global_alloc_prepare,         // FileGlobalAllocPrepare
+		&handle_file_global_alloc_complete,        // FileGlobalAllocComplete
 		&handle_file_global_alloc_typed,           // FileGlobalAllocTyped
 		&handle_file_global_alloc_untyped,         // FileGlobalAllocUntyped
 		&handle_pop_closure,                       // PopClosure
@@ -4952,6 +4995,8 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeEnd)]                      == &handle_scope_end);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeAllocTyped)]               == &handle_scope_alloc_typed);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeAllocUntyped)]             == &handle_scope_alloc_untyped);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocPrepare)]        == &handle_file_global_alloc_prepare);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocComplete)]       == &handle_file_global_alloc_complete);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocTyped)]          == &handle_file_global_alloc_typed);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocUntyped)]        == &handle_file_global_alloc_untyped);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::PopClosure)]                    == &handle_pop_closure);

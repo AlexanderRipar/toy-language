@@ -2637,6 +2637,8 @@ enum class Opcode : u8
 	ScopeEnd,
 	ScopeAllocTyped,
 	ScopeAllocUntyped,
+	FileGlobalAllocPrepare,
+	FileGlobalAllocComplete,
 	FileGlobalAllocTyped,
 	FileGlobalAllocUntyped,
 	PopClosure,

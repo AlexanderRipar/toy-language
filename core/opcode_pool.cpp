@@ -1949,19 +1949,23 @@ const Maybe<Opcode*> opcodes_from_file_member_ast(OpcodePool* opcodes, AstNode* 
 
 	const bool is_mut = has_flag(node, AstFlag::Definition_IsMut);
 
+	emit_opcode(opcodes, Opcode::FileGlobalAllocPrepare, false, node, is_mut, file_index, rank);
+
 	if (has_type)
 	{
 		if (!opcodes_from_expression(opcodes, get(info.type), false))
 			return none<Opcode*>();
 
-		emit_opcode(opcodes, Opcode::FileGlobalAllocTyped, false, node, is_mut, file_index, rank);
+		emit_opcode(opcodes, Opcode::FileGlobalAllocTyped, false, node);
 	}
 
 	if (!opcodes_from_expression(opcodes, get(info.value), has_type))
 		return none<Opcode*>();
 
-	if (!has_type)
-		emit_opcode(opcodes, Opcode::FileGlobalAllocUntyped, false, node, is_mut, file_index, rank);
+	if (has_type)
+		emit_opcode(opcodes, Opcode::FileGlobalAllocComplete, false, node);
+	else
+		emit_opcode(opcodes, Opcode::FileGlobalAllocUntyped, false, node);
 
 	emit_opcode(opcodes, Opcode::EndCode, false, node);
 
@@ -2030,6 +2034,8 @@ OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	switch (op)
 	{
 	case Opcode::EndCode:
+	case Opcode::FileGlobalAllocPrepare:
+	case Opcode::FileGlobalAllocComplete:
 	case Opcode::PrepareArgs:
 	case Opcode::ExecArgs:
 	case Opcode::Return:
@@ -2385,6 +2391,8 @@ const char8* tag_name(Opcode op) noexcept
 		"ScopeEnd",
 		"ScopeAllocTyped",
 		"ScopeAllocUntyped",
+		"FileGlobalAllocPrepare",
+		"FileGlobalAllocComplete",
 		"FileGlobalAllocTyped",
 		"FileGlobalAllocUntyped",
 		"PopClosure",
