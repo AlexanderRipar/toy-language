@@ -2644,6 +2644,7 @@ enum class Opcode : u8
 	SetWriteCtx,
 	ScopeBegin,
 	ScopeEnd,
+	ScopeEndPreserveTop,
 	ScopeAllocTyped,
 	ScopeAllocUntyped,
 	FileGlobalAllocPrepare,

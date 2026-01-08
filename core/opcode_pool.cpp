@@ -863,7 +863,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		memcpy(attach, &definition_count, sizeof(u16));
 
-		emit_opcode(opcodes, Opcode::ScopeEnd, false, node);
+		emit_opcode(opcodes, Opcode::ScopeEndPreserveTop, false, node);
 
 		return true;
 	}
@@ -893,16 +893,19 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 				emit_fixup_for_value_void(opcodes, opcodes->codes.end() + 1 + sizeof(OpcodeId), node);
 
 			emit_opcode(opcodes, Opcode::IfElse, expects_write_ctx, node, OpcodeId::INVALID, OpcodeId::INVALID);
+
+			if (is_some(info.where))
+				emit_opcode(opcodes, Opcode::ScopeEndPreserveTop, false, get(info.where));
 		}
 		else
 		{
 			emit_fixup_for_discarded_if_branch(opcodes, opcodes->codes.end() + 1, info.consequent);
 
 			emit_opcode(opcodes, Opcode::If, false, node, OpcodeId::INVALID);
-		}
 
-		if (is_some(info.where))
-			emit_opcode(opcodes, Opcode::ScopeEnd, false, get(info.where));
+			if (is_some(info.where))
+				emit_opcode(opcodes, Opcode::ScopeEnd, false, get(info.where));
+		}
 
 		return true;
 	}
@@ -933,14 +936,17 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 			emit_fixup_for_loop_finally(opcodes, opcodes->codes.end() + 1 + 2 * sizeof(OpcodeId), get(info.finally), expects_write_ctx);
 
 			emit_opcode(opcodes, Opcode::LoopFinally, expects_write_ctx, node, condition_id, OpcodeId::INVALID, OpcodeId::INVALID);
+			
+			if (is_some(info.where))
+				emit_opcode(opcodes, Opcode::ScopeEndPreserveTop, false, get(info.where));
 		}
 		else
 		{
 			emit_opcode(opcodes, Opcode::Loop, false, node, condition_id, OpcodeId::INVALID);
+			
+			if (is_some(info.where))
+				emit_opcode(opcodes, Opcode::ScopeEnd, false, get(info.where));
 		}
-
-		if (is_some(info.where))
-			emit_opcode(opcodes, Opcode::ScopeEnd, false, get(info.where));
 
 		return true;
 	}
@@ -2071,6 +2077,7 @@ OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	}
 
 	case Opcode::ScopeEnd:
+	case Opcode::ScopeEndPreserveTop:
 	{
 		ASSERT_OR_IGNORE(!expects_write_ctx);
 
@@ -2389,6 +2396,7 @@ const char8* tag_name(Opcode op) noexcept
 		"SetWriteCtx",
 		"ScopeBegin",
 		"ScopeEnd",
+		"ScopeEndPreserveTop",
 		"ScopeAllocTyped",
 		"ScopeAllocUntyped",
 		"FileGlobalAllocPrepare",

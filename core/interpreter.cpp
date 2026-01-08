@@ -1666,6 +1666,34 @@ static const Opcode* handle_scope_end(Interpreter* interp, const Opcode* code, [
 	return code;
 }
 
+static const Opcode* handle_scope_end_preserve_top(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+
+	ASSERT_OR_IGNORE(interp->scopes.used() >= 1);
+
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
+	Scope* const scope = interp->scopes.end() - 1;
+
+	CTValue* const top = interp->values.end() - 1;
+
+	byte* const scope_temporary_data_begin = interp->temporary_data.begin() + scope->temporary_data_used;
+
+	if (top->bytes.begin() >= scope_temporary_data_begin && top->bytes.begin() < interp->temporary_data.end())
+	{
+		memmove(scope_temporary_data_begin, top->bytes.begin(), top->bytes.count());
+
+		scope->temporary_data_used += static_cast<u32>(top->bytes.count());
+
+		top->bytes = MutRange<byte>{ scope_temporary_data_begin, top->bytes.count() };
+	}
+
+	scope_pop(interp);
+
+	return code;
+}
+
 static const Opcode* handle_scope_alloc_typed(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->scopes.used() >= 1);
@@ -4931,6 +4959,7 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 		&handle_set_write_ctx,                     // SetWriteCtx
 		&handle_scope_begin,                       // ScopeBegin
 		&handle_scope_end,                         // ScopeEnd
+		&handle_scope_end_preserve_top,            // ScopeEndPreserveTop
 		&handle_scope_alloc_typed,                 // ScopeAllocTyped
 		&handle_scope_alloc_untyped,               // ScopeAllocUntyped
 		&handle_file_global_alloc_prepare,         // FileGlobalAllocPrepare
@@ -4995,6 +5024,7 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::SetWriteCtx)]                   == &handle_set_write_ctx);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeBegin)]                    == &handle_scope_begin);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeEnd)]                      == &handle_scope_end);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeEndPreserveTop)]           == &handle_scope_end_preserve_top);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeAllocTyped)]               == &handle_scope_alloc_typed);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeAllocUntyped)]             == &handle_scope_alloc_untyped);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocPrepare)]        == &handle_file_global_alloc_prepare);
