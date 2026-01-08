@@ -33,132 +33,132 @@ struct ErrorSink
 static const char8* error_message_of(CompileError error) noexcept
 {
 	static constexpr const char8* FORMATS[] = {
-		"[unknown compiler error code]",
-		"Value of compile-time integer exceeds bounds of implicit conversion target.\n",
-		"Cannot implicitly convert to destination type.",
-		"Destination type of composite literal conversion has no corresponding member.\n",
-		"Too many members in composite literal to convert to destination type.\n",
-		"Member mapped more than once during composite literal conversion.\n",
-		"Member cannot be initialized from composite literal member because their types do not match.\n",
-		"Composite initializer is missing initializer for member of target type which lacks a default value.\n",
-		"Cannot use expression as a location of the desired type, as it requires implicit conversion.\n",
-		"Could not unify argument types.\n",
-		"Array literal element cannot be implicitly converted to type of preceding elements.\n",
-		"Parameter with the given name does not exist for the called function.\n",
-		"Multiple arguments for given for the same parameter.\n",
-		"Too many arguments supplied to function call.\n",
-		"Missing argument for parameter.\n",
-		"Left-hand-side of slicing operator must be of multi-pointer and not single-pointer type.\n",
-		"Begin index of slicing operator must be of integer type.\n",
-		"End index of slicing operator cannot be elided with left-hand-side of multi-pointer type, as the end cannot be derived.\n",
-		"Index of slicing operator must be less than the element count of the indexed array or slice.\n",
-		"Begin index of slicing operator must be less than or equal to end index.\n",
-		"Index of slicing operator must fit into unsigned 64-bit integer.\n",
-		"Left-hand-side of slicing operator occurring in untyped context cannot be an empty array literal.\n",
-		"Operand of `.*` must be a pointer.\n",
-		"`~` can only be applied to integer operands.\n",
-		"Unary `-` can only be applied to signed integer or float-point operands.\n",
-		"Unary `+` can only be applied to integer or float-point operands.\n",
-		"The operator is only supported for Integer and Float operands.\n",
-		"The operator is only supported for Integer operands.\n",
-		"The operator is only supported for Integer and Boolean operands.\n",
-		"Overflow encountered while evaluating operator.\n",
-		"Division by zero encountered.\n",
-		"Right-hand-side of shift operator must not be negative.\n",
-		"Shifting by 2^16 or more is not supported.\n",
-		"Left-hand-side of `.` has no member with the given name.\n",
-		"Left-hand-side of `.` must be either a composite value or a composite type.\n",
-		"`.` with a type-valued left-hand-side can only access global members.\n",
-		"Cannot compare values of the given type.\n",
-		"Cannot order values of the given type.\n",
-		"Left-hand-side of `=` operator must be mutable.\n",
-		"Array element count must be of Integer type.\n",
-		"Array element count must fit into unsigned 64-bit integer.\n",
-		"Left-hand-side of index operator must have array, slice, or multi-pointer type.\n",
-		"Right-hand-side of index operator must have integer type.\n",
-		"Right-hand-side of index operator must fit into unsigned 64-bit integer.\n",
-		"Index exceeds element count.\n",
-		"Alignment passed to `_complete_type` must not exceed the maximum supported value of 2^32 - 1.\n",
-		"Alignment passed to `_complete_type` must not be zero.\n",
-		"Alignment passed to `_complete_type` must be a power of two.\n",
-		"Reached `unreachable`.\n",
-		"Total size of closed-over values in single closure exceeds supported maximum of 2^32 - 1.\n",
-		"Exceeded maximum number of definitions in a single scope.\n",
-		"More than one definition with the same name in the same scope.\n",
-		"Name not defined\n",
-		"Unexpected character in source file.\n",
-		"Null character in source file.\n",
-		"`/*` without matching `*/`.\n",
-		"`*/` without previous matching `/*`.\n",
-		"Unknown builtin.\n",
-		"Expected at least one digit in integer literal.\n",
-		"Expected at least one digit after decimal point in float literal.\n",
-		"Unexpected character after integer literal.\n",
-		"Unexpected character after float literal.\n",
-		"Float literal exceeds maximum IEEE-754 value.\n",
-		"Expected utf-8 surrogate code unit (0b10xx'xxxx).\n",
-		"Unexpected code unit at start of character literal. This might be an encoding issue regarding the source file, as only utf-8 is supported.\n",
-		"Expected two hexadecimal digits after character literal escape `\\x`.\n",
-		"Expected six hexadecimal digits after character literal escape `\\X`.\n",
-		"Codepoint indicated in character literal escape `\\X` is greater than the maximum unicode codepoint U+10FFFF.\n",
-		"Expected four decimal digits after character literal escape `\\u`.\n",
-		"Unknown character literal escape.\n",
-		"Expected end of character literal `'`.\n",
-		"String constant is longer than the supported maximum of 4096 bytes.\n",
-		"String constant spans across newline.\n",
-		"String not ended before end of file.\n",
-		"Illegal identifier starting with `_`.\n",
-		"Unexpected control character in config file.\n",
-		"Single-line string not ended before end of line.\n",
-		"Unexpected character in config file.\n",
-		"Missing operand for unary operator.\n",
-		"Missing operand for binary operator.\n",
-		"Expression exceeds maximum number of open operands.\n",
-		"Expression exceeds maximum number of open operators.\n",
-		"Mismatched operand / operator count.\n",
-		"Function parameters must not be `pub`.\n",
-		"Definition modifier `pub` encountered more than once.\n",
-		"Definition modifier `mut` encountered more than once.\n",
-		"Expected definition name.\n",
-		"Expected `=` after Definition identifier and type.\n",
-		"Expected `<-` after for-each loop variables.\n",
-		"Expected `->` after case label expression.\n",
-		"Expected at least one case after switch expression.\n",
-		"Expected `(` after `proc`.\n",
-		"Expected `(` after `func`.\n",
-		"Expected `(` after `trait`.\n",
-		"Exceeded maximum of 64 function parameters.\n",
-		"Expected `,` or `)` after parameter definition.\n",
-		"Expected `=` or `expects` after trait parameter list.\n",
-		"Expected `=` after trait expects clause.\n",
-		"Expected definition or `impl` at file's top level.\n",
-		"Expected `}` or `,` after composite initializer member expression.\n",
-		"Expected `]` or `,` after array initializer element expression.\n",
-		"Expected `]` after array type's size expression.\n",
-		"Expected identifier after prefix `.` operator.\n",
-		"Expected operand or unary operator.\n",
-		"Exceeded maximum of 64 function call arguments.\n",
-		"Expected `)` or `,` after function argument expression.\n",
-		"Expected `]` after slice index expression.\n",
-		"Expected `]` after array index expression.\n",
-		"Expected `->` after inbound definition in catch.\n",
-		"Expected identifier after infix `.` operator.\n",
-		"Key nesting limit exceeded.\n",
-		"Tried assigning to key that does not expect subkeys.\n",
-		"Key does not exist.\n",
-		"Expected key name.\n",
-		"Expected `=`.\n",
-		"Expected `}` or `,`.\n",
-		"Expected a value.\n",
-		"Value has the wrong type for the given key.\n",
-		"`\\u` escape expects four hex digits.\n",
-		"`\\U` escape expects eight hex digits.\n",
-		"Expected hexadecimal escape character but.\n",
-		"Escaped codepoint is larger than the maximum unicode codepoint (0x10FFFF).\n",
-		"Unexpected escape sequence.\n",
-		"Resulting absolute path exceeds maximum path length.\n",
-		"Expected `]`.\n",
-		"Expected `=` or `.`.\n",
+		"[unknown compiler error code]",                                                                                                                // INVALID
+		"Value of compile-time integer exceeds bounds of implicit conversion target.\n",                                                                // ImplictConversionIntegerConstantExceedsTargetBounds
+		"Cannot implicitly convert to destination type.",                                                                                               // ImplicitConversionTypesCannotConvert
+		"Destination type of composite literal conversion has no corresponding member.\n",                                                              // ImplicitConversionCompositeLiteralTargetIsMissingMember
+		"Too many members in composite literal to convert to destination type.\n",                                                                      // ImplicitConversionCompositeLiteralTargetHasTooFewMembers
+		"Member mapped more than once during composite literal conversion.\n",                                                                          // ImplicitConversionCompositeLiteralTargetMemberMappedTwice
+		"Member cannot be initialized from composite literal member because their types do not match.\n",                                               // ImplicitConversionCompositeLiteralMemberTypesCannotConvert
+		"Composite initializer is missing initializer for member of target type which lacks a default value.\n",                                        // ImplicitConversionCompositeLiteralSourceIsMissingMember
+		"Cannot use expression as a location of the desired type, as it requires implicit conversion.\n",                                               // ImplicitConversionLocationRequired
+		"Could not unify argument types.\n",                                                                                                            // UnifyNoCommonArgumentType
+		"Array literal element cannot be implicitly converted to type of preceding elements.\n",                                                        // UnifyNoCommonArrayElementType
+		"Parameter with the given name does not exist for the called function.\n",                                                                      // CallNoSuchNamedParameter
+		"Multiple arguments for given for the same parameter.\n",                                                                                       // CallArgumentMappedTwice
+		"Too many arguments supplied to function call.\n",                                                                                              // CallTooManyArgs
+		"Missing argument for parameter.\n",                                                                                                            // CallMissingArg
+		"Left-hand-side of slicing operator must be of multi-pointer and not single-pointer type.\n",                                                   // SliceOperatorInvalidLhsType
+		"Begin index of slicing operator must be of integer type.\n",                                                                                   // SliceOperatorInvalidIndexType
+		"End index of slicing operator cannot be elided with left-hand-side of multi-pointer type, as the end cannot be derived.\n",                    // SliceOperatorMultiPtrElidedEndIndex
+		"Index of slicing operator must be less than the element count of the indexed array or slice.\n",                                               // SliceOperatorIndexOutOfBounds
+		"Begin index of slicing operator must be less than or equal to end index.\n",                                                                   // SliceOperatorIndicesReversed
+		"Index of slicing operator must fit into unsigned 64-bit integer.\n",                                                                           // SliceOperatorIndexTooLarge
+		"Left-hand-side of slicing operator occurring in untyped context cannot be an empty array literal.\n",                                          // SliceOperatorUntypedArrayLiteral
+		"Operand of `.*` must be a pointer.\n",                                                                                                         // DerefInvalidOperandType
+		"`~` can only be applied to integer operands.\n",                                                                                               // BitNotInvalidOperandType
+		"Unary `-` can only be applied to signed integer or float-point operands.\n",                                                                   // NegateInvalidOperandType
+		"Unary `+` can only be applied to integer or float-point operands.\n",                                                                          // UnaryPlusInvalidOperandType
+		"The operator is only supported for Integer and Float operands.\n",                                                                             // BinaryOperatorNumericInvalidArgumentType
+		"The operator is only supported for Integer operands.\n",                                                                                       // BinaryOperatorIntegerInvalidArgumentType
+		"The operator is only supported for Integer and Boolean operands.\n",                                                                           // BinaryOperatorIntegerOrBoolInvalidArgumentType
+		"Overflow encountered while evaluating operator.\n",                                                                                            // ArithmeticOverflow
+		"Division by zero encountered.\n",                                                                                                              // DivideByZero
+		"Right-hand-side of shift operator must not be negative.\n",                                                                                    // ShiftRHSNegative
+		"Shifting by 2^16 or more is not supported.\n",                                                                                                 // ShiftRHSTooLarge
+		"Left-hand-side of `.` has no member with the given name.\n",                                                                                   // MemberNoSuchName
+		"Left-hand-side of `.` must be either a composite value or a composite type.\n",                                                                // MemberInvalidLhsType
+		"`.` with a type-valued left-hand-side can only access global members.\n",                                                                      // MemberNonGlobalAccessedThroughType
+		"Cannot compare values of the given type.\n",                                                                                                   // CompareIncomparableType
+		"Cannot order values of the given type.\n",                                                                                                     // CompareUnorderedType
+		"Left-hand-side of `=` operator must be mutable.\n",                                                                                            // SetLhsNotMutable
+		"Array element count must be of Integer type.\n",                                                                                               // TypeArrayCountInvalidType
+		"Array element count must fit into unsigned 64-bit integer.\n",                                                                                 // TypeArrayCountTooLarge
+		"Left-hand-side of index operator must have array, slice, or multi-pointer type.\n",                                                            // ArrayIndexLhsInvalidType
+		"Right-hand-side of index operator must have integer type.\n",                                                                                  // ArrayIndexRhsInvalidType
+		"Right-hand-side of index operator must fit into unsigned 64-bit integer.\n",                                                                   // ArrayIndexRhsTooLarge
+		"Index exceeds element count.\n",                                                                                                               // ArrayIndexOutOfBounds
+		"Alignment passed to `_complete_type` must not exceed the maximum supported value of 2^32 - 1.\n",                                              // BuiltinCompleteTypeAlignTooLarge
+		"Alignment passed to `_complete_type` must not be zero.\n",                                                                                     // BuiltinCompleteTypeAlignZero
+		"Alignment passed to `_complete_type` must be a power of two.\n",                                                                               // BuiltinCompleteTypeAlignNotPowTwo
+		"Reached `unreachable`.\n",                                                                                                                     // UnreachableReached
+		"Total size of closed-over values in single closure exceeds supported maximum of 2^32 - 1.\n",                                                  // ClosureTooLarge
+		"Exceeded maximum number of definitions in a single scope.\n",                                                                                  // ScopeTooManyDefinitions
+		"More than one definition with the same name in the same scope.\n",                                                                             // ScopeDuplicateName
+		"Name not defined\n",                                                                                                                           // ScopeNameNotDefined
+		"Unexpected character in source file.\n",                                                                                                       // LexUnexpectedCharacter
+		"Null character in source file.\n",                                                                                                             // LexNullCharacter
+		"`/*` without matching `*/`.\n",                                                                                                                // LexCommentMismatchedBegin
+		"`*/` without previous matching `/*`.\n",                                                                                                       // LexCommentMismatchedEnd
+		"Unknown builtin.\n",                                                                                                                           // LexBuiltinUnknown
+		"Expected at least one digit in integer literal.\n",                                                                                            // LexNumberWithBaseMissingDigits
+		"Expected at least one digit after decimal point in float literal.\n",                                                                          // LexNumberUnexpectedCharacterAfterDecimalPoint
+		"Unexpected character after integer literal.\n",                                                                                                // LexNumberUnexpectedCharacterAfterInteger
+		"Unexpected character after float literal.\n",                                                                                                  // LexNumberUnexpectedCharacterAfterFloat
+		"Float literal exceeds maximum IEEE-754 value.\n",                                                                                              // LexNumberFloatTooLarge
+		"Expected utf-8 surrogate code unit (0b10xx'xxxx).\n",                                                                                          // LexCharacterBadSurrogateCodeUnit
+		"Unexpected code unit at start of character literal. This might be an encoding issue regarding the source file, as only utf-8 is supported.\n", // LexCharacterBadLeadCodeUnit
+		"Expected two hexadecimal digits after character literal escape `\\x`.\n",                                                                      // LexCharacterEscapeSequenceLowerXBadChar
+		"Expected six hexadecimal digits after character literal escape `\\X`.\n",                                                                      // LexCharacterEscapeSequenceUpperXInvalidChar
+		"Codepoint indicated in character literal escape `\\X` is greater than the maximum unicode codepoint U+10FFFF.\n",                              // LexCharacterEscapeSequenceUpperXCodepointTooLarge
+		"Expected four decimal digits after character literal escape `\\u`.\n",                                                                         // LexCharacterEscapeSequenceUInvalidChar
+		"Unknown character literal escape.\n",                                                                                                          // LexCharacterEscapeSequenceUnknown
+		"Expected end of character literal `'`.\n",                                                                                                     // LexCharacterExpectedEnd
+		"String constant is longer than the supported maximum of 4096 bytes.\n",                                                                        // LexStringTooLong
+		"String constant spans across newline.\n",                                                                                                      // LexStringCrossesNewline
+		"String not ended before end of file.\n",                                                                                                       // LexStringMissingEnd
+		"Illegal identifier starting with `_`.\n",                                                                                                      // LexIdentifierInitialUnderscore
+		"Unexpected control character in config file.\n",                                                                                               // LexConfigUnexpectedControlCharacter
+		"Single-line string not ended before end of line.\n",                                                                                           // LexConfigSingleLineStringCrossesNewline
+		"Unexpected character in config file.\n",                                                                                                       // LexConfigUnexpectedCharacter
+		"Missing operand for unary operator.\n",                                                                                                        // ParseUnaryOperatorMissingOperand
+		"Missing operand for binary operator.\n",                                                                                                       // ParseBinaryOperatorMissingOperand
+		"Expression exceeds maximum number of open operands.\n",                                                                                        // ParseOpenOperandCountTooLarge
+		"Expression exceeds maximum number of open operators.\n",                                                                                       // ParseOpenOperatorCountTooLarge
+		"Mismatched operand / operator count.\n",                                                                                                       // ParseOperatorOperandCountMismatch
+		"Function parameters must not be `pub`.\n",                                                                                                     // ParseFunctionParameterIsPub
+		"Definition modifier `pub` encountered more than once.\n",                                                                                      // ParseDefinitionMultiplePub
+		"Definition modifier `mut` encountered more than once.\n",                                                                                      // ParseDefinitionMultipleMut
+		"Expected definition name.\n",                                                                                                                  // ParseDefinitionMissingName
+		"Expected `=` after Definition identifier and type.\n",                                                                                         // ParseDefinitionMissingEquals
+		"Expected `<-` after for-each loop variables.\n",                                                                                               // ParseForeachExpectThinArrowLeft
+		"Expected `->` after case label expression.\n",                                                                                                 // ParseCaseMissingThinArrowRight
+		"Expected at least one case after switch expression.\n",                                                                                        // ParseSwitchMissingCase
+		"Expected `(` after `proc`.\n",                                                                                                                 // ParseSignatureMissingParenthesisAfterProc
+		"Expected `(` after `func`.\n",                                                                                                                 // ParseSignatureMissingParenthesisAfterFunc
+		"Expected `(` after `trait`.\n",                                                                                                                // ParseSignatureMissingParenthesisAfterTrait
+		"Exceeded maximum of 64 function parameters.\n",                                                                                                // ParseSignatureTooManyParameters
+		"Expected `,` or `)` after parameter definition.\n",                                                                                            // ParseSignatureUnexpectedParameterListEnd
+		"Expected `=` or `expects` after trait parameter list.\n",                                                                                      // ParseTraitMissingSetOrExpects
+		"Expected `=` after trait expects clause.\n",                                                                                                   // ParseTraitMissingSet
+		"Expected definition or `impl` at file's top level.\n",                                                                                         // ParseUnexpectedTopLevelExpr
+		"Expected `}` or `,` after composite initializer member expression.\n",                                                                         // ParseCompositeLiteralUnexpectedToken
+		"Expected `]` or `,` after array initializer element expression.\n",                                                                            // ParseArrayLiteralUnexpectedToken
+		"Expected `]` after array type's size expression.\n",                                                                                           // ParseArrayTypeUnexpectedToken
+		"Expected identifier after prefix `.` operator.\n",                                                                                             // ParseImpliedMemberUnexpectedToken
+		"Expected operand or unary operator.\n",                                                                                                        // ParseExprExpectOperand
+		"Exceeded maximum of 64 function call arguments.\n",                                                                                            // ParseCallTooManyArguments
+		"Expected `)` or `,` after function argument expression.\n",                                                                                    // ParseCallUnexpectedToken
+		"Expected `]` after slice index expression.\n",                                                                                                 // ParseSliceUnexpectedToken
+		"Expected `]` after array index expression.\n",                                                                                                 // ParseArrayIndexUnexpectedToken
+		"Expected `->` after inbound definition in catch.\n",                                                                                           // ParseCatchMissingThinArrowRightAfterDefinition
+		"Expected identifier after infix `.` operator.\n",                                                                                              // ParseMemberUnexpectedToken
+		"Key nesting limit exceeded.\n",                                                                                                                // ParseConfigKeyNestingLimitExceeded
+		"Tried assigning to key that does not expect subkeys.\n",                                                                                       // ParseConfigKeyNotExpectingSubkeys
+		"Key does not exist.\n",                                                                                                                        // ParseConfigKeyDoesNotExist
+		"Expected key name.\n",                                                                                                                         // ParseConfigExpectedKey
+		"Expected `=`.\n",                                                                                                                              // ParseConfigExpectedEquals
+		"Expected `}` or `,`.\n",                                                                                                                       // ParseConfigExpectedClosingCurlyOrComma
+		"Expected a value.\n",                                                                                                                          // ParseConfigExpectedValue
+		"Value has the wrong type for the given key.\n",                                                                                                // ParseConfigWrongValueTypeForKey
+		"`\\u` escape expects four hex digits.\n",                                                                                                      // ParseConfigEscapeSequenceLowerUTooFewCharacters
+		"`\\U` escape expects eight hex digits.\n",                                                                                                     // ParseConfigEscapeSequenceUpperUTooFewCharacters
+		"Expected hexadecimal escape character but.\n",                                                                                                 // ParseConfigEscapeSequenceUtfInvalidCharacter
+		"Escaped codepoint is larger than the maximum unicode codepoint (0x10FFFF).\n",                                                                 // ParseConfigEscapeSequenceUtfCodepointTooLarge
+		"Unexpected escape sequence.\n",                                                                                                                // ParseConfigEscapeSequenceInvalid
+		"Resulting absolute path exceeds maximum path length.\n",                                                                                       // ParseConfigPathTooLong
+		"Expected `]`.\n",                                                                                                                              // ParseConfigExpectedClosingBracket
+		"Expected `=` or `.`.\n",                                                                                                                       // ParseConfigExpectedEqualsOrDot
 	};
 
 	u32 ordinal = static_cast<u32>(error);
