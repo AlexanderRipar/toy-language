@@ -2813,8 +2813,6 @@ OpcodeId id_from_opcode(OpcodePool* opcodes, const Opcode* code);
 
 const Opcode* opcode_from_id(OpcodePool* opcodes, OpcodeId id) noexcept;
 
-OpcodeEffects opcode_effects(const Opcode* code) noexcept;
-
 SourceId source_id_of_opcode(OpcodePool* opcodes, const Opcode* code) noexcept;
 
 const char8* tag_name(Opcode op) noexcept;

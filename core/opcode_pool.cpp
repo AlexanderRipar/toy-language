@@ -299,6 +299,324 @@ static bool is_templated(AstNode* node) noexcept
 
 
 
+static OpcodeEffects opcode_effects(const Opcode* code) noexcept
+{
+	const u8 op_bits = static_cast<u8>(*code);
+
+	const bool expects_write_ctx = ((op_bits & 0x80) != 0);
+
+	const Opcode op = static_cast<Opcode>(op_bits & 0x7F);
+
+	OpcodeEffects rst{};
+
+	switch (op)
+	{
+	case Opcode::EndCode:
+	case Opcode::FileGlobalAllocPrepare:
+	case Opcode::FileGlobalAllocComplete:
+	case Opcode::PrepareArgs:
+	case Opcode::ExecArgs:
+	case Opcode::Return:
+	case Opcode::CheckTopVoid:
+	case Opcode::CheckWriteCtxVoid:
+	{
+		ASSERT_OR_IGNORE(!expects_write_ctx);
+
+		return rst;
+	}
+
+	case Opcode::SetWriteCtx:
+	case Opcode::ScopeAllocTyped:
+	case Opcode::FileGlobalAllocTyped:
+	case Opcode::CompleteParamTypedNoDefault:
+	case Opcode::CompleteParamTypedWithDefault:
+	{
+		ASSERT_OR_IGNORE(!expects_write_ctx);
+
+		rst.values_diff = -1;
+		rst.write_ctxs_diff = 1;
+		
+		return rst;
+	}
+
+	case Opcode::ScopeBegin:
+	{
+		ASSERT_OR_IGNORE(!expects_write_ctx);
+
+		rst.scopes_diff = 1;
+
+		return rst;
+	}
+
+	case Opcode::ScopeEnd:
+	case Opcode::ScopeEndPreserveTop:
+	{
+		ASSERT_OR_IGNORE(!expects_write_ctx);
+
+		rst.scopes_diff = -1;
+
+		return rst;
+	}
+
+	case Opcode::ScopeAllocUntyped:
+	case Opcode::FileGlobalAllocUntyped:
+	case Opcode::CompleteParamUntyped:
+	{
+		ASSERT_OR_IGNORE(!expects_write_ctx);
+
+		rst.values_diff = -1;
+
+		return rst;
+	}
+
+	case Opcode::PopClosure:
+	{
+		ASSERT_OR_IGNORE(!expects_write_ctx);
+
+		rst.closures_diff = -1;
+
+		return rst;
+	}
+
+	case Opcode::LoadScope:
+	case Opcode::LoadGlobal:
+	case Opcode::LoadClosure:
+	case Opcode::LoadBuiltin:
+	case Opcode::LoopFinally:
+	case Opcode::Undefined:
+	case Opcode::Unreachable:
+	case Opcode::ValueInteger:
+	case Opcode::ValueFloat:
+	case Opcode::ValueString:
+	case Opcode::ValueVoid:
+	{
+		if (expects_write_ctx)
+			rst.write_ctxs_diff = -1;
+		else
+			rst.values_diff += 1;
+
+		return rst;
+	}
+
+	case Opcode::ExecBuiltin:
+	{
+		ASSERT_OR_IGNORE(expects_write_ctx);
+
+		rst.write_ctxs_diff -= 1;
+
+		return rst;
+	}
+
+	case Opcode::Signature:
+	{
+		u8 value_count;
+		memcpy(&value_count, code + 3, sizeof(value_count));
+
+		if (expects_write_ctx)
+		{
+			rst.values_diff = -value_count;
+			rst.write_ctxs_diff = -1;
+		}
+		else
+		{
+			rst.values_diff = -(value_count - 1);
+		}
+
+		return rst;
+	}
+
+	case Opcode::DynSignature:
+	{
+		u8 value_count;
+		memcpy(&value_count, code + 3, sizeof(value_count));
+
+		u16 closed_over_value_count;
+		memcpy(&closed_over_value_count, code + 4, sizeof(closed_over_value_count));
+
+		const s32 total_value_count = value_count + closed_over_value_count;
+
+		if (expects_write_ctx)
+		{
+			rst.values_diff = -total_value_count;
+			rst.write_ctxs_diff = -1;
+		}
+		else
+		{
+			rst.values_diff = -(total_value_count - 1);
+		}
+
+		return rst;
+	}
+
+	case Opcode::LoadMember:
+	case Opcode::BindBody:
+	case Opcode::BindBodyWithClosure:
+	case Opcode::Call:
+	case Opcode::IfElse:
+	case Opcode::AddressOf:
+	case Opcode::Dereference:
+	case Opcode::BitNot:
+	case Opcode::LogicalNot:
+	case Opcode::Negate:
+	case Opcode::UnaryPlus:
+	case Opcode::ReferenceType:
+	{
+		if (expects_write_ctx)
+		{
+			rst.values_diff = -1;
+			rst.write_ctxs_diff = -1;
+		}
+		
+		return rst;
+	}
+
+	case Opcode::ArrayPreInit:
+	{
+		ASSERT_OR_IGNORE(expects_write_ctx);
+
+		u16 index_count;
+		memcpy(&index_count, code + 1, sizeof(index_count));
+
+		u16 leading_element_count;
+		memcpy(&leading_element_count, code + 3, sizeof(leading_element_count));
+
+		u32 total_element_count = leading_element_count;
+
+		for (u16 i = 0; i != index_count; ++i)
+		{
+			u16 following_element_count;
+			memcpy(&following_element_count, code + 3 + i * sizeof(following_element_count), sizeof(following_element_count));
+
+			total_element_count += following_element_count;
+		}
+
+		rst.values_diff = -static_cast<s32>(index_count);
+		rst.write_ctxs_diff = static_cast<s32>(total_element_count) - 1;
+
+		return rst;
+	}
+
+	case Opcode::ArrayPostInit:
+	{
+		ASSERT_OR_IGNORE(!expects_write_ctx);
+
+		u16 total_element_count;
+		memcpy(&total_element_count, code + 1, sizeof(total_element_count));
+
+		u16 index_count;
+		memcpy(&index_count, code + 3, sizeof(index_count));
+
+		rst.values_diff = 1 - static_cast<s32>(total_element_count + index_count);
+
+		return rst;
+	}
+
+	case Opcode::CompositePreInit:
+	{
+		ASSERT_OR_IGNORE(expects_write_ctx);
+
+		u16 names_count;
+		memcpy(&names_count, code + 1, sizeof(names_count));
+
+		u16 leading_member_count;
+		memcpy(&leading_member_count, code + 3, sizeof(leading_member_count));
+
+		u32 total_member_count = leading_member_count;
+
+		for (u16 i = 0; i != names_count; ++i)
+		{
+			u16 following_member_count;
+			memcpy(&following_member_count, code + 3 + i * (sizeof(IdentifierId) + sizeof(u16)) + sizeof(IdentifierId), sizeof(following_member_count));
+
+			total_member_count += following_member_count;
+		}
+
+		rst.write_ctxs_diff = static_cast<u32>(total_member_count) - 1;
+
+		return rst;
+	}
+
+	case Opcode::CompositePostInit:
+	{
+		ASSERT_OR_IGNORE(!expects_write_ctx);
+
+		u16 total_member_count;
+		memcpy(&total_member_count, code + 1, sizeof(total_member_count));
+
+		rst.values_diff = 1 - static_cast<s32>(total_member_count);
+
+		return rst;
+	}
+
+	case Opcode::If:
+	case Opcode::Loop:
+	case Opcode::DiscardVoid:
+	{
+		ASSERT_OR_IGNORE(!expects_write_ctx);
+
+		rst.values_diff = -1;
+
+		return rst;
+	}
+
+	case Opcode::Slice:
+	{
+		OpcodeSliceKind kind;
+		memcpy(&kind, code + 1, sizeof(kind));
+
+		const s32 values_diff = kind == OpcodeSliceKind::NoBounds
+			? 0
+			: kind == OpcodeSliceKind::BothBounds
+			? -2
+			: -1;
+
+		if (expects_write_ctx)
+		{
+			rst.values_diff = values_diff - 1;
+			rst.write_ctxs_diff = -1;
+		}
+		else
+		{
+			rst.values_diff = values_diff;
+		}
+
+		return rst;
+	}
+
+	case Opcode::Index:
+	case Opcode::BinaryArithmeticOp:
+	case Opcode::Shift:
+	case Opcode::BinaryBitwiseOp:
+	case Opcode::LogicalAnd:
+	case Opcode::LogicalOr:
+	case Opcode::Compare:
+	case Opcode::ArrayType:
+	{
+		if (expects_write_ctx)
+		{
+			rst.values_diff = -2;
+			rst.write_ctxs_diff = -1;
+		}
+		else
+		{
+			rst.values_diff = -1;
+		}
+
+		return rst;
+	}
+
+	case Opcode::Switch:
+		TODO("Implement");
+
+	case Opcode::INVALID:
+		; // Fallthrough to unreachable
+	}
+
+	ASSERT_UNREACHABLE;
+}
+
+
+
 static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool expects_write_ctx) noexcept;
 
 static bool opcodes_from_scope_definition(OpcodePool* opcodes, AstNode* node) noexcept
@@ -2025,322 +2343,6 @@ const Opcode* opcode_from_id(OpcodePool* opcodes, OpcodeId id) noexcept
 	ASSERT_OR_IGNORE(id != OpcodeId::INVALID && static_cast<u32>(id) < opcodes->codes.used());
 
 	return opcodes->codes.begin() + static_cast<u32>(id);
-}
-
-OpcodeEffects opcode_effects(const Opcode* code) noexcept
-{
-	const u8 op_bits = static_cast<u8>(*code);
-
-	const bool expects_write_ctx = ((op_bits & 0x80) != 0);
-
-	const Opcode op = static_cast<Opcode>(op_bits & 0x7F);
-
-	OpcodeEffects rst{};
-
-	switch (op)
-	{
-	case Opcode::EndCode:
-	case Opcode::FileGlobalAllocPrepare:
-	case Opcode::FileGlobalAllocComplete:
-	case Opcode::PrepareArgs:
-	case Opcode::ExecArgs:
-	case Opcode::Return:
-	case Opcode::CheckTopVoid:
-	case Opcode::CheckWriteCtxVoid:
-	{
-		ASSERT_OR_IGNORE(!expects_write_ctx);
-
-		return rst;
-	}
-
-	case Opcode::SetWriteCtx:
-	case Opcode::ScopeAllocTyped:
-	case Opcode::FileGlobalAllocTyped:
-	case Opcode::CompleteParamTypedNoDefault:
-	case Opcode::CompleteParamTypedWithDefault:
-	{
-		ASSERT_OR_IGNORE(!expects_write_ctx);
-
-		rst.values_diff = -1;
-		rst.write_ctxs_diff = 1;
-		
-		return rst;
-	}
-
-	case Opcode::ScopeBegin:
-	{
-		ASSERT_OR_IGNORE(!expects_write_ctx);
-
-		rst.scopes_diff = 1;
-
-		return rst;
-	}
-
-	case Opcode::ScopeEnd:
-	case Opcode::ScopeEndPreserveTop:
-	{
-		ASSERT_OR_IGNORE(!expects_write_ctx);
-
-		rst.scopes_diff = -1;
-
-		return rst;
-	}
-
-	case Opcode::ScopeAllocUntyped:
-	case Opcode::FileGlobalAllocUntyped:
-	case Opcode::CompleteParamUntyped:
-	{
-		ASSERT_OR_IGNORE(!expects_write_ctx);
-
-		rst.values_diff = -1;
-
-		return rst;
-	}
-
-	case Opcode::PopClosure:
-	{
-		ASSERT_OR_IGNORE(!expects_write_ctx);
-
-		rst.closures_diff = -1;
-
-		return rst;
-	}
-
-	case Opcode::LoadScope:
-	case Opcode::LoadGlobal:
-	case Opcode::LoadClosure:
-	case Opcode::LoadBuiltin:
-	case Opcode::LoopFinally:
-	case Opcode::Undefined:
-	case Opcode::Unreachable:
-	case Opcode::ValueInteger:
-	case Opcode::ValueFloat:
-	case Opcode::ValueString:
-	case Opcode::ValueVoid:
-	{
-		if (expects_write_ctx)
-			rst.write_ctxs_diff = -1;
-		else
-			rst.values_diff += 1;
-
-		return rst;
-	}
-
-	case Opcode::ExecBuiltin:
-	{
-		ASSERT_OR_IGNORE(expects_write_ctx);
-
-		rst.write_ctxs_diff -= 1;
-
-		return rst;
-	}
-
-	case Opcode::Signature:
-	{
-		u8 value_count;
-		memcpy(&value_count, code + 3, sizeof(value_count));
-
-		if (expects_write_ctx)
-		{
-			rst.values_diff = -value_count;
-			rst.write_ctxs_diff = -1;
-		}
-		else
-		{
-			rst.values_diff = -(value_count - 1);
-		}
-
-		return rst;
-	}
-
-	case Opcode::DynSignature:
-	{
-		u8 value_count;
-		memcpy(&value_count, code + 3, sizeof(value_count));
-
-		u16 closed_over_value_count;
-		memcpy(&closed_over_value_count, code + 4, sizeof(closed_over_value_count));
-
-		const s32 total_value_count = value_count + closed_over_value_count;
-
-		if (expects_write_ctx)
-		{
-			rst.values_diff = -total_value_count;
-			rst.write_ctxs_diff = -1;
-		}
-		else
-		{
-			rst.values_diff = -(total_value_count - 1);
-		}
-
-		return rst;
-	}
-
-	case Opcode::LoadMember:
-	case Opcode::BindBody:
-	case Opcode::BindBodyWithClosure:
-	case Opcode::Call:
-	case Opcode::IfElse:
-	case Opcode::AddressOf:
-	case Opcode::Dereference:
-	case Opcode::BitNot:
-	case Opcode::LogicalNot:
-	case Opcode::Negate:
-	case Opcode::UnaryPlus:
-	case Opcode::ReferenceType:
-	{
-		if (expects_write_ctx)
-		{
-			rst.values_diff = -1;
-			rst.write_ctxs_diff = -1;
-		}
-		
-		return rst;
-	}
-
-	case Opcode::ArrayPreInit:
-	{
-		ASSERT_OR_IGNORE(expects_write_ctx);
-
-		u16 index_count;
-		memcpy(&index_count, code + 1, sizeof(index_count));
-
-		u16 leading_element_count;
-		memcpy(&leading_element_count, code + 3, sizeof(leading_element_count));
-
-		u32 total_element_count = leading_element_count;
-
-		for (u16 i = 0; i != index_count; ++i)
-		{
-			u16 following_element_count;
-			memcpy(&following_element_count, code + 3 + i * sizeof(following_element_count), sizeof(following_element_count));
-
-			total_element_count += following_element_count;
-		}
-
-		rst.values_diff = -static_cast<s32>(index_count);
-		rst.write_ctxs_diff = static_cast<s32>(total_element_count) - 1;
-
-		return rst;
-	}
-
-	case Opcode::ArrayPostInit:
-	{
-		ASSERT_OR_IGNORE(!expects_write_ctx);
-
-		u16 total_element_count;
-		memcpy(&total_element_count, code + 1, sizeof(total_element_count));
-
-		u16 index_count;
-		memcpy(&index_count, code + 3, sizeof(index_count));
-
-		rst.values_diff = 1 - static_cast<s32>(total_element_count + index_count);
-
-		return rst;
-	}
-
-	case Opcode::CompositePreInit:
-	{
-		ASSERT_OR_IGNORE(expects_write_ctx);
-
-		u16 names_count;
-		memcpy(&names_count, code + 1, sizeof(names_count));
-
-		u16 leading_member_count;
-		memcpy(&leading_member_count, code + 3, sizeof(leading_member_count));
-
-		u32 total_member_count = leading_member_count;
-
-		for (u16 i = 0; i != names_count; ++i)
-		{
-			u16 following_member_count;
-			memcpy(&following_member_count, code + 3 + i * (sizeof(IdentifierId) + sizeof(u16)) + sizeof(IdentifierId), sizeof(following_member_count));
-
-			total_member_count += following_member_count;
-		}
-
-		rst.write_ctxs_diff = static_cast<u32>(total_member_count) - 1;
-
-		return rst;
-	}
-
-	case Opcode::CompositePostInit:
-	{
-		ASSERT_OR_IGNORE(!expects_write_ctx);
-
-		u16 total_member_count;
-		memcpy(&total_member_count, code + 1, sizeof(total_member_count));
-
-		rst.values_diff = 1 - static_cast<s32>(total_member_count);
-
-		return rst;
-	}
-
-	case Opcode::If:
-	case Opcode::Loop:
-	case Opcode::DiscardVoid:
-	{
-		ASSERT_OR_IGNORE(!expects_write_ctx);
-
-		rst.values_diff = -1;
-
-		return rst;
-	}
-
-	case Opcode::Slice:
-	{
-		OpcodeSliceKind kind;
-		memcpy(&kind, code + 1, sizeof(kind));
-
-		const s32 values_diff = kind == OpcodeSliceKind::NoBounds
-			? 0
-			: kind == OpcodeSliceKind::BothBounds
-			? -2
-			: -1;
-
-		if (expects_write_ctx)
-		{
-			rst.values_diff = values_diff - 1;
-			rst.write_ctxs_diff = -1;
-		}
-		else
-		{
-			rst.values_diff = values_diff;
-		}
-
-		return rst;
-	}
-
-	case Opcode::Index:
-	case Opcode::BinaryArithmeticOp:
-	case Opcode::Shift:
-	case Opcode::BinaryBitwiseOp:
-	case Opcode::LogicalAnd:
-	case Opcode::LogicalOr:
-	case Opcode::Compare:
-	case Opcode::ArrayType:
-	{
-		if (expects_write_ctx)
-		{
-			rst.values_diff = -2;
-			rst.write_ctxs_diff = -1;
-		}
-		else
-		{
-			rst.values_diff = -1;
-		}
-
-		return rst;
-	}
-
-	case Opcode::Switch:
-		TODO("Implement");
-
-	case Opcode::INVALID:
-		; // Fallthrough to unreachable
-	}
-
-	ASSERT_UNREACHABLE;
 }
 
 SourceId source_id_of_opcode(OpcodePool* opcodes, const Opcode* code) noexcept
