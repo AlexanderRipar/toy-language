@@ -3695,7 +3695,7 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 		const ReferenceType ptr_type = *type_attachment_from_id<ReferenceType>(interp->types, type);
 
 		if (!ptr_type.is_multi)
-			return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+			return record_interpreter_error(interp, code, CompileError::SliceOperatorInvalidLhsType);
 
 		if (!has_end_index)
 			return record_interpreter_error(interp, code, CompileError::SliceOperatorMultiPtrElidedEndIndex);
@@ -3722,7 +3722,7 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 	}
 	else
 	{
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::SliceOperatorInvalidLhsType);
 	}
 }
 
