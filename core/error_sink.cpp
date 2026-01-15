@@ -34,22 +34,20 @@ static const char8* error_message_of(CompileError error) noexcept
 {
 	static constexpr const char8* FORMATS[] = {
 		"[unknown compiler error code]",                                                                                                                // INVALID
-		"Value of compile-time integer exceeds bounds of implicit conversion target.\n",                                                                // ImplictConversionIntegerConstantExceedsTargetBounds
-		"Cannot implicitly convert to destination type.",                                                                                               // ImplicitConversionTypesCannotConvert
-		"Destination type of composite literal conversion has no corresponding member.\n",                                                              // ImplicitConversionCompositeLiteralTargetIsMissingMember
-		"Too many members in composite literal to convert to destination type.\n",                                                                      // ImplicitConversionCompositeLiteralTargetHasTooFewMembers
-		"Member mapped more than once during composite literal conversion.\n",                                                                          // ImplicitConversionCompositeLiteralTargetMemberMappedTwice
+		"Value of compile-time integer exceeds bounds of implicit conversion target.\n",                                                                // CompIntegerValueTooLarge
+		"Cannot implicitly convert to destination type.",                                                                                               // TypesCannotConvert
+		"Destination type of composite literal conversion has no corresponding member.\n",                                                              // CompositeLiteralTargetIsMissingMember
+		"Too many members in composite literal to convert to destination type.\n",                                                                      // CompositeLiteralTargetHasTooFewMembers
+		"Member mapped more than once during composite literal conversion.\n",                                                                          // CompositeLiteralTargetMemberMappedTwice
 		"Member cannot be initialized from composite literal member because their types do not match.\n",                                               // ImplicitConversionCompositeLiteralMemberTypesCannotConvert
-		"Composite initializer is missing initializer for member of target type which lacks a default value.\n",                                        // ImplicitConversionCompositeLiteralSourceIsMissingMember
-		"Cannot use expression as a location of the desired type, as it requires implicit conversion.\n",                                               // ImplicitConversionLocationRequired
-		"Could not unify argument types.\n",                                                                                                            // UnifyNoCommonArgumentType
-		"Array literal element cannot be implicitly converted to type of preceding elements.\n",                                                        // UnifyNoCommonArrayElementType
+		"Composite initializer is missing initializer for member of target type which lacks a default value.\n",                                        // CompositeLiteralSourceIsMissingMember
+		"Could not unify argument types.\n",                                                                                                            // NoCommonArgumentType
+		"Array literal element cannot be implicitly converted to type of preceding elements.\n",                                                        // NoCommonArrayElementType
 		"Parameter with the given name does not exist for the called function.\n",                                                                      // CallNoSuchNamedParameter
 		"Multiple arguments for given for the same parameter.\n",                                                                                       // CallArgumentMappedTwice
 		"Too many arguments supplied to function call.\n",                                                                                              // CallTooManyArgs
 		"Missing argument for parameter.\n",                                                                                                            // CallMissingArg
 		"Left-hand-side of slicing operator must be of multi-pointer and not single-pointer type.\n",                                                   // SliceOperatorInvalidLhsType
-		"Begin index of slicing operator must be of integer type.\n",                                                                                   // SliceOperatorInvalidIndexType
 		"End index of slicing operator cannot be elided with left-hand-side of multi-pointer type, as the end cannot be derived.\n",                    // SliceOperatorMultiPtrElidedEndIndex
 		"Index of slicing operator must be less than the element count of the indexed array or slice.\n",                                               // SliceOperatorIndexOutOfBounds
 		"Begin index of slicing operator must be less than or equal to end index.\n",                                                                   // SliceOperatorIndicesReversed

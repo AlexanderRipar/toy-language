@@ -541,7 +541,7 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 		const CompIntegerValue src_value = *value_as<CompIntegerValue>(&src);
 
 		if (!bits_from_comp_integer(src_value, integer_type->bits, integer_type->is_signed, dst.bytes.begin()))
-			return record_interpreter_error(interp, code, CompileError::ImplictConversionIntegerConstantExceedsTargetBounds);
+			return record_interpreter_error(interp, code, CompileError::CompIntegerValueTooLarge);
 
 		return code;
 	}
@@ -621,7 +621,7 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 				const MemberByNameRst rst = type_member_info_by_name(interp->types, dst.type, src_name, &dst_member, &unused_initializer);
 
 				if (rst == MemberByNameRst::NotFound)
-					return record_interpreter_error(interp, code, CompileError::ImplicitConversionCompositeLiteralTargetIsMissingMember);
+					return record_interpreter_error(interp, code, CompileError::CompositeLiteralTargetIsMissingMember);
 
 				ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
@@ -630,7 +630,7 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 			else
 			{
 				if (rank == dst_member_count)
-					return record_interpreter_error(interp, code, CompileError::ImplicitConversionCompositeLiteralTargetHasTooFewMembers);
+					return record_interpreter_error(interp, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
 
 				if (!type_member_info_by_rank(interp->types, dst.type, static_cast<u16>(rank), &dst_member, &unused_initializer))
 					ASSERT_UNREACHABLE;
@@ -641,7 +641,7 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 			const u64 member_bit = static_cast<u64>(1) << (dst_member.rank % 64);
 
 			if ((*seen_members_elem & member_bit) != 0)
-				return record_interpreter_error(interp, code, CompileError::ImplicitConversionCompositeLiteralTargetMemberMappedTwice);
+				return record_interpreter_error(interp, code, CompileError::CompositeLiteralTargetMemberMappedTwice);
 
 			*seen_members_elem |= member_bit;
 
@@ -676,7 +676,7 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 				ASSERT_UNREACHABLE;
 
 			if (is_none(member.value_or_default_id))
-				return record_interpreter_error(interp, code, CompileError::ImplicitConversionCompositeLiteralSourceIsMissingMember);
+				return record_interpreter_error(interp, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
 			const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member.type_id);
 
@@ -781,7 +781,7 @@ static const Opcode* convert_into(Interpreter* interp, const Opcode* code, CTVal
 	{
 		ASSERT_OR_IGNORE(relation == TypeRelation::Unrelated || relation == TypeRelation::SecondConvertsToFirst);
 
-		(void) record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		(void) record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 		return nullptr;
 	}
@@ -821,7 +821,7 @@ static Maybe<TypeId> unify(Interpreter* interp, const Opcode* code, CTValue* ino
 	{
 		ASSERT_OR_IGNORE(relation == TypeRelation::Unrelated);
 
-		(void) record_interpreter_error(interp, code, CompileError::UnifyNoCommonArgumentType);
+		(void) record_interpreter_error(interp, code, CompileError::NoCommonArgumentType);
 
 		return none<TypeId>();
 	}
@@ -1207,7 +1207,7 @@ static bool u64_from_value(Interpreter* interp, const Opcode* code, CTValue valu
 	}
 	else
 	{
-		(void) record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		(void) record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 		return false;
 	}
@@ -1327,7 +1327,7 @@ static const Opcode* builtin_returntypeof(Interpreter* interp, const Opcode* cod
 	const TypeTag type_tag = type_tag_from_id(interp->types, type);
 
 	if (type_tag != TypeTag::Func)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const SignatureType2* const signature = type_attachment_from_id<SignatureType2>(interp->types, type);
 
@@ -1713,7 +1713,7 @@ static const Opcode* handle_scope_alloc_typed(Interpreter* interp, const Opcode*
 	const TypeTag type_tag = type_tag_from_id(interp->types, type);
 
 	if (type_tag != TypeTag::Type)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const TypeId member_type = *value_as<TypeId>(top);
 
@@ -1812,7 +1812,7 @@ static const Opcode* handle_file_global_alloc_typed(Interpreter* interp, const O
 	const TypeTag type_tag = type_tag_from_id(interp->types, type);
 
 	if (type_tag != TypeTag::Type)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const TypeId member_type = *value_as<TypeId>(top);
 
@@ -2175,7 +2175,7 @@ static const Opcode* handle_signature(Interpreter* interp, const Opcode* code, C
 			value += 2;
 
 			if (type_tag_from_id(interp->types, type_value->type) != TypeTag::Type)
-				return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+				return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 			parameter_type = *value_as<TypeId>(type_value);
 
@@ -2192,7 +2192,7 @@ static const Opcode* handle_signature(Interpreter* interp, const Opcode* code, C
 			value += 1;
 
 			if (type_tag_from_id(interp->types, type_value->type) != TypeTag::Type)
-				return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+				return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 			parameter_type = *value_as<TypeId>(type_value);
 
@@ -2227,7 +2227,7 @@ static const Opcode* handle_signature(Interpreter* interp, const Opcode* code, C
 	}
 
 	if (type_tag_from_id(interp->types, value->type) != TypeTag::Type)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const TypeId return_type = *value_as<TypeId>(value);
 
@@ -2317,7 +2317,7 @@ static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* cod
 				value += 2;
 
 				if (type_tag_from_id(interp->types, type_value->type) != TypeTag::Type)
-					return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+					return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 				parameter_type = *value_as<TypeId>(type_value);
 
@@ -2337,7 +2337,7 @@ static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* cod
 				value += 1;
 
 				if (type_tag_from_id(interp->types, type_value->type) != TypeTag::Type)
-					return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+					return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 				parameter_type = *value_as<TypeId>(type_value);
 
@@ -2387,7 +2387,7 @@ static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* cod
 	else
 	{
 		if (type_tag_from_id(interp->types, value->type) != TypeTag::Type)
-			return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 		attach.return_type.type_id = *value_as<TypeId>(value);
 	}
@@ -2484,7 +2484,7 @@ static const Opcode* handle_prepare_args(Interpreter* interp, const Opcode* code
 	const TypeTag top_type_tag = type_tag_from_id(interp->types, top_type);
 
 	if (top_type_tag != TypeTag::Func && top_type_tag != TypeTag::Builtin)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	SignatureType2 signature = *type_attachment_from_id<SignatureType2>(interp->types, top_type);
 
@@ -2806,7 +2806,7 @@ static const Opcode* handle_complete_param_typed_no_default(Interpreter* interp,
 	const TypeTag type_tag = type_tag_from_id(interp->types, type);
 
 	if (type_tag != TypeTag::Type)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const TypeId member_type = *value_as<TypeId>(top);
 
@@ -2842,7 +2842,7 @@ static const Opcode* handle_complete_param_typed_with_default(Interpreter* inter
 	const TypeTag type_tag = type_tag_from_id(interp->types, type);
 
 	if (type_tag != TypeTag::Type)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const TypeId parameter_type = *value_as<TypeId>(type_value);
 
@@ -2912,14 +2912,14 @@ static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* cod
 	const TypeTag type_tag = type_tag_from_id(interp->types, dst_type);
 
 	if (type_tag != TypeTag::Array && type_tag != TypeTag::ArrayLiteral)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const ArrayType* const array_type = type_attachment_from_id<ArrayType>(interp->types, dst_type);
 
 	if (is_none(array_type->element_type))
 	{
 		if (leading_element_count != 0 || index_count != 0)
-			return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 		return code;
 	}
@@ -2936,7 +2936,7 @@ static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* cod
 		return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Error message
 
 	if (dst_element_count < leading_element_count)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	for (u16 i = 0; i != leading_element_count; ++i)
 	{
@@ -2964,7 +2964,7 @@ static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* cod
 			return nullptr;
 
 		if (index + following_element_count > dst_element_count)
-			return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 		if (!seen_set_set(seen, static_cast<u16>(index), following_element_count))
 			return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Error code.
@@ -3027,7 +3027,7 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 		Maybe<TypeId> common_type = type_unify(interp->types, element_type, element_values[i].type);
 
 		if (is_none(common_type))
-			return record_interpreter_error(interp, code, CompileError::UnifyNoCommonArrayElementType);
+			return record_interpreter_error(interp, code, CompileError::NoCommonArrayElementType);
 
 		element_type = get(common_type);
 	}
@@ -3046,7 +3046,7 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 		u64 index;
 
 		if (!u64_from_value(interp, code, indices[i], &index))
-			return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 		u16 following_element_count;
 
@@ -3138,7 +3138,7 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 	code = code_attach(code, &names_count);
 
 	if (type_tag != TypeTag::CompositeLiteral && type_tag != TypeTag::Composite)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const u32 member_count = type_get_composite_member_count(interp->types, dst_type);
 
@@ -3147,7 +3147,7 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 	code = code_attach(code, &leading_member_count);
 
 	if (member_count < leading_member_count)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionCompositeLiteralTargetHasTooFewMembers);
+		return record_interpreter_error(interp, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
 
 	for (u16 i = 0; i != leading_member_count; ++i)
 	{
@@ -3182,7 +3182,7 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 				continue;
 
 			if (is_none(defaulted_member_info.value_or_default_id))
-				return record_interpreter_error(interp, code, CompileError::ImplicitConversionCompositeLiteralSourceIsMissingMember);
+				return record_interpreter_error(interp, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
 			const TypeMetrics defaulted_member_metrics = type_metrics_from_id(interp->types, defaulted_member_info.type_id);
 
@@ -3215,17 +3215,17 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 		const MemberByNameRst rst = type_member_info_by_name(interp->types, dst_type, name, &named_member_info, &unused_named_initializer);
 
 		if (rst == MemberByNameRst::NotFound)
-			return record_interpreter_error(interp, code, CompileError::ImplicitConversionCompositeLiteralTargetIsMissingMember);
+			return record_interpreter_error(interp, code, CompileError::CompositeLiteralTargetIsMissingMember);
 
 		ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
 		ASSERT_OR_IGNORE(!named_member_info.is_global);
 
 		if (member_count < static_cast<u32>(named_member_info.rank) + 1 + following_member_count)
-			return record_interpreter_error(interp, code, CompileError::ImplicitConversionCompositeLiteralTargetHasTooFewMembers);
+			return record_interpreter_error(interp, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
 
 		if (!seen_set_set(seen, named_member_info.rank, following_member_count + 1))
-			return record_interpreter_error(interp, code, CompileError::ImplicitConversionCompositeLiteralTargetMemberMappedTwice);
+			return record_interpreter_error(interp, code, CompileError::CompositeLiteralTargetMemberMappedTwice);
 
 		const TypeMetrics named_member_metrics = type_metrics_from_id(interp->types, named_member_info.type_id);
 
@@ -3267,7 +3267,7 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 			continue;
 
 		if (is_none(defaulted_member_info.value_or_default_id))
-			return record_interpreter_error(interp, code, CompileError::ImplicitConversionCompositeLiteralSourceIsMissingMember);
+			return record_interpreter_error(interp, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
 		const TypeMetrics defaulted_member_metrics = type_metrics_from_id(interp->types, defaulted_member_info.type_id);
 
@@ -3359,7 +3359,7 @@ static const Opcode* handle_if(Interpreter* interp, const Opcode* code, [[maybe_
 	const TypeTag type_tag = type_tag_from_id(interp->types, type);
 
 	if (type_tag != TypeTag::Boolean)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const bool condition = *value_as<bool>(top);
 
@@ -3401,7 +3401,7 @@ static const Opcode* handle_if_else(Interpreter* interp, const Opcode* code, CTV
 	const TypeTag type_tag = type_tag_from_id(interp->types, type);
 
 	if (type_tag != TypeTag::Boolean)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const bool condition = *value_as<bool>(top);
 
@@ -3435,7 +3435,7 @@ static const Opcode* handle_loop(Interpreter* interp, const Opcode* code, [[mayb
 	const TypeTag type_tag = type_tag_from_id(interp->types, type);
 
 	if (type_tag != TypeTag::Boolean)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const bool condition = *value_as<bool>(top);
 
@@ -3477,7 +3477,7 @@ static const Opcode* handle_loop_finally(Interpreter* interp, const Opcode* code
 	const TypeTag type_tag = type_tag_from_id(interp->types, type);
 
 	if (type_tag != TypeTag::Boolean)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const bool condition = *value_as<bool>(top);
 
@@ -3540,7 +3540,7 @@ static const Opcode* handle_dereference(Interpreter* interp, const Opcode* code,
 	const TypeTag type_tag = type_tag_from_id(interp->types, type);
 
 	if (type_tag != TypeTag::Ptr)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	byte* const top_value = *value_as<byte*>(top);
 
@@ -3785,7 +3785,7 @@ static const Opcode* handle_index(Interpreter* interp, const Opcode* code, CTVal
 		const ReferenceType ptr_type = *type_attachment_from_id<ReferenceType>(interp->types, type);
 
 		if (!ptr_type.is_multi)
-			return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 		const TypeId element_type = ptr_type.referenced_type_id;
 
@@ -3799,7 +3799,7 @@ static const Opcode* handle_index(Interpreter* interp, const Opcode* code, CTVal
 	}
 	else
 	{
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 	}
 }
 
@@ -4002,7 +4002,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 			      || kind == OpcodeBinaryArithmeticOpKind::AddTC
 			      || kind == OpcodeBinaryArithmeticOpKind::SubTC
 			      || kind == OpcodeBinaryArithmeticOpKind::MulTC)
-				return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+				return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 			else
 				ASSERT_UNREACHABLE;
 
@@ -4034,7 +4034,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 			      || kind == OpcodeBinaryArithmeticOpKind::AddTC
 			      || kind == OpcodeBinaryArithmeticOpKind::SubTC
 			      || kind == OpcodeBinaryArithmeticOpKind::MulTC)
-				return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+				return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 			else
 				ASSERT_UNREACHABLE;
 
@@ -4104,7 +4104,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 		      || kind == OpcodeBinaryArithmeticOpKind::AddTC
 		      || kind == OpcodeBinaryArithmeticOpKind::SubTC
 		      || kind == OpcodeBinaryArithmeticOpKind::MulTC)
-			return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 		else
 			ASSERT_UNREACHABLE;
 
@@ -4116,7 +4116,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 	}
 	else
 	{
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 	}
 }
 
@@ -4192,7 +4192,7 @@ static const Opcode* handle_shift(Interpreter* interp, const Opcode* code, CTVal
 	}
 	else
 	{
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 	}
 }
 
@@ -4407,7 +4407,7 @@ static const Opcode* handle_logical_and(Interpreter* interp, const Opcode* code,
 	const TypeTag rhs_type_tag = type_tag_from_id(interp->types, rhs_type);
 
 	if (lhs_type_tag != TypeTag::Boolean || rhs_type_tag != TypeTag::Boolean)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const bool lhs_value = *value_as<bool>(lhs);
 
@@ -4441,7 +4441,7 @@ static const Opcode* handle_logical_or(Interpreter* interp, const Opcode* code, 
 	const TypeTag rhs_type_tag = type_tag_from_id(interp->types, rhs_type);
 
 	if (lhs_type_tag != TypeTag::Boolean || rhs_type_tag != TypeTag::Boolean)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const bool lhs_value = *value_as<bool>(lhs);
 
@@ -4467,7 +4467,7 @@ static const Opcode* handle_logical_not(Interpreter* interp, const Opcode* code,
 	const TypeTag type_tag = type_tag_from_id(interp->types, type);
 
 	if (type_tag != TypeTag::Boolean)
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	bool value = !*value_as<bool>(top);
 
@@ -4671,7 +4671,7 @@ static const Opcode* handle_array_type(Interpreter* interp, const Opcode* code, 
 	u64 element_count;
 
 	if (!u64_from_value(interp, code, *element_count_value, &element_count))
-		return record_interpreter_error(interp, code, CompileError::ImplicitConversionTypesCannotConvert);
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 	const TypeId element_type = *value_as<TypeId>(element_type_value);
 
