@@ -4002,7 +4002,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 			      || kind == OpcodeBinaryArithmeticOpKind::AddTC
 			      || kind == OpcodeBinaryArithmeticOpKind::SubTC
 			      || kind == OpcodeBinaryArithmeticOpKind::MulTC)
-				return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+				return record_interpreter_error(interp, code, CompileError::BinaryOperatorIntegerInvalidArgumentType);
 			else
 				ASSERT_UNREACHABLE;
 
@@ -4034,7 +4034,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 			      || kind == OpcodeBinaryArithmeticOpKind::AddTC
 			      || kind == OpcodeBinaryArithmeticOpKind::SubTC
 			      || kind == OpcodeBinaryArithmeticOpKind::MulTC)
-				return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+				return record_interpreter_error(interp, code, CompileError::BinaryOperatorIntegerInvalidArgumentType);
 			else
 				ASSERT_UNREACHABLE;
 
@@ -4104,7 +4104,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 		      || kind == OpcodeBinaryArithmeticOpKind::AddTC
 		      || kind == OpcodeBinaryArithmeticOpKind::SubTC
 		      || kind == OpcodeBinaryArithmeticOpKind::MulTC)
-			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+			return record_interpreter_error(interp, code, CompileError::BinaryOperatorIntegerInvalidArgumentType);
 		else
 			ASSERT_UNREACHABLE;
 
@@ -4116,7 +4116,16 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 	}
 	else
 	{
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		const bool allows_float = kind != OpcodeBinaryArithmeticOpKind::Mod
+		                       && kind != OpcodeBinaryArithmeticOpKind::AddTC
+		                       && kind != OpcodeBinaryArithmeticOpKind::SubTC
+		                       && kind != OpcodeBinaryArithmeticOpKind::MulTC;
+
+		const CompileError error = allows_float
+			? CompileError::BinaryOperatorNumericInvalidArgumentType
+			: CompileError::BinaryOperatorIntegerInvalidArgumentType;
+
+		return record_interpreter_error(interp, code, error);
 	}
 }
 
