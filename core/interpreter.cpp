@@ -4386,7 +4386,7 @@ static const Opcode* handle_bit_not(Interpreter* interp, const Opcode* code, CTV
 	}
 	else
 	{
-		return record_interpreter_error(interp, code, CompileError::NegateInvalidOperandType);
+		return record_interpreter_error(interp, code, CompileError::BitNotInvalidOperandType);
 	}
 }
 
