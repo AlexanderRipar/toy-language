@@ -4316,7 +4316,7 @@ static const Opcode* handle_binary_bitwise_op(Interpreter* interp, const Opcode*
 	}
 	else
 	{
-		return record_interpreter_error(interp, code, CompileError::BinaryOperatorIntegerInvalidArgumentType);
+		return record_interpreter_error(interp, code, CompileError::BinaryOperatorIntegerOrBoolInvalidArgumentType);
 	}
 }
 
