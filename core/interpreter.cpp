@@ -1332,7 +1332,7 @@ static const Opcode* builtin_returntypeof(Interpreter* interp, const Opcode* cod
 	const SignatureType2* const signature = type_attachment_from_id<SignatureType2>(interp->types, type);
 
 	if (signature->has_templated_return_type)
-		return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Proper error code.
+		return record_interpreter_error(interp, code, CompileError::ReturntypeOfTemplatedReturnType);
 
 	TypeId return_type = signature->return_type.type_id;
 
@@ -1931,7 +1931,7 @@ static const Opcode* handle_load_global(Interpreter* interp, const Opcode* code,
 	{
 		ASSERT_OR_IGNORE(state == GlobalFileValueState::Initializing);
 
-		return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Error code for self-referential initializer.
+		return record_interpreter_error(interp, code, CompileError::CyclicGlobalInitializerDependency);
 	}
 }
 
@@ -2933,7 +2933,7 @@ static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* cod
 	const u64 dst_element_count = array_type->element_count;
 
 	if (dst_element_count > UINT16_MAX)
-		return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Error message
+		return record_interpreter_error(interp, code, CompileError::ArrayInitializerTooManyElements);
 
 	if (dst_element_count < leading_element_count)
 		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
@@ -2967,7 +2967,7 @@ static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* cod
 			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
 
 		if (!seen_set_set(seen, static_cast<u16>(index), following_element_count))
-			return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Error code.
+			return record_interpreter_error(interp, code, CompileError::ArrayInitializerDuplicateElement);
 
 		for (u16 j = 0; j != following_element_count; ++j)
 		{
@@ -2980,7 +2980,7 @@ static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* cod
 	u16 unused_unseen_index;
 
 	if (seen_set_next_unseen(seen, leading_element_count, &unused_unseen_index))
-		return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Error code.
+		return record_interpreter_error(interp, code, CompileError::ArrayInitializerMissingElement);
 
 	return code;
 }
@@ -3055,7 +3055,7 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 		if (index + following_element_count > max_element_index)
 		{
 			if (max_element_index > UINT16_MAX)
-				return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Error message.
+				return record_interpreter_error(interp, code, CompileError::ArrayInitializerTooManyElements);
 
 			max_element_index = index + following_element_count;
 		}
@@ -3100,7 +3100,7 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 		ASSERT_OR_IGNORE(base_index + following_element_count <= max_element_index);
 
 		if (!seen_set_set(seen, static_cast<u16>(base_index), following_element_count))
-			return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Error code.
+			return record_interpreter_error(interp, code, CompileError::ArrayInitializerDuplicateElement);
 
 		for (u16 j = 0; j != following_element_count; ++i)
 		{
@@ -4801,7 +4801,7 @@ static const Opcode* handle_discard_void(Interpreter* interp, const Opcode* code
 	const TypeTag type_tag = type_tag_from_id(interp->types, top->type);
 
 	if (type_tag != TypeTag::Void)
-		return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Error code.
+		return record_interpreter_error(interp, code, CompileError::ExpectedVoid);
 
 	interp->values.pop_by(1);
 
@@ -4819,7 +4819,7 @@ static const Opcode* handle_check_top_void(Interpreter* interp, const Opcode* co
 	const TypeTag type_tag = type_tag_from_id(interp->types, top->type);
 
 	if (type_tag != TypeTag::Void)
-		return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Error code.
+		return record_interpreter_error(interp, code, CompileError::ExpectedVoid);
 
 	return code;
 }
@@ -4835,7 +4835,7 @@ static const Opcode* handle_check_write_ctx_void(Interpreter* interp, const Opco
 	const TypeTag type_tag = type_tag_from_id(interp->types, top_write_ctx->type);
 
 	if (type_tag != TypeTag::Void)
-		return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow); // TODO: Error code.
+		return record_interpreter_error(interp, code, CompileError::ExpectedVoid);
 
 	return code;
 }
@@ -5611,7 +5611,7 @@ bool evaluate_file_definition_by_name(Interpreter* interp, TypeId file_type, Ide
 	}
 	else if (rst == MemberByNameRst::NotFound)
 	{
-		record_error(interp->errors, SourceId::INVALID, CompileError::ArithmeticOverflow); // TODO: Error code.
+		record_error(interp->errors, SourceId::INVALID, CompileError::GlobalNameNotDefined);
 
 		return false;
 	}

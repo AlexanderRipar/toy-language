@@ -76,10 +76,17 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Right-hand-side of index operator must have integer type.\n",                                                                                  // ArrayIndexRhsInvalidType
 		"Right-hand-side of index operator must fit into unsigned 64-bit integer.\n",                                                                   // ArrayIndexRhsTooLarge
 		"Index exceeds element count.\n",                                                                                                               // ArrayIndexOutOfBounds
+		"Array initializers with more than 65535 elements are not supported.\n",                                                                        // ArrayInitializerTooManyElements
+		"Array initializers must initialize all elements.\n",                                                                                           // ArrayInitializerMissingElement
+		"Array initializer sets one of its elements more than once.\n",                                                                                 // ArrayInitializerDuplicateElement
+		"Expected expression to evaluate to void.\n",                                                                                                   // ExpectedVoid
 		"Alignment passed to `_complete_type` must not exceed the maximum supported value of 2^32 - 1.\n",                                              // BuiltinCompleteTypeAlignTooLarge
 		"Alignment passed to `_complete_type` must not be zero.\n",                                                                                     // BuiltinCompleteTypeAlignZero
 		"Alignment passed to `_complete_type` must be a power of two.\n",                                                                               // BuiltinCompleteTypeAlignNotPowTwo
+		"Function type passed to _returntypeof must not have a templated return type.\n",                                                               // ReturntypeOfTemplatedReturnType
+		"Initializer of global variable cannot reference its own value.\n",                                                                             // CyclicGlobalInitializerDependency
 		"Reached `unreachable`.\n",                                                                                                                     // UnreachableReached
+		"File does not contain a global definition with the given name.\n",                                                                             // GlobalNameNotDefined
 		"Total size of closed-over values in single closure exceeds supported maximum of 2^32 - 1.\n",                                                  // ClosureTooLarge
 		"Exceeded maximum number of definitions in a single scope.\n",                                                                                  // ScopeTooManyDefinitions
 		"More than one definition with the same name in the same scope.\n",                                                                             // ScopeDuplicateName
