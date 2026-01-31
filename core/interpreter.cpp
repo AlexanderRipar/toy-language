@@ -1104,7 +1104,11 @@ static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId typ
 	case TypeTag::Variadic:
 	case TypeTag::Divergent:
 	case TypeTag::Trait:
+	{
+		(void) record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+
 		return CompareResult{};
+	}
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
