@@ -52,6 +52,7 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Index of slicing operator must be less than the element count of the indexed array or slice.\n",                                               // SliceOperatorIndexOutOfBounds
 		"Begin index of slicing operator must be less than or equal to end index.\n",                                                                   // SliceOperatorIndicesReversed
 		"Index of slicing operator must fit into unsigned 64-bit integer.\n",                                                                           // SliceOperatorIndexTooLarge
+		"Index of slicing operator must not be negative.\n",                                                                                            // SliceOperatorIndexNegative
 		"Left-hand-side of slicing operator occurring in untyped context cannot be an empty array literal.\n",                                          // SliceOperatorUntypedArrayLiteral
 		"Operand of `.*` must be a pointer.\n",                                                                                                         // DerefInvalidOperandType
 		"`~` can only be applied to integer operands.\n",                                                                                               // BitNotInvalidOperandType
@@ -73,13 +74,17 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Left-hand-side of `=` operator must be mutable.\n",                                                                                            // SetLhsNotMutable
 		"Array element count must be of Integer type.\n",                                                                                               // TypeArrayCountInvalidType
 		"Array element count must fit into unsigned 64-bit integer.\n",                                                                                 // TypeArrayCountTooLarge
+		"Array element count must not be negative.\n",                                                                                                  // TypeArrayCountNegative
 		"Left-hand-side of index operator must have array, slice, or multi-pointer type.\n",                                                            // ArrayIndexLhsInvalidType
 		"Right-hand-side of index operator must have integer type.\n",                                                                                  // ArrayIndexRhsInvalidType
 		"Right-hand-side of index operator must fit into unsigned 64-bit integer.\n",                                                                   // ArrayIndexRhsTooLarge
+		"Right-hand-side of index operator must not be negative.\n",                                                                                    // ArrayIndexRhsNegative
 		"Index exceeds element count.\n",                                                                                                               // ArrayIndexOutOfBounds
 		"Array initializers with more than 65535 elements are not supported.\n",                                                                        // ArrayInitializerTooManyElements
 		"Array initializers must initialize all elements.\n",                                                                                           // ArrayInitializerMissingElement
 		"Array initializer sets one of its elements more than once.\n",                                                                                 // ArrayInitializerDuplicateElement
+		"Element index in array initializer is too large.\n",                                                                                           // ArrayInitializerIndexTooLarge
+		"Element index in array initializer is negative.\n",                                                                                            // ArrayInitializerIndexNegative
 		"Expected expression to evaluate to void.\n",                                                                                                   // ExpectedVoid
 		"Alignment passed to `_complete_type` must not exceed the maximum supported value of 2^32 - 1.\n",                                              // BuiltinCompleteTypeAlignTooLarge
 		"Alignment passed to `_complete_type` must not be zero.\n",                                                                                     // BuiltinCompleteTypeAlignZero

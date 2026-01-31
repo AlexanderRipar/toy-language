@@ -5,6 +5,14 @@
 
 #include <cmath>
 
+enum class U64FromValueRst : u8
+{
+	Ok = 0,
+	Inconvertible,
+	TooLarge,
+	Negative,
+};
+
 struct Scope
 {
 	u32 first_member_index;
@@ -1151,7 +1159,7 @@ static void scope_pop(Interpreter* interp) noexcept
 
 
 
-static bool u64_from_value(Interpreter* interp, const Opcode* code, CTValue value, u64* out) noexcept
+static U64FromValueRst u64_from_value(Interpreter* interp, const Opcode* code, CTValue value, u64* out) noexcept
 {
 	const TypeTag type_tag = type_tag_from_id(interp->types, value.type);
 
@@ -1165,22 +1173,12 @@ static bool u64_from_value(Interpreter* interp, const Opcode* code, CTValue valu
 		const u32 size = integer_type.bits / 8;
 
 		if (integer_type.is_signed && (value.bytes[size - 1] & 0x80) != 0)
-		{
-			// TODO: Create a proper error code for this.
-			(void) record_interpreter_error(interp, code, CompileError::ArrayIndexRhsTooLarge);
-
-			return false;
-		}
+			return U64FromValueRst::Negative;
 
 		for (u32 i = size; i > sizeof(u64); --i)
 		{
 			if (value.bytes[i - 1] != 0)
-			{
-				// TODO: Create a proper error code for this.
-				(void) record_interpreter_error(interp, code, CompileError::ArrayIndexRhsTooLarge);
-
-				return false;
-			}
+				return U64FromValueRst::TooLarge;
 		}
 
 		u64 result = 0;
@@ -1189,27 +1187,23 @@ static bool u64_from_value(Interpreter* interp, const Opcode* code, CTValue valu
 
 		*out = result;
 
-		return true;
+		return U64FromValueRst::Ok;
 	}
 	else if (type_tag == TypeTag::CompInteger)
 	{
 		const CompIntegerValue int_value = *value_as<CompIntegerValue>(&value);
 
-		if (!u64_from_comp_integer(int_value, 64, out))
-		{
-			// TODO: Create a proper error code for this.
-			(void) record_interpreter_error(interp, code, CompileError::ArrayIndexRhsTooLarge);
+		if (u64_from_comp_integer(int_value, 64, out))
+			return U64FromValueRst::Ok;
 
-			return false;
-		}
+		if (comp_integer_compare(int_value, comp_integer_from_u64(0)) == StrongCompareOrdering::LessThan)
+			return U64FromValueRst::Negative;
 
-		return true;
+		return U64FromValueRst::TooLarge;
 	}
 	else
 	{
-		(void) record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
-
-		return false;
+		return U64FromValueRst::Inconvertible;
 	}
 }
 
@@ -2960,8 +2954,16 @@ static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* cod
 
 		u64 index;
 
-		if (!u64_from_value(interp, code, indices[i], &index))
-			return nullptr;
+		const U64FromValueRst index_rst = u64_from_value(interp, code, indices[i], &index);
+
+		if (index_rst == U64FromValueRst::Inconvertible)
+			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		else if (index_rst == U64FromValueRst::TooLarge)
+			return record_interpreter_error(interp, code, CompileError::ArrayInitializerIndexTooLarge);
+		else if (index_rst == U64FromValueRst::Negative)
+			return record_interpreter_error(interp, code, CompileError::ArrayInitializerIndexNegative);
+		else
+			ASSERT_OR_IGNORE(index_rst == U64FromValueRst::Ok);
 
 		if (index + following_element_count > dst_element_count)
 			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
@@ -3045,8 +3047,16 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 	{
 		u64 index;
 
-		if (!u64_from_value(interp, code, indices[i], &index))
+		const U64FromValueRst index_rst = u64_from_value(interp, code, indices[i], &index);
+
+		if (index_rst == U64FromValueRst::Inconvertible)
 			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		else if (index_rst == U64FromValueRst::TooLarge)
+			return record_interpreter_error(interp, code, CompileError::ArrayInitializerIndexTooLarge);
+		else if (index_rst == U64FromValueRst::Negative)
+			return record_interpreter_error(interp, code, CompileError::ArrayInitializerIndexNegative);
+		else
+			ASSERT_OR_IGNORE(index_rst == U64FromValueRst::Ok);
 
 		u16 following_element_count;
 
@@ -3090,8 +3100,16 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 	{
 		u64 base_index;
 
-		if (!u64_from_value(interp, code, indices[i], &base_index))
-			return nullptr;
+		const U64FromValueRst base_index_rst = u64_from_value(interp, code, indices[i], &base_index);
+
+		if (base_index_rst == U64FromValueRst::Inconvertible)
+			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		else if (base_index_rst == U64FromValueRst::TooLarge)
+			return record_interpreter_error(interp, code, CompileError::ArrayInitializerIndexTooLarge);
+		else if (base_index_rst == U64FromValueRst::Negative)
+			return record_interpreter_error(interp, code, CompileError::ArrayInitializerIndexNegative);
+		else
+			ASSERT_OR_IGNORE(base_index_rst == U64FromValueRst::Ok);
 
 		u16 following_element_count;
 
@@ -3590,8 +3608,16 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 	{
 		CTValue* const begin = lhs + 1;
 
-		if (!u64_from_value(interp, code, *begin, &begin_index))
+		const U64FromValueRst begin_index_rst = u64_from_value(interp, code, *begin, &begin_index);
+
+		if (begin_index_rst == U64FromValueRst::Inconvertible)
+			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		else if (begin_index_rst == U64FromValueRst::TooLarge)
 			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexTooLarge);
+		else if (begin_index_rst == U64FromValueRst::Negative)
+			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexNegative);
+		else
+			ASSERT_OR_IGNORE(begin_index_rst == U64FromValueRst::Ok);
 
 		end_index = 0;
 
@@ -3603,8 +3629,16 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 
 		begin_index = 0;
 
-		if (!u64_from_value(interp, code, *end, &end_index))
+		const U64FromValueRst end_index_rst = u64_from_value(interp, code, *end, &end_index);
+
+		if (end_index_rst == U64FromValueRst::Inconvertible)
+			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		else if (end_index_rst == U64FromValueRst::TooLarge)
 			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexTooLarge);
+		else if (end_index_rst == U64FromValueRst::Negative)
+			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexNegative);
+		else
+			ASSERT_OR_IGNORE(end_index_rst == U64FromValueRst::Ok);
 
 		has_end_index = true;
 	}
@@ -3616,11 +3650,27 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 
 		CTValue* const end = lhs + 2;
 
-		if (!u64_from_value(interp, code, *begin, &begin_index))
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexTooLarge);
+		const U64FromValueRst begin_index_rst = u64_from_value(interp, code, *begin, &begin_index);
 
-		if (!u64_from_value(interp, code, *end, &end_index))
+		if (begin_index_rst == U64FromValueRst::Inconvertible)
+			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		else if (begin_index_rst == U64FromValueRst::TooLarge)
 			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexTooLarge);
+		else if (begin_index_rst == U64FromValueRst::Negative)
+			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexNegative);
+		else
+			ASSERT_OR_IGNORE(begin_index_rst == U64FromValueRst::Ok);
+
+		const U64FromValueRst end_index_rst = u64_from_value(interp, code, *end, &end_index);
+
+		if (end_index_rst == U64FromValueRst::Inconvertible)
+			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		else if (end_index_rst == U64FromValueRst::TooLarge)
+			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexTooLarge);
+		else if (end_index_rst == U64FromValueRst::Negative)
+			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexNegative);
+		else
+			ASSERT_OR_IGNORE(end_index_rst == U64FromValueRst::Ok);
 
 		has_end_index = true;
 
@@ -3734,8 +3784,16 @@ static const Opcode* handle_index(Interpreter* interp, const Opcode* code, CTVal
 
 	u64 index;
 
-	if (!u64_from_value(interp, code, lhs[1], &index))
+	const U64FromValueRst index_rst = u64_from_value(interp, code, lhs[1], &index);
+
+	if (index_rst == U64FromValueRst::Inconvertible)
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+	else if (index_rst == U64FromValueRst::TooLarge)
 		return record_interpreter_error(interp, code, CompileError::ArrayIndexRhsTooLarge);
+	else if (index_rst == U64FromValueRst::Negative)
+		return record_interpreter_error(interp, code, CompileError::ArrayIndexRhsNegative);
+	else
+		ASSERT_OR_IGNORE(index_rst == U64FromValueRst::Ok);
 
 	const TypeId type = lhs->type;
 
@@ -4147,8 +4205,16 @@ static const Opcode* handle_shift(Interpreter* interp, const Opcode* code, CTVal
 
 	u64 shift_amount;
 
-	if (!u64_from_value(interp, code, *rhs, &shift_amount))
-		return nullptr;
+	const U64FromValueRst index_rst = u64_from_value(interp, code, *rhs, &shift_amount);
+
+	if (index_rst == U64FromValueRst::Inconvertible)
+		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+	else if (index_rst == U64FromValueRst::TooLarge)
+		return record_interpreter_error(interp, code, CompileError::ShiftRHSTooLarge);
+	else if (index_rst == U64FromValueRst::Negative)
+		return record_interpreter_error(interp, code, CompileError::ShiftRHSNegative);
+	else
+		ASSERT_OR_IGNORE(index_rst == U64FromValueRst::Ok);
 
 	if (type_tag == TypeTag::Integer)
 	{
@@ -4679,8 +4745,16 @@ static const Opcode* handle_array_type(Interpreter* interp, const Opcode* code, 
 
 	u64 element_count;
 
-	if (!u64_from_value(interp, code, *element_count_value, &element_count))
+	const U64FromValueRst index_rst = u64_from_value(interp, code, *element_count_value, &element_count);
+
+	if (index_rst == U64FromValueRst::Inconvertible)
 		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+	else if (index_rst == U64FromValueRst::TooLarge)
+		return record_interpreter_error(interp, code, CompileError::TypeArrayCountTooLarge);
+	else if (index_rst == U64FromValueRst::Negative)
+		return record_interpreter_error(interp, code, CompileError::TypeArrayCountNegative);
+	else
+		ASSERT_OR_IGNORE(index_rst == U64FromValueRst::Ok);
 
 	const TypeId element_type = *value_as<TypeId>(element_type_value);
 
