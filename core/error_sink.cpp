@@ -72,7 +72,6 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Cannot compare values of the given type.\n",                                                                                                   // CompareIncomparableType
 		"Cannot order values of the given type.\n",                                                                                                     // CompareUnorderedType
 		"Left-hand-side of `=` operator must be mutable.\n",                                                                                            // SetLhsNotMutable
-		"Array element count must be of Integer type.\n",                                                                                               // TypeArrayCountInvalidType
 		"Array element count must fit into unsigned 64-bit integer.\n",                                                                                 // TypeArrayCountTooLarge
 		"Array element count must not be negative.\n",                                                                                                  // TypeArrayCountNegative
 		"Left-hand-side of index operator must have array, slice, or multi-pointer type.\n",                                                            // ArrayIndexLhsInvalidType

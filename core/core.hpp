@@ -1750,7 +1750,6 @@ enum class CompileError
 	CompareIncomparableType,
 	CompareUnorderedType,
 	SetLhsNotMutable,
-	TypeArrayCountInvalidType,
 	TypeArrayCountTooLarge,
 	TypeArrayCountNegative,
 	ArrayIndexLhsInvalidType,
