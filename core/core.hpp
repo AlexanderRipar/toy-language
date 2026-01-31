@@ -1740,6 +1740,7 @@ enum class CompileError
 	BinaryOperatorIntegerOrBoolInvalidArgumentType,
 	ArithmeticOverflow,
 	DivideByZero,
+	ModuloByZero,
 	ShiftRHSNegative,
 	ShiftRHSTooLarge,
 	MemberNoSuchName,

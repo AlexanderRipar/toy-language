@@ -3878,7 +3878,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 					ASSERT_OR_IGNORE(kind == OpcodeBinaryArithmeticOpKind::Mod);
 
 					if (rhs_value_signed == 0)
-						return record_interpreter_error(interp, code, CompileError::DivideByZero);
+						return record_interpreter_error(interp, code, CompileError::ModuloByZero);
 
 					result_signed = lhs_value_signed % rhs_value_signed;
 				}
@@ -3921,7 +3921,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 					ASSERT_OR_IGNORE(kind == OpcodeBinaryArithmeticOpKind::Mod);
 
 					if (rhs_value == 0)
-						return record_interpreter_error(interp, code, CompileError::DivideByZero);
+						return record_interpreter_error(interp, code, CompileError::ModuloByZero);
 
 					result = lhs_value % rhs_value;
 				}
@@ -3970,7 +3970,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 				ASSERT_OR_IGNORE(kind == OpcodeBinaryArithmeticOpKind::Mod);
 
 				if (!bitwise_mod(integer_type.bits, integer_type.is_signed, result.bytes, lhs->bytes.immut(), rhs->bytes.immut()))
-					return record_interpreter_error(interp, code, CompileError::DivideByZero);
+					return record_interpreter_error(interp, code, CompileError::ModuloByZero);
 			}
 
 			interp->values.pop_by(1);
@@ -4075,7 +4075,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 			ASSERT_OR_IGNORE(kind == OpcodeBinaryArithmeticOpKind::Mod);
 
 			if (!comp_integer_mod(lhs_value, rhs_value, &result))
-				return record_interpreter_error(interp, code, CompileError::DivideByZero);
+				return record_interpreter_error(interp, code, CompileError::ModuloByZero);
 		}
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&result);

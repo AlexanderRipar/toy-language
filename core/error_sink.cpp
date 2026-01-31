@@ -62,6 +62,7 @@ static const char8* error_message_of(CompileError error) noexcept
 		"The operator is only supported for Integer and Boolean operands.\n",                                                                           // BinaryOperatorIntegerOrBoolInvalidArgumentType
 		"Overflow encountered while evaluating operator.\n",                                                                                            // ArithmeticOverflow
 		"Division by zero encountered.\n",                                                                                                              // DivideByZero
+		"Modulo by zero encountered.\n",                                                                                                                // ModuloByZero
 		"Right-hand-side of shift operator must not be negative.\n",                                                                                    // ShiftRHSNegative
 		"Shifting by 2^16 or more is not supported.\n",                                                                                                 // ShiftRHSTooLarge
 		"Left-hand-side of `.` has no member with the given name.\n",                                                                                   // MemberNoSuchName
