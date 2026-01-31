@@ -1764,7 +1764,7 @@ enum class CompileError
 	BuiltinCompleteTypeAlignTooLarge,
 	BuiltinCompleteTypeAlignZero,
 	BuiltinCompleteTypeAlignNotPowTwo,
-	ReturntypeOfTemplatedReturnType,
+	ReturntypeofTemplatedReturnType,
 	CyclicGlobalInitializerDependency,
 	UnreachableReached,
 	GlobalNameNotDefined,

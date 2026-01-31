@@ -86,7 +86,7 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Alignment passed to `_complete_type` must not exceed the maximum supported value of 2^32 - 1.\n",                                              // BuiltinCompleteTypeAlignTooLarge
 		"Alignment passed to `_complete_type` must not be zero.\n",                                                                                     // BuiltinCompleteTypeAlignZero
 		"Alignment passed to `_complete_type` must be a power of two.\n",                                                                               // BuiltinCompleteTypeAlignNotPowTwo
-		"Function type passed to _returntypeof must not have a templated return type.\n",                                                               // ReturntypeOfTemplatedReturnType
+		"Function type passed to _returntypeof must not have a templated return type.\n",                                                               // ReturntypeofTemplatedReturnType
 		"Initializer of global variable cannot reference its own value.\n",                                                                             // CyclicGlobalInitializerDependency
 		"Reached `unreachable`.\n",                                                                                                                     // UnreachableReached
 		"File does not contain a global definition with the given name.\n",                                                                             // GlobalNameNotDefined

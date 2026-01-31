@@ -1330,7 +1330,7 @@ static const Opcode* builtin_returntypeof(Interpreter* interp, const Opcode* cod
 	const SignatureType2* const signature = type_attachment_from_id<SignatureType2>(interp->types, type);
 
 	if (signature->has_templated_return_type)
-		return record_interpreter_error(interp, code, CompileError::ReturntypeOfTemplatedReturnType);
+		return record_interpreter_error(interp, code, CompileError::ReturntypeofTemplatedReturnType);
 
 	TypeId return_type = signature->return_type.type_id;
 
