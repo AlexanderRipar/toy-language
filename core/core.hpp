@@ -1752,8 +1752,6 @@ enum class CompileError
 	SetLhsNotMutable,
 	TypeArrayCountTooLarge,
 	TypeArrayCountNegative,
-	ArrayIndexLhsInvalidType,
-	ArrayIndexRhsInvalidType,
 	ArrayIndexRhsTooLarge,
 	ArrayIndexRhsNegative,
 	ArrayIndexOutOfBounds,
