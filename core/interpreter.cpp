@@ -1163,7 +1163,7 @@ static void scope_pop(Interpreter* interp) noexcept
 
 
 
-static U64FromValueRst u64_from_value(Interpreter* interp, const Opcode* code, CTValue value, u64* out) noexcept
+static U64FromValueRst u64_from_value(Interpreter* interp, CTValue value, u64* out) noexcept
 {
 	const TypeTag type_tag = type_tag_from_id(interp->types, value.type);
 
@@ -2958,7 +2958,7 @@ static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* cod
 
 		u64 index;
 
-		const U64FromValueRst index_rst = u64_from_value(interp, code, indices[i], &index);
+		const U64FromValueRst index_rst = u64_from_value(interp, indices[i], &index);
 
 		if (index_rst == U64FromValueRst::Inconvertible)
 			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
@@ -3051,7 +3051,7 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 	{
 		u64 index;
 
-		const U64FromValueRst index_rst = u64_from_value(interp, code, indices[i], &index);
+		const U64FromValueRst index_rst = u64_from_value(interp, indices[i], &index);
 
 		if (index_rst == U64FromValueRst::Inconvertible)
 			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
@@ -3104,7 +3104,7 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 	{
 		u64 base_index;
 
-		const U64FromValueRst base_index_rst = u64_from_value(interp, code, indices[i], &base_index);
+		const U64FromValueRst base_index_rst = u64_from_value(interp, indices[i], &base_index);
 
 		if (base_index_rst == U64FromValueRst::Inconvertible)
 			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
@@ -3612,7 +3612,7 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 	{
 		CTValue* const begin = lhs + 1;
 
-		const U64FromValueRst begin_index_rst = u64_from_value(interp, code, *begin, &begin_index);
+		const U64FromValueRst begin_index_rst = u64_from_value(interp, *begin, &begin_index);
 
 		if (begin_index_rst == U64FromValueRst::Inconvertible)
 			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
@@ -3633,7 +3633,7 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 
 		begin_index = 0;
 
-		const U64FromValueRst end_index_rst = u64_from_value(interp, code, *end, &end_index);
+		const U64FromValueRst end_index_rst = u64_from_value(interp, *end, &end_index);
 
 		if (end_index_rst == U64FromValueRst::Inconvertible)
 			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
@@ -3654,7 +3654,7 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 
 		CTValue* const end = lhs + 2;
 
-		const U64FromValueRst begin_index_rst = u64_from_value(interp, code, *begin, &begin_index);
+		const U64FromValueRst begin_index_rst = u64_from_value(interp, *begin, &begin_index);
 
 		if (begin_index_rst == U64FromValueRst::Inconvertible)
 			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
@@ -3665,7 +3665,7 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 		else
 			ASSERT_OR_IGNORE(begin_index_rst == U64FromValueRst::Ok);
 
-		const U64FromValueRst end_index_rst = u64_from_value(interp, code, *end, &end_index);
+		const U64FromValueRst end_index_rst = u64_from_value(interp, *end, &end_index);
 
 		if (end_index_rst == U64FromValueRst::Inconvertible)
 			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
@@ -3788,7 +3788,7 @@ static const Opcode* handle_index(Interpreter* interp, const Opcode* code, CTVal
 
 	u64 index;
 
-	const U64FromValueRst index_rst = u64_from_value(interp, code, lhs[1], &index);
+	const U64FromValueRst index_rst = u64_from_value(interp, lhs[1], &index);
 
 	if (index_rst == U64FromValueRst::Inconvertible)
 		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
@@ -4209,7 +4209,7 @@ static const Opcode* handle_shift(Interpreter* interp, const Opcode* code, CTVal
 
 	u64 shift_amount;
 
-	const U64FromValueRst index_rst = u64_from_value(interp, code, *rhs, &shift_amount);
+	const U64FromValueRst index_rst = u64_from_value(interp, *rhs, &shift_amount);
 
 	if (index_rst == U64FromValueRst::Inconvertible)
 		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
@@ -4749,7 +4749,7 @@ static const Opcode* handle_array_type(Interpreter* interp, const Opcode* code, 
 
 	u64 element_count;
 
-	const U64FromValueRst index_rst = u64_from_value(interp, code, *element_count_value, &element_count);
+	const U64FromValueRst index_rst = u64_from_value(interp, *element_count_value, &element_count);
 
 	if (index_rst == U64FromValueRst::Inconvertible)
 		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
