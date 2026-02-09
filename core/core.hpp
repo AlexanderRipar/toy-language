@@ -831,7 +831,6 @@ enum class AstFlag : u8
 	Signature_HasExpects        = 0x01,
 	Signature_HasEnsures        = 0x02,
 	Signature_IsProc            = 0x04,
-	Signature_HasReturnType     = 0x08,
 
 	Trait_HasExpects            = 0x01,
 
@@ -1174,7 +1173,7 @@ struct SignatureInfo
 
 	// Optional `AstNode` containing the function's return type expression if
 	// it has one.
-	Maybe<AstNode*> return_type;
+	AstNode* return_type;
 
 	// Optional `AstNode` with tag `AstTag::Expects` containing the function's
 	// `expects` clause if it has one.
@@ -1810,6 +1809,7 @@ enum class CompileError
 	ParseForeachExpectThinArrowLeft,
 	ParseCaseMissingThinArrowRight,
 	ParseSwitchMissingCase,
+	ParseSignatureMissingReturnType,
 	ParseSignatureMissingParenthesisAfterProc,
 	ParseSignatureMissingParenthesisAfterFunc,
 	ParseSignatureMissingParenthesisAfterTrait,

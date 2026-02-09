@@ -722,9 +722,6 @@ static bool opcodes_from_signature(OpcodePool* opcodes, AstNode* node, bool expe
 	if (is_some(info.ensures))
 		TODO("Implement opcode generation for signature-level `ensures`");
 
-	if (is_none(info.return_type))
-		TODO("Implement (or remove) opcode generation for implicit return types");
-
 	AstNode* const parameters = info.parameters;
 
 	AstDirectChildIterator it = direct_children_of(parameters);
@@ -765,11 +762,11 @@ static bool opcodes_from_signature(OpcodePool* opcodes, AstNode* node, bool expe
 			value_count += 1;
 	}
 
-	const bool has_templated_return_type = is_templated(get(info.return_type));
+	const bool has_templated_return_type = is_templated(info.return_type);
 
 	if (!has_templated_return_type)
 	{
-		if (!opcodes_from_expression(opcodes, get(info.return_type), false))
+		if (!opcodes_from_expression(opcodes, info.return_type, false))
 			return false;
 
 		value_count += 1;
@@ -861,7 +858,7 @@ static bool opcodes_from_signature(OpcodePool* opcodes, AstNode* node, bool expe
 		// completion callback in the attachment and emit a fixup for it.
 		if (has_templated_return_type)
 		{
-			emit_fixup_for_template_return_type(opcodes, reinterpret_cast<Opcode*>(attach), get(info.return_type));
+			emit_fixup_for_template_return_type(opcodes, reinterpret_cast<Opcode*>(attach), info.return_type);
 
 			attach += sizeof(OpcodeId);
 		}

@@ -648,12 +648,9 @@ SignatureInfo get_signature_info(AstNode* signature) noexcept
 
 	desc.parameters = curr;
 
-	if (has_flag(signature, AstFlag::Signature_HasReturnType))
-	{
-		curr = next_sibling_of(curr);
+	curr = next_sibling_of(curr);
 
-		desc.return_type = some(curr);
-	}
+	desc.return_type = curr;
 
 	if (has_flag(signature, AstFlag::Signature_HasExpects))
 	{

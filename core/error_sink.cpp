@@ -132,6 +132,7 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Expected `<-` after for-each loop variables.\n",                                                                                               // ParseForeachExpectThinArrowLeft
 		"Expected `->` after case label expression.\n",                                                                                                 // ParseCaseMissingThinArrowRight
 		"Expected at least one case after switch expression.\n",                                                                                        // ParseSwitchMissingCase
+		"Expected `->` after parameter list.\n",                                                                                                        // ParseSignatureMissingReturnType
 		"Expected `(` after `proc`.\n",                                                                                                                 // ParseSignatureMissingParenthesisAfterProc
 		"Expected `(` after `func`.\n",                                                                                                                 // ParseSignatureMissingParenthesisAfterFunc
 		"Expected `(` after `trait`.\n",                                                                                                                // ParseSignatureMissingParenthesisAfterTrait

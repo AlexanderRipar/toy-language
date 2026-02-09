@@ -2151,17 +2151,15 @@ static AstBuilderToken parse_signature(Parser* parser) noexcept
 
 	lexeme = peek(&parser->lexer);
 
-	if (lexeme.token == Token::ThinArrowR)
-	{
-		flags |= AstFlag::Signature_HasReturnType;
+	if (lexeme.token != Token::ThinArrowR)
+		parse_error_fatal(&parser->lexer, lexeme.source_id, CompileError::ParseSignatureMissingReturnType);
 
-		skip(&parser->lexer);
+	skip(&parser->lexer);
 
-		// Return type
-		parse_expr(parser, false);
+	// Return type
+	parse_expr(parser, false);
 
-		lexeme = peek(&parser->lexer);
-	}
+	lexeme = peek(&parser->lexer);
 
 	if (lexeme.token == Token::KwdExpects)
 	{
