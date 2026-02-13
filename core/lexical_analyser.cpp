@@ -316,7 +316,12 @@ static void pop_scope(LexicalAnalyser* lex) noexcept
 {
 	ASSERT_OR_IGNORE(lex->scopes_top >= 0);
 
-	scope_map_dealloc(lex, lex->scopes[lex->scopes_top]);
+	ScopeMap* const scope = lex->scopes[lex->scopes_top];
+
+	if (scope->has_closure)
+		scope_map_dealloc(lex, lex->closures[lex->scopes_top]);
+
+	scope_map_dealloc(lex, scope);
 
 	lex->scopes_top -= 1;
 }
@@ -528,14 +533,11 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 		resolve_names_rec(lex, body, true);
 
-		ScopeMap* const filled_closure = lex->closures[lex->scopes_top];
-
-		set_func_closure_list(lex, node, filled_closure);
-
-		scope_map_dealloc(lex, filled_closure);
+		set_func_closure_list(lex, node, lex->closures[lex->scopes_top]);
 
 		// Now pop the signature scope that was pushed and not popped by the
-		// recursion on `signature`.
+		// recursion on `signature`. This also automatically pops the closure
+		// scope.
 		pop_scope(lex);
 	}
 	else
