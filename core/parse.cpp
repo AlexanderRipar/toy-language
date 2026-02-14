@@ -2179,7 +2179,7 @@ static AstBuilderToken parse_signature(Parser* parser) noexcept
 		parse_ensures(parser);
 	}
 
-	return push_node(parser->builder, parameter_list_token, func_source_id, flags, AstTag::Signature);
+	return push_node(parser->builder, parameter_list_token, func_source_id, flags, AstSignatureData{ none<ClosureListId>() });
 }
 
 static AstBuilderToken parse_func(Parser* parser) noexcept

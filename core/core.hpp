@@ -1154,6 +1154,15 @@ struct alignas(8) AstParameterData
 	u32 unused_ = 0;
 };
 
+struct alignas(8) AstSignatureData
+{
+	static constexpr AstTag TAG = AstTag::Signature;
+
+	Maybe<ClosureListId> closure_list_id;
+
+	u32 unused_ = 0;
+};
+
 struct alignas(8) AstFuncData
 {
 	static constexpr AstTag TAG = AstTag::Func;
