@@ -1165,15 +1165,6 @@ struct alignas(8) AstSignatureData
 	u32 unused_ = 0;
 };
 
-struct alignas(8) AstFuncData
-{
-	static constexpr AstTag TAG = AstTag::Func;
-
-	Maybe<ClosureListId> closure_list_id;
-
-	u32 unused_ = 0;
-};
-
 // Neatly structured summary of the child structure of an `AstNode` with tag
 // `AstTag::Func`. To obtain this for a given node, call `get_func_info`.
 struct SignatureInfo
