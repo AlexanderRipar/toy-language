@@ -20,7 +20,44 @@ enum class ScopeMapKind : u8
 	Signature,
 };
 
-struct ScopeEntry
+// Information for a single definition / parameter held in a scope. Depending
+// on circumstances, different parts of this structure are relevant, with the
+// others being unused:
+//
+// Local / Global: A normal definition as in `let x = 5`, including definitions
+// made at global as well as block scope.
+// - rank: Rank of the definition in its scope.
+// - closure_source_rank: Unused.
+// - closure_source_out: Unused.
+// - closure_source_is_closure: Unused.
+// - param_is_templated: Unused.
+//
+// Closure: When a non-global definition from an outer scope is used in a
+// nested function, it is closed-over to extend its lifetime to that of the
+// nested function. In this case, a new definition is created (as part of the
+// closure), with the following semantics:
+// - rank: Rank of the definition inside the closure.
+// - closure_source_rank: Rank of the definition in the outer scope, used for
+//   efficient capturing.
+// - closure_source_out: Number of scopes between the scope at which the
+//   closure exists and the scope in which the closed-over definition lives.
+// - closure_source_is_closure: True if and only if the closed-over
+//   definition is itself part of a closure.
+// - param_is_templated: Unused.
+//
+// Signature: Function parameters are treated mostly like normal parameters,
+// with the exception that parameters may be templated (dependent on a
+// preceding parameter's value), which is indicated by the `param_is_templated`
+// member being true. Note additionally that Signature `ScopeMap`s only occur
+// on the `closures` stack, while all other types solely occur on the `scopes`
+// stack of `LexicalAnalyser`:
+// - rank: Rank of the parameter inside the signature.
+// - closure_source_rank: Unused.
+// - closure_source_out: Unused.
+// - closure_source_is_closure: Unused.
+// - param_is_templated: True if and only if the parameter is templated, meaning
+//   that it depends on a preceding parameter's value.
+struct alignas(8) ScopeEntry
 {
 	u16 rank;
 
@@ -29,9 +66,13 @@ struct ScopeEntry
 	u8 closure_source_out;
 
 	bool closure_source_is_closure;
+
+	bool param_is_templated;
+
+	u8 unused_ = 0;
 };
 
-struct ScopeMap
+struct alignas(8) ScopeMap
 {
 	u32 capacity;
 
@@ -349,11 +390,11 @@ static void set_closure(LexicalAnalyser* lex, ScopeMap* closure) noexcept
 
 
 
-static void set_func_closure_list(LexicalAnalyser* lex, AstNode* node, ScopeMap* closure) noexcept
+static void set_signature_closure_list(LexicalAnalyser* lex, AstNode* node, ScopeMap* closure) noexcept
 {
 	if (closure->used == 0)
 	{
-		attachment_of<AstFuncData>(node)->closure_list_id = none<ClosureListId>();
+		attachment_of<AstSignatureData>(node)->closure_list_id = none<ClosureListId>();
 
 		return;
 	}
@@ -373,24 +414,35 @@ static void set_func_closure_list(LexicalAnalyser* lex, AstNode* node, ScopeMap*
 
 		const ScopeEntry src = info.entries[i];
 
+		// Since closures are created as part of a function signature -- which
+		// introduces a scope -- and must only reference names outside the
+		// signature, the `out` should always be at least 1.
+		// We subtract 1, since the code to construct the closure will live in
+		// the scope surrounding the signature.
+		ASSERT_OR_IGNORE(src.closure_source_out >= 1);
+
 		ClosureListEntry* const dst = list->entries + src.rank;
 		dst->source_rank = src.closure_source_rank;
-		dst->source_out = src.closure_source_out;
+		dst->source_out = src.closure_source_out - 1;
 		dst->source_is_closure = src.closure_source_is_closure;
 	}
 
 	const ClosureListId list_id = id_from_closure_list(lex->asts, list);
 
-	attachment_of<AstFuncData>(node)->closure_list_id = some(list_id);
+	attachment_of<AstSignatureData>(node)->closure_list_id = some(list_id);
 }
 
-static u16 add_name_to_closures(LexicalAnalyser* lex, IdentifierId name, u16 closed_over_rank, s32 scope_index) noexcept
+static u16 add_name_to_closures(LexicalAnalyser* lex, IdentifierId name, u16 closed_over_rank, s32 scope_index, bool close_in_innermost) noexcept
 {
 	bool closure_source_is_closure = false;
 
 	s32 source_index = scope_index;
 
-	for (s32 i = scope_index + 1; i <= lex->scopes_top; ++i)
+	const s32 innermost_closed = close_in_innermost
+		? scope_index + 1
+		: scope_index;
+
+	for (s32 i = innermost_closed; i <= lex->scopes_top; ++i)
 	{
 		if (!lex->scopes[i]->has_closure)
 			continue;
@@ -432,7 +484,111 @@ static u16 add_name_to_closures(LexicalAnalyser* lex, IdentifierId name, u16 clo
 
 
 
-static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) noexcept
+static bool check_expression_is_templated(LexicalAnalyser* lex, AstNode* node, bool do_pop) noexcept
+{
+	if (node->tag == AstTag::Identifier)
+	{
+		AstIdentifierData* const attachment = attachment_of<AstIdentifierData>(node);
+
+		const IdentifierId name = attachment->identifier_id;
+
+		for (s32 i = lex->scopes_top; i >= 0; --i)
+		{
+			ScopeMap* const scope = lex->scopes[i];
+
+			ScopeEntry unused_scope_entry;
+
+			// Since we are looking for templating relative to a particular
+			// signature, we can recognize that signature's scope by it being
+			// of kind `Signature` (note that
+			// `check_expression_is_templated` sets kind to `Local` even for
+			// signatures, which is ok since the scopes are not really used for
+			// anything other than temporary bookkeeping).
+			// If the current name is defined somewhere inside the signature,
+			// this does not lead to templating. If it occurs exactly in the
+			// signature, then we are inside a templated parameter. If it does
+			// not occur at all up to and including the signature, we have a
+			// potentially captured variable, but not yet a templated
+			// parameter.
+			if (scope_map_get(scope, name, &unused_scope_entry))
+				return scope->kind == ScopeMapKind::Signature;
+			else if (scope->kind == ScopeMapKind::Signature)
+				return false;
+		}
+
+		ASSERT_UNREACHABLE;
+	}
+	else if (node->tag == AstTag::Func)
+	{
+		AstNode* const signature = first_child_of(node);
+
+		if (check_expression_is_templated(lex, signature, false))
+		{
+			pop_scope(lex);
+
+			return true;
+		}
+
+		AstNode* const body = next_sibling_of(signature);
+
+		const bool is_templated = check_expression_is_templated(lex, body, true);
+
+		pop_scope(lex);
+
+		return is_templated;
+	}
+	else
+	{
+		bool needs_pop = false;
+
+		if (node->tag == AstTag::Block || node->tag == AstTag::Signature)
+		{
+			needs_pop = do_pop;
+
+			ScopeMap* const scope = scope_map_alloc(lex, ScopeMapKind::Local);
+			push_scope(lex, scope);
+		}
+
+		AstDirectChildIterator it = direct_children_of(node);
+
+		while (has_next(&it))
+		{
+			AstNode* const child = next(&it);
+
+			if (check_expression_is_templated(lex, child, true))
+			{
+				if (needs_pop)
+					pop_scope(lex);
+
+				return true;
+			}
+		}
+
+		if (needs_pop)
+			pop_scope(lex);
+
+		return false;
+	}
+}
+
+static bool check_parameter_is_templated(LexicalAnalyser* lex, AstNode* node) noexcept
+{
+	AstNode* const first_child = first_child_of(node);
+
+	if (check_expression_is_templated(lex, first_child, true))
+		return true;
+
+	if (!has_next_sibling(first_child))
+		return false;
+
+	AstNode* const second_child = next_sibling_of(first_child);
+
+	return check_expression_is_templated(lex, second_child, true);
+}
+
+
+
+static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop, bool close_in_innermost) noexcept
 {
 	ASSERT_OR_IGNORE(lex->scopes_top >= 0 && static_cast<u64>(lex->scopes_top) < array_count(lex->scopes));
 
@@ -489,8 +645,10 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 				else if (is_closed_over)
 				{
 					// Make sure that `name` is closed-over in all closures
-					// between its definition and its use. 
-					const u16 rank_in_closure = add_name_to_closures(lex, name, scope_entry.rank, i);
+					// between its definition and its use.
+					// If `close_in_innermost` is `false`, we skip the
+					// innermost closure.
+					const u16 rank_in_closure = add_name_to_closures(lex, name, scope_entry.rank, i, close_in_innermost);
 
 					binding->closed.is_global_ = false;
 					binding->closed.is_scoped_ = false;
@@ -528,30 +686,75 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 		// Defer popping of the signature scope, as it remains active for the
 		// body.
-		resolve_names_rec(lex, signature, false);
+		resolve_names_rec(lex, signature, false, close_in_innermost);
 
 		AstNode* const body = next_sibling_of(signature);
 
-		// Since we are traversing a function body, we might encounter
+		resolve_names_rec(lex, body, true, close_in_innermost);
+
+		// Since we deferred popping of the signature scope we have to set the
+		// signature AST node's closure list here and then pop its scope.
+		set_signature_closure_list(lex, signature, lex->closures[lex->scopes_top]);
+
+		pop_scope(lex);
+	}
+	else if (tag == AstTag::Signature)
+	{
+		const SignatureInfo info = get_signature_info(node);
+
+		if (is_some(info.expects))
+			TODO("Handle signature-level `expects` in `resolve_names_rec`");
+
+		if (is_some(info.ensures))
+			TODO("Handle signature-level `ensures` in `resolve_names_rec`");
+
+		ScopeMap* const scope = scope_map_alloc(lex, ScopeMapKind::Signature);
+		push_scope(lex, scope);
+
+		// Since we are traversing a function signature, we might encounter
 		// closed-over variables from the surrounding scope. To keep track of
 		// these, we create and associate a closure `ScopeMap` with the current
 		// scope.
 		ScopeMap* const new_closure = scope_map_alloc(lex, ScopeMapKind::Closure);
 		set_closure(lex, new_closure);
 
-		resolve_names_rec(lex, body, true);
+		AstDirectChildIterator parameters = direct_children_of(info.parameters);
 
-		set_func_closure_list(lex, node, lex->closures[lex->scopes_top]);
+		while (has_next(&parameters))
+		{
+			AstNode* const parameter = next(&parameters);
 
-		// Now pop the signature scope that was pushed and not popped by the
-		// recursion on `signature`. This also automatically pops the closure
-		// scope.
-		pop_scope(lex);
+			// If a parameter is *not* templated (i.e., does *not* depend on a
+			// a preceding parameter), the identifiers occurring in the
+			// parameter's type and default value do not need to be captured in
+			// the signature closure. However, they must still be captured in
+			// outer closures if there are any, as they must be available when
+			// the signature is constructed. This is accomplished by setting
+			// `close_in_innermost` to `false` for non-templated parameters.
+			const bool is_templated = check_parameter_is_templated(lex, parameter);
+
+			if (is_templated)
+				parameter->flags |= AstFlag::Definition_IsTemplatedParam;
+
+			resolve_names_rec(lex, parameter, true, is_templated);
+		}
+
+		const bool return_type_is_templated = check_expression_is_templated(lex, info.return_type, true);
+
+		if (return_type_is_templated)
+			node->flags |= AstFlag::Signature_HasTemplatedReturnType;
+
+		resolve_names_rec(lex, info.return_type, true, return_type_is_templated);
+
+		if (do_pop)
+		{
+			pop_scope(lex);
+
+			set_signature_closure_list(lex, node, lex->closures[lex->scopes_top]);
+		}
 	}
 	else
 	{
-		bool needs_pop = false;
-
 		if (tag == AstTag::Definition || tag == AstTag::Parameter)
 		{
 			ASSERT_OR_IGNORE(lex->scopes_top >= 0);
@@ -572,7 +775,7 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 			lex->scopes[lex->scopes_top] = get(new_scope);
 		}
-		else if (tag == AstTag::Block || tag == AstTag::Signature)
+		else if (tag == AstTag::Block)
 		{
 			// Push a new scope, later popping it if `do_pop` is `true` and
 			// leaving it on the stack to be popped externally otherwise.
@@ -580,8 +783,6 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 			ScopeMap* const scope = scope_map_alloc(lex, ScopeMapKind::Local);
 
 			push_scope(lex, scope);
-
-			needs_pop = do_pop;
 		}
 
 		// Traverse node's children recursively.
@@ -592,10 +793,10 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 		{
 			AstNode* const child = next(&it);
 
-			resolve_names_rec(lex, child, true);
+			resolve_names_rec(lex, child, true, close_in_innermost);
 		}
 
-		if (needs_pop)
+		if (tag == AstTag::Block)
 			pop_scope(lex);
 	}
 }
@@ -646,20 +847,20 @@ static void resolve_names_root(LexicalAnalyser* lex, AstNode* root, GlobalFileIn
 		{
 			AstNode* child = first_child_of(node);
 
-			resolve_names_rec(lex, child, true);
+			resolve_names_rec(lex, child, true, true);
 
 			if (has_next_sibling(child))
 			{
 				child = next_sibling_of(child);
 
-				resolve_names_rec(lex, child, true);
+				resolve_names_rec(lex, child, true, true);
 
 				ASSERT_OR_IGNORE(!has_next_sibling(child));
 			}
 		}
 		else
 		{
-			resolve_names_rec(lex, node, true);
+			resolve_names_rec(lex, node, true, true);
 		}
 	}
 }

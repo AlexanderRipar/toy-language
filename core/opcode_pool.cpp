@@ -250,51 +250,17 @@ static void emit_fixup_for_loop_finally(OpcodePool* opcodes, Opcode* fixup_dst, 
 
 
 
-static u16 emit_func_closure_values(OpcodePool* opcodes, AstNode* node) noexcept
+static void emit_signature_closure_values(OpcodePool* opcodes, AstNode* node, const ClosureList* closure_list) noexcept
 {
-	const Maybe<ClosureListId> list_id = attachment_of<AstFuncData>(node)->closure_list_id;
-
-	if (is_none(list_id))
-		return 0;
-
-	const ClosureList* list = closure_list_from_id(opcodes->asts, get(list_id));
-
-	for (u16 i = 0; i != list->count; ++i)
+	for (u16 i = 0; i != closure_list->count; ++i)
 	{
-		const ClosureListEntry entry = list->entries[i];
+		const ClosureListEntry entry = closure_list->entries[i];
 
 		if (entry.source_is_closure)
 			emit_opcode(opcodes, Opcode::LoadClosure, false, node, entry.source_rank);
 		else
-			emit_opcode(opcodes, Opcode::LoadScope, false, node, entry.source_out, entry.source_rank);
+			emit_opcode(opcodes, Opcode::LoadScope, false, node, static_cast<u16>(entry.source_out), entry.source_rank);
 	}
-
-	return list->count;
-}
-
-static bool is_templated(AstNode* node) noexcept
-{
-	AstFlatIterator it = flat_ancestors_of(node);
-
-	while (has_next(&it))
-	{
-		AstNode* const curr = next(&it);
-
-		// Blocks cannot be handled here as they introduce a scope, meaning our
-		// binding's `out` would become meaningless in the flat iteration
-		// pattern used here.
-		ASSERT_OR_IGNORE(curr->tag != AstTag::Block);
-
-		if (curr->tag != AstTag::Identifier)
-			continue;
-
-		const NameBinding binding = attachment_of<AstIdentifierData>(curr)->binding;
-
-		if (!binding.is_global && (!binding.is_scoped || binding.scoped.out == 0))
-			return true;
-	}
-
-	return false;
 }
 
 
@@ -671,7 +637,7 @@ static bool opcodes_from_where(OpcodePool* opcodes, AstNode* node) noexcept
 
 static bool opcodes_from_parameter(OpcodePool* opcodes, AstNode* node, u8 rank, IdentifierId* out_name, OpcodeSignaturePerParameterFlags* out_flags, u32* out_fixup_index) noexcept
 {
-	const bool is_templated_parameter = is_templated(node);
+	const bool is_templated_parameter = has_flag(node, AstFlag::Definition_IsTemplatedParam);
 
 	DefinitionInfo info = get_definition_info(node);
 
@@ -720,7 +686,7 @@ static bool opcodes_from_parameter(OpcodePool* opcodes, AstNode* node, u8 rank, 
 	return true;
 }
 
-static bool opcodes_from_signature(OpcodePool* opcodes, AstNode* node, bool expects_write_ctx) noexcept
+static bool opcodes_from_signature(OpcodePool* opcodes, AstNode* node, bool expects_write_ctx, u16* out_closed_over_value_count) noexcept
 {
 	SignatureInfo info = get_signature_info(node);
 
@@ -730,9 +696,7 @@ static bool opcodes_from_signature(OpcodePool* opcodes, AstNode* node, bool expe
 	if (is_some(info.ensures))
 		TODO("Implement opcode generation for signature-level `ensures`");
 
-	AstNode* const parameters = info.parameters;
-
-	AstDirectChildIterator it = direct_children_of(parameters);
+	AstDirectChildIterator it = direct_children_of(info.parameters);
 
 	IdentifierId parameter_names[64];
 
@@ -770,7 +734,7 @@ static bool opcodes_from_signature(OpcodePool* opcodes, AstNode* node, bool expe
 			value_count += 1;
 	}
 
-	const bool has_templated_return_type = is_templated(info.return_type);
+	const bool has_templated_return_type = has_flag(node, AstFlag::Signature_HasTemplatedReturnType);
 
 	if (!has_templated_return_type)
 	{
@@ -834,13 +798,56 @@ static bool opcodes_from_signature(OpcodePool* opcodes, AstNode* node, bool expe
 			memcpy(attach, parameter_flags + i, sizeof(OpcodeSignaturePerParameterFlags));
 			attach += sizeof(OpcodeSignaturePerParameterFlags);
 		}
+
+		*out_closed_over_value_count = 0;
 	}
 	else
 	{
-		TODO("This is currently broken as we don't deal with signature-level closed-over values at all. They are actually expected in their own u16 field in the attachment.");
+		const Maybe<ClosureListId> closure_list_id = attachment_of<AstSignatureData>(node)->closure_list_id;
+
+		u16 closed_over_value_count;
+
+		if (is_some(closure_list_id))
+		{
+			const ClosureList* const closure_list = closure_list_from_id(opcodes->asts, get(closure_list_id));
+
+			closed_over_value_count = closure_list->count;
+
+			emit_signature_closure_values(opcodes, node, closure_list);
+		}
+		else
+		{
+			closed_over_value_count = 0;
+		}
+
+		*out_closed_over_value_count = closed_over_value_count;
+
+		// Since we use `emit_opcode_raw` and not `emit_opcode`, we need to
+		// manually adjust and check the current state.
+		if (expects_write_ctx)
+		{
+			ASSERT_OR_IGNORE(opcodes->state.write_ctxs_diff != 0);
+
+			opcodes->state.values_diff -= static_cast<s32>(closed_over_value_count) + static_cast<s32>(value_count);
+			opcodes->state.write_ctxs_diff -= 1;
+
+			ASSERT_OR_IGNORE(
+				opcodes->state.values_diff >= 0
+			 && opcodes->state.write_ctxs_diff >= 0
+			);
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(opcodes->state.values_diff != 0);
+
+			opcodes->state.values_diff -= static_cast<s32>(closed_over_value_count) + static_cast<s32>(value_count) - 1;
+
+			ASSERT_OR_IGNORE(opcodes->state.values_diff >= 0);
+		}
 
 		const u32 attach_size = sizeof(OpcodeSignatureFlags)
 		                      + 2 * sizeof(u8)
+							  + sizeof(u16)
 		                      + parameter_count * (sizeof(IdentifierId) + sizeof(OpcodeSignaturePerParameterFlags))
 							  + templated_parameter_count * sizeof(OpcodeId)
 							  + (has_templated_return_type ? sizeof(OpcodeId) : 0);
@@ -861,6 +868,9 @@ static bool opcodes_from_signature(OpcodePool* opcodes, AstNode* node, bool expe
 
 		memcpy(attach, &value_count, sizeof(u8));
 		attach += sizeof(u8);
+
+		memcpy(attach, &closed_over_value_count, sizeof(u16));
+		attach += sizeof(u16);
 
 		// If the signature's return type is templated, reserve space for its
 		// completion callback in the attachment and emit a fixup for it.
@@ -1278,12 +1288,12 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 	{
 		AstNode* const signature = first_child_of(node);
 
-		if (!opcodes_from_signature(opcodes, signature, false))
+		u16 closed_over_value_count;
+
+		if (!opcodes_from_signature(opcodes, signature, false, &closed_over_value_count))
 			return false;
 
 		AstNode* const body = next_sibling_of(signature);
-
-		const u16 closed_over_value_count = emit_func_closure_values(opcodes, node);
 
 		Opcode* const body_fixup_dst = opcodes->codes.end() + 1;
 
@@ -1299,7 +1309,9 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 	case AstTag::Signature:
 	{
-		return opcodes_from_signature(opcodes, node, expects_write_ctx);
+		u16 unused_closed_over_value_count;
+
+		return opcodes_from_signature(opcodes, node, expects_write_ctx, &unused_closed_over_value_count);
 	}
 
 	case AstTag::Unreachable:
