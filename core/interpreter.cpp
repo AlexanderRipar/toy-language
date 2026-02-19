@@ -4768,7 +4768,9 @@ static const Opcode* handle_array_type(Interpreter* interp, const Opcode* code, 
 
 	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	interp->values.pop_by(1);
+
+	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
 static const Opcode* handle_reference_type(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
