@@ -328,8 +328,6 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	case Opcode::SetWriteCtx:
 	case Opcode::ScopeAllocTyped:
 	case Opcode::FileGlobalAllocTyped:
-	case Opcode::CompleteParamTypedNoDefault:
-	case Opcode::CompleteParamTypedWithDefault:
 	{
 		ASSERT_OR_IGNORE(!expects_write_ctx);
 
@@ -361,10 +359,20 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	case Opcode::ScopeAllocUntyped:
 	case Opcode::FileGlobalAllocUntyped:
 	case Opcode::CompleteParamUntyped:
+	case Opcode::CompleteParamTypedNoDefault:
 	{
 		ASSERT_OR_IGNORE(!expects_write_ctx);
 
 		rst.values_diff = -1;
+
+		return rst;
+	}
+
+	case Opcode::CompleteParamTypedWithDefault:
+	{
+		ASSERT_OR_IGNORE(!expects_write_ctx);
+
+		rst.values_diff = -2;
 
 		return rst;
 	}
