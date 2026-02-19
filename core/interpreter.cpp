@@ -3085,7 +3085,9 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 	{
 		const MutRange<byte> bytes = rst.bytes.mut_subrange(element_metrics.stride * i, element_metrics.size);
 
-		if (convert_into_assume_convertible(interp, code, element_values[i], CTValue{ bytes, element_metrics.align, true, element_type }) == nullptr)
+		if (type_is_equal(interp->types, element_type, element_values[i].type))
+			range::mem_copy(bytes, element_values[i].bytes.immut());
+		else if (convert_into_assume_convertible(interp, code, element_values[i], CTValue{ bytes, element_metrics.align, true, element_type }) == nullptr)
 			return nullptr;
 	}
 
