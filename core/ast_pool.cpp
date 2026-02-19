@@ -470,7 +470,7 @@ AstNode* next(AstDirectChildIterator* iterator) noexcept
 	AstNode* const result = iterator->curr;
 
 	iterator->curr = has_next_sibling(result) ? next_sibling_of(result) : nullptr;
-	
+
 	return result;
 }
 

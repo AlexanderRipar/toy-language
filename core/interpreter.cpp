@@ -257,7 +257,7 @@ static CTValue alloc_temporary_value(Interpreter* interp, CTValue value) noexcep
 	CTValue temporary_value = alloc_temporary_value_uninit(interp, value.bytes.count(), value.align, value.type);
 
 	range::mem_copy(temporary_value.bytes, value.bytes.immut());
-	
+
 	return temporary_value;
 }
 
@@ -466,7 +466,7 @@ static bool seen_set_next_unseen(SeenSet seen, u16 begin, u16* out_index) noexce
 
 		return true;
 	}
-	
+
 	return false;
 }
 
@@ -677,9 +677,9 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 				continue;
 
 			MemberInfo member;
-			
+
 			OpcodeId unused_initializer;
-			
+
 			if (!type_member_info_by_rank(interp->types, dst.type, static_cast<u16>(i), &member, &unused_initializer))
 				ASSERT_UNREACHABLE;
 
@@ -948,7 +948,7 @@ static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId typ
 			const bool lhs_is_negative = (lhs[i] & 0x80) != 0;
 
 			const bool rhs_is_negative = (rhs[i] & 0x80) != 0;
-			
+
 			if (lhs_is_negative && rhs_is_negative)
 				negate_comparison = true;
 			else if (lhs_is_negative)
@@ -1072,9 +1072,9 @@ static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId typ
 		while (has_next(&it))
 		{
 			MemberInfo member;
-			
+
 			OpcodeId unused_initializer;
-			
+
 			if (!next(&it, &member, &unused_initializer))
 				TODO("Figure out what to do when comparing incomplete types and if it can even reasonably happen");
 
@@ -1903,7 +1903,7 @@ static const Opcode* handle_load_global(Interpreter* interp, const Opcode* code,
 	code = code_attach(code, &rank);
 
 	ForeverCTValue global_value;
-	
+
 	OpcodeId global_code;
 
 	const GlobalFileValueState state = file_value_get(interp->globals, index, rank, &global_value, &global_code);
@@ -2289,7 +2289,7 @@ static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* cod
 		code = code_attach(code, &name);
 
 		OpcodeSignaturePerParameterFlags parameter_flags;
-		
+
 		code = code_attach(code, &parameter_flags);
 
 		if (parameter_flags.is_templated)
@@ -2366,7 +2366,7 @@ static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* cod
 			init.offset = 0;
 
 			if (!type_add_composite_member(interp->types, parameter_list_type, init))
-				ASSERT_UNREACHABLE;	
+				ASSERT_UNREACHABLE;
 		}
 	}
 
@@ -3138,7 +3138,7 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 	interp->values.pop_by(total_element_count + index_count);
 
 	u16 unseen_index;
-	
+
 	while (seen_set_next_unseen(seen, leading_element_count, &unseen_index))
 	{
 		TODO("Implement array literals with default value");
@@ -3350,9 +3350,9 @@ static const Opcode* handle_composite_postinit(Interpreter* interp, const Opcode
 			ASSERT_UNREACHABLE;
 
 		MemberInfo member_info;
-		
+
 		OpcodeId unused_initializer;
-		
+
 		if (!next(&it, &member_info, &unused_initializer))
 			TODO("Figure out what to do when post-initializing incomplete types and if it can even reasonably happen");
 
@@ -3874,7 +3874,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 	code = code_attach(code, &kind);
 
 	CTValue* const lhs = interp->values.end() - 2;
-	
+
 	CTValue* const rhs = lhs + 1;
 
 	const Maybe<TypeId> unified_type = unify(interp, code, lhs, rhs);
@@ -4315,7 +4315,7 @@ static const Opcode* handle_binary_bitwise_op(Interpreter* interp, const Opcode*
 			memcpy(&rhs_value, rhs->bytes.begin(), size);
 
 			u64 result;
-			
+
 			if (kind == OpcodeBinaryBitwiseOpKind::And)
 				result = lhs_value & rhs_value;
 			else if (kind == OpcodeBinaryBitwiseOpKind::Or)
@@ -4377,7 +4377,7 @@ static const Opcode* handle_binary_bitwise_op(Interpreter* interp, const Opcode*
 		const bool rhs_value = *value_as<bool>(rhs);
 
 		bool result;
-		
+
 		if (kind == OpcodeBinaryBitwiseOpKind::And)
 			result = lhs_value && rhs_value;
 		else if (kind == OpcodeBinaryBitwiseOpKind::Or)
@@ -5315,7 +5315,7 @@ static void init_builtin_infos(Interpreter* interp) noexcept
 	const TypeId slice_of_u8_type = type_create_reference(interp->types, TypeTag::Slice, slice_of_u8_attach);
 
 
-	
+
 	const OpcodeId integer_body = opcode_id_from_builtin(interp->opcodes, Builtin::Integer);
 
 	const TypeId integer_signature = make_func_type(interp->types, type_type,
@@ -5525,7 +5525,7 @@ Interpreter* create_interpreter(HandlePool* handles, AstPool* asts, TypePool* ty
 {
 	static constexpr u32 SCOPES_RESERVE_SIZE = sizeof(Scope) << 18;
 	static constexpr u32 SCOPES_COMMIT_INCREMENT_COUNT = 2048;
-	
+
 	static constexpr u32 SCOPE_MEMBERS_RESERVE_SIZE = sizeof(ScopeMember) << 18;
 	static constexpr u32 SCOPE_MEMBERS_COMMIT_INCREMENT_COUNT = 8192 / sizeof(ScopeMember);
 
@@ -5714,9 +5714,9 @@ bool evaluate_all_file_definitions(Interpreter* interp, TypeId file_type) noexce
 	while (has_next(&it))
 	{
 		MemberInfo unused_member_info;
-		
+
 		OpcodeId member_initializer;
-		
+
 		if (next(&it, &unused_member_info, &member_initializer))
 			continue;
 

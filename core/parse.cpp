@@ -297,7 +297,7 @@ struct Lexeme
 		struct
 		{
 			ForeverValueId value_id;
-			
+
 			TypeId type_id;
 		} string;
 	};
@@ -2912,7 +2912,7 @@ static bool parse_file(Parser* parser) noexcept
 	};
 
 	push_node(parser->builder, first_child_token, SourceId{ parser->lexer.source_id_base }, AstFlag::EMPTY, AstFileData{ member_count });
-	
+
 	return !parser->lexer.has_errors;
 }
 

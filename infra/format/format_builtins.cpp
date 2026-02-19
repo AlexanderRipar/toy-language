@@ -99,7 +99,7 @@ static u64 print_insert_format_int(PrintState* state, const void* raw_attach, Fo
 			value = 1 + ~value;
 
 			buf[0] = '-';
-			
+
 			buf_used = 1;
 		}
 
@@ -180,7 +180,7 @@ static u64 print_insert_format_int(PrintState* state, const void* raw_attach, Fo
 		while (true)
 		{
 			const u8 nybble = static_cast<u8>(value & 0xF);
-	
+
 			if (nybble >= 10)
 				buf[i] = alpha_base + nybble;
 			else

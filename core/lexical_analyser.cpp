@@ -106,7 +106,7 @@ struct ScopeMapInfo
 struct LexicalAnalyser
 {
 	ReservedHeap<MIN_SCOPE_MAP_SIZE_LOG2, MAX_SCOPE_MAP_SIZE_LOG2> scope_pool;
-	
+
 	s32 scopes_top;
 
 	ScopeMap* scopes[MAX_AST_DEPTH];

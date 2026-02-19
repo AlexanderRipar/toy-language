@@ -598,7 +598,7 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 			code = code_attach(code, &parameter_flags);
 
 			const Range<char8> parameter_name_str = identifier_name_from_id(identifiers, parameter_name);
-	
+
 			diag::buf_printf(ctx, "\n     -        %2u: mut=%s eval=%s type=%s default=%s name=IdentifierId<%u> (%.*s) ",
 				i,
 				parameter_flags.is_mut ? "true" : "false",
@@ -658,7 +658,7 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 			code = code_attach(code, &parameter_flags);
 
 			const Range<char8> parameter_name_str = identifier_name_from_id(identifiers, parameter_name);
-	
+
 			diag::buf_printf(ctx, "\n     -        %2u: mut=%s eval=%s type=%s default=%s name=IdentifierId<%u> (%.*s) ",
 				i,
 				parameter_flags.is_mut ? "true" : "false",

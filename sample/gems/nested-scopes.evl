@@ -10,7 +10,7 @@ let f = /* (2) -> (1) unordered scope*/ func(T: Type) -> Type =>
 	{
 		return [n]T
 	}
-	
+
 	return g(T)
 }
 

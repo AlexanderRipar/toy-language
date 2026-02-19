@@ -299,7 +299,7 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 
 		rst.values_diff = -1;
 		rst.write_ctxs_diff = 1;
-		
+
 		return rst;
 	}
 
@@ -440,7 +440,7 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 			rst.values_diff = -1;
 			rst.write_ctxs_diff = -1;
 		}
-		
+
 		return rst;
 	}
 
@@ -1269,14 +1269,14 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 			emit_fixup_for_loop_finally(opcodes, opcodes->codes.end() + 1 + 2 * sizeof(OpcodeId), get(info.finally), expects_write_ctx);
 
 			emit_opcode(opcodes, Opcode::LoopFinally, expects_write_ctx, node, condition_id, OpcodeId::INVALID, OpcodeId::INVALID);
-			
+
 			if (is_some(info.where))
 				emit_opcode(opcodes, Opcode::ScopeEndPreserveTop, false, get(info.where));
 		}
 		else
 		{
 			emit_opcode(opcodes, Opcode::Loop, false, node, condition_id, OpcodeId::INVALID);
-			
+
 			if (is_some(info.where))
 				emit_opcode(opcodes, Opcode::ScopeEnd, false, get(info.where));
 		}
@@ -2400,7 +2400,7 @@ SourceId source_id_of_opcode(OpcodePool* opcodes, const Opcode* code) noexcept
 		}
 		else
 		{
-			return curr->source;	
+			return curr->source;
 		}
 	}
 

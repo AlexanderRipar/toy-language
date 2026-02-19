@@ -92,7 +92,7 @@ struct alignas(8) ParameterListOrUserMemberData
 
 		OpcodeId parameter_completion_id;
 	};
-	
+
 	s64 offset;
 };
 
@@ -669,7 +669,7 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 		ASSERT_OR_IGNORE(from_attach->disposition == TypeDisposition::Initializer && to_attach->disposition == TypeDisposition::User);
 
 		const u32 required_seen_qwords = to_attach->member_used / 64 + 63;
-	
+
 		u64* seen_member_bits = static_cast<u64*>(types->scratch.reserve(required_seen_qwords));
 
 		memset(seen_member_bits, 0, required_seen_qwords * sizeof(u64));
@@ -775,7 +775,7 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
-		break; // Fallthrough to unreachable. 
+		break; // Fallthrough to unreachable.
 	}
 
 	ASSERT_UNREACHABLE;
@@ -893,7 +893,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 	if (static_cast<TypeTag>(a->tag_bits) <= TypeTag::Float)
 		return TypeEq::Unequal;
 
-	// Types from different sources can definitionally never be equal. 
+	// Types from different sources can definitionally never be equal.
 	if (a->distinct_source_id != b->distinct_source_id)
 		return TypeEq::Unequal;
 
@@ -935,11 +935,11 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 		for (u16 rank = 0; rank != a_attach->member_used; ++rank)
 		{
 			void* const a_member = member_at(&a_members, rank);
-			
+
 			void* const b_member = member_at(&b_members, rank);
 
 			const TypeIdAndFlags a_type_and_flags = *static_cast<const TypeIdAndFlags*>(a_member);
-			
+
 			const TypeIdAndFlags b_type_and_flags = *static_cast<const TypeIdAndFlags*>(b_member);
 
 			if (a_type_and_flags.is_pending != b_type_and_flags.is_pending)
@@ -950,7 +950,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 			 || a_type_and_flags.is_eval != b_type_and_flags.is_eval
 			) {
 				eq_state_pop(seen);
-			
+
 				return TypeEq::Unequal;
 			}
 
@@ -963,7 +963,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 				if (a_typed_member->offset != b_typed_member->offset)
 				{
 					eq_state_pop(seen);
-				
+
 					return TypeEq::Unequal;
 				}
 			}
@@ -976,7 +976,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 				if (a_typed_member->value_id != b_typed_member->value_id)
 				{
 					eq_state_pop(seen);
-				
+
 					return TypeEq::Unequal;
 				}
 			}
@@ -992,7 +992,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 				 || a_typed_member->default_id != b_typed_member->default_id
 				) {
 					eq_state_pop(seen);
-				
+
 					return TypeEq::Unequal;
 				}
 			}
@@ -1029,7 +1029,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 	case TypeTag::Ptr:
 	{
 		const ReferenceType* const a_attach = reinterpret_cast<ReferenceType*>(a->attach);
-		
+
 		const ReferenceType* const b_attach = reinterpret_cast<ReferenceType*>(b->attach);
 
 		if (a_attach->is_multi != b_attach->is_multi || a_attach->is_mut != b_attach->is_mut || a_attach->is_opt != b_attach->is_opt)
@@ -1059,7 +1059,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 	case TypeTag::ArrayLiteral:
 	{
 		const ArrayType* const a_attach = reinterpret_cast<ArrayType*>(a->attach);
-		
+
 		const ArrayType* const b_attach = reinterpret_cast<ArrayType*>(b->attach);
 
 		if (a_attach->element_count != b_attach->element_count)
@@ -1688,10 +1688,10 @@ bool type_is_equal(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 	eq_state_init(&seen);
 
 	const TypeEq result = type_is_equal_noloop(types, type_id_a, type_id_b, &seen, false);
-	
+
 	if (result == TypeEq::Unequal)
 		return false;
-	
+
 	if (result == TypeEq::MaybeEqual)
 		eq_state_unify_delayed(types, &seen);
 
@@ -1869,7 +1869,7 @@ TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept
 
 	if (static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION)
 		return TypeTag::Composite;
-		
+
 	return static_cast<TypeTag>(structure->tag_bits);
 }
 

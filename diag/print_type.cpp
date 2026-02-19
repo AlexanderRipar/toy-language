@@ -132,9 +132,9 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 			while (has_next(&it))
 			{
 				MemberInfo member_info;
-				
+
 				OpcodeId member_initializer;
-				
+
 				const bool is_complete = next(&it, &member_info, &member_initializer);
 
 				const IdentifierId member_name = type_member_name_by_rank(types, composite_type_id, member_info.rank);

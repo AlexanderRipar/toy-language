@@ -94,7 +94,7 @@ void diag::print_header(minos::FileHandle out, const char8* format, ...) noexcep
 
 		va_end(args);
 	}
-	
+
 	buf_printf(&ctx, " ###\n");
 
 	buf_flush(&ctx);

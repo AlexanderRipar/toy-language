@@ -291,7 +291,7 @@ u64 print_write_char(PrintState* state, char8 data) noexcept
 		state->sink.write_func(state->sink.attach, Range<char8>{ state->chars, used_chars });
 
 		state->chars[0] = data;
-		
+
 		state->used_chars = 1;
 
 		return 0;

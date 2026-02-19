@@ -735,7 +735,7 @@ bool s64_from_comp_integer(CompIntegerValue value, u8 bits, s64* out) noexcept
 		return false;
 
 	*out = s64_value;
-	
+
 	return true;
 }
 

@@ -264,7 +264,7 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 	while (has_next(&it))
 	{
 		MemberInfo interned_member_info;
-		
+
 		OpcodeId interned_member_initializer;
 
 		TEST_EQUAL(next(&it, &interned_member_info, &interned_member_initializer), true);
@@ -349,7 +349,7 @@ static void composites_with_empty_composite_member_are_equal() noexcept
 
 	member.type_id = y;
 	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
-	
+
 	const bool equal = type_is_equal(dummy.types, a, b);
 
 	TEST_EQUAL(equal, true);
@@ -636,7 +636,7 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 	member.type_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, false });
 	TEST_EQUAL(type_add_composite_member(dummy.types, a1, member), true);
 	TEST_EQUAL(type_add_composite_member(dummy.types, b1, member), true);
-	
+
 	member.type_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 64, false });
 	TEST_EQUAL(type_add_composite_member(dummy.types, a2, member), true);
 	TEST_EQUAL(type_add_composite_member(dummy.types, b2, member), true);
@@ -721,7 +721,7 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 	member.type_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, false });
 	TEST_EQUAL(type_add_composite_member(dummy.types, a1, member), true);
 	TEST_EQUAL(type_add_composite_member(dummy.types, b1, member), true);
-	
+
 	member.type_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 64, false });
 	TEST_EQUAL(type_add_composite_member(dummy.types, a2, member), true);
 	TEST_EQUAL(type_add_composite_member(dummy.types, b2, member), true);

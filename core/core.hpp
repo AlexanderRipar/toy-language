@@ -77,7 +77,7 @@ union alignas(4) NameBinding
 		u16 is_scoped_ : 1;
 
 		u16 unused_ : 14;
-		
+
 		u16 rank_in_closure;
 	} closed;
 };
@@ -1431,7 +1431,7 @@ bool has_children(const AstNode* node) noexcept;
 bool has_next_sibling(const AstNode* node) noexcept;
 
 // Checks whether the given `flag` is set in `node`s `flags` field.
-// If it does, returns `true`, otherwise returns `false`. 
+// If it does, returns `true`, otherwise returns `false`.
 bool has_flag(const AstNode* node, AstFlag flag) noexcept;
 
 bool is_descendant_of(const AstNode* parent, const AstNode* child) noexcept;
@@ -1453,7 +1453,7 @@ AstNode* next_sibling_of(AstNode* node) noexcept;
 AstNode* first_child_of(AstNode* node) noexcept;
 
 // Retrieves a pointer to `node`'s attachment of type `T`, where `T` must be
-// the `Ast*Data` struct corresponding to `node`'s `tag`. 
+// the `Ast*Data` struct corresponding to `node`'s `tag`.
 template<typename T>
 inline T* attachment_of(AstNode* node) noexcept
 {
@@ -1919,7 +1919,7 @@ bool resolve_names(LexicalAnalyser* lex, AstNode* root, GlobalFileIndex file_ind
 // type.
 struct TypePool;
 
-// Id used to refer to a type in a `TypePool`. 
+// Id used to refer to a type in a `TypePool`.
 enum class TypeId : u32
 {
 	// Value reserved to indicate a missing type, e.g. in case it has not been
@@ -2046,7 +2046,7 @@ enum class TypeRelation : u8
 	Equal,
 	FirstConvertsToSecond,
 	SecondConvertsToFirst,
-	Unrelated, 
+	Unrelated,
 };
 
 // Allocation metrics returned by `type_metrics_by_id`, describing the size,
@@ -2141,7 +2141,7 @@ struct ReferenceType
 	bool is_multi;
 
 	// Whether the referenced object(s) can be mutated through this reference.
-	// `false` for `TailArray`. 
+	// `false` for `TailArray`.
 	bool is_mut;
 
 	// Explicit padding to allow consistent hashing without incurring undefined
@@ -2363,7 +2363,7 @@ TypeDisposition type_disposition_from_id(TypePool* types, TypeId type_id) noexce
 // Checks whether `type_metrics_from_id` may be called on `type_id`.
 // This returns false iff `type_id` refers to a composite type that has a
 // `disposition` of `TypeDisposition::User` and has not yet had
-// `type_seal_composite` called on it. 
+// `type_seal_composite` called on it.
 bool type_has_metrics(TypePool* types, TypeId type_id) noexcept;
 
 // Retrieves the `size`, `stride` and `align` of the type referenced by
