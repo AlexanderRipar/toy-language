@@ -37,6 +37,7 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 
 	case Opcode::SetWriteCtx:
 	case Opcode::ScopeEnd:
+	case Opcode::ScopeEndPreserveTop:
 	case Opcode::FileGlobalAllocTyped:
 	case Opcode::PopClosure:
 	case Opcode::ExecArgs:
@@ -433,6 +434,7 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 	case Opcode::SetWriteCtx:
 	case Opcode::ScopeEnd:
+	case Opcode::ScopeEndPreserveTop:
 	case Opcode::FileGlobalAllocTyped:
 	case Opcode::PopClosure:
 	case Opcode::ExecArgs:
