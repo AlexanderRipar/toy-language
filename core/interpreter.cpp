@@ -4743,9 +4743,9 @@ static const Opcode* handle_array_type(Interpreter* interp, const Opcode* code, 
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 2);
 
-	CTValue* const element_count_value = interp->values.end() - 1;
+	CTValue* const element_type_value = interp->values.end() - 1;
 
-	CTValue* const element_type_value = element_count_value - 1;
+	CTValue* const element_count_value = element_type_value - 1;
 
 	u64 element_count;
 
