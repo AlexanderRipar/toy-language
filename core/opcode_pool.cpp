@@ -1159,7 +1159,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 			if (child->tag == AstTag::Definition)
 			{
 				if (!has_next_sibling(child))
-					TODO("Think about what to do here");
+					TODO("Think about what to do in case of a trailing definition in a block. Is it Void? Or Definition? Or coercible to both? Probably the first");
 
 				opcodes_from_scope_definition(opcodes, child);
 
