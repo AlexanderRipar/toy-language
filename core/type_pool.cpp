@@ -1553,7 +1553,7 @@ void type_set_templated_parameter_list_member_info(TypePool* types, TypeId type_
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
 
-	ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::File);
+	ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::ParameterList);
 
 	ASSERT_OR_IGNORE(rank < composite->member_used);
 
