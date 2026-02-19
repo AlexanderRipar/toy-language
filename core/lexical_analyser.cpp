@@ -12,6 +12,14 @@ static constexpr u32 MAX_SCOPE_MAP_SIZE_LOG2 = 16;
 
 static constexpr u16 MAX_SCOPE_ENTRY_COUNT = static_cast<u16>(1 << 15);
 
+enum class ScopeMapKind : u8
+{
+	Local,
+	Global,
+	Closure,
+	Signature,
+};
+
 struct ScopeEntry
 {
 	u16 rank;
@@ -29,7 +37,7 @@ struct ScopeMap
 
 	u16 used;
 
-	bool is_global;
+	ScopeMapKind kind;
 
 	bool has_closure;
 
@@ -97,7 +105,7 @@ static u32 scope_map_size(u32 capacity) noexcept
 	return sizeof(ScopeMap) + occupied_bits_bytes + capacity * (sizeof(u32) + sizeof(ScopeEntry));
 }
 
-static ScopeMap* scope_map_alloc_sized(LexicalAnalyser* lex, bool is_global, u32 capacity) noexcept
+static ScopeMap* scope_map_alloc_sized(LexicalAnalyser* lex, ScopeMapKind kind, u32 capacity) noexcept
 {
 	ASSERT_OR_IGNORE(is_pow2(capacity));
 
@@ -106,16 +114,16 @@ static ScopeMap* scope_map_alloc_sized(LexicalAnalyser* lex, bool is_global, u32
 	ScopeMap* const scope = reinterpret_cast<ScopeMap*>(memory.begin());
 	scope->capacity = capacity;
 	scope->used = 0;
-	scope->is_global = is_global;
+	scope->kind = kind;
 	scope->has_closure = false;
 	memset(scope->occupied_bits, 0, sizeof(u64) * ((capacity + 63) / 64));
 
 	return scope;
 }
 
-static ScopeMap* scope_map_alloc(LexicalAnalyser* lex, bool is_global) noexcept
+static ScopeMap* scope_map_alloc(LexicalAnalyser* lex, ScopeMapKind kind) noexcept
 {
-	return scope_map_alloc_sized(lex, is_global, 8);
+	return scope_map_alloc_sized(lex, kind, 8);
 }
 
 static void scope_map_dealloc(LexicalAnalyser* lex, ScopeMap* scope) noexcept
@@ -189,7 +197,7 @@ static ScopeMap* scope_map_grow(LexicalAnalyser* lex, ScopeMap* old_scope) noexc
 {
 	const u32 new_capacity = old_scope->capacity * 2;
 
-	ScopeMap* const new_scope = scope_map_alloc_sized(lex, old_scope->is_global, new_capacity);
+	ScopeMap* const new_scope = scope_map_alloc_sized(lex, old_scope->kind, new_capacity);
 
 	const ScopeMapInfo old_info = scope_map_info(old_scope);
 
@@ -462,7 +470,7 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 
 			if (scope_map_get(scope, name, &scope_entry))
 			{
-				if (scope->is_global)
+				if (scope->kind == ScopeMapKind::Global)
 				{
 					// Global takes precedence over closed-over variables, as
 					// globals are never closed over.
@@ -528,7 +536,7 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 		// closed-over variables from the surrounding scope. To keep track of
 		// these, we create and associate a closure `ScopeMap` with the current
 		// scope.
-		ScopeMap* const new_closure = scope_map_alloc(lex, false);
+		ScopeMap* const new_closure = scope_map_alloc(lex, ScopeMapKind::Closure);
 		set_closure(lex, new_closure);
 
 		resolve_names_rec(lex, body, true);
@@ -569,9 +577,7 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop) 
 			// Push a new scope, later popping it if `do_pop` is `true` and
 			// leaving it on the stack to be popped externally otherwise.
 
-			ASSERT_OR_IGNORE(static_cast<u32>(lex->scopes_top + 1) < array_count(lex->scopes));
-
-			ScopeMap* const scope = scope_map_alloc(lex, false);
+			ScopeMap* const scope = scope_map_alloc(lex, ScopeMapKind::Local);
 
 			push_scope(lex, scope);
 
@@ -598,7 +604,7 @@ static void resolve_names_root(LexicalAnalyser* lex, AstNode* root, GlobalFileIn
 {
 	lex->active_file_index = file_index;
 
-	ScopeMap* scope = scope_map_alloc(lex, true);
+	ScopeMap* scope = scope_map_alloc(lex, ScopeMapKind::Global);
 
 	u16 rank = 0;
 
