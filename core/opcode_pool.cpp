@@ -1979,9 +1979,9 @@ static bool complete_fixup(OpcodePool* opcodes, Fixup fixup) noexcept
 			);
 		}
 
-		if (!fixup.template_parameter_has_type)
+		if (!fixup.template_parameter_has_value)
 			emit_opcode(opcodes, Opcode::CompleteParamTypedNoDefault, false, node, fixup.template_parameter_rank);
-		else if (!fixup.template_parameter_has_value)
+		else if (!fixup.template_parameter_has_type)
 			emit_opcode(opcodes, Opcode::CompleteParamUntyped, false, node, fixup.template_parameter_rank);
 		else
 			emit_opcode(opcodes, Opcode::CompleteParamTypedWithDefault, false, node, fixup.template_parameter_rank);
