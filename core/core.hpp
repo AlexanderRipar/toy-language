@@ -809,39 +809,41 @@ enum class AstFlag : u8
 {
 	EMPTY                = 0,
 
-	Definition_IsPub            = 0x01,
-	Definition_IsMut            = 0x02,
-	Definition_HasType          = 0x04,
-	Definition_IsEval           = 0x08,
+	Definition_IsPub                 = 0x01,
+	Definition_IsMut                 = 0x02,
+	Definition_HasType               = 0x04,
+	Definition_IsEval                = 0x08,
+	Definition_IsTemplatedParam      = 0x10,
 
-	If_HasWhere                 = 0x01,
-	If_HasElse                  = 0x02,
+	If_HasWhere                      = 0x01,
+	If_HasElse                       = 0x02,
 
-	For_HasWhere                = 0x01,
-	For_HasCondition            = 0x02,
-	For_HasStep                 = 0x04,
-	For_HasFinally              = 0x08,
+	For_HasWhere                     = 0x01,
+	For_HasCondition                 = 0x02,
+	For_HasStep                      = 0x04,
+	For_HasFinally                   = 0x08,
 
-	ForEach_HasWhere            = 0x01,
-	ForEach_HasIndex            = 0x02,
-	ForEach_HasFinally          = 0x04,
+	ForEach_HasWhere                 = 0x01,
+	ForEach_HasIndex                 = 0x02,
+	ForEach_HasFinally               = 0x04,
 
-	Switch_HasWhere             = 0x20,
+	Switch_HasWhere                  = 0x20,
 
-	Signature_HasExpects        = 0x01,
-	Signature_HasEnsures        = 0x02,
-	Signature_IsProc            = 0x04,
+	Signature_HasExpects             = 0x01,
+	Signature_HasEnsures             = 0x02,
+	Signature_IsProc                 = 0x04,
+	Signature_HasTemplatedReturnType = 0x08,
 
-	Trait_HasExpects            = 0x01,
+	Trait_HasExpects                 = 0x01,
 
-	Impl_HasExpects             = 0x01,
+	Impl_HasExpects                  = 0x01,
 
-	Catch_HasDefinition         = 0x01,
+	Catch_HasDefinition              = 0x01,
 
-	OpSliceOf_HasBegin          = 0x01,
-	OpSliceOf_HasEnd            = 0x02,
+	OpSliceOf_HasBegin               = 0x01,
+	OpSliceOf_HasEnd                 = 0x02,
 
-	Type_IsMut                  = 0x02,
+	Type_IsMut                       = 0x02,
 };
 
 // Id used to refer to an `AstNode` in the `AstPool`.
