@@ -1,0 +1,9 @@
+let g = func() -> u32 => {
+	let x = 5
+
+	let rh = (func(T: Type, es: [x]T) -> T => es[0])(u32, .[1, 2])
+
+	rh
+}
+
+let x = g()

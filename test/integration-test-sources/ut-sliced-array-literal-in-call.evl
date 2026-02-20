@@ -1,0 +1,3 @@
+let f = func(ts: []u32) -> u32 => ts[0]
+
+let rf = f(.[0x4C, 0x18][..])
