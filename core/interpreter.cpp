@@ -4784,6 +4784,8 @@ static const Opcode* handle_reference_type(Interpreter* interp, const Opcode* co
 
 	CTValue* const referenced_type_value = interp->values.end() - 1;
 
+	ASSERT_OR_IGNORE(type_tag_from_id(interp->types, referenced_type_value->type) == TypeTag::Type);
+
 	const TypeId referenced_type = *value_as<TypeId>(referenced_type_value);
 
 	ReferenceType attach{};
