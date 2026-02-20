@@ -2417,9 +2417,11 @@ static const Opcode* handle_bind_body(Interpreter* interp, const Opcode* code, C
 
 	ASSERT_OR_IGNORE(type_tag_from_id(interp->types, signature_type) == TypeTag::Func);
 
+	const SignatureType2* const signature = type_attachment_from_id<SignatureType2>(interp->types, signature_type);
+
 	Callable callable{};
 	callable.body_id = body_id;
-	callable.closure_id = none<ClosureId>();
+	callable.closure_id = signature->closure_id;
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&callable);
 
