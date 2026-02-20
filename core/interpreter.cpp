@@ -2488,6 +2488,9 @@ static const Opcode* handle_prepare_args(Interpreter* interp, const Opcode* code
 
 	SignatureType2 signature = *type_attachment_from_id<SignatureType2>(interp->types, top_type);
 
+	if (is_some(signature.closure_id))
+		interp->active_closures.append(get(signature.closure_id));
+
 	OpcodeId* const ordered_callbacks = interp->argument_callbacks.reserve(signature.parameter_count);
 
 	u64 templated_mask = 0;
@@ -2759,9 +2762,6 @@ static const Opcode* handle_call(Interpreter* interp, const Opcode* code, CTValu
 	// the caller's return type.
 	if (write_ctx != nullptr)
 		interp->write_ctxs.append(*write_ctx);
-
-	if (is_some(callable.closure_id))
-		interp->active_closures.append(get(callable.closure_id));
 
 	interp->call_activation_indices.append(interp->activations.used());
 
