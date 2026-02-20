@@ -56,7 +56,7 @@ static GlobalFile* global_file_from_index(GlobalValuePool* globals, GlobalFileIn
 	return globals->files.begin() + static_cast<u16>(file_index);
 }
 
-static ForeverValueId forever_value_id_from_file_and_rank(GlobalValuePool* globals, const GlobalFile* file, u16 rank) noexcept
+static ForeverValueId forever_value_id_from_file_and_rank([[maybe_unused]] GlobalValuePool* globals, const GlobalFile* file, u16 rank) noexcept
 {
 	ASSERT_OR_IGNORE(static_cast<u32>(file->first_value_id) + rank < globals->forever_values.used());
 
