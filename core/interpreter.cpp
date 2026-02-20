@@ -3696,7 +3696,6 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 		if (max_index >= array_type.element_count)
 			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexOutOfBounds);
 
-
 		const TypeId elem_type = get(array_type.element_type);
 
 		const TypeMetrics elem_metrics = type_metrics_from_id(interp->types, elem_type);
@@ -4777,7 +4776,7 @@ static const Opcode* handle_array_type(Interpreter* interp, const Opcode* code, 
 
 static const Opcode* handle_reference_type(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 2);
+	ASSERT_OR_IGNORE(interp->values.used() >= 1);
 
 	OpcodeReferenceTypeFlags flags;
 
@@ -4799,7 +4798,7 @@ static const Opcode* handle_reference_type(Interpreter* interp, const Opcode* co
 
 	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
 static const Opcode* handle_undefined(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
