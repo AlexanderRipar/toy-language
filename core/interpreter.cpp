@@ -2428,37 +2428,6 @@ static const Opcode* handle_bind_body(Interpreter* interp, const Opcode* code, C
 	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(Callable), true, signature_type });
 }
 
-static const Opcode* handle_bind_body_with_closure(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
-{
-	OpcodeId body_id;
-
-	code = code_attach(code, &body_id);
-
-	u16 closed_over_value_count;
-
-	code = code_attach(code, &closed_over_value_count);
-
-	const ClosureId closure_id = create_closure(interp, closed_over_value_count);
-
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
-
-	CTValue* const top = interp->values.end() - 1;
-
-	ASSERT_OR_IGNORE(type_tag_from_id(interp->types, top->type) == TypeTag::Type);
-
-	const TypeId signature_type = *value_as<TypeId>(top);
-
-	ASSERT_OR_IGNORE(type_tag_from_id(interp->types, signature_type) == TypeTag::Func);
-
-	Callable callable{};
-	callable.body_id = body_id;
-	callable.closure_id = some(closure_id);
-
-	const MutRange<byte> bytes = range::from_object_bytes_mut(&callable);
-
-	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(Callable), true, signature_type });
-}
-
 static const Opcode* handle_prepare_args(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(interp->values.used() >= 1);
@@ -5070,7 +5039,6 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 		&handle_signature,                         // Signature
 		&handle_dyn_signature,                     // DynSignature
 		&handle_bind_body,                         // BindBody,
-		&handle_bind_body_with_closure,            // BindBodyWithClosure
 		&handle_prepare_args,                      // PrepareArgs
 		&handle_exec_args,                         // ExecArgs
 		&handle_call,                              // Call
@@ -5135,7 +5103,6 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::Signature)]                     == &handle_signature);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::DynSignature)]                  == &handle_dyn_signature);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::BindBody)]                      == &handle_bind_body);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::BindBodyWithClosure)]           == &handle_bind_body_with_closure);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::PrepareArgs)]                   == &handle_prepare_args);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ExecArgs)]                      == &handle_exec_args);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::Call)]                          == &handle_call);

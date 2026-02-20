@@ -424,7 +424,6 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 
 	case Opcode::LoadMember:
 	case Opcode::BindBody:
-	case Opcode::BindBodyWithClosure:
 	case Opcode::Call:
 	case Opcode::IfElse:
 	case Opcode::AddressOf:
@@ -2429,7 +2428,6 @@ const char8* tag_name(Opcode op) noexcept
 		"Signature",
 		"DynSignature",
 		"BindBody",
-		"BindBodyWithClosure",
 		"PrepareArgs",
 		"ExecArgs",
 		"Call",

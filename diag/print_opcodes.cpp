@@ -174,19 +174,6 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 		return code;
 	}
 
-	case Opcode::BindBodyWithClosure:
-	{
-		OpcodeId body;
-
-		code = code_attach(code, &body);
-
-		const Opcode* const body_code = opcode_from_id(opcodes, body);
-
-		print_opcodes_impl(ctx, identifiers, opcodes, body_code, true);
-
-		return code + sizeof(u16);
-	}
-
 	case Opcode::PrepareArgs:
 	{
 		u8 argument_count;
@@ -689,21 +676,6 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 		code = code_attach(code, &body_id);
 
 		diag::buf_printf(ctx, " body=OpcodeId<%u>", static_cast<u32>(body_id));
-
-		return code;
-	}
-
-	case Opcode::BindBodyWithClosure:
-	{
-		OpcodeId body_id;
-
-		code = code_attach(code, &body_id);
-
-		u16 closed_over_value_count;
-
-		code = code_attach(code, &closed_over_value_count);
-
-		diag::buf_printf(ctx, " body=OpcodeId<%u> closed_value_count=%u", static_cast<u32>(body_id), closed_over_value_count);
 
 		return code;
 	}

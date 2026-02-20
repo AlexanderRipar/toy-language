@@ -2671,7 +2671,6 @@ enum class Opcode : u8
 	Signature,
 	DynSignature,
 	BindBody,
-	BindBodyWithClosure,
 	PrepareArgs,
 	ExecArgs,
 	Call,
