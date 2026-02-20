@@ -1297,10 +1297,7 @@ static bool opcodes_from_expression(OpcodePool* opcodes, AstNode* node, bool exp
 
 		Opcode* const body_fixup_dst = opcodes->codes.end() + 1;
 
-		if (closed_over_value_count != 0)
-			emit_opcode(opcodes, Opcode::BindBodyWithClosure, expects_write_ctx, node, OpcodeId::INVALID, closed_over_value_count);
-		else
-			emit_opcode(opcodes, Opcode::BindBody, expects_write_ctx, node, OpcodeId::INVALID);
+		emit_opcode(opcodes, Opcode::BindBody, expects_write_ctx, node, OpcodeId::INVALID);
 
 		emit_fixup_for_function_body(opcodes, body_fixup_dst, body, closed_over_value_count != 0);
 
