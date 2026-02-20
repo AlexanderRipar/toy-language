@@ -90,7 +90,6 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Initializer of global variable cannot reference its own value.\n",                                                                             // CyclicGlobalInitializerDependency
 		"Reached `unreachable`.\n",                                                                                                                     // UnreachableReached
 		"File does not contain a global definition with the given name.\n",                                                                             // GlobalNameNotDefined
-		"Total size of closed-over values in single closure exceeds supported maximum of 2^32 - 1.\n",                                                  // ClosureTooLarge
 		"Exceeded maximum number of definitions in a single scope.\n",                                                                                  // ScopeTooManyDefinitions
 		"More than one definition with the same name in the same scope.\n",                                                                             // ScopeDuplicateName
 		"Name not defined\n",                                                                                                                           // ScopeNameNotDefined

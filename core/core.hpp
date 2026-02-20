@@ -1769,7 +1769,6 @@ enum class CompileError
 	CyclicGlobalInitializerDependency,
 	UnreachableReached,
 	GlobalNameNotDefined,
-	ClosureTooLarge,
 	ScopeTooManyDefinitions,
 	ScopeDuplicateName,
 	ScopeNameNotDefined,
