@@ -75,196 +75,6 @@ struct OpcodePool
 
 
 
-static byte* emit_opcode_raw(OpcodePool* opcodes, Opcode code, bool expects_write_ctx, AstNode* node, u32 attach_size) noexcept
-{
-	const OpcodeId opcode_id = static_cast<OpcodeId>(opcodes->codes.used());
-
-	const SourceId source_id = node == nullptr
-		? SourceId::INVALID
-		: source_id_of_ast_node(opcodes->asts, node);
-
-	opcodes->sources.append(SourceMapping{ opcode_id, source_id });
-
-	Opcode* const dst = opcodes->codes.reserve(static_cast<u32>(1 + attach_size));
-
-	dst[0] = static_cast<Opcode>(static_cast<u8>(code) | (static_cast<u8>(expects_write_ctx) << 7));
-
-	return reinterpret_cast<byte*>(dst + 1);
-}
-
-static void put_opcode_attachs([[maybe_unused]] byte* dst) noexcept
-{
-	// Base-case is a no-op
-}
-
-template<typename Attach, typename... Attachs>
-static void put_opcode_attachs(byte* dst, Attach attach, Attachs... attachs) noexcept
-{
-	memcpy(dst, &attach, sizeof(Attach));
-
-	put_opcode_attachs(dst + sizeof(Attach), attachs...);
-}
-
-template<typename ...Attachs>
-static void emit_opcode(OpcodePool* opcodes, Opcode code, bool expects_write_ctx, AstNode* node, Attachs... attachs) noexcept
-{
-	constexpr u32 attach_size = (0 + ... + sizeof(Attachs));
-
-	byte* const attach_dst = emit_opcode_raw(opcodes, code, expects_write_ctx, node, attach_size);
-
-	put_opcode_attachs(attach_dst, attachs...);
-
-	const OpcodeEffects effects = opcode_effects(reinterpret_cast<Opcode*>(attach_dst - 1));
-
-	opcodes->state.values_diff += effects.values_diff;
-	opcodes->state.scopes_diff += effects.scopes_diff;
-	opcodes->state.write_ctxs_diff += effects.write_ctxs_diff;
-	opcodes->state.closures_diff += effects.closures_diff;
-
-	ASSERT_OR_IGNORE(
-		opcodes->state.values_diff >= 0
-	 && opcodes->state.scopes_diff >= 0
-	 && opcodes->state.write_ctxs_diff >= 0
-	 && opcodes->state.closures_diff >= 0
-	);
-}
-
-
-
-static void emit_fixup_for_function_body(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node, bool has_closure) noexcept
-{
-	Fixup* const fixup = opcodes->fixups.reserve();
-	fixup->kind = FixupKind::FunctionBody;
-	fixup->allow_return = true;
-	fixup->expects_write_ctx = true;
-	fixup->function_body_has_closure = has_closure;
-	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
-	fixup->node_id = id_from_ast_node(opcodes->asts, node);
-
-	fixup->return_adjust.values_diff = 0;
-	fixup->return_adjust.scopes_diff = 0;
-	fixup->return_adjust.write_ctxs_diff = 0;
-	fixup->return_adjust.closures_diff = has_closure ? 1 : 0;
-}
-
-static void emit_fixup_for_argument(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node) noexcept
-{
-	Fixup* const fixup = opcodes->fixups.reserve();
-	fixup->kind = FixupKind::Argument;
-	fixup->allow_return = false;
-	fixup->expects_write_ctx = true;
-	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
-	fixup->node_id = id_from_ast_node(opcodes->asts, node);
-}
-
-static void emit_fixup_for_template_parameter(OpcodePool* opcodes, AstNode* node, Maybe<AstNode*> second_node, bool has_type, bool has_value, u8 rank) noexcept
-{
-	Maybe<AstNodeId> second_node_id;
-
-	if (is_some(second_node))
-		second_node_id = some(id_from_ast_node(opcodes->asts, get(second_node)));
-	else
-		second_node_id = none<AstNodeId>();
-
-	Fixup* const fixup = opcodes->fixups.reserve();
-	fixup->kind = FixupKind::TemplateParameter;
-	fixup->allow_return = false;
-	fixup->expects_write_ctx = false;
-	fixup->template_parameter_has_type = has_type;
-	fixup->template_parameter_has_value = has_value;
-	fixup->template_parameter_rank = rank;
-	fixup->dst_id = OpcodeId::INVALID;
-	fixup->node_id = id_from_ast_node(opcodes->asts, node);
-	fixup->second_node_id = second_node_id;
-}
-
-static void emit_fixup_for_template_return_type(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node) noexcept
-{
-	Fixup* const fixup = opcodes->fixups.reserve();
-	fixup->kind = FixupKind::TemplateReturnType;
-	fixup->allow_return = false;
-	fixup->expects_write_ctx = true;
-	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
-	fixup->node_id = id_from_ast_node(opcodes->asts, node);
-}
-
-static void emit_fixup_for_value_void(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node) noexcept
-{
-	Fixup* const fixup = opcodes->fixups.reserve();
-	fixup->kind = FixupKind::ValueVoid;
-	fixup->allow_return = false;
-	fixup->expects_write_ctx = true;
-	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
-	fixup->node_id = id_from_ast_node(opcodes->asts, node);
-}
-
-static void emit_fixup_for_if_branch(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node, bool expects_write_ctx, bool expect_void) noexcept
-{
-	Fixup* const fixup = opcodes->fixups.reserve();
-	fixup->kind = FixupKind::IfBranch;
-	fixup->allow_return = opcodes->allow_return;
-	fixup->expects_write_ctx = expects_write_ctx;
-	fixup->if_branch_expect_void = expect_void;
-	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
-	fixup->node_id = id_from_ast_node(opcodes->asts, node);
-}
-
-static void emit_fixup_for_discarded_if_branch(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node) noexcept
-{
-	Fixup* const fixup = opcodes->fixups.reserve();
-	fixup->kind = FixupKind::DiscardedIfBranch;
-	fixup->allow_return = opcodes->allow_return;
-	fixup->expects_write_ctx = false;
-	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
-	fixup->node_id = id_from_ast_node(opcodes->asts, node);
-}
-
-static void emit_fixup_for_loop_body(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node, Maybe<AstNode*> step_node, bool expects_write_ctx, bool expect_valued_breaks) noexcept
-{
-	Maybe<AstNodeId> step_node_id;
-
-	if (is_some(step_node))
-		step_node_id = some(id_from_ast_node(opcodes->asts, get(step_node)));
-	else
-		step_node_id = none<AstNodeId>();
-
-	Fixup* const fixup = opcodes->fixups.reserve();
-	fixup->kind = FixupKind::LoopBody;
-	fixup->allow_return = opcodes->allow_return;
-	fixup->allow_valued_break = expect_valued_breaks;
-	fixup->expects_write_ctx = expects_write_ctx;
-	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
-	fixup->node_id = id_from_ast_node(opcodes->asts, node);
-	fixup->second_node_id = step_node_id;
-}
-
-static void emit_fixup_for_loop_finally(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node, bool expects_write_ctx) noexcept
-{
-	Fixup* const fixup = opcodes->fixups.reserve();
-	fixup->kind = FixupKind::LoopFinally;
-	fixup->allow_return = opcodes->allow_return;
-	fixup->expects_write_ctx = expects_write_ctx;
-	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
-	fixup->node_id = id_from_ast_node(opcodes->asts, node);
-}
-
-
-
-static void emit_signature_closure_values(OpcodePool* opcodes, AstNode* node, const ClosureList* closure_list) noexcept
-{
-	for (u16 i = 0; i != closure_list->count; ++i)
-	{
-		const ClosureListEntry entry = closure_list->entries[i];
-
-		if (entry.source_is_closure)
-			emit_opcode(opcodes, Opcode::LoadClosure, false, node, entry.source_rank);
-		else
-			emit_opcode(opcodes, Opcode::LoadScope, false, node, static_cast<u16>(entry.source_out), entry.source_rank);
-	}
-}
-
-
-
 static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 {
 	const u8 op_bits = static_cast<u8>(*code);
@@ -586,6 +396,196 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	}
 
 	ASSERT_UNREACHABLE;
+}
+
+
+
+static byte* emit_opcode_raw(OpcodePool* opcodes, Opcode code, bool expects_write_ctx, AstNode* node, u32 attach_size) noexcept
+{
+	const OpcodeId opcode_id = static_cast<OpcodeId>(opcodes->codes.used());
+
+	const SourceId source_id = node == nullptr
+		? SourceId::INVALID
+		: source_id_of_ast_node(opcodes->asts, node);
+
+	opcodes->sources.append(SourceMapping{ opcode_id, source_id });
+
+	Opcode* const dst = opcodes->codes.reserve(static_cast<u32>(1 + attach_size));
+
+	dst[0] = static_cast<Opcode>(static_cast<u8>(code) | (static_cast<u8>(expects_write_ctx) << 7));
+
+	return reinterpret_cast<byte*>(dst + 1);
+}
+
+static void put_opcode_attachs([[maybe_unused]] byte* dst) noexcept
+{
+	// Base-case is a no-op
+}
+
+template<typename Attach, typename... Attachs>
+static void put_opcode_attachs(byte* dst, Attach attach, Attachs... attachs) noexcept
+{
+	memcpy(dst, &attach, sizeof(Attach));
+
+	put_opcode_attachs(dst + sizeof(Attach), attachs...);
+}
+
+template<typename ...Attachs>
+static void emit_opcode(OpcodePool* opcodes, Opcode code, bool expects_write_ctx, AstNode* node, Attachs... attachs) noexcept
+{
+	constexpr u32 attach_size = (0 + ... + sizeof(Attachs));
+
+	byte* const attach_dst = emit_opcode_raw(opcodes, code, expects_write_ctx, node, attach_size);
+
+	put_opcode_attachs(attach_dst, attachs...);
+
+	const OpcodeEffects effects = opcode_effects(reinterpret_cast<Opcode*>(attach_dst - 1));
+
+	opcodes->state.values_diff += effects.values_diff;
+	opcodes->state.scopes_diff += effects.scopes_diff;
+	opcodes->state.write_ctxs_diff += effects.write_ctxs_diff;
+	opcodes->state.closures_diff += effects.closures_diff;
+
+	ASSERT_OR_IGNORE(
+		opcodes->state.values_diff >= 0
+	 && opcodes->state.scopes_diff >= 0
+	 && opcodes->state.write_ctxs_diff >= 0
+	 && opcodes->state.closures_diff >= 0
+	);
+}
+
+
+
+static void emit_fixup_for_function_body(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node, bool has_closure) noexcept
+{
+	Fixup* const fixup = opcodes->fixups.reserve();
+	fixup->kind = FixupKind::FunctionBody;
+	fixup->allow_return = true;
+	fixup->expects_write_ctx = true;
+	fixup->function_body_has_closure = has_closure;
+	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
+	fixup->node_id = id_from_ast_node(opcodes->asts, node);
+
+	fixup->return_adjust.values_diff = 0;
+	fixup->return_adjust.scopes_diff = 0;
+	fixup->return_adjust.write_ctxs_diff = 0;
+	fixup->return_adjust.closures_diff = has_closure ? 1 : 0;
+}
+
+static void emit_fixup_for_argument(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node) noexcept
+{
+	Fixup* const fixup = opcodes->fixups.reserve();
+	fixup->kind = FixupKind::Argument;
+	fixup->allow_return = false;
+	fixup->expects_write_ctx = true;
+	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
+	fixup->node_id = id_from_ast_node(opcodes->asts, node);
+}
+
+static void emit_fixup_for_template_parameter(OpcodePool* opcodes, AstNode* node, Maybe<AstNode*> second_node, bool has_type, bool has_value, u8 rank) noexcept
+{
+	Maybe<AstNodeId> second_node_id;
+
+	if (is_some(second_node))
+		second_node_id = some(id_from_ast_node(opcodes->asts, get(second_node)));
+	else
+		second_node_id = none<AstNodeId>();
+
+	Fixup* const fixup = opcodes->fixups.reserve();
+	fixup->kind = FixupKind::TemplateParameter;
+	fixup->allow_return = false;
+	fixup->expects_write_ctx = false;
+	fixup->template_parameter_has_type = has_type;
+	fixup->template_parameter_has_value = has_value;
+	fixup->template_parameter_rank = rank;
+	fixup->dst_id = OpcodeId::INVALID;
+	fixup->node_id = id_from_ast_node(opcodes->asts, node);
+	fixup->second_node_id = second_node_id;
+}
+
+static void emit_fixup_for_template_return_type(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node) noexcept
+{
+	Fixup* const fixup = opcodes->fixups.reserve();
+	fixup->kind = FixupKind::TemplateReturnType;
+	fixup->allow_return = false;
+	fixup->expects_write_ctx = true;
+	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
+	fixup->node_id = id_from_ast_node(opcodes->asts, node);
+}
+
+static void emit_fixup_for_value_void(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node) noexcept
+{
+	Fixup* const fixup = opcodes->fixups.reserve();
+	fixup->kind = FixupKind::ValueVoid;
+	fixup->allow_return = false;
+	fixup->expects_write_ctx = true;
+	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
+	fixup->node_id = id_from_ast_node(opcodes->asts, node);
+}
+
+static void emit_fixup_for_if_branch(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node, bool expects_write_ctx, bool expect_void) noexcept
+{
+	Fixup* const fixup = opcodes->fixups.reserve();
+	fixup->kind = FixupKind::IfBranch;
+	fixup->allow_return = opcodes->allow_return;
+	fixup->expects_write_ctx = expects_write_ctx;
+	fixup->if_branch_expect_void = expect_void;
+	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
+	fixup->node_id = id_from_ast_node(opcodes->asts, node);
+}
+
+static void emit_fixup_for_discarded_if_branch(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node) noexcept
+{
+	Fixup* const fixup = opcodes->fixups.reserve();
+	fixup->kind = FixupKind::DiscardedIfBranch;
+	fixup->allow_return = opcodes->allow_return;
+	fixup->expects_write_ctx = false;
+	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
+	fixup->node_id = id_from_ast_node(opcodes->asts, node);
+}
+
+static void emit_fixup_for_loop_body(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node, Maybe<AstNode*> step_node, bool expects_write_ctx, bool expect_valued_breaks) noexcept
+{
+	Maybe<AstNodeId> step_node_id;
+
+	if (is_some(step_node))
+		step_node_id = some(id_from_ast_node(opcodes->asts, get(step_node)));
+	else
+		step_node_id = none<AstNodeId>();
+
+	Fixup* const fixup = opcodes->fixups.reserve();
+	fixup->kind = FixupKind::LoopBody;
+	fixup->allow_return = opcodes->allow_return;
+	fixup->allow_valued_break = expect_valued_breaks;
+	fixup->expects_write_ctx = expects_write_ctx;
+	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
+	fixup->node_id = id_from_ast_node(opcodes->asts, node);
+	fixup->second_node_id = step_node_id;
+}
+
+static void emit_fixup_for_loop_finally(OpcodePool* opcodes, Opcode* fixup_dst, AstNode* node, bool expects_write_ctx) noexcept
+{
+	Fixup* const fixup = opcodes->fixups.reserve();
+	fixup->kind = FixupKind::LoopFinally;
+	fixup->allow_return = opcodes->allow_return;
+	fixup->expects_write_ctx = expects_write_ctx;
+	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - opcodes->codes.begin());
+	fixup->node_id = id_from_ast_node(opcodes->asts, node);
+}
+
+
+
+static void emit_signature_closure_values(OpcodePool* opcodes, AstNode* node, const ClosureList* closure_list) noexcept
+{
+	for (u16 i = 0; i != closure_list->count; ++i)
+	{
+		const ClosureListEntry entry = closure_list->entries[i];
+
+		if (entry.source_is_closure)
+			emit_opcode(opcodes, Opcode::LoadClosure, false, node, entry.source_rank);
+		else
+			emit_opcode(opcodes, Opcode::LoadScope, false, node, static_cast<u16>(entry.source_out), entry.source_rank);
+	}
 }
 
 
