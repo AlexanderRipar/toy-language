@@ -1,7 +1,10 @@
 #ifndef RESERVED_HEAP_INCLUDE_GUARD
 #define RESERVED_HEAP_INCLUDE_GUARD
 
-#include "../common.hpp"
+#include "../types.hpp"
+#include "../assert.hpp"
+#include "../panic.hpp"
+#include "../math.hpp"
 #include "../minos/minos.hpp"
 
 template<u32 MinSizeLog2, u32 MaxSizeLog2>

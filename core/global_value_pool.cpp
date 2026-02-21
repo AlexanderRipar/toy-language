@@ -1,5 +1,8 @@
 #include "core.hpp"
 
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
+#include "../infra/panic.hpp"
 #include "../infra/container/reserved_vec.hpp"
 
 struct alignas(8) GlobalFile

@@ -1,5 +1,9 @@
 #include "format.hpp"
 
+#include "../types.hpp"
+#include "../assert.hpp"
+#include "../math.hpp"
+
 // Helpers.
 
 static u8 log2_ceil(u64 n) noexcept

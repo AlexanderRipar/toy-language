@@ -1,6 +1,9 @@
 #include "test_helpers.hpp"
-#include "../core/core.hpp"
+
+#include "../infra/types.hpp"
+#include "../infra/panic.hpp"
 #include "../infra/range.hpp"
+#include "../core/core.hpp"
 
 static void run_integration_test(Range<char8> filepath, bool is_std, bool expect_failure) noexcept
 {

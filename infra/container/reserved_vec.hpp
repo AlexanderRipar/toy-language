@@ -1,11 +1,14 @@
 #ifndef RESERVED_VEC_INCLUDE_GUARD
 #define RESERVED_VEC_INCLUDE_GUARD
 
+#include "../types.hpp"
+#include "../assert.hpp"
+#include "../panic.hpp"
+#include "../math.hpp"
+#include "../minos/minos.hpp"
+
 #include <limits>
 #include <cstring>
-
-#include "../common.hpp"
-#include "../minos/minos.hpp"
 
 template<typename T, typename Index = u32>
 struct ReservedVec

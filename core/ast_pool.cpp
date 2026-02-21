@@ -1,9 +1,12 @@
 #include "core.hpp"
 
-#include <cstring>
-
-#include "../infra/common.hpp"
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
+#include "../infra/panic.hpp"
+#include "../infra/math.hpp"
 #include "../infra/container/reserved_vec.hpp"
+
+#include <cstring>
 
 struct AstPool
 {

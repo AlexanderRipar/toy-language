@@ -5,7 +5,6 @@
 #include "host_compiler.hpp"
 
 #include <cstdarg>
-#include <inttypes.h>
 
 NORETURN void panic(const char8* format, ...) noexcept;
 

@@ -2,6 +2,12 @@
 
 #include "minos.hpp"
 
+#include "../types.hpp"
+#include "../assert.hpp"
+#include "../panic.hpp"
+#include "../math.hpp"
+#include "../host_compiler.hpp"
+
 #define NOGDICAPMASKS
 #define NOVIRTUALKEYCODES
 #define NOWINMESSAGES

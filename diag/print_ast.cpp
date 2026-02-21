@@ -1,7 +1,10 @@
 #include "diag.hpp"
 
+#include "../infra/types.hpp"
 #include "../infra/minos/minos.hpp"
 #include "../core/core.hpp"
+
+#include <cinttypes>
 
 static void print_node_header(diag::PrintContext* ctx, IdentifierPool* identifiers, const AstNode* node, s32 depth) noexcept
 {

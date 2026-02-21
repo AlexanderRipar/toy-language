@@ -1,9 +1,10 @@
 #ifndef RANGE_INCLUDE_GUARD
 #define RANGE_INCLUDE_GUARD
 
-#include <cstring>
+#include "types.hpp"
+#include "assert.hpp"
 
-#include "common.hpp"
+#include <cstring>
 
 template<typename T>
 struct Range

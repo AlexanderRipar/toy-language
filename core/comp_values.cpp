@@ -1,6 +1,12 @@
 #include "core.hpp"
 
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
+#include "../infra/panic.hpp"
+#include "../infra/math.hpp"
+
 #include <cmath>
+#include <cinttypes>
 
 #ifdef COMPILER_MSVC
 	#include <intrin.h>

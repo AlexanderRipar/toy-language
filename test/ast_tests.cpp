@@ -1,4 +1,9 @@
 #include "test_helpers.hpp"
+
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
+#include "../infra/panic.hpp"
+#include "../infra/math.hpp"
 #include "../core/core.hpp"
 
 struct DummyTree

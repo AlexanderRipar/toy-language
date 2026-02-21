@@ -1,7 +1,7 @@
 #ifndef INPLACE_SORT_INCLUDE_GUARD
 #define INPLACE_SORT_INCLUDE_GUARD
 
-#include "common.hpp"
+#include "types.hpp"
 #include "range.hpp"
 
 namespace inplace_sort_impl

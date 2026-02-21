@@ -1,10 +1,13 @@
 #ifndef INDEX_MAP_INCLUDE_GUARD
 #define INDEX_MAP_INCLUDE_GUARD
 
-#include <cstring>
-
-#include "../common.hpp"
+#include "../types.hpp"
+#include "../assert.hpp"
+#include "../panic.hpp"
+#include "../math.hpp"
 #include "../minos/minos.hpp"
+
+#include <cstring>
 
 template<typename K, typename V>
 struct IndexMap

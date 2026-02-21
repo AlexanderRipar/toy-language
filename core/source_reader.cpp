@@ -1,12 +1,15 @@
 #include "core.hpp"
 
-#include "../infra/common.hpp"
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
+#include "../infra/panic.hpp"
+#include "../infra/hash.hpp"
 #include "../infra/container/index_map.hpp"
 #include "../infra/minos/minos.hpp"
-#include "../infra/hash.hpp"
 
 #include <cstdlib>
 #include <cstddef>
+#include <cinttypes>
 #include <atomic>
 
 static u32 hash_file_identity(u64 file_id, u32 device_id) noexcept

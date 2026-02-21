@@ -1,7 +1,9 @@
 #ifndef OPT_INCLUDE_GUARD
 #define OPT_INCLUDE_GUARD
 
-#include "common.hpp"
+#include "assert.hpp"
+#include "template_helpers.hpp"
+
 #include <type_traits>
 
 template<typename T>

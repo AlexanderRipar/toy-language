@@ -1,4 +1,7 @@
 #include "test_helpers.hpp"
+
+#include "../infra/types.hpp"
+
 #include "../core/core.hpp"
 
 struct DummyTypePool
@@ -15,7 +18,6 @@ static DummyTypePool create_dummy_types() noexcept
 	TypePool* const types = create_type_pool(alloc);
 
 	return { types, alloc };
-
 }
 
 static void release_dummy_types(DummyTypePool dummy) noexcept

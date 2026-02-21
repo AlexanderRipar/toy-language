@@ -1,11 +1,16 @@
 #include "core.hpp"
 
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
+#include "../infra/panic.hpp"
+#include "../infra/math.hpp"
 #include "../infra/minos/minos.hpp"
 #include "../infra/container/reserved_vec.hpp"
 #include "../diag/diag.hpp"
 
 #include <cstdio>
 #include <cstddef>
+#include <cinttypes>
 
 struct ConfigHeader;
 

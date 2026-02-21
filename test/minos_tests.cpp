@@ -1,4 +1,9 @@
 #include "test_helpers.hpp"
+
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
+#include "../infra/panic.hpp"
+#include "../infra/math.hpp"
 #include "../infra/minos/minos.hpp"
 
 #define MINOS_TEST_BEGIN minos::init(); TEST_BEGIN

@@ -1,5 +1,10 @@
 #include "diag.hpp"
 
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
+#include "../infra/panic.hpp"
+#include "../infra/math.hpp"
+
 #include <cstdio>
 #include <cstdarg>
 

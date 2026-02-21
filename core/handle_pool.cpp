@@ -1,5 +1,10 @@
 #include "core.hpp"
 
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
+#include "../infra/panic.hpp"
+#include "../infra/math.hpp"
+
 struct HandlePool
 {
 	u32 reserve;

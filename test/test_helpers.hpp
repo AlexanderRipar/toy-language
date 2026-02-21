@@ -1,12 +1,12 @@
 #ifndef TEST_HELPERS_INCLUDE_GUARD
 #define TEST_HELPERS_INCLUDE_GUARD
 
+#include "../infra/types.hpp"
+#include "../infra/minos/minos.hpp"
+
 #include <cstring>
 #include <vector>
 #include <cstdio>
-
-#include "../infra/common.hpp"
-#include "../infra/minos/minos.hpp"
 
 struct TestResult
 {

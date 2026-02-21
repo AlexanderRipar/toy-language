@@ -1,14 +1,16 @@
 #include "core.hpp"
 
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
+#include "../infra/math.hpp"
+#include "../infra/hash.hpp"
+#include "../infra/container/reserved_vec.hpp"
+#include "../diag/diag.hpp"
+
 #include <cstdarg>
 #include <cstdlib>
 #include <csetjmp>
 #include <errno.h>
-
-#include "../diag/diag.hpp"
-#include "../infra/common.hpp"
-#include "../infra/container/reserved_vec.hpp"
-#include "../infra/hash.hpp"
 
 static constexpr u32 MAX_STRING_LITERAL_BYTES = 4096;
 

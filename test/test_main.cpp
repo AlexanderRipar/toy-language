@@ -1,9 +1,15 @@
+#include "test_helpers.hpp"
+
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
+#include "../infra/panic.hpp"
+#include "../infra/math.hpp"
+#include "../infra/minos/minos.hpp"
+
 #include <cstdio>
 #include <vector>
 #include <cstdlib>
 #include <inttypes.h>
-
-#include "test_helpers.hpp"
 
 std::vector<TestResult> g_test_times;
 

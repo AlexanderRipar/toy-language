@@ -1,7 +1,7 @@
 #ifndef CORE_INCLUDE_GUARD
 #define CORE_INCLUDE_GUARD
 
-#include "../infra/common.hpp"
+#include "../infra/types.hpp"
 #include "../infra/opt.hpp"
 #include "../infra/minos/minos.hpp"
 

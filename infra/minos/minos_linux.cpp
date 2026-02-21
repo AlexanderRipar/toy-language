@@ -2,6 +2,13 @@
 
 #include "minos.hpp"
 
+#include "../types.hpp"
+#include "../assert.hpp"
+#include "../panic.hpp"
+#include "../math.hpp"
+#include "../host_compiler.hpp"
+#include "../range.hpp"
+
 #include <errno.h>
 #include <sys/mman.h>
 #include <unistd.h>

@@ -1,5 +1,8 @@
 #include "format.hpp"
 
+#include "../types.hpp"
+#include "../panic.hpp"
+
 struct PrintState
 {
 	static constexpr u64 CAPACITY = 4096;

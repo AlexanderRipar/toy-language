@@ -1,7 +1,7 @@
 #ifndef HASH_INCLUDE_GUARD
 #define HASH_INCLUDE_GUARD
 
-#include "common.hpp"
+#include "types.hpp"
 #include "range.hpp"
 
 static constexpr u32 FNV1A_SEED = 2166136261;

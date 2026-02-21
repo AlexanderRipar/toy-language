@@ -3,9 +3,11 @@
 #include <cstddef>
 #include <cstring>
 
-#include "../infra/container/index_map.hpp"
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
 #include "../infra/range.hpp"
 #include "../infra/hash.hpp"
+#include "../infra/container/index_map.hpp"
 
 struct alignas(8) IdentifierEntry
 {

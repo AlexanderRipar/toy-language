@@ -1,6 +1,11 @@
 #include "diag.hpp"
 
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
+#include "../infra/panic.hpp"
 #include "../infra/container/reserved_vec.hpp"
+
+#include <cinttypes>
 
 static void print_opcodes_impl(diag::PrintContext* ctx, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept;
 

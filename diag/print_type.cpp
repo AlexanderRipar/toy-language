@@ -1,5 +1,10 @@
 #include "diag.hpp"
 
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
+
+#include <cinttypes>
+
 static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers, TypePool* types, TypeId type_id, u32 indent, bool skip_initial_indent) noexcept
 {
 	if (type_id == TypeId::INVALID)

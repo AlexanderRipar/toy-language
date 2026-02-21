@@ -1,5 +1,8 @@
 #include "core.hpp"
 
+#include "../infra/types.hpp"
+#include "../infra/panic.hpp"
+
 static minos::FileHandle get_log_file(bool enable, Range<char8> filepath, minos::StdFileName fallback) noexcept
 {
 	if (!enable)

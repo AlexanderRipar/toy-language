@@ -1,10 +1,14 @@
 #include "core.hpp"
 
-#include <cstring>
-
+#include "../infra/types.hpp"
+#include "../infra/assert.hpp"
+#include "../infra/panic.hpp"
+#include "../infra/math.hpp"
+#include "../infra/hash.hpp"
 #include "../infra/container/reserved_heap.hpp"
 #include "../infra/container/reserved_vec.hpp"
-#include "../infra/hash.hpp"
+
+#include <cstring>
 
 static constexpr u32 MIN_SCOPE_MAP_SIZE_LOG2 = 6;
 

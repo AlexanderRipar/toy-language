@@ -1,8 +1,8 @@
 #ifndef DIAG_INCLUDE_GUARD
 #define DIAG_INCLUDE_GUARD
 
-#include "../infra/common.hpp"
 #include "../core/core.hpp"
+#include "../infra/minos/minos.hpp"
 
 namespace diag
 {
