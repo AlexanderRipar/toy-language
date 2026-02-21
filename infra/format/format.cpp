@@ -2,6 +2,7 @@
 
 #include "../types.hpp"
 #include "../panic.hpp"
+#include "../range.hpp"
 
 struct PrintState
 {

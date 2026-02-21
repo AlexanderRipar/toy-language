@@ -2,6 +2,7 @@
 
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
+#include "../infra/range.hpp"
 
 #include <cinttypes>
 

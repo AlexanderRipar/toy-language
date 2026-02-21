@@ -2,6 +2,7 @@
 #define CORE_INCLUDE_GUARD
 
 #include "../infra/types.hpp"
+#include "../infra/range.hpp"
 #include "../infra/opt.hpp"
 #include "../infra/minos/minos.hpp"
 

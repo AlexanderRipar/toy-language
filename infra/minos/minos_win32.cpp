@@ -7,6 +7,7 @@
 #include "../panic.hpp"
 #include "../math.hpp"
 #include "../host_compiler.hpp"
+#include "../range.hpp"
 
 #define NOGDICAPMASKS
 #define NOVIRTUALKEYCODES

@@ -2,6 +2,7 @@
 #define PRINT_INCLUDE_GUARD
 
 #include "../types.hpp"
+#include "../range.hpp"
 #include "../minos/minos.hpp"
 
 enum class FormatFlag : u16

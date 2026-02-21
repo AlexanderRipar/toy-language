@@ -4,6 +4,7 @@
 #include "../infra/assert.hpp"
 #include "../infra/panic.hpp"
 #include "../infra/math.hpp"
+#include "../infra/range.hpp"
 
 #include <cmath>
 #include <cinttypes>

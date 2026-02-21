@@ -1,6 +1,7 @@
 #include "diag.hpp"
 
 #include "../infra/types.hpp"
+#include "../infra/range.hpp"
 #include "../infra/minos/minos.hpp"
 #include "../core/core.hpp"
 

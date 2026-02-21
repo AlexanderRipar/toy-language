@@ -5,6 +5,7 @@
 #include "../assert.hpp"
 #include "../panic.hpp"
 #include "../math.hpp"
+#include "../range.hpp"
 #include "../minos/minos.hpp"
 
 #include <limits>

@@ -3,6 +3,7 @@
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
 #include "../infra/panic.hpp"
+#include "../infra/range.hpp"
 #include "../infra/hash.hpp"
 #include "../infra/container/index_map.hpp"
 #include "../infra/minos/minos.hpp"

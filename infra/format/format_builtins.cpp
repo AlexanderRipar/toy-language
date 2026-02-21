@@ -3,6 +3,7 @@
 #include "../types.hpp"
 #include "../assert.hpp"
 #include "../math.hpp"
+#include "../range.hpp"
 
 // Helpers.
 

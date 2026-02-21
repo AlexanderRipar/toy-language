@@ -4,6 +4,7 @@
 #include "../infra/assert.hpp"
 #include "../infra/panic.hpp"
 #include "../infra/math.hpp"
+#include "../infra/range.hpp"
 #include "../infra/hash.hpp"
 #include "../infra/container/index_map.hpp"
 #include "../infra/container/reserved_heap.hpp"
