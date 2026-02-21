@@ -143,13 +143,13 @@ u64 print(FormatSink sink, Range<char8> format, Inserts... inserts) noexcept
 template<typename Sink, typename... Inserts>
 u64 print(Sink sink, Range<char8> format, Inserts... inserts) noexcept
 {
-	return print(make_sink(sink), format, inserts...);
+	return print(print_make_sink(sink), format, inserts...);
 }
 
 template<typename Sink, typename... Inserts>
 u64 print(Sink sink, const char8* format, Inserts... inserts) noexcept
 {
-	return print(make_sink(sink), range::from_cstring(format), inserts...);
+	return print(print_make_sink(sink), range::from_cstring(format), inserts...);
 }
 
 #endif // PRINT_INCLUDE_GUARD
