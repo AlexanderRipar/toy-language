@@ -3,17 +3,29 @@
 
 #include "types.hpp"
 #include "host_compiler.hpp"
+#include "minos/minos.hpp"
+#include "print/print.hpp"
 
 #include <cstdarg>
 
-NORETURN void panic(const char8* format, ...) noexcept;
+template<typename... Inserts>
+NORETURN void panic(const char8* format, Inserts... inserts) noexcept
+{
+	(void) print(minos::standard_file_handle(minos::StdFileName::StdErr), format, inserts...);
 
-NORETURN void vpanic(const char8* format, va_list args) noexcept;
+	DEBUGBREAK;
 
-void warn(const char8* format, ...) noexcept;
+	minos::exit_process(1);
+}
 
-void vwarn(const char8* format, va_list args) noexcept;
+template<typename... Inserts>
+NORETURN void warn(const char8* format, Inserts... inserts) noexcept
+{
+	(void) print(minos::standard_file_handle(minos::StdFileName::StdErr), format, inserts...);
 
-#define TODO(message) panic("Encountered open TODO in %s at %s:%d: %s\n", __FUNCTION__, __FILE__, __LINE__, *(message) == '\0' ? "?" : (message))
+	DEBUGBREAK;
+}
+
+#define TODO(message) panic("Encountered open TODO in % at %:%: %\n", __FUNCTION__, __FILE__, __LINE__, *(message) == '\0' ? "?" : (message))
 
 #endif // PANIC_INCLUDE_GUARD

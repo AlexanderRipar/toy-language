@@ -1164,7 +1164,7 @@ static ConfigParser init_config_parser(Range<char8> filepath, Config* out) noexc
 	byte* const memory = static_cast<byte*>(minos::mem_reserve(ConfigParser::HEAP_RESERVE));
 
 	if (memory == nullptr)
-		panic("Could not reserve memory for ConfigParser (0x%X).\n", minos::last_error());
+		panic("Could not reserve memory for ConfigParser (0x%[|X]).\n", minos::last_error());
 
 	ConfigParser parser;
 
@@ -1178,25 +1178,25 @@ static ConfigParser init_config_parser(Range<char8> filepath, Config* out) noexc
 	minos::FileHandle filehandle;
 
 	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, nullptr, false, &filehandle))
-		panic("Could not open config file '%.*s' (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
+		panic("Could not open config file '%' (0x%[|X])\n", filepath, minos::last_error());
 
 	minos::FileInfo fileinfo;
 
 	if (!minos::file_get_info(filehandle, &fileinfo))
-		panic("Could not determine length of config file '%.*s' (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
+		panic("Could not determine length of config file '%' (0x%[|X])\n", filepath, minos::last_error());
 
 	if (fileinfo.bytes > UINT32_MAX)
-		panic("Length of config file '%.*s' (%llu bytes) exceeds the maximum size of 4GB", static_cast<u32>(filepath.count()), filepath.begin(), fileinfo.bytes);
+		panic("Length of config file '%' (% bytes) exceeds the maximum size of 4GB", filepath, fileinfo.bytes);
 
 	parser.heap.reserve_exact(static_cast<u32>(fileinfo.bytes + 1));
 
 	char8* buffer = static_cast<char8*>(minos::mem_reserve(fileinfo.bytes + 1));
 
 	if (buffer == nullptr)
-		panic("Could not reserve buffer of %" PRId64 " bytes for reading config file (0x%X)\n", fileinfo.bytes + 1, minos::last_error());
+		panic("Could not reserve buffer of % bytes for reading config file (0x%[|X])\n", fileinfo.bytes + 1, minos::last_error());
 
 	if (!minos::mem_commit(buffer, fileinfo.bytes + 1))
-		panic("Could not commit buffer of %" PRIu64 " bytes for reading config file (0x%X)\n", fileinfo.bytes + 1, minos::last_error());
+		panic("Could not commit buffer of % bytes for reading config file (0x%[|X])\n", fileinfo.bytes + 1, minos::last_error());
 
 	buffer[fileinfo.bytes] = '\0';
 
@@ -1207,10 +1207,10 @@ static ConfigParser init_config_parser(Range<char8> filepath, Config* out) noexc
 	u32 bytes_read;
 
 	if (!minos::file_read(filehandle, MutRange{ reinterpret_cast<byte*>(buffer), fileinfo.bytes }, 0, &bytes_read))
-		panic("Could not read config file '%.*s' (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
+		panic("Could not read config file '%' (0x%[|X])\n", filepath, minos::last_error());
 
 	if (bytes_read != fileinfo.bytes)
-		panic("Could not read config file '%.*s' completely (read %u out of %" PRIu64 " bytes)\n", static_cast<u32>(filepath.count()), filepath.begin(), bytes_read, fileinfo.bytes);
+		panic("Could not read config file '%' completely (read % out of % bytes)\n", filepath, bytes_read, fileinfo.bytes);
 
 	minos::file_close(filehandle);
 
@@ -1219,7 +1219,7 @@ static ConfigParser init_config_parser(Range<char8> filepath, Config* out) noexc
 	const u32 path_base_chars = minos::path_to_absolute_directory(filepath, MutRange{ path_base });
 
 	if (path_base_chars == 0 || path_base_chars > array_count(path_base))
-		panic("Could not determine folder containing config file (0x%X)\n", minos::last_error());
+		panic("Could not determine folder containing config file (0x%[|X])\n", minos::last_error());
 
 	parser.path_base = { reinterpret_cast<char8*>(parser.heap.begin() + parser.heap.used()), path_base_chars };
 

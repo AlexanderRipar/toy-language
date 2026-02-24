@@ -187,7 +187,7 @@ bool minos::mem_commit(void* ptr, u64 bytes) noexcept
 void minos::mem_unreserve(void* ptr, [[maybe_unused]] u64 bytes) noexcept
 {
 	if (VirtualFree(ptr, 0, MEM_RELEASE) == 0)
-		panic("VirtualFree(MEM_RELEASE) failed (0x%X)\n", last_error());
+		panic("VirtualFree(MEM_RELEASE) failed (0x%[|X])\n", last_error());
 }
 
 void minos::mem_decommit(void* ptr, u64 bytes) noexcept
@@ -197,7 +197,7 @@ void minos::mem_decommit(void* ptr, u64 bytes) noexcept
 	ASSERT_OR_IGNORE((bytes & (page_bytes() - 1)) == 0);
 
 	if (VirtualFree(ptr, bytes, MEM_DECOMMIT) == 0)
-		panic("VirtualFree(MEM_DECOMMIT) failed (0x%X)\n", last_error());
+		panic("VirtualFree(MEM_DECOMMIT) failed (0x%[|X])\n", last_error());
 }
 
 u32 minos::page_bytes() noexcept
@@ -214,7 +214,7 @@ void minos::address_wait(const void* address, const void* undesired, u32 bytes) 
 	ASSERT_OR_IGNORE(bytes == 1 || bytes == 2 || bytes == 4);
 
 	if (!WaitOnAddress(const_cast<void*>(address), const_cast<void*>(undesired), bytes, INFINITE))
-		panic("WaitOnAddress failed (0x%X)\n", last_error());
+		panic("WaitOnAddress failed (0x%[|X])\n", last_error());
 }
 
 bool minos::address_wait_timeout(const void* address, const void* undesired, u32 bytes, u32 milliseconds) noexcept
@@ -223,7 +223,7 @@ bool minos::address_wait_timeout(const void* address, const void* undesired, u32
 		return true;
 
 	if (GetLastError() != ERROR_TIMEOUT)
-		panic("WaitOnAddress failed (0x%X)\n", last_error());
+		panic("WaitOnAddress failed (0x%[|X])\n", last_error());
 
 	return false;
 }
@@ -265,7 +265,7 @@ bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_nam
 		opt_out->m_rep = nullptr;
 
 	if (thread_name.count() > MAX_THREAD_NAME_CHARS)
-		panic("Thread name with length %llu bytes exceeds maximum supported length of %u bytes: %.*s\n", thread_name.count(), MAX_THREAD_NAME_CHARS, static_cast<u32>(thread_name.count()), thread_name.begin());
+		panic("Thread name with length % bytes exceeds maximum supported length of % bytes: %\n", thread_name.count(), MAX_THREAD_NAME_CHARS, thread_name);
 
 	ThreadHandle handle = { CreateThread(nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(proc), param, 0, nullptr) };
 
@@ -306,20 +306,20 @@ bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_nam
 void minos::thread_close(ThreadHandle handle) noexcept
 {
 	if (!CloseHandle(handle.m_rep))
-		panic("CloseHandle(ThreadHandle) failed (0x%X)\n", last_error());
+		panic("CloseHandle(ThreadHandle) failed (0x%[|X])\n", last_error());
 }
 
 void minos::thread_wait(ThreadHandle handle, u32* opt_out_result) noexcept
 {
 	if (WaitForSingleObject(handle.m_rep, INFINITE) != WAIT_OBJECT_0)
-		panic("WaitForSingleObject(ThreadHandle) failed (0x%X)\n", last_error());
+		panic("WaitForSingleObject(ThreadHandle) failed (0x%[|X])\n", last_error());
 
 	if (opt_out_result != nullptr)
 	{
 		DWORD exit_code;
 
 		if (!GetExitCodeThread(handle.m_rep, &exit_code))
-			panic("GetExitCodeThread failed (0x%X)\n", last_error());
+			panic("GetExitCodeThread failed (0x%[|X])\n", last_error());
 
 		*opt_out_result = exit_code;
 	}
@@ -333,14 +333,14 @@ void minos::thread_wait(ThreadHandle handle, u32* opt_out_result) noexcept
 		return false;
 
 	if (result != WAIT_OBJECT_0)
-		panic("WaitForSingleObject(ThreadHandle) failed (0x%X)\n", last_error());
+		panic("WaitForSingleObject(ThreadHandle) failed (0x%[|X])\n", last_error());
 
 	if (opt_out_result != nullptr)
 	{
 		DWORD exit_code;
 
 		if (!GetExitCodeThread(handle.m_rep, &exit_code))
-			panic("GetExitCodeThread failed (0x%X)\n", last_error());
+			panic("GetExitCodeThread failed (0x%[|X])\n", last_error());
 
 		*opt_out_result = exit_code;
 	}
@@ -430,7 +430,7 @@ bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_
 	if (opt_completion != nullptr)
 	{
 		if (CreateIoCompletionPort(handle, opt_completion->completion.m_rep, opt_completion->key, 0) == nullptr)
-			panic("CreateIoCompletionPort failed to associate file (0x%X)\n", last_error());
+			panic("CreateIoCompletionPort failed to associate file (0x%[|X])\n", last_error());
 	}
 
 	out->m_rep = handle;
@@ -441,7 +441,7 @@ bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_
 void minos::file_close(FileHandle handle) noexcept
 {
 	if (!CloseHandle(handle.m_rep))
-		panic("CloseHandle(FileHandle) failed (0x%X)\n", last_error());
+		panic("CloseHandle(FileHandle) failed (0x%[|X])\n", last_error());
 }
 
 minos::FileHandle minos::standard_file_handle(StdFileName name) noexcept
@@ -469,7 +469,7 @@ minos::FileHandle minos::standard_file_handle(StdFileName name) noexcept
 	const HANDLE handle = GetStdHandle(native_name);
 
 	if (handle == INVALID_HANDLE_VALUE)
-		panic("GetStdHandle failed (0x%X)\n", last_error());
+		panic("GetStdHandle failed (0x%[|X])\n", last_error());
 
 	return FileHandle{ handle };
 }
@@ -590,13 +590,13 @@ bool minos::event_create(EventHandle* out) noexcept
 void minos::event_close(EventHandle handle) noexcept
 {
 	if (!CloseHandle(handle.m_rep))
-		panic("CloseHandle(EventHandle) failed (0x%X)\n", last_error());
+		panic("CloseHandle(EventHandle) failed (0x%[|X])\n", last_error());
 }
 
 void minos::event_wake(EventHandle handle) noexcept
 {
 	if (!SetEvent(handle.m_rep))
-		panic("SetEvent failed (0x%X)\n", last_error());
+		panic("SetEvent failed (0x%[|X])\n", last_error());
 }
 
 void minos::event_wait(EventHandle handle) noexcept
@@ -604,7 +604,7 @@ void minos::event_wait(EventHandle handle) noexcept
 	const u32 wait_result = WaitForSingleObject(handle.m_rep, INFINITE);
 
 	if (wait_result != 0)
-		panic("WaitForSingleObject(EventHandle) failed with 0x%X (0x%X)\n", wait_result, last_error());
+		panic("WaitForSingleObject(EventHandle) failed with 0x%[|X] (0x%[|X])\n", wait_result, last_error());
 }
 
 bool minos::event_wait_timeout(EventHandle handle, u32 milliseconds) noexcept
@@ -616,7 +616,7 @@ bool minos::event_wait_timeout(EventHandle handle, u32 milliseconds) noexcept
 	else if (wait_result == WAIT_TIMEOUT)
 		return false;
 
-	panic("WaitForSingleObject(EventHandle, timeout) failed with 0x%X (0x%X)\n", wait_result, last_error());
+	panic("WaitForSingleObject(EventHandle, timeout) failed with 0x%[|X] (0x%[|X])\n", wait_result, last_error());
 }
 
 bool minos::completion_create(CompletionHandle* out) noexcept
@@ -634,7 +634,7 @@ bool minos::completion_create(CompletionHandle* out) noexcept
 void minos::completion_close(CompletionHandle handle) noexcept
 {
 	if (!CloseHandle(handle.m_rep))
-		panic("CloseHandle(CompletionHandle) failed (0x%X)\n", last_error());
+		panic("CloseHandle(CompletionHandle) failed (0x%[|X])\n", last_error());
 }
 
 bool minos::completion_wait(CompletionHandle completion, CompletionResult* out) noexcept
@@ -739,13 +739,13 @@ static HANDLE get_global_job_object() noexcept
 	HANDLE created = CreateJobObjectW(nullptr, nullptr);
 
 	if (created == nullptr)
-		panic("CreateJobObjectW failed during lazy global job object initialization (0x%X)\n", minos::last_error());
+		panic("CreateJobObjectW failed during lazy global job object initialization (0x%[|X])\n", minos::last_error());
 
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit_info{};
 	limit_info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
 
 	if (!SetInformationJobObject(created, JobObjectExtendedLimitInformation, &limit_info, sizeof(limit_info)))
-		panic("SetInformationJobObject(JOBOBJECT_EXTENDED_LIMIT_INFORMATION) with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE failed during lazy global job object initialization (0x%X)\n", minos::last_error());
+		panic("SetInformationJobObject(JOBOBJECT_EXTENDED_LIMIT_INFORMATION) with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE failed during lazy global job object initialization (0x%[|X])\n", minos::last_error());
 
 	HANDLE exchanged = nullptr;
 
@@ -753,7 +753,7 @@ static HANDLE get_global_job_object() noexcept
 		return created;
 
 	if (!CloseHandle(created))
-		panic("CloseHandle(JobHandle) failed during race in lazy global job object initialization (0x%X)\n", minos::last_error());
+		panic("CloseHandle(JobHandle) failed during race in lazy global job object initialization (0x%[|X])\n", minos::last_error());
 
 	return exchanged;
 }
@@ -873,10 +873,10 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	if (!AssignProcessToJobObject(get_global_job_object(), process_info.hProcess))
 	{
 		if (!CloseHandle(process_info.hProcess))
-			panic("CloseHandle(ProcessHandle) failed (0x%X)\n", last_error());
+			panic("CloseHandle(ProcessHandle) failed (0x%[|X])\n", last_error());
 
 		if (!CloseHandle(process_info.hThread))
-			panic("CloseHandle(ThreadHandle) failed (0x%X)\n", last_error());
+			panic("CloseHandle(ThreadHandle) failed (0x%[|X])\n", last_error());
 
 		return false;
 	}
@@ -884,16 +884,16 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	if (ResumeThread(process_info.hThread) == static_cast<DWORD>(-1))
 	{
 		if (!CloseHandle(process_info.hProcess))
-			panic("CloseHandle(ProcessHandle) failed (0x%X)\n", last_error());
+			panic("CloseHandle(ProcessHandle) failed (0x%[|X])\n", last_error());
 
 		if (!CloseHandle(process_info.hThread))
-			panic("CloseHandle(ThreadHandle) failed (0x%X)\n", last_error());
+			panic("CloseHandle(ThreadHandle) failed (0x%[|X])\n", last_error());
 
 		return false;
 	}
 
 	if (!CloseHandle(process_info.hThread))
-		panic("CloseHandle(ThreadHandle) failed (0x%X)\n", last_error());
+		panic("CloseHandle(ThreadHandle) failed (0x%[|X])\n", last_error());
 
 	out->m_rep = process_info.hProcess;
 
@@ -903,7 +903,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 void minos::process_close(ProcessHandle handle) noexcept
 {
 	if (!CloseHandle(handle.m_rep))
-		panic("CloseHandle(ProcessHandle) failed (0x%X)\n", last_error());
+		panic("CloseHandle(ProcessHandle) failed (0x%[|X])\n", last_error());
 }
 
 void minos::process_wait(ProcessHandle handle, u32* opt_out_result) noexcept
@@ -911,14 +911,14 @@ void minos::process_wait(ProcessHandle handle, u32* opt_out_result) noexcept
 	const u32 wait_result = WaitForSingleObject(handle.m_rep, INFINITE);
 
 	if (wait_result != WAIT_OBJECT_0)
-		panic("WaitForSingleObject(ProcessHandle) failed with 0x%X (0x%X)\n", wait_result, last_error());
+		panic("WaitForSingleObject(ProcessHandle) failed with 0x%[|X] (0x%[|X])\n", wait_result, last_error());
 
 	if (opt_out_result != nullptr)
 	{
 		DWORD exit_code;
 
 		if (!GetExitCodeProcess(handle.m_rep, &exit_code))
-			panic("GetExitCodeProcess failed (0x%X)\n", last_error());
+			panic("GetExitCodeProcess failed (0x%[|X])\n", last_error());
 
 		*opt_out_result = exit_code;
 	}
@@ -935,7 +935,7 @@ bool minos::process_wait_timeout(ProcessHandle handle, u32 milliseconds, u32* op
 			DWORD exit_code;
 
 			if (!GetExitCodeProcess(handle.m_rep, &exit_code))
-				panic("GetExitCodeProcess failed (0x%X)\n", last_error());
+				panic("GetExitCodeProcess failed (0x%[|X])\n", last_error());
 
 			*opt_out_result = exit_code;
 		}
@@ -945,7 +945,7 @@ bool minos::process_wait_timeout(ProcessHandle handle, u32 milliseconds, u32* op
 	else if (wait_result == WAIT_TIMEOUT)
 		return false;
 
-	panic("WaitForSingleObject(ProcessHandle, timeout) failed with 0x%X (0x%X)\n", wait_result, last_error());
+	panic("WaitForSingleObject(ProcessHandle, timeout) failed with 0x%[|X] (0x%[|X])\n", wait_result, last_error());
 }
 
 bool minos::shm_create(Access access, u64 bytes, ShmHandle* out) noexcept
@@ -1008,7 +1008,7 @@ bool minos::shm_create(Access access, u64 bytes, ShmHandle* out) noexcept
 void minos::shm_close(ShmHandle handle) noexcept
 {
 	if (!CloseHandle(handle.m_rep))
-		panic("CloseHandle(ShmHandle) failed (0x%X)\n", last_error());
+		panic("CloseHandle(ShmHandle) failed (0x%[|X])\n", last_error());
 }
 
 void* minos::shm_reserve(ShmHandle handle, u64 offset, u64 bytes) noexcept
@@ -1052,7 +1052,7 @@ void minos::shm_unreserve(void* address, [[maybe_unused]] u64 bytes) noexcept
 	void* const aligned_address = reinterpret_cast<void*>(aligned_address_bits);
 
 	if (!UnmapViewOfFile(aligned_address))
-		panic("UnmapViewOfFile failed (0x%X)\n", last_error());
+		panic("UnmapViewOfFile failed (0x%[|X])\n", last_error());
 }
 
 bool minos::shm_commit(void* address, Access access, u64 bytes) noexcept
@@ -1098,13 +1098,13 @@ bool minos::sempahore_create(u32 initial_count, SemaphoreHandle* out) noexcept
 void minos::semaphore_close(SemaphoreHandle handle) noexcept
 {
 	if (!CloseHandle(handle.m_rep))
-		panic("CloseHandle(SemaphoreHandle) failed (0x%X)\n", last_error());
+		panic("CloseHandle(SemaphoreHandle) failed (0x%[|X])\n", last_error());
 }
 
 void minos::semaphore_post(SemaphoreHandle handle, u32 count) noexcept
 {
 	if (!ReleaseSemaphore(handle.m_rep, count, nullptr))
-		panic("ReleaseSemaphore failed (0x%X)\n", last_error());
+		panic("ReleaseSemaphore failed (0x%[|X])\n", last_error());
 }
 
 void minos::semaphore_wait(SemaphoreHandle handle) noexcept
@@ -1112,7 +1112,7 @@ void minos::semaphore_wait(SemaphoreHandle handle) noexcept
 	const u32 wait_result = WaitForSingleObject(handle.m_rep, INFINITE);
 
 	if (wait_result != 0)
-		panic("WaitForSingleObject(SemaphoreHandle) failed with 0x%X (0x%X)\n", wait_result, last_error());
+		panic("WaitForSingleObject(SemaphoreHandle) failed with 0x%[|X] (0x%[|X])\n", wait_result, last_error());
 }
 
 bool minos::semaphore_wait_timeout(SemaphoreHandle handle, u32 milliseconds) noexcept
@@ -1124,7 +1124,7 @@ bool minos::semaphore_wait_timeout(SemaphoreHandle handle, u32 milliseconds) noe
 	else if (wait_result == WAIT_TIMEOUT)
 		return false;
 
-	panic("WaitForSingleObject(SemaphoreHandle, timeout) failed with 0x%X (0x%X)\n", wait_result, last_error());
+	panic("WaitForSingleObject(SemaphoreHandle, timeout) failed with 0x%[|X] (0x%[|X])\n", wait_result, last_error());
 }
 
 static void make_directory_enumeration_result(const WIN32_FIND_DATAW* data, minos::DirectoryEnumerationResult* out) noexcept
@@ -1140,7 +1140,7 @@ static void make_directory_enumeration_result(const WIN32_FIND_DATAW* data, mino
 	out->bytes = data->nFileSizeLow | (static_cast<u64>(data->nFileSizeHigh) << 32);
 
 	if (WideCharToMultiByte(CP_UTF8, 0, data->cFileName, -1, out->filename, static_cast<s32>(array_count(out->filename)), nullptr, nullptr) == 0)
-		panic("Failed utf-16 to utf-8 conversion with guaranteed-to-be sufficient output buffer size (0x%X)\n", minos::last_error());
+		panic("Failed utf-16 to utf-8 conversion with guaranteed-to-be sufficient output buffer size (0x%[|X])\n", minos::last_error());
 }
 
 minos::DirectoryEnumerationStatus minos::directory_enumeration_create(Range<char8> directory_path, DirectoryEnumerationHandle* out, DirectoryEnumerationResult* out_first) noexcept
@@ -1197,7 +1197,7 @@ void minos::directory_enumeration_close(DirectoryEnumerationHandle handle) noexc
 		return;
 
 	if (!FindClose(handle.m_rep))
-		panic("FindClose failed (0x%X)\n", last_error());
+		panic("FindClose failed (0x%[|X])\n", last_error());
 }
 
 bool minos::directory_create(Range<char8> path) noexcept

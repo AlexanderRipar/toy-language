@@ -111,7 +111,7 @@ GlobalValuePool* create_global_value_pool(HandlePool* handles) noexcept
 	byte* const memory = static_cast<byte*>(minos::mem_reserve(TOTAL_RESERVE_SIZE));
 
 	if (memory == nullptr)
-		panic("Failed to allocate memory for GlobalValuePool (0x%X).\n", minos::last_error());
+		panic("Failed to allocate memory for GlobalValuePool (0x%[|X]).\n", minos::last_error());
 
 	GlobalValuePool* const globals = alloc_handle_from_pool<GlobalValuePool>(handles);
 

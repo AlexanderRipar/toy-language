@@ -34,12 +34,12 @@ private:
 			return;
 
 		if (required_commit > m_reserved)
-			panic("Could not allocate additional memory, as the required memory (%llu bytes) exceeds the reserve of %llu bytes\n", required_commit * sizeof(T), m_reserved * sizeof(T));
+			panic("Could not allocate additional memory, as the required memory (% bytes) exceeds the reserve of % bytes\n", required_commit * sizeof(T), m_reserved * sizeof(T));
 
 		const Index new_commit = next_multiple(static_cast<Index>(required_commit), m_commit_increment);
 
 		if (!minos::mem_commit(m_memory + m_committed, (new_commit - m_committed) * sizeof(T)))
-			panic("Could not allocate additional memory (%llu bytes - error 0x%X)\n", (new_commit - m_committed) * sizeof(T), minos::last_error());
+			panic("Could not allocate additional memory (% bytes - error 0x%[|X])\n", (new_commit - m_committed) * sizeof(T), minos::last_error());
 
 		m_committed = new_commit;
 	}
@@ -57,7 +57,7 @@ public:
 		m_memory = reinterpret_cast<T*>(memory.begin());
 
 		if (!minos::mem_commit(m_memory, commit_increment * sizeof(T)))
-			panic("Could not commit initial memory (%llu bytes - error 0x%X)\n", commit_increment * sizeof(T), minos::last_error());
+			panic("Could not commit initial memory (% bytes - error 0x%[|X])\n", commit_increment * sizeof(T), minos::last_error());
 
 		m_used = 0;
 

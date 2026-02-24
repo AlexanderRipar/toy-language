@@ -65,7 +65,7 @@ private:
 		if (required_commit > m_value_commit)
 		{
 			if (required_commit > m_value_capacity)
-				panic("Could not insert value into IndexMap as value storage capacity of %u is exceeded by %u\n", m_value_capacity, required_commit - m_value_capacity);
+				panic("Could not insert value into IndexMap as value storage capacity of % is exceeded by %\n", m_value_capacity, required_commit - m_value_capacity);
 
 			u32 new_commit = m_value_commit + m_value_commit_increment;
 
@@ -76,7 +76,7 @@ private:
 				new_commit = m_value_capacity;
 
 			if (!minos::mem_commit(reinterpret_cast<byte*>(m_values) + m_value_commit * V::stride(), (new_commit - m_value_commit) * V::stride()))
-				panic("Could not commit additional memory for IndexMap values (0x%X)\n", minos::last_error());
+				panic("Could not commit additional memory for IndexMap values (0x%[|X])\n", minos::last_error());
 
 			m_value_commit = new_commit;
 		}
@@ -100,7 +100,7 @@ private:
 		const u32 lookup_and_offset_bytes = m_lookup_commit * (sizeof(*m_lookups) + sizeof(*m_offsets));
 
 		if (!minos::mem_commit(reinterpret_cast<byte*>(m_lookups) + lookup_and_offset_bytes, lookup_and_offset_bytes))
-			panic("Could not commit additional memory for IndexMap lookups and offsets (0x%X)\n", minos::last_error());
+			panic("Could not commit additional memory for IndexMap lookups and offsets (0x%[|X])\n", minos::last_error());
 
 		memset(m_lookups, 0, m_lookup_commit * (sizeof(*m_lookups) + sizeof(*m_offsets)));
 
@@ -166,16 +166,16 @@ public:
 	void init(u32 lookup_capacity, u32 lookup_commit, u32 value_capacity, u32 value_commit_increment) noexcept
 	{
 		if (!is_pow2(lookup_capacity))
-			panic("Could not create IndexMap with non-power-of-two lookup capacity %u\n", lookup_capacity);
+			panic("Could not create IndexMap with non-power-of-two lookup capacity %\n", lookup_capacity);
 
 		if (!is_pow2(lookup_commit))
-			panic("Could not create IndexMap with non-power-of-two initial lookup commit %u\n", lookup_commit);
+			panic("Could not create IndexMap with non-power-of-two initial lookup commit %\n", lookup_commit);
 
 		if (lookup_commit > lookup_capacity)
-			panic("Could not create IndexMap with initial lookup commit %u greater than lookup capacity %u\n", lookup_commit, lookup_capacity);
+			panic("Could not create IndexMap with initial lookup commit % greater than lookup capacity %\n", lookup_commit, lookup_capacity);
 
 		if (value_commit_increment > value_capacity)
-			panic("Could not create IndexMap with initial value commit %u greater than value capacity %u\n", value_commit_increment, value_capacity);
+			panic("Could not create IndexMap with initial value commit % greater than value capacity %\n", value_commit_increment, value_capacity);
 
 		const u64 lookup_bytes = static_cast<u64>(lookup_capacity) * sizeof(*m_lookups);
 
@@ -188,7 +188,7 @@ public:
 		byte* const mem = static_cast<byte*>(minos::mem_reserve(total_bytes));
 
 		if (mem == nullptr)
-			panic("Could not reserve %llu bytes of memory for IndexMap (0x%X)\n", total_bytes, minos::last_error());
+			panic("Could not reserve % bytes of memory for IndexMap (0x%[|X])\n", total_bytes, minos::last_error());
 
 		m_lookups = reinterpret_cast<u16*>(mem);
 
@@ -199,10 +199,10 @@ public:
 		const u64 lookup_commit_bytes = static_cast<u64>(lookup_commit) * (sizeof(*m_lookups) + sizeof(*m_offsets));
 
 		if (!minos::mem_commit(m_lookups, lookup_commit_bytes))
-			panic("Could not commit initial %llu bytes of memory for IndexMap lookups and offsets (0x%X)\n", lookup_commit_bytes, minos::last_error());
+			panic("Could not commit initial % bytes of memory for IndexMap lookups and offsets (0x%[|X])\n", lookup_commit_bytes, minos::last_error());
 
 		if (!minos::mem_commit(m_values, static_cast<u64>(value_commit_increment) * V::stride()))
-			panic("Could not commit initial %llu bytes of memory for IndexMap values (0x%X)\n", static_cast<u64>(value_commit_increment) * V::stride(), minos::last_error());
+			panic("Could not commit initial % bytes of memory for IndexMap values (0x%[|X])\n", static_cast<u64>(value_commit_increment) * V::stride(), minos::last_error());
 
 		m_lookup_used = 0;
 

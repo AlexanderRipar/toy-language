@@ -189,7 +189,7 @@ ErrorSink* create_error_sink(HandlePool* alloc, SourceReader* reader, Identifier
 	byte* const memory = static_cast<byte*>(minos::mem_reserve(sizeof(ErrorRecord) * MAX_ERROR_RECORD_COUNT));
 
 	if (memory == nullptr)
-		panic("Could not reserve memory for ErrorSink (0x%X).\n", minos::last_error());
+		panic("Could not reserve memory for ErrorSink (0x%[|X]).\n", minos::last_error());
 
 	errors->reader = reader;
 	errors->identifiers = identifiers;

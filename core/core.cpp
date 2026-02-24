@@ -15,7 +15,7 @@ static minos::FileHandle get_log_file(bool enable, Range<char8> filepath, minos:
 	minos::FileHandle log_file;
 
 	if (!minos::file_create(filepath, minos::Access::Write, minos::ExistsMode::Truncate, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &log_file))
-		panic("Failed to open log file %.*s (0x%X)\n", static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
+		panic("Failed to open log file % (0x%[|X])\n", filepath, minos::last_error());
 
 	return log_file;
 }

@@ -473,19 +473,19 @@ ERROR:
 	if (registered_files != MAP_FAILED)
 	{
 		if (munmap(registered_files, MINOS_IO_URING_REGISTERED_FILES_MAX * sizeof(s32)) != 0)
-			panic("munmap(io_uring registered_files) failed after io_uring setup error (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+			panic("munmap(io_uring registered_files) failed after io_uring setup error (0x%[|X] - %)\n", minos::last_error(), strerror(minos::last_error()));
 	}
 
 	if (submit_entries != MAP_FAILED)
 	{
 		if (munmap(submit_entries, submit_entry_bytes) != 0)
-			panic("munmap(io_uring submit_entries) failed after io_uring setup error (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+			panic("munmap(io_uring submit_entries) failed after io_uring setup error (0x%[|X] - %)\n", minos::last_error(), strerror(minos::last_error()));
 	}
 
 	if (complete_memory != MAP_FAILED)
 	{
 		if (munmap(complete_memory, complete_memory_bytes) != 0)
-			panic("munmap(io_uring complete_memory) failed after io_uring setup error (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+			panic("munmap(io_uring complete_memory) failed after io_uring setup error (0x%[|X] - %)\n", minos::last_error(), strerror(minos::last_error()));
 	}
 
 	if (submit_memory != MAP_FAILED)
@@ -498,13 +498,13 @@ ERROR:
 			bytes = submit_memory_bytes;
 
 		if (munmap(submit_memory, bytes) != 0)
-			panic("munmap(io_uring submit_memory) failed after io_uring setup error (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+			panic("munmap(io_uring submit_memory) failed after io_uring setup error (0x%[|X] - %)\n", minos::last_error(), strerror(minos::last_error()));
 	}
 
 	if (ring_fd >= 0)
 	{
 		if (close(ring_fd) != 0)
-			panic("close(ring_fd) failed after io_uring setup error (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+			panic("close(ring_fd) failed after io_uring setup error (0x%[|X] - %)\n", minos::last_error(), strerror(minos::last_error()));
 	}
 
 	g_io_urings.freelist.push(g_io_urings.rings, ring - g_io_urings.rings);
@@ -569,12 +569,12 @@ ERROR:
 	const s32 unregister_ok = syscall_io_uring_register(ring->data.ring_fd, IORING_UNREGISTER_FILES, nullptr, 0);
 
 	if (unregister_ok < 0)
-		panic("syscall_io_uring_register(IORING_UNREGISTER_FILES) failed (0x%X - %s)\n", -unregister_ok, strerror(-unregister_ok));
+		panic("syscall_io_uring_register(IORING_UNREGISTER_FILES) failed (0x%[|X] - %)\n", -unregister_ok, strerror(-unregister_ok));
 
 	const s32 register_ok = syscall_io_uring_register(ring->data.ring_fd, IORING_REGISTER_FILES, ring->data.registered_files, new_count);
 
 	if (register_ok < 0)
-		panic("syscall_io_uring_register(IORING_REGISTER_FILES) failed (0x%X - %s)\n", -register_ok, strerror(-register_ok));
+		panic("syscall_io_uring_register(IORING_REGISTER_FILES) failed (0x%[|X] - %)\n", -register_ok, strerror(-register_ok));
 
 	ring->lock.mutex.release();
 
@@ -657,7 +657,7 @@ static void m_io_uring_unregister_file(minos::FileHandle file) noexcept
 	const s32 update_ok = syscall_io_uring_register(ring->data.ring_fd, IORING_REGISTER_FILES_UPDATE, &update, 1);
 
 	if (update_ok < 0)
-		panic("syscall_io_uring_register(IORING_REGISTER_FILES_UPDATE) failed (0x%X - %s)\n", -update_ok, strerror(-update_ok));
+		panic("syscall_io_uring_register(IORING_REGISTER_FILES_UPDATE) failed (0x%[|X] - %)\n", -update_ok, strerror(-update_ok));
 }
 
 static bool m_io_uring_submit_io(u32 opcode, minos::FileHandle handle, minos::Overlapped* overlapped, u32 bytes, void* buffer) noexcept
@@ -796,7 +796,7 @@ bool minos::mem_commit(void* ptr, u64 bytes) noexcept
 void minos::mem_unreserve(void* ptr, u64 bytes) noexcept
 {
 	if (munmap(ptr, bytes) != 0)
-		panic("munmap failed (0x%X -%s)\n", last_error(), strerror(last_error()));
+		panic("munmap failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 void minos::mem_decommit(void* ptr, u64 bytes) noexcept
@@ -806,7 +806,7 @@ void minos::mem_decommit(void* ptr, u64 bytes) noexcept
 	ASSERT_OR_IGNORE((bytes & (page_bytes() - 1)) == 0);
 
 	if (mprotect(ptr, bytes, PROT_NONE) != 0)
-		panic("mprotect(PROT_NONE) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("mprotect(PROT_NONE) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 u32 minos::page_bytes() noexcept
@@ -855,7 +855,7 @@ static bool address_wait_impl(const void* address, const void* undesired, u32 by
 			if (errno == EAGAIN)
 				return true;
 
-			panic("syscall_futex(FUTEX_WAIT) failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+			panic("syscall_futex(FUTEX_WAIT) failed (0x%[|X] - %)\n", minos::last_error(), strerror(minos::last_error()));
 		}
 	}
 
@@ -879,13 +879,13 @@ bool minos::address_wait_timeout(const void* address, const void* undesired, u32
 void minos::address_wake_single(const void* address) noexcept
 {
 	if (syscall_futex(reinterpret_cast<const u32*>(reinterpret_cast<u64>(address) & ~3), FUTEX_WAKE | FUTEX_PRIVATE_FLAG, 1, nullptr) == -1)
-		panic("syscall_futex(FUTEX_WAKE, 1) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("syscall_futex(FUTEX_WAKE, 1) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 void minos::address_wake_all(const void* address) noexcept
 {
 	if (syscall_futex(reinterpret_cast<const u32*>(reinterpret_cast<u64>(address) & ~3), FUTEX_WAKE | FUTEX_PRIVATE_FLAG, INT32_MAX, nullptr) == -1)
-		panic("syscall_futex(FUTEX_WAKE, 1) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("syscall_futex(FUTEX_WAKE, 1) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 void minos::thread_yield() noexcept
@@ -910,7 +910,7 @@ u32 minos::logical_processor_count() noexcept
 	// on the system
 	// See https://linux.die.net/man/2/sched_getaffinity
 	if (sched_getaffinity(0, sizeof(set), &set) != 0)
-		panic("sched_getaffinity(0) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("sched_getaffinity(0) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 
 	return CPU_COUNT(&set);
 }
@@ -947,7 +947,7 @@ bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_nam
 	const s32 result = pthread_create(&thread, &attr, trampoline_thread_proc, trampoline_data);
 
 	if (pthread_attr_destroy(&attr) != 0)
-		panic("pthread_attr_destroy failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("pthread_attr_destroy failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 
 	if (result != 0)
 		return false;
@@ -968,7 +968,7 @@ bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_nam
 		// Even though it seemingly isn't documented, ENOENT appears to mean
 		// that the thread has already exited.
 		if (pthread_setname_np(thread, name_buf) != 0 && errno != ENOENT)
-			panic("pthread_setname_np failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+			panic("pthread_setname_np failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 	}
 
 	return true;
@@ -984,7 +984,7 @@ void minos::thread_wait(ThreadHandle handle, u32* opt_out_result) noexcept
 	void* retval;
 
 	if (pthread_join(reinterpret_cast<pthread_t>(handle.m_rep), &retval) != 0)
-		panic("thread_join failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("thread_join failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 
 	const u64 retval_int = reinterpret_cast<u64>(retval);
 
@@ -1001,7 +1001,7 @@ bool minos::thread_wait_timeout(ThreadHandle handle, u32 milliseconds, u32* opt_
 	timespec ts;
 
 	if (clock_gettime(CLOCK_REALTIME, &ts) != 0)
-		panic("clock_gettime failed while calculating absolute time for thread_wait_timeout (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("clock_gettime failed while calculating absolute time for thread_wait_timeout (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 
 	ts.tv_sec += milliseconds / 1000;
 	ts.tv_nsec += (milliseconds % 1000) * 1'000'000;
@@ -1022,7 +1022,7 @@ bool minos::thread_wait_timeout(ThreadHandle handle, u32 milliseconds, u32* opt_
 		if (join_ok == EBUSY || join_ok == ETIMEDOUT)
 			return false;
 
-		panic("thread_timedjoin_np failed (0x%X - %s)\n", join_ok, strerror(join_ok));
+		panic("thread_timedjoin_np failed (0x%[|X] - %)\n", join_ok, strerror(join_ok));
 	}
 
 	const u64 retval_int = reinterpret_cast<u64>(retval);
@@ -1107,7 +1107,7 @@ bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_
 		if (handle.m_rep == nullptr)
 		{
 			if (close(fd) != 0)
-				panic("Failed to close fd after failing to register it with io_uring (0x%X - %s)\n", errno, strerror(errno));
+				panic("Failed to close fd after failing to register it with io_uring (0x%[|X] - %)\n", errno, strerror(errno));
 
 			return false;
 		}
@@ -1130,7 +1130,7 @@ void minos::file_close(FileHandle handle) noexcept
 		m_io_uring_unregister_file(handle);
 
 	if (close(static_cast<s32>(handle_value)) != 0)
-		panic("close(filefd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("close(filefd) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 minos::FileHandle minos::standard_file_handle(StdFileName name) noexcept
@@ -1199,7 +1199,7 @@ bool minos::file_write(FileHandle handle, Range<byte> buffer, u64 offset) noexce
 		// ESPIPE, but as the device is append-only in this case we can just
 		// ignore the error.
 		if (end_offset == -1 && errno != ESPIPE)
-			panic("lseek failed (0x%X - %s)\n", errno, strerror(errno));
+			panic("lseek failed (0x%[|X] - %)\n", errno, strerror(errno));
 
 		return write(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), buffer.begin(), buffer.count()) == static_cast<s64>(buffer.count());
 	}
@@ -1262,7 +1262,7 @@ static s32 event_create_impl(bool is_semaphore, u32 initial_value) noexcept
 	if (opt_timeout != nullptr)
 	{
 		if (clock_gettime(CLOCK_MONOTONIC, &end_time) != 0)
-			panic("clock_gettime failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+			panic("clock_gettime failed (0x%[|X] - %)\n", minos::last_error(), strerror(minos::last_error()));
 
 		end_time.tv_sec += opt_timeout->tv_sec;
 		end_time.tv_nsec += opt_timeout->tv_nsec;
@@ -1293,9 +1293,9 @@ static s32 event_create_impl(bool is_semaphore, u32 initial_value) noexcept
 		if (read_result == 8)
 			return true;
 		else if (read_result != -1)
-			panic("read(eventfd) returned unexpected read count %d (expected 8)\n", read_result);
+			panic("read(eventfd) returned unexpected read count % (expected 8)\n", read_result);
 		else if (errno != EAGAIN)
-			panic("read(eventfd) failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+			panic("read(eventfd) failed (0x%[|X] - %)\n", minos::last_error(), strerror(minos::last_error()));
 		else if (opt_timeout != nullptr && opt_timeout->tv_sec == 0 && opt_timeout->tv_nsec == 0)
 			return false;
 
@@ -1307,18 +1307,18 @@ static s32 event_create_impl(bool is_semaphore, u32 initial_value) noexcept
 		const s32 poll_result = ppoll(&pfd, 1, actual_timeout, nullptr);
 
 		if (poll_result == -1)
-			panic("poll(eventfd) failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+			panic("poll(eventfd) failed (0x%[|X] - %)\n", minos::last_error(), strerror(minos::last_error()));
 		else if (poll_result == 0)
 			return false;
 		else if (pfd.revents != POLLIN)
-			panic("poll(eventfd) returned with non-POLLIN event 0x%X\n", pfd.revents);
+			panic("poll(eventfd) returned with non-POLLIN event 0x%[|X]\n", pfd.revents);
 
 		if (opt_timeout != nullptr)
 		{
 			timespec curr_time;
 
 			if (clock_gettime(CLOCK_MONOTONIC, &curr_time) != 0)
-				panic("clock_gettime failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+				panic("clock_gettime failed (0x%[|X] - %)\n", minos::last_error(), strerror(minos::last_error()));
 
 			timeout.tv_sec = end_time.tv_sec - curr_time.tv_sec;
 			timeout.tv_nsec = end_time.tv_nsec - curr_time.tv_nsec;
@@ -1349,7 +1349,7 @@ bool minos::event_create(EventHandle* out) noexcept
 void minos::event_close(EventHandle handle) noexcept
 {
 	if (close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))) != 0)
-		panic("close(eventfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("close(eventfd) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 void minos::event_wake(EventHandle handle) noexcept
@@ -1357,7 +1357,7 @@ void minos::event_wake(EventHandle handle) noexcept
 	u64 increment = 1;
 
 	if (write(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &increment, sizeof(increment)) < 0)
-		panic("write(eventfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("write(eventfd) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 void minos::event_wait(EventHandle handle) noexcept
@@ -1391,19 +1391,19 @@ void minos::completion_close(CompletionHandle handle) noexcept
 	MinosIoUring* const ring = static_cast<MinosIoUring*>(handle.m_rep);
 
 	if (munmap(ring->lock.submit_memory, ring->lock.submit_memory_bytes) != 0)
-		panic("munmap(io_uring submit_memory) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("munmap(io_uring submit_memory) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 
 	if (ring->lock.complete_memory != MAP_FAILED)
 	{
 		if (munmap(ring->lock.complete_memory, ring->lock.complete_memory_bytes) != 0)
-			panic("munmap(io_uring complete_memory) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+			panic("munmap(io_uring complete_memory) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 	}
 
 	if (munmap(ring->data.submit_entries, ring->data.submit_entry_count * sizeof(io_uring_sqe)) != 0)
-		panic("munmap(io_uring submit_entries) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("munmap(io_uring submit_entries) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 
 	if (close(ring->data.ring_fd) != 0)
-		panic("close(io_uring fd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("close(io_uring fd) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 
 	g_io_urings.freelist.push(g_io_urings.rings, ring - g_io_urings.rings);
 }
@@ -1433,7 +1433,7 @@ bool minos::completion_wait(CompletionHandle completion, CompletionResult* out) 
 void minos::sleep(u32 milliseconds) noexcept
 {
 	if (usleep(milliseconds * 1000) != 0)
-		panic("usleep failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("usleep failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 static char8** prepare_command_line_for_exec(char8* exe_path, u64 exe_path_chars, Range<Range<char8>> command_line) noexcept
@@ -1448,7 +1448,7 @@ static char8** prepare_command_line_for_exec(char8* exe_path, u64 exe_path_chars
 	void* const memory = malloc(pointer_bytes + command_line_bytes);
 
 	if (memory == nullptr)
-		panic("malloc failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+		panic("malloc failed (0x%[|X] - %)\n", minos::last_error(), strerror(minos::last_error()));
 
 	char8** const arg_ptrs = static_cast<char8**>(memory);
 
@@ -1487,10 +1487,10 @@ static void prepare_fds_for_exec(Range<minos::GenericHandle> inherited_handles) 
 		const s32 flags = fcntl(fd, F_GETFD);
 
 		if (flags == -1)
-			panic("fcntl(%s) to unset FD_CLOEXEC failed on fd %d (0x%X - %s)\n", "F_GETFD", fd, minos::last_error(), strerror(minos::last_error()));
+			panic("fcntl(%) to unset FD_CLOEXEC failed on fd % (0x%[|X] - %)\n", "F_GETFD", fd, minos::last_error(), strerror(minos::last_error()));
 
 		if (fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC) != 0)
-			panic("fcntl(%s) to unset FD_CLOEXEC failed on fd %d (0x%X - %s)\n", "F_SETFD", fd, minos::last_error(), strerror(minos::last_error()));
+			panic("fcntl(%) to unset FD_CLOEXEC failed on fd % (0x%[|X] - %)\n", "F_SETFD", fd, minos::last_error(), strerror(minos::last_error()));
 	}
 }
 
@@ -1513,13 +1513,13 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 		const s32 child_fd = syscall_pidfd_open(child_pid, 0);
 
 		if (child_fd == -1)
-			panic("syscall_pdifd_open failed (0x%X - %s)", last_error(), strerror(last_error()));
+			panic("syscall_pdifd_open failed (0x%[|X] - %)", last_error(), strerror(last_error()));
 
 		// Since we haven't set any flags, we can simply set FD_CLOEXEC without
 		// or'ing with previous flags. Note that PIDFD_NONBLOCK would be set
 		// using F_SETFL, not F_SETFD, thus remaining unaffected by this call.
 		if (fcntl(child_fd, F_SETFD, FD_CLOEXEC) != 0)
-			panic("fcntl(pidfd) failed (0x%X - %s)", last_error(), strerror(last_error()));
+			panic("fcntl(pidfd) failed (0x%[|X] - %)", last_error(), strerror(last_error()));
 
 		*out = { reinterpret_cast<void*>(static_cast<u64>(child_fd)) };
 
@@ -1529,7 +1529,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	const s32 parent_deathsig_ok = prctl(PR_SET_PDEATHSIG, SIGKILL);
 
 	if (parent_deathsig_ok != 0)
-		panic("prctl(PR_SET_DEATHSIG, SIGKILL) failed in newly spawned child process (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("prctl(PR_SET_DEATHSIG, SIGKILL) failed in newly spawned child process (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 
 	// Avoid race when parent is exited before prctl is called in the child.
 	// Note that the `parent_pid` is taken before `fork`ing to make this
@@ -1555,7 +1555,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 		const s64 readlink_result = readlink("/proc/self/exe", own_exe, array_count(own_exe) - 1);
 
 		if (readlink_result < 0 || readlink_result == array_count(own_exe) - 1)
-			panic("readlink(\"/proc/self/exe\") failed or lead to truncation (0x%X - %s)", last_error(), strerror(last_error()));
+			panic("readlink(\"/proc/self/exe\") failed or lead to truncation (0x%[|X] - %)", last_error(), strerror(last_error()));
 
 		relative_exe_path = own_exe;
 
@@ -1567,7 +1567,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	const u32 absolute_exe_path_chars = path_to_absolute(Range{ relative_exe_path, relative_exe_path_chars }, MutRange{ absolute_exe_path, array_count(absolute_exe_path) - 1 });
 
 	if (absolute_exe_path_chars == 0 || absolute_exe_path_chars > array_count(absolute_exe_path) - 1)
-		panic("Failed to get absolute path of executable file in newly spawned child process (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("Failed to get absolute path of executable file in newly spawned child process (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 
 	absolute_exe_path[absolute_exe_path_chars] = '\0';
 
@@ -1578,27 +1578,27 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	if (working_directory.count() != 0)
 	{
 		if (working_directory.count() > array_count(terminated_working_directory) - 1)
-			panic("working_directory passed to minos::process_create is longer than the supported maximum of %u characters", array_count(terminated_working_directory) - 1);
+			panic("working_directory passed to minos::process_create is longer than the supported maximum of % characters", array_count(terminated_working_directory) - 1);
 
 		memcpy(terminated_working_directory, working_directory.begin(), working_directory.count());
 
 		terminated_working_directory[working_directory.count()] = '\0';
 
 		if (chdir(terminated_working_directory) != 0)
-			panic("Could not set working directory of newly spawned process (0x%X - %s)\n", last_error(), strerror(last_error()));
+			panic("Could not set working directory of newly spawned process (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 	}
 
 	prepare_fds_for_exec(inherited_handles);
 
 	execvp(absolute_exe_path, terminated_args);
 
-	panic("execvp failed in newly spawned process (0x%X - %s)\n", last_error(), strerror(last_error()));
+	panic("execvp failed in newly spawned process (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 void minos::process_close(ProcessHandle handle) noexcept
 {
 	if (close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))) != 0)
-		panic("close(pidfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("close(pidfd) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 [[nodiscard]] static bool process_wait_impl(minos::ProcessHandle handle, const timespec* opt_timeout, u32* opt_out_result) noexcept
@@ -1617,7 +1617,7 @@ void minos::process_close(ProcessHandle handle) noexcept
 		if (poll_result == 0)
 			return false;
 		else if (poll_result == -1)
-			panic("ppoll(procfd) failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+			panic("ppoll(procfd) failed (0x%[|X] - %)\n", minos::last_error(), strerror(minos::last_error()));
 
 		ASSERT_OR_IGNORE(poll_result == 1);
 	}
@@ -1628,7 +1628,7 @@ void minos::process_close(ProcessHandle handle) noexcept
 	// WNOWAIT: This allows multiple waits. Otherwise, only the first one would
 	//          succeed.
 	if (waitid(P_PIDFD, static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &exit_info, WEXITED | WNOWAIT) != 0)
-		panic("waitid(pidfd) failed (0x%X - %s)\n", minos::last_error(), strerror(minos::last_error()));
+		panic("waitid(pidfd) failed (0x%[|X] - %)\n", minos::last_error(), strerror(minos::last_error()));
 
 	if (opt_out_result != nullptr)
 		*opt_out_result = exit_info.si_status;
@@ -1660,7 +1660,7 @@ bool minos::shm_create([[maybe_unused]] Access access, u64 bytes, ShmHandle* out
 	if (ftruncate(fd, bytes) != 0)
 	{
 		if (close(fd) != 0)
-			panic("close(memfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+			panic("close(memfd) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 
 		return false;
 	}
@@ -1673,7 +1673,7 @@ bool minos::shm_create([[maybe_unused]] Access access, u64 bytes, ShmHandle* out
 void minos::shm_close(ShmHandle handle) noexcept
 {
 	if (close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))) != 0)
-		panic("close(memfd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("close(memfd) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 void* minos::shm_reserve(ShmHandle handle, u64 offset, u64 bytes) noexcept
@@ -1701,7 +1701,7 @@ void minos::shm_unreserve(void* address, u64 bytes) noexcept
 	const u64 adjusted_bytes = bytes + address_bits - aligned_address_bits;
 
 	if (munmap(reinterpret_cast<void*>(aligned_address_bits), adjusted_bytes) != 0)
-		panic("munmap(shm) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("munmap(shm) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 bool minos::shm_commit(void* address, Access access, u64 bytes) noexcept
@@ -1744,7 +1744,7 @@ bool minos::sempahore_create(u32 initial_count, SemaphoreHandle* out) noexcept
 void minos::semaphore_close(SemaphoreHandle handle) noexcept
 {
 	if (close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))) != 0)
-		panic("close(eventfd semaphore) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("close(eventfd semaphore) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 void minos::semaphore_post(SemaphoreHandle handle, u32 count) noexcept
@@ -1752,7 +1752,7 @@ void minos::semaphore_post(SemaphoreHandle handle, u32 count) noexcept
 	u64 increment = count;
 
 	if (write(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &increment, sizeof(increment)) < 0)
-		panic("write(eventfd semaphore) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("write(eventfd semaphore) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 void minos::semaphore_wait(SemaphoreHandle handle) noexcept
@@ -1838,7 +1838,7 @@ minos::DirectoryEnumerationStatus minos::directory_enumeration_next(DirectoryEnu
 	if (fstat(entry_fd, &info) != 0)
 	{
 		if (close(entry_fd) != 0)
-			panic("close(direntry_fd) failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+			panic("close(direntry_fd) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 	}
 
 	out->creation_time = 0; // This is not supported under *nix
@@ -1857,7 +1857,7 @@ minos::DirectoryEnumerationStatus minos::directory_enumeration_next(DirectoryEnu
 void minos::directory_enumeration_close(DirectoryEnumerationHandle handle) noexcept
 {
 	if (closedir(static_cast<DIR*>(handle.m_rep)) != 0)
-		panic("closedir failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("closedir failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 bool minos::directory_create(Range<char8> path) noexcept
@@ -2143,7 +2143,7 @@ u64 minos::timestamp_utc() noexcept
 	const time_t t = time(nullptr);
 
 	if (t == static_cast<time_t>(-1))
-		panic("time failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("time failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 
 	return t;
 }
@@ -2158,7 +2158,7 @@ u64 minos::exact_timestamp() noexcept
 	timespec ts;
 
 	if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
-		panic("clock_gettime failed (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("clock_gettime failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 
 	return static_cast<u64>(ts.tv_nsec) + static_cast<u64>(ts.tv_sec) * static_cast<u64>(1'000'000'000);
 }
@@ -2188,7 +2188,7 @@ bool minos::has_debugger_attached() noexcept
 	const ssize_t read_size = read(status_fd, buffer, sizeof(buffer) - 1);
 
 	if (close(status_fd) < 0)
-		panic("Failed to close fd for /proc/self/status (0x%X - %s)\n", last_error(), strerror(last_error()));
+		panic("Failed to close fd for /proc/self/status (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 
 	// If we cannot read our own status file, assume there is no debugger.
 	if (read_size < 0)

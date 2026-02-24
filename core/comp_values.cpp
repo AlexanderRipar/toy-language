@@ -635,7 +635,7 @@ static bool is_negative(CompIntegerValue value) noexcept
 CompIntegerValue comp_integer_from_u64(u64 value) noexcept
 {
 	if (value > COMP_INTEGER_MAX)
-		panic("Value %" PRIu64 " exceeds current supported maximum value of compile-time integers of %" PRIu64 ".\n", value, COMP_INTEGER_MAX);
+		panic("Value % exceeds current supported maximum value of compile-time integers of %.\n", value, COMP_INTEGER_MAX);
 
 	return { value << 1 };
 }
@@ -643,10 +643,10 @@ CompIntegerValue comp_integer_from_u64(u64 value) noexcept
 CompIntegerValue comp_integer_from_s64(s64 value) noexcept
 {
 	if (value < COMP_INTEGER_MIN)
-		panic("Value %" PRId64 " exceeds current supported minimum value of compile-time integers of %" PRId64 ".\n", value, COMP_INTEGER_MIN);
+		panic("Value % exceeds current supported minimum value of compile-time integers of %.\n", value, COMP_INTEGER_MIN);
 
 	if (static_cast<u64>(value) > COMP_INTEGER_MAX)
-		panic("Value %" PRId64 " exceeds current supported maximum value of compile-time integers of %" PRIu64 ".\n", value, COMP_INTEGER_MAX);
+		panic("Value % exceeds current supported maximum value of compile-time integers of %.\n", value, COMP_INTEGER_MAX);
 
 	return { static_cast<u64>(value) << 1 };
 }
@@ -659,7 +659,7 @@ bool comp_integer_from_comp_float(CompFloatValue value, bool round, CompIntegerV
 		return false;
 
 	if ((float_value < 0 && static_cast<s64>(float_value) < COMP_INTEGER_MIN) || (float_value > 0 && static_cast<u64>(float_value) > COMP_INTEGER_MAX))
-		panic("Value %f exceeds range of current supported values of compile-time integers.\n", float_value);
+		panic("Value % exceeds range of current supported values of compile-time integers.\n", float_value);
 
 	*out = { static_cast<u64>(static_cast<s64>(float_value)) << 1 };
 

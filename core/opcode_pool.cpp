@@ -2243,7 +2243,7 @@ OpcodePool* create_opcode_pool(HandlePool* handles, AstPool* asts) noexcept
 	byte* const memory = static_cast<byte*>(minos::mem_reserve(TOTAL_RESERVE_SIZE));
 
 	if (memory == nullptr)
-		panic("Failed to allocate memory for OpcodePool (0x%X).\n", minos::last_error());
+		panic("Failed to allocate memory for OpcodePool (0x%[|X]).\n", minos::last_error());
 
 	OpcodePool* const opcodes = alloc_handle_from_pool<OpcodePool>(handles);
 	opcodes->asts = asts;

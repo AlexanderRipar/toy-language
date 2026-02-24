@@ -125,7 +125,7 @@ static u32 build_traversal_list(AstPool* asts) noexcept
 			if ((curr->structure_flags & AstNode::STRUCTURE_FIRST_SIBLING) != 0)
 			{
 				if (depth + 1 >= MAX_AST_DEPTH)
-					panic("Maximum parse tree depth of %u exceeded.\n", MAX_AST_DEPTH);
+					panic("Maximum parse tree depth of % exceeded.\n", MAX_AST_DEPTH);
 
 				depth += 1;
 			}
@@ -287,7 +287,7 @@ AstPool* create_ast_pool(HandlePool* alloc) noexcept
 	byte* const memory = static_cast<byte*>(minos::mem_reserve(total_size));
 
 	if (memory == nullptr)
-		panic("Could not reserve memory for AstPool (0x%X).\n", minos::last_error());
+		panic("Could not reserve memory for AstPool (0x%[|X]).\n", minos::last_error());
 
 	u64 byte_offset = 0;
 

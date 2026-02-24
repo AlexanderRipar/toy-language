@@ -812,7 +812,7 @@ static bool eq_state_push(EqualityState* state, TypeId a, TypeId b) noexcept
 		return false;
 
 	if (static_cast<u32>(state->stack_used + 2) > array_count(state->stack))
-		panic("Maximum depth %u of type equality check exceeded.\n", array_count(state->stack));
+		panic("Maximum depth % of type equality check exceeded.\n", array_count(state->stack));
 
 	state->stack[state->stack_used] = a;
 	state->stack[state->stack_used + 1] = b;
@@ -833,7 +833,7 @@ static void eq_state_add_delay_unify(EqualityState* state, TypeId a, TypeId b) n
 {
 	if (static_cast<u32>(state->delayed_used + 1) > array_count(state->delayed))
 	{
-		warn("Maximum number %u of delayed holotype unifications exceeded. This is not fatal, but might slow down future equality checks, and means that the number of delay slots in `TypeEqualityState` might need to be increased\n", array_count(state->stack));
+		warn("Maximum number % of delayed holotype unifications exceeded. This is not fatal, but might slow down future equality checks, and means that the number of delay slots in `TypeEqualityState` might need to be increased\n", array_count(state->stack));
 
 		return;
 	}
@@ -1218,7 +1218,7 @@ TypePool* create_type_pool(HandlePool* alloc) noexcept
 	byte* const memory = static_cast<byte*>(minos::mem_reserve(structures_size + SCRATCH_CAPACITY));
 
 	if (memory == nullptr)
-		panic("Could not reserve memory for TypePool (0x%X).\n", minos::last_error());
+		panic("Could not reserve memory for TypePool (0x%[|X]).\n", minos::last_error());
 
 	TypePool* const types = alloc_handle_from_pool<TypePool>(alloc);
 	types->dedup.init(1 << 21, 1 << 8, 1 << 20, 1 << 10);

@@ -504,7 +504,7 @@ static void handle_divergent_invocations(const InvocationInfo* invocation) noexc
 
 		const u32 cwd_chars = minos::working_directory(MutRange{ cwd });
 		if (cwd_chars == 0 || cwd_chars > array_count(cwd))
-			panic("Could not get working directory (0x%X)\n", minos::last_error());
+			panic("Could not get working directory (0x%[|X])\n", minos::last_error());
 
 		if (invocation->cmd.check_cwd.suffix.count() <= cwd_chars)
 		{

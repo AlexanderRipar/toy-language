@@ -253,17 +253,17 @@ static SourceLocation source_location_from_source_file_and_source_id(SourceReade
 	Range<char8> filepath = source_file_path(reader, source_file);
 
 	if (!minos::file_get_info(source_file->file, &fileinfo))
-		panic("Could not get info on source file %.*s while trying to re-read it for error reporting (0x%X)\n", static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
+		panic("Could not get info on source file % while trying to re-read it for error reporting (0x%[|X])\n", filepath, minos::last_error());
 
 	char8* const buffer = static_cast<char8*>(malloc(fileinfo.bytes));
 
 	u32 bytes_read;
 
 	if (!minos::file_read(source_file->file, MutRange{ buffer, fileinfo.bytes }.as_mut_byte_range(), 0, &bytes_read))
-		panic("Could not read source file %.*s while trying to re-read it for error reporting (0x%X)\n", static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
+		panic("Could not read source file % while trying to re-read it for error reporting (0x%[|X])\n", filepath, minos::last_error());
 
 	if (bytes_read != fileinfo.bytes)
-		panic("Could only read %u out of %" PRIu64 " bytes from source file %.*s while trying to re-read it for error reporting (0x%X)\n", bytes_read, fileinfo.bytes, static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
+		panic("Could only read % out of % bytes from source file % while trying to re-read it for error reporting (0x%[|X])\n", bytes_read, fileinfo.bytes, filepath, minos::last_error());
 
 	SourceLocation location = build_source_location(filepath, Range{ buffer, fileinfo.bytes }, static_cast<u32>(source_id) - static_cast<u32>(source_file->source_id_base));
 
@@ -315,15 +315,15 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noe
 	minos::FileHandle file;
 
 	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, nullptr, false, &file))
-		panic("Could not open source file %.*s for reading (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
+		panic("Could not open source file % for reading (0x%[|X])\n", filepath, minos::last_error());
 
 	minos::FileInfo fileinfo;
 
 	if (!minos::file_get_info(file, &fileinfo))
-		panic("Could not get info on source file %.*s (0x%X)\n", static_cast<u32>(filepath.count()), filepath.begin(), minos::last_error());
+		panic("Could not get info on source file % (0x%[|X])\n", filepath, minos::last_error());
 
 	if (fileinfo.bytes > UINT32_MAX)
-		panic("Could not read source file %.*s as its size %llu exceeds the supported maximum of %u bytes (< 4gb)\n", static_cast<u32>(filepath.count()), filepath.begin(), fileinfo.bytes, UINT32_MAX);
+		panic("Could not read source file % as its size % exceeds the supported maximum of % bytes (< 4gb)\n", filepath, fileinfo.bytes, UINT32_MAX);
 
 	SourceFileByIdEntry* const id_entry = reader->known_files_by_identity.value_from(fileinfo.identity, hash_file_identity(fileinfo.identity.index, fileinfo.identity.volume_serial));
 
@@ -343,7 +343,7 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noe
 	id_entry->data.has_error = false;
 
 	if (fileinfo.bytes + reader->curr_source_id_base > UINT32_MAX)
-		panic("Could not read source file %.*s as the maximum total capacity of 4gb of source code was exceeded.\n", static_cast<s32>(filepath.count()), filepath.begin());
+		panic("Could not read source file % as the maximum total capacity of 4gb of source code was exceeded.\n", filepath);
 
 	// Allow for one extra byte so `parse` can use one-past-end for
 	// `Token::END_OF_FILE` without extra work.
@@ -354,17 +354,17 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noe
 	char8* const content = static_cast<char8*>(malloc(fileinfo.bytes + 1));
 
 	if (content == nullptr)
-		panic("Could not allocate buffer for reading source file %.*s (0x%X)\n", static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
+		panic("Could not allocate buffer for reading source file % (0x%[|X])\n", filepath, minos::last_error());
 
 	content[fileinfo.bytes] = '\0';
 
 	u32 bytes_read;
 
 	if (!minos::file_read(file, MutRange{ content, fileinfo.bytes }.as_mut_byte_range(), 0, &bytes_read))
-		panic("Could not read source file %.*s (0x%X)\n", static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
+		panic("Could not read source file % (0x%[|X])\n", filepath, minos::last_error());
 
 	if (bytes_read != fileinfo.bytes)
-		panic("Could only read %u out of %" PRIu64 " bytes from source file %.*s (0x%X)\n", bytes_read, fileinfo.bytes, static_cast<s32>(filepath.count()), filepath.begin(), minos::last_error());
+		panic("Could only read % out of % bytes from source file % (0x%[|X])\n", bytes_read, fileinfo.bytes, filepath, minos::last_error());
 
 	return SourceFileRead{ &id_entry->data, Range{ content, fileinfo.bytes + 1 } };
 }

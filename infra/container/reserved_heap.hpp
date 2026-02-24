@@ -101,12 +101,12 @@ public:
 		else
 		{
 			if (m_commit_heads[category] == m_ends[category])
-				panic("Exceeded storage for %u byte entries in ReservedHeap.\n", static_cast<u32>(1) << (category + MinSizeLog2));
+				panic("Exceeded storage for % byte entries in ReservedHeap.\n", static_cast<u32>(1) << (category + MinSizeLog2));
 
 			void* const head = static_cast<byte*>(m_memory) + m_commit_heads[category];
 
 			if (!minos::mem_commit(head, m_commit_increments[category]))
-				panic("Failed to allocate additional storage for %u byte entries in ReservedHead (0x%X).\n", static_cast<u32>(1) << (category + MinSizeLog2), minos::last_error());
+				panic("Failed to allocate additional storage for % byte entries in ReservedHead (0x%[|X]).\n", static_cast<u32>(1) << (category + MinSizeLog2), minos::last_error());
 
 			alloc_begin = static_cast<byte*>(head);
 

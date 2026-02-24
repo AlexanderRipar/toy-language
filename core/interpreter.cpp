@@ -1496,12 +1496,12 @@ static const Opcode* builtin_import(Interpreter* interp, const Opcode* code, CTV
 	const u32 path_base_parent_chars = minos::path_to_absolute_directory(path_base, MutRange{ path_base_parent_buf });
 
 	if (path_base_parent_chars == 0 || path_base_parent_chars > array_count(path_base_parent_buf))
-		panic("Failed to get parent directory from `from` source file (0x%X).\n", minos::last_error());
+		panic("Failed to get parent directory from `from` source file (0x%[|X]).\n", minos::last_error());
 
 	const u32 absolute_path_chars = minos::path_to_absolute_relative_to(path, Range{ path_base_parent_buf , path_base_parent_chars }, MutRange{ absolute_path_buf });
 
 	if (absolute_path_chars == 0 || absolute_path_chars > array_count(absolute_path_buf))
-		panic("Failed to make `path` %.*s absolute relative to `from` %.*s (0x%X).\n", static_cast<s32>(path.count()), path.begin(), static_cast<s32>(path_base.count()), path_base.begin(), minos::last_error());
+		panic("Failed to make `path` % absolute relative to `from` % (0x%[|X]).\n", path, path_base, minos::last_error());
 
 	const Range<char8> absolute_path{ absolute_path_buf, absolute_path_chars };
 
@@ -5560,7 +5560,7 @@ Interpreter* create_interpreter(HandlePool* handles, AstPool* asts, TypePool* ty
 	byte* const memory = static_cast<byte*>(minos::mem_reserve(TOTAL_RESERVE_SIZE));
 
 	if (memory == nullptr)
-		panic("Failed to allocate memory for Interpreter (0x%X).\n", minos::last_error());
+		panic("Failed to allocate memory for Interpreter (0x%[|X]).\n", minos::last_error());
 
 	Interpreter* const interp = alloc_handle_from_pool<Interpreter>(handles);
 

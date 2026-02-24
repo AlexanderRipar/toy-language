@@ -81,7 +81,7 @@ void integration_tests() noexcept
 	minos::directory_enumeration_close(dir);
 
 	if (status == minos::DirectoryEnumerationStatus::Error)
-		panic("Failed to enumerate integration test directory `%.*s` (0x%X).\n", static_cast<s32>(test_directory.count()), test_directory.begin(), minos::last_error());
+		panic("Failed to enumerate integration test directory `%` (0x%[|X]).\n", test_directory, minos::last_error());
 
 	TEST_MODULE_END;
 }

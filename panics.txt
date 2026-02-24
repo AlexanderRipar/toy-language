@@ -1,0 +1,4 @@
+
+core\type_pool.cpp:836:		warn("Maximum number %u of delayed holotype unifications exceeded. This is not fatal, but might slow down future equality checks, and means that the number of delay slots in `TypeEqualityState` might need to be increased\n", array_count(state->stack));
+infra\panic.hpp:22:NORETURN void warn(const char8* format, Inserts... inserts) noexcept
+

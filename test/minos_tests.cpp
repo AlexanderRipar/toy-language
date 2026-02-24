@@ -3220,7 +3220,7 @@ static void prepare_minos_tests() noexcept
 	if (!minos::path_is_directory(individual_directory))
 	{
 		if (!minos::directory_create(individual_directory))
-			panic("Failed to create dynamic test file directory %.*s (0x%X)\n", static_cast<s32>(individual_directory.count()), individual_directory.begin(), minos::last_error());
+			panic("Failed to create dynamic test file directory % (0x%[|X])\n", individual_directory, minos::last_error());
 	}
 
 	// Clean up data from previous runs. Take care to order paths_to_delete so
@@ -3255,7 +3255,7 @@ static void prepare_minos_tests() noexcept
 		const u64 individual_path_chars = individual_directory.count() + 1 + path.count();
 
 		if (sizeof(path_buf) < individual_path_chars)
-			panic("Cleanup path for test file %.*s was too long\n", static_cast<s32>(path.count()), path.begin());
+			panic("Cleanup path for test file % was too long\n", path.range());
 
 		memcpy(path_buf + individual_directory.count() + 1, path.begin(), path.count());
 
@@ -3267,7 +3267,7 @@ static void prepare_minos_tests() noexcept
 				continue;
 
 			if (!minos::path_remove_directory(individual_path))
-				panic("Failed to clean up directory %.*s from previous test run (0x%X)\n", static_cast<s32>(individual_path.count()), individual_path.begin(), minos::last_error());
+				panic("Failed to clean up directory % from previous test run (0x%[|X])\n", individual_path, minos::last_error());
 		}
 		else
 		{
@@ -3275,7 +3275,7 @@ static void prepare_minos_tests() noexcept
 				continue;
 
 			if (!minos::path_remove_file(individual_path))
-				panic("Failed to clean up file %.*s from previous test run (0x%X)\n", static_cast<s32>(individual_path.count()), individual_path.begin(), minos::last_error());
+				panic("Failed to clean up file % from previous test run (0x%[|X])\n", individual_path, minos::last_error());
 		}
 	}
 }
