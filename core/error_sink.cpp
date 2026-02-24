@@ -182,39 +182,6 @@ static const char8* error_message_of(CompileError error) noexcept
 	return FORMATS[ordinal];
 }
 
-static FILE* c_fileptr_from_minos(minos::FileHandle filehandle) noexcept
-{
-	ASSERT_OR_IGNORE(filehandle.m_rep != nullptr);
-
-	if (filehandle.m_rep == minos::standard_file_handle(minos::StdFileName::StdErr).m_rep)
-	{
-		// Prevent a double-close during CRT teardown.
-		return stderr;
-	}
-	else
-	{
-		FILE* c_fileptr;
-
-		{
-		#ifdef _WIN32
-			const s32 fd = _open_osfhandle(reinterpret_cast<intptr_t>(filehandle.m_rep), _O_APPEND);
-
-			if (fd == -1)
-				panic("_open_osfhandle failed.\n");
-
-			c_fileptr = _fdopen(fd, "a");
-		#else
-			c_fileptr = fdopen(static_cast<s32>(reinterpret_cast<u64>(filehandle.m_rep)), "a");
-		#endif
-		}
-
-		if (c_fileptr == nullptr)
-			panic("Failed to convert diagnostics log file handle to `FILE*`.\n");
-
-		return c_fileptr;
-	}
-}
-
 ErrorSink* create_error_sink(HandlePool* alloc, SourceReader* reader, IdentifierPool* identifiers, AstPool* asts, u8 source_tab_size, minos::FileHandle log_file) noexcept
 {
 	ErrorSink* const errors = alloc_handle_from_pool<ErrorSink>(alloc);
@@ -279,8 +246,6 @@ Range<ErrorRecord> get_errors(ErrorSink* errors) noexcept
 
 void print_error(minos::FileHandle dst, const SourceLocation* location, CompileError error, u8 tab_size) noexcept
 {
-	FILE* const c_fileptr = c_fileptr_from_minos(dst);
-
 	const char8* const message = error_message_of(error);
 
 	const u32 error_offset_in_context = location->column_number < location->context_offset + 1
@@ -295,26 +260,26 @@ void print_error(minos::FileHandle dst, const SourceLocation* location, CompileE
 		? 5
 		: static_cast<s32>(log10_line_number);
 
-	fprintf(c_fileptr,
-		" %.*s:%u:%u: %s\n"
-		" %5u | %.*s\n"
-		" %*s | ",
-		static_cast<s32>(location->filepath.count()), location->filepath.begin(),
+	print(dst,
+		" %:%:%: %s\n"
+		" %[> 5] | %\n"
+		" %[< %] | ",
+		location->filepath,
 		location->line_number,
 		column_number,
 		message,
 		location->line_number,
-		static_cast<s32>(location->context_chars), location->context,
-		error_indicator_preindent, ""
+		Range{ location->context, location->context_chars },
+		"", error_indicator_preindent
 	);
 
 	for (u32 i = 0; i != error_offset_in_context; ++i)
 	{
 		if (location->context[i] == '\t')
-			fputc('\t', c_fileptr);
+			print(dst, "\t");
 		else
-			fputc(' ', c_fileptr);
+			print(dst, " ");
 	}
 
-	fputs("^\n", c_fileptr);
+	print(dst, "^\n");
 }
