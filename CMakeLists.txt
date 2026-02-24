@@ -11,12 +11,17 @@ set(INFRA_SOURCES
 	infra/minos/minos.hpp
 	infra/minos/minos_win32.cpp
 	infra/minos/minos_linux.cpp
-	infra/common.hpp
 	infra/common.cpp
+	infra/assert.hpp
 	infra/hash.hpp
+	infra/host_compiler.hpp
 	infra/inplace_sort.hpp
+	infra/math.hpp
 	infra/opt.hpp
+	infra/panic.hpp
 	infra/range.hpp
+	infra/template_helpers.hpp
+	infra/types.hpp
 )
 
 set(CORE_SOURCES
@@ -47,8 +52,6 @@ set(DIAG_SOURCES
 
 set(INTERFACE_HEADERS
 	core/core.hpp
-	infra/common.hpp
-	infra/opt.hpp
 	infra/minos/minos.hpp
 )
 
