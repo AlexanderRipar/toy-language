@@ -156,23 +156,31 @@ inline u8 count_leading_ones(T n) noexcept
 template<typename T>
 inline u8 log10_ceil(T n) noexcept
 {
+	static_assert(sizeof(n) <= 8);
+
+	ASSERT_OR_IGNORE(n >= 0);
+
+	const u64 target = static_cast<u64>(n);
+
+	u64 m = 10;
+
+	u64 prev_m = 0;
+
 	u8 rst = 1;
 
-	while (n >= 10'000)
+	// Check for overflow by checking whether m is greater than in the previous
+	// iteration. This works since we are using unsigned types here, making
+	// overflow defined.
+	while (m <= target && prev_m < m)
 	{
-		rst += 4;
+		prev_m = m;
 
-		n /= 10'000;
+		m *= 10;
+
+		rst += 1;
 	}
 
-	if (n >= 1000)
-		return rst + 3;
-	else if (n >= 100)
-		return rst + 2;
-	else if (n >= 10)
-		return rst + 1;
-	else
-		return rst;
+	return rst;
 }
 
 #endif // MATH_INCLUDE_GUARD
