@@ -52,7 +52,7 @@ s64 print(PrintSink sink, Range<char8> format, Inserts... inserts) noexcept
 {
 	PrintInsert erased_inserts[] = { print_make_insert(inserts)... };
 
-	return vprint(sink, format, erased_inserts);
+	return vprint(sink, format, Range{ erased_inserts });
 }
 
 template<typename... Inserts>
