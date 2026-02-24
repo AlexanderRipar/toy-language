@@ -203,8 +203,6 @@ static bool print_chars(PrintState* state, Range<char8> value) noexcept
 
 static bool print_format_int(PrintState* state, const void* insert_attach, PrintSpec spec) noexcept
 {
-	ASSERT_OR_IGNORE(is_none(spec.extended_spec));
-
 	const IntPrintAttach* const attach = static_cast<const IntPrintAttach*>(insert_attach);
 
 	u64 value = attach->value;
@@ -234,7 +232,51 @@ static bool print_format_int(PrintState* state, const void* insert_attach, Print
 		}
 	}
 
-	const u8 required_chars = log10_ceil(value) + (is_negative ? 1 : 0);
+	u8 base;
+	u8 required_chars;
+	bool is_uppercase_hex = false;
+
+	if (is_some(spec.extended_spec))
+	{
+		const char8* extended_spec = get(spec.extended_spec);
+
+		if (extended_spec[0] == ']')
+		{
+			base = 10;
+
+			required_chars = log10_ceil(value);
+		}
+		else if (extended_spec[0] == 'b' && extended_spec[1] == ']')
+		{
+			base = 2;
+
+			required_chars = log2_ceil(value);
+		}
+		else if (extended_spec[0] == 'o' && extended_spec[1] == ']')
+		{
+			base = 8;
+
+			required_chars = log8_ceil(value);
+		}
+		else if ((extended_spec[0] == 'x' || extended_spec[0] == 'X') && extended_spec[1] == ']')
+		{
+			base = 16;
+
+			required_chars = log16_ceil(value);
+
+			is_uppercase_hex = extended_spec[0] == 'X';
+		}
+		else
+		{
+			panic("vprint: Invalid extended spec passed for integer insert.\n");
+		}
+	}
+	else
+	{
+		base = 10;
+
+		required_chars = log10_ceil(value);
+	}
 
 	if (!state_prepad(state, spec.alignment, required_chars, spec.align_frame_size, spec.align_padding_char))
 		return false;
@@ -248,18 +290,74 @@ static bool print_format_int(PrintState* state, const void* insert_attach, Print
 
 	char8* curr = buffer + required_chars - 1;
 
-	while (value >= 10)
+	if (base == 2)
 	{
-		*curr = '0' + value % 10;
+		while (value >= 2)
+		{
+			*curr = '0' + (value & 1);
 
-		value /= 10;
+			value >>= 1;
+
+			curr -= 1;
+		}
+
+		*curr = '0' + static_cast<char8>(value);
+	}
+	else if (base == 8)
+	{
+		while (value >= 8)
+		{
+			*curr = '0' + (value & 7);
+
+			value >>= 3;
+
+			curr -= 1;
+		}
+
+		*curr = '0' + static_cast<char8>(value);
+	}
+	else if (base == 10)
+	{
+		while (value >= 10)
+		{
+			*curr = '0' + value % 10;
+
+			value /= 10;
+
+			curr -= 1;
+		}
+
+		*curr = '0' + static_cast<char8>(value);
 
 		curr -= 1;
 	}
+	else if (base == 16)
+	{
+		while (value >= 16)
+		{
+			const u8 nibble = value & 15;
 
-	*curr = '0' + static_cast<char8>(value);
+			if (nibble >= 10)
+				*curr = (is_uppercase_hex ? 'A' : 'a') + nibble - 10;
+			else
+				*curr = '0' + nibble;
 
-	curr -= 1;
+			value >>= 4;
+
+			curr -= 1;
+		}
+
+		const u8 nibble = value & 15;
+
+		if (nibble >= 10)
+			*curr = (is_uppercase_hex ? 'A' : 'a') + nibble - 10;
+		else
+			*curr = '0' + nibble;
+	}
+	else
+	{
+		ASSERT_UNREACHABLE;
+	}
 
 	if (is_negative)
 		*curr = '-';
