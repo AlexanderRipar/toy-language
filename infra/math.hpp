@@ -154,6 +154,14 @@ inline u8 count_leading_ones(T n) noexcept
 }
 
 template<typename T>
+inline u8 log16_ceil(T n) noexcept
+{
+	ASSERT_OR_IGNORE(n >= 0);
+
+	return (sizeof(T) * 8 - count_leading_zeros(n | 1) + 3) / 4;
+}
+
+template<typename T>
 inline u8 log10_ceil(T n) noexcept
 {
 	static_assert(sizeof(n) <= 8);
@@ -181,6 +189,22 @@ inline u8 log10_ceil(T n) noexcept
 	}
 
 	return rst;
+}
+
+template<typename T>
+inline u8 log8_ceil(T n) noexcept
+{
+	ASSERT_OR_IGNORE(n >= 0);
+
+	return (sizeof(T) * 8 - count_leading_zeros(n | 1) + 2) / 3;
+}
+
+template<typename T>
+inline u8 log2_ceil(T n) noexcept
+{
+	ASSERT_OR_IGNORE(n >= 0);
+
+	return (sizeof(T) * 8 - count_leading_zeros(n | 1));
 }
 
 #endif // MATH_INCLUDE_GUARD
