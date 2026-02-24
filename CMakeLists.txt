@@ -11,6 +11,8 @@ set(INFRA_SOURCES
 	infra/minos/minos.hpp
 	infra/minos/minos_win32.cpp
 	infra/minos/minos_linux.cpp
+	infra/print/print.hpp
+	infra/print/print.cpp
 	infra/common.cpp
 	infra/assert.hpp
 	infra/hash.hpp
