@@ -5,6 +5,7 @@
 #include "../infra/range.hpp"
 #include "../infra/opt.hpp"
 #include "../infra/minos/minos.hpp"
+#include "../infra/print/print.hpp"
 
 
 
@@ -207,7 +208,13 @@ void release_config(Config* config) noexcept;
 
 // Prints the values in the given `Config` to `out` in a readable, JSON-like
 // format.
-void print_config(minos::FileHandle out, const Config* config) noexcept;
+void print_config(PrintSink sink, const Config* config) noexcept;
+
+template<typename Sink>
+void print_config(Sink sink, const Config* config) noexcept
+{
+	print_config(print_make_sink(sink), config);
+}
 
 // Prints help and explanations for the supported config parameters to the
 // standard error stream. Only parameters that are nested less than `depth` are

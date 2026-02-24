@@ -1233,34 +1233,34 @@ static ConfigParser init_config_parser(Range<char8> filepath, Config* out) noexc
 
 
 
-static void print_config_node(diag::PrintContext* ctx, const Config* config, const ConfigHeader* node, u32 indent) noexcept
+static void print_config_node(PrintSink sink, const Config* config, const ConfigHeader* node, u32 indent) noexcept
 {
 	if (node->type == ConfigHeader::Type::Container)
 	{
-		diag::buf_printf(ctx, "%*s%s {\n", indent * 2, "", node->name);
+		print(sink, "%[< %]% {\n", "", indent * 2, node->name);
 
 		for (const ConfigHeader& child : node->container.children)
-			print_config_node(ctx, config, &child, indent + 1);
+			print_config_node(sink, config, &child, indent + 1);
 
-		diag::buf_printf(ctx, "%*s}\n", indent * 2, "");
+		print(sink, "%[< %]}\n", "", indent * 2);
 	}
 	else if (node->type == ConfigHeader::Type::Integer)
 	{
 		const s64 value = *reinterpret_cast<const s64*>(reinterpret_cast<const byte*>(config) + node->target_offset);
 
-		diag::buf_printf(ctx, "%*s%s = %" PRId64 "\n", indent * 2, "", node->name, value);
+		print(sink, "%[< %]% = %\n", "", indent * 2, node->name, value);
 	}
 	else if (node->type == ConfigHeader::Type::String || node->type == ConfigHeader::Type::Path)
 	{
 		const Range<char8> value = *reinterpret_cast<const Range<char8>*>(reinterpret_cast<const byte*>(config) + node->target_offset);
 
-		diag::buf_printf(ctx, "%*s%s = '%.*s'\n", indent * 2, "", node->name, static_cast<u32>(value.count()), value.begin());
+		print(sink, "%[< %]% = '%'\n", "", indent * 2, node->name, value);
 	}
 	else if (node->type == ConfigHeader::Type::Boolean)
 	{
 		const bool value = *reinterpret_cast<const bool*>(reinterpret_cast<const byte*>(config) + node->target_offset);
 
-		diag::buf_printf(ctx, "%*s%s = %s\n", indent * 2, "", node->name, value ? "true" : "false");
+		print(sink, "%[< %]% = %\n", "", indent * 2, node->name, value);
 	}
 	else
 	{
@@ -1340,18 +1340,12 @@ void release_config(Config* config) noexcept
 	config->m_heap_ptr = nullptr;
 }
 
-void print_config(minos::FileHandle out, const Config* config) noexcept
+void print_config(PrintSink sink, const Config* config) noexcept
 {
-	diag::PrintContext ctx;
-	ctx.curr = ctx.buf;
-	ctx.file = out;
-
-	diag::buf_printf(&ctx, "\n#### CONFIG [%.*s] ####\n\n", static_cast<s32>(config->m_config_filepath.count()), config->m_config_filepath.begin());
+	print(sink, "\n#### CONFIG [%] ####\n\n", config->m_config_filepath);
 
 	for (const ConfigHeader& root : CONFIG.container.children)
-		print_config_node(&ctx, config, &root, 0);
-
-	diag::buf_flush(&ctx);
+		print_config_node(sink, config, &root, 0);
 }
 
 void print_config_help(u32 depth) noexcept

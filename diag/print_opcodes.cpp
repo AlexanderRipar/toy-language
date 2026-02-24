@@ -8,7 +8,14 @@
 
 #include <cinttypes>
 
-static void print_opcodes_impl(diag::PrintContext* ctx, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept;
+struct PrintResult
+{
+	const Opcode* next;
+
+	s64 written;
+};
+
+static s64 print_opcodes_impl(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept;
 
 
 
@@ -22,7 +29,7 @@ static const Opcode* code_attach(const Opcode* code, T* out_attach)
 
 
 
-static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code) noexcept
+static PrintResult follow_ref_impl(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code) noexcept
 {
 	const u8 bits = static_cast<u8>(*code);
 
@@ -38,7 +45,7 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 	case Opcode::FileGlobalAllocComplete:
 	case Opcode::FileGlobalAllocUntyped:
 	{
-		return nullptr;
+		return PrintResult{ nullptr, 0 };
 	}
 
 	case Opcode::SetWriteCtx:
@@ -65,49 +72,49 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 	case Opcode::CheckTopVoid:
 	case Opcode::CheckWriteCtxVoid:
 	{
-		return code;
+		return PrintResult{ code, 0 };
 	}
 
 	case Opcode::ScopeBegin:
 	{
-		return code + sizeof(u16);
+		return PrintResult{ code + sizeof(u16), 0 };
 	}
 
 	case Opcode::ScopeAllocTyped:
 	case Opcode::ScopeAllocUntyped:
 	{
-		return code + sizeof(bool);
+		return PrintResult{ code + sizeof(bool), 0 };
 	}
 
 	case Opcode::FileGlobalAllocPrepare:
 	{
-		return code + sizeof(bool) + sizeof(GlobalFileIndex) + sizeof(u16);
+		return PrintResult{ code + sizeof(bool) + sizeof(GlobalFileIndex) + sizeof(u16), 0 };
 	}
 
 	case Opcode::LoadScope:
 	{
-		return code + sizeof(u16) + sizeof(u16);
+		return PrintResult{ code + sizeof(u16) + sizeof(u16), 0 };
 	}
 
 	case Opcode::LoadGlobal:
 	{
-		return code + sizeof(GlobalFileIndex) + sizeof(u16);
+		return PrintResult{ code + sizeof(GlobalFileIndex) + sizeof(u16), 0 };
 	}
 
 	case Opcode::LoadMember:
 	{
-		return code + sizeof(IdentifierId);
+		return PrintResult{ code + sizeof(IdentifierId), 0 };
 	}
 
 	case Opcode::LoadClosure:
 	{
-		return code + sizeof(u16);
+		return PrintResult{ code + sizeof(u16), 0 };
 	}
 
 	case Opcode::LoadBuiltin:
 	case Opcode::ExecBuiltin:
 	{
-		return code + sizeof(Builtin);
+		return PrintResult{ code + sizeof(Builtin), 0 };
 	}
 
 	case Opcode::Signature:
@@ -118,11 +125,13 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 
 		code = code_attach(code, &parameter_count);
 
-		return code + sizeof(u8) + parameter_count * (sizeof(IdentifierId) + sizeof(OpcodeSignaturePerParameterFlags));
+		return PrintResult{ code + sizeof(u8) + parameter_count * (sizeof(IdentifierId) + sizeof(OpcodeSignaturePerParameterFlags)), 0 };
 	}
 
 	case Opcode::DynSignature:
 	{
+		s64 total_written = 0;
+
 		OpcodeSignatureFlags signature_flags;
 
 		code = code_attach(code, &signature_flags);
@@ -141,7 +150,12 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 
 			const Opcode* const return_completion_code = opcode_from_id(opcodes, return_completion);
 
-			print_opcodes_impl(ctx, identifiers, opcodes, return_completion_code, true);
+			const s64 written = print_opcodes_impl(sink, identifiers, opcodes, return_completion_code, true);
+
+			if (written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			total_written += written;
 		}
 
 		for (u8 i = 0; i != parameter_count; ++i)
@@ -160,11 +174,16 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 
 				const Opcode* const parameter_completion_code = opcode_from_id(opcodes, parameter_completion);
 
-				print_opcodes_impl(ctx, identifiers, opcodes, parameter_completion_code, true);
+				const s64 written = print_opcodes_impl(sink, identifiers, opcodes, parameter_completion_code, true);
+
+				if (written < 0)
+					return PrintResult{ nullptr, -1 };
+
+				total_written += written;
 			}
 		}
 
-		return code;
+		return PrintResult{ code, total_written };
 	}
 
 	case Opcode::BindBody:
@@ -175,13 +194,18 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 
 		const Opcode* const body_code = opcode_from_id(opcodes, body);
 
-		print_opcodes_impl(ctx, identifiers, opcodes, body_code, true);
+		const s64 written = print_opcodes_impl(sink, identifiers, opcodes, body_code, true);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, written };
 	}
 
 	case Opcode::PrepareArgs:
 	{
+		s64 total_written = 0;
+
 		u8 argument_count;
 
 		code = code_attach(code, &argument_count);
@@ -198,17 +222,22 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 
 			const Opcode* const argument_callback_code = opcode_from_id(opcodes, argument_callback);
 
-			print_opcodes_impl(ctx, identifiers, opcodes, argument_callback_code, true);
+			const s64 written = print_opcodes_impl(sink, identifiers, opcodes, argument_callback_code, true);
+
+			if (written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			total_written += written;
 		}
 
-		return code;
+		return PrintResult{ code, total_written };
 	}
 
 	case Opcode::CompleteParamTypedNoDefault:
 	case Opcode::CompleteParamTypedWithDefault:
 	case Opcode::CompleteParamUntyped:
 	{
-		return code + sizeof(u8);
+		return PrintResult{ code + sizeof(u8), 0 };
 	}
 
 	case Opcode::ArrayPreInit:
@@ -217,7 +246,7 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 
 		code = code_attach(code, &index_count);
 
-		return code + sizeof(u16) + index_count * sizeof(u16);
+		return PrintResult{ code + sizeof(u16) + index_count * sizeof(u16), 0 };
 	}
 
 	case Opcode::ArrayPostInit:
@@ -228,7 +257,7 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 
 		code = code_attach(code, &index_count);
 
-		return code + sizeof(u16) + index_count * sizeof(u16);
+		return PrintResult{ code + sizeof(u16) + index_count * sizeof(u16), 0 };
 	}
 
 	case Opcode::CompositePreInit:
@@ -237,7 +266,7 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 
 		code = code_attach(code, &names_count);
 
-		return code + sizeof(u16) + names_count * (sizeof(IdentifierId) + sizeof(u16));
+		return PrintResult{ code + sizeof(u16) + names_count * (sizeof(IdentifierId) + sizeof(u16)), 0 };
 	}
 
 	case Opcode::CompositePostInit:
@@ -246,7 +275,7 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 
 		code = code_attach(code, &member_count);
 
-		return code + member_count * sizeof(IdentifierId);
+		return PrintResult{ code + member_count * sizeof(IdentifierId), 0 };
 	}
 
 	case Opcode::If:
@@ -257,9 +286,12 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 
 		const Opcode* const consequent_code = opcode_from_id(opcodes, consequent);
 
-		print_opcodes_impl(ctx, identifiers, opcodes, consequent_code, true);
+		const s64 written = print_opcodes_impl(sink, identifiers, opcodes, consequent_code, true);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, written };
 	}
 
 	case Opcode::IfElse:
@@ -274,13 +306,19 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 
 		const Opcode* const consequent_code = opcode_from_id(opcodes, consequent);
 
-		print_opcodes_impl(ctx, identifiers, opcodes, consequent_code, true);
+		const s64 consequent_written = print_opcodes_impl(sink, identifiers, opcodes, consequent_code, true);
+
+		if (consequent_written < 0)
+			return PrintResult{ nullptr, -1 };
 
 		const Opcode* const alternative_code = opcode_from_id(opcodes, alternative);
 
-		print_opcodes_impl(ctx, identifiers, opcodes, alternative_code, true);
+		const s64 alternative_written = print_opcodes_impl(sink, identifiers, opcodes, alternative_code, true);
 
-		return code;
+		if (alternative_written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, consequent_written + alternative_written };
 	}
 
 	case Opcode::Loop:
@@ -295,13 +333,19 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 
 		const Opcode* const condition_code = opcode_from_id(opcodes, condition);
 
-		print_opcodes_impl(ctx, identifiers, opcodes, condition_code, true);
+		const s64 condition_written = print_opcodes_impl(sink, identifiers, opcodes, condition_code, true);
+
+		if (condition_written < 0)
+			return PrintResult{ nullptr, -1 };
 
 		const Opcode* const body_code = opcode_from_id(opcodes, body);
 
-		print_opcodes_impl(ctx, identifiers, opcodes, body_code, true);
+		const s64 body_written = print_opcodes_impl(sink, identifiers, opcodes, body_code, true);
 
-		return code;
+		if (body_written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, condition_written + body_written };
 	}
 
 	case Opcode::LoopFinally:
@@ -320,62 +364,71 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 
 		const Opcode* const condition_code = opcode_from_id(opcodes, condition);
 
-		print_opcodes_impl(ctx, identifiers, opcodes, condition_code, true);
+		const s64 condition_written = print_opcodes_impl(sink, identifiers, opcodes, condition_code, true);
+
+		if (condition_written < 0)
+			return PrintResult{ nullptr, -1 };
 
 		const Opcode* const body_code = opcode_from_id(opcodes, body);
 
-		print_opcodes_impl(ctx, identifiers, opcodes, body_code, true);
+		const s64 body_written = print_opcodes_impl(sink, identifiers, opcodes, body_code, true);
+
+		if (body_written < 0)
+			return PrintResult{ nullptr, -1 };
 
 		const Opcode* const finally_code = opcode_from_id(opcodes, finally);
 
-		print_opcodes_impl(ctx, identifiers, opcodes, finally_code, true);
+		const s64 finally_written = print_opcodes_impl(sink, identifiers, opcodes, finally_code, true);
 
-		return code;
+		if (finally_written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, condition_written + body_written + finally_written };
 	}
 
 	case Opcode::Slice:
 	{
-		return code + sizeof(OpcodeSliceKind);
+		return PrintResult{ code + sizeof(OpcodeSliceKind), 0 };
 	}
 
 	case Opcode::BinaryArithmeticOp:
 	{
-		return code + sizeof(OpcodeBinaryArithmeticOpKind);
+		return PrintResult{ code + sizeof(OpcodeBinaryArithmeticOpKind), 0 };
 	}
 
 	case Opcode::Shift:
 	{
-		return code + sizeof(OpcodeShiftKind);
+		return PrintResult{ code + sizeof(OpcodeShiftKind), 0 };
 	}
 
 	case Opcode::BinaryBitwiseOp:
 	{
-		return code + sizeof(OpcodeBinaryBitwiseOpKind);
+		return PrintResult{ code + sizeof(OpcodeBinaryBitwiseOpKind), 0 };
 	}
 
 	case Opcode::Compare:
 	{
-		return code + sizeof(OpcodeCompareKind);
+		return PrintResult{ code + sizeof(OpcodeCompareKind), 0 };
 	}
 
 	case Opcode::ReferenceType:
 	{
-		return code + sizeof(OpcodeReferenceTypeFlags);
+		return PrintResult{ code + sizeof(OpcodeReferenceTypeFlags), 0 };
 	}
 
 	case Opcode::ValueInteger:
 	{
-		return code + sizeof(CompIntegerValue);
+		return PrintResult{ code + sizeof(CompIntegerValue), 0 };
 	}
 
 	case Opcode::ValueFloat:
 	{
-		return code + sizeof(CompFloatValue);
+		return PrintResult{ code + sizeof(CompFloatValue), 0 };
 	}
 
 	case Opcode::ValueString:
 	{
-		return code + sizeof(ForeverValueId);
+		return PrintResult{ code + sizeof(ForeverValueId), 0 };
 	}
 
 	case Opcode::Switch:
@@ -385,16 +438,28 @@ static const Opcode* follow_ref_impl(diag::PrintContext* ctx, IdentifierPool* id
 	ASSERT_UNREACHABLE;
 }
 
-static void follow_refs_impl(diag::PrintContext* ctx, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code) noexcept
+static s64 follow_refs_impl(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code) noexcept
 {
-	do
+	s64 total_written = 0;
+
+	PrintResult result;
+
+	while (true)
 	{
-		code = follow_ref_impl(ctx, identifiers, opcodes, code);
+		result = follow_ref_impl(sink, identifiers, opcodes, code);
+
+		if (result.next == nullptr)
+			break;
+
+		total_written += result.written;
+
+		code = result.next;
 	}
-	while (code != nullptr);
+
+	return result.written < 0 ? -1 : total_written + result.written;
 }
 
-static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code) noexcept
+static PrintResult print_opcode_impl(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code) noexcept
 {
 	const u8 bits = static_cast<u8>(*code);
 
@@ -406,11 +471,14 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 	const OpcodeId code_id = id_from_opcode(opcodes, code);
 
-	diag::buf_printf(ctx, "%6u  %c %s",
+	const s64 header_written = print(sink, "%[> 6]  % %",
 		static_cast<u32>(code_id),
-		consumes_write_ctx ? '@' : ' ',
+		consumes_write_ctx ? "@" : " ",
 		op_name
 	);
+
+	if (header_written < 0)
+		return PrintResult{ nullptr, -1 };
 
 	code += 1;
 
@@ -422,7 +490,7 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 	case Opcode::FileGlobalAllocComplete:
 	case Opcode::FileGlobalAllocUntyped:
 	{
-		return nullptr;
+		return PrintResult{ nullptr, header_written };
 	}
 
 	case Opcode::SetWriteCtx:
@@ -449,7 +517,7 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 	case Opcode::CheckTopVoid:
 	case Opcode::CheckWriteCtxVoid:
 	{
-		return code;
+		return PrintResult{ code, header_written };
 	}
 
 	case Opcode::ScopeBegin:
@@ -458,9 +526,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &member_count);
 
-		diag::buf_printf(ctx, " member_count=%u", member_count);
+		const s64 written = print(sink, " member_count=%", member_count);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::ScopeAllocTyped:
@@ -470,9 +541,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &is_mut);
 
-		diag::buf_printf(ctx, " is_mut=%s", is_mut ? "true" : "false");
+		const s64 written = print(sink, " is_mut=%", is_mut);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::FileGlobalAllocPrepare:
@@ -489,9 +563,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &rank);
 
-		diag::buf_printf(ctx, " is_mut=%s file_index=%u rank=%u", is_mut ? "true" : "false", file_index, rank);
+		const s64 written = print(sink, " is_mut=% file_index=% rank=%", is_mut, static_cast<u16>(file_index), rank);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::LoadScope:
@@ -504,9 +581,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &rank);
 
-		diag::buf_printf(ctx, " out=%u rank=%u", out, rank);
+		const s64 written = print(sink, " out=% rank=%", out, rank);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::LoadGlobal:
@@ -519,9 +599,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &rank);
 
-		diag::buf_printf(ctx, " file_index=%u rank=%u", static_cast<u32>(index), rank);
+		const s64 written = print(sink, " file_index=% rank=%", static_cast<u16>(index), rank);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::LoadMember:
@@ -532,9 +615,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		const Range<char8> name_str = identifier_name_from_id(identifiers, name);
 
-		diag::buf_printf(ctx, " name=IdentifierId<%u> (%.*s)", static_cast<u32>(name), static_cast<s32>(name_str.count()), name_str.begin());
+		const s64 written = print(sink, " name=IdentifierId<%> (%)", static_cast<u32>(name), name_str);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::LoadClosure:
@@ -543,9 +629,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &rank);
 
-		diag::buf_printf(ctx, " rank=%u", rank);
+		const s64 written = print(sink, " rank=%", rank);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::LoadBuiltin:
@@ -555,9 +644,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &builtin);
 
-		diag::buf_printf(ctx, " %s", tag_name(builtin));
+		const s64 written = print(sink, " %", tag_name(builtin));
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::Signature:
@@ -574,11 +666,14 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &value_count);
 
-		diag::buf_printf(ctx, " %s param_count=%u value_count=%u",
+		s64 total_written = print(sink, " % param_count=% value_count=%",
 			signature_flags.is_func ? "func" : "proc",
 			parameter_count,
 			value_count
 		);
+
+		if (total_written < 0)
+			return PrintResult{ nullptr, -1 };
 
 		for (u8 i = 0; i != parameter_count; ++i)
 		{
@@ -592,18 +687,23 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 			const Range<char8> parameter_name_str = identifier_name_from_id(identifiers, parameter_name);
 
-			diag::buf_printf(ctx, "\n     -        %2u: mut=%s eval=%s type=%s default=%s name=IdentifierId<%u> (%.*s) ",
+			const s64 written = print(sink, "\n     -        %[> 2]: mut=% eval=% type=% default=% name=IdentifierId<%> (%) ",
 				i,
-				parameter_flags.is_mut ? "true" : "false",
-				parameter_flags.is_eval ? "true" : "false",
-				parameter_flags.has_type ? "true" : "false",
-				parameter_flags.has_default ? "true" : "false",
+				static_cast<bool>(parameter_flags.is_mut),
+				static_cast<bool>(parameter_flags.is_eval),
+				static_cast<bool>(parameter_flags.has_type),
+				static_cast<bool>(parameter_flags.has_default),
 				static_cast<u32>(parameter_name),
-				static_cast<s32>(parameter_name_str.count()), parameter_name_str.begin()
+				parameter_name_str
 			);
+
+			if (written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			total_written += written;
 		}
 
-		return code;
+		return PrintResult{ code, header_written + total_written };
 	}
 
 	case Opcode::DynSignature:
@@ -624,12 +724,15 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &closed_over_value_count);
 
-		diag::buf_printf(ctx, " %s param_count=%u value_count=%u closed_count=%u",
+		s64 total_written = print(sink, " % param_count=% value_count=% closed_count=%",
 			signature_flags.is_func ? "func" : "proc",
 			parameter_count,
 			value_count,
 			closed_over_value_count
 		);
+
+		if (total_written < 0)
+			return PrintResult{ nullptr, -1 };
 
 		if (signature_flags.has_templated_return_type)
 		{
@@ -637,7 +740,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 			code = code_attach(code, &return_completion);
 
-			diag::buf_printf(ctx, " return_completion=OpcodeId<%u>", static_cast<u32>(return_completion));
+			const s64 written = print(sink, " return_completion=OpcodeId<%>", static_cast<u32>(return_completion));
+
+			if (written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			total_written += written;
 		}
 
 		for (u8 i = 0; i != parameter_count; ++i)
@@ -652,15 +760,19 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 			const Range<char8> parameter_name_str = identifier_name_from_id(identifiers, parameter_name);
 
-			diag::buf_printf(ctx, "\n     -        %2u: mut=%s eval=%s type=%s default=%s name=IdentifierId<%u> (%.*s) ",
+			const s64 written = print(sink, "\n     -        %[> 2]: mut=% eval=% type=% default=% name=IdentifierId<%> (%) ",
 				i,
-				parameter_flags.is_mut ? "true" : "false",
-				parameter_flags.is_eval ? "true" : "false",
-				parameter_flags.has_type ? "true" : "false",
-				parameter_flags.has_default ? "true" : "false",
-				static_cast<u32>(parameter_name),
-				static_cast<s32>(parameter_name_str.count()), parameter_name_str.begin()
+				static_cast<bool>(parameter_flags.is_mut),
+				static_cast<bool>(parameter_flags.is_eval),
+				static_cast<bool>(parameter_flags.has_type),
+				static_cast<bool>(parameter_flags.has_default),
+				static_cast<u32>(parameter_name)
 			);
+
+			if (written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			total_written += written;
 
 			if (parameter_flags.is_templated)
 			{
@@ -668,11 +780,16 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 				code = code_attach(code, &parameter_completion);
 
-				diag::buf_printf(ctx, " completion=OpcodeId<%u>", static_cast<u32>(parameter_completion));
+				const s64 completion_written = print(sink, " completion=OpcodeId<%>", static_cast<u32>(parameter_completion));
+				
+				if (completion_written < 0)
+					return PrintResult{ nullptr, -1 };
+
+				total_written += completion_written;
 			}
 		}
 
-		return code;
+		return PrintResult{ code, header_written + total_written };
 	}
 
 	case Opcode::BindBody:
@@ -681,9 +798,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &body_id);
 
-		diag::buf_printf(ctx, " body=OpcodeId<%u>", static_cast<u32>(body_id));
+		const s64 written = print(sink, " body=OpcodeId<%>", static_cast<u32>(body_id));
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::PrepareArgs:
@@ -692,7 +812,10 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &argument_count);
 
-		diag::buf_printf(ctx, " count=%u", argument_count);
+		s64 total_written = print(sink, " count=%", argument_count);
+
+		if (total_written < 0)
+			return PrintResult{ nullptr, -1 };
 
 		const Opcode* const argument_names = code;
 		code += sizeof(IdentifierId) * argument_count;
@@ -712,15 +835,20 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 				? range::from_literal_string("<unnamed>")
 				: identifier_name_from_id(identifiers, argument_name);
 
-			diag::buf_printf(ctx, "\n     -        %2u: callback=OpcodeId<%u> name=IdentifierId<%u> (%.*s)",
+			const s64 written = print(sink, "\n     -        %[> 2]: callback=OpcodeId<%> name=IdentifierId<%> (%)",
 				i,
 				static_cast<u32>(argument_callback),
 				static_cast<u32>(argument_name),
-				static_cast<s32>(argument_name_str.count()), argument_name_str.begin()
+				argument_name_str
 			);
+
+			if (written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			total_written += written;
 		}
 
-		return code;
+		return PrintResult{ code, header_written + total_written };
 	}
 
 	case Opcode::CompleteParamTypedNoDefault:
@@ -731,9 +859,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &rank);
 
-		diag::buf_printf(ctx, " rank=%u", rank);
+		const s64 written = print(sink, " rank=%", rank);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::ArrayPreInit:
@@ -746,7 +877,10 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &leading_element_count);
 
-		diag::buf_printf(ctx, " index_count=%u leading_elem_count=%u", index_count, leading_element_count);
+		s64 total_written = print(sink, " index_count=% leading_elem_count=%", index_count, leading_element_count);
+
+		if (total_written < 0)
+			return PrintResult{ nullptr, -1 };
 
 		for (u16 i = 0; i != index_count; ++i)
 		{
@@ -754,10 +888,15 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 			code = code_attach(code, &following_element_count);
 
-			diag::buf_printf(ctx, "\n     -              following_elem_count=%u", following_element_count);
+			const s64 written = print(sink, "\n     -              following_elem_count=%", following_element_count);
+
+			if (written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			total_written += written;
 		}
 
-		return code;
+		return PrintResult{ code, header_written + total_written };
 	}
 
 	case Opcode::ArrayPostInit:
@@ -774,11 +913,14 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &leading_element_count);
 
-		diag::buf_printf(ctx, " index_count=%u leading_elem_count=%u total_elem_count=%u",
+		s64 total_written = print(sink, " index_count=% leading_elem_count=% total_elem_count=%",
 			index_count,
 			leading_element_count,
 			total_element_count
 		);
+
+		if (total_written < 0)
+			return PrintResult{ nullptr, -1 };
 
 		for (u16 i = 0; i != index_count; ++i)
 		{
@@ -786,10 +928,15 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 			code = code_attach(code, &following_element_count);
 
-			diag::buf_printf(ctx, "\n     -        following_elem_count=%u", following_element_count);
+			const s64 written = print(sink, "\n     -        following_elem_count=%", following_element_count);
+
+			if (written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			total_written += written;
 		}
 
-		return code;
+		return PrintResult{ code, header_written + total_written };
 	}
 
 	case Opcode::CompositePreInit:
@@ -802,10 +949,13 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &leading_initializer_count);
 
-		diag::buf_printf(ctx, " names_count=%u leading_elem_count=%u",
+		s64 total_written = print(sink, " names_count=% leading_elem_count=%",
 			names_count,
 			leading_initializer_count
 		);
+
+		if (total_written < 0)
+			return PrintResult{ nullptr, -1 };
 
 		for (u16 i = 0; i != names_count; ++i)
 		{
@@ -819,14 +969,19 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 			const Range<char8> name_str = identifier_name_from_id(identifiers, name);
 
-			diag::buf_printf(ctx, "\n     -        following_elem_count=%u name=IdentifierId<%u> (%.*s)",
+			const s64 written = print(sink, "\n     -        following_elem_count=% name=IdentifierId<%> (%)",
 				following_initializer_count,
 				static_cast<u32>(name),
-				static_cast<s32>(name_str.count()), name_str.begin()
+				name_str
 			);
+
+			if (written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			total_written += written;
 		}
 
-		return code;
+		return PrintResult{ code, header_written + total_written };
 	}
 
 	case Opcode::CompositePostInit:
@@ -835,9 +990,10 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &member_count);
 
-		diag::buf_printf(ctx, " total_elem_count=%u",
-			member_count
-		);
+		s64 total_written = print(sink, " total_elem_count=%", member_count);
+
+		if (total_written < 0)
+			return PrintResult{ nullptr, -1 };
 
 		for (u16 i = 0; i != member_count; ++i)
 		{
@@ -847,13 +1003,18 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 			const Range<char8> name_str = identifier_name_from_id(identifiers, name);
 
-			diag::buf_printf(ctx, "\n     -        name=IdentifierId<%u> (%.*s)",
+			const s64 written = print(sink, "\n     -        name=IdentifierId<%> (%)",
 				static_cast<u32>(name),
-				static_cast<s32>(name_str.count()), name_str.begin()
+				name_str
 			);
+
+			if (written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			total_written += written;
 		}
 
-		return code;
+		return PrintResult{ code, header_written + total_written };
 	}
 
 	case Opcode::If:
@@ -862,11 +1023,14 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &consequent);
 
-		diag::buf_printf(ctx, " consequent=OpcodeId<%u>",
+		const s64 written = print(sink, " consequent=OpcodeId<%>",
 			static_cast<u32>(consequent)
 		);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::IfElse:
@@ -879,12 +1043,15 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &alternative);
 
-		diag::buf_printf(ctx, " consequent=OpcodeId<%u> alternative=OpcodeId<%u>",
+		const s64 written = print(sink, " consequent=OpcodeId<%> alternative=OpcodeId<%>",
 			static_cast<u32>(consequent),
 			static_cast<u32>(alternative)
 		);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::Loop:
@@ -897,12 +1064,15 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &body_id);
 
-		diag::buf_printf(ctx, " cond=OpcodeId<%u> body=OpcodeId<%u>",
+		const s64 written = print(sink, " cond=OpcodeId<%> body=OpcodeId<%>",
 			static_cast<u32>(condition_id),
 			static_cast<u32>(body_id)
 		);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::LoopFinally:
@@ -919,13 +1089,16 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &finally_id);
 
-		diag::buf_printf(ctx, " cond=OpcodeId<%u> body=OpcodeId<%u> finally=OpcodeId<%u>",
+		const s64 written = print(sink, " cond=OpcodeId<%> body=OpcodeId<%> finally=OpcodeId<%>",
 			static_cast<u32>(condition_id),
 			static_cast<u32>(body_id),
 			static_cast<u32>(finally_id)
 		);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::Slice:
@@ -947,9 +1120,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 		else
 			ASSERT_UNREACHABLE;
 
-		diag::buf_printf(ctx, " %s", kind_name);
+		const s64 written = print(sink, " %", kind_name);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::BinaryArithmeticOp:
@@ -979,9 +1155,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 		else
 			ASSERT_UNREACHABLE;
 
-		diag::buf_printf(ctx, " %s", kind_name);
+		const s64 written = print(sink, " %", kind_name);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::Shift:
@@ -999,9 +1178,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 		else
 			ASSERT_UNREACHABLE;
 
-		diag::buf_printf(ctx, " %s", kind_name);
+		const s64 written = print(sink, " %", kind_name);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::BinaryBitwiseOp:
@@ -1021,8 +1203,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 		else
 			ASSERT_UNREACHABLE;
 
-		diag::buf_printf(ctx, " %s", kind_name);
-		return code;
+		const s64 written = print(sink, " %", kind_name);
+
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::Compare:
@@ -1048,9 +1234,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 		else
 			ASSERT_UNREACHABLE;
 
-		diag::buf_printf(ctx, " %s", kind_name);
+		const s64 written = print(sink, " %", kind_name);
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::ReferenceType:
@@ -1061,18 +1250,20 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		const TypeTag tag = static_cast<TypeTag>(flags.tag);
 
+		s64 written;
+
 		if (tag == TypeTag::Ptr)
 		{
-			diag::buf_printf(ctx, " Ptr is_mut=%s is_multi=%s is_opt=%s",
-				flags.is_mut ? "true" : "false",
-				flags.is_multi ? "true" : "false",
-				flags.is_opt ? "true" : "false"
+			written = print(sink, " Ptr is_mut=% is_multi=% is_opt=%",
+				static_cast<bool>(flags.is_mut),
+				static_cast<bool>(flags.is_multi),
+				static_cast<bool>(flags.is_opt)
 			);
 		}
 		else if (tag == TypeTag::Slice)
 		{
-			diag::buf_printf(ctx, " Slice is_mut=%s",
-				flags.is_mut ? "true" : "false"
+			written = print(sink, " Slice is_mut=%",
+				static_cast<bool>(flags.is_mut)
 			);
 		}
 		else
@@ -1080,7 +1271,10 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 			ASSERT_UNREACHABLE;
 		}
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::ValueInteger:
@@ -1094,14 +1288,19 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 		if (is_negative)
 			value = comp_integer_neg(value);
 
+		s64 written;
+
 		u64 u64_value;
 
 		if (u64_from_comp_integer(value, 64, &u64_value))
-			diag::buf_printf(ctx, " CompIntegerValue<%s%" PRIu64 ">", is_negative ? "-" : "", u64_value);
+			written = print(sink, " CompIntegerValue<%[]%>", is_negative ? "-" : "", u64_value);
 		else
-			diag::buf_printf(ctx, " CompIntegerValue<%sBIG>", is_negative ? "-" : "");
+			written = print(sink, " CompIntegerValue<%BIG>", is_negative ? "-" : "");
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::ValueFloat:
@@ -1110,9 +1309,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &value);
 
-		diag::buf_printf(ctx, " CompFloatValue<%d>", f64_from_comp_float(value));
+		const s64 written = print(sink, " CompFloatValue<%>", f64_from_comp_float(value));
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::ValueString:
@@ -1121,9 +1323,12 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 
 		code = code_attach(code, &value);
 
-		diag::buf_printf(ctx, " ForeverValueId<%u>", static_cast<u32>(value));
+		const s64 written = print(sink, " ForeverValueId<%>", static_cast<u32>(value));
 
-		return code;
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::Switch:
@@ -1133,33 +1338,61 @@ static const Opcode* print_opcode_impl(diag::PrintContext* ctx, IdentifierPool* 
 	ASSERT_UNREACHABLE;
 }
 
-static void print_opcodes_impl(diag::PrintContext* ctx, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept
+static s64 print_opcodes_impl(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept
 {
 	const Opcode* const code_begin = code;
 
-	do
+	s64 total_written = 0;
+
+	PrintResult result;
+
+	while (true)
 	{
-		code = print_opcode_impl(ctx, identifiers, opcodes, code);
+		result = print_opcode_impl(sink, identifiers, opcodes, code);
 
-		buf_printf(ctx, "\n");
+		if (result.next == nullptr)
+			break;
+
+		code = result.next;
+
+		total_written += result.written;
+
+		const s64 written = print(sink, "\n");
+
+		if (written < 0)
+			return -1;
+
+		total_written += written;
 	}
-	while (code != nullptr);
 
-	buf_printf(ctx, "\n");
+	if (result.written < 0)
+		return -1;
+
+	total_written += result.written;
+
+	const s64 written = print(sink, "\n\n");
+
+	if (written < 0)
+		return -1;
+
+	total_written += written;
 
 	if (follow_refs)
-		follow_refs_impl(ctx, identifiers, opcodes, code_begin);
+	{
+		const s64 refs_written = follow_refs_impl(sink, identifiers, opcodes, code_begin);
+
+		if (refs_written < 0)
+			return -1;
+
+		total_written += refs_written;
+	}
+
+	return total_written;
 }
 
 
 
-void diag::print_opcodes(minos::FileHandle out, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept
+s64 diag::print_opcodes(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept
 {
-	PrintContext ctx;
-	ctx.curr = ctx.buf;
-	ctx.file = out;
-
-	print_opcodes_impl(&ctx, identifiers, opcodes, code, follow_refs);
-
-	buf_flush(&ctx);
+	return print_opcodes_impl(sink, identifiers, opcodes, code, follow_refs);
 }

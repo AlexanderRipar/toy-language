@@ -201,8 +201,8 @@ static void log_ast(Interpreter* interp, AstNode* node) noexcept
 
 	const SourceLocation location = source_location_from_source_id(interp->reader, source_id);
 
-	diag::print_header(interp->imported_asts_log_file, "%.*s:%u:%u",
-		static_cast<s32>(location.filepath.count()), location.filepath.begin(),
+	diag::print_header(interp->imported_asts_log_file, "%:%:%",
+		location.filepath,
 		location.line_number,
 		location.column_number
 	);
@@ -218,8 +218,8 @@ static void log_opcodes(Interpreter* interp, const Opcode* code) noexcept
 
 	const OpcodeId code_id = id_from_opcode(interp->opcodes, code);
 
-	diag::print_header(interp->imported_opcodes_log_file, "%.*s:%u:%u (OpcodeId<%u>)",
-			static_cast<s32>(location.filepath.count()), location.filepath.begin(),
+	diag::print_header(interp->imported_opcodes_log_file, "%:%:% (OpcodeId<%>)",
+			location.filepath,
 			location.line_number,
 			location.column_number,
 			static_cast<u32>(code_id)

@@ -2,30 +2,54 @@
 #define DIAG_INCLUDE_GUARD
 
 #include "../core/core.hpp"
-#include "../infra/minos/minos.hpp"
+#include "../infra/print/print.hpp"
 
 namespace diag
 {
-	struct PrintContext
+	s64 print_ast(PrintSink sink, IdentifierPool* identifiers, AstNode* root) noexcept;
+
+	s64 print_opcodes(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept;
+
+	s64 print_type(PrintSink sink, IdentifierPool* identifiers, TypePool* types, TypeId type_id) noexcept;
+
+	template<typename Sink, typename... Inserts>
+	s64 print_header(Sink sink, const char8* format, Inserts... inserts) noexcept
 	{
-		minos::FileHandle file;
+		const s64 begin_written = print(sink, "### ");
 
-		char8* curr;
+		if (begin_written < 0)
+			return -1;
 
-		char8 buf[8192];
-	};
+		const s64 message_written = print(sink, format, inserts...);
 
-	void buf_flush(PrintContext* ctx) noexcept;
+		if (message_written < 0)
+			return -1;
 
-	void buf_printf(PrintContext* ctx, const char8* format, ...) noexcept;
+		const s64 end_written = print(sink, " ###\n");
 
-	void print_header(minos::FileHandle out, const char8*, ...) noexcept;
+		if (end_written < 0)
+			return -1;
 
-	void print_ast(minos::FileHandle out, IdentifierPool* identifiers, AstNode* root) noexcept;
+		return begin_written + message_written + end_written;
+	}
 
-	void print_opcodes(minos::FileHandle out, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept;
+	template<typename Sink>
+	s64 print_ast(Sink sink, IdentifierPool* identifiers, AstNode* root) noexcept
+	{
+		return print_ast(print_make_sink(sink), identifiers, root);
+	}
 
-	void print_type(minos::FileHandle out, IdentifierPool* identifiers, TypePool* types, TypeId type_id) noexcept;
+	template<typename Sink>
+	s64 print_opcodes(Sink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept
+	{
+		return print_opcodes(print_make_sink(sink), identifiers, opcodes, code, follow_refs);
+	}
+
+	template<typename Sink>
+	s64 print_type(Sink sink, IdentifierPool* identifiers, TypePool* types, TypeId type_id) noexcept
+	{
+		return print_type(print_make_sink(sink), identifiers, types, type_id);
+	}
 }
 
 #endif // DIAG_INCLUDE_GUARD

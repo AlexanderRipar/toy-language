@@ -3,20 +3,24 @@
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
 #include "../infra/range.hpp"
+#include "../infra/print/print.hpp"
 
 #include <cinttypes>
 
-static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers, TypePool* types, TypeId type_id, u32 indent, bool skip_initial_indent) noexcept
+static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool* types, TypeId type_id, u32 indent, bool skip_initial_indent) noexcept
 {
 	if (type_id == TypeId::INVALID)
-	{
-		diag::buf_printf(ctx, "%*s<Invalid>\n", skip_initial_indent ? 0 : indent * 2, "");
+		return print(sink, "%[< %]<Invalid>\n", "", skip_initial_indent ? 0 : indent * 2);
 
-		return;
-	}
+	s64 indent_written = 0;
 
 	if (!skip_initial_indent)
-		diag::buf_printf(ctx, "%*s", indent * 2, "");
+	{
+		indent_written = print(sink, "%[< %]", "", indent * 2);
+
+		if (indent_written < 0)
+			return -1;
+	}
 
 	const TypeTag tag = type_tag_from_id(types, type_id);
 
@@ -36,9 +40,12 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	case TypeTag::TypeInfo:
 	case TypeTag::TailArray:
 	{
-		diag::buf_printf(ctx, "%s\n", tag_name(tag));
+		const s64 written = print(sink, "%\n", tag_name(tag));
 
-		return;
+		if (written < 0)
+			return -1;
+
+		return indent_written + written;
 	}
 
 	case TypeTag::Integer:
@@ -46,9 +53,12 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	{
 		const NumericType* numeric_type = type_attachment_from_id<NumericType>(types, type_id);
 
-		diag::buf_printf(ctx, "%s%u\n", tag == TypeTag::Integer ? numeric_type->is_signed ? "s" : "u" : "f", numeric_type->bits);
+		const s64 written = print(sink, "%[]%\n", tag == TypeTag::Integer ? numeric_type->is_signed ? "s" : "u" : "f", numeric_type->bits);
 
-		return;
+		if (written < 0)
+			return -1;
+
+		return indent_written + written;
 	}
 
 	case TypeTag::Slice:
@@ -72,11 +82,17 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 		else
 			introducer = "*";
 
-		diag::buf_printf(ctx, "%s%s", introducer, reference->is_mut ? "mut " : "");
+		const s64 written = print(sink, "%[]%", introducer, reference->is_mut ? "mut " : "");
 
-		print_type_impl(ctx, identifiers, types, reference->referenced_type_id, indent + 1, true);
+		if (written < 0)
+			return -1;
 
-		return;
+		const s64 referenced_written = print_type_impl(sink, identifiers, types, reference->referenced_type_id, indent + 1, true);
+
+		if (referenced_written < 0)
+			return -1;
+
+		return indent_written + written + referenced_written;
 	}
 
 	case TypeTag::ArrayLiteral:
@@ -84,11 +100,17 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	{
 		const ArrayType* const array = type_attachment_from_id<ArrayType>(types, type_id);
 
-		diag::buf_printf(ctx, "%s[%" PRIu64 "]", tag == TypeTag::ArrayLiteral ? "." : "", array->element_count);
+		const s64 written = print(sink, "%[][%]", tag == TypeTag::ArrayLiteral ? "." : "", array->element_count);
 
-		print_type_impl(ctx, identifiers, types, is_some(array->element_type) ? get(array->element_type) : TypeId::INVALID, indent + 1, true);
+		if (written < 0)
+			return -1;
 
-		return;
+		const s64 element_written = print_type_impl(sink, identifiers, types, is_some(array->element_type) ? get(array->element_type) : TypeId::INVALID, indent + 1, true);
+
+		if (element_written < 0)
+			return -1;
+
+		return indent_written + written + element_written;
 	}
 
 	case TypeTag::Func:
@@ -116,20 +138,26 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 			? type_metrics_from_id(types, composite_type_id)
 			: TypeMetrics{ 0, 0, 0 };
 
-		diag::buf_printf(ctx, "%s (sz=%" PRIu64 ", al=%" PRIu32 ", st=%" PRIu64 ") {",
+		s64 total_written = print(sink, "% (sz=%, al=%, st=%) {",
 			tag == TypeTag::Func ? "Func" : tag == TypeTag::Composite ? "Composite" : "CompositeLiteral",
 			metrics.size,
 			metrics.align,
 			metrics.stride
 		);
 
+		if (total_written < 0)
+			return -1;
+
 		bool has_members = false;
 
 		if (composite_type_id == TypeId::INVALID)
 		{
-			diag::buf_printf(ctx, "%*s<INCOMPLETE>",
-				(indent + 1) * 2, ""
-			);
+			const s64 written = print(sink, "%[< %]<INCOMPLETE>", "", (indent + 1) * 2);
+			
+			if (written < 0)
+				return -1;
+
+			total_written += written;
 		}
 		else
 		{
@@ -145,54 +173,86 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 
 				const IdentifierId member_name = type_member_name_by_rank(types, composite_type_id, member_info.rank);
 
-				diag::buf_printf(ctx, "%s%*s%s%s",
+				const s64 flags_written = print(sink, "%[]%[< %]%[]%",
 					has_members ? "" : "\n",
-					(indent + 1) * 2, "",
+					"", (indent + 1) * 2,
 					member_info.is_pub ? "pub " : "",
 					member_info.is_mut ? "mut " : ""
 				);
 
+				if (flags_written < 0)
+					return -1;
+
+				total_written += flags_written;
+
+				s64 name_written;
+
 				if (member_name < IdentifierId::FirstNatural)
 				{
-					diag::buf_printf(ctx, "\"_%u\" ",
-						static_cast<u32>(member_name)
-					);
+					name_written = print(sink, "\"_%\" ", static_cast<u32>(member_name));
 				}
 				else
 				{
 					const Range<char8> name = identifier_name_from_id(identifiers, member_name);
 
-					diag::buf_printf(ctx, "\"%.*s\" ",
-						static_cast<s32>(name.count()), name.begin()
-					);
+					name_written = print(sink, "\"%\" ", name);
 				}
+
+				if (name_written < 0)
+					return -1;
+
+				total_written += name_written;
+
+				s64 type_written;
 
 				if (is_complete)
 				{
-					diag::buf_printf(ctx, "(%+" PRId64 ") :: ", member_info.offset);
+					const s64 offset_written = print(sink, "(%) :: ", member_info.offset);
 
-					print_type_impl(ctx, identifiers, types, member_info.type_id, indent + 1, true);
+					if (offset_written < 0)
+						return -1;
+
+					total_written += offset_written;
+
+					type_written = print_type_impl(sink, identifiers, types, member_info.type_id, indent + 1, true);
 				}
 				else
 				{
-					diag::buf_printf(ctx, ":: OpcodeId<%u>", static_cast<u32>(member_initializer));
+					type_written = print(sink, ":: OpcodeId<%u>", static_cast<u32>(member_initializer));
 				}
+
+				if (type_written < 0)
+					return -1;
+
+				total_written += type_written;
 
 				has_members = true;
 			}
 		}
 
-		diag::buf_printf(ctx, "%*s}%s", has_members ? indent * 2 : 1, "", tag == TypeTag::Func ? " -> " : "\n");
+		const s64 end_written = print(sink, "%[< %]}", "", has_members ? indent * 2 : 1, tag == TypeTag::Func ? " -> " : "\n");
+
+		if (end_written < 0)
+			return -1;
+
+		total_written += end_written;
 
 		if (tag == TypeTag::Func)
 		{
+			s64 return_type_written;
+
 			if (signature_type->has_templated_return_type)
-				diag::buf_printf(ctx, "<TEMPLATED>\n");
+				return_type_written = print(sink, "<TEMPLATED>\n");
 			else
-				print_type_impl(ctx, identifiers, types, signature_type->return_type.type_id, indent + 1, true);
+				return_type_written = print_type_impl(sink, identifiers, types, signature_type->return_type.type_id, indent + 1, true);
+
+			if (return_type_written < 0)
+				return -1;
+
+			total_written += return_type_written;
 		}
 
-		return;
+		return indent_written + total_written;
 	}
 
 	case TypeTag::INVALID:
@@ -203,15 +263,17 @@ static void print_type_impl(diag::PrintContext* ctx, IdentifierPool* identifiers
 	ASSERT_UNREACHABLE;
 }
 
-void diag::print_type(minos::FileHandle out, IdentifierPool* identifiers, TypePool* types, TypeId type_id) noexcept
+s64 diag::print_type(PrintSink sink, IdentifierPool* identifiers, TypePool* types, TypeId type_id) noexcept
 {
-	PrintContext ctx;
-	ctx.curr = ctx.buf;
-	ctx.file = out;
+	const s64 type_written = print_type_impl(sink, identifiers, types, type_id, 0, false);
 
-	print_type_impl(&ctx, identifiers, types, type_id, 0, false);
+	if (type_written < 0)
+		return -1;
 
-	diag::buf_printf(&ctx, "\n");
+	const s64 end_written = print(sink, "\n");
 
-	diag::buf_flush(&ctx);
+	if (end_written < 0)
+		return -1;
+
+	return type_written + end_written;
 }
