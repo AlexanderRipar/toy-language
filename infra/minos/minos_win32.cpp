@@ -469,7 +469,7 @@ minos::FileHandle minos::standard_file_handle(StdFileName name) noexcept
 	const HANDLE handle = GetStdHandle(native_name);
 
 	if (handle == INVALID_HANDLE_VALUE)
-		panic("GetStdHandle failed (0x%X)\n", GetLastError());
+		panic("GetStdHandle failed (0x%X)\n", last_error());
 
 	return FileHandle{ handle };
 }
