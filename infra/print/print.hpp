@@ -47,6 +47,8 @@ PrintSink print_make_sink(MutRange<char8> buffer) noexcept;
 
 s64 vprint(PrintSink sink, Range<char8> format, Range<PrintInsert> inserts) noexcept;
 
+s64 print(PrintSink sink, Range<char8> format) noexcept;
+
 template<typename... Inserts>
 s64 print(PrintSink sink, Range<char8> format, Inserts... inserts) noexcept
 {

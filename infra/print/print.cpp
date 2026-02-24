@@ -613,3 +613,8 @@ s64 vprint(PrintSink sink, Range<char8> format, Range<PrintInsert> inserts) noex
 
 	return state.written;
 }
+
+s64 print(PrintSink sink, Range<char8> format) noexcept
+{
+	return vprint(sink, format, {});
+}
