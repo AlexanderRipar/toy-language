@@ -81,6 +81,8 @@ static bool print_chars(PrintState* state, Range<char8> value) noexcept
 	{
 		if (value_count != 0)
 			memcpy(state->buffer + state->buffer_used, value.begin(), value_count);
+
+		state->buffer_used += value_count;
 	}
 	else
 	{
