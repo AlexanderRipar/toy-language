@@ -73,6 +73,90 @@ static Maybe<char8*> state_reserve_buffer(PrintState* state, u64 n) noexcept
 	return some(result);
 }
 
+static bool state_fill(PrintState* state, u64 count, char8 fill_char) noexcept
+{
+	const u64 available = array_count(state->buffer) - state->buffer_used;
+
+	const u64 initial_fill_size = count < available ? count : available;
+
+	memset(state->buffer + state->buffer_used, fill_char, initial_fill_size);
+
+	state->buffer_used += initial_fill_size;
+
+	count -= initial_fill_size;
+
+	while (count != 0)
+	{
+		const u64 written = state->sink.write_func(state->sink.attach, Range{ state->buffer, state->buffer_used });
+
+		if (written != state->buffer_used)
+			return false;
+
+		state->written += written;
+
+		const u64 fill_size = count < array_count(state->buffer) ? count : array_count(state->buffer);
+
+		memset(state->buffer, fill_char, fill_size);
+
+		state->buffer_used = fill_size;
+
+		count -= fill_size;
+	}
+
+	return true;
+}
+
+static bool state_prepad(PrintState* state, PrintAlignment alignment, u64 content_size, u64 frame_size, char8 padding) noexcept
+{
+	if (alignment == PrintAlignment::Right)
+	{
+		if (content_size >= frame_size)
+			return true;
+
+		return state_fill(state, frame_size - content_size, padding);
+	}
+	else if (alignment == PrintAlignment::Center)
+	{
+		if (content_size >= frame_size)
+			return true;
+
+		const u64 padding_size = (1 + frame_size - content_size) / 2;
+
+		return state_fill(state, padding_size, padding);
+	}
+	else
+	{
+		return true;
+	}
+}
+
+static bool state_postpad(PrintState* state, PrintAlignment alignment, u64 content_size, u64 frame_size, char8 padding) noexcept
+{
+	if (alignment == PrintAlignment::Left)
+	{
+		if (content_size >= frame_size)
+			return true;
+
+		return state_fill(state, frame_size - content_size, padding);
+	}
+	else if (alignment == PrintAlignment::Center)
+	{
+		if (content_size >= frame_size)
+			return true;
+
+		const u64 padding_size = (frame_size - content_size) / 2;
+
+		if (padding_size == 0)
+			return true;
+
+		return state_fill(state, padding_size, padding);
+	}
+	else
+	{
+		return true;
+	}
+}
+
 static bool print_chars(PrintState* state, Range<char8> value) noexcept
 {
 	const u64 value_count = value.count();
@@ -117,9 +201,9 @@ static bool print_chars(PrintState* state, Range<char8> value) noexcept
 
 
 
-static bool print_format_int(PrintState* state, const void* insert_attach, Maybe<const char8*> spec) noexcept
+static bool print_format_int(PrintState* state, const void* insert_attach, PrintSpec spec) noexcept
 {
-	ASSERT_OR_IGNORE(is_none(spec) || *get(spec) == ']');
+	ASSERT_OR_IGNORE(is_none(spec.extended_spec));
 
 	const IntPrintAttach* const attach = static_cast<const IntPrintAttach*>(insert_attach);
 
@@ -152,6 +236,9 @@ static bool print_format_int(PrintState* state, const void* insert_attach, Maybe
 
 	const u8 required_chars = log10_ceil(value) + (is_negative ? 1 : 0);
 
+	if (!state_prepad(state, spec.alignment, required_chars, spec.align_frame_size, spec.align_padding_char))
+		return false;
+
 	const Maybe<char8*> maybe_buffer = state_reserve_buffer(state, required_chars);
 
 	if (is_none(maybe_buffer))
@@ -177,34 +264,37 @@ static bool print_format_int(PrintState* state, const void* insert_attach, Maybe
 	if (is_negative)
 		*curr = '-';
 
+	if (!state_postpad(state, spec.alignment, required_chars, spec.align_frame_size, spec.align_padding_char))
+		return false;
+
 	return true;
 }
 
-static bool print_format_f32(PrintState* state, const void* raw_attach, Maybe<const char8*> spec) noexcept
+static bool print_format_f32(PrintState* state, const void* raw_attach, PrintSpec spec) noexcept
 {
+	ASSERT_OR_IGNORE(is_none(spec.extended_spec));
+
 	(void) state;
 
 	(void) raw_attach;
 
-	ASSERT_OR_IGNORE(is_none(spec) || *get(spec) == ']');
-
 	TODO("Implement");
 }
 
-static bool print_format_f64(PrintState* state, const void* raw_attach, Maybe<const char8*> spec) noexcept
+static bool print_format_f64(PrintState* state, const void* raw_attach, PrintSpec spec) noexcept
 {
+	ASSERT_OR_IGNORE(is_none(spec.extended_spec));
+
 	(void) state;
 
 	(void) raw_attach;
 
-	ASSERT_OR_IGNORE(is_none(spec) || *get(spec) == ']');
-
 	TODO("Implement");
 }
 
-static bool print_format_bool(PrintState* state, const void* raw_attach, Maybe<const char8*> spec) noexcept
+static bool print_format_bool(PrintState* state, const void* raw_attach, PrintSpec spec) noexcept
 {
-	ASSERT_OR_IGNORE(is_none(spec) || *get(spec) == ']');
+	ASSERT_OR_IGNORE(is_none(spec.extended_spec));
 
 	const BoolPrintAttach* const attach = static_cast<const BoolPrintAttach*>(raw_attach);
 
@@ -225,6 +315,9 @@ static bool print_format_bool(PrintState* state, const void* raw_attach, Maybe<c
 		stringified_bool_chars = 5;
 	}
 
+	if (!state_prepad(state, spec.alignment, stringified_bool_chars, spec.align_frame_size, spec.align_padding_char))
+		return false;
+
 	const Maybe<char8*> maybe_buffer = state_reserve_buffer(state, stringified_bool_chars);
 
 	if (is_none(maybe_buffer))
@@ -234,18 +327,30 @@ static bool print_format_bool(PrintState* state, const void* raw_attach, Maybe<c
 
 	memcpy(buffer, stringified_bool, stringified_bool_chars);
 
+	if (!state_postpad(state, spec.alignment, stringified_bool_chars, spec.align_frame_size, spec.align_padding_char))
+		return false;
+
 	return true;
 }
 
-static bool print_format_char_range(PrintState* state, const void* raw_attach, Maybe<const char8*> spec) noexcept
+static bool print_format_char_range(PrintState* state, const void* raw_attach, PrintSpec spec) noexcept
 {
-	ASSERT_OR_IGNORE(is_none(spec) || *get(spec) == ']');
+	ASSERT_OR_IGNORE(is_none(spec.extended_spec));
 
 	const CharRangePrintAttach* const attach = static_cast<const CharRangePrintAttach*>(raw_attach);
 
 	const Range<char8> value = attach->value;
 
-	return print_chars(state, value);
+	if (!state_prepad(state, spec.alignment, value.count(), spec.align_frame_size, spec.align_padding_char))
+		return false;
+
+	if (!print_chars(state, value))
+		return false;
+
+	if (!state_postpad(state, spec.alignment, value.count(), spec.align_frame_size, spec.align_padding_char))
+		return false;
+
+	return true;
 }
 
 
@@ -434,20 +539,31 @@ PrintSink print_make_sink(MutRange<char8> buffer) noexcept
 
 struct PrintSpecInfo
 {
-	const char8* extended_spec;
-
 	u64 i;
 
 	u64 insert_index;
+
+	u64 next_insert_index;
+
+	PrintAlignment alignment;
+
+	char8 align_padding_char;
+
+	bool align_padding_is_indirect;
+
+	u64 align_padding_indirection_or_amount;
+
+	Maybe<const char8*> extended_spec;
 };
 
 static PrintSpecInfo parse_print_spec(const char8* chars, u64 count, u64 default_insert_index, u64 i) noexcept
 {
-	u64 insert_index = default_insert_index;
-
 	if (i == count)
 		panic("vprint: Incomplete format specifier.\n");
 
+	u64 insert_index;
+
+	// Insert index
 	if (chars[i] == '$')
 	{
 		i += 1;
@@ -481,39 +597,163 @@ static PrintSpecInfo parse_print_spec(const char8* chars, u64 count, u64 default
 			}
 
 			if (chars[i] < '0' || chars[i] > '9')
-				panic("vprint: Expected space or `}` after insert index (`$n`) in format specifier.\n");
+				panic("vprint: Expected ` `, `|` or `]` after insert index (`$n`) in format specifier.\n");
 
 			insert_index = insert_index * 10 + chars[i] - '0';
 
 			i += 1;
 		}
 	}
-
-	const char8* const extended_spec = chars + i;
-
-	u64 bracket_nesting = 1;
-
-	while (true)
+	else
 	{
-		if (chars[i] == '[')
-		{
-			bracket_nesting += 1;
-		}
-		else if (chars[i] == ']')
-		{
-			if (bracket_nesting == 1)
-				break;
+		insert_index = default_insert_index;
+	}
 
-			bracket_nesting -= 1;
-		}
+	u64 next_insert_index = insert_index + 1;
+
+	// Optional whitespace
+	while (chars[i] == ' ')
+	{
+		i += 1;
+
+		if (i == count)
+			panic("vprint: Incomplete format specifier.\n");
+	}
+
+	PrintAlignment alignment;
+	char8 align_padding_char;
+	bool align_padding_is_indirect;
+	u64 align_padding_indirection_or_amount;
+
+	// Alignment and padding
+	if (chars[i] == '<' || chars[i] == '^' || chars[i] == '>')
+	{
+		if (chars[i] == '<')
+			alignment = PrintAlignment::Left;
+		else if (chars[i] == '^')
+			alignment = PrintAlignment::Center;
+		else if(chars[i] == '>')
+			alignment = PrintAlignment::Right;
+		else
+			ASSERT_UNREACHABLE;
 
 		i += 1;
 
 		if (i == count)
-			panic("vprint: Incomplete format specifier");
+			panic("vprint: Incomplete format specifier.\n");
+
+		align_padding_char = chars[i];
+
+		i += 1;
+
+		if (i == count)
+			panic("vprint: Incomplete format specifier.\n");
+
+		if (chars[i] == '%')
+		{
+			align_padding_is_indirect = true;
+
+			i += 1;
+
+			if (i == count)
+				panic("vprint: Incomplete format specifier.\n");
+
+			align_padding_indirection_or_amount = next_insert_index;
+
+			next_insert_index += 1;
+		}
+		else if (chars[i] >= '0' && chars[i] <= '9')
+		{
+			align_padding_is_indirect = false;
+
+			align_padding_indirection_or_amount = 0;
+
+			while (chars[i] >= '0' && chars[i] <= '9')
+			{
+				align_padding_indirection_or_amount = align_padding_indirection_or_amount * 10 + chars[i] - '0';
+
+				i += 1;
+
+				if (i == count)
+					panic("vprint: Incomplete format specifier.\n");
+			}
+		}
+		else
+		{
+			panic("vprint: Expected direct or indirect padding amount after alignment specifier and padding character.\n");
+		}
+	}
+	else
+	{
+		alignment = PrintAlignment::None;
+		align_padding_char = '\0';
+		align_padding_is_indirect = false;
+		align_padding_indirection_or_amount = 0;
 	}
 
-	return PrintSpecInfo{ extended_spec, i + 1, insert_index };
+	// Optional whitespace
+	while (chars[i] == ' ')
+	{
+		i += 1;
+
+		if (i == count)
+			panic("vprint: Incomplete format specifier.\n");
+	}
+
+	Maybe<const char8*> extended_spec;
+
+	// Extended type-specific spec
+	if (chars[i] == '|')
+	{
+		i += 1;
+
+		if (i == count)
+			panic("vprint: Incomplete format specifier.\n");
+
+		extended_spec = some(chars + i);
+
+		u64 bracket_nesting = 1;
+
+		while (true)
+		{
+			if (chars[i] == '[')
+			{
+				bracket_nesting += 1;
+			}
+			else if (chars[i] == ']')
+			{
+				if (bracket_nesting == 1)
+					break;
+
+				bracket_nesting -= 1;
+			}
+
+			i += 1;
+
+			if (i == count)
+				panic("vprint: Incomplete format specifier.\n");
+		}
+	}
+	else if (chars[i] == ']')
+	{
+		extended_spec = none<const char8*>();
+	}
+	else
+	{
+		panic("vprint: Incomplete format specifier.\n");
+	}
+
+	PrintSpecInfo rst;
+	rst.i = i + 1;
+	rst.insert_index = insert_index;
+	rst.next_insert_index = next_insert_index;
+	rst.alignment = alignment;
+	rst.align_padding_char = align_padding_char;
+	rst.align_padding_is_indirect = align_padding_is_indirect;
+	rst.align_padding_indirection_or_amount = align_padding_indirection_or_amount;
+	rst.extended_spec = extended_spec;
+
+	return rst;
 }
 
 
@@ -546,58 +786,86 @@ s64 vprint(PrintSink sink, Range<char8> format, Range<PrintInsert> inserts) noex
 			continue;
 		}
 
-		Maybe<const char8*> extended_spec;
+		PrintSpec spec;
 
-		if (i + 1 != count)
+		u64 next_insert_index;
+
+		if (i + 1 != count && chars[i + 1] == '%')
 		{
-			const char8 next = chars[i + 1];
+			if (!print_chars(&state, Range{ chars + section_begin, chars + i + 1 }))
+				return -1;
 
-			if (next == '%')
-			{
-				if (!print_chars(&state, Range{ chars + section_begin, chars + i + 1 }))
-					return -1;
-
-				i += 2;
-
-				section_begin = i;
-
-				continue;
-			}
-			else if (next == '[')
-			{
-				if (!print_chars(&state, Range{ chars + section_begin, chars + i }))
-					return -1;
-
-				const PrintSpecInfo info = parse_print_spec(chars, count, insert_index, i + 2);
-
-				i = info.i;
-
-				insert_index = info.insert_index;
-
-				extended_spec = some(info.extended_spec);
-			}
-			else
-			{
-				if (!print_chars(&state, Range{ chars + section_begin, chars + i }))
-					return -1;
-
-				i += 1;
-
-				insert_index += 1;
-
-				extended_spec = none<const char8*>();
-			}
+			i += 2;
 
 			section_begin = i;
 
-			if (insert_index >= inserts.count())
-				panic("vprint: Insert index exceeds number of supplied inserts.\n");
-
-			const PrintInsert* const insert = &inserts[insert_index];
-
-			if (!insert->format_func(&state, insert->attach, extended_spec))
-				return -1;
+			continue;
 		}
+		else if (i + 1 != count && chars[i + 1] == '[')
+		{
+			if (!print_chars(&state, Range{ chars + section_begin, chars + i }))
+				return -1;
+
+			const PrintSpecInfo info = parse_print_spec(chars, count, insert_index, i + 2);
+
+			i = info.i;
+
+			insert_index = info.insert_index;
+
+			next_insert_index = info.next_insert_index;
+
+			spec.alignment = info.alignment;
+			spec.align_padding_char = info.align_padding_char;
+			spec.extended_spec = info.extended_spec;
+			
+			if (info.align_padding_is_indirect)
+			{
+				if (info.align_padding_indirection_or_amount >= inserts.count())
+					panic("vprint: Insert index exceeds number of supplied inserts.\n");
+
+				const PrintInsert* const align_insert = &inserts[info.align_padding_indirection_or_amount];
+
+				if (align_insert->format_func != &print_format_int)
+					panic("vprint: Indirect padding size value is not an integer.\n");
+
+				const IntPrintAttach* const align_attach = reinterpret_cast<const IntPrintAttach*>(align_insert->attach);
+
+				if (align_attach->is_signed && ((static_cast<u64>(1) << (align_attach->bits - 1)) & align_attach->value) != 0)
+					panic("vprint: Indirect padding size value is negative.\n");
+
+				spec.align_frame_size = align_attach->value;
+			}
+			else
+			{
+				spec.align_frame_size = info.align_padding_indirection_or_amount;
+			}
+		}
+		else
+		{
+			if (!print_chars(&state, Range{ chars + section_begin, chars + i }))
+				return -1;
+
+			i += 1;
+
+			next_insert_index = insert_index + 1;
+
+			spec.alignment = PrintAlignment::None;
+			spec.align_padding_char = '\0';
+			spec.align_frame_size = 0;
+			spec.extended_spec = none<const char8*>();
+		}
+
+		section_begin = i;
+
+		if (insert_index >= inserts.count())
+			panic("vprint: Insert index exceeds number of supplied inserts.\n");
+
+		const PrintInsert* const insert = &inserts[insert_index];
+
+		insert_index = next_insert_index;
+
+		if (!insert->format_func(&state, insert->attach, spec))
+			return -1;
 	}
 
 	if (!print_chars(&state, Range{ chars + section_begin, chars  + i }))

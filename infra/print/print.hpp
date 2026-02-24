@@ -17,9 +17,28 @@ struct PrintSink
 	byte alignas(8) attach[24];
 };
 
+enum class PrintAlignment : u8
+{
+	None,
+	Left,
+	Right,
+	Center,
+};
+
+struct PrintSpec
+{
+	PrintAlignment alignment;
+
+	char8 align_padding_char;
+
+	u64 align_frame_size;
+
+	Maybe<const char8*> extended_spec;
+};
+
 struct PrintInsert;
 
-using print_format_func = bool (*) (PrintState* state, const void* insert_attach, Maybe<const char8*> spec) noexcept;
+using print_format_func = bool (*) (PrintState* state, const void* insert_attach, PrintSpec spec) noexcept;
 
 struct PrintInsert
 {
