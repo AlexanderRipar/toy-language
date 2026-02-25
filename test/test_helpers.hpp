@@ -3,6 +3,7 @@
 
 #include "../infra/types.hpp"
 #include "../infra/minos/minos.hpp"
+#include "../infra/print/print.hpp"
 
 #include <cstring>
 #include <vector>
@@ -53,10 +54,9 @@ extern bool g_ignore_debugbreaks;
 #define TEST_RELATION_(a, b, relation) \
 		do { \
 			if (!((a) relation (b))) { \
-				fprintf(stderr, "%s%s%.*s:\n    Assertion `%s %s %s` failed\n    (%s:%u)\n", \
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "%[]%[]%:\n    Assertion `% % %` failed\n    (%:%)\n", \
 					__FUNCTION__, \
-					test_name_.begin() == nullptr ? "" : "@", \
-					static_cast<s32>(test_name_.count()), test_name_.begin() == nullptr ? "" : test_name_.begin(), \
+					test_name_.begin() == nullptr ? "" : "@", test_name_, \
 					#a, #relation, #b, \
 					__FILE__, __LINE__ \
 				); \
@@ -69,9 +69,8 @@ extern bool g_ignore_debugbreaks;
 #define TEST_FUNCTION_(a, b, c, function, relation, expected) \
 		do { \
 			if (!((function((a), (b), (c))) relation (expected))) { \
-				fprintf(stderr, "%s%s%.*s:\n    Assertion `%s(%s, %s, %s) %s %s` failed\n    (%s:%u)\n", \
-					__FUNCTION__, test_name_.begin() == nullptr ? "" : "@", \
-					static_cast<s32>(test_name_.count()), test_name_.begin() == nullptr ? "" : test_name_.begin(), \
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "%[]%[]%:\n    Assertion `%(%, %, %) % %` failed\n    (%:%)\n", \
+					__FUNCTION__, test_name_.begin() == nullptr ? "" : "@", test_name_, \
 					#function, #a, #b, #c, #relation, #expected, \
 					__FILE__, __LINE__ \
 				); \
