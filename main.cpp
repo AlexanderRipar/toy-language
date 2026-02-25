@@ -1,15 +1,15 @@
 #include "core/core.hpp"
 #include "diag/diag.hpp"
+#include "infra/print/print.hpp"
 
 #include <cstdlib>
 #include <cstring>
-#include <cstdio>
 
 s32 main(s32 argc, const char8** argv)
 {
 	if (argc == 0)
 	{
-		fprintf(stderr, "No arguments provided (not even invocation)\n");
+		print(minos::standard_file_handle(minos::StdFileName::StdErr), "No arguments provided (not even invocation)\n");
 
 		return EXIT_FAILURE;
 	}
@@ -25,7 +25,7 @@ s32 main(s32 argc, const char8** argv)
 
 		if (run_compilation(&core, false))
 		{
-			fprintf(stderr, "Success\n");
+			print(minos::standard_file_handle(minos::StdFileName::StdErr), "Success\n");
 
 			release_core_data(&core);
 
@@ -35,7 +35,7 @@ s32 main(s32 argc, const char8** argv)
 		{
 			print_errors(core.errors);
 
-			fprintf(stderr, "\nFailure\n");
+			print(minos::standard_file_handle(minos::StdFileName::StdErr), "\nFailure\n");
 
 			release_core_data(&core);
 
@@ -44,7 +44,7 @@ s32 main(s32 argc, const char8** argv)
 	}
 	else
 	{
-		fprintf(stderr, "Usage: %s ( -help | -config <filepath> )\n", argv[0]);
+		print(minos::standard_file_handle(minos::StdFileName::StdErr), "Usage: % ( -help | -config <filepath> )\n", argv[0]);
 
 		return EXIT_FAILURE;
 	}
