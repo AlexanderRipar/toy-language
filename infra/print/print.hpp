@@ -85,7 +85,7 @@ s64 print(PrintSink sink, const char8* format, Inserts... inserts) noexcept
 template<typename Sink, typename... Inserts>
 s64 print(Sink sink, Range<char8> format, Inserts... inserts) noexcept
 {
-	return print(print_make_sink(sink), format, inserts...)
+	return print(print_make_sink(sink), format, inserts...);
 }
 
 template<typename Sink, typename... Inserts>
