@@ -5,6 +5,7 @@
 #include "../infra/types.hpp"
 #include "../infra/math.hpp"
 #include "../infra/minos/minos.hpp"
+#include "../infra/print/print.hpp"
 
 s32 main(s32 argc, const char8** argv) noexcept
 {
@@ -20,7 +21,7 @@ s32 main(s32 argc, const char8** argv) noexcept
 
 		if (cwd_chars == 0 || cwd_chars > array_count(cwd))
 		{
-			fprintf(stderr, "minos::working_directory failed (0x%X)\n", minos::last_error());
+			print(minos::standard_file_handle(minos::StdFileName::StdErr), "minos::working_directory failed (0x%[|X])\n", minos::last_error());
 
 			return EXIT_FAILURE;
 		}
@@ -43,7 +44,7 @@ s32 main(s32 argc, const char8** argv) noexcept
 	}
 	else
 	{
-		fprintf(stderr, "Usage: %s [<expected-working-directory-suffix>]\n", argv[0]);
+		print(minos::standard_file_handle(minos::StdFileName::StdErr), "Usage: % [<expected-working-directory-suffix>]\n", argv[0]);
 
 		return EXIT_FAILURE;
 	}
