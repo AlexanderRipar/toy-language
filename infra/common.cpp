@@ -4,14 +4,12 @@
 
 #include "types.hpp"
 #include "minos/minos.hpp"
-
-#include <cstdio>
-#include <cstdarg>
+#include "print/print.hpp"
 
 #ifndef NDEBUG
 NORETURN void assert_unreachable_helper(const char8* file, u32 line) noexcept
 {
-	fprintf(stderr, "Reached unreachable code (%s:%u)\n", file, line);
+	print(minos::standard_file_handle(minos::StdFileName::StdErr), "Reached unreachable code (%:%)\n", file, line);
 
 	DEBUGBREAK;
 
@@ -20,7 +18,7 @@ NORETURN void assert_unreachable_helper(const char8* file, u32 line) noexcept
 
 NORETURN void assert_or_ignore_helper(const char8* file, u32 line, const char8* expr) noexcept
 {
-	fprintf(stderr, "Assertion `%s` failed (%s:%u)\n", expr, file, line);
+	print(minos::standard_file_handle(minos::StdFileName::StdErr), "Assertion `%` failed (%:%)\n", expr, file, line);
 
 	DEBUGBREAK;
 
