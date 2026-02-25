@@ -15,7 +15,7 @@ s32 main(s32 argc, const char8** argv)
 	}
 	else if (argc == 2 && strcmp(argv[1], "-help") == 0)
 	{
-		print_config_help();
+		print_config_help(minos::standard_file_handle(minos::StdFileName::StdOut));
 
 		return EXIT_SUCCESS;
 	}

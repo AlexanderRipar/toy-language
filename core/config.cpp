@@ -6,12 +6,9 @@
 #include "../infra/math.hpp"
 #include "../infra/range.hpp"
 #include "../infra/minos/minos.hpp"
+#include "../infra/print/print.hpp"
 #include "../infra/container/reserved_vec.hpp"
 #include "../diag/diag.hpp"
-
-#include <cstdio>
-#include <cstddef>
-#include <cinttypes>
 
 struct ConfigHeader;
 
@@ -1268,45 +1265,91 @@ static void print_config_node(PrintSink sink, const Config* config, const Config
 	}
 }
 
-static void print_config_help_node(const Config* defaults, const ConfigHeader* node, u32 indent, u32 max_indent) noexcept
+static void print_config_help_node(PrintSink sink, const Config* defaults, const ConfigHeader* node, u32 indent, u32 max_indent) noexcept
 {
 	if (node->type == ConfigHeader::Type::Container)
 	{
-		fprintf(stdout, "%*s%s {\n%*s%s\n", indent * 2, "", node->name, (indent + 1) * 2, "", node->helptext);
+		print(sink, "%[< %]% {\n%[< %]%\n",
+			"", indent * 2,
+			node->name,
+			"", (indent + 1) * 2,
+			node->helptext
+		);
 
 		if (indent != max_indent)
 		{
 			for (const ConfigHeader& child : node->container.children)
-				print_config_help_node(defaults, &child, indent + 1, max_indent);
+				print_config_help_node(sink, defaults, &child, indent + 1, max_indent);
 		}
 
-		fprintf(stdout, "%*s}\n", indent * 2, "");
+		print(sink, "%[< %]}\n",
+			"", indent * 2
+		);
 	}
 	else if (node->type == ConfigHeader::Type::Integer)
 	{
 		const s64 default_value = *reinterpret_cast<const s64*>(reinterpret_cast<const byte*>(defaults) + node->target_offset);
 
-		fprintf(stdout, "%*s%s {\n%*s%s\n%*stype: integer\n%*sdefault: %" PRId64 "\n", indent * 2, "", node->name, (indent + 1) * 2, "", node->helptext, (indent + 1) * 2, "", (indent + 1) * 2, "", default_value);
+		print(sink, "%[< %]% {\n%[< %]%\n%[< %]type: integer\n%[< %]default: %\n",
+			"", indent * 2,
+			node->name,
+			"", (indent + 1) * 2,
+			node->helptext,
+			"", (indent + 1) * 2,
+			"", (indent + 1) * 2,
+			default_value
+		);
 
 		if (node->integer.min != INT64_MIN)
-			fprintf(stdout, "%*smin: %" PRId64 "\n", (indent + 1) * 2, "", node->integer.min);
+		{
+			print(sink, "%[< %]min: %\n",
+				"", (indent + 1) * 2,
+				node->integer.min
+			);
+		}
 
 		if (node->integer.max != INT64_MAX)
-			fprintf(stdout, "%*smax: %" PRId64 "\n", (indent + 1) * 2, "", node->integer.max);
+		{
+			print(sink, "%[< %]max: %\n",
+				"", (indent + 1) * 2,
+				node->integer.max
+			);
+		}
 
-		fprintf(stdout, "%*s}\n", indent * 2, "");
+		print(sink, "%[< %]}\n",
+			"", indent * 2
+		);
 	}
 	else if (node->type == ConfigHeader::Type::String || node->type == ConfigHeader::Type::Path)
 	{
 		const Range<char8> default_value = *reinterpret_cast<const Range<char8>*>(reinterpret_cast<const byte*>(defaults) + node->target_offset);
 
-		fprintf(stdout, "%*s%s {\n%*s%s\n%*stype: %s\n%*sdefault: %.*s\n%*s}\n", indent * 2, "", node->name, (indent + 1) * 2, "", node->helptext, (indent + 1) * 2, "", node->type == ConfigHeader::Type::String ? "string" : "path", (indent + 1) * 2, "", static_cast<u32>(default_value.count()), default_value.begin(), indent * 2, "");
+		print(sink, "%[< %]% {\n%[< %]%\n%[< %]type: %\n%[< %]default: %\n%[< %]}\n",
+			"", indent * 2,
+			node->name,
+			"", (indent + 1) * 2,
+			node->helptext,
+			"", (indent + 1) * 2,
+			node->type == ConfigHeader::Type::String ? "string" : "path",
+			"", (indent + 1) * 2,
+			default_value,
+			"", indent * 2
+		);
 	}
 	else if (node->type == ConfigHeader::Type::Boolean)
 	{
 		const bool default_value = *reinterpret_cast<const bool*>(reinterpret_cast<const byte*>(defaults) + node->target_offset);
 
-		fprintf(stdout, "%*s%s {\n%*s%s\n%*stype: bool\n%*sdefault: %s\n%*s}\n", indent * 2, "", node->name, (indent + 1) * 2, "", node->helptext, (indent + 1) * 2, "", (indent + 1) * 2, "", default_value ? "true" : "false", indent * 2, "");
+		print(sink, "%[< %]% {\n%[< %]%\n%[< %]type: bool\n%[< %]default: %\n%[< %]}\n",
+			"", indent * 2,
+			node->name,
+			"", (indent + 1) * 2,
+			node->helptext,
+			"", (indent + 1) * 2,
+			"", (indent + 1) * 2,
+			default_value,
+			"", indent * 2
+		);
 	}
 	else
 	{
@@ -1348,12 +1391,12 @@ void print_config(PrintSink sink, const Config* config) noexcept
 		print_config_node(sink, config, &root, 0);
 }
 
-void print_config_help(u32 depth) noexcept
+void print_config_help(PrintSink sink, u32 depth) noexcept
 {
-	printf("config parameters:\n");
+	print(sink, "config parameters:\n");
 
 	const Config defaults{};
 
 	for (const ConfigHeader& root : CONFIG.container.children)
-		print_config_help_node(&defaults, &root, 0, depth == 0 ? UINT32_MAX : depth);
+		print_config_help_node(sink, &defaults, &root, 0, depth == 0 ? UINT32_MAX : depth);
 }

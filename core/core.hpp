@@ -220,7 +220,13 @@ void print_config(Sink sink, const Config* config) noexcept
 // standard error stream. Only parameters that are nested less than `depth` are
 // included in the output. If `depth` is set to `0`, all parameters are
 // printed, regardless of depth.
-void print_config_help(u32 depth = 0) noexcept;
+void print_config_help(PrintSink sink, u32 depth = 0) noexcept;
+
+template<typename Sink>
+void print_config_help(Sink sink, u32 depth = 0) noexcept
+{
+	print_config_help(print_make_sink(sink), depth);
+}
 
 
 
