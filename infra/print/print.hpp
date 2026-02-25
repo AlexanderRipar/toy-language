@@ -14,7 +14,7 @@ struct PrintSink
 {
 	print_sink_write_func write_func;
 
-	byte alignas(8) attach[24];
+	alignas(8) byte attach[24];
 };
 
 enum class PrintAlignment : u8
@@ -44,7 +44,7 @@ struct PrintInsert
 {
 	print_format_func format_func;
 
-	byte alignas(8) attach[24];
+	alignas(8) byte attach[24];
 };
 
 PrintInsert print_make_insert(u8) noexcept;
