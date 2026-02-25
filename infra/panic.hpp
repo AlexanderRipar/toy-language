@@ -17,7 +17,7 @@ NORETURN void panic(const char8* format, Inserts... inserts) noexcept
 }
 
 template<typename... Inserts>
-NORETURN void warn(const char8* format, Inserts... inserts) noexcept
+void warn(const char8* format, Inserts... inserts) noexcept
 {
 	(void) print(minos::standard_file_handle(minos::StdFileName::StdErr), format, inserts...);
 
