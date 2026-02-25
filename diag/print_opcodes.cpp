@@ -6,8 +6,6 @@
 #include "../infra/range.hpp"
 #include "../infra/container/reserved_vec.hpp"
 
-#include <cinttypes>
-
 struct PrintResult
 {
 	const Opcode* next;

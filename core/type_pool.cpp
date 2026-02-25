@@ -10,7 +10,6 @@
 #include "../infra/container/reserved_heap.hpp"
 #include "../infra/container/reserved_vec.hpp"
 
-#include <cstdlib>
 #include <cstring>
 
 static constexpr u32 MIN_STRUCTURE_SIZE_LOG2 = 4;

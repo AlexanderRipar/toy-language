@@ -10,7 +10,6 @@
 
 #include <cstdlib>
 #include <cstddef>
-#include <cinttypes>
 #include <atomic>
 
 static u32 hash_file_identity(u64 file_id, u32 device_id) noexcept

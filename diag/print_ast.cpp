@@ -5,8 +5,6 @@
 #include "../infra/minos/minos.hpp"
 #include "../core/core.hpp"
 
-#include <cinttypes>
-
 static s64 print_node_header(PrintSink sink, IdentifierPool* identifiers, const AstNode* node, s32 depth) noexcept
 {
 	s64 total_written = print(sink, "%[< %]%", "", (depth + 1) * 2, tag_name(node->tag));

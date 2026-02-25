@@ -6,8 +6,6 @@
 #include "minos/minos.hpp"
 #include "print/print.hpp"
 
-#include <cstdarg>
-
 template<typename... Inserts>
 NORETURN void panic(const char8* format, Inserts... inserts) noexcept
 {

@@ -7,7 +7,6 @@
 #include "../infra/range.hpp"
 
 #include <cmath>
-#include <cinttypes>
 
 #ifdef COMPILER_MSVC
 	#include <intrin.h>

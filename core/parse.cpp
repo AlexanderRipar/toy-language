@@ -8,7 +8,6 @@
 #include "../infra/container/reserved_vec.hpp"
 #include "../diag/diag.hpp"
 
-#include <cstdarg>
 #include <cstdlib>
 #include <csetjmp>
 #include <errno.h>

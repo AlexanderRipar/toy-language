@@ -7,7 +7,6 @@
 
 #include <cstring>
 #include <vector>
-#include <cstdio>
 
 struct TestResult
 {

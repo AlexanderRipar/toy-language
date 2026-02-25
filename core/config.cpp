@@ -10,6 +10,8 @@
 #include "../infra/container/reserved_vec.hpp"
 #include "../diag/diag.hpp"
 
+#include <cstddef>
+
 struct ConfigHeader;
 
 struct ConfigContainer

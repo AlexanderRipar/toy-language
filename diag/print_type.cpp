@@ -5,8 +5,6 @@
 #include "../infra/range.hpp"
 #include "../infra/print/print.hpp"
 
-#include <cinttypes>
-
 static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool* types, TypeId type_id, u32 indent, bool skip_initial_indent) noexcept
 {
 	if (type_id == TypeId::INVALID)

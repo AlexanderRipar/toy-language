@@ -1,11 +1,10 @@
-#include <cstdlib>
-#include <cstring>
-#include <cstdio>
-
 #include "../infra/types.hpp"
 #include "../infra/math.hpp"
 #include "../infra/minos/minos.hpp"
 #include "../infra/print/print.hpp"
+
+#include <cstdlib>
+#include <cstring>
 
 s32 main(s32 argc, const char8** argv) noexcept
 {

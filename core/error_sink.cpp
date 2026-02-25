@@ -7,8 +7,6 @@
 #include "../infra/range.hpp"
 #include "../infra/container/reserved_vec.hpp"
 
-#include <cstdio>
-#include <cstdarg>
 #include <csetjmp>
 #include <fcntl.h>
 

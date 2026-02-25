@@ -1,6 +1,5 @@
 #include "core.hpp"
 
-#include <cstddef>
 #include <cstring>
 
 #include "../infra/types.hpp"
@@ -8,6 +7,8 @@
 #include "../infra/range.hpp"
 #include "../infra/hash.hpp"
 #include "../infra/container/index_map.hpp"
+
+#include <cstddef>
 
 struct alignas(8) IdentifierEntry
 {
