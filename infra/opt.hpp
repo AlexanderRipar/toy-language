@@ -4,23 +4,6 @@
 #include "assert.hpp"
 #include "template_helpers.hpp"
 
-#include <type_traits>
-
-template<typename T>
-struct MemberDetector : std::true_type {};
-
-template<typename T>
-struct HasInvalidValue
-{
-	static constexpr bool value = MemberDetector<decltype(T::INVALID)>::value;
-};
-
-template<typename T>
-struct HasInvalidValue<T*>
-{
-	static constexpr bool value = true;
-};
-
 template<typename T>
 struct Maybe
 {
