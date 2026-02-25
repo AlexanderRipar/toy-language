@@ -20,11 +20,11 @@ static minos::FileHandle get_log_file(bool enable, Range<char8> filepath, minos:
 	return log_file;
 }
 
-CoreData create_core_data(Range<char8> config_filepath) noexcept
+
+
+CoreData create_core_data(const Config* config) noexcept
 {
 	HandlePool* const alloc = create_handle_pool(1u << 24, 1u << 18);
-
-	Config* const config = create_config(alloc, config_filepath);
 
 	const minos::FileHandle config_log_file = get_log_file(config->logging.config.enable, config->logging.config.log_filepath, minos::StdFileName::StdOut);
 
@@ -58,7 +58,6 @@ CoreData create_core_data(Range<char8> config_filepath) noexcept
 
 void release_core_data(CoreData* core) noexcept
 {
-	release_config(core->config);
 	release_identifier_pool(core->identifiers);
 	release_source_reader(core->reader);
 	release_error_sink(core->errors);

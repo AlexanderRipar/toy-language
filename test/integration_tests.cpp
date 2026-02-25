@@ -5,17 +5,24 @@
 #include "../infra/range.hpp"
 #include "../core/core.hpp"
 
+static Config dummy_config(Range<char8> filepath, bool expect_failure) noexcept
+{
+	Config config{};
+	config.compile_all = true;
+	config.std.prelude.filepath = range::from_literal_string("../sample/std/prelude.evl");
+	config.logging.diagnostics.enable = !expect_failure;
+	config.entrypoint.filepath = filepath;
+
+	return config;
+}
+
 static void run_integration_test(Range<char8> filepath, bool is_std, bool expect_failure) noexcept
 {
 	TEST_BEGIN_NAMED(filepath);
 
-	const Range<char8> config_filepath = expect_failure
-		? range::from_literal_string("integration-test-sources/config-failure.toml")
-		: range::from_literal_string("integration-test-sources/config-success.toml");
+	const Config config = dummy_config(filepath, expect_failure);
 
-	CoreData core = create_core_data(config_filepath);
-
-	core.config->entrypoint.filepath = filepath;
+	CoreData core = create_core_data(&config);
 
 	TEST_EQUAL(!run_compilation(&core, is_std), expect_failure);
 

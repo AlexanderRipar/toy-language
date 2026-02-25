@@ -6,6 +6,7 @@
 #include "../infra/opt.hpp"
 #include "../infra/minos/minos.hpp"
 #include "../infra/print/print.hpp"
+#include "../infra/tree_schema.hpp"
 
 
 
@@ -192,19 +193,9 @@ struct Config
 	} logging;
 
 	bool compile_all = false;
-
-	void* m_heap_ptr;
-
-	Range<char8> m_config_filepath;
 };
 
-// Parses the file at `filepath` into a `Config` struct that is allocated into
-// `alloc`. The file is expected to be in [TOML](https://toml.io) format.
-Config* create_config(HandlePool* alloc, Range<char8> filepath) noexcept;
-
-// Releases resources associated with a `Config` that was previously returned
-// from `create_config`.
-void release_config(Config* config) noexcept;
+const TreeSchemaNode* config_schema() noexcept;
 
 // Prints the values in the given `Config` to `out` in a readable, JSON-like
 // format.
@@ -2847,9 +2838,9 @@ const char8* tag_name(Builtin builtin) noexcept;
 
 struct CoreData
 {
-	HandlePool* alloc;
+	const Config* config;
 
-	Config* config;
+	HandlePool* alloc;
 
 	IdentifierPool* identifiers;
 
@@ -2872,7 +2863,7 @@ struct CoreData
 	Interpreter* interp;
 };
 
-CoreData create_core_data(Range<char8> config_filepath) noexcept;
+CoreData create_core_data(const Config* config) noexcept;
 
 void release_core_data(CoreData* core) noexcept;
 

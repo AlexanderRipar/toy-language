@@ -1,6 +1,7 @@
 #include "core/core.hpp"
 #include "diag/diag.hpp"
 #include "infra/print/print.hpp"
+#include "infra/toml/toml.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -21,13 +22,22 @@ s32 main(s32 argc, const char8** argv)
 	}
 	else if (argc == 3 && strcmp(argv[1] , "-config") == 0)
 	{
-		CoreData core = create_core_data(range::from_cstring(argv[2]));
+		MutRange<byte> config_allocation;
+
+		Config config{};
+
+		if (!parse_toml(range::from_cstring(argv[2]), config_schema(), range::from_object_bytes_mut(&config), &config_allocation))
+			return EXIT_FAILURE;
+
+		CoreData core = create_core_data(&config);
 
 		if (run_compilation(&core, false))
 		{
 			print(minos::standard_file_handle(minos::StdFileName::StdErr), "Success\n");
 
 			release_core_data(&core);
+
+			release_toml(config_allocation);
 
 			return EXIT_SUCCESS;
 		}
@@ -38,6 +48,8 @@ s32 main(s32 argc, const char8** argv)
 			print(minos::standard_file_handle(minos::StdFileName::StdErr), "\nFailure\n");
 
 			release_core_data(&core);
+
+			release_toml(config_allocation);
 
 			return EXIT_FAILURE;
 		}
