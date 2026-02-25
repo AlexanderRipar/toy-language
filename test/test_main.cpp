@@ -6,10 +6,8 @@
 #include "../infra/math.hpp"
 #include "../infra/minos/minos.hpp"
 
-#include <cstdio>
 #include <vector>
 #include <cstdlib>
-#include <inttypes.h>
 
 std::vector<TestResult> g_test_times;
 
@@ -148,7 +146,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 		{
 			if (g_ignore_debugbreaks)
 			{
-				fprintf(stderr, "%s specified more than once\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% specified more than once\n", argv[arg_index]);
 
 				return false;
 			}
@@ -161,14 +159,14 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 		{
 			if (out->has_timeout)
 			{
-				fprintf(stderr, "%s specified more than once\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% specified more than once\n", argv[arg_index]);
 
 				return false;
 			}
 
 			if (arg_index + 1 == argc)
 			{
-				fprintf(stderr, "%s expects an additional argument\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects an additional argument\n", argv[arg_index]);
 
 				return false;
 			}
@@ -177,14 +175,14 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 			if (!parse_u64(argv[arg_index + 1], &n))
 			{
-				fprintf(stderr, "%s expects its additional argument to be a base-ten number\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects its additional argument to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
 			if (n > UINT32_MAX)
 			{
-				fprintf(stderr, "%s expects its argument to be less than 2^32\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects its argument to be less than 2^32\n", argv[arg_index]);
 
 				return false;
 			}
@@ -205,7 +203,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 		{
 			if (prev_invocation_type != nullptr)
 			{
-				fprintf(stderr, "%s: Conflicting invocation type %s already specified\n", argv[arg_index], prev_invocation_type);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "%: Conflicting invocation type % already specified\n", argv[arg_index], prev_invocation_type);
 
 				return false;
 			}
@@ -214,7 +212,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 			if (arg_index + 1 == argc)
 			{
-				fprintf(stderr, "%s expects an additional argument\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects an additional argument\n", argv[arg_index]);
 
 				return false;
 			}
@@ -223,14 +221,14 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 			if (!parse_u64(argv[arg_index + 1], &n))
 			{
-				fprintf(stderr, "%s expects its additional argument to be a base-ten number\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects its additional argument to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
 			if (n > UINT32_MAX)
 			{
-				fprintf(stderr, "%s expects its argument to be less than 2^32\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects its argument to be less than 2^32\n", argv[arg_index]);
 
 				return false;
 			}
@@ -245,7 +243,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 		{
 			if (prev_invocation_type != nullptr)
 			{
-				fprintf(stderr, "%s: Conflicting invocation type %s already specified\n", argv[arg_index], prev_invocation_type);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "%: Conflicting invocation type % already specified\n", argv[arg_index], prev_invocation_type);
 
 				return false;
 			}
@@ -254,7 +252,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 			if (arg_index + 1 == argc)
 			{
-				fprintf(stderr, "%s expects an additional argument\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects an additional argument\n", argv[arg_index]);
 
 				return false;
 			}
@@ -263,7 +261,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 			if (!parse_u64(argv[arg_index + 1], &n))
 			{
-				fprintf(stderr, "%s expects its additional argument to be a base-ten number\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects its additional argument to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
@@ -280,7 +278,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 		{
 			if (prev_invocation_type != nullptr)
 			{
-				fprintf(stderr, "%s: Conflicting invocation type %s already specified\n", argv[arg_index], prev_invocation_type);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "%: Conflicting invocation type % already specified\n", argv[arg_index], prev_invocation_type);
 
 				return false;
 			}
@@ -289,7 +287,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 			if (arg_index + 1 == argc)
 			{
-				fprintf(stderr, "%s expects an additional argument\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects an additional argument\n", argv[arg_index]);
 
 				return false;
 			}
@@ -304,7 +302,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 		{
 			if (prev_invocation_type != nullptr)
 			{
-				fprintf(stderr, "%s: Conflicting invocation type %s already specified\n", argv[arg_index], prev_invocation_type);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "%: Conflicting invocation type % already specified\n", argv[arg_index], prev_invocation_type);
 
 				return false;
 			}
@@ -313,7 +311,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 			if (arg_index + 9 >= argc)
 			{
-				fprintf(stderr, "%s expects nine additional arguments\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects nine additional arguments\n", argv[arg_index]);
 
 				return false;
 			}
@@ -322,7 +320,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 			if (!parse_u64(argv[arg_index + 1], &n))
 			{
-				fprintf(stderr, "%s expects its 1st argument (shm handle) to be a base-ten number\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects its 1st argument (shm handle) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
@@ -331,56 +329,56 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 			if (!parse_u64(argv[arg_index + 2], &out->cmd.shm.reserve_offset))
 			{
-				fprintf(stderr, "%s expects its 2nd argument (reservation offset) to be a base-ten number\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects its 2nd argument (reservation offset) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
 			if (!parse_u64(argv[arg_index + 3], &out->cmd.shm.reserve_bytes))
 			{
-				fprintf(stderr, "%s expects its 3rd argument (reservation bytes) to be a base-ten number\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects its 3rd argument (reservation bytes) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
 			if (!parse_u64(argv[arg_index + 4], &out->cmd.shm.commit_offset))
 			{
-				fprintf(stderr, "%s expects its 4th argument (commit offset) to be a base-ten number\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects its 4th argument (commit offset) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
 			if (!parse_u64(argv[arg_index + 5], &out->cmd.shm.commit_bytes))
 			{
-				fprintf(stderr, "%s expects its 5th argument (commit bytes) to be a base-ten number\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects its 5th argument (commit bytes) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
 			if (!parse_u64(argv[arg_index + 6], &out->cmd.shm.read_offset))
 			{
-				fprintf(stderr, "%s expects its 6th argument (read offset) to be a base-ten number\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects its 6th argument (read offset) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
 			if (!parse_u64(argv[arg_index + 7], &out->cmd.shm.read_value))
 			{
-				fprintf(stderr, "%s expects its 7th argument (expected read value) to be a base-ten number\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects its 7th argument (expected read value) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
 			if (!parse_u64(argv[arg_index + 8], &out->cmd.shm.write_offset))
 			{
-				fprintf(stderr, "%s expects its 8th argument (write offset) to be a base-ten number\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects its 8th argument (write offset) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
 
 			if (!parse_u64(argv[arg_index + 9], &out->cmd.shm.write_value))
 			{
-				fprintf(stderr, "%s expects its 9th argument (write value) to be a base-ten number\n", argv[arg_index]);
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% expects its 9th argument (write value) to be a base-ten number\n", argv[arg_index]);
 
 				return false;
 			}
@@ -391,7 +389,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 		}
 		else
 		{
-			fprintf(stderr, "Unknown argument %s\n", argv[arg_index]);
+			print(minos::standard_file_handle(minos::StdFileName::StdErr), "Unknown argument %\n", argv[arg_index]);
 
 			return false;
 		}
@@ -399,7 +397,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 	if (out->has_timeout && (out->type != InvocationType::Event && out->type != InvocationType::Semaphore))
 	{
-		fprintf(stderr, "`--timeout` must only be specified together with `--event-wait` or `--semaphore-wait`\n");
+		print(minos::standard_file_handle(minos::StdFileName::StdErr), "`--timeout` must only be specified together with `--event-wait` or `--semaphore-wait`\n");
 
 		return false;
 	}
@@ -418,7 +416,7 @@ static void handle_divergent_invocations(const InvocationInfo* invocation) noexc
 
 	case InvocationType::Help:
 	{
-		fprintf(stdout,
+		print(minos::standard_file_handle(minos::StdFileName::StdErr),
 			"This is the `comp` project's test suite. The following arguments are supported:\n"
 			"  --help | -h           - Show this message.\n"
 			"  --ignore-debugbreaks  - Skip any debug break intrinsics triggered due to\n"
@@ -512,7 +510,7 @@ static void handle_divergent_invocations(const InvocationInfo* invocation) noexc
 				minos::exit_process(0);
 		}
 
-		fprintf(stderr, "cwd was %.*s and did not end with %.*s\n", static_cast<s32>(cwd_chars), cwd, static_cast<s32>(invocation->cmd.check_cwd.suffix.count()), invocation->cmd.check_cwd.suffix.begin());
+		print(minos::standard_file_handle(minos::StdFileName::StdErr), "cwd was % and did not end with %\n", Range{ cwd, cwd_chars }, invocation->cmd.check_cwd.suffix);
 
 		minos::exit_process(2);
 	}
@@ -564,8 +562,8 @@ s32 main(s32 argc, const char8** argv) noexcept
 
 	if (!parse_args(argc, argv, &invocation))
 	{
-		fprintf(stderr,
-			"Usage %s\n"
+		print(minos::standard_file_handle(minos::StdFileName::StdErr),
+			"Usage %\n"
 			"    [ --help | -h ]\n"
 			"    [ --ignore-debugbreaks ]\n"
 			"    [\n"
@@ -609,7 +607,19 @@ s32 main(s32 argc, const char8** argv) noexcept
 	}
 
 	if (test_failure_count != 0)
-		fprintf(stderr, "%u out of %" PRIu64 " tests (%u asserts in total) failed in %.1f %s. Rerun under a debugger to trigger the relevant breakpoints.\n", test_failure_count, g_test_times.size(), assertion_failure_count, rd.count, rd.unit);
+	{
+		print(minos::standard_file_handle(minos::StdFileName::StdErr), "% out of % tests (% asserts in total) failed in %[|.1] %. Rerun under a debugger to trigger the relevant breakpoints.\n",
+			test_failure_count,
+			g_test_times.size(),
+			assertion_failure_count,
+			rd.count, rd.unit
+		);
+	}
 	else
-		fprintf(stderr, "All %" PRIu64 " tests passed in %.1f %s\n", g_test_times.size(), rd.count, rd.unit);
+	{
+		print(minos::standard_file_handle(minos::StdFileName::StdErr), "All % tests passed in %[|.1] %\n",
+			g_test_times.size(),
+			rd.count, rd.unit
+		);
+	}
 }
