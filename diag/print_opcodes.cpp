@@ -764,7 +764,8 @@ static PrintResult print_opcode_impl(PrintSink sink, IdentifierPool* identifiers
 				static_cast<bool>(parameter_flags.is_eval),
 				static_cast<bool>(parameter_flags.has_type),
 				static_cast<bool>(parameter_flags.has_default),
-				static_cast<u32>(parameter_name)
+				static_cast<u32>(parameter_name),
+				parameter_name_str
 			);
 
 			if (written < 0)
