@@ -7,6 +7,9 @@
 #include "../opt.hpp"
 #include "../range.hpp"
 
+#include <cstdio>
+
+
 
 struct PrintState
 {
@@ -201,6 +204,65 @@ static bool print_chars(PrintState* state, Range<char8> value) noexcept
 
 
 
+static bool print_format_generic_float(PrintState* state, f64 value, PrintSpec spec) noexcept
+{
+	s32 precision = 6;
+
+	if (is_some(spec.extended_spec))
+	{
+		const char8* const extended_spec = get(spec.extended_spec);
+
+		u64 i = 0;
+
+		if (extended_spec[i] == '.')
+		{
+			i += 1;
+
+			if (extended_spec[i] < '0' || extended_spec[i] > '9')
+				panic("vprint: Invalid extended spec passed for floating-point insert.\n");
+
+			precision = extended_spec[i] - '0';
+
+			i += 1;
+
+			while (extended_spec[i] >= '0' && extended_spec[i] <= '9')
+			{
+				precision = precision * 10 + extended_spec[i] - '0';
+				
+				i += 1;
+			}
+		}
+
+		if (extended_spec[i] != ']')
+			panic("vprint: Invalid extended spec passed for floating-point insert.\n");
+	}
+
+	const s32 required_chars = snprintf(nullptr, 0, "%.*f", precision, value);
+
+	ASSERT_OR_IGNORE(required_chars > 0);
+
+	if (!state_prepad(state, spec.alignment, required_chars, spec.align_frame_size, spec.align_padding_char))
+		return false;
+
+	const Maybe<char8*> buffer = state_reserve_buffer(state, required_chars + 1);
+
+	if (is_none(buffer))
+		return false;
+
+	if (snprintf(get(buffer), required_chars + 1, "%.*f", precision, value) != required_chars)
+		return false;
+
+	// Manually remove the trailing '\0' introduced by `snprintf`.
+	state->buffer_used -= 1;
+
+	if (!state_postpad(state, spec.alignment, required_chars, spec.align_frame_size, spec.align_padding_char))
+		return false;
+
+	return true;
+}
+
+
+
 static bool print_format_int(PrintState* state, const void* insert_attach, PrintSpec spec) noexcept
 {
 	const IntPrintAttach* const attach = static_cast<const IntPrintAttach*>(insert_attach);
@@ -370,24 +432,16 @@ static bool print_format_int(PrintState* state, const void* insert_attach, Print
 
 static bool print_format_f32(PrintState* state, const void* raw_attach, PrintSpec spec) noexcept
 {
-	ASSERT_OR_IGNORE(is_none(spec.extended_spec));
+	const F32PrintAttach* const attach = static_cast<const F32PrintAttach*>(raw_attach);
 
-	(void) state;
-
-	(void) raw_attach;
-
-	TODO("Implement");
+	return print_format_generic_float(state, static_cast<f64>(attach->value), spec);
 }
 
 static bool print_format_f64(PrintState* state, const void* raw_attach, PrintSpec spec) noexcept
 {
-	ASSERT_OR_IGNORE(is_none(spec.extended_spec));
+	const F64PrintAttach* const attach = static_cast<const F64PrintAttach*>(raw_attach);
 
-	(void) state;
-
-	(void) raw_attach;
-
-	TODO("Implement");
+	return print_format_generic_float(state, attach->value, spec);
 }
 
 static bool print_format_bool(PrintState* state, const void* raw_attach, PrintSpec spec) noexcept
