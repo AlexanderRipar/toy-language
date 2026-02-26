@@ -7,6 +7,15 @@
 #include "../infra/inplace_sort.hpp"
 #include "../diag/diag.hpp"
 
+struct IdAllocation
+{
+	u64 begin;
+
+	u64 size;
+};
+
+
+
 MemoryRequirements ast_pool_memory_requirements(const Config* config) noexcept;
 
 MemoryRequirements error_sink_memory_requirements(const Config* config) noexcept;
@@ -56,15 +65,6 @@ using memory_requirements_func = MemoryRequirements (*) (const Config* config) n
 using init_func = void (*) (CoreData* core, MemoryAllocation allocation) noexcept;
 
 
-
-
-
-struct CoreMemberInit
-{
-	MemoryRequirements memory_requirements;
-
-	u32 id_offsets[4];
-};
 
 struct MemoryIdRequirementsPtrComparator
 {
@@ -175,7 +175,7 @@ CoreData* create_core_data(const Config* config) noexcept
 
 	u64 total_allocation_size = sizeof(CoreData);
 
-	u64 id_offsets[MEMBER_COUNT * MAX_MEMORY_ID_REQUIREMENTS_COUNT];
+	IdAllocation id_allocations[MEMBER_COUNT * MAX_MEMORY_ID_REQUIREMENTS_COUNT];
 
 	for (const MemoryIdRequirements* req : id_requirements)
 	{
@@ -185,7 +185,7 @@ CoreData* create_core_data(const Config* config) noexcept
 
 		const u32 reverse_index = id_requirements_index_from_ptr(req, memory_requirements);
 
-		id_offsets[reverse_index] = total_allocation_size;
+		id_allocations[reverse_index] = IdAllocation{ total_allocation_size, req->reserve };
 
 		total_allocation_size += req->reserve;
 
@@ -221,10 +221,16 @@ CoreData* create_core_data(const Config* config) noexcept
 			continue;
 
 		MemoryAllocation allocation;
-		allocation.private_data = static_cast<byte*>(memory) + private_allocation_begin;
-		
+		allocation.private_data = MutRange{ static_cast<byte*>(memory) + private_allocation_begin, memory_requirements[i].private_reserve };
+
+		private_allocation_begin += memory_requirements[i].private_reserve;
+
 		for (u64 j = 0; j != memory_requirements[i].id_requirements_count; ++j)
-			allocation.ids[j] = static_cast<byte*>(memory) + id_offsets[i * MAX_MEMORY_ID_REQUIREMENTS_COUNT + j];
+		{
+			const IdAllocation id_allocation = id_allocations[i * MAX_MEMORY_ID_REQUIREMENTS_COUNT + j];
+
+			allocation.ids[j] = MutRange{ static_cast<byte*>(memory) + id_allocation.begin, id_allocation.size };
+		}
 
 		INIT_FUNCS[i](core, allocation);
 	}

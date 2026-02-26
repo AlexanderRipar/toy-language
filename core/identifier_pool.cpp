@@ -89,11 +89,15 @@ MemoryRequirements identifier_pool_memory_requirements([[maybe_unused]] const Co
 
 void identifier_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
+	ASSERT_OR_IGNORE(allocation.private_data.count() == IDENTIFIER_LOOKUP_RESERVE);
+
+	ASSERT_OR_IGNORE(allocation.ids[0].count() == IDENTIFIER_ENTRY_RESERVE);
+
 	IdentifierPool* const identifiers = &core->identifiers;
 
 	identifiers->map.init(
-		{ allocation.private_data, IDENTIFIER_LOOKUP_RESERVE }, IDENTIFIER_LOOKUP_INITIAL_COMMIT_COUNT,
-		{ allocation.ids[0], IDENTIFIER_ENTRY_RESERVE }, IDENTIFIER_ENTRY_COMMIT_INCREMENT_COUNT);
+		allocation.private_data, IDENTIFIER_LOOKUP_INITIAL_COMMIT_COUNT,
+		allocation.ids[0], IDENTIFIER_ENTRY_COMMIT_INCREMENT_COUNT);
 }
 
 

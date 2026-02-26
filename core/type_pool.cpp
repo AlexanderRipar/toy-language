@@ -1216,14 +1216,16 @@ MemoryRequirements type_pool_memory_requirements([[maybe_unused]] const Config* 
 
 void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
+	ASSERT_OR_IGNORE(allocation.ids[0].count() == STRUCTURES_RESERVE);
+
 	TypePool* const types = &core->types;
 
 	u64 offset = 0;
 
-	const MutRange<byte> dedup_lookups_memory{ allocation.private_data + offset, DEDUP_LOOKUPS_RESERVE };
+	const MutRange<byte> dedup_lookups_memory = allocation.private_data.mut_subrange(offset, DEDUP_LOOKUPS_RESERVE);
 	offset += DEDUP_LOOKUPS_RESERVE;
 
-	const MutRange<byte> dedup_values_memory{ allocation.private_data + offset, DEDUP_VALUES_RESERVE };
+	const MutRange<byte> dedup_values_memory = allocation.private_data.mut_subrange(offset, DEDUP_VALUES_RESERVE);
 	offset += DEDUP_VALUES_RESERVE;
 
 	types->dedup.init(
@@ -1231,12 +1233,14 @@ void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 		dedup_values_memory, DEDUP_VALUES_COMMIT_INCREMENT_COUNT
 	);
 
-	const MutRange<byte> scratch_memory{ allocation.private_data + offset, SCRATCH_RESERVE };
+	const MutRange<byte> scratch_memory = allocation.private_data.mut_subrange(offset, SCRATCH_RESERVE);
 	offset += SCRATCH_RESERVE;
+
+	ASSERT_OR_IGNORE(allocation.private_data.count() == offset);
 
 	types->scratch.init(scratch_memory, SCRATCH_COMMIT_INCREMENT_COUNT);
 
-	const MutRange<byte> structures_memory{ allocation.ids[0], STRUCTURES_RESERVE };
+	const MutRange<byte> structures_memory = allocation.ids[0];
 
 	types->structures.init(structures_memory, Range{ STRUCTURES_CAPACITIES }, Range{ STRUCTURES_COMMITS });
 

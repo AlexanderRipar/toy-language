@@ -172,13 +172,15 @@ MemoryRequirements error_sink_memory_requirements([[maybe_unused]] const Config*
 
 void error_sink_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
+	ASSERT_OR_IGNORE(allocation.private_data.count() == MAX_ERROR_RECORD_COUNT * sizeof(ErrorRecord));
+
 	ErrorSink* const errors = &core->errors;
 
 	errors->error_count = 0;
 
 	errors->source_tab_size = static_cast<u8>(core->config->logging.diagnostics.source_tab_size);
 
-	errors->records.init({ allocation.private_data, sizeof(ErrorRecord) * MAX_ERROR_RECORD_COUNT }, 1024);
+	errors->records.init(allocation.private_data, 1024);
 
 	errors->log_file = config_open_log_file(core->config->logging.diagnostics.file, some(minos::StdFileName::StdErr));
 }

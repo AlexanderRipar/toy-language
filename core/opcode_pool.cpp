@@ -2229,13 +2229,17 @@ MemoryRequirements opcode_pool_memory_requirements([[maybe_unused]] const Config
 
 void opcode_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
+	ASSERT_OR_IGNORE(allocation.ids[0].count() == OPCODES_RESERVE_SIZE);
+
+	ASSERT_OR_IGNORE(allocation.private_data.count() == SOURCES_RESERVE_SIZE + FIXUPS_RESERVE_SIZE);
+
 	OpcodePool* const opcodes = &core->opcodes;
 
-	opcodes->codes.init({ allocation.ids[0], OPCODES_RESERVE_SIZE }, OPCODES_COMMIT_INCREMENT_COUNT);
+	opcodes->codes.init(allocation.ids[0], OPCODES_COMMIT_INCREMENT_COUNT);
 
-	opcodes->sources.init({ allocation.private_data, SOURCES_RESERVE_SIZE }, SOURCES_COMMIT_INCREMENT_COUNT);
+	opcodes->sources.init(allocation.private_data.mut_subrange(0, SOURCES_RESERVE_SIZE), SOURCES_COMMIT_INCREMENT_COUNT);
 
-	opcodes->fixups.init({ allocation.private_data + SOURCES_RESERVE_SIZE, FIXUPS_RESERVE_SIZE }, FIXUPS_COMMIT_INCREMENT_COUNT);
+	opcodes->fixups.init(allocation.private_data.mut_subrange(SOURCES_RESERVE_SIZE, FIXUPS_RESERVE_SIZE), FIXUPS_COMMIT_INCREMENT_COUNT);
 
 	// Reserve `OpcodeId::INVALID`.
 	(void) opcodes->codes.reserve();

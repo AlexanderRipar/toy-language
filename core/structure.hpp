@@ -333,9 +333,9 @@ struct MemoryRequirements
 
 struct MemoryAllocation
 {
-	byte* private_data;
+	MutRange<byte> private_data;
 
-	byte* ids[MAX_MEMORY_ID_REQUIREMENTS_COUNT];
+	MutRange<byte> ids[MAX_MEMORY_ID_REQUIREMENTS_COUNT];
 };
 
 #endif // CORE_STRUCTURE_INCLUDE_GUARD

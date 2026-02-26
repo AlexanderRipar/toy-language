@@ -275,22 +275,28 @@ MemoryRequirements ast_pool_memory_requirements([[maybe_unused]] const Config* c
 
 void ast_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
+	ASSERT_OR_IGNORE(allocation.ids[0].count() == NODES_RESERVE_SIZE);
+	
+	ASSERT_OR_IGNORE(allocation.ids[1].count() == CLOSURE_LISTS_RESERVE_SIZE);
+
 	AstPool* const asts = &core->asts;
 
-	asts->nodes.init({ allocation.ids[0], NODES_RESERVE_SIZE }, static_cast<u32>(1) << 18);
+	asts->nodes.init(allocation.ids[0], static_cast<u32>(1) << 18);
 
-	asts->closure_lists.init({ allocation.ids[1], CLOSURE_LISTS_RESERVE_SIZE }, static_cast<u32>(1) << 12);
+	asts->closure_lists.init(allocation.ids[1], static_cast<u32>(1) << 12);
 
 	u64 private_data_offset = 0;
 
-	asts->sources.init({ allocation.private_data + private_data_offset, SOURCES_RESERVE_SIZE }, static_cast<u32>(1) << 18);
+	asts->sources.init(allocation.private_data.mut_subrange(private_data_offset, SOURCES_RESERVE_SIZE), static_cast<u32>(1) << 18);
 	private_data_offset += SOURCES_RESERVE_SIZE;
 
-	asts->node_builder.init({ allocation.private_data + private_data_offset, NODE_BUILDER_RESERVE_SIZE }, static_cast<u32>(1) << 16);
+	asts->node_builder.init(allocation.private_data.mut_subrange(private_data_offset, NODE_BUILDER_RESERVE_SIZE), static_cast<u32>(1) << 16);
 	private_data_offset += NODE_BUILDER_RESERVE_SIZE;
 
-	asts->source_builder.init({ allocation.private_data + private_data_offset, SOURCE_BUILDER_RESERVE_SIZE }, static_cast<u32>(1) << 16);
+	asts->source_builder.init(allocation.private_data.mut_subrange(private_data_offset, SOURCE_BUILDER_RESERVE_SIZE), static_cast<u32>(1) << 16);
 	private_data_offset += SOURCE_BUILDER_RESERVE_SIZE;
+
+	ASSERT_OR_IGNORE(allocation.private_data.count() == private_data_offset);
 
 	(void) asts->nodes.reserve();
 

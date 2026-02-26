@@ -38,7 +38,7 @@ struct alignas(8) ForeverValue
 
 static constexpr u32 FILES_RESERVE_SIZE = 65536;
 
-static constexpr u32 FILE_OFFSETS_COMMIT_INCREMENT_COUNT = 1024;
+static constexpr u32 FILES_COMMIT_INCREMENT_COUNT = 1024;
 
 static constexpr u32 FOREVER_VALUES_RESERVE_SIZE = 1 << 22;
 
@@ -110,13 +110,19 @@ MemoryRequirements global_value_pool_memory_requirements([[maybe_unused]] const 
 
 void global_value_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
+	ASSERT_OR_IGNORE(allocation.ids[0].count() == FILES_RESERVE_SIZE);
+	
+	ASSERT_OR_IGNORE(allocation.ids[1].count() == FOREVER_VALUES_RESERVE_SIZE);
+
+	ASSERT_OR_IGNORE(allocation.private_data.count() == DATA_RESERVE_SIZE);
+
 	GlobalValuePool* const globals = &core->globals;
 
-	globals->files.init({ allocation.ids[0], FILES_RESERVE_SIZE }, FILE_OFFSETS_COMMIT_INCREMENT_COUNT);
+	globals->files.init(allocation.ids[0], FILES_COMMIT_INCREMENT_COUNT);
 
-	globals->forever_values.init({ allocation.ids[1], FOREVER_VALUES_RESERVE_SIZE }, FOREVER_VALUES_COMMIT_INCREMENT_COUNT);
+	globals->forever_values.init(allocation.ids[1], FOREVER_VALUES_COMMIT_INCREMENT_COUNT);
 
-	globals->data.init({ allocation.private_data, DATA_RESERVE_SIZE }, DATA_COMMIT_INCREMENT_COUNT);
+	globals->data.init(allocation.private_data, DATA_COMMIT_INCREMENT_COUNT);
 
 	// Reserve `GlobalFileIndex::INVALID`.
 	(void) globals->files.reserve();

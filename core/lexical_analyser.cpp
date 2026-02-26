@@ -868,9 +868,11 @@ MemoryRequirements lexical_analyser_memory_requirements([[maybe_unused]] const C
 
 void lexical_analyser_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
+	ASSERT_OR_IGNORE(allocation.private_data.count() == SCOPE_POOL_RESERVE);
+
 	LexicalAnalyser* const lex = &core->lex;
 
-	lex->scope_pool.init({ allocation.private_data, SCOPE_POOL_RESERVE }, Range{ SCOPE_POOL_CAPACITIES }, Range{ SCOPE_POOL_COMMITS });
+	lex->scope_pool.init(allocation.private_data, Range{ SCOPE_POOL_CAPACITIES }, Range{ SCOPE_POOL_COMMITS });
 	lex->scopes_top = -1;
 	lex->has_error = false;
 }
