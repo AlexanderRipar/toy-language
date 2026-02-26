@@ -583,7 +583,7 @@ static RawLexeme scan_identifier_token(CoreData* core, bool is_builtin) noexcept
 
 	u8 identifier_attachment;
 
-	const IdentifierId identifier_id = id_and_attachment_from_identifier(core->parser.lexer.identifiers, identifier_bytes, &identifier_attachment);
+	const IdentifierId identifier_id = id_and_attachment_from_identifier(core, identifier_bytes, &identifier_attachment);
 
 	if (is_builtin)
 	{
@@ -2871,7 +2871,7 @@ void parser_init(CoreData* core, [[maybe_unused]] MemoryAllocation allocation) n
 	parser->lexer.suppress_errors = false;
 
 	for (const AttachmentRange keyword : KEYWORDS)
-		identifier_set_attachment(&core->identifiers, keyword.range(), keyword.attachment());
+		identifier_set_attachment(core, keyword.range(), keyword.attachment());
 }
 
 

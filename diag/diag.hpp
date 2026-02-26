@@ -6,7 +6,7 @@
 
 namespace diag
 {
-	s64 print_ast(PrintSink sink, IdentifierPool* identifiers, AstNode* root) noexcept;
+	s64 print_ast(PrintSink sink, CoreData* core, AstNode* root) noexcept;
 
 	void print_config(PrintSink sink, const Config* config) noexcept;
 
@@ -38,9 +38,9 @@ namespace diag
 	}
 
 	template<typename Sink>
-	s64 print_ast(Sink sink, IdentifierPool* identifiers, AstNode* root) noexcept
+	s64 print_ast(Sink sink, CoreData* core, AstNode* root) noexcept
 	{
-		return print_ast(print_make_sink(sink), identifiers, root);
+		return print_ast(print_make_sink(sink), core, root);
 	}
 
 	template<typename Sink>

@@ -98,36 +98,36 @@ void identifier_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 
 
-IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept
+IdentifierId id_from_identifier(CoreData* core, Range<char8> identifier) noexcept
 {
-	return static_cast<IdentifierId>(identifiers->map.index_from(identifier, fnv1a(identifier.as_byte_range())) + static_cast<u32>(IdentifierId::FirstNatural));
+	return static_cast<IdentifierId>(core->identifiers.map.index_from(identifier, fnv1a(identifier.as_byte_range())) + static_cast<u32>(IdentifierId::FirstNatural));
 }
 
-IdentifierId id_and_attachment_from_identifier(IdentifierPool* identifiers, Range<char8> identifier, u8* out_token) noexcept
+IdentifierId id_and_attachment_from_identifier(CoreData* core, Range<char8> identifier, u8* out_token) noexcept
 {
-	const IdentifierEntry* const entry = identifiers->map.value_from(identifier, fnv1a(identifier.as_byte_range()));
+	const IdentifierEntry* const entry = core->identifiers.map.value_from(identifier, fnv1a(identifier.as_byte_range()));
 
 	*out_token = entry->m_attachment;
 
-	return static_cast<IdentifierId>(identifiers->map.index_from(entry) + static_cast<u32>(IdentifierId::FirstNatural));
+	return static_cast<IdentifierId>(core->identifiers.map.index_from(entry) + static_cast<u32>(IdentifierId::FirstNatural));
 }
 
-void identifier_set_attachment(IdentifierPool* identifiers, Range<char8> identifier, u8 attachment) noexcept
+void identifier_set_attachment(CoreData* core, Range<char8> identifier, u8 attachment) noexcept
 {
 	ASSERT_OR_IGNORE(attachment != 0);
 
-	IdentifierEntry* const entry = identifiers->map.value_from(identifier, fnv1a(identifier.as_byte_range()));
+	IdentifierEntry* const entry = core->identifiers.map.value_from(identifier, fnv1a(identifier.as_byte_range()));
 
 	ASSERT_OR_IGNORE(entry->m_attachment == 0);
 
 	entry->m_attachment = attachment;
 }
 
-Range<char8> identifier_name_from_id(const IdentifierPool* identifiers, IdentifierId id) noexcept
+Range<char8> identifier_name_from_id(const CoreData* core, IdentifierId id) noexcept
 {
 	ASSERT_OR_IGNORE(id >= IdentifierId::FirstNatural);
 
-	const IdentifierEntry* const entry = identifiers->map.value_from(static_cast<u32>(id) - static_cast<u32>(IdentifierId::FirstNatural));
+	const IdentifierEntry* const entry = core->identifiers.map.value_from(static_cast<u32>(id) - static_cast<u32>(IdentifierId::FirstNatural));
 
 	return Range<char8>{ entry->m_chars, entry->m_length };
 }

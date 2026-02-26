@@ -5,7 +5,7 @@
 #include "../infra/minos/minos.hpp"
 #include "../core/core.hpp"
 
-static s64 print_node_header(PrintSink sink, IdentifierPool* identifiers, const AstNode* node, s32 depth) noexcept
+static s64 print_node_header(PrintSink sink, CoreData* core, const AstNode* node, s32 depth) noexcept
 {
 	s64 total_written = print(sink, "%[< %]%", "", (depth + 1) * 2, tag_name(node->tag));
 
@@ -27,7 +27,7 @@ static s64 print_node_header(PrintSink sink, IdentifierPool* identifiers, const 
 		}
 		else
 		{
-			const Range<char8> name = identifier_name_from_id(identifiers, attach->identifier_id);
+			const Range<char8> name = identifier_name_from_id(core, attach->identifier_id);
 
 			const s64 written = print(sink, " [% |", name);
 
@@ -72,7 +72,7 @@ static s64 print_node_header(PrintSink sink, IdentifierPool* identifiers, const 
 		}
 		else
 		{
-			const Range<char8> name = identifier_name_from_id(identifiers, identifier_id);
+			const Range<char8> name = identifier_name_from_id(core, identifier_id);
 
 			written = print(sink, " [%]", name);
 		}
@@ -107,13 +107,13 @@ static s64 print_node_header(PrintSink sink, IdentifierPool* identifiers, const 
 	return total_written;
 }
 
-s64 diag::print_ast(PrintSink sink, IdentifierPool* identifiers, AstNode* root) noexcept
+s64 diag::print_ast(PrintSink sink, CoreData* core, AstNode* root) noexcept
 {
 	AstPreorderIterator it = preorder_ancestors_of(root);
 
 	s32 prev_depth = -1;
 
-	s64 total_written = print_node_header(sink, identifiers, root, -1);
+	s64 total_written = print_node_header(sink, core, root, -1);
 
 	if (total_written < 0)
 		return -1;
@@ -136,7 +136,7 @@ s64 diag::print_ast(PrintSink sink, IdentifierPool* identifiers, AstNode* root) 
 
 		prev_depth = result.depth;
 
-		const s64 written = print_node_header(sink, identifiers, result.node, result.depth);
+		const s64 written = print_node_header(sink, core, result.node, result.depth);
 
 		if (written < 0)
 			return -1;

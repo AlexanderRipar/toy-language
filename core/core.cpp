@@ -241,7 +241,7 @@ bool run_compilation(CoreData* core, bool main_is_std) noexcept
 	}
 	else
 	{
-		const IdentifierId entrypoint_name = id_from_identifier(&core->identifiers, core->config->entrypoint.symbol);
+		const IdentifierId entrypoint_name = id_from_identifier(core, core->config->entrypoint.symbol);
 
 		if (!evaluate_file_definition_by_name(core, get(main_file_type_id), entrypoint_name))
 			return false;

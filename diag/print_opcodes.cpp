@@ -613,7 +613,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 		code = code_attach(code, &name);
 
-		const Range<char8> name_str = identifier_name_from_id(&core->identifiers, name);
+		const Range<char8> name_str = identifier_name_from_id(core, name);
 
 		const s64 written = print(sink, " name=IdentifierId<%> (%)", static_cast<u32>(name), name_str);
 
@@ -685,7 +685,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 			code = code_attach(code, &parameter_flags);
 
-			const Range<char8> parameter_name_str = identifier_name_from_id(&core->identifiers, parameter_name);
+			const Range<char8> parameter_name_str = identifier_name_from_id(core, parameter_name);
 
 			const s64 written = print(sink, "\n     -        %[> 2]: mut=% eval=% type=% default=% name=IdentifierId<%> (%) ",
 				i,
@@ -758,7 +758,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 			code = code_attach(code, &parameter_flags);
 
-			const Range<char8> parameter_name_str = identifier_name_from_id(&core->identifiers, parameter_name);
+			const Range<char8> parameter_name_str = identifier_name_from_id(core, parameter_name);
 
 			const s64 written = print(sink, "\n     -        %[> 2]: mut=% eval=% type=% default=% name=IdentifierId<%> (%) ",
 				i,
@@ -834,7 +834,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 			const Range<char8> argument_name_str = argument_name == IdentifierId::INVALID
 				? range::from_literal_string("<unnamed>")
-				: identifier_name_from_id(&core->identifiers, argument_name);
+				: identifier_name_from_id(core, argument_name);
 
 			const s64 written = print(sink, "\n     -        %[> 2]: callback=OpcodeId<%> name=IdentifierId<%> (%)",
 				i,
@@ -968,7 +968,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 			code = code_attach(code, &following_initializer_count);
 
-			const Range<char8> name_str = identifier_name_from_id(&core->identifiers, name);
+			const Range<char8> name_str = identifier_name_from_id(core, name);
 
 			const s64 written = print(sink, "\n     -        following_elem_count=% name=IdentifierId<%> (%)",
 				following_initializer_count,
@@ -1002,7 +1002,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 			code = code_attach(code, &name);
 
-			const Range<char8> name_str = identifier_name_from_id(&core->identifiers, name);
+			const Range<char8> name_str = identifier_name_from_id(core, name);
 
 			const s64 written = print(sink, "\n     -        name=IdentifierId<%> (%)",
 				static_cast<u32>(name),

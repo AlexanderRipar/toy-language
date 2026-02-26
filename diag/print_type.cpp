@@ -192,7 +192,7 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 				}
 				else
 				{
-					const Range<char8> name = identifier_name_from_id(&core->identifiers, member_name);
+					const Range<char8> name = identifier_name_from_id(core, member_name);
 
 					name_written = print(sink, "\"%\" ", name);
 				}

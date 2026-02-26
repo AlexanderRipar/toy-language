@@ -188,25 +188,25 @@ enum class IdentifierId : u32
 // byte-for-byte `identifier` are guaranteed to return the same `IdentifierId`.
 // All calls to the same `IdentifierPool` with distinct `identifier`s are
 // guaranteed to return distinct `IdentifierId`s.
-IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept;
+IdentifierId id_from_identifier(CoreData* core, Range<char8> identifier) noexcept;
 
 // Same as `id_from_identifier`, but additionally sets `*out_attachment` to the
 // value previously set for the given `identifier` by
 // `identifier_set_attachment`, or `0` if no attachment has been set.
 // Note that this call will never return `INVALID_IDENTIFIER_ID`.
-IdentifierId id_and_attachment_from_identifier(IdentifierPool* identifiers, Range<char8> identifier, u8* out_attachment) noexcept;
+IdentifierId id_and_attachment_from_identifier(CoreData* core, Range<char8> identifier, u8* out_attachment) noexcept;
 
 // Sets the attachment associated with `identifier` in the given
 // `IdentifierPool` to the given `attachment`. The given `identifier` must not
 // have previously had an attachment set.
 // Additionally, `attachment` must not be `0`.
-void identifier_set_attachment(IdentifierPool* identifiers, Range<char8> identifier, u8 attachment) noexcept;
+void identifier_set_attachment(CoreData* core, Range<char8> identifier, u8 attachment) noexcept;
 
 // Returns the byte-sequence corresponding to the given `IdentifierId` in the
 // given `IdentifierPool`. `id` must not be `INVALID_IDENTIFIER_ID` and must
 // have been returned from a previous call to `id_from_identifier` or
 // `id_and_attachment_from_identifier`.
-Range<char8> identifier_name_from_id(const IdentifierPool* identifiers, IdentifierId id) noexcept;
+Range<char8> identifier_name_from_id(const CoreData* core, IdentifierId id) noexcept;
 
 
 

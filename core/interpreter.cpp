@@ -182,7 +182,7 @@ static void log_ast(CoreData* core, AstNode* node) noexcept
 		location.column_number
 	);
 
-	diag::print_ast(core->interp.imported_asts_log_file, core->interp.identifiers, node);
+	diag::print_ast(core->interp.imported_asts_log_file, core, node);
 }
 
 static void log_opcodes(CoreData* core, const Opcode* code) noexcept
@@ -5271,8 +5271,8 @@ static void init_builtin_infos(CoreData* core) noexcept
 	const OpcodeId integer_body = opcode_id_from_builtin(core, Builtin::Integer);
 
 	const TypeId integer_signature = make_func_type(core, type_type,
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("bits")), u8_type, true },
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("is_signed")), bool_type, true }
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("bits")), u8_type, true },
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("is_signed")), bool_type, true }
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::Integer) - 1] = BuiltinInfo{ integer_body, integer_signature };
@@ -5282,7 +5282,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 	const OpcodeId float_body = opcode_id_from_builtin(core, Builtin::Float);
 
 	const TypeId float_signature = make_func_type(core, type_type,
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("bits")), u8_type, true }
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("bits")), u8_type, true }
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::Float) - 1] = BuiltinInfo{ float_body, float_signature };
@@ -5316,7 +5316,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 	const OpcodeId typeof_body = opcode_id_from_builtin(core, Builtin::Typeof);
 
 	const TypeId typeof_signature = make_func_type(core, type_type,
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_info_type, true }
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("arg")), type_info_type, true }
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::Typeof) - 1] = BuiltinInfo{ typeof_body, typeof_signature };
@@ -5326,7 +5326,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 	const OpcodeId returntypeof_body = opcode_id_from_builtin(core, Builtin::Returntypeof);
 
 	const TypeId returntypeof_signature = make_func_type(core, type_type,
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_info_type, true }
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("arg")), type_info_type, true }
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::Returntypeof) - 1] = BuiltinInfo{ returntypeof_body, returntypeof_signature };
@@ -5336,7 +5336,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 	const OpcodeId sizeof_body = opcode_id_from_builtin(core, Builtin::Sizeof);
 
 	const TypeId sizeof_signature = make_func_type(core, comp_integer_type,
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_type, true }
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("arg")), type_type, true }
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::Sizeof) - 1] = BuiltinInfo{ sizeof_body, sizeof_signature };
@@ -5346,7 +5346,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 	const OpcodeId alignof_body = opcode_id_from_builtin(core, Builtin::Alignof);
 
 	const TypeId alignof_signature = make_func_type(core, comp_integer_type,
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_type, true }
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("arg")), type_type, true }
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::Alignof) - 1] = BuiltinInfo{ alignof_body, alignof_signature };
@@ -5356,7 +5356,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 	const OpcodeId strideof_body = opcode_id_from_builtin(core, Builtin::Strideof);
 
 	const TypeId strideof_signature = make_func_type(core, comp_integer_type,
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_type, true }
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("arg")), type_type, true }
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::Strideof) - 1] = BuiltinInfo{ strideof_body, strideof_signature };
@@ -5374,7 +5374,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 	const OpcodeId nameof_body = opcode_id_from_builtin(core, Builtin::Nameof);
 
 	const TypeId nameof_signature = make_func_type(core, slice_of_u8_type,
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_info_type, true }
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("arg")), type_info_type, true }
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::Nameof) - 1] = BuiltinInfo{ nameof_body, nameof_signature };
@@ -5384,9 +5384,9 @@ static void init_builtin_infos(CoreData* core) noexcept
 	const OpcodeId import_body = opcode_id_from_builtin(core, Builtin::Import);
 
 	const TypeId import_signature = make_func_type(core, type_type,
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("path")), slice_of_u8_type, true },
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("is_std")), bool_type, true },
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("from")), u32_type, true }
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("path")), slice_of_u8_type, true },
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("is_std")), bool_type, true },
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("from")), u32_type, true }
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::Import) - 1] = BuiltinInfo{ import_body, import_signature };
@@ -5396,7 +5396,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 	const OpcodeId create_type_builder_body = opcode_id_from_builtin(core, Builtin::CreateTypeBuilder);
 
 	const TypeId create_type_builder_signature = make_func_type(core, type_builder_type,
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("source_id")), u32_type, true }
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("source_id")), u32_type, true }
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::CreateTypeBuilder) - 1] = BuiltinInfo{ create_type_builder_body, create_type_builder_signature };
@@ -5410,9 +5410,9 @@ static void init_builtin_infos(CoreData* core) noexcept
 	//       supported by `type_metrics_from_id` yet, as its actual layout is
 	//       not defined yet.
 	const TypeId add_type_member_signature = make_func_type(core, void_type,
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("builder")), type_builder_type, true },
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("definition")), type_type, true },
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("offset")), s64_type, true }
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("builder")), type_builder_type, true },
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("definition")), type_type, true },
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("offset")), s64_type, true }
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::AddTypeMember) - 1] = BuiltinInfo{ add_type_member_body, add_type_member_signature };
@@ -5422,10 +5422,10 @@ static void init_builtin_infos(CoreData* core) noexcept
 	const OpcodeId complete_type_body = opcode_id_from_builtin(core, Builtin::CompleteType);
 
 	const TypeId complete_type_signature = make_func_type(core, type_type,
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("builder")), type_builder_type, true },
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("size")), u64_type, true },
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("align")), u64_type, true },
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("stride")), u64_type, true }
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("builder")), type_builder_type, true },
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("size")), u64_type, true },
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("align")), u64_type, true },
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("stride")), u64_type, true }
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::CompleteType) - 1] = BuiltinInfo{ complete_type_body, complete_type_signature };
@@ -5455,7 +5455,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 	//       supported by `type_metrics_from_id` yet, as its actual layout is
 	//       not defined yet.
 	const TypeId definition_typeof_signature = make_func_type(core, type_type,
-		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("definition")), type_type, true }
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("definition")), type_type, true }
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::DefinitionTypeof) - 1] = BuiltinInfo{ definition_typeof_body, definition_typeof_signature };
