@@ -65,19 +65,38 @@ struct alignas(8) IdentifierEntry
 	}
 };
 
-IdentifierPool* create_identifier_pool(HandlePool* alloc) noexcept
+static constexpr u64 IDENTIFIER_LOOKUP_RESERVE = decltype(IdentifierPool::map)::lookups_memory_size(static_cast<u32>(1) << 21);
+
+static constexpr u32 IDENTIFIER_LOOKUP_INITIAL_COMMIT_COUNT = static_cast<u32>(1) << 15;
+
+static constexpr u64 IDENTIFIER_ENTRY_RESERVE = (static_cast<u64>(1) << 22) * IdentifierEntry::stride();
+
+static constexpr u32 IDENTIFIER_ENTRY_COMMIT_INCREMENT_COUNT = static_cast<u32>(1) << 18;
+
+
+
+MemoryRequirements identifier_pool_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
-	IdentifierPool* const identifiers = alloc_handle_from_pool<IdentifierPool>(alloc);
+	MemoryRequirements reqs;
 
-	identifiers->map.init(1u << 24, 1u << 15, 1u << 31, 1u << 18);
+	reqs.private_reserve = IDENTIFIER_LOOKUP_RESERVE;
+	reqs.id_requirements_count = 1;
+	reqs.id_requirements[0].reserve = IDENTIFIER_ENTRY_RESERVE;
+	reqs.id_requirements[0].alignment = alignof(IdentifierEntry);
 
-	return identifiers;
+	return reqs;
 }
 
-void release_identifier_pool(IdentifierPool* identifiers) noexcept
+void identifier_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
-	identifiers->map.release();
+	IdentifierPool* const identifiers = &core->identifiers;
+
+	identifiers->map.init(
+		{ allocation.private_data, IDENTIFIER_LOOKUP_RESERVE }, IDENTIFIER_LOOKUP_INITIAL_COMMIT_COUNT,
+		{ allocation.ids[0], IDENTIFIER_ENTRY_RESERVE }, IDENTIFIER_ENTRY_COMMIT_INCREMENT_COUNT);
 }
+
+
 
 IdentifierId id_from_identifier(IdentifierPool* identifiers, Range<char8> identifier) noexcept
 {

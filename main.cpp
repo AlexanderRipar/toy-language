@@ -29,13 +29,13 @@ s32 main(s32 argc, const char8** argv)
 		if (!parse_toml(range::from_cstring(argv[2]), config_schema(), range::from_object_bytes_mut(&config), &config_allocation))
 			return EXIT_FAILURE;
 
-		CoreData core = create_core_data(&config);
+		CoreData* const core = create_core_data(&config);
 
-		if (run_compilation(&core, false))
+		if (run_compilation(core, false))
 		{
 			print(minos::standard_file_handle(minos::StdFileName::StdErr), "Success\n");
 
-			release_core_data(&core);
+			release_core_data(core);
 
 			release_toml(config_allocation);
 
@@ -43,11 +43,11 @@ s32 main(s32 argc, const char8** argv)
 		}
 		else
 		{
-			print_errors(core.errors);
+			print_errors(core);
 
 			print(minos::standard_file_handle(minos::StdFileName::StdErr), "\nFailure\n");
 
-			release_core_data(&core);
+			release_core_data(core);
 
 			release_toml(config_allocation);
 

@@ -250,65 +250,56 @@ static AstNode* copy_postorder_to_preorder(AstPool* asts, u32 src_root_index) no
 
 
 
-AstPool* create_ast_pool(HandlePool* alloc) noexcept
+static constexpr u64 NODES_RESERVE_SIZE = (static_cast<u64>(1) << 28) * sizeof(AstNode);
+
+static constexpr u64 SOURCES_RESERVE_SIZE = (static_cast<u64>(1) << 28) * sizeof(SourceId);
+
+static constexpr u64 NODE_BUILDER_RESERVE_SIZE = (static_cast<u64>(1) << 26) * sizeof(AstNode);
+
+static constexpr u64 SOURCE_BUILDER_RESERVE_SIZE = (static_cast<u64>(1) << 26) * sizeof(SourceId);
+
+static constexpr u64 CLOSURE_LISTS_RESERVE_SIZE = (static_cast<u64>(1) << 24) * sizeof(ClosureListEntry);
+
+MemoryRequirements ast_pool_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
-	AstPool* const asts = alloc_handle_from_pool<AstPool>(alloc);
+	MemoryRequirements reqs;
+	reqs.private_reserve = SOURCES_RESERVE_SIZE + NODE_BUILDER_RESERVE_SIZE + SOURCE_BUILDER_RESERVE_SIZE;
+	reqs.id_requirements_count = 2;
+	reqs.id_requirements[0].reserve = NODES_RESERVE_SIZE;
+	reqs.id_requirements[0].alignment = alignof(AstNode);
+	reqs.id_requirements[1].reserve = CLOSURE_LISTS_RESERVE_SIZE;
+	reqs.id_requirements[1].alignment = alignof(ClosureListEntry);
 
-	static constexpr u64 nodes_reserve_size = (static_cast<u64>(1) << 30) * sizeof(AstNode);
+	return reqs;
+}
 
-	static constexpr u64 sources_reserve_size = (static_cast<u64>(1) << 30) * sizeof(SourceId);
+void ast_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
+{
+	AstPool* const asts = &core->asts;
 
-	static constexpr u64 node_builder_reserve_size = (static_cast<u64>(1) << 26) * sizeof(AstNode);
+	asts->nodes.init({ allocation.ids[0], NODES_RESERVE_SIZE }, static_cast<u32>(1) << 18);
 
-	static constexpr u64 source_builder_reserve_size = (static_cast<u64>(1) << 26) * sizeof(SourceId);
+	asts->closure_lists.init({ allocation.ids[1], CLOSURE_LISTS_RESERVE_SIZE }, static_cast<u32>(1) << 12);
 
-	static constexpr u64 closure_lists_reserve_size = (static_cast<u64>(1) << 24) * sizeof(ClosureListEntry);
+	u64 private_data_offset = 0;
 
-	static constexpr u64 total_size = nodes_reserve_size
-	                     + sources_reserve_size
-	                     + node_builder_reserve_size
-	                     + source_builder_reserve_size
-	                     + closure_lists_reserve_size;
+	asts->sources.init({ allocation.private_data + private_data_offset, SOURCES_RESERVE_SIZE }, static_cast<u32>(1) << 18);
+	private_data_offset += SOURCES_RESERVE_SIZE;
 
-	byte* const memory = static_cast<byte*>(minos::mem_reserve(total_size));
+	asts->node_builder.init({ allocation.private_data + private_data_offset, NODE_BUILDER_RESERVE_SIZE }, static_cast<u32>(1) << 16);
+	private_data_offset += NODE_BUILDER_RESERVE_SIZE;
 
-	if (memory == nullptr)
-		panic("Could not reserve memory for AstPool (0x%[|X]).\n", minos::last_error());
-
-	u64 byte_offset = 0;
-
-	asts->nodes.init({ memory + byte_offset, nodes_reserve_size }, static_cast<u32>(1) << 18);
-	byte_offset += nodes_reserve_size;
-
-	asts->sources.init({ memory + byte_offset, sources_reserve_size }, static_cast<u32>(1) << 18);
-	byte_offset += sources_reserve_size;
-
-	asts->node_builder.init({ memory + byte_offset, node_builder_reserve_size }, static_cast<u32>(1) << 16);
-	byte_offset += node_builder_reserve_size;
-
-	asts->source_builder.init({ memory + byte_offset, source_builder_reserve_size }, static_cast<u32>(1) << 16);
-	byte_offset += source_builder_reserve_size;
-
-	asts->closure_lists.init({ memory + byte_offset, closure_lists_reserve_size }, static_cast<u32>(1) << 12);
-	byte_offset += closure_lists_reserve_size;
-
-	ASSERT_OR_IGNORE(byte_offset == total_size);
-
-	asts->memory = { memory, total_size };
+	asts->source_builder.init({ allocation.private_data + private_data_offset, SOURCE_BUILDER_RESERVE_SIZE }, static_cast<u32>(1) << 16);
+	private_data_offset += SOURCE_BUILDER_RESERVE_SIZE;
 
 	(void) asts->nodes.reserve();
 
 	(void) asts->sources.reserve();
 
 	(void) asts->closure_lists.reserve();
-
-	return asts;
 }
 
-void release_ast_pool(AstPool* asts) noexcept
-{
-	minos::mem_unreserve(asts->memory.begin(), asts->memory.count());
-}
+
 
 AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept
 {

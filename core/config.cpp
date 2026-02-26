@@ -1,5 +1,6 @@
 #include "core.hpp"
 
+#include "../infra/panic.hpp"
 #include "../infra/print/print.hpp"
 
 #include <cstddef>
@@ -69,17 +70,17 @@ static constexpr TreeSchemaNode CONFIG_STD[] = {
 
 static constexpr TreeSchemaNode CONFIG_LOGGING_IMPORTS_ASTS[] = {
 	make_boolean_info(offsetof(Config, logging.imports.asts.enable), "enable", "Print ASTs after they are parsed"),
-	make_path_info(offsetof(Config, logging.imports.asts.log_filepath), "log-file", "Path of the log file. Defaults to stdout"),
+	make_path_info(offsetof(Config, logging.imports.asts.filepath), "log-file", "Path of the log file. Defaults to stdout"),
 };
 
 static constexpr TreeSchemaNode CONFIG_LOGGING_IMPORTS_OPCODES[] = {
 	make_boolean_info(offsetof(Config, logging.imports.opcodes.enable), "enable", "Print opcodes generated for top-level members of imported files"),
-	make_path_info(offsetof(Config, logging.imports.opcodes.log_filepath), "log-file", "Path of the log file. Defaults to stdout"),
+	make_path_info(offsetof(Config, logging.imports.opcodes.filepath), "log-file", "Path of the log file. Defaults to stdout"),
 };
 
 static constexpr TreeSchemaNode CONFIG_LOGGING_IMPORTS_TYPES[] = {
 	make_boolean_info(offsetof(Config, logging.imports.types.enable), "enable", "Print file types after they are imported and typechecked"),
-	make_path_info(offsetof(Config, logging.imports.types.log_filepath), "log-file", "Path of the log file. Defaults to stdout"),
+	make_path_info(offsetof(Config, logging.imports.types.filepath), "log-file", "Path of the log file. Defaults to stdout"),
 };
 
 static constexpr TreeSchemaNode CONFIG_LOGGING_IMPORTS[] = {
@@ -90,12 +91,12 @@ static constexpr TreeSchemaNode CONFIG_LOGGING_IMPORTS[] = {
 
 static constexpr TreeSchemaNode CONFIG_LOGGING_CONFIG[] = {
 	make_boolean_info(offsetof(Config, logging.config.enable), "enable", "Print config after it is parsed"),
-	make_boolean_info(offsetof(Config, logging.config.log_filepath), "log-file", "Path of the log file. Defaults to stdout"),
+	make_boolean_info(offsetof(Config, logging.config.filepath), "log-file", "Path of the log file. Defaults to stdout"),
 };
 
 static constexpr TreeSchemaNode CONFIG_LOGGING_DIAGNOSTICS[] = {
-	make_boolean_info(offsetof(Config, logging.diagnostics.enable), "enable", "Print diagnostics"),
-	make_boolean_info(offsetof(Config, logging.diagnostics.log_filepath), "log-file", "Path of the log file. Defaults to stderr"),
+	make_boolean_info(offsetof(Config, logging.diagnostics.file.enable), "enable", "Print diagnostics"),
+	make_boolean_info(offsetof(Config, logging.diagnostics.file.filepath), "log-file", "Path of the log file. Defaults to stderr"),
 	make_integer_info(offsetof(Config, logging.diagnostics.source_tab_size), 1, 32, "source-tab-size", "Number of characters a tab is equivalent to when reporting column numbers"),
 };
 
@@ -117,6 +118,22 @@ static constexpr TreeSchemaNode CONFIG = make_container_info(Range<TreeSchemaNod
 
 
 
+
+minos::FileHandle config_open_log_file(ConfigLogFileRef log_file, Maybe<minos::StdFileName> fallback) noexcept
+{
+	if (!log_file.enable)
+		return minos::FileHandle{};
+
+	if (log_file.filepath.count() == 0)
+		return is_some(fallback) ? minos::standard_file_handle(get(fallback)) : minos::FileHandle{};
+
+	minos::FileHandle file;
+
+	if (!minos::file_create(log_file.filepath, minos::Access::Write, minos::ExistsMode::Truncate, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &file))
+		panic("Failed to open log file % (0x%[|X])\n", log_file.filepath, minos::last_error());
+
+	return file;
+}
 
 const TreeSchemaNode* config_schema() noexcept
 {

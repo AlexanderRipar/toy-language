@@ -8,6 +8,18 @@
 #include "../infra/range.hpp"
 #include "../infra/container/reserved_vec.hpp"
 
+static constexpr u32 OPCODES_RESERVE_SIZE = 1 << 26;
+
+static constexpr u32 OPCODES_COMMIT_INCREMENT_COUNT = 1 << 16;
+
+static constexpr u32 SOURCES_RESERVERE_SIZE = 1 << 26;
+
+static constexpr u32 SOURCES_COMMIT_INCREMENT_COUNT = 1 << 13;
+
+static constexpr u32 FIXUPS_RESERVERE_SIZE = (1 << 20) * 3;
+
+static constexpr u32 FIXUPS_COMMIT_INCREMENT_COUNT = 1 << 12;
+
 enum class FixupKind : u8
 {
 	INVALID = 0,
@@ -2204,57 +2216,34 @@ static bool complete_fixups(OpcodePool* opcodes) noexcept
 
 
 
-OpcodePool* create_opcode_pool(HandlePool* handles, AstPool* asts) noexcept
+MemoryRequirements opcode_pool_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
-	static constexpr u32 OPCODES_RESERVE_SIZE = 1 << 26;
+	MemoryRequirements reqs;
+	reqs.private_reserve = SOURCES_RESERVERE_SIZE + FIXUPS_RESERVERE_SIZE;
+	reqs.id_requirements_count = 1;
+	reqs.id_requirements[0].reserve = OPCODES_RESERVE_SIZE;
+	reqs.id_requirements[0].alignment = alignof(Opcode);
 
-	static constexpr u32 OPCODES_COMMIT_INCREMENT_COUNT = 1 << 16;
+	return reqs;
+}
 
-	static constexpr u32 SOURCES_RESERVERE_SIZE = 1 << 26;
+void opcode_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
+{
+	OpcodePool* const opcodes = &core->opcodes;
 
-	static constexpr u32 SOURCES_COMMIT_INCREMENT_COUNT = 1 << 13;
+	opcodes->asts = &core->asts;
 
-	static constexpr u32 FIXUPS_RESERVERE_SIZE = (1 << 20) * 3;
+	opcodes->codes.init({ allocation.ids[0], OPCODES_RESERVE_SIZE }, OPCODES_COMMIT_INCREMENT_COUNT);
 
-	static constexpr u32 FIXUPS_COMMIT_INCREMENT_COUNT = 1 << 12;
+	opcodes->sources.init({ allocation.private_data, SOURCES_RESERVERE_SIZE }, SOURCES_COMMIT_INCREMENT_COUNT);
 
-	static constexpr u64 TOTAL_RESERVE_SIZE = static_cast<u64>(OPCODES_RESERVE_SIZE)
-	                                        + SOURCES_RESERVERE_SIZE
-	                                        + FIXUPS_RESERVERE_SIZE;
-
-	byte* const memory = static_cast<byte*>(minos::mem_reserve(TOTAL_RESERVE_SIZE));
-
-	if (memory == nullptr)
-		panic("Failed to allocate memory for OpcodePool (0x%[|X]).\n", minos::last_error());
-
-	OpcodePool* const opcodes = alloc_handle_from_pool<OpcodePool>(handles);
-	opcodes->asts = asts;
-
-	u64 offset = 0;
-
-	opcodes->codes.init({ memory + offset, OPCODES_RESERVE_SIZE }, OPCODES_COMMIT_INCREMENT_COUNT);
-	offset += OPCODES_RESERVE_SIZE;
-
-	opcodes->sources.init({ memory + offset, SOURCES_RESERVERE_SIZE }, SOURCES_COMMIT_INCREMENT_COUNT);
-	offset += SOURCES_RESERVERE_SIZE;
-
-	opcodes->fixups.init({ memory + offset, FIXUPS_RESERVERE_SIZE }, FIXUPS_COMMIT_INCREMENT_COUNT);
-	offset += FIXUPS_RESERVERE_SIZE;
-
-	ASSERT_OR_IGNORE(offset == TOTAL_RESERVE_SIZE);
-
-	opcodes->memory = MutRange<byte>{ memory, TOTAL_RESERVE_SIZE };
+	opcodes->fixups.init({ allocation.private_data + SOURCES_RESERVERE_SIZE, FIXUPS_RESERVERE_SIZE }, FIXUPS_COMMIT_INCREMENT_COUNT);
 
 	// Reserve `OpcodeId::INVALID`.
 	(void) opcodes->codes.reserve();
-
-	return opcodes;
 }
 
-void release_opcode_pool(OpcodePool* opcodes) noexcept
-{
-	minos::mem_unreserve(opcodes->memory.begin(), opcodes->memory.count());
-}
+
 
 const Maybe<Opcode*> opcodes_from_file_member_ast(OpcodePool* opcodes, AstNode* node, GlobalFileIndex file_index, u16 rank) noexcept
 {

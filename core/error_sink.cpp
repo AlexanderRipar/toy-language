@@ -159,30 +159,37 @@ static const char8* error_message_of(CompileError error) noexcept
 	return FORMATS[ordinal];
 }
 
-ErrorSink* create_error_sink(HandlePool* alloc, SourceReader* reader, IdentifierPool* identifiers, AstPool* asts, u8 source_tab_size, minos::FileHandle log_file) noexcept
+
+
+MemoryRequirements error_sink_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
-	ErrorSink* const errors = alloc_handle_from_pool<ErrorSink>(alloc);
+	MemoryRequirements reqs;
+	reqs.private_reserve = sizeof(ErrorRecord) * MAX_ERROR_RECORD_COUNT;
+	reqs.id_requirements_count = 0;
 
-	byte* const memory = static_cast<byte*>(minos::mem_reserve(sizeof(ErrorRecord) * MAX_ERROR_RECORD_COUNT));
+	return reqs;
+}
 
-	if (memory == nullptr)
-		panic("Could not reserve memory for ErrorSink (0x%[|X]).\n", minos::last_error());
+void error_sink_init(CoreData* core, MemoryAllocation allocation) noexcept
+{
+	ErrorSink* const errors = &core->errors;
 
-	errors->reader = reader;
-	errors->identifiers = identifiers;
-	errors->asts = asts;
+	errors->reader = &core->reader;
+
+	errors->identifiers = &core->identifiers;
+
+	errors->asts = &core->asts;
+
 	errors->error_count = 0;
-	errors->source_tab_size = source_tab_size;
-	errors->records.init({ memory, sizeof(ErrorRecord) * MAX_ERROR_RECORD_COUNT }, 1024);
-	errors->log_file = log_file;
 
-	return errors;
+	errors->source_tab_size = static_cast<u8>(core->config->logging.diagnostics.source_tab_size);
+
+	errors->records.init({ allocation.private_data, sizeof(ErrorRecord) * MAX_ERROR_RECORD_COUNT }, 1024);
+
+	errors->log_file = config_open_log_file(core->config->logging.diagnostics.file, some(minos::StdFileName::StdErr));
 }
 
-void release_error_sink([[maybe_unused]] ErrorSink* errors) noexcept
-{
-	// No-op
-}
+
 
 void record_error(ErrorSink* errors, SourceId source_id, CompileError error) noexcept
 {
@@ -201,18 +208,18 @@ void record_error(ErrorSink* errors, const AstNode* source_node, CompileError er
 	record_error(errors, source_id_of_ast_node(errors->asts, source_node), error);
 }
 
-void print_errors(ErrorSink* errors) noexcept
+void print_errors(CoreData* core) noexcept
 {
-	if (errors->log_file.m_rep == nullptr)
+	if (core->errors.log_file.m_rep == nullptr)
 		return;
 
-	const Range<ErrorRecord> records = get_errors(errors);
+	const Range<ErrorRecord> records = get_errors(&core->errors);
 
 	for (const ErrorRecord record : records)
 	{
-		const SourceLocation location = source_location_from_source_id(errors->reader, record.source_id);
+		const SourceLocation location = source_location_from_source_id(core->errors.reader, record.source_id);
 
-		print_error(errors->log_file, &location, record.error, errors->source_tab_size);
+		print_error(core->errors.log_file, &location, record.error, core->errors.source_tab_size);
 	}
 }
 

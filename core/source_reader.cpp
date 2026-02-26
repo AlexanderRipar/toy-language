@@ -117,6 +117,22 @@ struct SourceFileByIdEntry
 	}
 };
 
+static constexpr u64 KNOWN_FILES_BY_PATH_LOOKUP_RESERVE = decltype(SourceReader::known_files_by_path)::lookups_memory_size(1 << 20);
+
+static constexpr u32 KNOWN_FILES_BY_PATH_LOOKUP_INITIAL_COMMIT_COUNT = static_cast<u32>(1) << 10;
+
+static constexpr u32 KNOWN_FILES_BY_PATH_VALUES_RESERVE = (static_cast<u32>(1) << 19) * SourceFileByPathEntry::stride();
+
+static constexpr u32 KNOWN_FILES_BY_PATH_VALUES_COMMIT_INCREMENT_COUNT = static_cast<u32>(1) << 11;
+
+static constexpr u64 KNOWN_FILES_BY_IDENTITY_LOOKUP_RESERVE = decltype(SourceReader::known_files_by_path)::lookups_memory_size(1 << 19);
+
+static constexpr u32 KNOWN_FILES_BY_IDENTITY_LOOKUP_INITIAL_COMMIT_COUNT = static_cast<u32>(1) << 10;
+
+static constexpr u32 KNOWN_FILES_BY_IDENTITY_VALUES_RESERVE = (static_cast<u32>(1) << 18) * SourceFileByIdEntry::stride();
+
+static constexpr u32 KNOWN_FILES_BY_IDENTITY_VALUES_COMMIT_INCREMENT_COUNT = static_cast<u32>(1) << 11;
+
 
 
 static SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id) noexcept
@@ -261,26 +277,49 @@ static SourceLocation source_location_from_source_file_and_source_id(SourceReade
 
 
 
-SourceReader* create_source_reader(HandlePool* pool) noexcept
+MemoryRequirements source_reader_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
-	SourceReader* const reader = alloc_handle_from_pool<SourceReader>(pool);
+	MemoryRequirements reqs;
 
-	reader->known_files_by_path.init(1 << 24, 1 << 10, 1 << 23, 1 << 13);
+	reqs.private_reserve = KNOWN_FILES_BY_PATH_LOOKUP_RESERVE
+	                     + KNOWN_FILES_BY_PATH_VALUES_RESERVE;
+	                     + KNOWN_FILES_BY_IDENTITY_LOOKUP_RESERVE;
+	reqs.id_requirements_count = 1;
+	reqs.id_requirements[0].reserve = KNOWN_FILES_BY_IDENTITY_VALUES_RESERVE;
+	reqs.id_requirements[0].alignment = alignof(SourceFileByIdEntry);
 
-	reader->known_files_by_identity.init(1 << 24, 1 << 10, 1 << 23, 1 << 12);
+	return reqs;
+}
+
+void source_reader_init(CoreData* core, MemoryAllocation allocation) noexcept
+{
+	SourceReader* const reader = &core->reader;
+
+	u64 offset = 0;
+
+	const MutRange<byte> by_path_lookup_memory{ allocation.private_data + offset, KNOWN_FILES_BY_PATH_LOOKUP_RESERVE };
+	offset += KNOWN_FILES_BY_PATH_LOOKUP_RESERVE;
+
+	const MutRange<byte> by_path_values_memory{ allocation.private_data + offset, KNOWN_FILES_BY_PATH_VALUES_RESERVE };
+	offset += KNOWN_FILES_BY_PATH_VALUES_RESERVE;
+
+	const MutRange<byte> by_identity_lookup_memory{ allocation.private_data + offset, KNOWN_FILES_BY_IDENTITY_LOOKUP_RESERVE };
+
+	const MutRange<byte> by_identity_values_memory{ allocation.ids[0], KNOWN_FILES_BY_IDENTITY_VALUES_RESERVE };
+
+	reader->known_files_by_path.init(
+		by_path_lookup_memory, KNOWN_FILES_BY_PATH_LOOKUP_INITIAL_COMMIT_COUNT,
+		by_path_values_memory, KNOWN_FILES_BY_PATH_VALUES_COMMIT_INCREMENT_COUNT
+	);
+
+	reader->known_files_by_identity.init(
+		by_identity_lookup_memory, KNOWN_FILES_BY_IDENTITY_LOOKUP_INITIAL_COMMIT_COUNT,
+		by_identity_values_memory, KNOWN_FILES_BY_IDENTITY_VALUES_COMMIT_INCREMENT_COUNT
+	);
 
 	reader->curr_source_id_base = 1;
 
 	reader->source_file_count = 0;
-
-	return reader;
-}
-
-void release_source_reader(SourceReader* reader) noexcept
-{
-	reader->known_files_by_path.release();
-
-	reader->known_files_by_identity.release();
 }
 
 SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noexcept

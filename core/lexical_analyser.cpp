@@ -14,6 +14,20 @@
 
 static constexpr u16 MAX_SCOPE_ENTRY_COUNT = static_cast<u16>(1 << 15);
 
+static constexpr u32 SCOPE_POOL_CAPACITIES[MAX_SCOPE_MAP_SIZE_LOG2 - MIN_SCOPE_MAP_SIZE_LOG2 + 1] = {
+	MAX_AST_DEPTH     , MAX_AST_DEPTH    , MAX_AST_DEPTH    , MAX_AST_DEPTH / 2, MAX_AST_DEPTH / 2 ,
+	MAX_AST_DEPTH /  2, MAX_AST_DEPTH / 4, MAX_AST_DEPTH / 4, MAX_AST_DEPTH / 8, MAX_AST_DEPTH / 16,
+	MAX_AST_DEPTH / 32,
+};
+
+static constexpr u32 SCOPE_POOL_COMMITS[MAX_SCOPE_MAP_SIZE_LOG2 - MIN_SCOPE_MAP_SIZE_LOG2 + 1] = {
+	64, 32, 16, 8, 4,
+	 2,  1,  1, 1, 1,
+	 1,
+};
+
+static constexpr u64 SCOPE_POOL_RESERVE = decltype(LexicalAnalyser::scope_pool)::memory_size(Range{ SCOPE_POOL_CAPACITIES });
+
 enum class ScopeMapKind : u8
 {
 	Local,
@@ -104,7 +118,6 @@ struct ScopeMapInfo
 
 	ScopeEntry* entries;
 };
-
 
 
 ScopeMapInfo scope_map_info(ScopeMap* scope) noexcept
@@ -844,46 +857,28 @@ static void resolve_names_root(LexicalAnalyser* lex, AstNode* root, GlobalFileIn
 
 
 
-LexicalAnalyser* create_lexical_analyser(HandlePool* alloc, IdentifierPool* identifiers, AstPool* asts, ErrorSink* errors) noexcept
+MemoryRequirements lexical_analyser_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
-	static constexpr u32 SCOPE_POOL_CAPACITIES[MAX_SCOPE_MAP_SIZE_LOG2 - MIN_SCOPE_MAP_SIZE_LOG2 + 1] = {
-		MAX_AST_DEPTH     , MAX_AST_DEPTH    , MAX_AST_DEPTH    , MAX_AST_DEPTH / 2, MAX_AST_DEPTH / 2 ,
-		MAX_AST_DEPTH / 2 , MAX_AST_DEPTH / 4, MAX_AST_DEPTH / 4, MAX_AST_DEPTH / 8, MAX_AST_DEPTH / 16,
-		MAX_AST_DEPTH / 32,
-	};
+	MemoryRequirements reqs;
+	reqs.private_reserve = SCOPE_POOL_RESERVE;
+	reqs.id_requirements_count = 0;
 
-	static constexpr u32 SCOPE_POOL_COMMITS[MAX_SCOPE_MAP_SIZE_LOG2 - MIN_SCOPE_MAP_SIZE_LOG2 + 1] = {
-		64, 32, 16, 8, 4,
-		 2,  1,  1, 1, 1,
-		 1,
-	};
+	return reqs;
+}
 
-	u64 scope_pool_size = 0;
+void lexical_analyser_init(CoreData* core, MemoryAllocation allocation) noexcept
+{
+	LexicalAnalyser* const lex = &core->lex;
 
-	for (u32 i = 0; i != array_count(SCOPE_POOL_CAPACITIES); ++i)
-		scope_pool_size += static_cast<u64>(SCOPE_POOL_CAPACITIES[i]) << (i + MIN_SCOPE_MAP_SIZE_LOG2);
-
-	byte* const memory = static_cast<byte*>(minos::mem_reserve(scope_pool_size));
-
-	if (memory == nullptr)
-		panic("Could not reserve memory for LexicalAnalyser (0x%[|X]).\n", minos::last_error());
-
-	LexicalAnalyser* const lex = alloc_handle_from_pool<LexicalAnalyser>(alloc);
-	lex->scope_pool.init({ memory, scope_pool_size }, Range{ SCOPE_POOL_CAPACITIES }, Range{ SCOPE_POOL_COMMITS });
+	lex->scope_pool.init({ allocation.private_data, SCOPE_POOL_RESERVE }, Range{ SCOPE_POOL_CAPACITIES }, Range{ SCOPE_POOL_COMMITS });
 	lex->scopes_top = -1;
-	lex->identifiers = identifiers;
-	lex->asts = asts;
-	lex->errors = errors;
+	lex->identifiers = &core->identifiers;
+	lex->asts = &core->asts;
+	lex->errors = &core->errors;
 	lex->has_error = false;
-	lex->memory = { memory, scope_pool_size };
-
-	return lex;
 }
 
-void release_lexical_analyser(LexicalAnalyser* lex) noexcept
-{
-	minos::mem_unreserve(lex->memory.begin(), lex->memory.count());
-}
+
 
 bool set_prelude_scope(LexicalAnalyser* lex, AstNode* prelude, GlobalFileIndex file_index) noexcept
 {

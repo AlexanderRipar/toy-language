@@ -35,6 +35,22 @@ private:
 
 public:
 
+	static constexpr u64 memory_size(Range<u32> capacities) noexcept
+	{
+		u64 category_size = static_cast<u32>(1) << MinSizeLog2;
+
+		u64 reserve = 0;
+
+		for (u32 capacity : capacities)
+		{
+			reserve += category_size * capacity;
+
+			category_size *= 2;
+		}
+
+		return reserve;
+	}
+
 	void init(MutRange<byte> memory, Range<u32> capacities, Range<u32> commits) noexcept
 	{
 		ASSERT_OR_IGNORE(capacities.count() == CategoryCount && commits.count() == CategoryCount);

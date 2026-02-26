@@ -124,6 +124,48 @@ struct BuiltinParamInfo
 	bool is_comptime_known;
 };
 
+static constexpr u32 SCOPES_RESERVE_SIZE = sizeof(Scope) << 18;
+static constexpr u32 SCOPES_COMMIT_INCREMENT_COUNT = 2048;
+
+static constexpr u32 SCOPE_MEMBERS_RESERVE_SIZE = sizeof(ScopeMember) << 18;
+static constexpr u32 SCOPE_MEMBERS_COMMIT_INCREMENT_COUNT = 8192 / sizeof(ScopeMember);
+
+static constexpr u32 SCOPE_DATA_RESERVE_SIZE = 1 << 28;
+static constexpr u32 SCOPE_DATA_COMMIT_INCREMENT_COUNT = 65536;
+
+static constexpr u32 VALUES_RESERVE_SIZE = sizeof(CTValue) << 20;
+static constexpr u32 VALUES_COMMIT_INCREMENT_COUNT = 1024;
+
+static constexpr u32 TEMPORARY_DATA_RESERVE_SIZE = 1 << 28;
+static constexpr u32 TEMPORARY_DATA_COMMIT_INCREMENT_COUNT = 65536;
+
+static constexpr u32 ACTIVATIONS_RESERVE_SIZE = sizeof(OpcodeId) << 22;
+static constexpr u32 ACTIVATIONS_COMMIT_INCREMENT_COUNT = 4096;
+
+static constexpr u32 CALL_ACTIVATION_INDICES_RESERVE_SIZE = sizeof(u32) << 18;
+static constexpr u32 CALL_ACTIVATION_INDICES_COMMIT_INCREMENT_COUNT = 1024;
+
+static constexpr u32 LOOP_STACK_RESERVE_SIZE = sizeof(LoopInfo) << 18;
+static constexpr u32 LOOP_STACK_COMMIT_INCREMENT_COUNT = 1024;
+
+static constexpr u32 WRITE_CTXS_RESERVE_SIZE = sizeof(CTValue) << 17;
+static constexpr u32 WRITE_CTXS_COMMIT_INCREMENT_COUNT = 512;
+
+static constexpr u32 ACTIVE_CLOSURES_RESERVE_SIZE = sizeof(ClosureId) << 15;
+static constexpr u32 ACTIVE_CLOSURES_COMMIT_INCREMENT_COUNT = 1024;
+
+static constexpr u32 CLOSURE_MEMBERS_RESERVE_SIZE = sizeof(ScopeMember) << 22;
+static constexpr u32 CLOSURE_MEMBERS_COMMIT_INCREMENT_COUNT = 8192;
+
+static constexpr u32 ARGUMENT_CALLBACKS_RESERVE_SIZE = sizeof(OpcodeId) << 20;
+static constexpr u32 ARGUMENT_CALLBACKS_COMMIT_INCREMENT_COUNT = 2048;
+
+static constexpr u32 ARGUMENT_PACKS_RESERVE_SIZE = sizeof(ArgumentPack) << 18;
+static constexpr u32 ARGUMENT_PACKS_COMMIT_INCREMENT_COUNT = 512;
+
+static constexpr u32 GLOBAL_INITIALIZATIONS_RESERVE_SIZE = sizeof(GlobalInitialization) << 16;
+static constexpr u32 GLOBAL_INITIALIZATIONS_COMMIT_INCREMENT_COUNT = 4096 / sizeof(GlobalInitialization);
+
 using OpcodeHandlerFunc = const Opcode* (*) (Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept;
 
 
@@ -5431,145 +5473,97 @@ static void init_builtin_infos(Interpreter* interp) noexcept
 
 
 
-Interpreter* create_interpreter(HandlePool* handles, AstPool* asts, TypePool* types, GlobalValuePool* globals, OpcodePool* opcodes, SourceReader* reader, Parser* parser, IdentifierPool* identifiers, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle imported_asts_log_file, minos::FileHandle imported_opcodes_log_file, minos::FileHandle imported_types_log_file) noexcept
+
+MemoryRequirements interpreter_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
-	static constexpr u32 SCOPES_RESERVE_SIZE = sizeof(Scope) << 18;
-	static constexpr u32 SCOPES_COMMIT_INCREMENT_COUNT = 2048;
+	MemoryRequirements reqs;
+	reqs.private_reserve = static_cast<u64>(SCOPES_RESERVE_SIZE)
+	                     + SCOPE_MEMBERS_RESERVE_SIZE
+	                     + SCOPE_DATA_RESERVE_SIZE
+	                     + VALUES_RESERVE_SIZE
+	                     + TEMPORARY_DATA_RESERVE_SIZE
+	                     + ACTIVATIONS_RESERVE_SIZE
+	                     + CALL_ACTIVATION_INDICES_RESERVE_SIZE
+	                     + LOOP_STACK_RESERVE_SIZE
+	                     + WRITE_CTXS_RESERVE_SIZE
+	                     + ACTIVE_CLOSURES_RESERVE_SIZE
+	                     + CLOSURE_MEMBERS_RESERVE_SIZE
+	                     + ARGUMENT_CALLBACKS_RESERVE_SIZE
+	                     + ARGUMENT_PACKS_RESERVE_SIZE
+	                     + GLOBAL_INITIALIZATIONS_RESERVE_SIZE;
+	reqs.id_requirements_count = 0;
 
-	static constexpr u32 SCOPE_MEMBERS_RESERVE_SIZE = sizeof(ScopeMember) << 18;
-	static constexpr u32 SCOPE_MEMBERS_COMMIT_INCREMENT_COUNT = 8192 / sizeof(ScopeMember);
+	return reqs;
+}
 
-	static constexpr u32 SCOPE_DATA_RESERVE_SIZE = 1 << 28;
-	static constexpr u32 SCOPE_DATA_COMMIT_INCREMENT_COUNT = 65536;
+void interpreter_init(CoreData* core, MemoryAllocation allocation) noexcept
+{
+	Interpreter* const interp = &core->interp;
 
-	static constexpr u32 VALUES_RESERVE_SIZE = sizeof(CTValue) << 20;
-	static constexpr u32 VALUES_COMMIT_INCREMENT_COUNT = 1024;
-
-	static constexpr u32 TEMPORARY_DATA_RESERVE_SIZE = 1 << 28;
-	static constexpr u32 TEMPORARY_DATA_COMMIT_INCREMENT_COUNT = 65536;
-
-	static constexpr u32 ACTIVATIONS_RESERVE_SIZE = sizeof(OpcodeId) << 22;
-	static constexpr u32 ACTIVATIONS_COMMIT_INCREMENT_COUNT = 4096;
-
-	static constexpr u32 CALL_ACTIVATION_INDICES_RESERVE_SIZE = sizeof(u32) << 18;
-	static constexpr u32 CALL_ACTIVATION_INDICES_COMMIT_INCREMENT_COUNT = 1024;
-
-	static constexpr u32 LOOP_STACK_RESERVE_SIZE = sizeof(LoopInfo) << 18;
-	static constexpr u32 LOOP_STACK_COMMIT_INCREMENT_COUNT = 1024;
-
-	static constexpr u32 WRITE_CTXS_RESERVE_SIZE = sizeof(CTValue) << 17;
-	static constexpr u32 WRITE_CTXS_COMMIT_INCREMENT_COUNT = 512;
-
-	static constexpr u32 ACTIVE_CLOSURES_RESERVE_SIZE = sizeof(ClosureId) << 15;
-	static constexpr u32 ACTIVE_CLOSURES_COMMIT_INCREMENT_COUNT = 1024;
-
-	static constexpr u32 CLOSURE_MEMBERS_RESERVE_SIZE = sizeof(ScopeMember) << 22;
-	static constexpr u32 CLOSURE_MEMBERS_COMMIT_INCREMENT_COUNT = 8192;
-
-	static constexpr u32 ARGUMENT_CALLBACKS_RESERVE_SIZE = sizeof(OpcodeId) << 20;
-	static constexpr u32 ARGUMENT_CALLBACKS_COMMIT_INCREMENT_COUNT = 2048;
-
-	static constexpr u32 ARGUMENT_PACKS_RESERVE_SIZE = sizeof(ArgumentPack) << 18;
-	static constexpr u32 ARGUMENT_PACKS_COMMIT_INCREMENT_COUNT = 512;
-
-	static constexpr u32 GLOBAL_INITIALIZATIONS_RESERVE_SIZE = sizeof(GlobalInitialization) << 16;
-	static constexpr u32 GLOBAL_INITIALIZATIONS_COMMIT_INCREMENT_COUNT = 4096 / sizeof(GlobalInitialization);
-
-	static constexpr u64 TOTAL_RESERVE_SIZE = static_cast<u64>(SCOPES_RESERVE_SIZE)
-	                                        + SCOPE_MEMBERS_RESERVE_SIZE
-	                                        + SCOPE_DATA_RESERVE_SIZE
-	                                        + VALUES_RESERVE_SIZE
-	                                        + TEMPORARY_DATA_RESERVE_SIZE
-	                                        + ACTIVATIONS_RESERVE_SIZE
-											+ CALL_ACTIVATION_INDICES_RESERVE_SIZE
-											+ LOOP_STACK_RESERVE_SIZE
-	                                        + WRITE_CTXS_RESERVE_SIZE
-	                                        + ACTIVE_CLOSURES_RESERVE_SIZE
-	                                        + CLOSURE_MEMBERS_RESERVE_SIZE
-	                                        + ARGUMENT_CALLBACKS_RESERVE_SIZE
-	                                        + ARGUMENT_PACKS_RESERVE_SIZE
-	                                        + GLOBAL_INITIALIZATIONS_RESERVE_SIZE;
-
-	byte* const memory = static_cast<byte*>(minos::mem_reserve(TOTAL_RESERVE_SIZE));
-
-	if (memory == nullptr)
-		panic("Failed to allocate memory for Interpreter (0x%[|X]).\n", minos::last_error());
-
-	Interpreter* const interp = alloc_handle_from_pool<Interpreter>(handles);
-
-	interp->asts = asts;
-	interp->types = types;
-	interp->globals = globals;
-	interp->opcodes = opcodes;
-	interp->reader = reader;
-	interp->parser = parser;
-	interp->identifiers = identifiers;
-	interp->lex = lex;
-	interp->errors = errors;
-	interp->imported_asts_log_file = imported_asts_log_file;
-	interp->imported_opcodes_log_file = imported_opcodes_log_file;
-	interp->imported_types_log_file = imported_types_log_file;
+	interp->asts = &core->asts;
+	interp->types = &core->types;
+	interp->globals = &core->globals;
+	interp->opcodes = &core->opcodes;
+	interp->reader = &core->reader;
+	interp->parser = &core->parser;
+	interp->identifiers = &core->identifiers;
+	interp->lex = &core->lex;
+	interp->errors = &core->errors;
+	interp->imported_asts_log_file = config_open_log_file(core->config->logging.imports.asts, some(minos::StdFileName::StdOut));
+	interp->imported_opcodes_log_file = config_open_log_file(core->config->logging.imports.opcodes, some(minos::StdFileName::StdOut));
+	interp->imported_types_log_file = config_open_log_file(core->config->logging.imports.types, some(minos::StdFileName::StdOut));
 
 	u64 offset = 0;
 
-	interp->scopes.init({ memory + offset, SCOPES_RESERVE_SIZE }, SCOPES_COMMIT_INCREMENT_COUNT);
+	interp->scopes.init({ allocation.private_data + offset, SCOPES_RESERVE_SIZE }, SCOPES_COMMIT_INCREMENT_COUNT);
 	offset += SCOPES_RESERVE_SIZE;
 
-	interp->scope_members.init({ memory + offset, SCOPE_MEMBERS_RESERVE_SIZE }, SCOPE_MEMBERS_COMMIT_INCREMENT_COUNT);
+	interp->scope_members.init({ allocation.private_data + offset, SCOPE_MEMBERS_RESERVE_SIZE }, SCOPE_MEMBERS_COMMIT_INCREMENT_COUNT);
 	offset += SCOPE_MEMBERS_RESERVE_SIZE;
 
-	interp->scope_data.init({ memory + offset, SCOPE_DATA_RESERVE_SIZE }, SCOPE_DATA_COMMIT_INCREMENT_COUNT);
+	interp->scope_data.init({ allocation.private_data + offset, SCOPE_DATA_RESERVE_SIZE }, SCOPE_DATA_COMMIT_INCREMENT_COUNT);
 	offset += SCOPE_DATA_RESERVE_SIZE;
 
-	interp->values.init({ memory + offset, VALUES_RESERVE_SIZE }, VALUES_COMMIT_INCREMENT_COUNT);
+	interp->values.init({ allocation.private_data + offset, VALUES_RESERVE_SIZE }, VALUES_COMMIT_INCREMENT_COUNT);
 	offset += VALUES_RESERVE_SIZE;
 
-	interp->temporary_data.init({ memory + offset, TEMPORARY_DATA_RESERVE_SIZE }, TEMPORARY_DATA_COMMIT_INCREMENT_COUNT);
+	interp->temporary_data.init({ allocation.private_data + offset, TEMPORARY_DATA_RESERVE_SIZE }, TEMPORARY_DATA_COMMIT_INCREMENT_COUNT);
 	offset += TEMPORARY_DATA_RESERVE_SIZE;
 
-	interp->activations.init({ memory + offset, ACTIVATIONS_RESERVE_SIZE }, ACTIVATIONS_COMMIT_INCREMENT_COUNT);
+	interp->activations.init({ allocation.private_data + offset, ACTIVATIONS_RESERVE_SIZE }, ACTIVATIONS_COMMIT_INCREMENT_COUNT);
 	offset += ACTIVATIONS_RESERVE_SIZE;
 
-	interp->call_activation_indices.init({ memory + offset, CALL_ACTIVATION_INDICES_RESERVE_SIZE }, CALL_ACTIVATION_INDICES_COMMIT_INCREMENT_COUNT);
+	interp->call_activation_indices.init({ allocation.private_data + offset, CALL_ACTIVATION_INDICES_RESERVE_SIZE }, CALL_ACTIVATION_INDICES_COMMIT_INCREMENT_COUNT);
 	offset += CALL_ACTIVATION_INDICES_RESERVE_SIZE;
 
-	interp->loop_stack.init({ memory + offset, LOOP_STACK_RESERVE_SIZE }, LOOP_STACK_COMMIT_INCREMENT_COUNT);
+	interp->loop_stack.init({ allocation.private_data + offset, LOOP_STACK_RESERVE_SIZE }, LOOP_STACK_COMMIT_INCREMENT_COUNT);
 	offset += LOOP_STACK_RESERVE_SIZE;
 
-	interp->write_ctxs.init({ memory + offset, WRITE_CTXS_RESERVE_SIZE }, WRITE_CTXS_COMMIT_INCREMENT_COUNT);
+	interp->write_ctxs.init({ allocation.private_data + offset, WRITE_CTXS_RESERVE_SIZE }, WRITE_CTXS_COMMIT_INCREMENT_COUNT);
 	offset += WRITE_CTXS_RESERVE_SIZE;
 
-	interp->active_closures.init({ memory + offset, ACTIVE_CLOSURES_RESERVE_SIZE }, ACTIVE_CLOSURES_COMMIT_INCREMENT_COUNT);
+	interp->active_closures.init({ allocation.private_data + offset, ACTIVE_CLOSURES_RESERVE_SIZE }, ACTIVE_CLOSURES_COMMIT_INCREMENT_COUNT);
 	offset += ACTIVE_CLOSURES_RESERVE_SIZE;
 
-	interp->closure_members.init({ memory + offset, CLOSURE_MEMBERS_RESERVE_SIZE }, CLOSURE_MEMBERS_COMMIT_INCREMENT_COUNT);
+	interp->closure_members.init({ allocation.private_data + offset, CLOSURE_MEMBERS_RESERVE_SIZE }, CLOSURE_MEMBERS_COMMIT_INCREMENT_COUNT);
 	offset += CLOSURE_MEMBERS_RESERVE_SIZE;
 
-	interp->argument_callbacks.init({ memory + offset, ARGUMENT_CALLBACKS_RESERVE_SIZE }, ARGUMENT_CALLBACKS_COMMIT_INCREMENT_COUNT);
+	interp->argument_callbacks.init({ allocation.private_data + offset, ARGUMENT_CALLBACKS_RESERVE_SIZE }, ARGUMENT_CALLBACKS_COMMIT_INCREMENT_COUNT);
 	offset += ARGUMENT_CALLBACKS_RESERVE_SIZE;
 
-	interp->argument_packs.init({ memory + offset, ARGUMENT_PACKS_RESERVE_SIZE }, ARGUMENT_PACKS_COMMIT_INCREMENT_COUNT);
+	interp->argument_packs.init({ allocation.private_data + offset, ARGUMENT_PACKS_RESERVE_SIZE }, ARGUMENT_PACKS_COMMIT_INCREMENT_COUNT);
 	offset += ARGUMENT_PACKS_RESERVE_SIZE;
 
-	interp->global_initializations.init({ memory + offset, GLOBAL_INITIALIZATIONS_RESERVE_SIZE }, GLOBAL_INITIALIZATIONS_COMMIT_INCREMENT_COUNT);
+	interp->global_initializations.init({ allocation.private_data + offset, GLOBAL_INITIALIZATIONS_RESERVE_SIZE }, GLOBAL_INITIALIZATIONS_COMMIT_INCREMENT_COUNT);
 	offset += GLOBAL_INITIALIZATIONS_RESERVE_SIZE;
-
-	ASSERT_OR_IGNORE(offset == TOTAL_RESERVE_SIZE);
-
-	interp->memory = MutRange<byte>{ memory, TOTAL_RESERVE_SIZE };
 
 	// Reserve `ClosureId::INVALID`.
 	interp->closure_members.reserve();
 
 	init_builtin_infos(interp);
-
-	return interp;
 }
 
-void release_interpreter(Interpreter* interp) noexcept
-{
-	minos::mem_unreserve(interp->memory.begin(), interp->memory.count());
-}
+
 
 bool import_prelude(Interpreter* interp, Range<char8> path) noexcept
 {

@@ -218,6 +218,7 @@ namespace minos
 
 	enum class StdFileName
 	{
+		INVALID = 0,
 		StdIn,
 		StdOut,
 		StdErr,

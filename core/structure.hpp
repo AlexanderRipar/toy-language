@@ -25,8 +25,6 @@ struct AstPool
 	ReservedVec<SourceId> source_builder;
 
 	ReservedVec<ClosureList> closure_lists;
-
-	MutRange<byte> memory;
 };
 
 
@@ -61,8 +59,6 @@ struct GlobalValuePool
 	ReservedVec<ForeverValue> forever_values;
 
 	ReservedVec<byte> data;
-
-	MutRange<byte> memory;
 };
 
 
@@ -71,7 +67,7 @@ struct alignas(8) IdentifierEntry;
 
 struct IdentifierPool
 {
-	IndexMap<Range<char8>, IdentifierEntry> map;
+	IndexMap2<Range<char8>, IdentifierEntry> map;
 };
 
 
@@ -145,8 +141,6 @@ struct Interpreter
 
 	BuiltinInfo builtin_infos[static_cast<u8>(Builtin::MAX) - 1];
 
-	MutRange<byte> memory;
-
 	minos::FileHandle imported_asts_log_file;
 
 	minos::FileHandle imported_opcodes_log_file;
@@ -185,8 +179,6 @@ struct LexicalAnalyser
 	bool has_error;
 
 	GlobalFileIndex prelude_file_index;
-
-	MutRange<byte> memory;
 };
 
 
@@ -212,8 +204,6 @@ struct OpcodePool
 	ReservedVec<SourceMapping> sources;
 
 	ReservedVec<Fixup> fixups;
-
-	MutRange<byte> memory;
 };
 
 
@@ -300,9 +290,9 @@ struct SourceFileByIdEntry;
 
 struct SourceReader
 {
-	IndexMap<Range<char8>, SourceFileByPathEntry> known_files_by_path;
+	IndexMap2<Range<char8>, SourceFileByPathEntry> known_files_by_path;
 
-	IndexMap<minos::FileIdentity, SourceFileByIdEntry> known_files_by_identity;
+	IndexMap2<minos::FileIdentity, SourceFileByIdEntry> known_files_by_identity;
 
 	u32 curr_source_id_base;
 
@@ -321,13 +311,67 @@ struct alignas(8) DeduplicatedTypeInfo;
 
 struct TypePool
 {
-	IndexMap<DeduplicatedTypeInit, DeduplicatedTypeInfo> dedup;
+	IndexMap2<DeduplicatedTypeInit, DeduplicatedTypeInfo> dedup;
 
 	ReservedHeap<MIN_STRUCTURE_SIZE_LOG2, MAX_STRUCTURE_SIZE_LOG2> structures;
 
 	ReservedVec<u64> scratch;
+};
 
-	MutRange<byte> memory;
+
+
+struct CoreData
+{
+	AstPool asts;
+
+	ErrorSink errors;
+
+	GlobalValuePool globals;
+
+	IdentifierPool identifiers;
+
+	Interpreter interp;
+
+	LexicalAnalyser lex;
+
+	OpcodePool opcodes;
+
+	Parser parser;
+
+	SourceReader reader;
+
+	TypePool types;
+
+	const Config* config;
+
+	u64 allocation_size;
+};
+
+
+
+static constexpr u64 MAX_MEMORY_ID_REQUIREMENTS_COUNT = 3;
+
+struct MemoryIdRequirements
+{
+	u32 reserve;
+
+	u32 alignment;
+};
+
+struct MemoryRequirements
+{
+	u32 private_reserve;
+
+	u32 id_requirements_count;
+
+	MemoryIdRequirements id_requirements[MAX_MEMORY_ID_REQUIREMENTS_COUNT];
+};
+
+struct MemoryAllocation
+{
+	byte* private_data;
+
+	byte* ids[MAX_MEMORY_ID_REQUIREMENTS_COUNT];
 };
 
 #endif // CORE_STRUCTURE_INCLUDE_GUARD

@@ -2849,28 +2849,32 @@ static bool parse_file(Parser* parser) noexcept
 
 
 
-Parser* create_parser(HandlePool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept
+MemoryRequirements parser_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
-	Parser* const parser = alloc_handle_from_pool<Parser>(pool);
+	MemoryRequirements reqs;
+	reqs.private_reserve = 0;
+	reqs.id_requirements_count = 0; 
 
-	parser->builder = asts;
-	parser->lexer.u8_type_id = type_create_numeric(types, TypeTag::Integer, NumericType{ 8, false });
-	parser->lexer.identifiers = identifiers;
-	parser->lexer.globals = globals;
-	parser->lexer.types = types;
-	parser->lexer.errors = errors;
+	return reqs;
+}
+
+void parser_init(CoreData* core, [[maybe_unused]] MemoryAllocation allocation) noexcept
+{
+	Parser* const parser = &core->parser;
+
+	parser->builder = &core->asts;
+	parser->lexer.u8_type_id = type_create_numeric(&core->types, TypeTag::Integer, NumericType{ 8, false });
+	parser->lexer.identifiers = &core->identifiers;
+	parser->lexer.globals = &core->globals;
+	parser->lexer.types = &core->types;
+	parser->lexer.errors = &core->errors;
 	parser->lexer.suppress_errors = false;
 
 	for (const AttachmentRange keyword : KEYWORDS)
-		identifier_set_attachment(identifiers, keyword.range(), keyword.attachment());
-
-	return parser;
+		identifier_set_attachment(&core->identifiers, keyword.range(), keyword.attachment());
 }
 
-void release_parser([[maybe_unused]] Parser* parser) noexcept
-{
-	// No-op
-}
+
 
 Maybe<AstNode*> parse(Parser* parser, Range<char8> content, SourceId source_id_base, bool is_std) noexcept
 {

@@ -85,6 +85,8 @@ union alignas(4) NameBinding
 	} closed;
 };
 
+struct CoreData;
+
 
 
 
@@ -128,6 +130,13 @@ T* alloc_handle_from_pool(HandlePool* pool) noexcept
 
 
 
+struct ConfigLogFileRef
+{
+	bool enable = true;
+
+	Range<char8> filepath = {};
+};
+
 // Structure holding config parameters used to parameterize the further
 // compilation process.
 // This is filled in by `create_config` and must only be read afterwards.
@@ -153,40 +162,18 @@ struct Config
 	{
 		struct
 		{
-			struct
-			{
-				bool enable = false;
+			ConfigLogFileRef asts;
 
-				Range<char8> log_filepath = {};
-			} asts;
+			ConfigLogFileRef opcodes;
 
-			struct
-			{
-				bool enable = false;
-
-				Range<char8> log_filepath = {};
-			} opcodes;
-
-			struct
-			{
-				bool enable = false;
-
-				Range<char8> log_filepath = {};
-			} types;
+			ConfigLogFileRef types;
 		} imports;
 
-		struct
-		{
-			bool enable = false;
-
-			Range<char8> log_filepath = {};
-		} config;
+		ConfigLogFileRef config;
 
 		struct
 		{
-			bool enable = true;
-
-			Range<char8> log_filepath = {};
+			ConfigLogFileRef file;
 
 			s64 source_tab_size = 4;
 		} diagnostics;
@@ -194,6 +181,8 @@ struct Config
 
 	bool compile_all = false;
 };
+
+minos::FileHandle config_open_log_file(ConfigLogFileRef file_ref, Maybe<minos::StdFileName> fallback) noexcept;
 
 const TreeSchemaNode* config_schema() noexcept;
 
@@ -232,14 +221,6 @@ enum class IdentifierId : u32
 	// First value used for user-defined identifiers.
 	FirstNatural = 65536,
 };
-
-// Creates an `IdentifierPool`, allocating the necessary storage from `alloc`.
-// Resources associated with the created `IdentifierPool` can be freed using
-// `release_identifier_pool`.
-IdentifierPool* create_identifier_pool(HandlePool* alloc) noexcept;
-
-// Releases the resources associated with the given `IdentifierPool`.
-void release_identifier_pool(IdentifierPool* identifiers) noexcept;
 
 // Returns the unique `IdentifierId` that corresponds to the given `identifier`
 // in `identifiers`. All calls with the same `IdentifierPool` and same
@@ -1327,16 +1308,6 @@ inline constexpr AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
 
 
 
-// Creates an `AstPool`, allocating the necessary storage from `alloc`.
-// Resources associated with the created `AstPool` can be freed using
-// `release_ast_pool`.
-AstPool* create_ast_pool(HandlePool* alloc) noexcept;
-
-// Releases the resources associated with the given `AstPool`.
-void release_ast_pool(AstPool* asts) noexcept;
-
-
-
 // Converts `node` to its corresponding `AstNodeId`.
 // `node` must be part of an AST created by a call to `complete_ast` on the
 // same `AstPool`.
@@ -1649,14 +1620,6 @@ struct SourceLocation
 	char8 context[512];
 };
 
-// Creates a `SourceReader`, allocating the necessary storage from `alloc`.
-// Resources associated with the created `SourceReader` can be freed using
-// `release_source_reader`.
-SourceReader* create_source_reader(HandlePool* pool) noexcept;
-
-// Releases the resources associated with the given ``SourceReader`.
-void release_source_reader(SourceReader* reader) noexcept;
-
 // Reads the file specified by `filepath` if it has not been read by a previous
 // call. In case the file has already been read, the `source_file` member of
 // the return value points to the `SourceFile` returned from the previous call,
@@ -1838,14 +1801,6 @@ struct ErrorRecord
 	SourceId source_id;
 };
 
-// Creates a `ErrorSink`, allocating the necessary storage from `alloc`.
-// Resources associated with the created `ErrorSink` can be freed using
-// `release_error_sink`.
-ErrorSink* create_error_sink(HandlePool* pool, SourceReader* reader, IdentifierPool* identifiers, AstPool* asts, u8 source_tab_size, minos::FileHandle log_file) noexcept;
-
-// Releases the resources associated with the given `ErrorSink`.
-void release_error_sink(ErrorSink* errors) noexcept;
-
 // Records the given `error` into the `ErrorSink`, associating it with the
 // given `source_id`.
 // Future calls to `get_errors` or `print_errors` will include an `ErrorRecord`
@@ -1863,7 +1818,7 @@ void record_error(ErrorSink* errors, const AstNode* source_node, CompileError er
 // `record_error` to its log file, in the order they were added.
 // If there is no log file (i.e., if the `log_file` argument of
 // `create_error_sink` was `minos::FileHandle{}`), then no errors are printed.
-void print_errors(ErrorSink* errors) noexcept;
+void print_errors(CoreData* core) noexcept;
 
 // Returns a range of `ErrorRecords` representing all previous calls to
 // `record_error` on the given `ErrorSink`.
@@ -1880,10 +1835,6 @@ void print_error(minos::FileHandle dst, const SourceLocation* location, CompileE
 
 
 struct LexicalAnalyser;
-
-LexicalAnalyser* create_lexical_analyser(HandlePool* alloc, IdentifierPool* identifiers, AstPool* asts, ErrorSink* errors) noexcept;
-
-void release_lexical_analyser(LexicalAnalyser* lex) noexcept;
 
 bool set_prelude_scope(LexicalAnalyser* lex, AstNode* prelude, GlobalFileIndex file_index) noexcept;
 
@@ -2192,15 +2143,6 @@ enum class MemberByNameRst : u8
 
 
 
-// Creates a `TypePool`, allocating the necessary storage from `alloc`.
-// Resources associated with the created `TypePool` can be freed using
-// `release_type_pool`.
-TypePool* create_type_pool(HandlePool* alloc) noexcept;
-
-// Releases the resources associated with the given `TypePool`.
-void release_type_pool(TypePool* types) noexcept;
-
-
 // Creates a "simple" type. This takes a `tag`, which
 // must not expect any additional associated data.
 // See `TypeTag` for details on which `tag`s are applicable.
@@ -2458,10 +2400,6 @@ struct ForeverCTValue
 	ForeverValueId id;
 };
 
-GlobalValuePool* create_global_value_pool(HandlePool* handles) noexcept;
-
-void release_global_value_pool(GlobalValuePool* globals) noexcept;
-
 GlobalFileIndex file_values_reserve(GlobalValuePool* globals, TypeId file_type_id, u16 definition_count) noexcept;
 
 void file_value_set_initializer(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, OpcodeId initializer) noexcept;
@@ -2489,14 +2427,6 @@ CTValue forever_value_get(GlobalValuePool* globals, ForeverValueId id) noexcept;
 // Parser, structuring source code into an Abstract Syntax Tree for further
 // processing.
 struct Parser;
-
-// Creates a `Parser`, allocating the necessary storage from `alloc`.
-// Resources associated with the created `Parser` can be freed using
-// `release_parser`.
-Parser* create_parser(HandlePool* pool, IdentifierPool* identifiers, GlobalValuePool* globals, TypePool* types, AstPool* asts, ErrorSink* errors) noexcept;
-
-// Releases the resources associated with the given `Parser`.
-void release_parser(Parser* parser) noexcept;
 
 // Parses `content` into an AST, returning its root node.
 // `base_source_id` is the `SourceId` assigned to the first byte of `content`,
@@ -2674,10 +2604,6 @@ struct OpcodeEffects
 	s32 closures_diff;
 };
 
-OpcodePool* create_opcode_pool(HandlePool* handles, AstPool* asts) noexcept;
-
-void release_opcode_pool(OpcodePool* opcodes) noexcept;
-
 const Maybe<Opcode*> opcodes_from_file_member_ast(OpcodePool* opcodes, AstNode* node, GlobalFileIndex file_index, u16 rank) noexcept;
 
 OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept;
@@ -2797,10 +2723,6 @@ enum class Builtin : u8
 	MAX,
 };
 
-Interpreter* create_interpreter(HandlePool* handles, AstPool* asts, TypePool* types, GlobalValuePool* globals, OpcodePool* opcodes, SourceReader* reader, Parser* parser, IdentifierPool* identifiers, LexicalAnalyser* lex, ErrorSink* errors, minos::FileHandle asts_log_file, minos::FileHandle imported_opcodes_log_file, minos::FileHandle types_log_file) noexcept;
-
-void release_interpreter(Interpreter* interp) noexcept;
-
 bool import_prelude(Interpreter* interp, Range<char8> path) noexcept;
 
 Maybe<TypeId> import_file(Interpreter* interp, Range<char8> path, bool is_std) noexcept;
@@ -2814,34 +2736,10 @@ const char8* tag_name(Builtin builtin) noexcept;
 
 
 
-struct CoreData
-{
-	const Config* config;
 
-	HandlePool* alloc;
+struct CoreData;
 
-	IdentifierPool* identifiers;
-
-	SourceReader* reader;
-
-	ErrorSink* errors;
-
-	GlobalValuePool* globals;
-
-	TypePool* types;
-
-	AstPool* asts;
-
-	Parser* parser;
-
-	OpcodePool* opcodes;
-
-	LexicalAnalyser* lex;
-
-	Interpreter* interp;
-};
-
-CoreData create_core_data(const Config* config) noexcept;
+CoreData* create_core_data(const Config* config) noexcept;
 
 void release_core_data(CoreData* core) noexcept;
 

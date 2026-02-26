@@ -13,8 +13,6 @@
 
 #include <cstring>
 
-
-
 struct TypeStructure;
 
 static TypeStructure* structure_from_id(TypePool* types, TypeId id) noexcept;
@@ -223,6 +221,32 @@ struct CompositeTypeAllocInfo
 
 	u16 member_capacity;
 };
+
+
+
+static constexpr u32 STRUCTURES_CAPACITIES[MAX_STRUCTURE_SIZE_LOG2 - MIN_STRUCTURE_SIZE_LOG2 + 1] = {
+	131072, 65536, 65536, 32768, 16384,
+		4096,  1024,   256,    64,
+};
+
+static constexpr u32 STRUCTURES_COMMITS[MAX_STRUCTURE_SIZE_LOG2 - MIN_STRUCTURE_SIZE_LOG2 + 1] = {
+	1024, 512, 256, 128, 64,
+		16,   4,   1,   1,
+};
+
+static constexpr u64 STRUCTURES_RESERVE = decltype(TypePool::structures)::memory_size(Range{ STRUCTURES_CAPACITIES });
+
+static constexpr u64 DEDUP_LOOKUPS_RESERVE = decltype(TypePool::dedup)::lookups_memory_size(1 << 21);
+
+static constexpr u32 DEDUP_LOOKUPS_INITIAL_COMMIT_COUNT = static_cast<u32>(1) << 10;
+
+static constexpr u32 DEDUP_VALUES_RESERVE = (static_cast<u32>(1) << 20) * DeduplicatedTypeInfo::stride();
+
+static constexpr u32 DEDUP_VALUES_COMMIT_INCREMENT_COUNT = static_cast<u32>(1) << 12;
+
+static constexpr u64 SCRATCH_RESERVE = static_cast<u32>(1) << 16;
+
+static constexpr u64 SCRATCH_COMMIT_INCREMENT_COUNT = static_cast<u32>(1) << 12;
 
 
 
@@ -1179,37 +1203,42 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 
 
 
-TypePool* create_type_pool(HandlePool* alloc) noexcept
+MemoryRequirements type_pool_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
-	static constexpr u32 STRUCTURES_CAPACITIES[MAX_STRUCTURE_SIZE_LOG2 - MIN_STRUCTURE_SIZE_LOG2 + 1] = {
-		131072, 65536, 65536, 32768, 16384,
-		  4096,  1024,   256,    64,
-	};
+	MemoryRequirements reqs;
+	reqs.private_reserve = DEDUP_LOOKUPS_RESERVE + DEDUP_VALUES_RESERVE + SCRATCH_RESERVE;
+	reqs.id_requirements_count = 1;
+	reqs.id_requirements[0].reserve = STRUCTURES_RESERVE;
+	reqs.id_requirements[0].alignment = alignof(TypeStructure);
 
-	static constexpr u32 STRUCTURES_COMMITS[MAX_STRUCTURE_SIZE_LOG2 - MIN_STRUCTURE_SIZE_LOG2 + 1] = {
-		1024, 512, 256, 128, 64,
-		  16,   4,   1,   1,
-	};
+	return reqs;
+}
 
-	static constexpr u32 SCRATCH_CAPACITY = static_cast<u32>(1) << 16;
+void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
+{
+	TypePool* const types = &core->types;
 
-	static constexpr u32 SCRATCH_COMMIT_INCREMENT = static_cast<u32>(1) << 12;
+	u64 offset = 0;
 
-	u64 structures_size = 0;
+	const MutRange<byte> dedup_lookups_memory{ allocation.private_data + offset, DEDUP_LOOKUPS_RESERVE };
+	offset += DEDUP_LOOKUPS_RESERVE;
 
-	for (u32 i = 0; i != array_count(STRUCTURES_CAPACITIES); ++i)
-		structures_size += static_cast<u64>(STRUCTURES_CAPACITIES[i]) << (i + MIN_STRUCTURE_SIZE_LOG2);
+	const MutRange<byte> dedup_values_memory{ allocation.private_data + offset, DEDUP_VALUES_RESERVE };
+	offset += DEDUP_VALUES_RESERVE;
 
-	byte* const memory = static_cast<byte*>(minos::mem_reserve(structures_size + SCRATCH_CAPACITY));
+	types->dedup.init(
+		dedup_lookups_memory, DEDUP_LOOKUPS_INITIAL_COMMIT_COUNT,
+		dedup_values_memory, DEDUP_VALUES_COMMIT_INCREMENT_COUNT
+	);
 
-	if (memory == nullptr)
-		panic("Could not reserve memory for TypePool (0x%[|X]).\n", minos::last_error());
+	const MutRange<byte> scratch_memory{ allocation.private_data + offset, SCRATCH_RESERVE };
+	offset += SCRATCH_RESERVE;
 
-	TypePool* const types = alloc_handle_from_pool<TypePool>(alloc);
-	types->dedup.init(1 << 21, 1 << 8, 1 << 20, 1 << 10);
-	types->structures.init({ memory, structures_size }, Range{ STRUCTURES_CAPACITIES }, Range{ STRUCTURES_COMMITS });
-	types->scratch.init({ memory + structures_size, SCRATCH_CAPACITY }, SCRATCH_COMMIT_INCREMENT);
-	types->memory = { memory, structures_size };
+	types->scratch.init(scratch_memory, SCRATCH_COMMIT_INCREMENT_COUNT);
+
+	const MutRange<byte> structures_memory{ allocation.ids[0], STRUCTURES_RESERVE };
+
+	types->structures.init(structures_memory, Range{ STRUCTURES_CAPACITIES }, Range{ STRUCTURES_COMMITS });
 
 	// Reserve `0` as `TypeId::INVALID`.
 	types->structures.alloc(sizeof(TypeStructure));
@@ -1217,15 +1246,6 @@ TypePool* create_type_pool(HandlePool* alloc) noexcept
 	// Reserve simple types for use with `type_create_simple`.
 	for (u8 ordinal = static_cast<u8>(TypeTag::Void); ordinal != static_cast<u8>(TypeTag::Undefined) + 1; ++ordinal)
 		(void) make_structure(types, static_cast<TypeTag>(ordinal), {}, 0, SourceId::INVALID);
-
-	return types;
-}
-
-void release_type_pool(TypePool* types) noexcept
-{
-	types->dedup.release();
-
-	minos::mem_unreserve(types->memory.begin(), types->memory.count());
 }
 
 

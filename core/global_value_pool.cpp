@@ -36,6 +36,20 @@ struct alignas(8) ForeverValue
 
 
 
+static constexpr u32 FILES_RESERVE_SIZE = 65536;
+
+static constexpr u32 FILE_OFFSETS_COMMIT_INCREMENT_COUNT = 1024;
+
+static constexpr u32 FOREVER_VALUES_RESERVE_SIZE = 1 << 22;
+
+static constexpr u32 FOREVER_VALUES_COMMIT_INCREMENT_COUNT = 65536 / sizeof(ForeverValue);
+
+static constexpr u32 DATA_RESERVE_SIZE = 1 << 28;
+
+static constexpr u32 DATA_COMMIT_INCREMENT_COUNT = 65536;
+
+
+
 static ForeverValue* forever_value_from_id(GlobalValuePool* globals, ForeverValueId id) noexcept
 {
 	ASSERT_OR_IGNORE(id != ForeverValueId::INVALID && static_cast<u32>(id) < globals->forever_values.used());
@@ -80,59 +94,38 @@ static ForeverValue* forever_value_from_file_index_and_rank(GlobalValuePool* glo
 
 
 
-GlobalValuePool* create_global_value_pool(HandlePool* handles) noexcept
+MemoryRequirements global_value_pool_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
-	static constexpr u32 FILES_RESERVE_SIZE = 65536;
+	MemoryRequirements reqs;
 
-	static constexpr u32 FILE_OFFSETS_COMMIT_INCREMENT_COUNT = 1024;
+	reqs.private_reserve = DATA_RESERVE_SIZE;
+	reqs.id_requirements_count = 2;
+	reqs.id_requirements[0].reserve = FILES_RESERVE_SIZE;
+	reqs.id_requirements[0].alignment = alignof(GlobalFile);
+	reqs.id_requirements[1].reserve = FOREVER_VALUES_RESERVE_SIZE;
+	reqs.id_requirements[1].alignment = alignof(ForeverValue);
 
-	static constexpr u32 FOREVER_VALUES_RESERVE_SIZE = 1 << 22;
+	return reqs;
+}
 
-	static constexpr u32 FOREVER_VALUES_COMMIT_INCREMENT_COUNT = 65536 / sizeof(ForeverValue);
+void global_value_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
+{
+	GlobalValuePool* const globals = &core->globals;
 
-	static constexpr u32 DATA_RESERVE_SIZE = 1 << 28;
+	globals->files.init({ allocation.ids[0], FILES_RESERVE_SIZE }, FILE_OFFSETS_COMMIT_INCREMENT_COUNT);
 
-	static constexpr u32 DATA_COMMIT_INCREMENT_COUNT = 65536;
+	globals->forever_values.init({ allocation.ids[1], FOREVER_VALUES_RESERVE_SIZE }, FOREVER_VALUES_COMMIT_INCREMENT_COUNT);
 
-	static constexpr u64 TOTAL_RESERVE_SIZE = static_cast<u64>(FILES_RESERVE_SIZE)
-											+ static_cast<u64>(FOREVER_VALUES_RESERVE_SIZE)
-											+ static_cast<u64>(DATA_RESERVE_SIZE);
-
-	byte* const memory = static_cast<byte*>(minos::mem_reserve(TOTAL_RESERVE_SIZE));
-
-	if (memory == nullptr)
-		panic("Failed to allocate memory for GlobalValuePool (0x%[|X]).\n", minos::last_error());
-
-	GlobalValuePool* const globals = alloc_handle_from_pool<GlobalValuePool>(handles);
-
-	u64 offset = 0;
-
-	globals->files.init({ memory + offset, FILES_RESERVE_SIZE }, FILE_OFFSETS_COMMIT_INCREMENT_COUNT);
-	offset += FILES_RESERVE_SIZE;
-
-	globals->forever_values.init({ memory + offset, FOREVER_VALUES_RESERVE_SIZE }, FOREVER_VALUES_COMMIT_INCREMENT_COUNT);
-	offset += FOREVER_VALUES_RESERVE_SIZE;
-
-	globals->data.init({ memory + offset, DATA_RESERVE_SIZE }, DATA_COMMIT_INCREMENT_COUNT);
-	offset += DATA_RESERVE_SIZE;
-
-	ASSERT_OR_IGNORE(offset == TOTAL_RESERVE_SIZE);
-
-	globals->memory = MutRange<byte>{ memory, TOTAL_RESERVE_SIZE };
+	globals->data.init({ allocation.private_data, DATA_RESERVE_SIZE }, DATA_COMMIT_INCREMENT_COUNT);
 
 	// Reserve `GlobalFileIndex::INVALID`.
 	(void) globals->files.reserve();
 
 	// Reserve `ForeverValueId::INVALID`.
 	(void) globals->forever_values.reserve();
-
-	return globals;
 }
 
-void release_global_value_pool(GlobalValuePool* globals) noexcept
-{
-	minos::mem_unreserve(globals->memory.begin(), globals->memory.count());
-}
+
 
 GlobalFileIndex file_values_reserve(GlobalValuePool* globals, TypeId file_type_id, u16 definition_count) noexcept
 {
