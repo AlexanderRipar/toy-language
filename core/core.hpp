@@ -123,14 +123,14 @@ struct Config
 	{
 		struct
 		{
-			ConfigLogFileRef asts;
+			ConfigLogFileRef asts{ false, {} };
 
-			ConfigLogFileRef opcodes;
+			ConfigLogFileRef opcodes{ false, {} };
 
-			ConfigLogFileRef types;
+			ConfigLogFileRef types{ false, {} };
 		} imports;
 
-		ConfigLogFileRef config;
+		ConfigLogFileRef config{ false, {} };
 
 		struct
 		{

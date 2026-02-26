@@ -4,27 +4,13 @@
 
 #include "../core/core.hpp"
 
-struct DummyTypePool
+static CoreData* create_tiny_core() noexcept
 {
-	TypePool* types;
+	Config config{};
+	memset(&config.enable, 0, sizeof(config.enable));
+	config.enable.type_pool = true;
 
-	HandlePool* alloc;
-};
-
-static DummyTypePool create_dummy_types() noexcept
-{
-	HandlePool* const alloc = create_handle_pool(1 << 12, 1 << 12);
-
-	TypePool* const types = create_type_pool(alloc);
-
-	return { types, alloc };
-}
-
-static void release_dummy_types(DummyTypePool dummy) noexcept
-{
-	release_type_pool(dummy.types);
-
-	release_handle_pool(dummy.alloc);
+	return create_core_data(&config);
 }
 
 static MemberInit dummy_member() noexcept
@@ -47,21 +33,21 @@ static void type_create_numeric_with_integer_returns_integer_type_structure() no
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
-	TypeId u16_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 16, false });
+	TypeId u16_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 16, false });
 
 	TEST_UNEQUAL(u16_id, TypeId::INVALID);
 
-	TEST_EQUAL(type_tag_from_id(dummy.types, u16_id), TypeTag::Integer);
+	TEST_EQUAL(type_tag_from_id(core, u16_id), TypeTag::Integer);
 
-	const NumericType* const interned = type_attachment_from_id<NumericType>(dummy.types, u16_id);
+	const NumericType* const interned = type_attachment_from_id<NumericType>(core, u16_id);
 
 	TEST_EQUAL(interned->bits, 16);
 
 	TEST_EQUAL(interned->is_signed, false);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -70,27 +56,27 @@ static void type_create_numeric_with_integer_and_float_with_same_bit_pattern_ret
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
-	const TypeId u32_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, false });
+	const TypeId u32_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, false });
 
 	TEST_UNEQUAL(u32_id, TypeId::INVALID);
 
-	TEST_EQUAL(type_tag_from_id(dummy.types, u32_id), TypeTag::Integer);
+	TEST_EQUAL(type_tag_from_id(core, u32_id), TypeTag::Integer);
 
-	const NumericType* const interned_u32 = type_attachment_from_id<NumericType>(dummy.types, u32_id);
+	const NumericType* const interned_u32 = type_attachment_from_id<NumericType>(core, u32_id);
 
 	TEST_EQUAL(interned_u32->bits, 32);
 
 	TEST_EQUAL(interned_u32->is_signed, false);
 
-	const TypeId f32_id = type_create_numeric(dummy.types, TypeTag::Float, NumericType{ 32, false });
+	const TypeId f32_id = type_create_numeric(core, TypeTag::Float, NumericType{ 32, false });
 
 	TEST_UNEQUAL(f32_id, TypeId::INVALID);
 
-	TEST_EQUAL(type_tag_from_id(dummy.types, f32_id), TypeTag::Float);
+	TEST_EQUAL(type_tag_from_id(core, f32_id), TypeTag::Float);
 
-	const NumericType* const interned_f32 = type_attachment_from_id<NumericType>(dummy.types, f32_id);
+	const NumericType* const interned_f32 = type_attachment_from_id<NumericType>(core, f32_id);
 
 	TEST_EQUAL(interned_f32->bits, 32);
 
@@ -98,7 +84,7 @@ static void type_create_numeric_with_integer_and_float_with_same_bit_pattern_ret
 
 	TEST_UNEQUAL(interned_u32, interned_f32);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -107,27 +93,27 @@ static void type_create_numeric_with_same_integer_twice_returns_same_type_id() n
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
-	const TypeId s32_id_1 = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, true });
+	const TypeId s32_id_1 = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, true });
 
 	TEST_UNEQUAL(s32_id_1, TypeId::INVALID);
 
-	TEST_EQUAL(type_tag_from_id(dummy.types, s32_id_1), TypeTag::Integer);
+	TEST_EQUAL(type_tag_from_id(core, s32_id_1), TypeTag::Integer);
 
-	const NumericType* const interned_s32_1 = type_attachment_from_id<NumericType>(dummy.types, s32_id_1);
+	const NumericType* const interned_s32_1 = type_attachment_from_id<NumericType>(core, s32_id_1);
 
 	TEST_EQUAL(interned_s32_1->bits, 32);
 
 	TEST_EQUAL(interned_s32_1->is_signed, true);
 
-	const TypeId s32_id_2 = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, true });
+	const TypeId s32_id_2 = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, true });
 
 	TEST_UNEQUAL(s32_id_2, TypeId::INVALID);
 
-	TEST_EQUAL(type_tag_from_id(dummy.types, s32_id_2), TypeTag::Integer);
+	TEST_EQUAL(type_tag_from_id(core, s32_id_2), TypeTag::Integer);
 
-	const NumericType* const interned_s32_2 = type_attachment_from_id<NumericType>(dummy.types, s32_id_2);
+	const NumericType* const interned_s32_2 = type_attachment_from_id<NumericType>(core, s32_id_2);
 
 	TEST_EQUAL(interned_s32_2->bits, 32);
 
@@ -137,7 +123,7 @@ static void type_create_numeric_with_same_integer_twice_returns_same_type_id() n
 
 	TEST_EQUAL(interned_s32_1, interned_s32_2);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -146,25 +132,25 @@ static void type_create_array_with_integer_elements_returns_array_type() noexcep
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
-	const TypeId s32_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, true });
+	const TypeId s32_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, true });
 
 	TEST_UNEQUAL(s32_id, TypeId::INVALID);
 
-	const TypeId array_id = type_create_array(dummy.types, TypeTag::Array, ArrayType{ 128, some(s32_id) });
+	const TypeId array_id = type_create_array(core, TypeTag::Array, ArrayType{ 128, some(s32_id) });
 
 	TEST_UNEQUAL(array_id, TypeId::INVALID);
 
-	TEST_EQUAL(type_tag_from_id(dummy.types, array_id), TypeTag::Array);
+	TEST_EQUAL(type_tag_from_id(core, array_id), TypeTag::Array);
 
-	const ArrayType* const interned = type_attachment_from_id<ArrayType>(dummy.types, array_id);
+	const ArrayType* const interned = type_attachment_from_id<ArrayType>(core, array_id);
 
 	TEST_EQUAL(interned->element_count, 128);
 
 	TEST_EQUAL(get(interned->element_type), s32_id);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -173,31 +159,31 @@ static void type_create_array_with_integer_twice_returns_same_type_id() noexcept
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
-	const TypeId s32_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, true });
+	const TypeId s32_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, true });
 
 	TEST_UNEQUAL(s32_id, TypeId::INVALID);
 
-	const TypeId array_id_1 = type_create_array(dummy.types, TypeTag::Array, ArrayType{ 128, some(s32_id) });
+	const TypeId array_id_1 = type_create_array(core, TypeTag::Array, ArrayType{ 128, some(s32_id) });
 
 	TEST_UNEQUAL(array_id_1, TypeId::INVALID);
 
-	TEST_EQUAL(type_tag_from_id(dummy.types, array_id_1), TypeTag::Array);
+	TEST_EQUAL(type_tag_from_id(core, array_id_1), TypeTag::Array);
 
-	const ArrayType* const interned_array_1 = type_attachment_from_id<ArrayType>(dummy.types, array_id_1);
+	const ArrayType* const interned_array_1 = type_attachment_from_id<ArrayType>(core, array_id_1);
 
 	TEST_EQUAL(interned_array_1->element_count, 128);
 
 	TEST_EQUAL(get(interned_array_1->element_type), s32_id);
 
-	const TypeId array_id_2 = type_create_array(dummy.types, TypeTag::Array, ArrayType{ 128, some(s32_id) });
+	const TypeId array_id_2 = type_create_array(core, TypeTag::Array, ArrayType{ 128, some(s32_id) });
 
 	TEST_UNEQUAL(array_id_2, TypeId::INVALID);
 
-	TEST_EQUAL(type_tag_from_id(dummy.types, array_id_2), TypeTag::Array);
+	TEST_EQUAL(type_tag_from_id(core, array_id_2), TypeTag::Array);
 
-	const ArrayType* const interned_array_2 = type_attachment_from_id<ArrayType>(dummy.types, array_id_2);
+	const ArrayType* const interned_array_2 = type_attachment_from_id<ArrayType>(core, array_id_2);
 
 	TEST_EQUAL(interned_array_2->element_count, 128);
 
@@ -207,7 +193,7 @@ static void type_create_array_with_integer_twice_returns_same_type_id() noexcept
 
 	TEST_EQUAL(interned_array_1, interned_array_2);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -216,13 +202,13 @@ static void type_create_composite_creates_composite_type_with_no_members() noexc
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
-	const TypeId composite = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, true);
+	const TypeId composite = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, true);
 
 	TEST_UNEQUAL(composite, TypeId::INVALID);
 
-	MemberIterator it = members_of(dummy.types, composite);
+	MemberIterator it = members_of(core, composite);
 
 	u32 member_count = 0;
 
@@ -239,7 +225,7 @@ static void type_create_composite_creates_composite_type_with_no_members() noexc
 
 	TEST_EQUAL(member_count, 0);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -248,18 +234,18 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
-	const TypeId composite = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId composite = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
 	TEST_UNEQUAL(composite, TypeId::INVALID);
 
 	MemberInit member = dummy_member();
-	member.type_id = type_create_simple(dummy.types, TypeTag::Boolean);
+	member.type_id = type_create_simple(core, TypeTag::Boolean);
 
-	TEST_EQUAL(type_add_composite_member(dummy.types, composite, member), true);
+	TEST_EQUAL(type_add_composite_member(core, composite, member), true);
 
-	MemberIterator it = members_of(dummy.types, composite);
+	MemberIterator it = members_of(core, composite);
 
 	u32 member_count = 0;
 
@@ -291,7 +277,7 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 
 	TEST_EQUAL(member_count, 1);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -306,17 +292,17 @@ static void empty_composites_are_equal() noexcept
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
-	const TypeId a = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId a = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const TypeId b = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId b = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const bool equal = type_is_equal(dummy.types, a, b);
+	const bool equal = type_is_equal(core, a, b);
 
 	TEST_EQUAL(equal, true);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -334,29 +320,29 @@ static void composites_with_empty_composite_member_are_equal() noexcept
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
-	const TypeId x = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId x = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const TypeId y = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId y = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const TypeId a = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId a = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const TypeId b = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId b = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
 	MemberInit member = dummy_member();
 
 	member.type_id = x;
-	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
+	TEST_EQUAL(type_add_composite_member(core, a, member), true);
 
 	member.type_id = y;
-	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
+	TEST_EQUAL(type_add_composite_member(core, b, member), true);
 
-	const bool equal = type_is_equal(dummy.types, a, b);
+	const bool equal = type_is_equal(core, a, b);
 
 	TEST_EQUAL(equal, true);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -365,11 +351,11 @@ static void pointers_to_same_composite_are_equal() noexcept
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
-	const TypeId composite = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId composite = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	type_seal_composite(dummy.types, composite, 0, 1, 0);
+	type_seal_composite(core, composite, 0, 1, 0);
 
 	ReferenceType reference{};
 	reference.referenced_type_id = composite;
@@ -377,15 +363,15 @@ static void pointers_to_same_composite_are_equal() noexcept
 	reference.is_multi = false;
 	reference.is_mut = false;
 
-	const TypeId pointer_1 = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId pointer_1 = type_create_reference(core, TypeTag::Ptr, reference);
 
-	const TypeId pointer_2 = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId pointer_2 = type_create_reference(core, TypeTag::Ptr, reference);
 
-	const bool equal = type_is_equal(dummy.types, pointer_1, pointer_2);
+	const bool equal = type_is_equal(core, pointer_1, pointer_2);
 
 	TEST_EQUAL(equal, true);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -394,15 +380,15 @@ static void pointers_to_equal_composites_are_equal() noexcept
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
-	const TypeId composite_1 = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId composite_1 = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	type_seal_composite(dummy.types, composite_1, 0, 1, 0);
+	type_seal_composite(core, composite_1, 0, 1, 0);
 
-	const TypeId composite_2 = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId composite_2 = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	type_seal_composite(dummy.types, composite_2, 0, 1, 0);
+	type_seal_composite(core, composite_2, 0, 1, 0);
 
 	ReferenceType reference{};
 	reference.referenced_type_id = composite_1;
@@ -410,17 +396,17 @@ static void pointers_to_equal_composites_are_equal() noexcept
 	reference.is_multi = false;
 	reference.is_mut = false;
 
-	const TypeId pointer_1 = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId pointer_1 = type_create_reference(core, TypeTag::Ptr, reference);
 
 	reference.referenced_type_id = composite_2;
 
-	const TypeId pointer_2 = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId pointer_2 = type_create_reference(core, TypeTag::Ptr, reference);
 
-	const bool equal = type_is_equal(dummy.types, pointer_1, pointer_2);
+	const bool equal = type_is_equal(core, pointer_1, pointer_2);
 
 	TEST_EQUAL(equal, true);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -435,7 +421,7 @@ static void composites_with_same_distinct_source_and_pointers_to_self_are_equal(
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
 	MemberInit member = dummy_member();
 
@@ -444,31 +430,31 @@ static void composites_with_same_distinct_source_and_pointers_to_self_are_equal(
 	reference.is_multi = false;
 	reference.is_mut = false;
 
-	const TypeId a = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId a = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const TypeId b = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId b = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
 	reference.referenced_type_id = a;
-	const TypeId p_a = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId p_a = type_create_reference(core, TypeTag::Ptr, reference);
 
 	reference.referenced_type_id = b;
-	const TypeId p_b = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId p_b = type_create_reference(core, TypeTag::Ptr, reference);
 
 	member.type_id = p_a;
-	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
+	TEST_EQUAL(type_add_composite_member(core, a, member), true);
 
 	member.type_id = p_b;
-	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
+	TEST_EQUAL(type_add_composite_member(core, b, member), true);
 
-	type_seal_composite(dummy.types, a, 8, 1, 8);
+	type_seal_composite(core, a, 8, 1, 8);
 
-	type_seal_composite(dummy.types, b, 8, 1, 8);
+	type_seal_composite(core, b, 8, 1, 8);
 
-	const bool equal = type_is_equal(dummy.types, a, b);
+	const bool equal = type_is_equal(core, a, b);
 
 	TEST_EQUAL(equal, true);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -483,7 +469,7 @@ static void composites_with_same_distinct_source_and_pointers_to_each_other_are_
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
 	MemberInit member = dummy_member();
 
@@ -492,31 +478,31 @@ static void composites_with_same_distinct_source_and_pointers_to_each_other_are_
 	reference.is_multi = false;
 	reference.is_mut = false;
 
-	const TypeId a = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId a = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const TypeId b = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId b = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
 	reference.referenced_type_id = a;
-	const TypeId p_a = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId p_a = type_create_reference(core, TypeTag::Ptr, reference);
 
 	reference.referenced_type_id = b;
-	const TypeId p_b = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId p_b = type_create_reference(core, TypeTag::Ptr, reference);
 
 	member.type_id = p_b;
-	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
+	TEST_EQUAL(type_add_composite_member(core, a, member), true);
 
 	member.type_id = p_a;
-	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
+	TEST_EQUAL(type_add_composite_member(core, b, member), true);
 
-	type_seal_composite(dummy.types, a, 8, 8, 8);
+	type_seal_composite(core, a, 8, 8, 8);
 
-	type_seal_composite(dummy.types, b, 8, 8, 8);
+	type_seal_composite(core, b, 8, 8, 8);
 
-	const bool equal = type_is_equal(dummy.types, a, b);
+	const bool equal = type_is_equal(core, a, b);
 
 	TEST_EQUAL(equal, true);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -531,7 +517,7 @@ static void composites_with_same_distinct_source_and_pointers_to_self_and_differ
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
 	MemberInit member = dummy_member();
 
@@ -540,41 +526,41 @@ static void composites_with_same_distinct_source_and_pointers_to_self_and_differ
 	reference.is_multi = false;
 	reference.is_mut = false;
 
-	const TypeId a = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId a = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const TypeId b = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId b = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
 	reference.referenced_type_id = a;
-	const TypeId p_a = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId p_a = type_create_reference(core, TypeTag::Ptr, reference);
 
 	reference.referenced_type_id = b;
-	const TypeId p_b = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId p_b = type_create_reference(core, TypeTag::Ptr, reference);
 
 	member.name = static_cast<IdentifierId>(1);
 	member.type_id = p_b;
-	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
+	TEST_EQUAL(type_add_composite_member(core, a, member), true);
 
 	member.name = static_cast<IdentifierId>(2);
-	member.type_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 8, false });
-	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
+	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 8, false });
+	TEST_EQUAL(type_add_composite_member(core, a, member), true);
 
 	member.name = static_cast<IdentifierId>(1);
 	member.type_id = p_a;
-	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
+	TEST_EQUAL(type_add_composite_member(core, b, member), true);
 
 	member.name = static_cast<IdentifierId>(2);
-	member.type_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 64, false });
-	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
+	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 64, false });
+	TEST_EQUAL(type_add_composite_member(core, b, member), true);
 
-	type_seal_composite(dummy.types, a, 8, 1, 8);
+	type_seal_composite(core, a, 8, 1, 8);
 
-	type_seal_composite(dummy.types, b, 8, 1, 8);
+	type_seal_composite(core, b, 8, 1, 8);
 
-	const bool equal = type_is_equal(dummy.types, a, b);
+	const bool equal = type_is_equal(core, a, b);
 
 	TEST_EQUAL(equal, false);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -592,7 +578,7 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
 	ReferenceType reference{};
 	reference.is_opt = false;
@@ -601,65 +587,65 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 
 	MemberInit member = dummy_member();
 
-	const TypeId a1 = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId a1 = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const TypeId a2 = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId a2 = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const TypeId b1 = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId b1 = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const TypeId b2 = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId b2 = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
 	reference.referenced_type_id = a1;
-	const TypeId p_a1 = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId p_a1 = type_create_reference(core, TypeTag::Ptr, reference);
 
 	reference.referenced_type_id = a2;
-	const TypeId p_a2 = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId p_a2 = type_create_reference(core, TypeTag::Ptr, reference);
 
 	reference.referenced_type_id = b1;
-	const TypeId p_b1 = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId p_b1 = type_create_reference(core, TypeTag::Ptr, reference);
 
 	reference.referenced_type_id = b2;
-	const TypeId p_b2 = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId p_b2 = type_create_reference(core, TypeTag::Ptr, reference);
 
 	member.type_id = p_a2;
-	TEST_EQUAL(type_add_composite_member(dummy.types, a1, member), true);
+	TEST_EQUAL(type_add_composite_member(core, a1, member), true);
 
 	member.type_id = p_a1;
-	TEST_EQUAL(type_add_composite_member(dummy.types, a2, member), true);
+	TEST_EQUAL(type_add_composite_member(core, a2, member), true);
 
 	member.type_id = p_b2;
-	TEST_EQUAL(type_add_composite_member(dummy.types, b1, member), true);
+	TEST_EQUAL(type_add_composite_member(core, b1, member), true);
 
 	member.type_id = p_b1;
-	TEST_EQUAL(type_add_composite_member(dummy.types, b2, member), true);
+	TEST_EQUAL(type_add_composite_member(core, b2, member), true);
 
 	member.name = static_cast<IdentifierId>(404);
 
-	member.type_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, false });
-	TEST_EQUAL(type_add_composite_member(dummy.types, a1, member), true);
-	TEST_EQUAL(type_add_composite_member(dummy.types, b1, member), true);
+	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, false });
+	TEST_EQUAL(type_add_composite_member(core, a1, member), true);
+	TEST_EQUAL(type_add_composite_member(core, b1, member), true);
 
-	member.type_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 64, false });
-	TEST_EQUAL(type_add_composite_member(dummy.types, a2, member), true);
-	TEST_EQUAL(type_add_composite_member(dummy.types, b2, member), true);
+	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 64, false });
+	TEST_EQUAL(type_add_composite_member(core, a2, member), true);
+	TEST_EQUAL(type_add_composite_member(core, b2, member), true);
 
-	type_seal_composite(dummy.types, a1, 8, 8, 8);
+	type_seal_composite(core, a1, 8, 8, 8);
 
-	type_seal_composite(dummy.types, a2, 8, 8, 8);
+	type_seal_composite(core, a2, 8, 8, 8);
 
-	type_seal_composite(dummy.types, b1, 8, 8, 8);
+	type_seal_composite(core, b1, 8, 8, 8);
 
-	type_seal_composite(dummy.types, b2, 8, 8, 8);
+	type_seal_composite(core, b2, 8, 8, 8);
 
-	const bool a1_b1_equal = type_is_equal(dummy.types, a1, b1);
+	const bool a1_b1_equal = type_is_equal(core, a1, b1);
 
 	TEST_EQUAL(a1_b1_equal, true);
 
-	const bool a2_b2_equal = type_is_equal(dummy.types, a2, b2);
+	const bool a2_b2_equal = type_is_equal(core, a2, b2);
 
 	TEST_EQUAL(a2_b2_equal, true);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -677,7 +663,7 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
 	ReferenceType reference{};
 	reference.is_opt = false;
@@ -686,73 +672,73 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 
 	MemberInit member = dummy_member();
 
-	const TypeId a1 = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId a1 = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const TypeId a2 = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId a2 = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const TypeId b1 = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId b1 = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const TypeId b2 = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId b2 = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
 	reference.referenced_type_id = a1;
-	const TypeId p_a1 = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId p_a1 = type_create_reference(core, TypeTag::Ptr, reference);
 
 	reference.referenced_type_id = a2;
-	const TypeId p_a2 = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId p_a2 = type_create_reference(core, TypeTag::Ptr, reference);
 
 	reference.referenced_type_id = b1;
-	const TypeId p_b1 = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId p_b1 = type_create_reference(core, TypeTag::Ptr, reference);
 
 	reference.referenced_type_id = b2;
-	const TypeId p_b2 = type_create_reference(dummy.types, TypeTag::Ptr, reference);
+	const TypeId p_b2 = type_create_reference(core, TypeTag::Ptr, reference);
 
 	member.type_id = p_a2;
-	TEST_EQUAL(type_add_composite_member(dummy.types, a1, member), true);
+	TEST_EQUAL(type_add_composite_member(core, a1, member), true);
 
 	member.type_id = p_a1;
-	TEST_EQUAL(type_add_composite_member(dummy.types, a2, member), true);
+	TEST_EQUAL(type_add_composite_member(core, a2, member), true);
 
 	member.type_id = p_b2;
-	TEST_EQUAL(type_add_composite_member(dummy.types, b1, member), true);
+	TEST_EQUAL(type_add_composite_member(core, b1, member), true);
 
 	member.type_id = p_b1;
-	TEST_EQUAL(type_add_composite_member(dummy.types, b2, member), true);
+	TEST_EQUAL(type_add_composite_member(core, b2, member), true);
 
 	member.name = static_cast<IdentifierId>(404);
 
-	member.type_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, false });
-	TEST_EQUAL(type_add_composite_member(dummy.types, a1, member), true);
-	TEST_EQUAL(type_add_composite_member(dummy.types, b1, member), true);
+	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, false });
+	TEST_EQUAL(type_add_composite_member(core, a1, member), true);
+	TEST_EQUAL(type_add_composite_member(core, b1, member), true);
 
-	member.type_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 64, false });
-	TEST_EQUAL(type_add_composite_member(dummy.types, a2, member), true);
-	TEST_EQUAL(type_add_composite_member(dummy.types, b2, member), true);
+	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 64, false });
+	TEST_EQUAL(type_add_composite_member(core, a2, member), true);
+	TEST_EQUAL(type_add_composite_member(core, b2, member), true);
 
-	type_seal_composite(dummy.types, a1, 8, 8, 8);
+	type_seal_composite(core, a1, 8, 8, 8);
 
-	type_seal_composite(dummy.types, a2, 8, 8, 8);
+	type_seal_composite(core, a2, 8, 8, 8);
 
-	type_seal_composite(dummy.types, b1, 8, 8, 8);
+	type_seal_composite(core, b1, 8, 8, 8);
 
-	type_seal_composite(dummy.types, b2, 8, 8, 8);
+	type_seal_composite(core, b2, 8, 8, 8);
 
-	const bool a1_a2_equal = type_is_equal(dummy.types, a1, a2);
+	const bool a1_a2_equal = type_is_equal(core, a1, a2);
 
 	TEST_EQUAL(a1_a2_equal, false);
 
-	const bool b1_b2_equal = type_is_equal(dummy.types, b1, b2);
+	const bool b1_b2_equal = type_is_equal(core, b1, b2);
 
 	TEST_EQUAL(b1_b2_equal, false);
 
-	const bool a1_b2_equal = type_is_equal(dummy.types, a1, b2);
+	const bool a1_b2_equal = type_is_equal(core, a1, b2);
 
 	TEST_EQUAL(a1_b2_equal, false);
 
-	const bool a2_b1_equal = type_is_equal(dummy.types, a2, b1);
+	const bool a2_b1_equal = type_is_equal(core, a2, b1);
 
 	TEST_EQUAL(a2_b1_equal, false);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -767,32 +753,32 @@ static void pair_types_with_same_element_types_are_considered_equal() noexcept
 {
 	TEST_BEGIN;
 
-	DummyTypePool dummy = create_dummy_types();
+	CoreData* const core = create_tiny_core();
 
-	const TypeId a = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId a = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
-	const TypeId b = type_create_composite(dummy.types, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
+	const TypeId b = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, SourceId::INVALID, 0, false);
 
 	MemberInit member = dummy_member();
-	member.type_id = type_create_numeric(dummy.types, TypeTag::Integer, NumericType{ 32, false });
+	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, false });
 
-	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
-	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
+	TEST_EQUAL(type_add_composite_member(core, a, member), true);
+	TEST_EQUAL(type_add_composite_member(core, b, member), true);
 
 	member.name = static_cast<IdentifierId>(9001);
 
-	TEST_EQUAL(type_add_composite_member(dummy.types, a, member), true);
-	TEST_EQUAL(type_add_composite_member(dummy.types, b, member), true);
+	TEST_EQUAL(type_add_composite_member(core, a, member), true);
+	TEST_EQUAL(type_add_composite_member(core, b, member), true);
 
-	type_seal_composite(dummy.types, a, 8, 8, 8);
+	type_seal_composite(core, a, 8, 8, 8);
 
-	type_seal_composite(dummy.types, b, 8, 8, 8);
+	type_seal_composite(core, b, 8, 8, 8);
 
-	const bool equal = type_is_equal(dummy.types, a, b);
+	const bool equal = type_is_equal(core, a, b);
 
 	TEST_EQUAL(equal, true);
 
-	release_dummy_types(dummy);
+	release_core_data(core);
 
 	TEST_END;
 }

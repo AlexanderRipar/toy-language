@@ -222,29 +222,14 @@ static DummyTree flat_dummy_tree() noexcept
 
 
 
-struct MockedPools
+static CoreData* create_tiny_core() noexcept
 {
-	AstPool* asts;
+	Config config{};
+	memset(&config.enable, 0, sizeof(config.enable));
+	config.enable.ast_pool = true;
 
-	HandlePool* alloc;
-};
-
-static MockedPools create_mocked_pools() noexcept
-{
-	HandlePool* const alloc = create_handle_pool(4096, 4096);
-
-	AstPool* const asts = create_ast_pool(alloc);
-
-	return { asts, alloc };
+	return create_core_data(&config);
 }
-
-static void release_mocked_pools(MockedPools mock) noexcept
-{
-	release_ast_pool(mock.asts);
-
-	release_handle_pool(mock.alloc);
-}
-
 
 
 
@@ -569,17 +554,17 @@ static void push_node_once_and_complete_appends_node() noexcept
 {
 	TEST_BEGIN;
 
-	MockedPools pools = create_mocked_pools();
+	CoreData* const core = create_tiny_core();
 
-	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpAdd);
+	push_node(core, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpAdd);
 
-	AstNode* const root = complete_ast(pools.asts);
+	AstNode* const root = complete_ast(core);
 
 	DummyTree expected = single_node_dummy_tree();
 
 	TEST_MEM_EQUAL(root, expected.nodes, sizeof(AstNode));
 
-	release_mocked_pools(pools);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -588,19 +573,19 @@ static void push_node_with_unary_op_and_complete_reverses_tree() noexcept
 {
 	TEST_BEGIN;
 
-	MockedPools pools = create_mocked_pools();
+	CoreData* const core = create_tiny_core();
 
-	const AstBuilderToken token = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::Block);
+	const AstBuilderToken token = push_node(core, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::Block);
 
-	push_node(pools.asts, token, SourceId::INVALID, AstFlag::EMPTY, AstTag::File);
+	push_node(core, token, SourceId::INVALID, AstFlag::EMPTY, AstTag::File);
 
-	AstNode* const root = complete_ast(pools.asts);
+	AstNode* const root = complete_ast(core);
 
 	DummyTree expected = unary_dummy_tree();
 
 	TEST_MEM_EQUAL(root, expected.nodes, 2 * sizeof(AstNode));
 
-	release_mocked_pools(pools);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -609,21 +594,21 @@ static void push_node_with_binary_op_and_complete_reverses_tree() noexcept
 {
 	TEST_BEGIN;
 
-	MockedPools pools = create_mocked_pools();
+	CoreData* const core = create_tiny_core();
 
-	const AstBuilderToken token = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpSub);
+	const AstBuilderToken token = push_node(core, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpSub);
 
-	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpMul);
+	push_node(core, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpMul);
 
-	push_node(pools.asts, token, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpAdd);
+	push_node(core, token, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpAdd);
 
-	AstNode* const root = complete_ast(pools.asts);
+	AstNode* const root = complete_ast(core);
 
 	DummyTree expected = binary_dummy_tree();
 
 	TEST_MEM_EQUAL(root, expected.nodes, 3 * sizeof(AstNode));
 
-	release_mocked_pools(pools);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -632,33 +617,33 @@ static void push_node_with_complex_tree_and_complete_reverses_tree() noexcept
 {
 	TEST_BEGIN;
 
-	MockedPools pools = create_mocked_pools();
+	CoreData* const core = create_tiny_core();
 
-	const AstBuilderToken t3 = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(3));
+	const AstBuilderToken t3 = push_node(core, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(3));
 
-	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(4));
+	push_node(core, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(4));
 
-	const AstBuilderToken t2 = push_node(pools.asts, t3, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(2));
+	const AstBuilderToken t2 = push_node(core, t3, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(2));
 
-	const AstBuilderToken t7 = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(7));
+	const AstBuilderToken t7 = push_node(core, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(7));
 
-	const AstBuilderToken t6 = push_node(pools.asts, t7, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(10));
+	const AstBuilderToken t6 = push_node(core, t7, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(10));
 
-	const AstBuilderToken t9 = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(9));
+	const AstBuilderToken t9 = push_node(core, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(9));
 
-	push_node(pools.asts, t9, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(8));
+	push_node(core, t9, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(8));
 
-	push_node(pools.asts, t6, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(5));
+	push_node(core, t6, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(5));
 
-	push_node(pools.asts, t2, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(1));
+	push_node(core, t2, SourceId::INVALID, AstFlag::EMPTY, static_cast<AstTag>(1));
 
-	AstNode* const root = complete_ast(pools.asts);
+	AstNode* const root = complete_ast(core);
 
 	DummyTree expected = complex_dummy_tree();
 
 	TEST_MEM_EQUAL(root, expected.nodes, 9 * sizeof(AstNode));
 
-	release_mocked_pools(pools);
+	release_core_data(core);
 
 	TEST_END;
 }
@@ -667,36 +652,36 @@ static void push_node_with_double_binary_tree_and_complete_reverses_tree() noexc
 {
 	TEST_BEGIN;
 
-	MockedPools pools = create_mocked_pools();
+	CoreData* const core = create_tiny_core();
 
-// OpAdd
-// + OpSub
-// | + LitChar
-// | ` OpDiv
-// |   + LitFloat
-// |   ` Identifier
-// ` LitInteger
-	const AstBuilderToken lit_char = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitChar);
+	// OpAdd
+	// + OpSub
+	// | + LitChar
+	// | ` OpDiv
+	// |   + LitFloat
+	// |   ` Identifier
+	// ` LitInteger
+	const AstBuilderToken lit_char = push_node(core, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitChar);
 
-	const AstBuilderToken lit_float = push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitFloat);
+	const AstBuilderToken lit_float = push_node(core, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitFloat);
 
-	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::Identifier);
+	push_node(core, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::Identifier);
 
-	push_node(pools.asts, lit_float, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpDiv);
+	push_node(core, lit_float, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpDiv);
 
-	const AstBuilderToken sub = push_node(pools.asts, lit_char, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpSub);
+	const AstBuilderToken sub = push_node(core, lit_char, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpSub);
 
-	push_node(pools.asts, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitInteger);
+	push_node(core, AstBuilderToken::NO_CHILDREN, SourceId::INVALID, AstFlag::EMPTY, AstTag::LitInteger);
 
-	push_node(pools.asts, sub, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpAdd);
+	push_node(core, sub, SourceId::INVALID, AstFlag::EMPTY, AstTag::OpAdd);
 
-	AstNode* const root = complete_ast(pools.asts);
+	AstNode* const root = complete_ast(core);
 
 	DummyTree expected = double_binary_dummy_tree();
 
 	TEST_MEM_EQUAL(root, expected.nodes, 7 * sizeof(AstNode));
 
-	release_mocked_pools(pools);
+	release_core_data(core);
 
 	TEST_END;
 }
