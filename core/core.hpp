@@ -1974,7 +1974,7 @@ struct MemberIterator
 
 	const void* members;
 
-	TypePool* types;
+	CoreData* core;
 
 	u8 member_stride;
 
@@ -2107,27 +2107,27 @@ enum class MemberByNameRst : u8
 // Creates a "simple" type. This takes a `tag`, which
 // must not expect any additional associated data.
 // See `TypeTag` for details on which `tag`s are applicable.
-TypeId type_create_simple(TypePool* types, TypeTag tag) noexcept;
+TypeId type_create_simple(CoreData* core, TypeTag tag) noexcept;
 
 // Creates a "numeric", i.e. `Integer` or `Float` type.
 // This takes a tag indicating which type to create, along with a `NumericType`
 // further describing it.
-TypeId type_create_numeric(TypePool* types, TypeTag tag, NumericType attach) noexcept;
+TypeId type_create_numeric(CoreData* core, TypeTag tag, NumericType attach) noexcept;
 
 // Creates a "reference", i.e. `Ptr`, `Slice` or `TailArray` type.
 // This takes a tag indicating which type to create, along with a
 // `ReferenceType` further describing it.
-TypeId type_create_reference(TypePool* types, TypeTag tag, ReferenceType attach) noexcept;
+TypeId type_create_reference(CoreData* core, TypeTag tag, ReferenceType attach) noexcept;
 
 // Creates an "array", i.e. `Array` or `ArrayLiteral` type.
 // This takes a tag indicating which type to create, along with an `ArrayType`
 // further describing it.
-TypeId type_create_array(TypePool* types, TypeTag tag, ArrayType attach) noexcept;
+TypeId type_create_array(CoreData* core, TypeTag tag, ArrayType attach) noexcept;
 
 // Creates a "signature", i.e. a `Builtin` or `Function` type.
 // This takes a tag indicating which type to create, along with a
 // `SignatureType` further describing it.
-TypeId type_create_signature(TypePool* types, TypeTag tag, SignatureType2 attach) noexcept;
+TypeId type_create_signature(CoreData* core, TypeTag tag, SignatureType2 attach) noexcept;
 
 // Creates a composite type with no members that can have members added by
 // calling `type_add_composite_member` on it.
@@ -2165,7 +2165,7 @@ TypeId type_create_signature(TypePool* types, TypeTag tag, SignatureType2 attach
 // Call `type_set_composite_member_info` to set the type or value of a member
 // that was added with `has_pending_type` or `has_pending_value` respectively
 // set to `true`.
-TypeId type_create_composite(TypePool* types, TypeTag tag, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
+TypeId type_create_composite(CoreData* core, TypeTag tag, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
 
 // Seals an open composite type, preventing the addition of further members and
 // setting the type's metrics (`size`, `align` and `stride`).
@@ -2177,37 +2177,37 @@ TypeId type_create_composite(TypePool* types, TypeTag tag, TypeDisposition dispo
 // as their values are tracked implicitly as members are added and completed.
 // Otherwise, `size` and `stride` are unrestricted, while `align` must not be
 // `0`.
-TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align, u64 stride) noexcept;
+TypeId type_seal_composite(CoreData* core, TypeId type_id, u64 size, u32 align, u64 stride) noexcept;
 
 // Adds a member to the open composite type referenced by `open_type_id`.
 // The member is initialized with the data in `member`.
 // Returns `true` if the member was successfully added, and `false` if there
 // was a name collision with an existing member.
-bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInit init) noexcept;
+bool type_add_composite_member(CoreData* core, TypeId type_id, MemberInit init) noexcept;
 
-void type_add_file_member(TypePool* types, TypeId type_id, IdentifierId name, OpcodeId completion_opcode, bool is_pub, bool is_mut) noexcept;
+void type_add_file_member(CoreData* core, TypeId type_id, IdentifierId name, OpcodeId completion_opcode, bool is_pub, bool is_mut) noexcept;
 
-void type_add_templated_parameter_list_member(TypePool* types, TypeId type_id, IdentifierId name, OpcodeId completion_opcode, bool is_eval, bool is_mut) noexcept;
+void type_add_templated_parameter_list_member(CoreData* core, TypeId type_id, IdentifierId name, OpcodeId completion_opcode, bool is_eval, bool is_mut) noexcept;
 
-void type_set_templated_parameter_list_member_info(TypePool* types, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> member_default_id) noexcept;
+void type_set_templated_parameter_list_member_info(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> member_default_id) noexcept;
 
-void type_set_file_member_info(TypePool* types, TypeId type_id, u16 rank, TypeId member_type_id, ForeverValueId value_id) noexcept;
+void type_set_file_member_info(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, ForeverValueId value_id) noexcept;
 
-TypeId type_copy_composite(TypePool* types, TypeId type_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
+TypeId type_copy_composite(CoreData* core, TypeId type_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
 
 // Retrieves the number of members in the type referenced by `type_id`, which
 // must reference a sealed composite type.
-u32 type_get_composite_member_count(TypePool* types, TypeId type_id) noexcept;
+u32 type_get_composite_member_count(CoreData* core, TypeId type_id) noexcept;
 
-void type_discard(TypePool* types, TypeId type_id) noexcept;
+void type_discard(CoreData* core, TypeId type_id) noexcept;
 
 
 
-TypeRelation type_relation(TypePool* types, TypeId first_type_id, TypeId second_type_id) noexcept;
+TypeRelation type_relation(CoreData* core, TypeId first_type_id, TypeId second_type_id) noexcept;
 
 // Checks whether `type_id_a` and `type_id_b` refer to the same type or
 // non-distinct aliases of the same type.
-bool type_is_equal(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
+bool type_is_equal(CoreData* core, TypeId type_id_a, TypeId type_id_b) noexcept;
 
 // Checks whether `from_type_id` can be implicitly converted to `to_type_id`.
 // If `from_type_id` and `to_type_id` refer to the same type according to
@@ -2228,7 +2228,7 @@ bool type_is_equal(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 //
 // Note that pointer conversions can occur together as one implicit conversion.
 // E.g., `[*]mut u32` can be converted to `?u32`.
-bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept;
+bool type_can_implicitly_convert_from_to(CoreData* core, TypeId from_type_id, TypeId to_type_id) noexcept;
 
 // Returns the common type of `type_id_a` and `type_id_b`.
 // If `type_id_a` and `type_id_b` are considered the equivalent by
@@ -2239,24 +2239,24 @@ bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, T
 // `type_id_b` is an `Integer`, `type_id_b` is returned.
 // If `type_id_a` and `type_id_b` do not share a common type, `TypeId::INVALID`
 // is returned.
-Maybe<TypeId> type_unify(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept;
+Maybe<TypeId> type_unify(CoreData* core, TypeId type_id_a, TypeId type_id_b) noexcept;
 
 
 
-TypeDisposition type_disposition_from_id(TypePool* types, TypeId type_id) noexcept;
+TypeDisposition type_disposition_from_id(CoreData* core, TypeId type_id) noexcept;
 
 // Checks whether `type_metrics_from_id` may be called on `type_id`.
 // This returns false iff `type_id` refers to a composite type that has a
 // `disposition` of `TypeDisposition::User` and has not yet had
 // `type_seal_composite` called on it.
-bool type_has_metrics(TypePool* types, TypeId type_id) noexcept;
+bool type_has_metrics(CoreData* core, TypeId type_id) noexcept;
 
 // Retrieves the `size`, `stride` and `align` of the type referenced by
 // `type_id`. `size` and `alignment` may take any value, including `0`.
 // `align` is guaranteed to be non-zero.
 // This function must not be called on a composite type which has not received
 // a previous call to `close_open_type`.
-TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
+TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept;
 
 // Retrieves the `TypeTag` associated with the given `type_id`.
 // For types created by `simple_type`, this is the value of the `tag`
@@ -2264,26 +2264,26 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept;
 // For types craeted by `alias_type`, this is the same as the `tag` of the
 // aliased type.
 // For types created by `create_open_type`, this is `TypeTag::Composite`.
-TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept;
+TypeTag type_tag_from_id(CoreData* core, TypeId type_id) noexcept;
 
-bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberInfo* out_info, OpcodeId* out_initializer);
+bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberInfo* out_info, OpcodeId* out_initializer);
 
-MemberByNameRst type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId name, MemberInfo* out_info, OpcodeId* out_initializer) noexcept;
+MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, IdentifierId name, MemberInfo* out_info, OpcodeId* out_initializer) noexcept;
 
-IdentifierId type_member_name_by_rank(TypePool* types, TypeId type_id, u16 rank) noexcept;
+IdentifierId type_member_name_by_rank(CoreData* core, TypeId type_id, u16 rank) noexcept;
 
 // Do not call this function directly. Use `type_attachment_from_id` instead.
-const void* type_attachment_from_id_raw(TypePool* types, TypeId type_id) noexcept;
+const void* type_attachment_from_id_raw(CoreData* core, TypeId type_id) noexcept;
 
 // Retrieves the structural data associated with `type_id`, which must not
 // refer to a composite type.
 // The returned data is the same as that passed to the call to `simple_type`
 // that created `type_id`, chaining through calls to `alias_type`.
 template<typename T>
-const T* type_attachment_from_id(TypePool* types, TypeId type_id) noexcept
+const T* type_attachment_from_id(CoreData* core, TypeId type_id) noexcept
 {
 	#ifndef NDEBUG
-		const TypeTag tag = type_tag_from_id(types, type_id);
+		const TypeTag tag = type_tag_from_id(core, type_id);
 
 		if constexpr (is_same_cpp_type<T, ReferenceType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray || tag == TypeTag::Variadic);
@@ -2297,7 +2297,7 @@ const T* type_attachment_from_id(TypePool* types, TypeId type_id) noexcept
 			static_assert(false, "Unexpected attachment passed to type_attachment_from_id");
 	#endif // !NDEBUG
 
-	return reinterpret_cast<const T*>(type_attachment_from_id_raw(types, type_id));
+	return reinterpret_cast<const T*>(type_attachment_from_id_raw(core, type_id));
 }
 
 
@@ -2309,7 +2309,7 @@ const char8* tag_name(TypeTag tag) noexcept;
 
 // Creates an iterator over `type_id`s members.
 // See `MemberIterator` for further details.
-MemberIterator members_of(TypePool* types, TypeId type_id) noexcept;
+MemberIterator members_of(CoreData* core, TypeId type_id) noexcept;
 
 // Retrieves the next element of `iterator`. This function may only be called
 // exactly once after `has_next` called on the same iterator has returned

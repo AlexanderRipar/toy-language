@@ -1,11 +1,12 @@
 #include "diag.hpp"
 
+#include "../core/structure.hpp"
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
 #include "../infra/range.hpp"
 #include "../infra/print/print.hpp"
 
-static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool* types, TypeId type_id, u32 indent, bool skip_initial_indent) noexcept
+static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 indent, bool skip_initial_indent) noexcept
 {
 	if (type_id == TypeId::INVALID)
 		return print(sink, "%[< %]<Invalid>\n", "", skip_initial_indent ? 0 : indent * 2);
@@ -20,7 +21,7 @@ static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool
 			return -1;
 	}
 
-	const TypeTag tag = type_tag_from_id(types, type_id);
+	const TypeTag tag = type_tag_from_id(core, type_id);
 
 	switch (tag)
 	{
@@ -49,7 +50,7 @@ static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool
 	case TypeTag::Integer:
 	case TypeTag::Float:
 	{
-		const NumericType* numeric_type = type_attachment_from_id<NumericType>(types, type_id);
+		const NumericType* numeric_type = type_attachment_from_id<NumericType>(core, type_id);
 
 		const s64 written = print(sink, "%[]%\n", tag == TypeTag::Integer ? numeric_type->is_signed ? "s" : "u" : "f", numeric_type->bits);
 
@@ -63,7 +64,7 @@ static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool
 	case TypeTag::Ptr:
 	case TypeTag::Variadic:
 	{
-		const ReferenceType* const reference = type_attachment_from_id<ReferenceType>(types, type_id);
+		const ReferenceType* const reference = type_attachment_from_id<ReferenceType>(core, type_id);
 
 		const char8* introducer;
 
@@ -85,7 +86,7 @@ static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool
 		if (written < 0)
 			return -1;
 
-		const s64 referenced_written = print_type_impl(sink, identifiers, types, reference->referenced_type_id, indent + 1, true);
+		const s64 referenced_written = print_type_impl(sink, core, reference->referenced_type_id, indent + 1, true);
 
 		if (referenced_written < 0)
 			return -1;
@@ -96,14 +97,14 @@ static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool
 	case TypeTag::ArrayLiteral:
 	case TypeTag::Array:
 	{
-		const ArrayType* const array = type_attachment_from_id<ArrayType>(types, type_id);
+		const ArrayType* const array = type_attachment_from_id<ArrayType>(core, type_id);
 
 		const s64 written = print(sink, "%[][%]", tag == TypeTag::ArrayLiteral ? "." : "", array->element_count);
 
 		if (written < 0)
 			return -1;
 
-		const s64 element_written = print_type_impl(sink, identifiers, types, is_some(array->element_type) ? get(array->element_type) : TypeId::INVALID, indent + 1, true);
+		const s64 element_written = print_type_impl(sink, core, is_some(array->element_type) ? get(array->element_type) : TypeId::INVALID, indent + 1, true);
 
 		if (element_written < 0)
 			return -1;
@@ -121,7 +122,7 @@ static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool
 
 		if (tag == TypeTag::Func)
 		{
-			signature_type = type_attachment_from_id<SignatureType2>(types, type_id);
+			signature_type = type_attachment_from_id<SignatureType2>(core, type_id);
 
 			composite_type_id = signature_type->parameter_list_type_id;
 		}
@@ -132,8 +133,8 @@ static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool
 			composite_type_id = type_id;
 		}
 
-		const TypeMetrics metrics = type_has_metrics(types, composite_type_id)
-			? type_metrics_from_id(types, composite_type_id)
+		const TypeMetrics metrics = type_has_metrics(core, composite_type_id)
+			? type_metrics_from_id(core, composite_type_id)
 			: TypeMetrics{ 0, 0, 0 };
 
 		s64 total_written = print(sink, "% (sz=%, al=%, st=%) {",
@@ -159,7 +160,7 @@ static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool
 		}
 		else
 		{
-			MemberIterator it = members_of(types, composite_type_id);
+			MemberIterator it = members_of(core, composite_type_id);
 
 			while (has_next(&it))
 			{
@@ -169,7 +170,7 @@ static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool
 
 				const bool is_complete = next(&it, &member_info, &member_initializer);
 
-				const IdentifierId member_name = type_member_name_by_rank(types, composite_type_id, member_info.rank);
+				const IdentifierId member_name = type_member_name_by_rank(core, composite_type_id, member_info.rank);
 
 				const s64 flags_written = print(sink, "%[]%[< %]%[]%",
 					has_members ? "" : "\n",
@@ -191,7 +192,7 @@ static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool
 				}
 				else
 				{
-					const Range<char8> name = identifier_name_from_id(identifiers, member_name);
+					const Range<char8> name = identifier_name_from_id(&core->identifiers, member_name);
 
 					name_written = print(sink, "\"%\" ", name);
 				}
@@ -212,7 +213,7 @@ static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool
 
 					total_written += offset_written;
 
-					type_written = print_type_impl(sink, identifiers, types, member_info.type_id, indent + 1, true);
+					type_written = print_type_impl(sink, core, member_info.type_id, indent + 1, true);
 				}
 				else
 				{
@@ -242,7 +243,7 @@ static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool
 			if (signature_type->has_templated_return_type)
 				return_type_written = print(sink, "<TEMPLATED>\n");
 			else
-				return_type_written = print_type_impl(sink, identifiers, types, signature_type->return_type.type_id, indent + 1, true);
+				return_type_written = print_type_impl(sink, core, signature_type->return_type.type_id, indent + 1, true);
 
 			if (return_type_written < 0)
 				return -1;
@@ -261,9 +262,9 @@ static s64 print_type_impl(PrintSink sink, IdentifierPool* identifiers, TypePool
 	ASSERT_UNREACHABLE;
 }
 
-s64 diag::print_type(PrintSink sink, IdentifierPool* identifiers, TypePool* types, TypeId type_id) noexcept
+s64 diag::print_type(PrintSink sink, CoreData* core, TypeId type_id) noexcept
 {
-	const s64 type_written = print_type_impl(sink, identifiers, types, type_id, 0, false);
+	const s64 type_written = print_type_impl(sink, core, type_id, 0, false);
 
 	if (type_written < 0)
 		return -1;

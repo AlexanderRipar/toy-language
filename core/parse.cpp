@@ -1010,7 +1010,7 @@ static RawLexeme scan_string_token(CoreData* core) noexcept
 
 	buffer_index += bytes_to_copy;
 
-	const TypeId string_type_id = type_create_array(core->parser.lexer.types, TypeTag::Array, ArrayType{ buffer_index, some(core->parser.lexer.u8_type_id) });
+	const TypeId string_type_id = type_create_array(core, TypeTag::Array, ArrayType{ buffer_index, some(core->parser.lexer.u8_type_id) });
 
 	const MutRange<byte> string_bytes{ reinterpret_cast<byte*>(buffer), buffer_index };
 
@@ -2863,7 +2863,7 @@ void parser_init(CoreData* core, [[maybe_unused]] MemoryAllocation allocation) n
 	Parser* const parser = &core->parser;
 
 	parser->builder = &core->asts;
-	parser->lexer.u8_type_id = type_create_numeric(&core->types, TypeTag::Integer, NumericType{ 8, false });
+	parser->lexer.u8_type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 8, false });
 	parser->lexer.identifiers = &core->identifiers;
 	parser->lexer.globals = &core->globals;
 	parser->lexer.types = &core->types;

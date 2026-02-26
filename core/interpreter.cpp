@@ -506,9 +506,9 @@ static ClosureId create_closure(CoreData* core, u32 value_count) noexcept
 
 static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcode* code, CTValue src, CTValue dst) noexcept
 {
-	const TypeTag src_type_tag = type_tag_from_id(core->interp.types, src.type);
+	const TypeTag src_type_tag = type_tag_from_id(core, src.type);
 
-	const TypeTag dst_type_tag = type_tag_from_id(core->interp.types, dst.type);
+	const TypeTag dst_type_tag = type_tag_from_id(core, dst.type);
 
 	if (dst_type_tag == TypeTag::TypeInfo)
 	{
@@ -520,9 +520,9 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 	{
 	case TypeTag::CompInteger:
 	{
-		ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, dst.type) == TypeTag::Integer);
+		ASSERT_OR_IGNORE(type_tag_from_id(core, dst.type) == TypeTag::Integer);
 
-		const NumericType* const integer_type = type_attachment_from_id<NumericType>(core->interp.types, dst.type);
+		const NumericType* const integer_type = type_attachment_from_id<NumericType>(core, dst.type);
 
 		ASSERT_OR_IGNORE((static_cast<u64>(integer_type->bits) + 7) / 8 == dst.bytes.count());
 
@@ -536,9 +536,9 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 	case TypeTag::CompFloat:
 	{
-		ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, dst.type) == TypeTag::Float);
+		ASSERT_OR_IGNORE(type_tag_from_id(core, dst.type) == TypeTag::Float);
 
-		const NumericType* const float_type = type_attachment_from_id<NumericType>(core->interp.types, dst.type);
+		const NumericType* const float_type = type_attachment_from_id<NumericType>(core, dst.type);
 
 		const CompFloatValue src_value = *value_as<CompFloatValue>(&src);
 
@@ -563,7 +563,7 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 	case TypeTag::Slice:
 	case TypeTag::Ptr:
 	{
-		ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, dst.type) == src_type_tag);
+		ASSERT_OR_IGNORE(type_tag_from_id(core, dst.type) == src_type_tag);
 
 		// Essentially a no-op, we are just adjusting permissions.
 		range::mem_copy(dst.bytes, src.bytes.immut());
@@ -573,9 +573,9 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 	case TypeTag::CompositeLiteral:
 	{
-		ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, dst.type) == TypeTag::Composite);
+		ASSERT_OR_IGNORE(type_tag_from_id(core, dst.type) == TypeTag::Composite);
 
-		const u32 dst_member_count = type_get_composite_member_count(core->interp.types, dst.type);
+		const u32 dst_member_count = type_get_composite_member_count(core, dst.type);
 
 		const u32 seen_members_size = ((dst_member_count + 7) / 8 + sizeof(u64) - 1) & ~(sizeof(u64) - 1);
 
@@ -587,7 +587,7 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 		u32 rank = 0;
 
-		MemberIterator it = members_of(core->interp.types, src.type);
+		MemberIterator it = members_of(core, src.type);
 
 		while (has_next(&it))
 		{
@@ -598,7 +598,7 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 			if (!next(&it, &src_member_info, &unused_src_initializer))
 				TODO("Figure out what to do when converting incomplete types and if this can even reasonably happen");
 
-			const IdentifierId src_name = type_member_name_by_rank(core->interp.types, src.type, src_member_info.rank);
+			const IdentifierId src_name = type_member_name_by_rank(core, src.type, src_member_info.rank);
 
 			MemberInfo dst_member;
 
@@ -606,7 +606,7 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 			if (src_name != IdentifierId::INVALID)
 			{
-				const MemberByNameRst rst = type_member_info_by_name(core->interp.types, dst.type, src_name, &dst_member, &unused_initializer);
+				const MemberByNameRst rst = type_member_info_by_name(core, dst.type, src_name, &dst_member, &unused_initializer);
 
 				if (rst == MemberByNameRst::NotFound)
 					return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetIsMissingMember);
@@ -620,7 +620,7 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 				if (rank == dst_member_count)
 					return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
 
-				if (!type_member_info_by_rank(core->interp.types, dst.type, static_cast<u16>(rank), &dst_member, &unused_initializer))
+				if (!type_member_info_by_rank(core, dst.type, static_cast<u16>(rank), &dst_member, &unused_initializer))
 					ASSERT_UNREACHABLE;
 			}
 
@@ -633,9 +633,9 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 			*seen_members_elem |= member_bit;
 
-			const TypeMetrics dst_metrics = type_metrics_from_id(core->interp.types, dst_member.type_id);
+			const TypeMetrics dst_metrics = type_metrics_from_id(core, dst_member.type_id);
 
-			const TypeMetrics src_metrics = type_metrics_from_id(core->interp.types, src_member_info.type_id);
+			const TypeMetrics src_metrics = type_metrics_from_id(core, src_member_info.type_id);
 
 			const CTValue dst_member_value{ dst.bytes.mut_subrange(dst_member.offset, dst_metrics.size), dst_metrics.align, true, dst_member.type_id };
 
@@ -660,13 +660,13 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 			OpcodeId unused_initializer;
 
-			if (!type_member_info_by_rank(core->interp.types, dst.type, static_cast<u16>(i), &member, &unused_initializer))
+			if (!type_member_info_by_rank(core, dst.type, static_cast<u16>(i), &member, &unused_initializer))
 				ASSERT_UNREACHABLE;
 
 			if (is_none(member.value_or_default_id))
 				return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
-			const TypeMetrics member_metrics = type_metrics_from_id(core->interp.types, member.type_id);
+			const TypeMetrics member_metrics = type_metrics_from_id(core, member.type_id);
 
 			const MutRange<byte> default_dst = dst.bytes.mut_subrange(member.offset, member_metrics.size);
 
@@ -680,16 +680,16 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 	case TypeTag::ArrayLiteral:
 	{
-		ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, dst.type) == TypeTag::Array);
+		ASSERT_OR_IGNORE(type_tag_from_id(core, dst.type) == TypeTag::Array);
 
-		const ArrayType* const dst_attach = type_attachment_from_id<ArrayType>(core->interp.types, dst.type);
+		const ArrayType* const dst_attach = type_attachment_from_id<ArrayType>(core, dst.type);
 
 		// Early-out here to avoid `get`ting the element type of `src` which
 		// may be `none` if there are no elements.
 		if (dst_attach->element_count == 0)
 			return code;
 
-		const ArrayType* const src_attach = type_attachment_from_id<ArrayType>(core->interp.types, src.type);
+		const ArrayType* const src_attach = type_attachment_from_id<ArrayType>(core, src.type);
 
 		ASSERT_OR_IGNORE(dst_attach->element_count == src_attach->element_count);
 
@@ -697,17 +697,17 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 		const TypeId src_elem_type = get(src_attach->element_type);
 
-		if (type_is_equal(core->interp.types, dst_elem_type, src_elem_type))
+		if (type_is_equal(core, dst_elem_type, src_elem_type))
 		{
 			range::mem_copy(dst.bytes, src.bytes.immut());
 		}
 		else
 		{
-			ASSERT_OR_IGNORE(type_can_implicitly_convert_from_to(core->interp.types, src_elem_type, dst_elem_type));
+			ASSERT_OR_IGNORE(type_can_implicitly_convert_from_to(core, src_elem_type, dst_elem_type));
 
-			const TypeMetrics dst_elem_metrics = type_metrics_from_id(core->interp.types, dst_elem_type);
+			const TypeMetrics dst_elem_metrics = type_metrics_from_id(core, dst_elem_type);
 
-			const TypeMetrics src_elem_metrics = type_metrics_from_id(core->interp.types, src_elem_type);
+			const TypeMetrics src_elem_metrics = type_metrics_from_id(core, src_elem_type);
 
 			for (u64 i = 0; i != dst_attach->element_count; ++i)
 			{
@@ -753,7 +753,7 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 static const Opcode* convert_into(CoreData* core, const Opcode* code, CTValue src, CTValue dst) noexcept
 {
-	const TypeRelation relation = type_relation(core->interp.types, src.type, dst.type);
+	const TypeRelation relation = type_relation(core, src.type, dst.type);
 
 	if (relation == TypeRelation::Equal)
 	{
@@ -777,7 +777,7 @@ static const Opcode* convert_into(CoreData* core, const Opcode* code, CTValue sr
 
 static Maybe<TypeId> unify(CoreData* core, const Opcode* code, CTValue* inout_lhs, CTValue* inout_rhs) noexcept
 {
-	const TypeRelation relation = type_relation(core->interp.types, inout_lhs->type, inout_rhs->type);
+	const TypeRelation relation = type_relation(core, inout_lhs->type, inout_rhs->type);
 
 	if (relation == TypeRelation::Equal)
 	{
@@ -817,7 +817,7 @@ static Maybe<TypeId> unify(CoreData* core, const Opcode* code, CTValue* inout_lh
 
 static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Range<byte> lhs, Range<byte> rhs) noexcept
 {
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	switch (type_tag)
 	{
@@ -834,7 +834,7 @@ static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Ra
 
 		const TypeId rhs_value = *range::access_as<TypeId>(rhs);
 
-		const bool is_equal = type_is_equal(core->interp.types, lhs_value, rhs_value);
+		const bool is_equal = type_is_equal(core, lhs_value, rhs_value);
 
 		return CompareResult{ is_equal ? CompareEquality::Equal : CompareEquality::Unequal };
 	}
@@ -872,7 +872,7 @@ static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Ra
 
 	case TypeTag::Integer:
 	{
-		const NumericType integer_type = *type_attachment_from_id<NumericType>(core->interp.types, type);
+		const NumericType integer_type = *type_attachment_from_id<NumericType>(core, type);
 
 		const s64 compare_size = static_cast<s64>(integer_type.bits >> 3);
 
@@ -960,7 +960,7 @@ static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Ra
 
 	case TypeTag::Float:
 	{
-		const NumericType float_type = *type_attachment_from_id<NumericType>(core->interp.types, type);
+		const NumericType float_type = *type_attachment_from_id<NumericType>(core, type);
 
 		if (float_type.bits == 32)
 		{
@@ -1019,14 +1019,14 @@ static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Ra
 	case TypeTag::Array:
 	case TypeTag::ArrayLiteral:
 	{
-		const ArrayType array_type = *type_attachment_from_id<ArrayType>(core->interp.types, type);
+		const ArrayType array_type = *type_attachment_from_id<ArrayType>(core, type);
 
 		if (is_none(array_type.element_type))
 			return CompareResult{ CompareEquality::Equal };
 
 		const TypeId element_type = get(array_type.element_type);
 
-		const TypeMetrics metrics = type_metrics_from_id(core->interp.types, element_type);
+		const TypeMetrics metrics = type_metrics_from_id(core, element_type);
 
 		for (u64 i = 0; i != array_type.element_count; ++i)
 		{
@@ -1047,7 +1047,7 @@ static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Ra
 
 	case TypeTag::Composite:
 	{
-		MemberIterator it = members_of(core->interp.types, type);
+		MemberIterator it = members_of(core, type);
 
 		while (has_next(&it))
 		{
@@ -1058,7 +1058,7 @@ static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Ra
 			if (!next(&it, &member, &unused_initializer))
 				TODO("Figure out what to do when comparing incomplete types and if it can even reasonably happen");
 
-			const TypeMetrics metrics = type_metrics_from_id(core->interp.types, member.type_id);
+			const TypeMetrics metrics = type_metrics_from_id(core, member.type_id);
 
 			const Range<byte> lhs_member{ lhs.begin() + member.offset, metrics.size };
 
@@ -1100,7 +1100,7 @@ static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Ra
 
 static const Opcode* scope_alloc_typed_member(CoreData* core, const Opcode* code, bool is_mut, TypeId type) noexcept
 {
-	const TypeMetrics member_metrics = type_metrics_from_id(core->interp.types, type);
+	const TypeMetrics member_metrics = type_metrics_from_id(core, type);
 
 	if (member_metrics.size >= UINT32_MAX)
 		panic("Exceeded maximum size of stack variable.\n");
@@ -1145,11 +1145,11 @@ static void scope_pop(CoreData* core) noexcept
 
 static U64FromValueRst u64_from_value(CoreData* core, CTValue value, u64* out) noexcept
 {
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, value.type);
+	const TypeTag type_tag = type_tag_from_id(core, value.type);
 
 	if (type_tag == TypeTag::Integer)
 	{
-		const NumericType integer_type = *type_attachment_from_id<NumericType>(core->interp.types, value.type);
+		const NumericType integer_type = *type_attachment_from_id<NumericType>(core, value.type);
 
 		if ((integer_type.bits & 7) != 0)
 			TODO("Implement u64 extraction from non-byte-sized integer types");
@@ -1234,9 +1234,9 @@ static const Opcode* builtin_integer(CoreData* core, const Opcode* code, CTValue
 
 	const bool is_signed = get_builtin_param<bool>(core, 1);
 
-	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	TypeId integer_type = type_create_numeric(core->interp.types, TypeTag::Integer, NumericType{ bits, is_signed });
+	TypeId integer_type = type_create_numeric(core, TypeTag::Integer, NumericType{ bits, is_signed });
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&integer_type);
 
@@ -1247,9 +1247,9 @@ static const Opcode* builtin_float(CoreData* core, const Opcode* code, CTValue* 
 {
 	const u8 bits = get_builtin_param<u8>(core, 0);
 
-	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	TypeId float_type = type_create_numeric(core->interp.types, TypeTag::Integer, NumericType{ bits, true });
+	TypeId float_type = type_create_numeric(core, TypeTag::Integer, NumericType{ bits, true });
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&float_type);
 
@@ -1258,7 +1258,7 @@ static const Opcode* builtin_float(CoreData* core, const Opcode* code, CTValue* 
 
 static const Opcode* builtin_type(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+	TypeId type_type = type_create_simple(core, TypeTag::Type);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&type_type);
 
@@ -1267,9 +1267,9 @@ static const Opcode* builtin_type(CoreData* core, const Opcode* code, CTValue* w
 
 static const Opcode* builtin_definition(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	TypeId definition_type = type_create_simple(core->interp.types, TypeTag::Definition);
+	TypeId definition_type = type_create_simple(core, TypeTag::Definition);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&definition_type);
 
@@ -1278,9 +1278,9 @@ static const Opcode* builtin_definition(CoreData* core, const Opcode* code, CTVa
 
 static const Opcode* builtin_typeinfo(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	TypeId typeinfo_type = type_create_simple(core->interp.types, TypeTag::TypeInfo);
+	TypeId typeinfo_type = type_create_simple(core, TypeTag::TypeInfo);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&typeinfo_type);
 
@@ -1291,7 +1291,7 @@ static const Opcode* builtin_typeof(CoreData* core, const Opcode* code, CTValue*
 {
 	CTValue arg = get_builtin_param_raw(core, 0);
 
-	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
 	return push_temporary_value(core, code, write_ctx, CTValue{ arg.bytes, alignof(TypeId), true, type_type });
 }
@@ -1300,14 +1300,14 @@ static const Opcode* builtin_returntypeof(CoreData* core, const Opcode* code, CT
 {
 	const TypeId type = get_builtin_param<TypeId>(core, 0);
 
-	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag != TypeTag::Func)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-	const SignatureType2* const signature = type_attachment_from_id<SignatureType2>(core->interp.types, type);
+	const SignatureType2* const signature = type_attachment_from_id<SignatureType2>(core, type);
 
 	if (signature->has_templated_return_type)
 		return record_interpreter_error(core, code, CompileError::ReturntypeofTemplatedReturnType);
@@ -1323,7 +1323,7 @@ static const Opcode* builtin_sizeof(CoreData* core, const Opcode* code, CTValue*
 {
 	CTValue arg = get_builtin_param_raw(core, 0);
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, arg.type);
+	const TypeTag type_tag = type_tag_from_id(core, arg.type);
 
 	u64 size;
 
@@ -1331,7 +1331,7 @@ static const Opcode* builtin_sizeof(CoreData* core, const Opcode* code, CTValue*
 	{
 		const TypeId indirect_type = *value_as<TypeId>(&arg);
 
-		const TypeTag indirect_type_tag = type_tag_from_id(core->interp.types, indirect_type);
+		const TypeTag indirect_type_tag = type_tag_from_id(core, indirect_type);
 
 		if (indirect_type_tag == TypeTag::Type)
 		{
@@ -1339,15 +1339,15 @@ static const Opcode* builtin_sizeof(CoreData* core, const Opcode* code, CTValue*
 		}
 		else
 		{
-			size = type_metrics_from_id(core->interp.types, indirect_type).size;
+			size = type_metrics_from_id(core, indirect_type).size;
 		}
 	}
 	else
 	{
-		size = type_metrics_from_id(core->interp.types, arg.type).size;
+		size = type_metrics_from_id(core, arg.type).size;
 	}
 
-	const TypeId comp_integer_type = type_create_simple(core->interp.types, TypeTag::CompInteger);
+	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
 
 	CompIntegerValue size_value = comp_integer_from_u64(size);
 
@@ -1360,7 +1360,7 @@ static const Opcode* builtin_alignof(CoreData* core, const Opcode* code, CTValue
 {
 	CTValue arg = get_builtin_param_raw(core, 0);
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, arg.type);
+	const TypeTag type_tag = type_tag_from_id(core, arg.type);
 
 	u32 align;
 
@@ -1368,7 +1368,7 @@ static const Opcode* builtin_alignof(CoreData* core, const Opcode* code, CTValue
 	{
 		const TypeId indirect_type = *value_as<TypeId>(&arg);
 
-		const TypeTag indirect_type_tag = type_tag_from_id(core->interp.types, indirect_type);
+		const TypeTag indirect_type_tag = type_tag_from_id(core, indirect_type);
 
 		if (indirect_type_tag == TypeTag::Type)
 		{
@@ -1376,15 +1376,15 @@ static const Opcode* builtin_alignof(CoreData* core, const Opcode* code, CTValue
 		}
 		else
 		{
-			align = type_metrics_from_id(core->interp.types, indirect_type).align;
+			align = type_metrics_from_id(core, indirect_type).align;
 		}
 	}
 	else
 	{
-		align = type_metrics_from_id(core->interp.types, arg.type).align;
+		align = type_metrics_from_id(core, arg.type).align;
 	}
 
-	const TypeId comp_integer_type = type_create_simple(core->interp.types, TypeTag::CompInteger);
+	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
 
 	CompIntegerValue align_value = comp_integer_from_u64(align);
 
@@ -1397,7 +1397,7 @@ static const Opcode* builtin_strideof(CoreData* core, const Opcode* code, CTValu
 {
 	CTValue arg = get_builtin_param_raw(core, 0);
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, arg.type);
+	const TypeTag type_tag = type_tag_from_id(core, arg.type);
 
 	u64 stride;
 
@@ -1405,7 +1405,7 @@ static const Opcode* builtin_strideof(CoreData* core, const Opcode* code, CTValu
 	{
 		const TypeId indirect_type = *value_as<TypeId>(&arg);
 
-		const TypeTag indirect_type_tag = type_tag_from_id(core->interp.types, indirect_type);
+		const TypeTag indirect_type_tag = type_tag_from_id(core, indirect_type);
 
 		if (indirect_type_tag == TypeTag::Type)
 		{
@@ -1413,15 +1413,15 @@ static const Opcode* builtin_strideof(CoreData* core, const Opcode* code, CTValu
 		}
 		else
 		{
-			stride = type_metrics_from_id(core->interp.types, indirect_type).stride;
+			stride = type_metrics_from_id(core, indirect_type).stride;
 		}
 	}
 	else
 	{
-		stride = type_metrics_from_id(core->interp.types, arg.type).stride;
+		stride = type_metrics_from_id(core, arg.type).stride;
 	}
 
-	const TypeId comp_integer_type = type_create_simple(core->interp.types, TypeTag::CompInteger);
+	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
 
 	CompIntegerValue stride_value = comp_integer_from_u64(stride);
 
@@ -1485,7 +1485,7 @@ static const Opcode* builtin_import(CoreData* core, const Opcode* code, CTValue*
 	if (is_none(file_type))
 		return nullptr;
 
-	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&file_type);
 
@@ -1496,9 +1496,9 @@ static const Opcode* builtin_create_type_builder(CoreData* core, const Opcode* c
 {
 	const SourceId source_id = get_builtin_param<SourceId>(core, 0);
 
-	const TypeId type_builder_type = type_create_simple(core->interp.types, TypeTag::TypeBuilder);
+	const TypeId type_builder_type = type_create_simple(core, TypeTag::TypeBuilder);
 
-	TypeId builder = type_create_composite(core->interp.types, TypeTag::Composite, TypeDisposition::User, source_id, 0, false);
+	TypeId builder = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, source_id, 0, false);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&builder);
 
@@ -1535,9 +1535,9 @@ static const Opcode* builtin_complete_type(CoreData* core, const Opcode* code, C
 	if (align > UINT32_MAX)
 		return record_interpreter_error(core, code, CompileError::BuiltinCompleteTypeAlignTooLarge);
 
-	TypeId type = type_seal_composite(core->interp.types, builder, size, static_cast<u32>(align), stride);
+	TypeId type = type_seal_composite(core, builder, size, static_cast<u32>(align), stride);
 
-	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&type);
 
@@ -1548,7 +1548,7 @@ static const Opcode* builtin_source_id(CoreData* core, const Opcode* code, CTVal
 {
 	ASSERT_OR_IGNORE(core->interp.call_activation_indices.used() >= 1);
 
-	const TypeId source_id_type = type_create_numeric(core->interp.types, TypeTag::Integer, NumericType{ 32, false });
+	const TypeId source_id_type = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, false });
 
 	const u32 caller_activation_index = core->interp.call_activation_indices.end()[-1];
 
@@ -1688,7 +1688,7 @@ static const Opcode* handle_scope_alloc_typed(CoreData* core, const Opcode* code
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag != TypeTag::Type)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
@@ -1787,20 +1787,20 @@ static const Opcode* handle_file_global_alloc_typed(CoreData* core, const Opcode
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag != TypeTag::Type)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const TypeId member_type = *value_as<TypeId>(top);
 
-	const TypeMetrics member_metrics = type_metrics_from_id(core->interp.types, member_type);
+	const TypeMetrics member_metrics = type_metrics_from_id(core, member_type);
 
 	TypeId file_type;
 
 	const ForeverCTValue value = file_value_alloc_uninitialized(core, init.file_index, init.rank, member_type, member_metrics, &file_type);
 
-	type_set_file_member_info(core->interp.types, file_type, init.rank, member_type, value.id);
+	type_set_file_member_info(core, file_type, init.rank, member_type, value.id);
 
 	core->interp.values.pop_by(1);
 
@@ -1825,7 +1825,7 @@ static const Opcode* handle_file_global_alloc_untyped(CoreData* core, const Opco
 
 	const ForeverValueId value_id = file_value_alloc_initialized(core, init.file_index, init.rank, *top, &file_type);
 
-	type_set_file_member_info(core->interp.types, file_type, init.rank, top->type, value_id);
+	type_set_file_member_info(core, file_type, init.rank, top->type, value_id);
 
 	core->interp.global_initializations.pop_by(1);
 
@@ -1927,7 +1927,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag == TypeTag::Composite || type_tag == TypeTag::CompositeLiteral)
 	{
@@ -1935,7 +1935,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 
 		OpcodeId initializer_id;
 
-		const MemberByNameRst rst = type_member_info_by_name(core->interp.types, type, name, &info, &initializer_id);
+		const MemberByNameRst rst = type_member_info_by_name(core, type, name, &info, &initializer_id);
 
 		if (rst == MemberByNameRst::NotFound)
 		{
@@ -1966,7 +1966,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 		{
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
-			const TypeMetrics metrics = type_metrics_from_id(core->interp.types, info.type_id);
+			const TypeMetrics metrics = type_metrics_from_id(core, info.type_id);
 
 			const MutRange<byte> bytes = top->bytes.mut_subrange(info.offset, metrics.size);
 
@@ -1981,7 +1981,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 
 		OpcodeId initializer_id;
 
-		const MemberByNameRst rst = type_member_info_by_name(core->interp.types, type_value, name, &info, &initializer_id);
+		const MemberByNameRst rst = type_member_info_by_name(core, type_value, name, &info, &initializer_id);
 
 		if (rst == MemberByNameRst::NotFound)
 		{
@@ -2128,7 +2128,7 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 	CTValue* value = core->interp.values.end() - value_count;
 
-	const TypeId parameter_list_type = type_create_composite(core->interp.types, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
+	const TypeId parameter_list_type = type_create_composite(core, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
 
 	for (u32 i = 0; i != parameter_count; ++i)
 	{
@@ -2152,12 +2152,12 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 			value += 2;
 
-			if (type_tag_from_id(core->interp.types, type_value->type) != TypeTag::Type)
+			if (type_tag_from_id(core, type_value->type) != TypeTag::Type)
 				return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 			parameter_type = *value_as<TypeId>(type_value);
 
-			ASSERT_OR_IGNORE(type_is_equal(core->interp.types, parameter_type, default_value->type));
+			ASSERT_OR_IGNORE(type_is_equal(core, parameter_type, default_value->type));
 
 			const ForeverValueId default_id = forever_value_alloc_initialized(core, false, *default_value);
 
@@ -2169,7 +2169,7 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 			value += 1;
 
-			if (type_tag_from_id(core->interp.types, type_value->type) != TypeTag::Type)
+			if (type_tag_from_id(core, type_value->type) != TypeTag::Type)
 				return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 			parameter_type = *value_as<TypeId>(type_value);
@@ -2200,11 +2200,11 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 		init.is_eval = parameter_flags.is_eval;
 		init.offset = 0;
 
-		if (!type_add_composite_member(core->interp.types, parameter_list_type, init))
+		if (!type_add_composite_member(core, parameter_list_type, init))
 			ASSERT_UNREACHABLE;
 	}
 
-	if (type_tag_from_id(core->interp.types, value->type) != TypeTag::Type)
+	if (type_tag_from_id(core, value->type) != TypeTag::Type)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const TypeId return_type = *value_as<TypeId>(value);
@@ -2222,11 +2222,11 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 	attach.has_templated_return_type = false;
 	attach.parameter_count = parameter_count;
 
-	TypeId signature_type = type_create_signature(core->interp.types, TypeTag::Func, attach);
+	TypeId signature_type = type_create_signature(core, TypeTag::Func, attach);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&signature_type);
 
-	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
 	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
@@ -2260,7 +2260,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 	CTValue* value = core->interp.values.end() - value_count;
 
-	const TypeId parameter_list_type = type_create_composite(core->interp.types, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
+	const TypeId parameter_list_type = type_create_composite(core, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
 
 	for (u32 i = 0; i != parameter_count; ++i)
 	{
@@ -2278,7 +2278,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 			code = code_attach(code, &parameter_completion);
 
-			type_add_templated_parameter_list_member(core->interp.types, parameter_list_type, name, parameter_completion, parameter_flags.is_eval, parameter_flags.is_mut);
+			type_add_templated_parameter_list_member(core, parameter_list_type, name, parameter_completion, parameter_flags.is_eval, parameter_flags.is_mut);
 		}
 		else
 		{
@@ -2294,12 +2294,12 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 				value += 2;
 
-				if (type_tag_from_id(core->interp.types, type_value->type) != TypeTag::Type)
+				if (type_tag_from_id(core, type_value->type) != TypeTag::Type)
 					return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 				parameter_type = *value_as<TypeId>(type_value);
 
-				const TypeMetrics parameter_metrics = type_metrics_from_id(core->interp.types, parameter_type);
+				const TypeMetrics parameter_metrics = type_metrics_from_id(core, parameter_type);
 
 				const ForeverCTValue default_dst = forever_value_alloc_uninitialized(core, false, parameter_type, parameter_metrics);
 
@@ -2314,7 +2314,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 				value += 1;
 
-				if (type_tag_from_id(core->interp.types, type_value->type) != TypeTag::Type)
+				if (type_tag_from_id(core, type_value->type) != TypeTag::Type)
 					return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 				parameter_type = *value_as<TypeId>(type_value);
@@ -2345,7 +2345,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 			init.is_eval = parameter_flags.is_eval;
 			init.offset = 0;
 
-			if (!type_add_composite_member(core->interp.types, parameter_list_type, init))
+			if (!type_add_composite_member(core, parameter_list_type, init))
 				ASSERT_UNREACHABLE;
 		}
 	}
@@ -2364,7 +2364,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 	}
 	else
 	{
-		if (type_tag_from_id(core->interp.types, value->type) != TypeTag::Type)
+		if (type_tag_from_id(core, value->type) != TypeTag::Type)
 			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 		attach.return_type.type_id = *value_as<TypeId>(value);
@@ -2372,11 +2372,11 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 	core->interp.values.pop_by(value_count);
 
-	TypeId signature_type = type_create_signature(core->interp.types, TypeTag::Func, attach);
+	TypeId signature_type = type_create_signature(core, TypeTag::Func, attach);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&signature_type);
 
-	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
 	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
@@ -2391,13 +2391,13 @@ static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CTValu
 
 	CTValue* const top = core->interp.values.end() - 1;
 
-	ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, top->type) == TypeTag::Type);
+	ASSERT_OR_IGNORE(type_tag_from_id(core, top->type) == TypeTag::Type);
 
 	const TypeId signature_type = *value_as<TypeId>(top);
 
-	ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, signature_type) == TypeTag::Func);
+	ASSERT_OR_IGNORE(type_tag_from_id(core, signature_type) == TypeTag::Func);
 
-	const SignatureType2* const signature = type_attachment_from_id<SignatureType2>(core->interp.types, signature_type);
+	const SignatureType2* const signature = type_attachment_from_id<SignatureType2>(core, signature_type);
 
 	Callable callable{};
 	callable.body_id = body_id;
@@ -2430,12 +2430,12 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 	const TypeId top_type = top->type;
 
-	const TypeTag top_type_tag = type_tag_from_id(core->interp.types, top_type);
+	const TypeTag top_type_tag = type_tag_from_id(core, top_type);
 
 	if (top_type_tag != TypeTag::Func && top_type_tag != TypeTag::Builtin)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-	SignatureType2 signature = *type_attachment_from_id<SignatureType2>(core->interp.types, top_type);
+	SignatureType2 signature = *type_attachment_from_id<SignatureType2>(core, top_type);
 
 	if (is_some(signature.closure_id))
 		core->interp.active_closures.append(get(signature.closure_id));
@@ -2463,7 +2463,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 			OpcodeId unused_initializer;
 
-			const MemberByNameRst rst = type_member_info_by_name(core->interp.types, signature.parameter_list_type_id, name, &parameter_info, &unused_initializer);
+			const MemberByNameRst rst = type_member_info_by_name(core, signature.parameter_list_type_id, name, &parameter_info, &unused_initializer);
 
 			if (rst == MemberByNameRst::NotFound)
 				return record_interpreter_error(core, code, CompileError::CallNoSuchNamedParameter);
@@ -2503,7 +2503,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 		OpcodeId unused_initializer;
 
-		if (!type_member_info_by_rank(core->interp.types, signature.parameter_list_type_id, i, &parameter_info, &unused_initializer))
+		if (!type_member_info_by_rank(core, signature.parameter_list_type_id, i, &parameter_info, &unused_initializer))
 			ASSERT_UNREACHABLE;
 
 		if (is_none(parameter_info.value_or_default_id))
@@ -2515,7 +2515,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 	ArgumentPack* const argument_pack = core->interp.argument_packs.reserve();
 	argument_pack->parameter_list_type = templated_mask == 0
 		? signature.parameter_list_type_id
-		: type_copy_composite(core->interp.types, signature.parameter_list_type_id, signature.parameter_count, true);
+		: type_copy_composite(core, signature.parameter_list_type_id, signature.parameter_count, true);
 	argument_pack->return_type.completion = signature.return_type.completion_id;
 	argument_pack->scope_first_member_index = core->interp.scope_members.used();
 	argument_pack->count = signature.parameter_count;
@@ -2573,7 +2573,7 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 			// Since the initializer must not pop the callee scope as we need
 			// it later, we set `has_just_completed_template_member` so that we
 			// deactivate the scope on the next round through `handle_call`.
-			if (!type_member_info_by_rank(core->interp.types, argument_pack->parameter_list_type, argument_pack->index, &parameter_info, &parameter_initializer_id))
+			if (!type_member_info_by_rank(core, argument_pack->parameter_list_type, argument_pack->index, &parameter_info, &parameter_initializer_id))
 			{
 				// Set `temporary_data_used` to the nonsense value 0, since
 				// this will never really be properly "popped", just
@@ -2630,7 +2630,7 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 
 		argument_pack->has_templated_return_type = false;
 
-		const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+		const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&argument_pack->return_type.type);
 
@@ -2661,7 +2661,7 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 
 		if (!call_expects_write_ctx)
 		{
-			const TypeMetrics return_type_metrics = type_metrics_from_id(core->interp.types, argument_pack->return_type.type);
+			const TypeMetrics return_type_metrics = type_metrics_from_id(core, argument_pack->return_type.type);
 
 			const CTValue return_value = alloc_temporary_value_uninit(core, return_type_metrics.size, return_type_metrics.align, argument_pack->return_type.type);
 
@@ -2699,7 +2699,7 @@ static const Opcode* handle_call(CoreData* core, const Opcode* code, CTValue* wr
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, core->interp.values.end()[-1].type) == TypeTag::Func);
+	ASSERT_OR_IGNORE(type_tag_from_id(core, core->interp.values.end()[-1].type) == TypeTag::Func);
 
 	const Callable callable = *value_as<Callable>(core->interp.values.end() - 1);
 
@@ -2752,7 +2752,7 @@ static const Opcode* handle_complete_param_typed_no_default(CoreData* core, cons
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag != TypeTag::Type)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
@@ -2765,7 +2765,7 @@ static const Opcode* handle_complete_param_typed_no_default(CoreData* core, cons
 
 	const TypeId parameter_list_type = argument_pack->parameter_list_type;
 
-	type_set_templated_parameter_list_member_info(core->interp.types, parameter_list_type, rank, member_type, none<ForeverValueId>());
+	type_set_templated_parameter_list_member_info(core, parameter_list_type, rank, member_type, none<ForeverValueId>());
 
 	return code;
 }
@@ -2788,14 +2788,14 @@ static const Opcode* handle_complete_param_typed_with_default(CoreData* core, co
 
 	const TypeId type = type_value->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag != TypeTag::Type)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const TypeId parameter_type = *value_as<TypeId>(type_value);
 
-	const TypeMetrics parameter_metrics = type_metrics_from_id(core->interp.types, parameter_type);
+	const TypeMetrics parameter_metrics = type_metrics_from_id(core, parameter_type);
 
 	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
 
@@ -2806,7 +2806,7 @@ static const Opcode* handle_complete_param_typed_with_default(CoreData* core, co
 	if (convert_into(core, code, *default_value, default_dst.value) == nullptr)
 		return nullptr;
 
-	type_set_templated_parameter_list_member_info(core->interp.types, parameter_list_type, rank, parameter_type, some(default_dst.id));
+	type_set_templated_parameter_list_member_info(core, parameter_list_type, rank, parameter_type, some(default_dst.id));
 
 	core->interp.write_ctxs.append(default_dst.value);
 
@@ -2835,7 +2835,7 @@ static const Opcode* handle_complete_param_untyped(CoreData* core, const Opcode*
 
 	const ForeverValueId default_id = forever_value_alloc_initialized(core, false, *default_value);
 
-	type_set_templated_parameter_list_member_info(core->interp.types, parameter_list_type, rank, default_value->type, some(default_id));
+	type_set_templated_parameter_list_member_info(core, parameter_list_type, rank, default_value->type, some(default_id));
 
 	core->interp.values.pop_by(1);
 
@@ -2858,12 +2858,12 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, CT
 
 	const TypeId dst_type = write_ctx->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, dst_type);
+	const TypeTag type_tag = type_tag_from_id(core, dst_type);
 
 	if (type_tag != TypeTag::Array && type_tag != TypeTag::ArrayLiteral)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-	const ArrayType* const array_type = type_attachment_from_id<ArrayType>(core->interp.types, dst_type);
+	const ArrayType* const array_type = type_attachment_from_id<ArrayType>(core, dst_type);
 
 	if (is_none(array_type->element_type))
 	{
@@ -2875,7 +2875,7 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, CT
 
 	const TypeId dst_elem_type = get(array_type->element_type);
 
-	const TypeMetrics dst_elem_metrics = type_metrics_from_id(core->interp.types, dst_elem_type);
+	const TypeMetrics dst_elem_metrics = type_metrics_from_id(core, dst_elem_type);
 
 	CTValue* const indices = core->interp.values.end() - index_count;
 
@@ -2962,7 +2962,7 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 	{
 		ASSERT_OR_IGNORE(index_count == 0);
 
-		const TypeId array_type = type_create_array(core->interp.types, TypeTag::ArrayLiteral, ArrayType{ 0, none<TypeId>() });
+		const TypeId array_type = type_create_array(core, TypeTag::ArrayLiteral, ArrayType{ 0, none<TypeId>() });
 
 		CTValue rst = alloc_temporary_value_uninit(core, 0, 1, array_type);
 
@@ -2981,7 +2981,7 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 
 	for (u16 i = 1; i != total_element_count; ++i)
 	{
-		Maybe<TypeId> common_type = type_unify(core->interp.types, element_type, element_values[i].type);
+		Maybe<TypeId> common_type = type_unify(core, element_type, element_values[i].type);
 
 		if (is_none(common_type))
 			return record_interpreter_error(core, code, CompileError::NoCommonArrayElementType);
@@ -2989,7 +2989,7 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 		element_type = get(common_type);
 	}
 
-	const TypeMetrics element_metrics = type_metrics_from_id(core->interp.types, element_type);
+	const TypeMetrics element_metrics = type_metrics_from_id(core, element_type);
 
 
 	// Next, work out how large the array needs to be.
@@ -3028,7 +3028,7 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 
 	code = code_before_indices;
 
-	const TypeId array_type = type_create_array(core->interp.types, TypeTag::ArrayLiteral, ArrayType{ max_element_index, some(element_type) });
+	const TypeId array_type = type_create_array(core, TypeTag::ArrayLiteral, ArrayType{ max_element_index, some(element_type) });
 
 	CTValue rst = alloc_temporary_value_uninit(core, element_metrics.stride * (max_element_index - 1) + element_metrics.size, element_metrics.align, array_type);
 
@@ -3036,7 +3036,7 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 	{
 		const MutRange<byte> bytes = rst.bytes.mut_subrange(element_metrics.stride * i, element_metrics.size);
 
-		if (type_is_equal(core->interp.types, element_type, element_values[i].type))
+		if (type_is_equal(core, element_type, element_values[i].type))
 			range::mem_copy(bytes, element_values[i].bytes.immut());
 		else if (convert_into_assume_convertible(core, code, element_values[i], CTValue{ bytes, element_metrics.align, true, element_type }) == nullptr)
 			return nullptr;
@@ -3106,7 +3106,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 	const TypeId dst_type = write_ctx->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, dst_type);
+	const TypeTag type_tag = type_tag_from_id(core, dst_type);
 
 	u16 names_count;
 
@@ -3115,7 +3115,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 	if (type_tag != TypeTag::CompositeLiteral && type_tag != TypeTag::Composite)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-	const u32 member_count = type_get_composite_member_count(core->interp.types, dst_type);
+	const u32 member_count = type_get_composite_member_count(core, dst_type);
 
 	u16 leading_member_count;
 
@@ -3130,12 +3130,12 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 		OpcodeId unused_initializer;
 
-		if (!type_member_info_by_rank(core->interp.types, dst_type, i, &member_info, &unused_initializer))
+		if (!type_member_info_by_rank(core, dst_type, i, &member_info, &unused_initializer))
 			ASSERT_UNREACHABLE;
 
 		ASSERT_OR_IGNORE(!member_info.is_global);
 
-		const TypeMetrics member_metrics = type_metrics_from_id(core->interp.types, member_info.type_id);
+		const TypeMetrics member_metrics = type_metrics_from_id(core, member_info.type_id);
 
 		const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(member_info.offset, member_metrics.size);
 
@@ -3150,7 +3150,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 			OpcodeId unused_defaulted_member_initializer;
 
-			if (!type_member_info_by_rank(core->interp.types, dst_type, i, &defaulted_member_info, &unused_defaulted_member_initializer))
+			if (!type_member_info_by_rank(core, dst_type, i, &defaulted_member_info, &unused_defaulted_member_initializer))
 				ASSERT_UNREACHABLE;
 
 			if (defaulted_member_info.is_global)
@@ -3159,7 +3159,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 			if (is_none(defaulted_member_info.value_or_default_id))
 				return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
-			const TypeMetrics defaulted_member_metrics = type_metrics_from_id(core->interp.types, defaulted_member_info.type_id);
+			const TypeMetrics defaulted_member_metrics = type_metrics_from_id(core, defaulted_member_info.type_id);
 
 			const MutRange<byte> default_dst = write_ctx->bytes.mut_subrange(defaulted_member_info.offset, defaulted_member_metrics.size);
 
@@ -3187,7 +3187,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 		OpcodeId unused_named_initializer;
 
-		const MemberByNameRst rst = type_member_info_by_name(core->interp.types, dst_type, name, &named_member_info, &unused_named_initializer);
+		const MemberByNameRst rst = type_member_info_by_name(core, dst_type, name, &named_member_info, &unused_named_initializer);
 
 		if (rst == MemberByNameRst::NotFound)
 			return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetIsMissingMember);
@@ -3202,7 +3202,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 		if (!seen_set_set(seen, named_member_info.rank, following_member_count + 1))
 			return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetMemberMappedTwice);
 
-		const TypeMetrics named_member_metrics = type_metrics_from_id(core->interp.types, named_member_info.type_id);
+		const TypeMetrics named_member_metrics = type_metrics_from_id(core, named_member_info.type_id);
 
 		const MutRange<byte> named_bytes = write_ctx->bytes.mut_subrange(named_member_info.offset, named_member_metrics.size);
 
@@ -3214,12 +3214,12 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 			OpcodeId unused_following_initializer;
 
-			if (!type_member_info_by_rank(core->interp.types, dst_type, named_member_info.rank + 1 + j, &following_member_info, &unused_following_initializer))
+			if (!type_member_info_by_rank(core, dst_type, named_member_info.rank + 1 + j, &following_member_info, &unused_following_initializer))
 				ASSERT_UNREACHABLE;
 
 			ASSERT_OR_IGNORE(!following_member_info.is_global);
 
-			const TypeMetrics following_member_metrics = type_metrics_from_id(core->interp.types, following_member_info.type_id);
+			const TypeMetrics following_member_metrics = type_metrics_from_id(core, following_member_info.type_id);
 
 			const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(following_member_info.offset, following_member_metrics.size);
 
@@ -3235,7 +3235,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 		OpcodeId unused_defaulted_member_initializer;
 
-		if (!type_member_info_by_rank(core->interp.types, dst_type, unseen_index, &defaulted_member_info, &unused_defaulted_member_initializer))
+		if (!type_member_info_by_rank(core, dst_type, unseen_index, &defaulted_member_info, &unused_defaulted_member_initializer))
 			ASSERT_UNREACHABLE;
 
 		if (defaulted_member_info.is_global)
@@ -3244,7 +3244,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 		if (is_none(defaulted_member_info.value_or_default_id))
 			return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
-		const TypeMetrics defaulted_member_metrics = type_metrics_from_id(core->interp.types, defaulted_member_info.type_id);
+		const TypeMetrics defaulted_member_metrics = type_metrics_from_id(core, defaulted_member_info.type_id);
 
 		const MutRange<byte> default_dst = write_ctx->bytes.mut_subrange(defaulted_member_info.offset, defaulted_member_metrics.size);
 
@@ -3268,7 +3268,7 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 
 	CTValue* const values = core->interp.values.end() - total_member_count;
 
-	const TypeId initializer_type = type_create_composite(core->interp.types, TypeTag::CompositeLiteral, TypeDisposition::Initializer, SourceId::INVALID, total_member_count, true);
+	const TypeId initializer_type = type_create_composite(core, TypeTag::CompositeLiteral, TypeDisposition::Initializer, SourceId::INVALID, total_member_count, true);
 
 	for (u16 i = 0; i != total_member_count; ++i)
 	{
@@ -3285,15 +3285,15 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 		init.is_eval = false;
 		init.offset = 0;
 
-		if (!type_add_composite_member(core->interp.types, initializer_type, init))
+		if (!type_add_composite_member(core, initializer_type, init))
 			ASSERT_UNREACHABLE;
 	}
 
-	type_seal_composite(core->interp.types, initializer_type, 0, 0, 0);
+	type_seal_composite(core, initializer_type, 0, 0, 0);
 
-	const TypeMetrics metrics = type_metrics_from_id(core->interp.types, initializer_type);
+	const TypeMetrics metrics = type_metrics_from_id(core, initializer_type);
 
-	MemberIterator it = members_of(core->interp.types, initializer_type);
+	MemberIterator it = members_of(core, initializer_type);
 
 	CTValue initializer = alloc_temporary_value_uninit(core, metrics.size, metrics.align, initializer_type);
 
@@ -3331,7 +3331,7 @@ static const Opcode* handle_if(CoreData* core, const Opcode* code, [[maybe_unuse
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag != TypeTag::Boolean)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
@@ -3373,7 +3373,7 @@ static const Opcode* handle_if_else(CoreData* core, const Opcode* code, CTValue*
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag != TypeTag::Boolean)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
@@ -3407,7 +3407,7 @@ static const Opcode* handle_loop(CoreData* core, const Opcode* code, [[maybe_unu
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag != TypeTag::Boolean)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
@@ -3449,7 +3449,7 @@ static const Opcode* handle_loop_finally(CoreData* core, const Opcode* code, CTV
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag != TypeTag::Boolean)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
@@ -3497,7 +3497,7 @@ static const Opcode* handle_address_of(CoreData* core, const Opcode* code, CTVal
 	ptr_type.is_multi = false;
 	ptr_type.is_mut = top->is_mut;
 
-	const TypeId result_type = type_create_reference(core->interp.types, TypeTag::Ptr, ptr_type);
+	const TypeId result_type = type_create_reference(core, TypeTag::Ptr, ptr_type);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&ptr);
 
@@ -3512,19 +3512,19 @@ static const Opcode* handle_dereference(CoreData* core, const Opcode* code, CTVa
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag != TypeTag::Ptr)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	byte* const top_value = *value_as<byte*>(top);
 
-	const ReferenceType ptr_type = *type_attachment_from_id<ReferenceType>(core->interp.types, type);
+	const ReferenceType ptr_type = *type_attachment_from_id<ReferenceType>(core, type);
 
 	if (ptr_type.is_opt)
 		return record_interpreter_error(core, code, CompileError::DerefInvalidOperandType);
 
-	const TypeMetrics metrics = type_metrics_from_id(core->interp.types, ptr_type.referenced_type_id);
+	const TypeMetrics metrics = type_metrics_from_id(core, ptr_type.referenced_type_id);
 
 	const MutRange<byte> bytes{ top_value, metrics.size };
 
@@ -3545,7 +3545,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 
 	const TypeId type = lhs->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	u64 begin_index;
 
@@ -3637,7 +3637,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 
 	if (type_tag == TypeTag::Array || type_tag == TypeTag::ArrayLiteral)
 	{
-		const ArrayType array_type = *type_attachment_from_id<ArrayType>(core->interp.types, type);
+		const ArrayType array_type = *type_attachment_from_id<ArrayType>(core, type);
 
 		if (is_none(array_type.element_type))
 			return record_interpreter_error(core, code, CompileError::SliceOperatorUntypedArrayLiteral);
@@ -3649,7 +3649,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 
 		const TypeId elem_type = get(array_type.element_type);
 
-		const TypeMetrics elem_metrics = type_metrics_from_id(core->interp.types, elem_type);
+		const TypeMetrics elem_metrics = type_metrics_from_id(core, elem_type);
 
 		byte* const begin_ptr = lhs->bytes.begin() + begin_index * elem_metrics.stride;
 
@@ -3663,7 +3663,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 		slice_type.is_multi = false;
 		slice_type.is_mut = lhs->is_mut;
 
-		const TypeId result_type = type_create_reference(core->interp.types, TypeTag::Slice, slice_type);
+		const TypeId result_type = type_create_reference(core, TypeTag::Slice, slice_type);
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&slice);
 
@@ -3673,9 +3673,9 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 	}
 	else if (type_tag == TypeTag::Slice)
 	{
-		const ReferenceType slice_type = *type_attachment_from_id<ReferenceType>(core->interp.types, type);
+		const ReferenceType slice_type = *type_attachment_from_id<ReferenceType>(core, type);
 
-		const TypeMetrics elem_metrics = type_metrics_from_id(core->interp.types, slice_type.referenced_type_id);
+		const TypeMetrics elem_metrics = type_metrics_from_id(core, slice_type.referenced_type_id);
 
 		MutRange<byte> lhs_value = *value_as<MutRange<byte>>(lhs);
 
@@ -3698,7 +3698,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 	}
 	else if (type_tag == TypeTag::Ptr)
 	{
-		const ReferenceType ptr_type = *type_attachment_from_id<ReferenceType>(core->interp.types, type);
+		const ReferenceType ptr_type = *type_attachment_from_id<ReferenceType>(core, type);
 
 		if (!ptr_type.is_multi)
 			return record_interpreter_error(core, code, CompileError::SliceOperatorInvalidLhsType);
@@ -3706,7 +3706,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 		if (!has_end_index)
 			return record_interpreter_error(core, code, CompileError::SliceOperatorMultiPtrElidedEndIndex);
 
-		const TypeMetrics elem_metrics = type_metrics_from_id(core->interp.types, ptr_type.referenced_type_id);
+		const TypeMetrics elem_metrics = type_metrics_from_id(core, ptr_type.referenced_type_id);
 
 		byte* const lhs_value = *value_as<byte*>(lhs);
 
@@ -3718,7 +3718,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 		slice_type.is_multi = false;
 		slice_type.is_mut = ptr_type.is_mut;
 
-		const TypeId result_type = type_create_reference(core->interp.types, TypeTag::Slice, slice_type);
+		const TypeId result_type = type_create_reference(core, TypeTag::Slice, slice_type);
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&slice);
 
@@ -3753,11 +3753,11 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CTValue* w
 
 	const TypeId type = lhs->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag == TypeTag::Array || type_tag == TypeTag::ArrayLiteral)
 	{
-		const ArrayType array_type = *type_attachment_from_id<ArrayType>(core->interp.types, type);
+		const ArrayType array_type = *type_attachment_from_id<ArrayType>(core, type);
 
 		if (is_none(array_type.element_type))
 			return record_interpreter_error(core, code, CompileError::SliceOperatorUntypedArrayLiteral);
@@ -3767,7 +3767,7 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CTValue* w
 
 		const TypeId element_type = get(array_type.element_type);
 
-		const TypeMetrics element_metrics = type_metrics_from_id(core->interp.types, element_type);
+		const TypeMetrics element_metrics = type_metrics_from_id(core, element_type);
 
 		core->interp.values.pop_by(1);
 
@@ -3777,11 +3777,11 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CTValue* w
 	}
 	else if (type_tag == TypeTag::Slice)
 	{
-		const ReferenceType slice_type = *type_attachment_from_id<ReferenceType>(core->interp.types, type);
+		const ReferenceType slice_type = *type_attachment_from_id<ReferenceType>(core, type);
 
 		const TypeId element_type = slice_type.referenced_type_id;
 
-		const TypeMetrics element_metrics = type_metrics_from_id(core->interp.types, element_type);
+		const TypeMetrics element_metrics = type_metrics_from_id(core, element_type);
 
 		const MutRange<byte> slice = *value_as<MutRange<byte>>(lhs);
 
@@ -3796,14 +3796,14 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CTValue* w
 	}
 	else if (type_tag == TypeTag::Ptr)
 	{
-		const ReferenceType ptr_type = *type_attachment_from_id<ReferenceType>(core->interp.types, type);
+		const ReferenceType ptr_type = *type_attachment_from_id<ReferenceType>(core, type);
 
 		if (!ptr_type.is_multi)
 			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 		const TypeId element_type = ptr_type.referenced_type_id;
 
-		const TypeMetrics element_metrics = type_metrics_from_id(core->interp.types, element_type);
+		const TypeMetrics element_metrics = type_metrics_from_id(core, element_type);
 
 		byte* const ptr = *value_as<byte*>(lhs);
 
@@ -3836,11 +3836,11 @@ static const Opcode* handle_binary_arithmetic_op(CoreData* core, const Opcode* c
 
 	const TypeId type = get(unified_type);
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag == TypeTag::Integer)
 	{
-		const NumericType integer_type = *type_attachment_from_id<NumericType>(core->interp.types, type);
+		const NumericType integer_type = *type_attachment_from_id<NumericType>(core, type);
 
 		if (integer_type.bits <= 64 && is_pow2(integer_type.bits))
 		{
@@ -3994,7 +3994,7 @@ static const Opcode* handle_binary_arithmetic_op(CoreData* core, const Opcode* c
 	}
 	else if (type_tag == TypeTag::Float)
 	{
-		const NumericType float_type = *type_attachment_from_id<NumericType>(core->interp.types, type);
+		const NumericType float_type = *type_attachment_from_id<NumericType>(core, type);
 
 		if (float_type.bits == 32)
 		{
@@ -4157,7 +4157,7 @@ static const Opcode* handle_shift(CoreData* core, const Opcode* code, CTValue* w
 
 	const TypeId type = lhs->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	u64 shift_amount;
 
@@ -4174,7 +4174,7 @@ static const Opcode* handle_shift(CoreData* core, const Opcode* code, CTValue* w
 
 	if (type_tag == TypeTag::Integer)
 	{
-		const NumericType integer_type = *type_attachment_from_id<NumericType>(core->interp.types, type);
+		const NumericType integer_type = *type_attachment_from_id<NumericType>(core, type);
 
 		if (shift_amount >= integer_type.bits)
 			return record_interpreter_error(core, code, CompileError::ShiftRHSTooLarge);
@@ -4246,11 +4246,11 @@ static const Opcode* handle_binary_bitwise_op(CoreData* core, const Opcode* code
 
 	const TypeId type = get(unified_type);
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag == TypeTag::Integer)
 	{
-		const NumericType* const integer_type = type_attachment_from_id<NumericType>(core->interp.types, type);
+		const NumericType* const integer_type = type_attachment_from_id<NumericType>(core, type);
 
 		if (integer_type->bits <= 64 && is_pow2(integer_type->bits))
 		{
@@ -4359,11 +4359,11 @@ static const Opcode* handle_bit_not(CoreData* core, const Opcode* code, CTValue*
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag == TypeTag::Integer)
 	{
-		const NumericType* const integer_type = type_attachment_from_id<NumericType>(core->interp.types, type);
+		const NumericType* const integer_type = type_attachment_from_id<NumericType>(core, type);
 
 		if (integer_type->bits <= 64 && is_pow2(integer_type->bits))
 		{
@@ -4433,9 +4433,9 @@ static const Opcode* handle_logical_and(CoreData* core, const Opcode* code, CTVa
 
 	const TypeId rhs_type = rhs->type;
 
-	const TypeTag lhs_type_tag = type_tag_from_id(core->interp.types, lhs_type);
+	const TypeTag lhs_type_tag = type_tag_from_id(core, lhs_type);
 
-	const TypeTag rhs_type_tag = type_tag_from_id(core->interp.types, rhs_type);
+	const TypeTag rhs_type_tag = type_tag_from_id(core, rhs_type);
 
 	if (lhs_type_tag != TypeTag::Boolean || rhs_type_tag != TypeTag::Boolean)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
@@ -4467,9 +4467,9 @@ static const Opcode* handle_logical_or(CoreData* core, const Opcode* code, CTVal
 
 	const TypeId rhs_type = rhs->type;
 
-	const TypeTag lhs_type_tag = type_tag_from_id(core->interp.types, lhs_type);
+	const TypeTag lhs_type_tag = type_tag_from_id(core, lhs_type);
 
-	const TypeTag rhs_type_tag = type_tag_from_id(core->interp.types, rhs_type);
+	const TypeTag rhs_type_tag = type_tag_from_id(core, rhs_type);
 
 	if (lhs_type_tag != TypeTag::Boolean || rhs_type_tag != TypeTag::Boolean)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
@@ -4495,7 +4495,7 @@ static const Opcode* handle_logical_not(CoreData* core, const Opcode* code, CTVa
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag != TypeTag::Boolean)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
@@ -4566,7 +4566,7 @@ static const Opcode* handle_compare(CoreData* core, const Opcode* code, CTValue*
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&result);
 
-	const TypeId bool_type = type_create_simple(core->interp.types, TypeTag::Boolean);
+	const TypeId bool_type = type_create_simple(core, TypeTag::Boolean);
 
 	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(bool), true, bool_type });
 }
@@ -4579,11 +4579,11 @@ static const Opcode* handle_negate(CoreData* core, const Opcode* code, CTValue* 
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag == TypeTag::Integer)
 	{
-		const NumericType* const integer_type = type_attachment_from_id<NumericType>(core->interp.types, type);
+		const NumericType* const integer_type = type_attachment_from_id<NumericType>(core, type);
 
 		if (!integer_type->is_signed)
 			return record_interpreter_error(core, code, CompileError::NegateInvalidOperandType);
@@ -4632,7 +4632,7 @@ static const Opcode* handle_negate(CoreData* core, const Opcode* code, CTValue* 
 	}
 	else if (type_tag == TypeTag::Float)
 	{
-		const NumericType* const float_type = type_attachment_from_id<NumericType>(core->interp.types, type);
+		const NumericType* const float_type = type_attachment_from_id<NumericType>(core, type);
 
 		if (float_type->bits == 32)
 		{
@@ -4683,7 +4683,7 @@ static const Opcode* handle_unary_plus(CoreData* core, const Opcode* code, CTVal
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag != TypeTag::Integer && type_tag != TypeTag::Float && type_tag != TypeTag::CompInteger && type_tag != TypeTag::CompFloat)
 		return record_interpreter_error(core, code, CompileError::UnaryPlusInvalidOperandType);
@@ -4714,11 +4714,11 @@ static const Opcode* handle_array_type(CoreData* core, const Opcode* code, CTVal
 
 	const TypeId element_type = *value_as<TypeId>(element_type_value);
 
-	TypeId array_type = type_create_array(core->interp.types, TypeTag::Array, ArrayType{ element_count, some(element_type) });
+	TypeId array_type = type_create_array(core, TypeTag::Array, ArrayType{ element_count, some(element_type) });
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&array_type);
 
-	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
 	core->interp.values.pop_by(1);
 
@@ -4735,7 +4735,7 @@ static const Opcode* handle_reference_type(CoreData* core, const Opcode* code, C
 
 	CTValue* const referenced_type_value = core->interp.values.end() - 1;
 
-	ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, referenced_type_value->type) == TypeTag::Type);
+	ASSERT_OR_IGNORE(type_tag_from_id(core, referenced_type_value->type) == TypeTag::Type);
 
 	const TypeId referenced_type = *value_as<TypeId>(referenced_type_value);
 
@@ -4745,11 +4745,11 @@ static const Opcode* handle_reference_type(CoreData* core, const Opcode* code, C
 	attach.is_multi = flags.is_multi;
 	attach.is_mut = flags.is_mut;
 
-	TypeId reference_type = type_create_reference(core->interp.types, static_cast<TypeTag>(flags.tag), attach);
+	TypeId reference_type = type_create_reference(core, static_cast<TypeTag>(flags.tag), attach);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&reference_type);
 
-	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
 	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
@@ -4758,7 +4758,7 @@ static const Opcode* handle_undefined(CoreData* core, const Opcode* code, CTValu
 {
 	if (write_ctx == nullptr)
 	{
-		const TypeId undefined_type = type_create_simple(core->interp.types, TypeTag::Undefined);
+		const TypeId undefined_type = type_create_simple(core, TypeTag::Undefined);
 
 		return push_temporary_value(core, code, write_ctx, CTValue{ {}, 1, true, undefined_type });
 	}
@@ -4786,7 +4786,7 @@ static const Opcode* handle_value_integer(CoreData* core, const Opcode* code, CT
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-	const TypeId comp_integer_type = type_create_simple(core->interp.types, TypeTag::CompInteger);
+	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
 
 	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
 }
@@ -4799,7 +4799,7 @@ static const Opcode* handle_value_float(CoreData* core, const Opcode* code, CTVa
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-	const TypeId comp_float_type = type_create_simple(core->interp.types, TypeTag::CompFloat);
+	const TypeId comp_float_type = type_create_simple(core, TypeTag::CompFloat);
 
 	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompFloatValue), true, comp_float_type });
 }
@@ -4817,7 +4817,7 @@ static const Opcode* handle_value_string(CoreData* core, const Opcode* code, CTV
 
 static const Opcode* handle_value_void(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	const TypeId void_type = type_create_simple(core->interp.types, TypeTag::Void);
+	const TypeId void_type = type_create_simple(core, TypeTag::Void);
 
 	const MutRange<byte> bytes{core->interp.temporary_data.end(), static_cast<u64>(0) };
 
@@ -4832,7 +4832,7 @@ static const Opcode* handle_discard_void(CoreData* core, const Opcode* code, [[m
 
 	CTValue* const top = core->interp.values.end() - 1;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, top->type);
+	const TypeTag type_tag = type_tag_from_id(core, top->type);
 
 	if (type_tag != TypeTag::Void)
 		return record_interpreter_error(core, code, CompileError::ExpectedVoid);
@@ -4850,7 +4850,7 @@ static const Opcode* handle_check_top_void(CoreData* core, const Opcode* code, [
 
 	CTValue* const top = core->interp.values.end() - 1;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, top->type);
+	const TypeTag type_tag = type_tag_from_id(core, top->type);
 
 	if (type_tag != TypeTag::Void)
 		return record_interpreter_error(core, code, CompileError::ExpectedVoid);
@@ -4866,7 +4866,7 @@ static const Opcode* handle_check_write_ctx_void(CoreData* core, const Opcode* c
 
 	CTValue* const top_write_ctx = core->interp.write_ctxs.end() - 1;
 
-	const TypeTag type_tag = type_tag_from_id(core->interp.types, top_write_ctx->type);
+	const TypeTag type_tag = type_tag_from_id(core, top_write_ctx->type);
 
 	if (type_tag != TypeTag::Void)
 		return record_interpreter_error(core, code, CompileError::ExpectedVoid);
@@ -4913,7 +4913,7 @@ static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, Global
 
 		const bool is_mut = has_flag(node, AstFlag::Definition_IsMut);
 
-		type_add_file_member(core->interp.types, file_type, identifier_id, initializer_id, is_pub, is_mut);
+		type_add_file_member(core, file_type, identifier_id, initializer_id, is_pub, is_mut);
 
 		file_value_set_initializer(core, file_index, rank, initializer_id);
 
@@ -4952,7 +4952,7 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 
 	const AstFileData* const root_data = attachment_of<AstFileData>(ast);
 
-	const TypeId type = type_create_composite(core->interp.types, TypeTag::Composite, TypeDisposition::File, root_source_id, root_data->member_count, true);
+	const TypeId type = type_create_composite(core, TypeTag::Composite, TypeDisposition::File, root_source_id, root_data->member_count, true);
 
 	const GlobalFileIndex file_index = file_values_reserve(core, type, static_cast<u16>(root_data->member_count));
 
@@ -5182,9 +5182,9 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 
 
 
-static TypeId make_func_type_from_array(TypePool* types, TypeId return_type, u8 parameter_count, const BuiltinParamInfo* params) noexcept
+static TypeId make_func_type_from_array(CoreData* core, TypeId return_type, u8 parameter_count, const BuiltinParamInfo* params) noexcept
 {
-	const TypeId parameter_list_type = type_create_composite(types, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
+	const TypeId parameter_list_type = type_create_composite(core, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
 
 	for (u8 i = 0; i != parameter_count; ++i)
 	{
@@ -5198,11 +5198,11 @@ static TypeId make_func_type_from_array(TypePool* types, TypeId return_type, u8 
 		member_init.is_eval = params[i].is_comptime_known;
 		member_init.offset = 0;
 
-		if (!type_add_composite_member(types, parameter_list_type, member_init))
+		if (!type_add_composite_member(core, parameter_list_type, member_init))
 			ASSERT_UNREACHABLE;
 	}
 
-	type_seal_composite(types, parameter_list_type, 0, 0, 0);
+	type_seal_composite(core, parameter_list_type, 0, 0, 0);
 
 
 	SignatureType2 signature_type{};
@@ -5214,49 +5214,49 @@ static TypeId make_func_type_from_array(TypePool* types, TypeId return_type, u8 
 	signature_type.has_templated_return_type = false;
 	signature_type.parameter_count = parameter_count;
 
-	return type_create_signature(types, TypeTag::Func, signature_type);
+	return type_create_signature(core, TypeTag::Func, signature_type);
 }
 
 template<typename... Params>
-static TypeId make_func_type(TypePool* types, TypeId return_type, Params... params) noexcept
+static TypeId make_func_type(CoreData* core, TypeId return_type, Params... params) noexcept
 {
 	if constexpr (sizeof...(params) == 0)
 	{
-		return make_func_type_from_array(types, return_type, 0, nullptr);
+		return make_func_type_from_array(core, return_type, 0, nullptr);
 	}
 	else
 	{
 		const BuiltinParamInfo params_array[] = { params... };
 
-		return make_func_type_from_array(types, return_type, sizeof...(params), params_array);
+		return make_func_type_from_array(core, return_type, sizeof...(params), params_array);
 	}
 }
 
 static void init_builtin_infos(CoreData* core) noexcept
 {
-	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	const TypeId comp_integer_type = type_create_simple(core->interp.types, TypeTag::CompInteger);
+	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
 
-	const TypeId bool_type = type_create_simple(core->interp.types, TypeTag::Boolean);
+	const TypeId bool_type = type_create_simple(core, TypeTag::Boolean);
 
 	// TODO: This is currently unused and replaced by dummies, since
 	//       `type_metrics_from_id` does not yet support `TypeTag::Definition`.
-	// const TypeId definition_type = type_create_simple(core->interp.types, TypeTag::Definition);
+	// const TypeId definition_type = type_create_simple(core, TypeTag::Definition);
 
-	const TypeId type_builder_type = type_create_simple(core->interp.types, TypeTag::TypeBuilder);
+	const TypeId type_builder_type = type_create_simple(core, TypeTag::TypeBuilder);
 
-	const TypeId void_type = type_create_simple(core->interp.types, TypeTag::Void);
+	const TypeId void_type = type_create_simple(core, TypeTag::Void);
 
-	const TypeId type_info_type = type_create_simple(core->interp.types, TypeTag::TypeInfo);
+	const TypeId type_info_type = type_create_simple(core, TypeTag::TypeInfo);
 
-	const TypeId u8_type = type_create_numeric(core->interp.types, TypeTag::Integer, NumericType{ 8, false });
+	const TypeId u8_type = type_create_numeric(core, TypeTag::Integer, NumericType{ 8, false });
 
-	const TypeId u32_type = type_create_numeric(core->interp.types, TypeTag::Integer, NumericType{ 32, false });
+	const TypeId u32_type = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, false });
 
-	const TypeId u64_type = type_create_numeric(core->interp.types, TypeTag::Integer, NumericType{ 64, false });
+	const TypeId u64_type = type_create_numeric(core, TypeTag::Integer, NumericType{ 64, false });
 
-	const TypeId s64_type = type_create_numeric(core->interp.types, TypeTag::Integer, NumericType{ 64, true });
+	const TypeId s64_type = type_create_numeric(core, TypeTag::Integer, NumericType{ 64, true });
 
 	ReferenceType slice_of_u8_attach{};
 	slice_of_u8_attach.is_opt = false;
@@ -5264,13 +5264,13 @@ static void init_builtin_infos(CoreData* core) noexcept
 	slice_of_u8_attach.is_mut = false;
 	slice_of_u8_attach.referenced_type_id = u8_type;
 
-	const TypeId slice_of_u8_type = type_create_reference(core->interp.types, TypeTag::Slice, slice_of_u8_attach);
+	const TypeId slice_of_u8_type = type_create_reference(core, TypeTag::Slice, slice_of_u8_attach);
 
 
 
 	const OpcodeId integer_body = opcode_id_from_builtin(core, Builtin::Integer);
 
-	const TypeId integer_signature = make_func_type(core->interp.types, type_type,
+	const TypeId integer_signature = make_func_type(core, type_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("bits")), u8_type, true },
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("is_signed")), bool_type, true }
 	);
@@ -5281,7 +5281,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId float_body = opcode_id_from_builtin(core, Builtin::Float);
 
-	const TypeId float_signature = make_func_type(core->interp.types, type_type,
+	const TypeId float_signature = make_func_type(core, type_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("bits")), u8_type, true }
 	);
 
@@ -5291,7 +5291,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId type_body = opcode_id_from_builtin(core, Builtin::Type);
 
-	const TypeId type_signature = make_func_type(core->interp.types, type_type);
+	const TypeId type_signature = make_func_type(core, type_type);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::Type) - 1] = BuiltinInfo{ type_body, type_signature };
 
@@ -5299,7 +5299,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId definition_body = opcode_id_from_builtin(core, Builtin::Definition);
 
-	const TypeId definition_signature = make_func_type(core->interp.types, type_type);
+	const TypeId definition_signature = make_func_type(core, type_type);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::Definition) - 1] = BuiltinInfo{ definition_body, definition_signature };
 
@@ -5307,7 +5307,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId typeinfo_body = opcode_id_from_builtin(core, Builtin::TypeInfo);
 
-	const TypeId typeinfo_signature = make_func_type(core->interp.types, type_type);
+	const TypeId typeinfo_signature = make_func_type(core, type_type);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::TypeInfo) - 1] = BuiltinInfo{ typeinfo_body, typeinfo_signature };
 
@@ -5315,7 +5315,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId typeof_body = opcode_id_from_builtin(core, Builtin::Typeof);
 
-	const TypeId typeof_signature = make_func_type(core->interp.types, type_type,
+	const TypeId typeof_signature = make_func_type(core, type_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_info_type, true }
 	);
 
@@ -5325,7 +5325,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId returntypeof_body = opcode_id_from_builtin(core, Builtin::Returntypeof);
 
-	const TypeId returntypeof_signature = make_func_type(core->interp.types, type_type,
+	const TypeId returntypeof_signature = make_func_type(core, type_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_info_type, true }
 	);
 
@@ -5335,7 +5335,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId sizeof_body = opcode_id_from_builtin(core, Builtin::Sizeof);
 
-	const TypeId sizeof_signature = make_func_type(core->interp.types, comp_integer_type,
+	const TypeId sizeof_signature = make_func_type(core, comp_integer_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_type, true }
 	);
 
@@ -5345,7 +5345,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId alignof_body = opcode_id_from_builtin(core, Builtin::Alignof);
 
-	const TypeId alignof_signature = make_func_type(core->interp.types, comp_integer_type,
+	const TypeId alignof_signature = make_func_type(core, comp_integer_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_type, true }
 	);
 
@@ -5355,7 +5355,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId strideof_body = opcode_id_from_builtin(core, Builtin::Strideof);
 
-	const TypeId strideof_signature = make_func_type(core->interp.types, comp_integer_type,
+	const TypeId strideof_signature = make_func_type(core, comp_integer_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_type, true }
 	);
 
@@ -5365,7 +5365,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId offsetof_body = opcode_id_from_builtin(core, Builtin::Offsetof);
 
-	const TypeId offsetof_signature = make_func_type(core->interp.types, comp_integer_type);
+	const TypeId offsetof_signature = make_func_type(core, comp_integer_type);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::Offsetof) - 1] = BuiltinInfo{ offsetof_body, offsetof_signature };
 
@@ -5373,7 +5373,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId nameof_body = opcode_id_from_builtin(core, Builtin::Nameof);
 
-	const TypeId nameof_signature = make_func_type(core->interp.types, slice_of_u8_type,
+	const TypeId nameof_signature = make_func_type(core, slice_of_u8_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_info_type, true }
 	);
 
@@ -5383,7 +5383,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId import_body = opcode_id_from_builtin(core, Builtin::Import);
 
-	const TypeId import_signature = make_func_type(core->interp.types, type_type,
+	const TypeId import_signature = make_func_type(core, type_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("path")), slice_of_u8_type, true },
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("is_std")), bool_type, true },
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("from")), u32_type, true }
@@ -5395,7 +5395,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId create_type_builder_body = opcode_id_from_builtin(core, Builtin::CreateTypeBuilder);
 
-	const TypeId create_type_builder_signature = make_func_type(core->interp.types, type_builder_type,
+	const TypeId create_type_builder_signature = make_func_type(core, type_builder_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("source_id")), u32_type, true }
 	);
 
@@ -5409,7 +5409,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 	//       The current behaviour is due to `TypeTag::Definition` not being
 	//       supported by `type_metrics_from_id` yet, as its actual layout is
 	//       not defined yet.
-	const TypeId add_type_member_signature = make_func_type(core->interp.types, void_type,
+	const TypeId add_type_member_signature = make_func_type(core, void_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("builder")), type_builder_type, true },
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("definition")), type_type, true },
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("offset")), s64_type, true }
@@ -5421,7 +5421,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId complete_type_body = opcode_id_from_builtin(core, Builtin::CompleteType);
 
-	const TypeId complete_type_signature = make_func_type(core->interp.types, type_type,
+	const TypeId complete_type_signature = make_func_type(core, type_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("builder")), type_builder_type, true },
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("size")), u64_type, true },
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("align")), u64_type, true },
@@ -5434,7 +5434,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId source_id_body = opcode_id_from_builtin(core, Builtin::SourceId);
 
-	const TypeId source_id_signature = make_func_type(core->interp.types, u32_type);
+	const TypeId source_id_signature = make_func_type(core, u32_type);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::SourceId) - 1] = BuiltinInfo{ source_id_body, source_id_signature };
 
@@ -5442,7 +5442,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId caller_source_id_body = opcode_id_from_builtin(core, Builtin::CallerSourceId);
 
-	const TypeId caller_source_id_signature = make_func_type(core->interp.types, u32_type);
+	const TypeId caller_source_id_signature = make_func_type(core, u32_type);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::CallerSourceId) - 1] = BuiltinInfo{ caller_source_id_body, caller_source_id_signature };
 
@@ -5454,7 +5454,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 	//       The current behaviour is due to `TypeTag::Definition` not being
 	//       supported by `type_metrics_from_id` yet, as its actual layout is
 	//       not defined yet.
-	const TypeId definition_typeof_signature = make_func_type(core->interp.types, type_type,
+	const TypeId definition_typeof_signature = make_func_type(core, type_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("definition")), type_type, true }
 	);
 
@@ -5587,7 +5587,7 @@ bool evaluate_file_definition_by_name(CoreData* core, TypeId file_type, Identifi
 
 	OpcodeId member_initializer;
 
-	const MemberByNameRst rst = type_member_info_by_name(core->interp.types, file_type, name, &unused_member_info, &member_initializer);
+	const MemberByNameRst rst = type_member_info_by_name(core, file_type, name, &unused_member_info, &member_initializer);
 
 	if (rst == MemberByNameRst::Ok)
 	{
@@ -5611,7 +5611,7 @@ bool evaluate_file_definition_by_name(CoreData* core, TypeId file_type, Identifi
 
 bool evaluate_all_file_definitions(CoreData* core, TypeId file_type) noexcept
 {
-	MemberIterator it = members_of(core->interp.types, file_type);
+	MemberIterator it = members_of(core, file_type);
 
 	bool is_ok = true;
 

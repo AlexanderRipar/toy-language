@@ -15,11 +15,11 @@
 
 struct TypeStructure;
 
-static TypeStructure* structure_from_id(TypePool* types, TypeId id) noexcept;
+static TypeStructure* structure_from_id(CoreData* core, TypeId id) noexcept;
 
-static TypeStructure* make_structure(TypePool* types, TypeTag tag, Range<byte> attach, u64 reserve_size, SourceId distinct_source_id) noexcept;
+static TypeStructure* make_structure(CoreData* core, TypeTag tag, Range<byte> attach, u64 reserve_size, SourceId distinct_source_id) noexcept;
 
-static TypeId id_from_structure(const TypePool* types, const TypeStructure* structure) noexcept;
+static TypeId id_from_structure(const CoreData* core, const TypeStructure* structure) noexcept;
 
 
 
@@ -163,7 +163,7 @@ struct DeduplicatedTypeInit
 
 	SourceId distinct_source_id;
 
-	TypePool* types;
+	CoreData* core;
 };
 
 struct alignas(8) DeduplicatedTypeInfo
@@ -197,7 +197,7 @@ struct alignas(8) DeduplicatedTypeInfo
 		if (m_hash != key_hash)
 			return false;
 
-		const TypeStructure* const structure = structure_from_id(key.types, type_id);
+		const TypeStructure* const structure = structure_from_id(key.core, type_id);
 
 		ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) != TypeTag::INDIRECTION && static_cast<TypeTag>(structure->tag_bits) != TypeTag::Composite);
 
@@ -208,9 +208,9 @@ struct alignas(8) DeduplicatedTypeInfo
 
 	void init(DeduplicatedTypeInit key, u32 key_hash) noexcept
 	{
-		TypeStructure* const structure = make_structure(key.types, key.tag_and_attach.attachment(), key.tag_and_attach.as_byte_range(), key.tag_and_attach.count(), key.distinct_source_id);
+		TypeStructure* const structure = make_structure(key.core, key.tag_and_attach.attachment(), key.tag_and_attach.as_byte_range(), key.tag_and_attach.count(), key.distinct_source_id);
 
-		type_id = id_from_structure(key.types, structure);
+		type_id = id_from_structure(key.core, structure);
 		m_hash = key_hash;
 	}
 };
@@ -314,7 +314,7 @@ static CompositeMembers composite_members(const CompositeType* composite) noexce
 	return composite_members(const_cast<CompositeType*>(composite));
 }
 
-static void composite_realloc(TypePool* types, TypeStructure* indirect_structure, TypeStructure** inout_direct_structure, CompositeType** inout_composite, CompositeMembers* inout_members) noexcept
+static void composite_realloc(CoreData* core, TypeStructure* indirect_structure, TypeStructure** inout_direct_structure, CompositeType** inout_composite, CompositeMembers* inout_members) noexcept
 {
 	ASSERT_OR_IGNORE(!(*inout_composite)->is_fixed);
 
@@ -332,9 +332,9 @@ static void composite_realloc(TypePool* types, TypeStructure* indirect_structure
 
 	const Range<byte> to_copy = range::from_object_bytes(old_composite);
 
-	TypeStructure* const new_direct_structure = make_structure(types, TypeTag::Composite, to_copy, alloc_info.alloc_size, old_direct_structure->distinct_source_id);
+	TypeStructure* const new_direct_structure = make_structure(core, TypeTag::Composite, to_copy, alloc_info.alloc_size, old_direct_structure->distinct_source_id);
 
-	indirect_structure->indirection_type_id = id_from_structure(types, new_direct_structure);
+	indirect_structure->indirection_type_id = id_from_structure(core, new_direct_structure);
 
 	CompositeType* const new_composite = reinterpret_cast<CompositeType*>(new_direct_structure->attach);
 
@@ -354,7 +354,7 @@ static void composite_realloc(TypePool* types, TypeStructure* indirect_structure
 
 	*inout_members = new_members;
 
-	types->structures.dealloc(to_dealloc);
+	core->types.structures.dealloc(to_dealloc);
 }
 
 static void* member_at(const CompositeMembers* members, u32 index) noexcept
@@ -474,55 +474,55 @@ static bool fill_member_info(const CompositeType* composite, u16 rank, const voi
 	ASSERT_UNREACHABLE;
 }
 
-static TypeId id_from_structure(const TypePool* types, const TypeStructure* structure) noexcept
+static TypeId id_from_structure(const CoreData* core, const TypeStructure* structure) noexcept
 {
-	const TypeId id = static_cast<TypeId>(reinterpret_cast<const u64*>(structure) - reinterpret_cast<const u64*>(types->structures.begin()));
+	const TypeId id = static_cast<TypeId>(reinterpret_cast<const u64*>(structure) - reinterpret_cast<const u64*>(core->types.structures.begin()));
 
 	ASSERT_OR_IGNORE(id != TypeId::INVALID);
 
 	return id;
 }
 
-static TypeStructure* structure_from_id(TypePool* types, TypeId id) noexcept
+static TypeStructure* structure_from_id(CoreData* core, TypeId id) noexcept
 {
 	ASSERT_OR_IGNORE(id != TypeId::INVALID);
 
-	return reinterpret_cast<TypeStructure*>(reinterpret_cast<u64*>(types->structures.begin()) + static_cast<u32>(id));
+	return reinterpret_cast<TypeStructure*>(reinterpret_cast<u64*>(core->types.structures.begin()) + static_cast<u32>(id));
 }
 
-static TypeStructure* follow_indirection(TypePool* types, TypeStructure* indir) noexcept
+static TypeStructure* follow_indirection(CoreData* core, TypeStructure* indir) noexcept
 {
 	if (static_cast<TypeTag>(indir->tag_bits) != TypeTag::INDIRECTION)
 		return indir;
 
-	TypeStructure* const dir = structure_from_id(types, indir->indirection_type_id);
+	TypeStructure* const dir = structure_from_id(core, indir->indirection_type_id);
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(dir->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(dir->tag_bits) == TypeTag::CompositeLiteral);
 
 	return dir;
 }
 
-static const TypeStructure* follow_indirection(TypePool* types, const TypeStructure* indir) noexcept
+static const TypeStructure* follow_indirection(CoreData* core, const TypeStructure* indir) noexcept
 {
 	if (static_cast<TypeTag>(indir->tag_bits) != TypeTag::INDIRECTION)
 		return indir;
 
-	TypeStructure* const dir = structure_from_id(types, indir->indirection_type_id);
+	TypeStructure* const dir = structure_from_id(core, indir->indirection_type_id);
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(dir->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(dir->tag_bits) == TypeTag::CompositeLiteral);
 
 	return dir;
 }
 
-static TypeStructure* make_structure(TypePool* types, TypeTag tag, Range<byte> attach, u64 reserve_size, SourceId distinct_source_id) noexcept
+static TypeStructure* make_structure(CoreData* core, TypeTag tag, Range<byte> attach, u64 reserve_size, SourceId distinct_source_id) noexcept
 {
 	ASSERT_OR_IGNORE(reserve_size <= UINT16_MAX && reserve_size >= attach.count());
 
-	MutRange<byte> memory = types->structures.alloc(static_cast<u32>(sizeof(TypeStructure) + reserve_size));
+	MutRange<byte> memory = core->types.structures.alloc(static_cast<u32>(sizeof(TypeStructure) + reserve_size));
 
 	TypeStructure* const structure = reinterpret_cast<TypeStructure*>(memory.begin());
 	structure->tag_bits = static_cast<u32>(tag);
-	structure->holotype_id_bits = static_cast<u32>(id_from_structure(types, structure));
+	structure->holotype_id_bits = static_cast<u32>(id_from_structure(core, structure));
 	structure->distinct_source_id = distinct_source_id;
 
 	if (attach.count() != 0)
@@ -531,30 +531,30 @@ static TypeStructure* make_structure(TypePool* types, TypeTag tag, Range<byte> a
 	return structure;
 }
 
-static TypeStructure* make_indirection(TypePool* types, TypeId indirected_type_id) noexcept
+static TypeStructure* make_indirection(CoreData* core, TypeId indirected_type_id) noexcept
 {
 	ASSERT_OR_IGNORE(indirected_type_id != TypeId::INVALID);
 
-	MutRange<byte> memory = types->structures.alloc(sizeof(TypeStructure));
+	MutRange<byte> memory = core->types.structures.alloc(sizeof(TypeStructure));
 
 	TypeStructure* const structure = reinterpret_cast<TypeStructure*>(memory.begin());
 	structure->tag_bits = static_cast<u32>(TypeTag::INDIRECTION);
-	structure->holotype_id_bits = static_cast<u32>(id_from_structure(types, structure));
+	structure->holotype_id_bits = static_cast<u32>(id_from_structure(core, structure));
 	structure->indirection_type_id = indirected_type_id;
 
 	return structure;
 }
 
-static TypeId type_create_deduplicated(TypePool* types, TypeTag tag, Range<byte> attach_bytes) noexcept
+static TypeId type_create_deduplicated(CoreData* core, TypeTag tag, Range<byte> attach_bytes) noexcept
 {
 	DeduplicatedTypeInit init;
 	init.tag_and_attach = { attach_bytes, tag };
-	init.types = types;
+	init.core = core;
 	init.distinct_source_id = SourceId::INVALID;
 
 	const u32 hash = fnv1a_step(fnv1a(attach_bytes), static_cast<byte>(tag));
 
-	return types->dedup.value_from(init, hash)->type_id;
+	return core->types.dedup.value_from(init, hash)->type_id;
 }
 
 static void unify_holotype(TypeStructure* a, TypeStructure* b) noexcept
@@ -591,11 +591,11 @@ static void unify_holotype_with_indirection(TypeStructure* a, TypeStructure* ind
 	}
 }
 
-static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept
+static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, TypeId from_type_id, TypeId to_type_id) noexcept
 {
-	const TypeStructure* const from = structure_from_id(types, from_type_id);
+	const TypeStructure* const from = structure_from_id(core, from_type_id);
 
-	const TypeStructure* const to = structure_from_id(types, to_type_id);
+	const TypeStructure* const to = structure_from_id(core, to_type_id);
 
 	const TypeTag to_tag = static_cast<TypeTag>(to->tag_bits);
 
@@ -684,7 +684,7 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 
 		const u32 required_seen_qwords = to_attach->member_used / 64 + 63;
 
-		u64* seen_member_bits = static_cast<u64*>(types->scratch.reserve(required_seen_qwords));
+		u64* seen_member_bits = static_cast<u64*>(core->types.scratch.reserve(required_seen_qwords));
 
 		memset(seen_member_bits, 0, required_seen_qwords * sizeof(u64));
 
@@ -716,7 +716,7 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 
 				if (!find_member_by_name(&to_members, from_name, &found_rank, &raw_to_member))
 				{
-					types->scratch.pop_by(required_seen_qwords);
+					core->types.scratch.pop_by(required_seen_qwords);
 
 					return false;
 				}
@@ -733,9 +733,9 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 
 			const TypeId to_member_type_id = static_cast<TypeId>(to_member->type_and_flags.type_id_bits);
 
-			if (!type_can_implicitly_convert_from_to(types, from_member_type_id, to_member_type_id))
+			if (!type_can_implicitly_convert_from_to(core, from_member_type_id, to_member_type_id))
 			{
-				types->scratch.pop_by(required_seen_qwords);
+				core->types.scratch.pop_by(required_seen_qwords);
 
 				return false;
 			}
@@ -756,13 +756,13 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 
 			if (is_none(to_member->default_id))
 			{
-				types->scratch.pop_by(required_seen_qwords);
+				core->types.scratch.pop_by(required_seen_qwords);
 
 				return false;
 			}
 		}
 
-		types->scratch.pop_by(required_seen_qwords);
+		core->types.scratch.pop_by(required_seen_qwords);
 
 		return true;
 	}
@@ -784,7 +784,7 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(TypePool* types, 
 		if (is_none(from_attach->element_type))
 			return true;
 
-		return type_can_implicitly_convert_from_to(types, get(from_attach->element_type), get(to_attach->element_type));
+		return type_can_implicitly_convert_from_to(core, get(from_attach->element_type), get(to_attach->element_type));
 	}
 
 	case TypeTag::INVALID:
@@ -850,15 +850,15 @@ static void eq_state_add_delay_unify(EqualityState* state, TypeId a, TypeId b) n
 	state->delayed[state->delayed_used] = { a, b };
 }
 
-static void eq_state_unify_delayed(TypePool* types, EqualityState* state) noexcept
+static void eq_state_unify_delayed(CoreData* core, EqualityState* state) noexcept
 {
 	for (u16 i = 0; i != state->delayed_used; ++i)
 	{
 		const HolotypeInfo to_unify = state->delayed[i];
 
-		TypeStructure* a = structure_from_id(types, to_unify.a);
+		TypeStructure* a = structure_from_id(core, to_unify.a);
 
-		TypeStructure* b = structure_from_id(types, to_unify.b);
+		TypeStructure* b = structure_from_id(core, to_unify.b);
 
 		const TypeTag a_tag = static_cast<TypeTag>(a->tag_bits);
 
@@ -867,11 +867,11 @@ static void eq_state_unify_delayed(TypePool* types, EqualityState* state) noexce
 		if (a_tag == TypeTag::INDIRECTION || b_tag == TypeTag::INDIRECTION)
 		{
 			TypeStructure* const direct_a = a_tag == TypeTag::INDIRECTION
-				? structure_from_id(types, a->indirection_type_id)
+				? structure_from_id(core, a->indirection_type_id)
 				: a;
 
 			TypeStructure* const direct_b = b_tag == TypeTag::INDIRECTION
-				? structure_from_id(types, b->indirection_type_id)
+				? structure_from_id(core, b->indirection_type_id)
 				: b;
 
 			unify_holotype_with_indirection(direct_a, a, direct_b, b);
@@ -883,14 +883,14 @@ static void eq_state_unify_delayed(TypePool* types, EqualityState* state) noexce
 	}
 }
 
-static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId type_id_b, EqualityState* seen, bool treat_loop_as_maybe_equal) noexcept
+static TypeEq type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_id_b, EqualityState* seen, bool treat_loop_as_maybe_equal) noexcept
 {
 	if (type_id_a == type_id_b)
 		return TypeEq::Equal;
 
-	TypeStructure* const a = follow_indirection(types, structure_from_id(types, type_id_a));
+	TypeStructure* const a = follow_indirection(core, structure_from_id(core, type_id_a));
 
-	TypeStructure* const b = follow_indirection(types, structure_from_id(types, type_id_b));
+	TypeStructure* const b = follow_indirection(core, structure_from_id(core, type_id_b));
 
 	// This is assumed to be the common case, so we check for it as early as
 	// possible.
@@ -1015,7 +1015,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 
 			const TypeId b_member_type_id = static_cast<TypeId>(b_type_and_flags.type_id_bits);
 
-			const TypeEq member_result = type_is_equal_noloop(types, a_member_type_id, b_member_type_id, seen, false);
+			const TypeEq member_result = type_is_equal_noloop(core, a_member_type_id, b_member_type_id, seen, false);
 
 			if (member_result == TypeEq::Unequal)
 			{
@@ -1029,7 +1029,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 		}
 
 		if (result == TypeEq::Equal)
-			unify_holotype_with_indirection(a, structure_from_id(types, type_id_a), b, structure_from_id(types, type_id_b));
+			unify_holotype_with_indirection(a, structure_from_id(core, type_id_a), b, structure_from_id(core, type_id_b));
 		else if (result == TypeEq::MaybeEqual)
 			eq_state_add_delay_unify(seen, type_id_a, type_id_b);
 
@@ -1057,7 +1057,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 
 		const TypeId b_next = b_attach->referenced_type_id;
 
-		const TypeEq reference_result = type_is_equal_noloop(types, a_next, b_next, seen, true);
+		const TypeEq reference_result = type_is_equal_noloop(core, a_next, b_next, seen, true);
 
 		if (reference_result == TypeEq::Equal)
 			unify_holotype(a, b);
@@ -1101,7 +1101,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 		}
 		else
 		{
-			element_result = type_is_equal_noloop(types, get(a_next), get(b_next), seen, false);
+			element_result = type_is_equal_noloop(core, get(a_next), get(b_next), seen, false);
 		}
 
 		if (element_result == TypeEq::Equal)
@@ -1138,7 +1138,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 
 		const TypeId b_return_type_id = b_attach->return_type.type_id;
 
-		const TypeEq return_type_result = type_is_equal_noloop(types, a_return_type_id, b_return_type_id, seen, false);
+		const TypeEq return_type_result = type_is_equal_noloop(core, a_return_type_id, b_return_type_id, seen, false);
 
 		if (return_type_result == TypeEq::Unequal)
 		{
@@ -1151,7 +1151,7 @@ static TypeEq type_is_equal_noloop(TypePool* types, TypeId type_id_a, TypeId typ
 
 		const TypeId b_params_type_id = b_attach->parameter_list_type_id;
 
-		const TypeEq params_type_result = type_is_equal_noloop(types, a_params_type_id, b_params_type_id, seen, false);
+		const TypeEq params_type_result = type_is_equal_noloop(core, a_params_type_id, b_params_type_id, seen, false);
 
 		if (params_type_result == TypeEq::Unequal)
 		{
@@ -1245,37 +1245,37 @@ void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	// Reserve simple types for use with `type_create_simple`.
 	for (u8 ordinal = static_cast<u8>(TypeTag::Void); ordinal != static_cast<u8>(TypeTag::Undefined) + 1; ++ordinal)
-		(void) make_structure(types, static_cast<TypeTag>(ordinal), {}, 0, SourceId::INVALID);
+		(void) make_structure(core, static_cast<TypeTag>(ordinal), {}, 0, SourceId::INVALID);
 }
 
 
 
-TypeId type_create_simple([[maybe_unused]] TypePool* types, TypeTag tag) noexcept
+TypeId type_create_simple([[maybe_unused]] CoreData* core, TypeTag tag) noexcept
 {
 	ASSERT_OR_IGNORE(tag >= TypeTag::Void && tag <= TypeTag::Undefined);
 
 	const TypeId type_id = static_cast<TypeId>((static_cast<u32>(tag) - 1) * 2);
 
-	ASSERT_OR_IGNORE(type_tag_from_id(types, type_id) == tag);
+	ASSERT_OR_IGNORE(type_tag_from_id(core, type_id) == tag);
 
 	return type_id;
 }
 
-TypeId type_create_numeric(TypePool* types, TypeTag tag, NumericType attach) noexcept
+TypeId type_create_numeric(CoreData* core, TypeTag tag, NumericType attach) noexcept
 {
 	ASSERT_OR_IGNORE(tag == TypeTag::Integer || tag == TypeTag::Float);
 
-	return type_create_deduplicated(types, tag, range::from_object_bytes(&attach));
+	return type_create_deduplicated(core, tag, range::from_object_bytes(&attach));
 }
 
-TypeId type_create_reference(TypePool* types, TypeTag tag, ReferenceType attach) noexcept
+TypeId type_create_reference(CoreData* core, TypeTag tag, ReferenceType attach) noexcept
 {
 	ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray || tag == TypeTag::Variadic);
 
-	return type_create_deduplicated(types, tag, range::from_object_bytes(&attach));
+	return type_create_deduplicated(core, tag, range::from_object_bytes(&attach));
 }
 
-TypeId type_create_array(TypePool* types, TypeTag tag, ArrayType attach) noexcept
+TypeId type_create_array(CoreData* core, TypeTag tag, ArrayType attach) noexcept
 {
 	ASSERT_OR_IGNORE(tag == TypeTag::Array || tag == TypeTag::ArrayLiteral);
 
@@ -1283,17 +1283,17 @@ TypeId type_create_array(TypePool* types, TypeTag tag, ArrayType attach) noexcep
 	// intrinsic element type.
 	ASSERT_OR_IGNORE(is_some(attach.element_type) || (tag == TypeTag::ArrayLiteral && attach.element_count == 0));
 
-	return type_create_deduplicated(types, tag, range::from_object_bytes(&attach));
+	return type_create_deduplicated(core, tag, range::from_object_bytes(&attach));
 }
 
-TypeId type_create_signature(TypePool* types, TypeTag tag, SignatureType2 attach) noexcept
+TypeId type_create_signature(CoreData* core, TypeTag tag, SignatureType2 attach) noexcept
 {
 	ASSERT_OR_IGNORE(tag == TypeTag::Builtin || tag == TypeTag::Func);
 
-	return type_create_deduplicated(types, tag, range::from_object_bytes(&attach));
+	return type_create_deduplicated(core, tag, range::from_object_bytes(&attach));
 }
 
-TypeId type_create_composite(TypePool* types, TypeTag tag, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept
+TypeId type_create_composite(CoreData* core, TypeTag tag, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept
 {
 	ASSERT_OR_IGNORE(tag == TypeTag::Composite || tag == TypeTag::CompositeLiteral);
 
@@ -1311,29 +1311,29 @@ TypeId type_create_composite(TypePool* types, TypeTag tag, TypeDisposition dispo
 	composite.member_used = 0;
 	composite.member_capacity = alloc_info.member_capacity;
 
-	TypeStructure* const structure = make_structure(types, tag, range::from_object_bytes(&composite), alloc_info.alloc_size, distinct_source_id);
+	TypeStructure* const structure = make_structure(core, tag, range::from_object_bytes(&composite), alloc_info.alloc_size, distinct_source_id);
 
-	const TypeId structure_type_id = id_from_structure(types, structure);
+	const TypeId structure_type_id = id_from_structure(core, structure);
 
 	if (is_fixed_member_capacity)
 		return structure_type_id;
 
-	TypeStructure* const indirection = make_indirection(types, structure_type_id);
+	TypeStructure* const indirection = make_indirection(core, structure_type_id);
 
-	const TypeId indirection_type_id = id_from_structure(types, indirection);
+	const TypeId indirection_type_id = id_from_structure(core, indirection);
 
 	structure->holotype_id_bits = static_cast<u32>(indirection_type_id);
 
 	return indirection_type_id;
 }
 
-TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align, u64 stride) noexcept
+TypeId type_seal_composite(CoreData* core, TypeId type_id, u64 size, u32 align, u64 stride) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
 	ASSERT_OR_IGNORE(align <= UINT16_MAX);
 
-	TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
+	TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
@@ -1358,16 +1358,16 @@ TypeId type_seal_composite(TypePool* types, TypeId type_id, u64 size, u32 align,
 
 	composite->is_open = false;
 
-	return id_from_structure(types, structure);
+	return id_from_structure(core, structure);
 }
 
-bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInit init) noexcept
+bool type_add_composite_member(CoreData* core, TypeId type_id, MemberInit init) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	TypeStructure* const structure = structure_from_id(types, type_id);
+	TypeStructure* const structure = structure_from_id(core, type_id);
 
-	TypeStructure* direct_structure = follow_indirection(types, structure);
+	TypeStructure* direct_structure = follow_indirection(core, structure);
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::CompositeLiteral);
 
@@ -1383,7 +1383,7 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInit init)
 	CompositeMembers members = composite_members(composite);
 
 	if (composite->member_capacity == composite->member_used)
-		composite_realloc(types, structure, &direct_structure, &composite, &members);
+		composite_realloc(core, structure, &direct_structure, &composite, &members);
 
 	if (init.name != IdentifierId::INVALID)
 	{
@@ -1399,7 +1399,7 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInit init)
 	{
 		ASSERT_OR_IGNORE(init.offset == 0);
 
-		const TypeMetrics metrics = type_metrics_from_id(types, init.type_id);
+		const TypeMetrics metrics = type_metrics_from_id(core, init.type_id);
 
 		const u64 member_begin = next_multiple(composite->size, static_cast<u64>(metrics.align));
 
@@ -1455,13 +1455,13 @@ bool type_add_composite_member(TypePool* types, TypeId type_id, MemberInit init)
 	return true;
 }
 
-void type_add_file_member(TypePool* types, TypeId type_id, IdentifierId name, OpcodeId completion_opcode, bool is_pub, bool is_mut) noexcept
+void type_add_file_member(CoreData* core, TypeId type_id, IdentifierId name, OpcodeId completion_opcode, bool is_pub, bool is_mut) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && name != IdentifierId::INVALID && completion_opcode != OpcodeId::INVALID);
 
-	TypeStructure* const structure = structure_from_id(types, type_id);
+	TypeStructure* const structure = structure_from_id(core, type_id);
 
-	TypeStructure* direct_structure = follow_indirection(types, structure);
+	TypeStructure* direct_structure = follow_indirection(core, structure);
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::Composite);
 
@@ -1474,7 +1474,7 @@ void type_add_file_member(TypePool* types, TypeId type_id, IdentifierId name, Op
 	CompositeMembers members = composite_members(composite);
 
 	if (composite->member_capacity == composite->member_used)
-		composite_realloc(types, structure, &direct_structure, &composite, &members);
+		composite_realloc(core, structure, &direct_structure, &composite, &members);
 
 	members.names[composite->member_used] = name;
 
@@ -1489,13 +1489,13 @@ void type_add_file_member(TypePool* types, TypeId type_id, IdentifierId name, Op
 	composite->member_used += 1;
 }
 
-void type_add_templated_parameter_list_member(TypePool* types, TypeId type_id, IdentifierId name, OpcodeId completion_opcode, bool is_eval, bool is_mut) noexcept
+void type_add_templated_parameter_list_member(CoreData* core, TypeId type_id, IdentifierId name, OpcodeId completion_opcode, bool is_eval, bool is_mut) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && name != IdentifierId::INVALID);
 
-	TypeStructure* const structure = structure_from_id(types, type_id);
+	TypeStructure* const structure = structure_from_id(core, type_id);
 
-	TypeStructure* direct_structure = follow_indirection(types, structure);
+	TypeStructure* direct_structure = follow_indirection(core, structure);
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::Composite);
 
@@ -1508,7 +1508,7 @@ void type_add_templated_parameter_list_member(TypePool* types, TypeId type_id, I
 	CompositeMembers members = composite_members(composite);
 
 	if (composite->member_capacity == composite->member_used)
-		composite_realloc(types, structure, &direct_structure, &composite, &members);
+		composite_realloc(core, structure, &direct_structure, &composite, &members);
 
 	members.names[composite->member_used] = name;
 
@@ -1524,13 +1524,13 @@ void type_add_templated_parameter_list_member(TypePool* types, TypeId type_id, I
 	composite->member_used += 1;
 }
 
-void type_set_file_member_info(TypePool* types, TypeId type_id, u16 rank, TypeId member_type_id, ForeverValueId value_id) noexcept
+void type_set_file_member_info(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, ForeverValueId value_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
 	ASSERT_OR_IGNORE(member_type_id != TypeId::INVALID);
 
-	TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
+	TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite);
 
@@ -1551,13 +1551,13 @@ void type_set_file_member_info(TypePool* types, TypeId type_id, u16 rank, TypeId
 	member->value_id = value_id;
 }
 
-void type_set_templated_parameter_list_member_info(TypePool* types, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> member_default_id) noexcept
+void type_set_templated_parameter_list_member_info(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> member_default_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
 	ASSERT_OR_IGNORE(member_type_id != TypeId::INVALID);
 
-	TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
+	TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
@@ -1569,7 +1569,7 @@ void type_set_templated_parameter_list_member_info(TypePool* types, TypeId type_
 
 	const CompositeMembers members = composite_members(composite);
 
-	const TypeMetrics metrics = type_metrics_from_id(types, member_type_id);
+	const TypeMetrics metrics = type_metrics_from_id(core, member_type_id);
 
 	const u64 member_offset = (composite->size + metrics.align - 1) & ~static_cast<u64>(metrics.align - 1);
 
@@ -1590,11 +1590,11 @@ void type_set_templated_parameter_list_member_info(TypePool* types, TypeId type_
 		composite->align_log2 = align_log2;
 }
 
-TypeId type_copy_composite(TypePool* types, TypeId type_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept
+TypeId type_copy_composite(CoreData* core, TypeId type_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* const old_structure = follow_indirection(types, structure_from_id(types, type_id));
+	const TypeStructure* const old_structure = follow_indirection(core, structure_from_id(core, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(old_structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(old_structure->tag_bits) == TypeTag::CompositeLiteral);
 
@@ -1611,7 +1611,7 @@ TypeId type_copy_composite(TypePool* types, TypeId type_id, u32 initial_member_c
 
 	const Range<byte> to_copy{ reinterpret_cast<const byte*>(old_composite), sizeof(CompositeType) + old_composite->member_used * sizeof(IdentifierId) };
 
-	TypeStructure* const new_structure = make_structure(types, TypeTag::Composite, to_copy, alloc_info.alloc_size, old_structure->distinct_source_id);
+	TypeStructure* const new_structure = make_structure(core, TypeTag::Composite, to_copy, alloc_info.alloc_size, old_structure->distinct_source_id);
 
 	CompositeType* const new_composite = reinterpret_cast<CompositeType*>(new_structure->attach);
 
@@ -1624,23 +1624,23 @@ TypeId type_copy_composite(TypePool* types, TypeId type_id, u32 initial_member_c
 
 	memcpy(new_members.members, old_members.members, old_members.count * old_members.member_stride);
 
-	const TypeId new_structure_type_id = id_from_structure(types, new_structure);
+	const TypeId new_structure_type_id = id_from_structure(core, new_structure);
 
 	if (is_fixed_member_capacity || !old_composite->is_open)
 		return new_structure_type_id;
 
-	TypeStructure* const indirection = make_indirection(types, new_structure_type_id);
+	TypeStructure* const indirection = make_indirection(core, new_structure_type_id);
 
-	const TypeId indirection_type_id = id_from_structure(types, indirection);
+	const TypeId indirection_type_id = id_from_structure(core, indirection);
 
 	return indirection_type_id;
 }
 
-u32 type_get_composite_member_count(TypePool* types, TypeId type_id) noexcept
+u32 type_get_composite_member_count(CoreData* core, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
+	TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
@@ -1651,11 +1651,11 @@ u32 type_get_composite_member_count(TypePool* types, TypeId type_id) noexcept
 	return composite->member_used;
 }
 
-void type_discard(TypePool* types, TypeId type_id) noexcept
+void type_discard(CoreData* core, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
+	TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
@@ -1663,28 +1663,28 @@ void type_discard(TypePool* types, TypeId type_id) noexcept
 
 	const CompositeTypeAllocInfo dealloc_info = composite_type_alloc_info(composite->disposition, composite->member_capacity);
 
-	types->structures.dealloc({ reinterpret_cast<byte*>(structure), dealloc_info.alloc_size + sizeof(TypeStructure) });
+	core->types.structures.dealloc({ reinterpret_cast<byte*>(structure), dealloc_info.alloc_size + sizeof(TypeStructure) });
 }
 
 
 
-TypeRelation type_relation(TypePool* types, TypeId first_type_id, TypeId second_type_id) noexcept
+TypeRelation type_relation(CoreData* core, TypeId first_type_id, TypeId second_type_id) noexcept
 {
 	ASSERT_OR_IGNORE(first_type_id != TypeId::INVALID && second_type_id != TypeId::INVALID);
 
-	if (type_is_equal(types, first_type_id, second_type_id))
+	if (type_is_equal(core, first_type_id, second_type_id))
 		return TypeRelation::Equal;
 
-	if (type_can_implicitly_convert_from_to_assume_unequal(types, first_type_id, second_type_id))
+	if (type_can_implicitly_convert_from_to_assume_unequal(core, first_type_id, second_type_id))
 		return TypeRelation::FirstConvertsToSecond;
 
-	if (type_can_implicitly_convert_from_to_assume_unequal(types, second_type_id, first_type_id))
+	if (type_can_implicitly_convert_from_to_assume_unequal(core, second_type_id, first_type_id))
 		return TypeRelation::SecondConvertsToFirst;
 
 	return TypeRelation::Unrelated;
 }
 
-bool type_is_equal(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
+bool type_is_equal(CoreData* core, TypeId type_id_a, TypeId type_id_b) noexcept
 {
 	ASSERT_OR_IGNORE(type_id_a != TypeId::INVALID && type_id_b != TypeId::INVALID);
 
@@ -1697,38 +1697,38 @@ bool type_is_equal(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
 	EqualityState seen;
 	eq_state_init(&seen);
 
-	const TypeEq result = type_is_equal_noloop(types, type_id_a, type_id_b, &seen, false);
+	const TypeEq result = type_is_equal_noloop(core, type_id_a, type_id_b, &seen, false);
 
 	if (result == TypeEq::Unequal)
 		return false;
 
 	if (result == TypeEq::MaybeEqual)
-		eq_state_unify_delayed(types, &seen);
+		eq_state_unify_delayed(core, &seen);
 
 	return true;
 }
 
-bool type_can_implicitly_convert_from_to(TypePool* types, TypeId from_type_id, TypeId to_type_id) noexcept
+bool type_can_implicitly_convert_from_to(CoreData* core, TypeId from_type_id, TypeId to_type_id) noexcept
 {
 	ASSERT_OR_IGNORE(from_type_id != TypeId::INVALID && to_type_id != TypeId::INVALID);
 
-	if (type_is_equal(types, from_type_id, to_type_id))
+	if (type_is_equal(core, from_type_id, to_type_id))
 		return true;
 
-	return type_can_implicitly_convert_from_to_assume_unequal(types, from_type_id, to_type_id);
+	return type_can_implicitly_convert_from_to_assume_unequal(core, from_type_id, to_type_id);
 }
 
-Maybe<TypeId> type_unify(TypePool* types, TypeId type_id_a, TypeId type_id_b) noexcept
+Maybe<TypeId> type_unify(CoreData* core, TypeId type_id_a, TypeId type_id_b) noexcept
 {
 	ASSERT_OR_IGNORE(type_id_a != TypeId::INVALID && type_id_b != TypeId::INVALID);
 
-	if (type_is_equal(types, type_id_a, type_id_b))
+	if (type_is_equal(core, type_id_a, type_id_b))
 		return some(type_id_a < type_id_b ? type_id_a : type_id_b);
 
-	if (type_can_implicitly_convert_from_to_assume_unequal(types, type_id_a, type_id_b))
+	if (type_can_implicitly_convert_from_to_assume_unequal(core, type_id_a, type_id_b))
 		return some(type_id_b);
 
-	if (type_can_implicitly_convert_from_to_assume_unequal(types, type_id_b, type_id_a))
+	if (type_can_implicitly_convert_from_to_assume_unequal(core, type_id_b, type_id_a))
 		return some(type_id_a);
 
 	return none<TypeId>();
@@ -1736,22 +1736,22 @@ Maybe<TypeId> type_unify(TypePool* types, TypeId type_id_a, TypeId type_id_b) no
 
 
 
-TypeDisposition type_disposition_from_id(TypePool* types, TypeId type_id) noexcept
+TypeDisposition type_disposition_from_id(CoreData* core, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
+	const TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
 	return composite->disposition;
 }
 
-bool type_has_metrics(TypePool* types, TypeId type_id) noexcept
+bool type_has_metrics(CoreData* core, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* structure = follow_indirection(types, structure_from_id(types, type_id));
+	const TypeStructure* structure = follow_indirection(core, structure_from_id(core, type_id));
 
 	if (static_cast<TypeTag>(structure->tag_bits) != TypeTag::Composite)
 		return true;
@@ -1761,11 +1761,11 @@ bool type_has_metrics(TypePool* types, TypeId type_id) noexcept
 	return composite->disposition != TypeDisposition::User || !composite->is_open;
 }
 
-TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
+TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
+	const TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
 
 	switch (static_cast<TypeTag>(structure->tag_bits))
 	{
@@ -1837,7 +1837,7 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 		if (array->element_count == 0)
 			return { 0, 0, 1 };
 
-		const TypeMetrics element_metrics = type_metrics_from_id(types, get(array->element_type));
+		const TypeMetrics element_metrics = type_metrics_from_id(core, get(array->element_type));
 
 		return { element_metrics.stride * (array->element_count - 1) + element_metrics.size, (element_metrics.stride * array->element_count), element_metrics.align };
 	}
@@ -1871,11 +1871,11 @@ TypeMetrics type_metrics_from_id(TypePool* types, TypeId type_id) noexcept
 	ASSERT_UNREACHABLE;
 }
 
-TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept
+TypeTag type_tag_from_id(CoreData* core, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* const structure = structure_from_id(types, type_id);
+	const TypeStructure* const structure = structure_from_id(core, type_id);
 
 	if (static_cast<TypeTag>(structure->tag_bits) == TypeTag::INDIRECTION)
 		return TypeTag::Composite;
@@ -1883,11 +1883,11 @@ TypeTag type_tag_from_id(TypePool* types, TypeId type_id) noexcept
 	return static_cast<TypeTag>(structure->tag_bits);
 }
 
-bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberInfo* out_info, OpcodeId* out_completion_id)
+bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberInfo* out_info, OpcodeId* out_completion_id)
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
+	const TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
@@ -1900,11 +1900,11 @@ bool type_member_info_by_rank(TypePool* types, TypeId type_id, u16 rank, MemberI
 	return fill_member_info(composite, rank, member_at(&members, rank), out_info, out_completion_id);
 }
 
-MemberByNameRst type_member_info_by_name(TypePool* types, TypeId type_id, IdentifierId name, MemberInfo* out_info, OpcodeId* out_completion_id) noexcept
+MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, IdentifierId name, MemberInfo* out_info, OpcodeId* out_completion_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
+	const TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
@@ -1922,11 +1922,11 @@ MemberByNameRst type_member_info_by_name(TypePool* types, TypeId type_id, Identi
 	return fill_member_info(composite, rank, member, out_info, out_completion_id) ? MemberByNameRst::Ok : MemberByNameRst::Incomplete;
 }
 
-IdentifierId type_member_name_by_rank(TypePool* types, TypeId type_id, u16 rank) noexcept
+IdentifierId type_member_name_by_rank(CoreData* core, TypeId type_id, u16 rank) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
+	const TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
@@ -1939,11 +1939,11 @@ IdentifierId type_member_name_by_rank(TypePool* types, TypeId type_id, u16 rank)
 	return members.names[rank];
 }
 
-const void* type_attachment_from_id_raw(TypePool* types, TypeId type_id) noexcept
+const void* type_attachment_from_id_raw(CoreData* core, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* const structure = follow_indirection(types, structure_from_id(types, type_id));
+	const TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
 
 	return structure->attach;
 }
@@ -1990,13 +1990,13 @@ const char8* tag_name(TypeTag tag) noexcept
 
 
 
-MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
+MemberIterator members_of(CoreData* core, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* const structure = structure_from_id(types, type_id);
+	const TypeStructure* const structure = structure_from_id(core, type_id);
 
-	const TypeStructure* const direct_structure = follow_indirection(types, structure);
+	const TypeStructure* const direct_structure = follow_indirection(core, structure);
 
 	ASSERT_OR_IGNORE(static_cast<TypeTag>(direct_structure->tag_bits) == TypeTag::Composite || static_cast<TypeTag>(structure->tag_bits) == TypeTag::CompositeLiteral);
 
@@ -2008,7 +2008,7 @@ MemberIterator members_of(TypePool* types, TypeId type_id) noexcept
 	it.structure = composite->member_used == 0 ? nullptr : composite->is_fixed ? direct_structure : structure;
 	it.names = members.names;
 	it.members = members.members;
-	it.types = types;
+	it.core = core;
 	it.member_stride = members.member_stride;
 	it.is_indirect = !composite->is_fixed;
 	it.rank = 0;
@@ -2020,7 +2020,7 @@ bool next(MemberIterator* it, MemberInfo* out_info, OpcodeId* out_completion_id)
 {
 	ASSERT_OR_IGNORE(has_next(it));
 
-	const TypeStructure* const structure = follow_indirection(it->types, static_cast<const TypeStructure*>(it->structure));
+	const TypeStructure* const structure = follow_indirection(it->core, static_cast<const TypeStructure*>(it->structure));
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
