@@ -3,6 +3,7 @@
 #include "../infra/types.hpp"
 #include "../infra/panic.hpp"
 #include "../infra/range.hpp"
+#include "../diag/diag.hpp"
 
 static minos::FileHandle get_log_file(bool enable, Range<char8> filepath, minos::StdFileName fallback) noexcept
 {
@@ -29,7 +30,7 @@ CoreData create_core_data(const Config* config) noexcept
 	const minos::FileHandle config_log_file = get_log_file(config->logging.config.enable, config->logging.config.log_filepath, minos::StdFileName::StdOut);
 
 	if (config_log_file.m_rep != nullptr)
-		print_config(config_log_file, config);
+		diag::print_config(config_log_file, config);
 
 	const minos::FileHandle imported_asts_log_file = get_log_file(config->logging.imports.asts.enable, config->logging.imports.asts.log_filepath, minos::StdFileName::StdOut);
 

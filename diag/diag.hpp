@@ -8,6 +8,10 @@ namespace diag
 {
 	s64 print_ast(PrintSink sink, IdentifierPool* identifiers, AstNode* root) noexcept;
 
+	void print_config(PrintSink sink, const Config* config) noexcept;
+
+	void print_config_help(PrintSink sink, u32 depth = 0) noexcept;
+
 	s64 print_opcodes(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept;
 
 	s64 print_type(PrintSink sink, IdentifierPool* identifiers, TypePool* types, TypeId type_id) noexcept;
@@ -37,6 +41,18 @@ namespace diag
 	s64 print_ast(Sink sink, IdentifierPool* identifiers, AstNode* root) noexcept
 	{
 		return print_ast(print_make_sink(sink), identifiers, root);
+	}
+
+	template<typename Sink>
+	void print_config(Sink sink, const Config* config) noexcept
+	{
+		print_config(print_make_sink(sink), config);
+	}
+
+	template<typename Sink>
+	void print_config_help(Sink sink, u32 depth = 0) noexcept
+	{
+		print_config_help(print_make_sink(sink), depth);
 	}
 
 	template<typename Sink>

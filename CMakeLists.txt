@@ -49,6 +49,7 @@ set(CORE_SOURCES
 set(DIAG_SOURCES
 	diag/diag.hpp
 	diag/print_ast.cpp
+	diag/print_config.cpp
 	diag/print_opcodes.cpp
 	diag/print_type.cpp
 )

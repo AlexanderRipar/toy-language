@@ -197,28 +197,6 @@ struct Config
 
 const TreeSchemaNode* config_schema() noexcept;
 
-// Prints the values in the given `Config` to `out` in a readable, JSON-like
-// format.
-void print_config(PrintSink sink, const Config* config) noexcept;
-
-template<typename Sink>
-void print_config(Sink sink, const Config* config) noexcept
-{
-	print_config(print_make_sink(sink), config);
-}
-
-// Prints help and explanations for the supported config parameters to the
-// standard error stream. Only parameters that are nested less than `depth` are
-// included in the output. If `depth` is set to `0`, all parameters are
-// printed, regardless of depth.
-void print_config_help(PrintSink sink, u32 depth = 0) noexcept;
-
-template<typename Sink>
-void print_config_help(Sink sink, u32 depth = 0) noexcept
-{
-	print_config_help(print_make_sink(sink), depth);
-}
-
 
 
 
