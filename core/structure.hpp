@@ -220,7 +220,7 @@ struct Lexeme
 	#pragma warning(push)
 	#pragma warning(disable : 4324) // structure was padded due to alignment specifier
 #endif
-struct Lexer
+struct Parser
 {
 	const char8* curr;
 
@@ -245,11 +245,6 @@ struct Lexer
 #ifdef COMPILER_MSVC
 	#pragma warning(pop)
 #endif
-
-struct Parser
-{
-	Lexer lexer;
-};
 
 
 

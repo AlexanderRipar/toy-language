@@ -461,23 +461,23 @@ static u8 hex_char_value(char8 c) noexcept
 
 NORETURN static void parse_error_fatal(CoreData* core, SourceId source_id, CompileError error) noexcept
 {
-	if (!core->parser.lexer.suppress_errors)
+	if (!core->parser.suppress_errors)
 		(void) record_error(core, source_id, error);
 
-	longjmp(core->parser.lexer.error_jump_buffer, 1);
+	longjmp(core->parser.error_jump_buffer, 1);
 }
 
 static void parse_error_continuable(CoreData* core, SourceId source_id, CompileError error) noexcept
 {
-	if (!core->parser.lexer.suppress_errors)
+	if (!core->parser.suppress_errors)
 		(void) record_error(core, source_id, error);
 
-	core->parser.lexer.has_errors = true;
+	core->parser.has_errors = true;
 }
 
 static void skip_block_comment(CoreData* core) noexcept
 {
-	const char8* curr = core->parser.lexer.curr;
+	const char8* curr = core->parser.curr;
 
 	curr += 2;
 
@@ -515,9 +515,9 @@ static void skip_block_comment(CoreData* core) noexcept
 		}
 		else if (c == '\0')
 		{
-			const CompileError error = core->parser.lexer.curr == core->parser.lexer.end ? CompileError::LexCommentMismatchedBegin : CompileError::LexNullCharacter;
+			const CompileError error = core->parser.curr == core->parser.end ? CompileError::LexCommentMismatchedBegin : CompileError::LexNullCharacter;
 
-			parse_error_fatal(core, static_cast<SourceId>(core->parser.lexer.source_id_base + static_cast<u32>(curr - core->parser.lexer.curr)), error);
+			parse_error_fatal(core, static_cast<SourceId>(core->parser.source_id_base + static_cast<u32>(curr - core->parser.curr)), error);
 		}
 		else
 		{
@@ -525,12 +525,12 @@ static void skip_block_comment(CoreData* core) noexcept
 		}
 	}
 
-	core->parser.lexer.curr = curr;
+	core->parser.curr = curr;
 }
 
 static void skip_whitespace(CoreData* core) noexcept
 {
-	const char8* curr = core->parser.lexer.curr;
+	const char8* curr = core->parser.curr;
 
 	while (true)
 	{
@@ -548,11 +548,11 @@ static void skip_whitespace(CoreData* core) noexcept
 			}
 			else if (curr[1] == '*')
 			{
-				core->parser.lexer.curr = curr;
+				core->parser.curr = curr;
 
 				skip_block_comment(core);
 
-				curr = core->parser.lexer.curr;
+				curr = core->parser.curr;
 			}
 			else
 			{
@@ -565,19 +565,19 @@ static void skip_whitespace(CoreData* core) noexcept
 		}
 	}
 
-	core->parser.lexer.curr = curr;
+	core->parser.curr = curr;
 }
 
 static RawLexeme scan_identifier_token(CoreData* core, bool is_builtin) noexcept
 {
-	const char8* curr = core->parser.lexer.curr;
+	const char8* curr = core->parser.curr;
 
 	const char8* const token_begin = curr - 1;
 
 	while (is_identifier_continuation_char(*curr))
 		curr += 1;
 
-	core->parser.lexer.curr = curr;
+	core->parser.curr = curr;
 
 	const Range<char8> identifier_bytes{ token_begin, curr };
 
@@ -590,7 +590,7 @@ static RawLexeme scan_identifier_token(CoreData* core, bool is_builtin) noexcept
 		const Builtin builtin = static_cast<Builtin>(identifier_attachment);
 
 		if (builtin == Builtin::INVALID)
-			parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexBuiltinUnknown);
+			parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexBuiltinUnknown);
 
 		return { Token::Builtin, builtin };
 	}
@@ -604,7 +604,7 @@ static RawLexeme scan_identifier_token(CoreData* core, bool is_builtin) noexcept
 
 static RawLexeme scan_number_token_with_base(CoreData* core, char8 base) noexcept
 {
-	const char8* curr = core->parser.lexer.curr;
+	const char8* curr = core->parser.curr;
 
 	const char8* const token_begin = curr;
 
@@ -648,19 +648,19 @@ static RawLexeme scan_number_token_with_base(CoreData* core, char8 base) noexcep
 	}
 
 	if (curr == token_begin + 1)
-		parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexNumberWithBaseMissingDigits);
+		parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexNumberWithBaseMissingDigits);
 
 	if (is_identifier_continuation_char(*curr))
-		parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexNumberUnexpectedCharacterAfterInteger);
+		parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexNumberUnexpectedCharacterAfterInteger);
 
-	core->parser.lexer.curr = curr;
+	core->parser.curr = curr;
 
 	return { Token::LitInteger, integer_value };
 }
 
 static u32 scan_utf8_char_surrogates(CoreData* core, u32 leader_value, u32 surrogate_count) noexcept
 {
-	const char8* curr = core->parser.lexer.curr;
+	const char8* curr = core->parser.curr;
 
 	u32 codepoint = leader_value;
 
@@ -669,23 +669,23 @@ static u32 scan_utf8_char_surrogates(CoreData* core, u32 leader_value, u32 surro
 		const char8 surrogate = curr[i + 1];
 
 		if ((surrogate & 0xC0) != 0x80)
-			parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexCharacterBadSurrogateCodeUnit);
+			parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexCharacterBadSurrogateCodeUnit);
 
 		codepoint |= (surrogate & 0x3F) << (6 * (surrogate_count - i - 1));
 	}
 
-	core->parser.lexer.curr += surrogate_count + 1;
+	core->parser.curr += surrogate_count + 1;
 
 	return codepoint;
 }
 
 static u32 scan_utf8_char(CoreData* core) noexcept
 {
-	const char8 first = *core->parser.lexer.curr;
+	const char8 first = *core->parser.curr;
 
 	if ((first & 0x80) == 0)
 	{
-		core->parser.lexer.curr += 1;
+		core->parser.curr += 1;
 
 		return first;
 	}
@@ -704,13 +704,13 @@ static u32 scan_utf8_char(CoreData* core) noexcept
 	}
 	else
 	{
-		parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexCharacterBadLeadCodeUnit);
+		parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexCharacterBadLeadCodeUnit);
 	}
 }
 
 static u32 scan_escape_char(CoreData* core) noexcept
 {
-	const char8* curr = core->parser.lexer.curr;
+	const char8* curr = core->parser.curr;
 
 	u32 codepoint = 0;
 
@@ -723,12 +723,12 @@ static u32 scan_escape_char(CoreData* core) noexcept
 		const u8 hi = hex_char_value(curr[2]);
 
 		if (hi == INVALID_HEX_CHAR_VALUE)
-			parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexCharacterEscapeSequenceLowerXBadChar);
+			parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexCharacterEscapeSequenceLowerXBadChar);
 
 		const u8 lo = hex_char_value(curr[3]);
 
 		if (lo == INVALID_HEX_CHAR_VALUE)
-			parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexCharacterEscapeSequenceLowerXBadChar);
+			parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexCharacterEscapeSequenceLowerXBadChar);
 
 		curr += 2;
 
@@ -746,13 +746,13 @@ static u32 scan_escape_char(CoreData* core) noexcept
 			const u8 char_value = hex_char_value(curr[i + 2]);
 
 			if (char_value == INVALID_HEX_CHAR_VALUE)
-				parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexCharacterEscapeSequenceUpperXInvalidChar);
+				parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexCharacterEscapeSequenceUpperXInvalidChar);
 
 			codepoint = codepoint * 16 + char_value;
 		}
 
 		if (codepoint > 0x10FFFF)
-			parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexCharacterEscapeSequenceUpperXCodepointTooLarge);
+			parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexCharacterEscapeSequenceUpperXCodepointTooLarge);
 
 		curr += 6;
 
@@ -766,7 +766,7 @@ static u32 scan_escape_char(CoreData* core) noexcept
 			const char8 c = curr[i + 2];
 
 			if (c < '0' || c > '9')
-				parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexCharacterEscapeSequenceUInvalidChar);
+				parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexCharacterEscapeSequenceUInvalidChar);
 
 			codepoint = codepoint * 10 + c - '0';
 		}
@@ -815,17 +815,17 @@ static u32 scan_escape_char(CoreData* core) noexcept
 		break;
 
 	default:
-		parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexCharacterEscapeSequenceUnknown);
+		parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexCharacterEscapeSequenceUnknown);
 	}
 
-	core->parser.lexer.curr = curr + 2;
+	core->parser.curr = curr + 2;
 
 	return codepoint;
 }
 
 static RawLexeme scan_number_token(CoreData* core, char8 first) noexcept
 {
-	const char8* curr = core->parser.lexer.curr;
+	const char8* curr = core->parser.curr;
 
 	const char8* const token_begin = curr - 1;
 
@@ -843,7 +843,7 @@ static RawLexeme scan_number_token(CoreData* core, char8 first) noexcept
 		curr += 1;
 
 		if (!is_numeric_char(*curr))
-			parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexNumberUnexpectedCharacterAfterDecimalPoint);
+			parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexNumberUnexpectedCharacterAfterDecimalPoint);
 
 		while (is_numeric_char(*curr))
 			curr += 1;
@@ -860,7 +860,7 @@ static RawLexeme scan_number_token(CoreData* core, char8 first) noexcept
 		}
 
 		if (is_alphabetic_char(*curr) || *curr == '_')
-			parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexNumberUnexpectedCharacterAfterFloat);
+			parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexNumberUnexpectedCharacterAfterFloat);
 
 		char8* strtod_end;
 
@@ -871,18 +871,18 @@ static RawLexeme scan_number_token(CoreData* core, char8 first) noexcept
 		ASSERT_OR_IGNORE(strtod_end == curr);
 
 		if (errno == ERANGE)
-			parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexNumberFloatTooLarge);
+			parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexNumberFloatTooLarge);
 
-		core->parser.lexer.curr = curr;
+		core->parser.curr = curr;
 
 		return { Token::LitFloat, comp_float_from_f64(float_value) };
 	}
 	else
 	{
 		if (is_alphabetic_char(*curr) || *curr == '_')
-			parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexNumberUnexpectedCharacterAfterFloat);
+			parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexNumberUnexpectedCharacterAfterFloat);
 
-		core->parser.lexer.curr = curr;
+		core->parser.curr = curr;
 
 		return { Token::LitInteger, integer_value };
 	}
@@ -892,15 +892,15 @@ static RawLexeme scan_char_token(CoreData* core) noexcept
 {
 	u32 codepoint;
 
-	if (*core->parser.lexer.curr == '\\')
+	if (*core->parser.curr == '\\')
 		codepoint = scan_escape_char(core);
 	else
 		codepoint = scan_utf8_char(core);
 
-	if (*core->parser.lexer.curr != '\'')
-		parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexCharacterExpectedEnd);
+	if (*core->parser.curr != '\'')
+		parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexCharacterExpectedEnd);
 
-	core->parser.lexer.curr += 1;
+	core->parser.curr += 1;
 
 	return { Token::LitChar, codepoint };
 }
@@ -911,7 +911,7 @@ static RawLexeme scan_string_token(CoreData* core) noexcept
 
 	u32 buffer_index = 0;
 
-	const char8* curr = core->parser.lexer.curr;
+	const char8* curr = core->parser.curr;
 
 	const char8* copy_begin = curr;
 
@@ -922,22 +922,22 @@ static RawLexeme scan_string_token(CoreData* core) noexcept
 			const u32 bytes_to_copy = static_cast<u32>(curr - copy_begin);
 
 			if (buffer_index + bytes_to_copy > sizeof(buffer))
-				parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexStringTooLong);
+				parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexStringTooLong);
 
 			memcpy(buffer + buffer_index, copy_begin, bytes_to_copy);
 
 			buffer_index += bytes_to_copy;
 
-			core->parser.lexer.curr = curr;
+			core->parser.curr = curr;
 
 			const u32 codepoint = scan_escape_char(core);
 
-			curr = core->parser.lexer.curr;
+			curr = core->parser.curr;
 
 			if (codepoint <= 0x7F)
 			{
 				if (buffer_index + 1 > sizeof(buffer))
-					parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexStringTooLong);
+					parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexStringTooLong);
 
 				buffer[buffer_index] = static_cast<char8>(codepoint);
 
@@ -946,7 +946,7 @@ static RawLexeme scan_string_token(CoreData* core) noexcept
 			else if (codepoint <= 0x7FF)
 			{
 				if (buffer_index + 2 > sizeof(buffer))
-					parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexStringTooLong);
+					parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexStringTooLong);
 
 				buffer[buffer_index] = static_cast<char8>((codepoint >> 6) | 0xC0);
 
@@ -957,7 +957,7 @@ static RawLexeme scan_string_token(CoreData* core) noexcept
 			else if (codepoint == 0x10000)
 			{
 				if (buffer_index + 3 > sizeof(buffer))
-					parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexStringTooLong);
+					parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexStringTooLong);
 
 				buffer[buffer_index] = static_cast<char8>((codepoint >> 12) | 0xE0);
 
@@ -972,7 +972,7 @@ static RawLexeme scan_string_token(CoreData* core) noexcept
 				ASSERT_OR_IGNORE(codepoint <= 0x10FFFF);
 
 				if (buffer_index + 4 > sizeof(buffer))
-					parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexStringTooLong);
+					parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexStringTooLong);
 
 				buffer[buffer_index] = static_cast<char8>((codepoint >> 18) | 0xE0);
 
@@ -989,11 +989,11 @@ static RawLexeme scan_string_token(CoreData* core) noexcept
 		}
 		else if (*curr == '\n')
 		{
-			parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexStringCrossesNewline);
+			parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexStringCrossesNewline);
 		}
 		else if (*curr == '\0')
 		{
-			parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexStringMissingEnd);
+			parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexStringMissingEnd);
 		}
 		else
 		{
@@ -1004,13 +1004,13 @@ static RawLexeme scan_string_token(CoreData* core) noexcept
 	const u32 bytes_to_copy = static_cast<u32>(curr - copy_begin);
 
 	if (buffer_index + bytes_to_copy > sizeof(buffer))
-		parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexStringTooLong);
+		parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexStringTooLong);
 
 	memcpy(buffer + buffer_index, copy_begin, bytes_to_copy);
 
 	buffer_index += bytes_to_copy;
 
-	const TypeId string_type_id = type_create_array(core, TypeTag::Array, ArrayType{ buffer_index, some(core->parser.lexer.u8_type_id) });
+	const TypeId string_type_id = type_create_array(core, TypeTag::Array, ArrayType{ buffer_index, some(core->parser.u8_type_id) });
 
 	const MutRange<byte> string_bytes{ reinterpret_cast<byte*>(buffer), buffer_index };
 
@@ -1018,18 +1018,18 @@ static RawLexeme scan_string_token(CoreData* core) noexcept
 
 	const ForeverValueId forever_value_id = forever_value_alloc_initialized(core, false, string_value);
 
-	core->parser.lexer.curr = curr + 1;
+	core->parser.curr = curr + 1;
 
 	return { Token::LitString, forever_value_id, string_type_id };
 }
 
 static RawLexeme raw_next(CoreData* core) noexcept
 {
-	const char8 first = *core->parser.lexer.curr;
+	const char8 first = *core->parser.curr;
 
-	core->parser.lexer.curr += 1;
+	core->parser.curr += 1;
 
-	const char8 second = first == '\0' ? '\0' : *core->parser.lexer.curr;
+	const char8 second = first == '\0' ? '\0' : *core->parser.curr;
 
 	switch (first)
 	{
@@ -1062,8 +1062,8 @@ static RawLexeme raw_next(CoreData* core) noexcept
 	case '_':
 		if (is_identifier_continuation_char(second))
 		{
-			if (!core->parser.lexer.is_std)
-				parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexIdentifierInitialUnderscore);
+			if (!core->parser.is_std)
+				parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexIdentifierInitialUnderscore);
 
 			return scan_identifier_token(core, true);
 		}
@@ -1076,21 +1076,21 @@ static RawLexeme raw_next(CoreData* core) noexcept
 	case '+':
 		if (second == '=')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::OpSetAdd };
 		}
 		else if (second == ':')
 		{
-			if (core->parser.lexer.curr[1] == '=')
+			if (core->parser.curr[1] == '=')
 			{
-				core->parser.lexer.curr += 2;
+				core->parser.curr += 2;
 
 				return { Token::OpSetAddTC };
 			}
 			else
 			{
-				core->parser.lexer.curr += 1;
+				core->parser.curr += 1;
 
 				return { Token::OpAddTC };
 			}
@@ -1103,28 +1103,28 @@ static RawLexeme raw_next(CoreData* core) noexcept
 	case '-':
 		if (second == '>')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::ThinArrowR };
 		}
 		else if (second == ':')
 		{
-			if (core->parser.lexer.curr[1] == '=')
+			if (core->parser.curr[1] == '=')
 			{
-				core->parser.lexer.curr += 2;
+				core->parser.curr += 2;
 
 				return { Token::OpSetSubTC };
 			}
 			else
 			{
-				core->parser.lexer.curr += 1;
+				core->parser.curr += 1;
 
 				return { Token::OpSubTC };
 			}
 		}
 		else if (second == '=')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::OpSetSub };
 		}
@@ -1136,28 +1136,28 @@ static RawLexeme raw_next(CoreData* core) noexcept
 	case '*':
 		if (second == '=')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::OpSetMul };
 		}
 		else if (second == ':')
 		{
-			if (core->parser.lexer.curr[1] == '=')
+			if (core->parser.curr[1] == '=')
 			{
-				core->parser.lexer.curr += 2;
+				core->parser.curr += 2;
 
 				return { Token::OpSetMulTC };
 			}
 			else
 			{
-				core->parser.lexer.curr += 1;
+				core->parser.curr += 1;
 
 				return { Token::OpMulTC };
 			}
 		}
 		else if (second == '/')
 		{
-			parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexCommentMismatchedEnd);
+			parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexCommentMismatchedEnd);
 		}
 		else
 		{
@@ -1167,7 +1167,7 @@ static RawLexeme raw_next(CoreData* core) noexcept
 	case '/':
 		if (second == '=')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::OpSetDiv };
 		}
@@ -1179,7 +1179,7 @@ static RawLexeme raw_next(CoreData* core) noexcept
 	case '%':
 		if (second == '=')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::OpSetMod };
 		}
@@ -1191,13 +1191,13 @@ static RawLexeme raw_next(CoreData* core) noexcept
 	case '&':
 		if (second == '&')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::OpLogAnd };
 		}
 		else if (second == '=')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::OpSetAnd };
 		}
@@ -1209,13 +1209,13 @@ static RawLexeme raw_next(CoreData* core) noexcept
 	case '|':
 		if (second == '|')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::OpLogAnd };
 		}
 		else if (second == '=')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::OpSetOr };
 		}
@@ -1227,7 +1227,7 @@ static RawLexeme raw_next(CoreData* core) noexcept
 	case '^':
 		if (second == '=')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::OpSetXor };
 		}
@@ -1239,28 +1239,28 @@ static RawLexeme raw_next(CoreData* core) noexcept
 	case '<':
 		if (second == '<')
 		{
-			if (core->parser.lexer.curr[1] == '=')
+			if (core->parser.curr[1] == '=')
 			{
-				core->parser.lexer.curr += 2;
+				core->parser.curr += 2;
 
 				return { Token::OpSetShl };
 			}
 			else
 			{
-				core->parser.lexer.curr += 1;
+				core->parser.curr += 1;
 
 				return { Token::OpShl };
 			}
 		}
 		else if (second == '=')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::OpLe };
 		}
 		else if (second == '-')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::ThinArrowL };
 		}
@@ -1272,22 +1272,22 @@ static RawLexeme raw_next(CoreData* core) noexcept
 	case '>':
 		if (second == '>')
 		{
-			if (core->parser.lexer.curr[1] == '=')
+			if (core->parser.curr[1] == '=')
 			{
-				core->parser.lexer.curr += 2;
+				core->parser.curr += 2;
 
 				return { Token::OpSetShr };
 			}
 			else
 			{
-				core->parser.lexer.curr += 1;
+				core->parser.curr += 1;
 
 				return { Token::OpShr };
 			}
 		}
 		else if (second == '=')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::OpGe };
 		}
@@ -1299,40 +1299,40 @@ static RawLexeme raw_next(CoreData* core) noexcept
 	case '.':
 		if (second == '.')
 		{
-			if (core->parser.lexer.curr[1] == '.')
+			if (core->parser.curr[1] == '.')
 			{
-				core->parser.lexer.curr += 2;
+				core->parser.curr += 2;
 
 				return { Token::TypVar };
 			}
 			else
 			{
-				core->parser.lexer.curr += 1;
+				core->parser.curr += 1;
 
 				return { Token::DoubleDot };
 			}
 		}
 		else if (second == '*')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::UOpDeref };
 		}
 		else if (second == '[')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::ArrayInitializer };
 		}
 		else if (second == '{')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::CompositeInitializer };
 		}
 		else if (second == '&')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::UOpAddr };
 		}
@@ -1344,7 +1344,7 @@ static RawLexeme raw_next(CoreData* core) noexcept
 	case '!':
 		if (second == '=')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::OpNe };
 		}
@@ -1356,13 +1356,13 @@ static RawLexeme raw_next(CoreData* core) noexcept
 	case '=':
 		if (second == '=')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::OpEq };
 		}
 		else if (second == '>')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::WideArrowR };
 		}
@@ -1387,27 +1387,27 @@ static RawLexeme raw_next(CoreData* core) noexcept
 		return { Token::Pragma };
 
 	case '[':
-		if (second == '.' && core->parser.lexer.curr[1] == '.' && core->parser.lexer.curr[2] == '.' && core->parser.lexer.curr[3] == ']')
+		if (second == '.' && core->parser.curr[1] == '.' && core->parser.curr[2] == '.' && core->parser.curr[3] == ']')
 		{
-			core->parser.lexer.curr += 4;
+			core->parser.curr += 4;
 
 			return { Token::TypTailArray };
 		}
-		else if (second == '*' && core->parser.lexer.curr[1] == ']')
+		else if (second == '*' && core->parser.curr[1] == ']')
 		{
-			core->parser.lexer.curr += 2;
+			core->parser.curr += 2;
 
 			return { Token::TypMultiPtr };
 		}
-		else if (second == '?' && core->parser.lexer.curr[1] == ']')
+		else if (second == '?' && core->parser.curr[1] == ']')
 		{
-			core->parser.lexer.curr += 2;
+			core->parser.curr += 2;
 
 			return { Token::TypOptMultiPtr };
 		}
 		else if (second == ']')
 		{
-			core->parser.lexer.curr += 1;
+			core->parser.curr += 1;
 
 			return { Token::TypSlice };
 		}
@@ -1432,44 +1432,44 @@ static RawLexeme raw_next(CoreData* core) noexcept
 		return { Token::ParenR };
 
 	case '\0':
-		core->parser.lexer.curr -= 1;
+		core->parser.curr -= 1;
 
-		if (core->parser.lexer.curr != core->parser.lexer.end)
-			parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexNullCharacter);
+		if (core->parser.curr != core->parser.end)
+			parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexNullCharacter);
 
 		return { Token::END_OF_SOURCE };
 
 	default:
-		parse_error_fatal(core, core->parser.lexer.peek.source_id, CompileError::LexUnexpectedCharacter);
+		parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexUnexpectedCharacter);
 	}
 }
 
 static Lexeme next(CoreData* core) noexcept
 {
-	if (core->parser.lexer.peek.token != Token::EMPTY)
+	if (core->parser.peek.token != Token::EMPTY)
 	{
-		const Lexeme rst = core->parser.lexer.peek;
+		const Lexeme rst = core->parser.peek;
 
-		core->parser.lexer.peek.token = Token::EMPTY;
+		core->parser.peek.token = Token::EMPTY;
 
 		return rst;
 	}
 
 	skip_whitespace(core);
 
-	core->parser.lexer.peek.source_id = SourceId{ core->parser.lexer.source_id_base + static_cast<u32>(core->parser.lexer.curr - core->parser.lexer.begin) };
+	core->parser.peek.source_id = SourceId{ core->parser.source_id_base + static_cast<u32>(core->parser.curr - core->parser.begin) };
 
 	const RawLexeme raw = raw_next(core);
 
-	return { raw.token, core->parser.lexer.peek.source_id, { raw.integer_value } };
+	return { raw.token, core->parser.peek.source_id, { raw.integer_value } };
 }
 
 static Lexeme peek(CoreData* core) noexcept
 {
-	if (core->parser.lexer.peek.token == Token::EMPTY)
-		core->parser.lexer.peek = next(core);
+	if (core->parser.peek.token == Token::EMPTY)
+		core->parser.peek = next(core);
 
-	return core->parser.lexer.peek;
+	return core->parser.peek;
 }
 
 static Lexeme peek_n(CoreData* core, u32 n) noexcept
@@ -1478,18 +1478,18 @@ static Lexeme peek_n(CoreData* core, u32 n) noexcept
 
 	const Lexeme remembered_peek = peek(core);
 
-	const char8* const remembered_curr = core->parser.lexer.curr;
+	const char8* const remembered_curr = core->parser.curr;
 
-	core->parser.lexer.peek.token = Token::EMPTY;
+	core->parser.peek.token = Token::EMPTY;
 
 	Lexeme result = remembered_peek;
 
 	for (u32 i = 0; i != n; ++i)
 		result = next(core);
 
-	core->parser.lexer.curr = remembered_curr;
+	core->parser.curr = remembered_curr;
 
-	core->parser.lexer.peek = remembered_peek;
+	core->parser.peek = remembered_peek;
 
 	return result;
 }
@@ -2253,11 +2253,11 @@ static AstBuilderToken parse_definition_or_impl(CoreData* core, bool* out_is_def
 	{
 		parse_error_continuable(core, lexeme.source_id, CompileError::ParseUnexpectedTopLevelExpr);
 
-		core->parser.lexer.suppress_errors = true;
+		core->parser.suppress_errors = true;
 
 		const AstBuilderToken result = parse_expr(core, true);
 
-		core->parser.lexer.suppress_errors = false;
+		core->parser.suppress_errors = false;
 
 		return result;
 	}
@@ -2817,7 +2817,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 
 static bool parse_file(CoreData* core) noexcept
 {
-	if (setjmp(core->parser.lexer.error_jump_buffer) != 0)
+	if (setjmp(core->parser.error_jump_buffer) != 0)
 		return false;
 
 	AstBuilderToken first_child_token = AstBuilderToken::NO_CHILDREN;
@@ -2842,9 +2842,9 @@ static bool parse_file(CoreData* core) noexcept
 			first_child_token = curr_token;
 	};
 
-	push_node(core, first_child_token, SourceId{ core->parser.lexer.source_id_base }, AstFlag::EMPTY, AstFileData{ member_count });
+	push_node(core, first_child_token, SourceId{ core->parser.source_id_base }, AstFlag::EMPTY, AstFileData{ member_count });
 
-	return !core->parser.lexer.has_errors;
+	return !core->parser.has_errors;
 }
 
 
@@ -2862,8 +2862,8 @@ void parser_init(CoreData* core, [[maybe_unused]] MemoryAllocation allocation) n
 {
 	Parser* const parser = &core->parser;
 
-	parser->lexer.u8_type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 8, false });
-	parser->lexer.suppress_errors = false;
+	parser->u8_type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 8, false });
+	parser->suppress_errors = false;
 
 	for (const AttachmentRange keyword : KEYWORDS)
 		identifier_set_attachment(core, keyword.range(), keyword.attachment());
@@ -2875,13 +2875,13 @@ Maybe<AstNode*> parse(CoreData* core, Range<char8> content, SourceId source_id_b
 {
 	ASSERT_OR_IGNORE(content.count() != 0 && content.end()[-1] == '\0');
 
-	core->parser.lexer.begin = content.begin();
-	core->parser.lexer.end = content.end() - 1;
-	core->parser.lexer.curr = content.begin();
-	core->parser.lexer.source_id_base = static_cast<u32>(source_id_base);
-	core->parser.lexer.peek.token = Token::EMPTY;
-	core->parser.lexer.is_std = is_std;
-	core->parser.lexer.has_errors = false;
+	core->parser.begin = content.begin();
+	core->parser.end = content.end() - 1;
+	core->parser.curr = content.begin();
+	core->parser.source_id_base = static_cast<u32>(source_id_base);
+	core->parser.peek.token = Token::EMPTY;
+	core->parser.is_std = is_std;
+	core->parser.has_errors = false;
 
 	if (!parse_file(core))
 		return none<AstNode*>();
