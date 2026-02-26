@@ -225,7 +225,7 @@ static DummyTree flat_dummy_tree() noexcept
 static CoreData* create_tiny_core() noexcept
 {
 	Config config{};
-	memset(&config.enable, 0, sizeof(config.enable));
+	config.enable = { 0 };
 	config.enable.ast_pool = true;
 
 	return create_core_data(&config);

@@ -7,7 +7,7 @@
 static CoreData* create_tiny_core() noexcept
 {
 	Config config{};
-	memset(&config.enable, 0, sizeof(config.enable));
+	config.enable = { 0 };
 	config.enable.type_pool = true;
 
 	return create_core_data(&config);
