@@ -2394,7 +2394,7 @@ struct Parser;
 // with subsequent bytes receiving subsequent `SourceId`s.
 // If `is_std` is `true`, builtins are allowed, otherwise they are disallowed.
 // `filepath` is used for logging.
-Maybe<AstNode*> parse(Parser* parser, Range<char8> content, SourceId source_id_base, bool is_std) noexcept;
+Maybe<AstNode*> parse(CoreData* core, Range<char8> content, SourceId source_id_base, bool is_std) noexcept;
 
 
 

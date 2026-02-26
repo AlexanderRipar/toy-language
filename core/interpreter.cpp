@@ -4937,7 +4937,7 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 		return some(read.source_file->type);
 	}
 
-	const Maybe<AstNode*> maybe_ast = parse(core->interp.parser, read.content, read.source_file->source_id_base, is_std);
+	const Maybe<AstNode*> maybe_ast = parse(core, read.content, read.source_file->source_id_base, is_std);
 
 	if (is_none(maybe_ast))
 	{
