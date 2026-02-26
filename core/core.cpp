@@ -229,14 +229,6 @@ CoreData* create_core_data(const Config* config) noexcept
 		INIT_FUNCS[i](core, allocation);
 	}
 
-
-
-	const minos::FileHandle imported_asts_log_file = config_open_log_file(config->logging.imports.asts, some(minos::StdFileName::StdOut));
-
-	const minos::FileHandle imported_opcodes_log_file = config_open_log_file(config->logging.imports.opcodes, some(minos::StdFileName::StdOut));
-
-	const minos::FileHandle imported_types_log_file = config_open_log_file(config->logging.imports.types, some(minos::StdFileName::StdOut));
-
 	return core;
 }
 
