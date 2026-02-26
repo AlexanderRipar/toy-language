@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "structure.hpp"
 
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
@@ -114,13 +115,6 @@ struct LoopInfo
 	u32 scope_index;
 };
 
-struct BuiltinInfo
-{
-	OpcodeId body;
-
-	TypeId signature_type;
-};
-
 struct BuiltinParamInfo
 {
 	IdentifierId name;
@@ -128,67 +122,6 @@ struct BuiltinParamInfo
 	TypeId type;
 
 	bool is_comptime_known;
-};
-
-struct Interpreter
-{
-	AstPool* asts;
-
-	TypePool* types;
-
-	GlobalValuePool* globals;
-
-	OpcodePool* opcodes;
-
-	SourceReader* reader;
-
-	Parser* parser;
-
-	IdentifierPool* identifiers;
-
-	LexicalAnalyser* lex;
-
-	ErrorSink* errors;
-
-	ReservedVec<Scope> scopes;
-
-	ReservedVec<ScopeMember> scope_members;
-
-	ReservedVec<byte> scope_data;
-
-	ReservedVec<CTValue> values;
-
-	ReservedVec<byte> temporary_data;
-
-	ReservedVec<OpcodeId> activations;
-
-	ReservedVec<u32> call_activation_indices;
-
-	ReservedVec<LoopInfo> loop_stack;
-
-	ReservedVec<CTValue> write_ctxs;
-
-	ReservedVec<ClosureId> active_closures;
-
-	ReservedVec<ScopeMember> closure_members;
-
-	ReservedVec<OpcodeId> argument_callbacks;
-
-	ReservedVec<ArgumentPack> argument_packs;
-
-	ReservedVec<GlobalInitialization> global_initializations;
-
-	bool is_ok;
-
-	BuiltinInfo builtin_infos[static_cast<u8>(Builtin::MAX) - 1];
-
-	MutRange<byte> memory;
-
-	minos::FileHandle imported_asts_log_file;
-
-	minos::FileHandle imported_opcodes_log_file;
-
-	minos::FileHandle imported_types_log_file;
 };
 
 using OpcodeHandlerFunc = const Opcode* (*) (Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept;

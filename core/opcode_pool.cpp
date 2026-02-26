@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "structure.hpp"
 
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
@@ -6,13 +7,6 @@
 #include "../infra/math.hpp"
 #include "../infra/range.hpp"
 #include "../infra/container/reserved_vec.hpp"
-
-struct SourceMapping
-{
-	OpcodeId code_begin;
-
-	SourceId source;
-};
 
 enum class FixupKind : u8
 {
@@ -59,23 +53,11 @@ struct Fixup
 	OpcodeEffects return_adjust;
 };
 
-struct OpcodePool
+struct SourceMapping
 {
-	AstPool* asts;
+	OpcodeId code_begin;
 
-	OpcodeEffects state;
-
-	OpcodeEffects return_adjust;
-
-	bool allow_return;
-
-	ReservedVec<Opcode> codes;
-
-	ReservedVec<SourceMapping> sources;
-
-	ReservedVec<Fixup> fixups;
-
-	MutRange<byte> memory;
+	SourceId source;
 };
 
 

@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "structure.hpp"
 
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
@@ -11,10 +12,6 @@
 
 #include <cstring>
 
-static constexpr u32 MIN_SCOPE_MAP_SIZE_LOG2 = 6;
-
-static constexpr u32 MAX_SCOPE_MAP_SIZE_LOG2 = 16;
-
 static constexpr u16 MAX_SCOPE_ENTRY_COUNT = static_cast<u16>(1 << 15);
 
 enum class ScopeMapKind : u8
@@ -23,6 +20,30 @@ enum class ScopeMapKind : u8
 	Global,
 	Closure,
 	Signature,
+};
+
+struct alignas(8) ScopeMap
+{
+	u32 capacity;
+
+	u16 used;
+
+	ScopeMapKind kind;
+
+	bool has_closure;
+
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
+	#endif
+	u64 occupied_bits[];
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
+
+	// IdentifierId names[];
+
+	// ScopeEntry entries[];
 };
 
 // Information for a single definition / parameter held in a scope. Depending
@@ -77,60 +98,11 @@ struct alignas(8) ScopeEntry
 	u8 unused_ = 0;
 };
 
-struct alignas(8) ScopeMap
-{
-	u32 capacity;
-
-	u16 used;
-
-	ScopeMapKind kind;
-
-	bool has_closure;
-
-	#if COMPILER_GCC
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
-	#endif
-	u64 occupied_bits[];
-	#if COMPILER_GCC
-		#pragma GCC diagnostic pop
-	#endif
-
-	// IdentifierId names[];
-
-	// ScopeEntry entries[];
-};
-
 struct ScopeMapInfo
 {
 	IdentifierId* names;
 
 	ScopeEntry* entries;
-};
-
-struct LexicalAnalyser
-{
-	ReservedHeap<MIN_SCOPE_MAP_SIZE_LOG2, MAX_SCOPE_MAP_SIZE_LOG2> scope_pool;
-
-	s32 scopes_top;
-
-	ScopeMap* scopes[MAX_AST_DEPTH];
-
-	ScopeMap* closures[MAX_AST_DEPTH];
-
-	IdentifierPool* identifiers;
-
-	AstPool* asts;
-
-	ErrorSink* errors;
-
-	GlobalFileIndex active_file_index;
-
-	bool has_error;
-
-	GlobalFileIndex prelude_file_index;
-
-	MutRange<byte> memory;
 };
 
 

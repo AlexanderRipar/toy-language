@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "structure.hpp"
 
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
@@ -31,17 +32,6 @@ struct alignas(8) ForeverValue
 	u32 is_mut : 1;
 
 	u32 data_align : 29;
-};
-
-struct GlobalValuePool
-{
-	ReservedVec<GlobalFile> files;
-
-	ReservedVec<ForeverValue> forever_values;
-
-	ReservedVec<byte> data;
-
-	MutRange<byte> memory;
 };
 
 

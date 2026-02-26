@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "structure.hpp"
 
 #include <cstring>
 
@@ -62,11 +63,6 @@ struct alignas(8) IdentifierEntry
 
 		memcpy(m_chars, key.begin(), key.count());
 	}
-};
-
-struct IdentifierPool
-{
-	IndexMap<Range<char8>, IdentifierEntry> map;
 };
 
 IdentifierPool* create_identifier_pool(HandlePool* alloc) noexcept

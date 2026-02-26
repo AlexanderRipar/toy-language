@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "structure.hpp"
 
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
@@ -16,8 +17,6 @@ static u32 hash_file_identity(u64 file_id, u32 device_id) noexcept
 {
 	return fnv1a_step(fnv1a(range::from_object_bytes(&file_id)), range::from_object_bytes(&device_id));
 }
-
-
 
 struct SourceFileByPathEntry
 {
@@ -116,17 +115,6 @@ struct SourceFileByIdEntry
 
 		file_id = key.index;
 	}
-};
-
-struct SourceReader
-{
-	IndexMap<Range<char8>, SourceFileByPathEntry> known_files_by_path;
-
-	IndexMap<minos::FileIdentity, SourceFileByIdEntry> known_files_by_identity;
-
-	u32 curr_source_id_base;
-
-	u32 source_file_count;
 };
 
 

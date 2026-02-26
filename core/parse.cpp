@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "structure.hpp"
 
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
@@ -278,33 +279,6 @@ static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
 	range::from_literal_string("_definition_typeof",   static_cast<u8>(Builtin::DefinitionTypeof)),
 };
 
-struct Lexeme
-{
-	Token token;
-
-	SourceId source_id;
-
-	union
-	{
-		CompIntegerValue integer_value;
-
-		CompFloatValue float_value;
-
-		u32 char_value;
-
-		IdentifierId identifier_id;
-
-		Builtin builtin;
-
-		struct
-		{
-			ForeverValueId value_id;
-
-			TypeId type_id;
-		} string;
-	};
-};
-
 struct RawLexeme
 {
 	Token token;
@@ -373,44 +347,6 @@ struct OperatorDescWithSource
 	SourceId source_id;
 };
 
-#ifdef COMPILER_MSVC
-	#pragma warning(push)
-	#pragma warning(disable : 4324) // structure was padded due to alignment specifier
-#endif
-struct Lexer
-{
-	const char8* curr;
-
-	const char8* begin;
-
-	const char8* end;
-
-	Lexeme peek;
-
-	u32 source_id_base;
-
-	bool is_std;
-
-	TypeId u8_type_id;
-
-	IdentifierPool* identifiers;
-
-	GlobalValuePool* globals;
-
-	TypePool* types;
-
-	ErrorSink* errors;
-
-	bool has_errors;
-
-	bool suppress_errors;
-
-	jmp_buf error_jump_buffer;
-};
-#ifdef COMPILER_MSVC
-	#pragma warning(pop)
-#endif
-
 struct OperatorStack
 {
 	u32 operand_count;
@@ -422,13 +358,6 @@ struct OperatorStack
 	OperatorDescWithSource operators[64];
 
 	AstBuilderToken operand_tokens[128];
-};
-
-struct Parser
-{
-	Lexer lexer;
-
-	AstPool* builder;
 };
 
 static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {

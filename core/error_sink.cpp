@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "structure.hpp"
 
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
@@ -8,30 +9,8 @@
 #include "../infra/container/reserved_vec.hpp"
 
 #include <csetjmp>
-#include <fcntl.h>
-
-#ifdef _WIN32
-	#include <io.h>
-#endif
 
 static constexpr u32 MAX_ERROR_RECORD_COUNT = 16384;
-
-struct ErrorSink
-{
-	SourceReader* reader;
-
-	IdentifierPool* identifiers;
-
-	AstPool* asts;
-
-	u32 error_count;
-
-	u8 source_tab_size;
-
-	ReservedVec<ErrorRecord> records;
-
-	minos::FileHandle log_file;
-};
 
 static const char8* error_message_of(CompileError error) noexcept
 {

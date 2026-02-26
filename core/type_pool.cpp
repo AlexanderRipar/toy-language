@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "structure.hpp"
 
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
@@ -11,10 +12,6 @@
 #include "../infra/container/reserved_vec.hpp"
 
 #include <cstring>
-
-static constexpr u32 MIN_STRUCTURE_SIZE_LOG2 = 4;
-
-static constexpr u32 MAX_STRUCTURE_SIZE_LOG2 = 12;
 
 
 
@@ -225,17 +222,6 @@ struct CompositeTypeAllocInfo
 	u16 alloc_size;
 
 	u16 member_capacity;
-};
-
-struct TypePool
-{
-	IndexMap<DeduplicatedTypeInit, DeduplicatedTypeInfo> dedup;
-
-	ReservedHeap<MIN_STRUCTURE_SIZE_LOG2, MAX_STRUCTURE_SIZE_LOG2> structures;
-
-	ReservedVec<u64> scratch;
-
-	MutRange<byte> memory;
 };
 
 

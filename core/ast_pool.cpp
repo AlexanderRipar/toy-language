@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "structure.hpp"
 
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
@@ -8,21 +9,6 @@
 #include "../infra/container/reserved_vec.hpp"
 
 #include <cstring>
-
-struct AstPool
-{
-	ReservedVec<AstNode> nodes;
-
-	ReservedVec<SourceId> sources;
-
-	ReservedVec<AstNode> node_builder;
-
-	ReservedVec<SourceId> source_builder;
-
-	ReservedVec<ClosureList> closure_lists;
-
-	MutRange<byte> memory;
-};
 
 struct AstAllocation
 {
