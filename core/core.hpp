@@ -140,6 +140,29 @@ struct Config
 		} diagnostics;
 	} logging;
 
+	struct
+	{
+		bool ast_pool = true;
+
+		bool error_sink = true;
+
+		bool global_value_pool = true;
+
+		bool identifier_pool = true;
+
+		bool interpreter = true;
+
+		bool lexical_analyser = true;
+
+		bool opcode_pool = true;
+
+		bool parser = true;
+
+		bool source_reader = true;
+
+		bool type_pool = true;
+	} enable;
+
 	bool compile_all = false;
 };
 

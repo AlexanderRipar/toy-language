@@ -113,7 +113,22 @@ CoreData* create_core_data(const Config* config) noexcept
 		&interpreter_init,
 	};
 
+	const bool enable_flags[] = {
+		config->enable.ast_pool,
+		config->enable.error_sink,
+		config->enable.global_value_pool,
+		config->enable.identifier_pool,
+		config->enable.lexical_analyser,
+		config->enable.opcode_pool,
+		config->enable.type_pool,
+		config->enable.parser,
+		config->enable.source_reader,
+		config->enable.interpreter,
+	};
+
 	static_assert(array_count(MEMORY_REQUIREMENTS_FUNCS) == array_count(INIT_FUNCS));
+
+	static_assert(array_count(enable_flags) == array_count(INIT_FUNCS));
 
 	static constexpr u32 MEMBER_COUNT = static_cast<u32>(array_count(MEMORY_REQUIREMENTS_FUNCS));
 
@@ -131,7 +146,12 @@ CoreData* create_core_data(const Config* config) noexcept
 	MemoryRequirements memory_requirements[MEMBER_COUNT];
 
 	for (u32 i = 0; i != MEMBER_COUNT; ++i)
-		memory_requirements[i] = MEMORY_REQUIREMENTS_FUNCS[i](config);
+	{
+		if (enable_flags[i])
+			memory_requirements[i] = MEMORY_REQUIREMENTS_FUNCS[i](config);
+		else
+			memory_requirements[i] = MemoryRequirements{};
+	}
 
 	MemoryIdRequirements* id_requirements_buf[MAX_MEMORY_ID_REQUIREMENTS_COUNT * MEMBER_COUNT];
 
@@ -197,6 +217,9 @@ CoreData* create_core_data(const Config* config) noexcept
 
 	for (u64 i = 0; i != MEMBER_COUNT; ++i)
 	{
+		if (!enable_flags[i])
+			continue;
+
 		MemoryAllocation allocation;
 		allocation.private_data = static_cast<byte*>(memory) + private_allocation_begin;
 		

@@ -106,11 +106,25 @@ static constexpr TreeSchemaNode CONFIG_LOGGING[] = {
 	make_container_info(Range<TreeSchemaNode>{ CONFIG_LOGGING_DIAGNOSTICS }, "diagnostics", "Source-level warning and error message logging parameters"),
 };
 
+static constexpr TreeSchemaNode CONFIG_ENABLE[] = {
+	make_boolean_info(offsetof(Config, enable.ast_pool), "ast_pool", "Whether to initialize the ast pool. Responsible for storing parsed ASTs"),
+	make_boolean_info(offsetof(Config, enable.error_sink), "error_sink", "Whether to initialize the error sink. Responsible for reporting compilation errors"),
+	make_boolean_info(offsetof(Config, enable.global_value_pool), "global_value_pool", "Whether to initialize the global value pool. Responsible for storing global values and values with global lifetime during compilation"),
+	make_boolean_info(offsetof(Config, enable.identifier_pool), "identifier_pool", "Whether to initialize the identifier pool. Responsible for interning identifiers in the compiled source code"),
+	make_boolean_info(offsetof(Config, enable.interpreter), "interpreter", "Whether to initialize the interpreter. Responsible for running source code during compilation"),
+	make_boolean_info(offsetof(Config, enable.lexical_analyser), "lexical_analyser", "Whether to initialize the lexical analyser. Responsible for enriching parsed ASTs with statically inferrable information"),
+	make_boolean_info(offsetof(Config, enable.opcode_pool), "opcode_pool", "Whether to initialize the opcode pool. Responsible for producing and storing intermediate language opcodes"),
+	make_boolean_info(offsetof(Config, enable.parser), "parser", "Whether to initialize the parser. Responsible for parsing source code into ASTs"),
+	make_boolean_info(offsetof(Config, enable.source_reader), "source_reader", "Whether to initialize the source reader. Responsible for reading source files and making sure no source file is processed more than once by keeping track of seen files"),
+	make_boolean_info(offsetof(Config, enable.type_pool), "type_pool", "Whether to initialize the type pool. Responsible for storing types"),
+};
+
 static constexpr TreeSchemaNode CONFIG_ROOTS[] = {
 	make_container_info(Range<TreeSchemaNode>{ CONFIG_ENTRYPOINT }, "entrypoint", "Entrypoint configuration"),
 	make_container_info(Range<TreeSchemaNode>{ CONFIG_STD }, "std", "Standard library configuration"),
 	make_container_info(Range<TreeSchemaNode>{ CONFIG_LOGGING }, "logging", "Debug log configuration"),
-	make_boolean_info(offsetof(Config, compile_all), "compile-all", "Whether to compile all top-level definitions. Defaults to `false`"),
+	make_container_info(Range<TreeSchemaNode>{ CONFIG_ENABLE }, "enable", "Allows only initializing certain submodules. Mainly intended for testing, when not all modules are exercised"),
+	make_boolean_info(offsetof(Config, compile_all), "compile-all", "Whether to compile all top-level definitions"),
 };
 
 static constexpr TreeSchemaNode CONFIG = make_container_info(Range<TreeSchemaNode>{ CONFIG_ROOTS }, "config", "");
