@@ -645,7 +645,7 @@ rebuilds, even though the test suite clocks in at under one second in total.
 ## Multi-Compiler and -Platform Build Support
 
 If you want to build the project on all available supported compilers and
-platforms, you can use `build-all.ps1`. This is a wrapper around cmake which
+platforms, you can use `make-all.ps1`. This is a wrapper around cmake which
 invokes all the available [supported compilers](#supported-compilers) on your
 system. \
 If you test a new build configuration, please add it to the script, as well as
