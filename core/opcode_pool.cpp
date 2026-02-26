@@ -12,11 +12,11 @@ static constexpr u32 OPCODES_RESERVE_SIZE = 1 << 26;
 
 static constexpr u32 OPCODES_COMMIT_INCREMENT_COUNT = 1 << 16;
 
-static constexpr u32 SOURCES_RESERVERE_SIZE = 1 << 26;
+static constexpr u32 SOURCES_RESERVE_SIZE = 1 << 26;
 
 static constexpr u32 SOURCES_COMMIT_INCREMENT_COUNT = 1 << 13;
 
-static constexpr u32 FIXUPS_RESERVERE_SIZE = (1 << 20) * 3;
+static constexpr u32 FIXUPS_RESERVE_SIZE = (1 << 20) * 3;
 
 static constexpr u32 FIXUPS_COMMIT_INCREMENT_COUNT = 1 << 12;
 
@@ -2219,7 +2219,7 @@ static bool complete_fixups(OpcodePool* opcodes) noexcept
 MemoryRequirements opcode_pool_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;
-	reqs.private_reserve = SOURCES_RESERVERE_SIZE + FIXUPS_RESERVERE_SIZE;
+	reqs.private_reserve = SOURCES_RESERVE_SIZE + FIXUPS_RESERVE_SIZE;
 	reqs.id_requirements_count = 1;
 	reqs.id_requirements[0].reserve = OPCODES_RESERVE_SIZE;
 	reqs.id_requirements[0].alignment = alignof(Opcode);
@@ -2235,9 +2235,9 @@ void opcode_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	opcodes->codes.init({ allocation.ids[0], OPCODES_RESERVE_SIZE }, OPCODES_COMMIT_INCREMENT_COUNT);
 
-	opcodes->sources.init({ allocation.private_data, SOURCES_RESERVERE_SIZE }, SOURCES_COMMIT_INCREMENT_COUNT);
+	opcodes->sources.init({ allocation.private_data, SOURCES_RESERVE_SIZE }, SOURCES_COMMIT_INCREMENT_COUNT);
 
-	opcodes->fixups.init({ allocation.private_data + SOURCES_RESERVERE_SIZE, FIXUPS_RESERVERE_SIZE }, FIXUPS_COMMIT_INCREMENT_COUNT);
+	opcodes->fixups.init({ allocation.private_data + SOURCES_RESERVE_SIZE, FIXUPS_RESERVE_SIZE }, FIXUPS_COMMIT_INCREMENT_COUNT);
 
 	// Reserve `OpcodeId::INVALID`.
 	(void) opcodes->codes.reserve();
