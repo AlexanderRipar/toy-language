@@ -2554,17 +2554,6 @@ enum class OpcodeId : u32
 	INVALID = 0,
 };
 
-struct OpcodeEffects
-{
-	s32 values_diff;
-
-	s32 scopes_diff;
-
-	s32 write_ctxs_diff;
-
-	s32 closures_diff;
-};
-
 const Maybe<Opcode*> opcodes_from_file_member_ast(OpcodePool* opcodes, AstNode* node, GlobalFileIndex file_index, u16 rank) noexcept;
 
 OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept;

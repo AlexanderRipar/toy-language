@@ -189,6 +189,17 @@ struct Fixup;
 
 struct SourceMapping;
 
+struct OpcodeEffects
+{
+	s32 values_diff;
+
+	s32 scopes_diff;
+
+	s32 write_ctxs_diff;
+
+	s32 closures_diff;
+};
+
 struct OpcodePool
 {
 	AstPool* asts;
