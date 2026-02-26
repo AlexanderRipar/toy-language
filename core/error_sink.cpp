@@ -174,12 +174,6 @@ void error_sink_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
 	ErrorSink* const errors = &core->errors;
 
-	errors->reader = &core->reader;
-
-	errors->identifiers = &core->identifiers;
-
-	errors->asts = &core->asts;
-
 	errors->error_count = 0;
 
 	errors->source_tab_size = static_cast<u8>(core->config->logging.diagnostics.source_tab_size);

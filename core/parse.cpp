@@ -2862,12 +2862,7 @@ void parser_init(CoreData* core, [[maybe_unused]] MemoryAllocation allocation) n
 {
 	Parser* const parser = &core->parser;
 
-	parser->builder = &core->asts;
 	parser->lexer.u8_type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 8, false });
-	parser->lexer.identifiers = &core->identifiers;
-	parser->lexer.globals = &core->globals;
-	parser->lexer.types = &core->types;
-	parser->lexer.errors = &core->errors;
 	parser->lexer.suppress_errors = false;
 
 	for (const AttachmentRange keyword : KEYWORDS)

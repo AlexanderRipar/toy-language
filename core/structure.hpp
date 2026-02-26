@@ -31,12 +31,6 @@ struct AstPool
 
 struct ErrorSink
 {
-	SourceReader* reader;
-
-	IdentifierPool* identifiers;
-
-	AstPool* asts;
-
 	u32 error_count;
 
 	u8 source_tab_size;
@@ -91,24 +85,6 @@ struct BuiltinInfo
 
 struct Interpreter
 {
-	AstPool* asts;
-
-	TypePool* types;
-
-	GlobalValuePool* globals;
-
-	OpcodePool* opcodes;
-
-	SourceReader* reader;
-
-	Parser* parser;
-
-	IdentifierPool* identifiers;
-
-	LexicalAnalyser* lex;
-
-	ErrorSink* errors;
-
 	ReservedVec<Scope> scopes;
 
 	ReservedVec<ScopeMember> scope_members;
@@ -168,12 +144,6 @@ struct LexicalAnalyser
 
 	ScopeMap* closures[MAX_AST_DEPTH];
 
-	IdentifierPool* identifiers;
-
-	AstPool* asts;
-
-	ErrorSink* errors;
-
 	GlobalFileIndex active_file_index;
 
 	bool has_error;
@@ -202,8 +172,6 @@ struct OpcodeEffects
 
 struct OpcodePool
 {
-	AstPool* asts;
-
 	OpcodeEffects state;
 
 	OpcodeEffects return_adjust;
@@ -268,14 +236,6 @@ struct Lexer
 
 	TypeId u8_type_id;
 
-	IdentifierPool* identifiers;
-
-	GlobalValuePool* globals;
-
-	TypePool* types;
-
-	ErrorSink* errors;
-
 	bool has_errors;
 
 	bool suppress_errors;
@@ -289,8 +249,6 @@ struct Lexer
 struct Parser
 {
 	Lexer lexer;
-
-	AstPool* builder;
 };
 
 

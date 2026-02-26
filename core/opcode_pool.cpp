@@ -2231,8 +2231,6 @@ void opcode_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
 	OpcodePool* const opcodes = &core->opcodes;
 
-	opcodes->asts = &core->asts;
-
 	opcodes->codes.init({ allocation.ids[0], OPCODES_RESERVE_SIZE }, OPCODES_COMMIT_INCREMENT_COUNT);
 
 	opcodes->sources.init({ allocation.private_data, SOURCES_RESERVE_SIZE }, SOURCES_COMMIT_INCREMENT_COUNT);

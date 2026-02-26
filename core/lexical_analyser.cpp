@@ -872,9 +872,6 @@ void lexical_analyser_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	lex->scope_pool.init({ allocation.private_data, SCOPE_POOL_RESERVE }, Range{ SCOPE_POOL_CAPACITIES }, Range{ SCOPE_POOL_COMMITS });
 	lex->scopes_top = -1;
-	lex->identifiers = &core->identifiers;
-	lex->asts = &core->asts;
-	lex->errors = &core->errors;
 	lex->has_error = false;
 }
 

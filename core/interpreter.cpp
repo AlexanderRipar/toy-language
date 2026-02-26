@@ -5500,15 +5500,6 @@ void interpreter_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
 	Interpreter* const interp = &core->interp;
 
-	interp->asts = &core->asts;
-	interp->types = &core->types;
-	interp->globals = &core->globals;
-	interp->opcodes = &core->opcodes;
-	interp->reader = &core->reader;
-	interp->parser = &core->parser;
-	interp->identifiers = &core->identifiers;
-	interp->lex = &core->lex;
-	interp->errors = &core->errors;
 	interp->imported_asts_log_file = config_open_log_file(core->config->logging.imports.asts, some(minos::StdFileName::StdOut));
 	interp->imported_opcodes_log_file = config_open_log_file(core->config->logging.imports.opcodes, some(minos::StdFileName::StdOut));
 	interp->imported_types_log_file = config_open_log_file(core->config->logging.imports.types, some(minos::StdFileName::StdOut));
