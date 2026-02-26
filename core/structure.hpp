@@ -140,15 +140,15 @@ struct LexicalAnalyser
 
 	s32 scopes_top;
 
-	ScopeMap* scopes[MAX_AST_DEPTH];
-
-	ScopeMap* closures[MAX_AST_DEPTH];
-
 	GlobalFileIndex active_file_index;
 
 	bool has_error;
 
 	GlobalFileIndex prelude_file_index;
+
+	ScopeMap* scopes[MAX_AST_DEPTH];
+
+	ScopeMap* closures[MAX_AST_DEPTH];
 };
 
 
@@ -286,6 +286,10 @@ struct TypePool
 
 struct CoreData
 {
+	u64 allocation_size;
+
+	const Config* config;
+
 	AstPool asts;
 
 	ErrorSink errors;
@@ -296,8 +300,6 @@ struct CoreData
 
 	Interpreter interp;
 
-	LexicalAnalyser lex;
-
 	OpcodePool opcodes;
 
 	Parser parser;
@@ -306,9 +308,7 @@ struct CoreData
 
 	TypePool types;
 
-	const Config* config;
-
-	u64 allocation_size;
+	LexicalAnalyser lex;
 };
 
 
