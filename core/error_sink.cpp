@@ -239,7 +239,7 @@ void print_error(minos::FileHandle dst, const SourceLocation* location, CompileE
 		: static_cast<s32>(log10_line_number);
 
 	print(dst,
-		" %:%:%: %s\n"
+		" %:%:%: %\n"
 		" %[> 5] | %\n"
 		" %[< %] | ",
 		location->filepath,
