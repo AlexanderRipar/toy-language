@@ -166,124 +166,124 @@ static constexpr u32 ARGUMENT_PACKS_COMMIT_INCREMENT_COUNT = 512;
 static constexpr u32 GLOBAL_INITIALIZATIONS_RESERVE_SIZE = sizeof(GlobalInitialization) << 16;
 static constexpr u32 GLOBAL_INITIALIZATIONS_COMMIT_INCREMENT_COUNT = 4096 / sizeof(GlobalInitialization);
 
-using OpcodeHandlerFunc = const Opcode* (*) (Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept;
+using OpcodeHandlerFunc = const Opcode* (*) (CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept;
 
 
 
-static void log_ast(Interpreter* interp, AstNode* node) noexcept
+static void log_ast(CoreData* core, AstNode* node) noexcept
 {
-	const SourceId source_id = source_id_of_ast_node(interp->asts, node);
+	const SourceId source_id = source_id_of_ast_node(core->interp.asts, node);
 
-	const SourceLocation location = source_location_from_source_id(interp->reader, source_id);
+	const SourceLocation location = source_location_from_source_id(core->interp.reader, source_id);
 
-	diag::print_header(interp->imported_asts_log_file, "%:%:%",
+	diag::print_header(core->interp.imported_asts_log_file, "%:%:%",
 		location.filepath,
 		location.line_number,
 		location.column_number
 	);
 
-	diag::print_ast(interp->imported_asts_log_file, interp->identifiers, node);
+	diag::print_ast(core->interp.imported_asts_log_file, core->interp.identifiers, node);
 }
 
-static void log_opcodes(Interpreter* interp, const Opcode* code) noexcept
+static void log_opcodes(CoreData* core, const Opcode* code) noexcept
 {
-	const SourceId source_id = source_id_of_opcode(interp->opcodes, code);
+	const SourceId source_id = source_id_of_opcode(core->interp.opcodes, code);
 
-	SourceLocation location = source_location_from_source_id(interp->reader, source_id);
+	SourceLocation location = source_location_from_source_id(core->interp.reader, source_id);
 
-	const OpcodeId code_id = id_from_opcode(interp->opcodes, code);
+	const OpcodeId code_id = id_from_opcode(core->interp.opcodes, code);
 
-	diag::print_header(interp->imported_opcodes_log_file, "%:%:% (OpcodeId<%>)",
+	diag::print_header(core->interp.imported_opcodes_log_file, "%:%:% (OpcodeId<%>)",
 			location.filepath,
 			location.line_number,
 			location.column_number,
 			static_cast<u32>(code_id)
 	);
 
-	diag::print_opcodes(interp->imported_opcodes_log_file, interp->identifiers, interp->opcodes, code, true);
+	diag::print_opcodes(core->interp.imported_opcodes_log_file, core->interp.identifiers, core->interp.opcodes, code, true);
 }
 
 
 
-static const Opcode* record_interpreter_error(Interpreter* interp, const Opcode* code, CompileError error) noexcept
+static const Opcode* record_interpreter_error(CoreData* core, const Opcode* code, CompileError error) noexcept
 {
-	const SourceId source_id = source_id_of_opcode(interp->opcodes, code - 1);
+	const SourceId source_id = source_id_of_opcode(core->interp.opcodes, code - 1);
 
-	record_error(interp->errors, source_id, error);
+	record_error(core->interp.errors, source_id, error);
 
-	interp->is_ok = false;
+	core->interp.is_ok = false;
 
 	return nullptr;
 }
 
 
 
-static const Opcode* convert_into(Interpreter* interp, const Opcode* code, CTValue src, CTValue dst) noexcept;
+static const Opcode* convert_into(CoreData* core, const Opcode* code, CTValue src, CTValue dst) noexcept;
 
-static CTValue alloc_temporary_value_uninit(Interpreter* interp, u64 size, u32 align, TypeId type) noexcept
+static CTValue alloc_temporary_value_uninit(CoreData* core, u64 size, u32 align, TypeId type) noexcept
 {
 	if (size >= UINT32_MAX)
 		panic("Maximum size of temporary value exceeded.\n");
 
-	interp->temporary_data.pad_to_alignment(align);
+	core->interp.temporary_data.pad_to_alignment(align);
 
-	byte* const bytes = interp->temporary_data.reserve(static_cast<u32>(size));
+	byte* const bytes = core->interp.temporary_data.reserve(static_cast<u32>(size));
 
 	return CTValue{ MutRange<byte>{ bytes, size }, align, true, type };
 }
 
-static CTValue alloc_temporary_value(Interpreter* interp, CTValue value) noexcept
+static CTValue alloc_temporary_value(CoreData* core, CTValue value) noexcept
 {
-	CTValue temporary_value = alloc_temporary_value_uninit(interp, value.bytes.count(), value.align, value.type);
+	CTValue temporary_value = alloc_temporary_value_uninit(core, value.bytes.count(), value.align, value.type);
 
 	range::mem_copy(temporary_value.bytes, value.bytes.immut());
 
 	return temporary_value;
 }
 
-static const Opcode* push_location_value(Interpreter* interp, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
+static const Opcode* push_location_value(CoreData* core, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
 {
 	if (write_ctx != nullptr)
 	{
-		return convert_into(interp, code, value, *write_ctx);
+		return convert_into(core, code, value, *write_ctx);
 	}
 	else
 	{
-		interp->values.append(value);
+		core->interp.values.append(value);
 
 		return code;
 	}
 }
 
-static const Opcode* push_temporary_value(Interpreter* interp, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
+static const Opcode* push_temporary_value(CoreData* core, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
 {
 	if (write_ctx != nullptr)
 	{
-		return convert_into(interp, code, value, *write_ctx);
+		return convert_into(core, code, value, *write_ctx);
 	}
 	else
 	{
-		CTValue temporary_value = alloc_temporary_value(interp, value);
+		CTValue temporary_value = alloc_temporary_value(core, value);
 
-		interp->values.append(temporary_value);
+		core->interp.values.append(temporary_value);
 
 		return code;
 	}
 }
 
-static const Opcode* poppush_location_value(Interpreter* interp, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
+static const Opcode* poppush_location_value(CoreData* core, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	if (write_ctx != nullptr)
 	{
-		interp->values.pop_by(1);
+		core->interp.values.pop_by(1);
 
-		return convert_into(interp, code, value, *write_ctx);
+		return convert_into(core, code, value, *write_ctx);
 	}
 	else
 	{
-		CTValue* const top = interp->values.end() - 1;
+		CTValue* const top = core->interp.values.end() - 1;
 
 		*top = value;
 
@@ -291,21 +291,21 @@ static const Opcode* poppush_location_value(Interpreter* interp, const Opcode* c
 	}
 }
 
-static const Opcode* poppush_temporary_value(Interpreter* interp, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
+static const Opcode* poppush_temporary_value(CoreData* core, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	if (write_ctx != nullptr)
 	{
-		interp->values.pop_by(1);
+		core->interp.values.pop_by(1);
 
-		return convert_into(interp, code, value, *write_ctx);
+		return convert_into(core, code, value, *write_ctx);
 	}
 	else
 	{
-		CTValue temporary_value = alloc_temporary_value(interp, value);
+		CTValue temporary_value = alloc_temporary_value(core, value);
 
-		CTValue* const top = interp->values.end() - 1;
+		CTValue* const top = core->interp.values.end() - 1;
 
 		*top = temporary_value;
 
@@ -322,15 +322,15 @@ struct SeenSet
 	u16 count;
 };
 
-static SeenSet seen_set_init(Interpreter* interp, u16 count, u16 leading_1_count) noexcept
+static SeenSet seen_set_init(CoreData* core, u16 count, u16 leading_1_count) noexcept
 {
 	ASSERT_OR_IGNORE(leading_1_count <= count);
 
 	const u16 qword_count = (count + 63) / 64;
 
-	interp->temporary_data.pad_to_alignment(alignof(u64));
+	core->interp.temporary_data.pad_to_alignment(alignof(u64));
 
-	u64* const bits = reinterpret_cast<u64*>(interp->temporary_data.reserve(qword_count));
+	u64* const bits = reinterpret_cast<u64*>(core->interp.temporary_data.reserve(qword_count));
 
 	const u16 all_set_qwords = leading_1_count / 64;
 
@@ -452,16 +452,16 @@ static bool seen_set_next_unseen(SeenSet seen, u16 begin, u16* out_index) noexce
 
 
 
-static void push_activation(Interpreter* interp, OpcodeId id) noexcept
+static void push_activation(CoreData* core, OpcodeId id) noexcept
 {
-	interp->activations.append(id);
+	core->interp.activations.append(id);
 }
 
-static void push_activation(Interpreter* interp, const Opcode* code) noexcept
+static void push_activation(CoreData* core, const Opcode* code) noexcept
 {
-	const OpcodeId id = id_from_opcode(interp->opcodes, code);
+	const OpcodeId id = id_from_opcode(core->interp.opcodes, code);
 
-	push_activation(interp, id);
+	push_activation(core, id);
 }
 
 
@@ -476,19 +476,19 @@ static T* value_as(CTValue* value) noexcept
 
 
 
-static ClosureId create_closure(Interpreter* interp, u32 value_count) noexcept
+static ClosureId create_closure(CoreData* core, u32 value_count) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= value_count);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= value_count);
 
-	CTValue* const values = interp->values.end() - value_count;
+	CTValue* const values = core->interp.values.end() - value_count;
 
-	ScopeMember* const closure_members = interp->closure_members.reserve(value_count);
+	ScopeMember* const closure_members = core->interp.closure_members.reserve(value_count);
 
 	for (u32 i = 0; i != value_count; ++i)
 	{
 		const CTValue src = values[i];
 
-		const ForeverValueId value_id = forever_value_alloc_initialized(interp->globals, false, src);
+		const ForeverValueId value_id = forever_value_alloc_initialized(core->interp.globals, false, src);
 
 		ScopeMember* const dst = closure_members + i;
 
@@ -499,16 +499,16 @@ static ClosureId create_closure(Interpreter* interp, u32 value_count) noexcept
 		dst->type = src.type;
 	}
 
-	interp->values.pop_by(value_count);
+	core->interp.values.pop_by(value_count);
 
-	return static_cast<ClosureId>(closure_members - interp->closure_members.begin());
+	return static_cast<ClosureId>(closure_members - core->interp.closure_members.begin());
 }
 
-static const Opcode* convert_into_assume_convertible(Interpreter* interp, const Opcode* code, CTValue src, CTValue dst) noexcept
+static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcode* code, CTValue src, CTValue dst) noexcept
 {
-	const TypeTag src_type_tag = type_tag_from_id(interp->types, src.type);
+	const TypeTag src_type_tag = type_tag_from_id(core->interp.types, src.type);
 
-	const TypeTag dst_type_tag = type_tag_from_id(interp->types, dst.type);
+	const TypeTag dst_type_tag = type_tag_from_id(core->interp.types, dst.type);
 
 	if (dst_type_tag == TypeTag::TypeInfo)
 	{
@@ -520,25 +520,25 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 	{
 	case TypeTag::CompInteger:
 	{
-		ASSERT_OR_IGNORE(type_tag_from_id(interp->types, dst.type) == TypeTag::Integer);
+		ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, dst.type) == TypeTag::Integer);
 
-		const NumericType* const integer_type = type_attachment_from_id<NumericType>(interp->types, dst.type);
+		const NumericType* const integer_type = type_attachment_from_id<NumericType>(core->interp.types, dst.type);
 
 		ASSERT_OR_IGNORE((static_cast<u64>(integer_type->bits) + 7) / 8 == dst.bytes.count());
 
 		const CompIntegerValue src_value = *value_as<CompIntegerValue>(&src);
 
 		if (!bits_from_comp_integer(src_value, integer_type->bits, integer_type->is_signed, dst.bytes.begin()))
-			return record_interpreter_error(interp, code, CompileError::CompIntegerValueTooLarge);
+			return record_interpreter_error(core, code, CompileError::CompIntegerValueTooLarge);
 
 		return code;
 	}
 
 	case TypeTag::CompFloat:
 	{
-		ASSERT_OR_IGNORE(type_tag_from_id(interp->types, dst.type) == TypeTag::Float);
+		ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, dst.type) == TypeTag::Float);
 
-		const NumericType* const float_type = type_attachment_from_id<NumericType>(interp->types, dst.type);
+		const NumericType* const float_type = type_attachment_from_id<NumericType>(core->interp.types, dst.type);
 
 		const CompFloatValue src_value = *value_as<CompFloatValue>(&src);
 
@@ -563,7 +563,7 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 	case TypeTag::Slice:
 	case TypeTag::Ptr:
 	{
-		ASSERT_OR_IGNORE(type_tag_from_id(interp->types, dst.type) == src_type_tag);
+		ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, dst.type) == src_type_tag);
 
 		// Essentially a no-op, we are just adjusting permissions.
 		range::mem_copy(dst.bytes, src.bytes.immut());
@@ -573,13 +573,13 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 
 	case TypeTag::CompositeLiteral:
 	{
-		ASSERT_OR_IGNORE(type_tag_from_id(interp->types, dst.type) == TypeTag::Composite);
+		ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, dst.type) == TypeTag::Composite);
 
-		const u32 dst_member_count = type_get_composite_member_count(interp->types, dst.type);
+		const u32 dst_member_count = type_get_composite_member_count(core->interp.types, dst.type);
 
 		const u32 seen_members_size = ((dst_member_count + 7) / 8 + sizeof(u64) - 1) & ~(sizeof(u64) - 1);
 
-		CTValue seen_members_value = alloc_temporary_value_uninit(interp, seen_members_size, alignof(u64), TypeId::INVALID);
+		CTValue seen_members_value = alloc_temporary_value_uninit(core, seen_members_size, alignof(u64), TypeId::INVALID);
 
 		u64* const seen_members = reinterpret_cast<u64*>(seen_members_value.bytes.begin());
 
@@ -587,7 +587,7 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 
 		u32 rank = 0;
 
-		MemberIterator it = members_of(interp->types, src.type);
+		MemberIterator it = members_of(core->interp.types, src.type);
 
 		while (has_next(&it))
 		{
@@ -598,7 +598,7 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 			if (!next(&it, &src_member_info, &unused_src_initializer))
 				TODO("Figure out what to do when converting incomplete types and if this can even reasonably happen");
 
-			const IdentifierId src_name = type_member_name_by_rank(interp->types, src.type, src_member_info.rank);
+			const IdentifierId src_name = type_member_name_by_rank(core->interp.types, src.type, src_member_info.rank);
 
 			MemberInfo dst_member;
 
@@ -606,10 +606,10 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 
 			if (src_name != IdentifierId::INVALID)
 			{
-				const MemberByNameRst rst = type_member_info_by_name(interp->types, dst.type, src_name, &dst_member, &unused_initializer);
+				const MemberByNameRst rst = type_member_info_by_name(core->interp.types, dst.type, src_name, &dst_member, &unused_initializer);
 
 				if (rst == MemberByNameRst::NotFound)
-					return record_interpreter_error(interp, code, CompileError::CompositeLiteralTargetIsMissingMember);
+					return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetIsMissingMember);
 
 				ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
@@ -618,9 +618,9 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 			else
 			{
 				if (rank == dst_member_count)
-					return record_interpreter_error(interp, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
+					return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
 
-				if (!type_member_info_by_rank(interp->types, dst.type, static_cast<u16>(rank), &dst_member, &unused_initializer))
+				if (!type_member_info_by_rank(core->interp.types, dst.type, static_cast<u16>(rank), &dst_member, &unused_initializer))
 					ASSERT_UNREACHABLE;
 			}
 
@@ -629,19 +629,19 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 			const u64 member_bit = static_cast<u64>(1) << (dst_member.rank % 64);
 
 			if ((*seen_members_elem & member_bit) != 0)
-				return record_interpreter_error(interp, code, CompileError::CompositeLiteralTargetMemberMappedTwice);
+				return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetMemberMappedTwice);
 
 			*seen_members_elem |= member_bit;
 
-			const TypeMetrics dst_metrics = type_metrics_from_id(interp->types, dst_member.type_id);
+			const TypeMetrics dst_metrics = type_metrics_from_id(core->interp.types, dst_member.type_id);
 
-			const TypeMetrics src_metrics = type_metrics_from_id(interp->types, src_member_info.type_id);
+			const TypeMetrics src_metrics = type_metrics_from_id(core->interp.types, src_member_info.type_id);
 
 			const CTValue dst_member_value{ dst.bytes.mut_subrange(dst_member.offset, dst_metrics.size), dst_metrics.align, true, dst_member.type_id };
 
 			const CTValue src_member_value{ src.bytes.mut_subrange(src_member_info.offset, src_metrics.size), src_metrics.align, false, src_member_info.type_id };
 
-			if (convert_into(interp, code, src_member_value, dst_member_value) == nullptr)
+			if (convert_into(core, code, src_member_value, dst_member_value) == nullptr)
 				return nullptr;
 
 			rank += 1;
@@ -660,17 +660,17 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 
 			OpcodeId unused_initializer;
 
-			if (!type_member_info_by_rank(interp->types, dst.type, static_cast<u16>(i), &member, &unused_initializer))
+			if (!type_member_info_by_rank(core->interp.types, dst.type, static_cast<u16>(i), &member, &unused_initializer))
 				ASSERT_UNREACHABLE;
 
 			if (is_none(member.value_or_default_id))
-				return record_interpreter_error(interp, code, CompileError::CompositeLiteralSourceIsMissingMember);
+				return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
-			const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member.type_id);
+			const TypeMetrics member_metrics = type_metrics_from_id(core->interp.types, member.type_id);
 
 			const MutRange<byte> default_dst = dst.bytes.mut_subrange(member.offset, member_metrics.size);
 
-			const CTValue default_src = forever_value_get(interp->globals, get(member.value_or_default_id));
+			const CTValue default_src = forever_value_get(core->interp.globals, get(member.value_or_default_id));
 
 			range::mem_copy(default_dst, default_src.bytes.immut());
 		}
@@ -680,16 +680,16 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 
 	case TypeTag::ArrayLiteral:
 	{
-		ASSERT_OR_IGNORE(type_tag_from_id(interp->types, dst.type) == TypeTag::Array);
+		ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, dst.type) == TypeTag::Array);
 
-		const ArrayType* const dst_attach = type_attachment_from_id<ArrayType>(interp->types, dst.type);
+		const ArrayType* const dst_attach = type_attachment_from_id<ArrayType>(core->interp.types, dst.type);
 
 		// Early-out here to avoid `get`ting the element type of `src` which
 		// may be `none` if there are no elements.
 		if (dst_attach->element_count == 0)
 			return code;
 
-		const ArrayType* const src_attach = type_attachment_from_id<ArrayType>(interp->types, src.type);
+		const ArrayType* const src_attach = type_attachment_from_id<ArrayType>(core->interp.types, src.type);
 
 		ASSERT_OR_IGNORE(dst_attach->element_count == src_attach->element_count);
 
@@ -697,17 +697,17 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 
 		const TypeId src_elem_type = get(src_attach->element_type);
 
-		if (type_is_equal(interp->types, dst_elem_type, src_elem_type))
+		if (type_is_equal(core->interp.types, dst_elem_type, src_elem_type))
 		{
 			range::mem_copy(dst.bytes, src.bytes.immut());
 		}
 		else
 		{
-			ASSERT_OR_IGNORE(type_can_implicitly_convert_from_to(interp->types, src_elem_type, dst_elem_type));
+			ASSERT_OR_IGNORE(type_can_implicitly_convert_from_to(core->interp.types, src_elem_type, dst_elem_type));
 
-			const TypeMetrics dst_elem_metrics = type_metrics_from_id(interp->types, dst_elem_type);
+			const TypeMetrics dst_elem_metrics = type_metrics_from_id(core->interp.types, dst_elem_type);
 
-			const TypeMetrics src_elem_metrics = type_metrics_from_id(interp->types, src_elem_type);
+			const TypeMetrics src_elem_metrics = type_metrics_from_id(core->interp.types, src_elem_type);
 
 			for (u64 i = 0; i != dst_attach->element_count; ++i)
 			{
@@ -719,7 +719,7 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 
 				const CTValue src_elem_value{ src_elem_bytes, src_elem_metrics.align, false, src_elem_type };
 
-				if (convert_into_assume_convertible(interp, code, src_elem_value, dst_elem_value) == nullptr)
+				if (convert_into_assume_convertible(core, code, src_elem_value, dst_elem_value) == nullptr)
 					return nullptr;
 			}
 		}
@@ -751,9 +751,9 @@ static const Opcode* convert_into_assume_convertible(Interpreter* interp, const 
 	ASSERT_UNREACHABLE;
 }
 
-static const Opcode* convert_into(Interpreter* interp, const Opcode* code, CTValue src, CTValue dst) noexcept
+static const Opcode* convert_into(CoreData* core, const Opcode* code, CTValue src, CTValue dst) noexcept
 {
-	const TypeRelation relation = type_relation(interp->types, src.type, dst.type);
+	const TypeRelation relation = type_relation(core->interp.types, src.type, dst.type);
 
 	if (relation == TypeRelation::Equal)
 	{
@@ -763,21 +763,21 @@ static const Opcode* convert_into(Interpreter* interp, const Opcode* code, CTVal
 	}
 	else if (relation == TypeRelation::FirstConvertsToSecond)
 	{
-		return convert_into_assume_convertible(interp, code, src, dst);
+		return convert_into_assume_convertible(core, code, src, dst);
 	}
 	else
 	{
 		ASSERT_OR_IGNORE(relation == TypeRelation::Unrelated || relation == TypeRelation::SecondConvertsToFirst);
 
-		(void) record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		(void) record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 		return nullptr;
 	}
 }
 
-static Maybe<TypeId> unify(Interpreter* interp, const Opcode* code, CTValue* inout_lhs, CTValue* inout_rhs) noexcept
+static Maybe<TypeId> unify(CoreData* core, const Opcode* code, CTValue* inout_lhs, CTValue* inout_rhs) noexcept
 {
-	const TypeRelation relation = type_relation(interp->types, inout_lhs->type, inout_rhs->type);
+	const TypeRelation relation = type_relation(core->interp.types, inout_lhs->type, inout_rhs->type);
 
 	if (relation == TypeRelation::Equal)
 	{
@@ -785,9 +785,9 @@ static Maybe<TypeId> unify(Interpreter* interp, const Opcode* code, CTValue* ino
 	}
 	else if (relation == TypeRelation::FirstConvertsToSecond)
 	{
-		const CTValue tmp_value = alloc_temporary_value_uninit(interp, inout_rhs->bytes.count(), inout_rhs->align, inout_rhs->type);
+		const CTValue tmp_value = alloc_temporary_value_uninit(core, inout_rhs->bytes.count(), inout_rhs->align, inout_rhs->type);
 
-		if (convert_into_assume_convertible(interp, code, *inout_lhs, tmp_value) == nullptr)
+		if (convert_into_assume_convertible(core, code, *inout_lhs, tmp_value) == nullptr)
 			return none<TypeId>();
 
 		*inout_lhs = tmp_value;
@@ -796,9 +796,9 @@ static Maybe<TypeId> unify(Interpreter* interp, const Opcode* code, CTValue* ino
 	}
 	else if (relation == TypeRelation::SecondConvertsToFirst)
 	{
-		const CTValue tmp_value = alloc_temporary_value_uninit(interp, inout_lhs->bytes.count(), inout_lhs->align, inout_lhs->type);
+		const CTValue tmp_value = alloc_temporary_value_uninit(core, inout_lhs->bytes.count(), inout_lhs->align, inout_lhs->type);
 
-		if (convert_into_assume_convertible(interp, code, *inout_rhs, tmp_value) == nullptr)
+		if (convert_into_assume_convertible(core, code, *inout_rhs, tmp_value) == nullptr)
 			return none<TypeId>();
 
 		*inout_rhs = tmp_value;
@@ -809,15 +809,15 @@ static Maybe<TypeId> unify(Interpreter* interp, const Opcode* code, CTValue* ino
 	{
 		ASSERT_OR_IGNORE(relation == TypeRelation::Unrelated);
 
-		(void) record_interpreter_error(interp, code, CompileError::NoCommonArgumentType);
+		(void) record_interpreter_error(core, code, CompileError::NoCommonArgumentType);
 
 		return none<TypeId>();
 	}
 }
 
-static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId type, Range<byte> lhs, Range<byte> rhs) noexcept
+static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Range<byte> lhs, Range<byte> rhs) noexcept
 {
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	switch (type_tag)
 	{
@@ -834,7 +834,7 @@ static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId typ
 
 		const TypeId rhs_value = *range::access_as<TypeId>(rhs);
 
-		const bool is_equal = type_is_equal(interp->types, lhs_value, rhs_value);
+		const bool is_equal = type_is_equal(core->interp.types, lhs_value, rhs_value);
 
 		return CompareResult{ is_equal ? CompareEquality::Equal : CompareEquality::Unequal };
 	}
@@ -872,7 +872,7 @@ static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId typ
 
 	case TypeTag::Integer:
 	{
-		const NumericType integer_type = *type_attachment_from_id<NumericType>(interp->types, type);
+		const NumericType integer_type = *type_attachment_from_id<NumericType>(core->interp.types, type);
 
 		const s64 compare_size = static_cast<s64>(integer_type.bits >> 3);
 
@@ -960,7 +960,7 @@ static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId typ
 
 	case TypeTag::Float:
 	{
-		const NumericType float_type = *type_attachment_from_id<NumericType>(interp->types, type);
+		const NumericType float_type = *type_attachment_from_id<NumericType>(core->interp.types, type);
 
 		if (float_type.bits == 32)
 		{
@@ -1019,14 +1019,14 @@ static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId typ
 	case TypeTag::Array:
 	case TypeTag::ArrayLiteral:
 	{
-		const ArrayType array_type = *type_attachment_from_id<ArrayType>(interp->types, type);
+		const ArrayType array_type = *type_attachment_from_id<ArrayType>(core->interp.types, type);
 
 		if (is_none(array_type.element_type))
 			return CompareResult{ CompareEquality::Equal };
 
 		const TypeId element_type = get(array_type.element_type);
 
-		const TypeMetrics metrics = type_metrics_from_id(interp->types, element_type);
+		const TypeMetrics metrics = type_metrics_from_id(core->interp.types, element_type);
 
 		for (u64 i = 0; i != array_type.element_count; ++i)
 		{
@@ -1034,7 +1034,7 @@ static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId typ
 
 			const Range<byte> rhs_elem{ rhs.begin() + i * metrics.stride, metrics.size };
 
-			const CompareResult result = compare(interp, code, element_type, lhs_elem, rhs_elem);
+			const CompareResult result = compare(core, code, element_type, lhs_elem, rhs_elem);
 
 			if (result.tag == CompareTag::INVALID)
 				return result;
@@ -1047,7 +1047,7 @@ static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId typ
 
 	case TypeTag::Composite:
 	{
-		MemberIterator it = members_of(interp->types, type);
+		MemberIterator it = members_of(core->interp.types, type);
 
 		while (has_next(&it))
 		{
@@ -1058,13 +1058,13 @@ static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId typ
 			if (!next(&it, &member, &unused_initializer))
 				TODO("Figure out what to do when comparing incomplete types and if it can even reasonably happen");
 
-			const TypeMetrics metrics = type_metrics_from_id(interp->types, member.type_id);
+			const TypeMetrics metrics = type_metrics_from_id(core->interp.types, member.type_id);
 
 			const Range<byte> lhs_member{ lhs.begin() + member.offset, metrics.size };
 
 			const Range<byte> rhs_member{ rhs.begin() + member.offset, metrics.size };
 
-			const CompareResult result = compare(interp, code, member.type_id, lhs_member, rhs_member);
+			const CompareResult result = compare(core, code, member.type_id, lhs_member, rhs_member);
 
 			if (result.tag == CompareTag::INVALID)
 				return CompareResult{};
@@ -1085,7 +1085,7 @@ static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId typ
 	case TypeTag::Divergent:
 	case TypeTag::Trait:
 	{
-		(void) record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		(void) record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 		return CompareResult{};
 	}
@@ -1098,19 +1098,19 @@ static CompareResult compare(Interpreter* interp, const Opcode* code, TypeId typ
 	ASSERT_UNREACHABLE;
 }
 
-static const Opcode* scope_alloc_typed_member(Interpreter* interp, const Opcode* code, bool is_mut, TypeId type) noexcept
+static const Opcode* scope_alloc_typed_member(CoreData* core, const Opcode* code, bool is_mut, TypeId type) noexcept
 {
-	const TypeMetrics member_metrics = type_metrics_from_id(interp->types, type);
+	const TypeMetrics member_metrics = type_metrics_from_id(core->interp.types, type);
 
 	if (member_metrics.size >= UINT32_MAX)
 		panic("Exceeded maximum size of stack variable.\n");
 
-	interp->scope_data.pad_to_alignment(member_metrics.align);
+	core->interp.scope_data.pad_to_alignment(member_metrics.align);
 
-	byte* const member_value = interp->scope_data.reserve(static_cast<u32>(member_metrics.size));
+	byte* const member_value = core->interp.scope_data.reserve(static_cast<u32>(member_metrics.size));
 
-	ScopeMember* const member = interp->scope_members.reserve();
-	member->offset = static_cast<u32>(member_value - interp->scope_data.begin());
+	ScopeMember* const member = core->interp.scope_members.reserve();
+	member->offset = static_cast<u32>(member_value - core->interp.scope_data.begin());
 	member->size = static_cast<u32>(member_metrics.size);
 	member->align = member_metrics.align;
 	member->is_mut = is_mut;
@@ -1118,38 +1118,38 @@ static const Opcode* scope_alloc_typed_member(Interpreter* interp, const Opcode*
 
 	const MutRange<byte> bytes = MutRange<byte>{ member_value, member_metrics.size };
 
-	interp->write_ctxs.append(CTValue{ bytes, member_metrics.align, is_mut, type });
+	core->interp.write_ctxs.append(CTValue{ bytes, member_metrics.align, is_mut, type });
 
 	return code;
 }
 
-static void scope_pop(Interpreter* interp) noexcept
+static void scope_pop(CoreData* core) noexcept
 {
-	const Scope scope = interp->scopes.end()[-1];
+	const Scope scope = core->interp.scopes.end()[-1];
 
-	interp->scopes.pop_by(1);
+	core->interp.scopes.pop_by(1);
 
-	interp->temporary_data.pop_to(scope.temporary_data_used);
+	core->interp.temporary_data.pop_to(scope.temporary_data_used);
 
-	if (scope.first_member_index != interp->scope_members.used())
+	if (scope.first_member_index != core->interp.scope_members.used())
 	{
-		const u32 scope_data_begin = interp->scope_members.begin()[scope.first_member_index].offset;
+		const u32 scope_data_begin = core->interp.scope_members.begin()[scope.first_member_index].offset;
 
-		interp->scope_members.pop_to(scope.first_member_index);
+		core->interp.scope_members.pop_to(scope.first_member_index);
 
-		interp->scope_data.pop_to(scope_data_begin);
+		core->interp.scope_data.pop_to(scope_data_begin);
 	}
 }
 
 
 
-static U64FromValueRst u64_from_value(Interpreter* interp, CTValue value, u64* out) noexcept
+static U64FromValueRst u64_from_value(CoreData* core, CTValue value, u64* out) noexcept
 {
-	const TypeTag type_tag = type_tag_from_id(interp->types, value.type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, value.type);
 
 	if (type_tag == TypeTag::Integer)
 	{
-		const NumericType integer_type = *type_attachment_from_id<NumericType>(interp->types, value.type);
+		const NumericType integer_type = *type_attachment_from_id<NumericType>(core->interp.types, value.type);
 
 		if ((integer_type.bits & 7) != 0)
 			TODO("Implement u64 extraction from non-byte-sized integer types");
@@ -1201,25 +1201,25 @@ static const Opcode* code_attach(const Opcode* code, T* out) noexcept
 	return code + sizeof(T);
 }
 
-static CTValue get_builtin_param_raw(Interpreter* interp, u8 rank) noexcept
+static CTValue get_builtin_param_raw(CoreData* core, u8 rank) noexcept
 {
-	ASSERT_OR_IGNORE(interp->scopes.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
-	Scope* const scope = interp->scopes.end() - 1;
+	Scope* const scope = core->interp.scopes.end() - 1;
 
-	ASSERT_OR_IGNORE(rank + scope->first_member_index < interp->scope_members.used());
+	ASSERT_OR_IGNORE(rank + scope->first_member_index < core->interp.scope_members.used());
 
-	ScopeMember* const member = interp->scope_members.begin() + scope->first_member_index + rank;
+	ScopeMember* const member = core->interp.scope_members.begin() + scope->first_member_index + rank;
 
-	const MutRange<byte> bytes{ interp->scope_data.begin() + member->offset, member->size };
+	const MutRange<byte> bytes{ core->interp.scope_data.begin() + member->offset, member->size };
 
 	return CTValue{ bytes, member->align, member->is_mut, member->type };
 }
 
 template<typename T>
-static T get_builtin_param(Interpreter* interp, u8 rank) noexcept
+static T get_builtin_param(CoreData* core, u8 rank) noexcept
 {
-	CTValue value = get_builtin_param_raw(interp, rank);
+	CTValue value = get_builtin_param_raw(core, rank);
 
 	ASSERT_OR_IGNORE(value.bytes.count() == sizeof(T) && value.align == alignof(T));
 
@@ -1228,102 +1228,102 @@ static T get_builtin_param(Interpreter* interp, u8 rank) noexcept
 
 
 
-static const Opcode* builtin_integer(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_integer(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	const u8 bits = get_builtin_param<u8>(interp, 0);
+	const u8 bits = get_builtin_param<u8>(core, 0);
 
-	const bool is_signed = get_builtin_param<bool>(interp, 1);
+	const bool is_signed = get_builtin_param<bool>(core, 1);
 
-	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
-	TypeId integer_type = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ bits, is_signed });
+	TypeId integer_type = type_create_numeric(core->interp.types, TypeTag::Integer, NumericType{ bits, is_signed });
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&integer_type);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_float(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_float(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	const u8 bits = get_builtin_param<u8>(interp, 0);
+	const u8 bits = get_builtin_param<u8>(core, 0);
 
-	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
-	TypeId float_type = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ bits, true });
+	TypeId float_type = type_create_numeric(core->interp.types, TypeTag::Integer, NumericType{ bits, true });
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&float_type);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_type(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_type(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+	TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&type_type);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_definition(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_definition(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
-	TypeId definition_type = type_create_simple(interp->types, TypeTag::Definition);
+	TypeId definition_type = type_create_simple(core->interp.types, TypeTag::Definition);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&definition_type);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_typeinfo(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_typeinfo(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
-	TypeId typeinfo_type = type_create_simple(interp->types, TypeTag::TypeInfo);
+	TypeId typeinfo_type = type_create_simple(core->interp.types, TypeTag::TypeInfo);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&typeinfo_type);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_typeof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_typeof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	CTValue arg = get_builtin_param_raw(interp, 0);
+	CTValue arg = get_builtin_param_raw(core, 0);
 
-	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ arg.bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ arg.bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_returntypeof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_returntypeof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	const TypeId type = get_builtin_param<TypeId>(interp, 0);
+	const TypeId type = get_builtin_param<TypeId>(core, 0);
 
-	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag != TypeTag::Func)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-	const SignatureType2* const signature = type_attachment_from_id<SignatureType2>(interp->types, type);
+	const SignatureType2* const signature = type_attachment_from_id<SignatureType2>(core->interp.types, type);
 
 	if (signature->has_templated_return_type)
-		return record_interpreter_error(interp, code, CompileError::ReturntypeofTemplatedReturnType);
+		return record_interpreter_error(core, code, CompileError::ReturntypeofTemplatedReturnType);
 
 	TypeId return_type = signature->return_type.type_id;
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&return_type);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_sizeof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_sizeof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	CTValue arg = get_builtin_param_raw(interp, 0);
+	CTValue arg = get_builtin_param_raw(core, 0);
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, arg.type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, arg.type);
 
 	u64 size;
 
@@ -1331,7 +1331,7 @@ static const Opcode* builtin_sizeof(Interpreter* interp, const Opcode* code, CTV
 	{
 		const TypeId indirect_type = *value_as<TypeId>(&arg);
 
-		const TypeTag indirect_type_tag = type_tag_from_id(interp->types, indirect_type);
+		const TypeTag indirect_type_tag = type_tag_from_id(core->interp.types, indirect_type);
 
 		if (indirect_type_tag == TypeTag::Type)
 		{
@@ -1339,28 +1339,28 @@ static const Opcode* builtin_sizeof(Interpreter* interp, const Opcode* code, CTV
 		}
 		else
 		{
-			size = type_metrics_from_id(interp->types, indirect_type).size;
+			size = type_metrics_from_id(core->interp.types, indirect_type).size;
 		}
 	}
 	else
 	{
-		size = type_metrics_from_id(interp->types, arg.type).size;
+		size = type_metrics_from_id(core->interp.types, arg.type).size;
 	}
 
-	const TypeId comp_integer_type = type_create_simple(interp->types, TypeTag::CompInteger);
+	const TypeId comp_integer_type = type_create_simple(core->interp.types, TypeTag::CompInteger);
 
 	CompIntegerValue size_value = comp_integer_from_u64(size);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&size_value);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
 }
 
-static const Opcode* builtin_alignof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_alignof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	CTValue arg = get_builtin_param_raw(interp, 0);
+	CTValue arg = get_builtin_param_raw(core, 0);
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, arg.type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, arg.type);
 
 	u32 align;
 
@@ -1368,7 +1368,7 @@ static const Opcode* builtin_alignof(Interpreter* interp, const Opcode* code, CT
 	{
 		const TypeId indirect_type = *value_as<TypeId>(&arg);
 
-		const TypeTag indirect_type_tag = type_tag_from_id(interp->types, indirect_type);
+		const TypeTag indirect_type_tag = type_tag_from_id(core->interp.types, indirect_type);
 
 		if (indirect_type_tag == TypeTag::Type)
 		{
@@ -1376,28 +1376,28 @@ static const Opcode* builtin_alignof(Interpreter* interp, const Opcode* code, CT
 		}
 		else
 		{
-			align = type_metrics_from_id(interp->types, indirect_type).align;
+			align = type_metrics_from_id(core->interp.types, indirect_type).align;
 		}
 	}
 	else
 	{
-		align = type_metrics_from_id(interp->types, arg.type).align;
+		align = type_metrics_from_id(core->interp.types, arg.type).align;
 	}
 
-	const TypeId comp_integer_type = type_create_simple(interp->types, TypeTag::CompInteger);
+	const TypeId comp_integer_type = type_create_simple(core->interp.types, TypeTag::CompInteger);
 
 	CompIntegerValue align_value = comp_integer_from_u64(align);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&align_value);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
 }
 
-static const Opcode* builtin_strideof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_strideof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	CTValue arg = get_builtin_param_raw(interp, 0);
+	CTValue arg = get_builtin_param_raw(core, 0);
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, arg.type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, arg.type);
 
 	u64 stride;
 
@@ -1405,7 +1405,7 @@ static const Opcode* builtin_strideof(Interpreter* interp, const Opcode* code, C
 	{
 		const TypeId indirect_type = *value_as<TypeId>(&arg);
 
-		const TypeTag indirect_type_tag = type_tag_from_id(interp->types, indirect_type);
+		const TypeTag indirect_type_tag = type_tag_from_id(core->interp.types, indirect_type);
 
 		if (indirect_type_tag == TypeTag::Type)
 		{
@@ -1413,26 +1413,26 @@ static const Opcode* builtin_strideof(Interpreter* interp, const Opcode* code, C
 		}
 		else
 		{
-			stride = type_metrics_from_id(interp->types, indirect_type).stride;
+			stride = type_metrics_from_id(core->interp.types, indirect_type).stride;
 		}
 	}
 	else
 	{
-		stride = type_metrics_from_id(interp->types, arg.type).stride;
+		stride = type_metrics_from_id(core->interp.types, arg.type).stride;
 	}
 
-	const TypeId comp_integer_type = type_create_simple(interp->types, TypeTag::CompInteger);
+	const TypeId comp_integer_type = type_create_simple(core->interp.types, TypeTag::CompInteger);
 
 	CompIntegerValue stride_value = comp_integer_from_u64(stride);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&stride_value);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
 }
 
-static const Opcode* builtin_offsetof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_offsetof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	(void) interp;
+	(void) core;
 
 	(void) code;
 
@@ -1441,9 +1441,9 @@ static const Opcode* builtin_offsetof(Interpreter* interp, const Opcode* code, C
 	TODO("Implement");
 }
 
-static const Opcode* builtin_nameof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_nameof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	(void) interp;
+	(void) core;
 
 	(void) code;
 
@@ -1452,19 +1452,19 @@ static const Opcode* builtin_nameof(Interpreter* interp, const Opcode* code, CTV
 	TODO("Implement");
 }
 
-static const Opcode* builtin_import(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_import(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	const Range<char8> path = get_builtin_param<Range<char8>>(interp, 0);
+	const Range<char8> path = get_builtin_param<Range<char8>>(core, 0);
 
-	const bool is_std = get_builtin_param<bool>(interp, 1);
+	const bool is_std = get_builtin_param<bool>(core, 1);
 
-	const SourceId from = get_builtin_param<SourceId>(interp, 2);
+	const SourceId from = get_builtin_param<SourceId>(core, 2);
 
 	ASSERT_OR_IGNORE(from != SourceId::INVALID);
 
 	char8 absolute_path_buf[8192];
 
-	const Range<char8> path_base = source_file_path_from_source_id(interp->reader, from);
+	const Range<char8> path_base = source_file_path_from_source_id(core->interp.reader, from);
 
 	char8 path_base_parent_buf[8192];
 
@@ -1480,35 +1480,34 @@ static const Opcode* builtin_import(Interpreter* interp, const Opcode* code, CTV
 
 	const Range<char8> absolute_path{ absolute_path_buf, absolute_path_chars };
 
-	// TODO: Fix this silly cast to surrounding type asap.
-	Maybe<TypeId> file_type = import_file(reinterpret_cast<CoreData*>(reinterpret_cast<byte*>(interp) - offsetof(CoreData, interp)), absolute_path, is_std);
+	Maybe<TypeId> file_type = import_file(core, absolute_path, is_std);
 
 	if (is_none(file_type))
 		return nullptr;
 
-	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&file_type);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_create_type_builder(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_create_type_builder(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	const SourceId source_id = get_builtin_param<SourceId>(interp, 0);
+	const SourceId source_id = get_builtin_param<SourceId>(core, 0);
 
-	const TypeId type_builder_type = type_create_simple(interp->types, TypeTag::TypeBuilder);
+	const TypeId type_builder_type = type_create_simple(core->interp.types, TypeTag::TypeBuilder);
 
-	TypeId builder = type_create_composite(interp->types, TypeTag::Composite, TypeDisposition::User, source_id, 0, false);
+	TypeId builder = type_create_composite(core->interp.types, TypeTag::Composite, TypeDisposition::User, source_id, 0, false);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&builder);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_builder_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_builder_type });
 }
 
-static const Opcode* builtin_add_type_member(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_add_type_member(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	(void) interp;
+	(void) core;
 
 	(void) code;
 
@@ -1517,60 +1516,60 @@ static const Opcode* builtin_add_type_member(Interpreter* interp, const Opcode* 
 	TODO("Implement");
 }
 
-static const Opcode* builtin_complete_type(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_complete_type(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	const TypeId builder = get_builtin_param<TypeId>(interp, 0);
+	const TypeId builder = get_builtin_param<TypeId>(core, 0);
 
-	const u64 size = get_builtin_param<u64>(interp, 1);
+	const u64 size = get_builtin_param<u64>(core, 1);
 
-	const u64 align = get_builtin_param<u64>(interp, 2);
+	const u64 align = get_builtin_param<u64>(core, 2);
 
-	const u64 stride = get_builtin_param<u64>(interp, 3);
+	const u64 stride = get_builtin_param<u64>(core, 3);
 
 	if (align == 0)
-		return record_interpreter_error(interp, code, CompileError::BuiltinCompleteTypeAlignZero);
+		return record_interpreter_error(core, code, CompileError::BuiltinCompleteTypeAlignZero);
 
 	if (!is_pow2(align))
-		return record_interpreter_error(interp, code, CompileError::BuiltinCompleteTypeAlignNotPowTwo);
+		return record_interpreter_error(core, code, CompileError::BuiltinCompleteTypeAlignNotPowTwo);
 
 	if (align > UINT32_MAX)
-		return record_interpreter_error(interp, code, CompileError::BuiltinCompleteTypeAlignTooLarge);
+		return record_interpreter_error(core, code, CompileError::BuiltinCompleteTypeAlignTooLarge);
 
-	TypeId type = type_seal_composite(interp->types, builder, size, static_cast<u32>(align), stride);
+	TypeId type = type_seal_composite(core->interp.types, builder, size, static_cast<u32>(align), stride);
 
-	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&type);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_source_id(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_source_id(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->call_activation_indices.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.call_activation_indices.used() >= 1);
 
-	const TypeId source_id_type = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ 32, false });
+	const TypeId source_id_type = type_create_numeric(core->interp.types, TypeTag::Integer, NumericType{ 32, false });
 
-	const u32 caller_activation_index = interp->call_activation_indices.end()[-1];
+	const u32 caller_activation_index = core->interp.call_activation_indices.end()[-1];
 
-	ASSERT_OR_IGNORE(caller_activation_index < interp->activations.used());
+	ASSERT_OR_IGNORE(caller_activation_index < core->interp.activations.used());
 
-	const OpcodeId caller_activation = interp->activations.begin()[caller_activation_index];
+	const OpcodeId caller_activation = core->interp.activations.begin()[caller_activation_index];
 
-	const Opcode* const caller_activation_code = opcode_from_id(interp->opcodes, caller_activation);
+	const Opcode* const caller_activation_code = opcode_from_id(core->interp.opcodes, caller_activation);
 
-	SourceId source_id = source_id_of_opcode(interp->opcodes, caller_activation_code);
+	SourceId source_id = source_id_of_opcode(core->interp.opcodes, caller_activation_code);
 
 	ASSERT_OR_IGNORE(source_id != SourceId::INVALID);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&source_id);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(SourceId), true, source_id_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(SourceId), true, source_id_type });
 }
 
-static const Opcode* builtin_caller_source_id(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_caller_source_id(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	(void) interp;
+	(void) core;
 
 	(void) code;
 
@@ -1579,9 +1578,9 @@ static const Opcode* builtin_caller_source_id(Interpreter* interp, const Opcode*
 	TODO("Implement");
 }
 
-static const Opcode* builtin_definition_typeof(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_definition_typeof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	(void) interp;
+	(void) core;
 
 	(void) code;
 
@@ -1592,34 +1591,34 @@ static const Opcode* builtin_definition_typeof(Interpreter* interp, const Opcode
 
 
 
-static const Opcode* handle_end_code([[maybe_unused]] Interpreter* interp, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_end_code([[maybe_unused]] CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	ASSERT_OR_IGNORE(interp->is_ok);
+	ASSERT_OR_IGNORE(core->interp.is_ok);
 
 	return nullptr;
 }
 
-static const Opcode* handle_set_write_ctx(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_set_write_ctx(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
 	if (!top->is_mut)
-		return record_interpreter_error(interp, code, CompileError::SetLhsNotMutable);
+		return record_interpreter_error(core, code, CompileError::SetLhsNotMutable);
 
-	interp->write_ctxs.append(*top);
+	core->interp.write_ctxs.append(*top);
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
 	return code;
 }
 
-static const Opcode* handle_scope_begin(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_scope_begin(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -1627,39 +1626,39 @@ static const Opcode* handle_scope_begin(Interpreter* interp, const Opcode* code,
 
 	code = code_attach(code, &member_count);
 
-	Scope* const scope = interp->scopes.reserve();
-	scope->first_member_index = interp->scope_members.used();
-	scope->temporary_data_used = interp->temporary_data.used();
+	Scope* const scope = core->interp.scopes.reserve();
+	scope->first_member_index = core->interp.scope_members.used();
+	scope->temporary_data_used = core->interp.temporary_data.used();
 
 	return code;
 }
 
-static const Opcode* handle_scope_end(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_scope_end(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->scopes.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	scope_pop(interp);
+	scope_pop(core);
 
 	return code;
 }
 
-static const Opcode* handle_scope_end_preserve_top(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_scope_end_preserve_top(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	ASSERT_OR_IGNORE(interp->scopes.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	Scope* const scope = interp->scopes.end() - 1;
+	Scope* const scope = core->interp.scopes.end() - 1;
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
-	byte* const scope_temporary_data_begin = interp->temporary_data.begin() + scope->temporary_data_used;
+	byte* const scope_temporary_data_begin = core->interp.temporary_data.begin() + scope->temporary_data_used;
 
-	if (top->bytes.begin() >= scope_temporary_data_begin && top->bytes.begin() < interp->temporary_data.end())
+	if (top->bytes.begin() >= scope_temporary_data_begin && top->bytes.begin() < core->interp.temporary_data.end())
 	{
 		memmove(scope_temporary_data_begin, top->bytes.begin(), top->bytes.count());
 
@@ -1668,16 +1667,16 @@ static const Opcode* handle_scope_end_preserve_top(Interpreter* interp, const Op
 		top->bytes = MutRange<byte>{ scope_temporary_data_begin, top->bytes.count() };
 	}
 
-	scope_pop(interp);
+	scope_pop(core);
 
 	return code;
 }
 
-static const Opcode* handle_scope_alloc_typed(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_scope_alloc_typed(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->scopes.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -1685,27 +1684,27 @@ static const Opcode* handle_scope_alloc_typed(Interpreter* interp, const Opcode*
 
 	code = code_attach(code, &is_mut);
 
-	CTValue* const top = interp->values.end() -1;
+	CTValue* const top = core->interp.values.end() -1;
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag != TypeTag::Type)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const TypeId member_type = *value_as<TypeId>(top);
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
-	return scope_alloc_typed_member(interp, code, is_mut, member_type);
+	return scope_alloc_typed_member(core, code, is_mut, member_type);
 }
 
-static const Opcode* handle_scope_alloc_untyped(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_scope_alloc_untyped(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->scopes.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -1713,15 +1712,15 @@ static const Opcode* handle_scope_alloc_untyped(Interpreter* interp, const Opcod
 
 	code = code_attach(code, &is_mut);
 
-	ScopeMember* const member = interp->scope_members.reserve();
+	ScopeMember* const member = core->interp.scope_members.reserve();
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
-	interp->scope_data.pad_to_alignment(top->align);
+	core->interp.scope_data.pad_to_alignment(top->align);
 
-	byte* const member_value = interp->scope_data.reserve(static_cast<u32>(top->bytes.count()));
+	byte* const member_value = core->interp.scope_data.reserve(static_cast<u32>(top->bytes.count()));
 
-	member->offset = static_cast<u32>(member_value - interp->scope_data.begin());
+	member->offset = static_cast<u32>(member_value - core->interp.scope_data.begin());
 	member->size = static_cast<u32>(top->bytes.count());
 	member->align = top->align;
 	member->is_mut = is_mut;
@@ -1729,12 +1728,12 @@ static const Opcode* handle_scope_alloc_untyped(Interpreter* interp, const Opcod
 
 	memcpy(member_value, top->bytes.begin(), top->bytes.count());
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
 	return code;
 }
 
-static const Opcode* handle_file_global_alloc_prepare(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_global_alloc_prepare(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -1750,105 +1749,105 @@ static const Opcode* handle_file_global_alloc_prepare(Interpreter* interp, const
 
 	code = code_attach(code, &rank);
 
-	file_value_alloc_prepare(interp->globals, file_index, rank, is_mut);
+	file_value_alloc_prepare(core->interp.globals, file_index, rank, is_mut);
 
-	GlobalInitialization* const init = interp->global_initializations.reserve();
+	GlobalInitialization* const init = core->interp.global_initializations.reserve();
 	init->file_index = file_index;
 	init->rank = rank;
 
 	return code;
 }
 
-static const Opcode* handle_file_global_alloc_complete(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_global_alloc_complete(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->global_initializations.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.global_initializations.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	const GlobalInitialization init = interp->global_initializations.end()[-1];
+	const GlobalInitialization init = core->interp.global_initializations.end()[-1];
 
-	file_value_alloc_initialized_complete(interp->globals, init.file_index, init.rank);
+	file_value_alloc_initialized_complete(core->interp.globals, init.file_index, init.rank);
 
-	interp->global_initializations.pop_by(1);
+	core->interp.global_initializations.pop_by(1);
 
 	return code;
 }
 
-static const Opcode* handle_file_global_alloc_typed(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_global_alloc_typed(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	ASSERT_OR_IGNORE(interp->global_initializations.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.global_initializations.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	const GlobalInitialization init = interp->global_initializations.end()[-1];
+	const GlobalInitialization init = core->interp.global_initializations.end()[-1];
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag != TypeTag::Type)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const TypeId member_type = *value_as<TypeId>(top);
 
-	const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member_type);
+	const TypeMetrics member_metrics = type_metrics_from_id(core->interp.types, member_type);
 
 	TypeId file_type;
 
-	const ForeverCTValue value = file_value_alloc_uninitialized(interp->globals, init.file_index, init.rank, member_type, member_metrics, &file_type);
+	const ForeverCTValue value = file_value_alloc_uninitialized(core->interp.globals, init.file_index, init.rank, member_type, member_metrics, &file_type);
 
-	type_set_file_member_info(interp->types, file_type, init.rank, member_type, value.id);
+	type_set_file_member_info(core->interp.types, file_type, init.rank, member_type, value.id);
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
-	interp->write_ctxs.append(value.value);
+	core->interp.write_ctxs.append(value.value);
 
 	return code;
 }
 
-static const Opcode* handle_file_global_alloc_untyped(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_global_alloc_untyped(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	ASSERT_OR_IGNORE(interp->global_initializations.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.global_initializations.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	const GlobalInitialization init = interp->global_initializations.end()[-1];
+	const GlobalInitialization init = core->interp.global_initializations.end()[-1];
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
 	TypeId file_type;
 
-	const ForeverValueId value_id = file_value_alloc_initialized(interp->globals, init.file_index, init.rank, *top, &file_type);
+	const ForeverValueId value_id = file_value_alloc_initialized(core->interp.globals, init.file_index, init.rank, *top, &file_type);
 
-	type_set_file_member_info(interp->types, file_type, init.rank, top->type, value_id);
+	type_set_file_member_info(core->interp.types, file_type, init.rank, top->type, value_id);
 
-	interp->global_initializations.pop_by(1);
+	core->interp.global_initializations.pop_by(1);
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
 	return code;
 }
 
-static const Opcode* handle_pop_closure(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_pop_closure(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->active_closures.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.active_closures.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	interp->active_closures.pop_by(1);
+	core->interp.active_closures.pop_by(1);
 
 	return code;
 }
 
-static const Opcode* handle_load_scope(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_scope(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->scopes.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
 	u16 out;
 
@@ -1858,20 +1857,20 @@ static const Opcode* handle_load_scope(Interpreter* interp, const Opcode* code, 
 
 	code = code_attach(code, &rank);
 
-	ASSERT_OR_IGNORE(out < interp->scopes.used());
+	ASSERT_OR_IGNORE(out < core->interp.scopes.used());
 
-	Scope* const scope = interp->scopes.end() - out - 1;
+	Scope* const scope = core->interp.scopes.end() - out - 1;
 
-	ASSERT_OR_IGNORE(rank + scope->first_member_index < interp->scope_members.used());
+	ASSERT_OR_IGNORE(rank + scope->first_member_index < core->interp.scope_members.used());
 
-	ScopeMember* const member = interp->scope_members.begin() + scope->first_member_index + rank;
+	ScopeMember* const member = core->interp.scope_members.begin() + scope->first_member_index + rank;
 
-	CTValue loaded_value{MutRange<byte>{ interp->scope_data.begin() + member->offset, member->size }, member->align, member->is_mut, member->type };
+	CTValue loaded_value{MutRange<byte>{ core->interp.scope_data.begin() + member->offset, member->size }, member->align, member->is_mut, member->type };
 
-	return push_location_value(interp, code, write_ctx, loaded_value);
+	return push_location_value(core, code, write_ctx, loaded_value);
 }
 
-static const Opcode* handle_load_global(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_global(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	const Opcode* const code_activation = code;
 
@@ -1887,36 +1886,36 @@ static const Opcode* handle_load_global(Interpreter* interp, const Opcode* code,
 
 	OpcodeId global_code;
 
-	const GlobalFileValueState state = file_value_get(interp->globals, index, rank, &global_value, &global_code);
+	const GlobalFileValueState state = file_value_get(core->interp.globals, index, rank, &global_value, &global_code);
 
 	if (state == GlobalFileValueState::Complete)
 	{
-		return push_location_value(interp, code, write_ctx, global_value.value);
+		return push_location_value(core, code, write_ctx, global_value.value);
 	}
 	else if (state == GlobalFileValueState::Uninitialized)
 	{
 		// Push back the write_ctx if we have one, so it's still there on the
 		// next go around.
 		if (write_ctx != nullptr)
-			interp->write_ctxs.append(*write_ctx);
+			core->interp.write_ctxs.append(*write_ctx);
 
 		// We'll try again after having evaluated the global value's
 		// initializer. Push this instruction as an activation.
-		push_activation(interp, code_activation - 1);
+		push_activation(core, code_activation - 1);
 
-		return opcode_from_id(interp->opcodes, global_code);
+		return opcode_from_id(core->interp.opcodes, global_code);
 	}
 	else
 	{
 		ASSERT_OR_IGNORE(state == GlobalFileValueState::Initializing);
 
-		return record_interpreter_error(interp, code, CompileError::CyclicGlobalInitializerDependency);
+		return record_interpreter_error(core, code, CompileError::CyclicGlobalInitializerDependency);
 	}
 }
 
-static const Opcode* handle_load_member(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	const Opcode* const code_activation = code;
 
@@ -1924,11 +1923,11 @@ static const Opcode* handle_load_member(Interpreter* interp, const Opcode* code,
 
 	code = code_attach(code, &name);
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag == TypeTag::Composite || type_tag == TypeTag::CompositeLiteral)
 	{
@@ -1936,42 +1935,42 @@ static const Opcode* handle_load_member(Interpreter* interp, const Opcode* code,
 
 		OpcodeId initializer_id;
 
-		const MemberByNameRst rst = type_member_info_by_name(interp->types, type, name, &info, &initializer_id);
+		const MemberByNameRst rst = type_member_info_by_name(core->interp.types, type, name, &info, &initializer_id);
 
 		if (rst == MemberByNameRst::NotFound)
 		{
-			return record_interpreter_error(interp, code, CompileError::MemberNoSuchName);
+			return record_interpreter_error(core, code, CompileError::MemberNoSuchName);
 		}
 		else if (rst == MemberByNameRst::Incomplete)
 		{
 			// Push back the write_ctx if we have one, so it's still there on the
 			// next go around.
 			if (write_ctx != nullptr)
-				interp->write_ctxs.append(*write_ctx);
+				core->interp.write_ctxs.append(*write_ctx);
 
 			// We'll try again after having evaluated the global value's
 			// initializer. Push this instruction as an activation.
-			push_activation(interp, code_activation - 1);
+			push_activation(core, code_activation - 1);
 
-			return opcode_from_id(interp->opcodes, initializer_id);
+			return opcode_from_id(core->interp.opcodes, initializer_id);
 		}
 		else if (info.is_global)
 		{
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
-			CTValue value = forever_value_get(interp->globals, get(info.value_or_default_id));
+			CTValue value = forever_value_get(core->interp.globals, get(info.value_or_default_id));
 
-			return poppush_location_value(interp, code, write_ctx, value);
+			return poppush_location_value(core, code, write_ctx, value);
 		}
 		else
 		{
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
-			const TypeMetrics metrics = type_metrics_from_id(interp->types, info.type_id);
+			const TypeMetrics metrics = type_metrics_from_id(core->interp.types, info.type_id);
 
 			const MutRange<byte> bytes = top->bytes.mut_subrange(info.offset, metrics.size);
 
-			return poppush_location_value(interp, code, write_ctx, CTValue{ bytes, metrics.align, info.is_mut, info.type_id });
+			return poppush_location_value(core, code, write_ctx, CTValue{ bytes, metrics.align, info.is_mut, info.type_id });
 		}
 	}
 	else if (type_tag == TypeTag::Type)
@@ -1982,65 +1981,65 @@ static const Opcode* handle_load_member(Interpreter* interp, const Opcode* code,
 
 		OpcodeId initializer_id;
 
-		const MemberByNameRst rst = type_member_info_by_name(interp->types, type_value, name, &info, &initializer_id);
+		const MemberByNameRst rst = type_member_info_by_name(core->interp.types, type_value, name, &info, &initializer_id);
 
 		if (rst == MemberByNameRst::NotFound)
 		{
-			return record_interpreter_error(interp, code, CompileError::MemberNoSuchName);
+			return record_interpreter_error(core, code, CompileError::MemberNoSuchName);
 		}
 		else if (rst == MemberByNameRst::Incomplete)
 		{
-			push_activation(interp, code_activation - 1);
+			push_activation(core, code_activation - 1);
 
-			return opcode_from_id(interp->opcodes, initializer_id);
+			return opcode_from_id(core->interp.opcodes, initializer_id);
 		}
 		else if (info.is_global)
 		{
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
-			CTValue value = forever_value_get(interp->globals, get(info.value_or_default_id));
+			CTValue value = forever_value_get(core->interp.globals, get(info.value_or_default_id));
 
-			return poppush_location_value(interp, code, write_ctx, value);
+			return poppush_location_value(core, code, write_ctx, value);
 		}
 		else
 		{
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
-			return record_interpreter_error(interp, code, CompileError::MemberNonGlobalAccessedThroughType);
+			return record_interpreter_error(core, code, CompileError::MemberNonGlobalAccessedThroughType);
 		}
 	}
 	else
 	{
-		return record_interpreter_error(interp, code, CompileError::MemberInvalidLhsType);
+		return record_interpreter_error(core, code, CompileError::MemberInvalidLhsType);
 	}
 }
 
-static const Opcode* handle_load_closure(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_closure(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->active_closures.used() != 0);
+	ASSERT_OR_IGNORE(core->interp.active_closures.used() != 0);
 
 	u16 rank;
 
 	code = code_attach(code, &rank);
 
-	const ClosureId closure = interp->active_closures.end()[-1];
+	const ClosureId closure = core->interp.active_closures.end()[-1];
 
-	const ScopeMember* const member = interp->closure_members.begin() + static_cast<u32>(closure) + rank;
+	const ScopeMember* const member = core->interp.closure_members.begin() + static_cast<u32>(closure) + rank;
 
-	const CTValue closure_value = forever_value_get(interp->globals, static_cast<ForeverValueId>(member->offset));
+	const CTValue closure_value = forever_value_get(core->interp.globals, static_cast<ForeverValueId>(member->offset));
 
-	return push_location_value(interp, code, write_ctx, closure_value);
+	return push_location_value(core, code, write_ctx, closure_value);
 }
 
-static const Opcode* handle_load_builtin(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_builtin(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	u8 ordinal;
 
 	code = code_attach(code, &ordinal);
 
-	ASSERT_OR_IGNORE(ordinal != 0 && static_cast<u64>(ordinal - 1) < array_count(interp->builtin_infos));
+	ASSERT_OR_IGNORE(ordinal != 0 && static_cast<u64>(ordinal - 1) < array_count(core->interp.builtin_infos));
 
-	const BuiltinInfo info = interp->builtin_infos[ordinal - 1];
+	const BuiltinInfo info = core->interp.builtin_infos[ordinal - 1];
 
 	ASSERT_OR_IGNORE(info.body != OpcodeId::INVALID);
 
@@ -2052,10 +2051,10 @@ static const Opcode* handle_load_builtin(Interpreter* interp, const Opcode* code
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&body);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(Callable), true, info.signature_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(Callable), true, info.signature_type });
 }
 
-static const Opcode* handle_exec_builtin(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	static constexpr OpcodeHandlerFunc HANDLERS[] = {
 		nullptr,
@@ -2106,10 +2105,10 @@ static const Opcode* handle_exec_builtin(Interpreter* interp, const Opcode* code
 
 	ASSERT_OR_IGNORE(ordinal != 0 && ordinal < array_count(HANDLERS));
 
-	return HANDLERS[ordinal](interp, code, write_ctx);
+	return HANDLERS[ordinal](core, code, write_ctx);
 }
 
-static const Opcode* handle_signature(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	OpcodeSignatureFlags signature_flags;
 
@@ -2125,11 +2124,11 @@ static const Opcode* handle_signature(Interpreter* interp, const Opcode* code, C
 
 	code = code_attach(code, &value_count);
 
-	ASSERT_OR_IGNORE(value_count >= 1 && interp->values.used() >= value_count);
+	ASSERT_OR_IGNORE(value_count >= 1 && core->interp.values.used() >= value_count);
 
-	CTValue* value = interp->values.end() - value_count;
+	CTValue* value = core->interp.values.end() - value_count;
 
-	const TypeId parameter_list_type = type_create_composite(interp->types, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
+	const TypeId parameter_list_type = type_create_composite(core->interp.types, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
 
 	for (u32 i = 0; i != parameter_count; ++i)
 	{
@@ -2153,14 +2152,14 @@ static const Opcode* handle_signature(Interpreter* interp, const Opcode* code, C
 
 			value += 2;
 
-			if (type_tag_from_id(interp->types, type_value->type) != TypeTag::Type)
-				return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+			if (type_tag_from_id(core->interp.types, type_value->type) != TypeTag::Type)
+				return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 			parameter_type = *value_as<TypeId>(type_value);
 
-			ASSERT_OR_IGNORE(type_is_equal(interp->types, parameter_type, default_value->type));
+			ASSERT_OR_IGNORE(type_is_equal(core->interp.types, parameter_type, default_value->type));
 
-			const ForeverValueId default_id = forever_value_alloc_initialized(interp->globals, false, *default_value);
+			const ForeverValueId default_id = forever_value_alloc_initialized(core->interp.globals, false, *default_value);
 
 			parameter_default = some(default_id);
 		}
@@ -2170,8 +2169,8 @@ static const Opcode* handle_signature(Interpreter* interp, const Opcode* code, C
 
 			value += 1;
 
-			if (type_tag_from_id(interp->types, type_value->type) != TypeTag::Type)
-				return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+			if (type_tag_from_id(core->interp.types, type_value->type) != TypeTag::Type)
+				return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 			parameter_type = *value_as<TypeId>(type_value);
 
@@ -2187,7 +2186,7 @@ static const Opcode* handle_signature(Interpreter* interp, const Opcode* code, C
 
 			parameter_type = default_value->type;
 
-			const ForeverValueId default_id = forever_value_alloc_initialized(interp->globals, false, *default_value);
+			const ForeverValueId default_id = forever_value_alloc_initialized(core->interp.globals, false, *default_value);
 
 			parameter_default = some(default_id);
 		}
@@ -2201,18 +2200,18 @@ static const Opcode* handle_signature(Interpreter* interp, const Opcode* code, C
 		init.is_eval = parameter_flags.is_eval;
 		init.offset = 0;
 
-		if (!type_add_composite_member(interp->types, parameter_list_type, init))
+		if (!type_add_composite_member(core->interp.types, parameter_list_type, init))
 			ASSERT_UNREACHABLE;
 	}
 
-	if (type_tag_from_id(interp->types, value->type) != TypeTag::Type)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+	if (type_tag_from_id(core->interp.types, value->type) != TypeTag::Type)
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const TypeId return_type = *value_as<TypeId>(value);
 
-	ASSERT_OR_IGNORE(value == interp->values.end() - 1);
+	ASSERT_OR_IGNORE(value == core->interp.values.end() - 1);
 
-	interp->values.pop_by(value_count - 1);
+	core->interp.values.pop_by(value_count - 1);
 
 	SignatureType2 attach{};
 	attach.parameter_list_type_id = parameter_list_type;
@@ -2223,16 +2222,16 @@ static const Opcode* handle_signature(Interpreter* interp, const Opcode* code, C
 	attach.has_templated_return_type = false;
 	attach.parameter_count = parameter_count;
 
-	TypeId signature_type = type_create_signature(interp->types, TypeTag::Func, attach);
+	TypeId signature_type = type_create_signature(core->interp.types, TypeTag::Func, attach);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&signature_type);
 
-	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
-	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	OpcodeSignatureFlags signature_flags;
 
@@ -2257,11 +2256,11 @@ static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* cod
 	else
 		return_completion = none<OpcodeId>();
 
-	const ClosureId closure = create_closure(interp, closed_over_value_count);
+	const ClosureId closure = create_closure(core, closed_over_value_count);
 
-	CTValue* value = interp->values.end() - value_count;
+	CTValue* value = core->interp.values.end() - value_count;
 
-	const TypeId parameter_list_type = type_create_composite(interp->types, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
+	const TypeId parameter_list_type = type_create_composite(core->interp.types, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
 
 	for (u32 i = 0; i != parameter_count; ++i)
 	{
@@ -2279,7 +2278,7 @@ static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* cod
 
 			code = code_attach(code, &parameter_completion);
 
-			type_add_templated_parameter_list_member(interp->types, parameter_list_type, name, parameter_completion, parameter_flags.is_eval, parameter_flags.is_mut);
+			type_add_templated_parameter_list_member(core->interp.types, parameter_list_type, name, parameter_completion, parameter_flags.is_eval, parameter_flags.is_mut);
 		}
 		else
 		{
@@ -2295,16 +2294,16 @@ static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* cod
 
 				value += 2;
 
-				if (type_tag_from_id(interp->types, type_value->type) != TypeTag::Type)
-					return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+				if (type_tag_from_id(core->interp.types, type_value->type) != TypeTag::Type)
+					return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 				parameter_type = *value_as<TypeId>(type_value);
 
-				const TypeMetrics parameter_metrics = type_metrics_from_id(interp->types, parameter_type);
+				const TypeMetrics parameter_metrics = type_metrics_from_id(core->interp.types, parameter_type);
 
-				const ForeverCTValue default_dst = forever_value_alloc_uninitialized(interp->globals, false, parameter_type, parameter_metrics);
+				const ForeverCTValue default_dst = forever_value_alloc_uninitialized(core->interp.globals, false, parameter_type, parameter_metrics);
 
-				if (convert_into(interp, code, *default_value, default_dst.value) == nullptr)
+				if (convert_into(core, code, *default_value, default_dst.value) == nullptr)
 					return nullptr;
 
 				parameter_default = some(default_dst.id);
@@ -2315,8 +2314,8 @@ static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* cod
 
 				value += 1;
 
-				if (type_tag_from_id(interp->types, type_value->type) != TypeTag::Type)
-					return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+				if (type_tag_from_id(core->interp.types, type_value->type) != TypeTag::Type)
+					return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 				parameter_type = *value_as<TypeId>(type_value);
 
@@ -2332,7 +2331,7 @@ static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* cod
 
 				parameter_type = default_value->type;
 
-				const ForeverValueId default_id = forever_value_alloc_initialized(interp->globals, false, *default_value);
+				const ForeverValueId default_id = forever_value_alloc_initialized(core->interp.globals, false, *default_value);
 
 				parameter_default = some(default_id);
 			}
@@ -2346,7 +2345,7 @@ static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* cod
 			init.is_eval = parameter_flags.is_eval;
 			init.offset = 0;
 
-			if (!type_add_composite_member(interp->types, parameter_list_type, init))
+			if (!type_add_composite_member(core->interp.types, parameter_list_type, init))
 				ASSERT_UNREACHABLE;
 		}
 	}
@@ -2365,40 +2364,40 @@ static const Opcode* handle_dyn_signature(Interpreter* interp, const Opcode* cod
 	}
 	else
 	{
-		if (type_tag_from_id(interp->types, value->type) != TypeTag::Type)
-			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		if (type_tag_from_id(core->interp.types, value->type) != TypeTag::Type)
+			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 		attach.return_type.type_id = *value_as<TypeId>(value);
 	}
 
-	interp->values.pop_by(value_count);
+	core->interp.values.pop_by(value_count);
 
-	TypeId signature_type = type_create_signature(interp->types, TypeTag::Func, attach);
+	TypeId signature_type = type_create_signature(core->interp.types, TypeTag::Func, attach);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&signature_type);
 
-	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_bind_body(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	OpcodeId body_id;
 
 	code = code_attach(code, &body_id);
 
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
-	ASSERT_OR_IGNORE(type_tag_from_id(interp->types, top->type) == TypeTag::Type);
+	ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, top->type) == TypeTag::Type);
 
 	const TypeId signature_type = *value_as<TypeId>(top);
 
-	ASSERT_OR_IGNORE(type_tag_from_id(interp->types, signature_type) == TypeTag::Func);
+	ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, signature_type) == TypeTag::Func);
 
-	const SignatureType2* const signature = type_attachment_from_id<SignatureType2>(interp->types, signature_type);
+	const SignatureType2* const signature = type_attachment_from_id<SignatureType2>(core->interp.types, signature_type);
 
 	Callable callable{};
 	callable.body_id = body_id;
@@ -2406,12 +2405,12 @@ static const Opcode* handle_bind_body(Interpreter* interp, const Opcode* code, C
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&callable);
 
-	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(Callable), true, signature_type });
+	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(Callable), true, signature_type });
 }
 
-static const Opcode* handle_prepare_args(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -2427,21 +2426,21 @@ static const Opcode* handle_prepare_args(Interpreter* interp, const Opcode* code
 
 	code += sizeof(OpcodeId) * argument_count;
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
 	const TypeId top_type = top->type;
 
-	const TypeTag top_type_tag = type_tag_from_id(interp->types, top_type);
+	const TypeTag top_type_tag = type_tag_from_id(core->interp.types, top_type);
 
 	if (top_type_tag != TypeTag::Func && top_type_tag != TypeTag::Builtin)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-	SignatureType2 signature = *type_attachment_from_id<SignatureType2>(interp->types, top_type);
+	SignatureType2 signature = *type_attachment_from_id<SignatureType2>(core->interp.types, top_type);
 
 	if (is_some(signature.closure_id))
-		interp->active_closures.append(get(signature.closure_id));
+		core->interp.active_closures.append(get(signature.closure_id));
 
-	OpcodeId* const ordered_callbacks = interp->argument_callbacks.reserve(signature.parameter_count);
+	OpcodeId* const ordered_callbacks = core->interp.argument_callbacks.reserve(signature.parameter_count);
 
 	u64 templated_mask = 0;
 
@@ -2456,7 +2455,7 @@ static const Opcode* handle_prepare_args(Interpreter* interp, const Opcode* code
 		if (name == IdentifierId::INVALID)
 		{
 			if (parameter_index >= signature.parameter_count)
-				return record_interpreter_error(interp, code, CompileError::CallTooManyArgs);
+				return record_interpreter_error(core, code, CompileError::CallTooManyArgs);
 		}
 		else
 		{
@@ -2464,10 +2463,10 @@ static const Opcode* handle_prepare_args(Interpreter* interp, const Opcode* code
 
 			OpcodeId unused_initializer;
 
-			const MemberByNameRst rst = type_member_info_by_name(interp->types, signature.parameter_list_type_id, name, &parameter_info, &unused_initializer);
+			const MemberByNameRst rst = type_member_info_by_name(core->interp.types, signature.parameter_list_type_id, name, &parameter_info, &unused_initializer);
 
 			if (rst == MemberByNameRst::NotFound)
-				return record_interpreter_error(interp, code, CompileError::CallNoSuchNamedParameter);
+				return record_interpreter_error(core, code, CompileError::CallNoSuchNamedParameter);
 
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok || rst == MemberByNameRst::Incomplete);
 
@@ -2480,7 +2479,7 @@ static const Opcode* handle_prepare_args(Interpreter* interp, const Opcode* code
 		const u64 parameter_mask = static_cast<u64>(1) << parameter_index;
 
 		if ((seen_parameters & parameter_mask) != 0)
-			return record_interpreter_error(interp, code, CompileError::CallArgumentMappedTwice);
+			return record_interpreter_error(core, code, CompileError::CallArgumentMappedTwice);
 
 		seen_parameters |= parameter_mask;
 
@@ -2504,21 +2503,21 @@ static const Opcode* handle_prepare_args(Interpreter* interp, const Opcode* code
 
 		OpcodeId unused_initializer;
 
-		if (!type_member_info_by_rank(interp->types, signature.parameter_list_type_id, i, &parameter_info, &unused_initializer))
+		if (!type_member_info_by_rank(core->interp.types, signature.parameter_list_type_id, i, &parameter_info, &unused_initializer))
 			ASSERT_UNREACHABLE;
 
 		if (is_none(parameter_info.value_or_default_id))
-			return record_interpreter_error(interp, code, CompileError::CallMissingArg);
+			return record_interpreter_error(core, code, CompileError::CallMissingArg);
 
 		ordered_callbacks[i] = static_cast<OpcodeId>(-static_cast<s32>(get(parameter_info.value_or_default_id)));
 	}
 
-	ArgumentPack* const argument_pack = interp->argument_packs.reserve();
+	ArgumentPack* const argument_pack = core->interp.argument_packs.reserve();
 	argument_pack->parameter_list_type = templated_mask == 0
 		? signature.parameter_list_type_id
-		: type_copy_composite(interp->types, signature.parameter_list_type_id, signature.parameter_count, true);
+		: type_copy_composite(core->interp.types, signature.parameter_list_type_id, signature.parameter_count, true);
 	argument_pack->return_type.completion = signature.return_type.completion_id;
-	argument_pack->scope_first_member_index = interp->scope_members.used();
+	argument_pack->scope_first_member_index = core->interp.scope_members.used();
 	argument_pack->count = signature.parameter_count;
 	argument_pack->index = 0;
 	argument_pack->has_templated_parameter_list = signature.has_templated_parameter_list;
@@ -2528,23 +2527,23 @@ static const Opcode* handle_prepare_args(Interpreter* interp, const Opcode* code
 	return code;
 }
 
-static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	ASSERT_OR_IGNORE(interp->argument_packs.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.argument_packs.used() >= 1);
 
 	const Opcode* const code_activation = code;
 
-	ArgumentPack* const argument_pack = interp->argument_packs.end() - 1;
+	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
 
 	if (argument_pack->has_just_completed_template_parameter)
 	{
 		argument_pack->has_just_completed_template_parameter = false;
 
-		interp->scopes.pop_by(1);
+		core->interp.scopes.pop_by(1);
 	}
 
 	if (argument_pack->index < argument_pack->count)
@@ -2574,43 +2573,43 @@ static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [
 			// Since the initializer must not pop the callee scope as we need
 			// it later, we set `has_just_completed_template_member` so that we
 			// deactivate the scope on the next round through `handle_call`.
-			if (!type_member_info_by_rank(interp->types, argument_pack->parameter_list_type, argument_pack->index, &parameter_info, &parameter_initializer_id))
+			if (!type_member_info_by_rank(core->interp.types, argument_pack->parameter_list_type, argument_pack->index, &parameter_info, &parameter_initializer_id))
 			{
 				// Set `temporary_data_used` to the nonsense value 0, since
 				// this will never really be properly "popped", just
 				// temporarily deactivated by removing it from the scope stack
 				// without any effect on the scope members and temporary data
 				// stacks.
-				Scope* const signature_scope = interp->scopes.reserve();
+				Scope* const signature_scope = core->interp.scopes.reserve();
 				signature_scope->first_member_index = argument_pack->scope_first_member_index;
 				signature_scope->temporary_data_used = 0;
 
 				argument_pack->has_just_completed_template_parameter = true;
 
-				push_activation(interp, code_activation - 1);
+				push_activation(core, code_activation - 1);
 
-				return opcode_from_id(interp->opcodes, parameter_initializer_id);
+				return opcode_from_id(core->interp.opcodes, parameter_initializer_id);
 			}
 
-			if (scope_alloc_typed_member(interp, code, parameter_info.is_mut, parameter_info.type_id) == nullptr)
+			if (scope_alloc_typed_member(core, code, parameter_info.is_mut, parameter_info.type_id) == nullptr)
 				return nullptr;
 
-			callback_id = interp->argument_callbacks.end()[-argument_pack->count + argument_pack->index];
+			callback_id = core->interp.argument_callbacks.end()[-argument_pack->count + argument_pack->index];
 
 			argument_pack->index += 1;
 
 			if (static_cast<s32>(callback_id) >= 0)
 				break;
 
-			CTValue default_value = forever_value_get(interp->globals, static_cast<ForeverValueId>(-static_cast<s32>(callback_id)));
+			CTValue default_value = forever_value_get(core->interp.globals, static_cast<ForeverValueId>(-static_cast<s32>(callback_id)));
 
-			if (convert_into(interp, code, default_value, interp->write_ctxs.end()[-1]) == nullptr)
+			if (convert_into(core, code, default_value, core->interp.write_ctxs.end()[-1]) == nullptr)
 				ASSERT_UNREACHABLE;
 		}
 
-		push_activation(interp, code_activation - 1);
+		push_activation(core, code_activation - 1);
 
-		return opcode_from_id(interp->opcodes, callback_id);
+		return opcode_from_id(core->interp.opcodes, callback_id);
 	}
 	else if (argument_pack->has_templated_return_type)
 	{
@@ -2623,23 +2622,23 @@ static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [
 		// temporarily deactivated by removing it from the scope stack
 		// without any effect on the scope members and temporary data
 		// stacks.
-		Scope* const signature_scope = interp->scopes.reserve();
+		Scope* const signature_scope = core->interp.scopes.reserve();
 		signature_scope->first_member_index = argument_pack->scope_first_member_index;
-		signature_scope->temporary_data_used = interp->temporary_data.used();
+		signature_scope->temporary_data_used = core->interp.temporary_data.used();
 
 		argument_pack->has_just_completed_template_parameter = true;
 
 		argument_pack->has_templated_return_type = false;
 
-		const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+		const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&argument_pack->return_type.type);
 
-		interp->write_ctxs.append(CTValue{ bytes, alignof(TypeId), true, type_type });
+		core->interp.write_ctxs.append(CTValue{ bytes, alignof(TypeId), true, type_type });
 
-		push_activation(interp, code_activation - 1);
+		push_activation(core, code_activation - 1);
 
-		return opcode_from_id(interp->opcodes, argument_pack->return_type.completion);
+		return opcode_from_id(core->interp.opcodes, argument_pack->return_type.completion);
 	}
 	else
 	{
@@ -2662,17 +2661,17 @@ static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [
 
 		if (!call_expects_write_ctx)
 		{
-			const TypeMetrics return_type_metrics = type_metrics_from_id(interp->types, argument_pack->return_type.type);
+			const TypeMetrics return_type_metrics = type_metrics_from_id(core->interp.types, argument_pack->return_type.type);
 
-			const CTValue return_value = alloc_temporary_value_uninit(interp, return_type_metrics.size, return_type_metrics.align, argument_pack->return_type.type);
+			const CTValue return_value = alloc_temporary_value_uninit(core, return_type_metrics.size, return_type_metrics.align, argument_pack->return_type.type);
 
-			CTValue* const old_top = interp->values.end() - 1;
+			CTValue* const old_top = core->interp.values.end() - 1;
 
-			interp->values.append(*old_top);
+			core->interp.values.append(*old_top);
 
 			*old_top = return_value;
 
-			interp->write_ctxs.append(return_value);
+			core->interp.write_ctxs.append(return_value);
 		}
 
 		// This time the signature scope will actually be popped by a
@@ -2682,168 +2681,168 @@ static const Opcode* handle_exec_args(Interpreter* interp, const Opcode* code, [
 		// the temporary stack so far has callee lifetime, we need to put
 		// all of it into the callee scope, leaving the caller (signature)
 		// scope with no initial data.
-		Scope* const signature_scope = interp->scopes.reserve();
+		Scope* const signature_scope = core->interp.scopes.reserve();
 		signature_scope->first_member_index = argument_pack->scope_first_member_index;
-		signature_scope->temporary_data_used = interp->temporary_data.used();
+		signature_scope->temporary_data_used = core->interp.temporary_data.used();
 
 		// Finally, we get to pop the argument pack and callbacks before
 		// proceeding to the actual call.
-		interp->argument_callbacks.pop_by(argument_pack->count);
+		core->interp.argument_callbacks.pop_by(argument_pack->count);
 
-		interp->argument_packs.pop_by(1);
+		core->interp.argument_packs.pop_by(1);
 
 		return code;
 	}
 }
 
-static const Opcode* handle_call(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_call(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	ASSERT_OR_IGNORE(type_tag_from_id(interp->types, interp->values.end()[-1].type) == TypeTag::Func);
+	ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, core->interp.values.end()[-1].type) == TypeTag::Func);
 
-	const Callable callable = *value_as<Callable>(interp->values.end() - 1);
+	const Callable callable = *value_as<Callable>(core->interp.values.end() - 1);
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
 	// If we were called with a write context, re-push it for the callee's use.
 	// Note that if we were called without a write context, `handle_exec_args`
 	// has already taken care of pushing an artificial write context based on
 	// the caller's return type.
 	if (write_ctx != nullptr)
-		interp->write_ctxs.append(*write_ctx);
+		core->interp.write_ctxs.append(*write_ctx);
 
-	interp->call_activation_indices.append(interp->activations.used());
+	core->interp.call_activation_indices.append(core->interp.activations.used());
 
-	push_activation(interp, code);
+	push_activation(core, code);
 
-	return opcode_from_id(interp->opcodes, callable.body_id);
+	return opcode_from_id(core->interp.opcodes, callable.body_id);
 }
 
-static const Opcode* handle_return(Interpreter* interp, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_return(CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->call_activation_indices.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.call_activation_indices.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	scope_pop(interp);
+	scope_pop(core);
 
-	const u32 callee_activation = interp->call_activation_indices.end()[-1];
+	const u32 callee_activation = core->interp.call_activation_indices.end()[-1];
 
-	interp->call_activation_indices.pop_by(1);
+	core->interp.call_activation_indices.pop_by(1);
 
-	interp->activations.pop_to(callee_activation + 1);
+	core->interp.activations.pop_to(callee_activation + 1);
 
 	return nullptr;
 }
 
-static const Opcode* handle_complete_param_typed_no_default(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_complete_param_typed_no_default(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	ASSERT_OR_IGNORE(interp->argument_packs.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.argument_packs.used() >= 1);
 
 	u8 rank;
 
 	code = code_attach(code, &rank);
 
-	CTValue* top = interp->values.end() - 1;
+	CTValue* top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag != TypeTag::Type)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const TypeId member_type = *value_as<TypeId>(top);
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
-	ArgumentPack* const argument_pack = interp->argument_packs.end() - 1;
+	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
 
 	const TypeId parameter_list_type = argument_pack->parameter_list_type;
 
-	type_set_templated_parameter_list_member_info(interp->types, parameter_list_type, rank, member_type, none<ForeverValueId>());
+	type_set_templated_parameter_list_member_info(core->interp.types, parameter_list_type, rank, member_type, none<ForeverValueId>());
 
 	return code;
 }
 
-static const Opcode* handle_complete_param_typed_with_default(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_complete_param_typed_with_default(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 2);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	ASSERT_OR_IGNORE(interp->argument_packs.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.argument_packs.used() >= 1);
 
 	u8 rank;
 
 	code = code_attach(code, &rank);
 
-	CTValue* const type_value = interp->values.end() - 2;
+	CTValue* const type_value = core->interp.values.end() - 2;
 
-	CTValue* const default_value = interp->values.end() - 1;
+	CTValue* const default_value = core->interp.values.end() - 1;
 
 	const TypeId type = type_value->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag != TypeTag::Type)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const TypeId parameter_type = *value_as<TypeId>(type_value);
 
-	const TypeMetrics parameter_metrics = type_metrics_from_id(interp->types, parameter_type);
+	const TypeMetrics parameter_metrics = type_metrics_from_id(core->interp.types, parameter_type);
 
-	ArgumentPack* const argument_pack = interp->argument_packs.end() - 1;
+	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
 
 	const TypeId parameter_list_type = argument_pack->parameter_list_type;
 
-	ForeverCTValue default_dst = forever_value_alloc_uninitialized(interp->globals, false, parameter_type, parameter_metrics);
+	ForeverCTValue default_dst = forever_value_alloc_uninitialized(core->interp.globals, false, parameter_type, parameter_metrics);
 
-	if (convert_into(interp, code, *default_value, default_dst.value) == nullptr)
+	if (convert_into(core, code, *default_value, default_dst.value) == nullptr)
 		return nullptr;
 
-	type_set_templated_parameter_list_member_info(interp->types, parameter_list_type, rank, parameter_type, some(default_dst.id));
+	type_set_templated_parameter_list_member_info(core->interp.types, parameter_list_type, rank, parameter_type, some(default_dst.id));
 
-	interp->write_ctxs.append(default_dst.value);
+	core->interp.write_ctxs.append(default_dst.value);
 
-	interp->values.pop_by(2);
+	core->interp.values.pop_by(2);
 
 	return code;
 }
 
-static const Opcode* handle_complete_param_untyped(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_complete_param_untyped(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	ASSERT_OR_IGNORE(interp->argument_packs.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.argument_packs.used() >= 1);
 
 	u8 rank;
 
 	code = code_attach(code, &rank);
 
-	CTValue* const default_value = interp->values.end() - 1;
+	CTValue* const default_value = core->interp.values.end() - 1;
 
-	ArgumentPack* const argument_pack = interp->argument_packs.end() - 1;
+	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
 
 	const TypeId parameter_list_type = argument_pack->parameter_list_type;
 
-	const ForeverValueId default_id = forever_value_alloc_initialized(interp->globals, false, *default_value);
+	const ForeverValueId default_id = forever_value_alloc_initialized(core->interp.globals, false, *default_value);
 
-	type_set_templated_parameter_list_member_info(interp->types, parameter_list_type, rank, default_value->type, some(default_id));
+	type_set_templated_parameter_list_member_info(core->interp.types, parameter_list_type, rank, default_value->type, some(default_id));
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
 	return code;
 }
 
-static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx != nullptr);
 
@@ -2851,7 +2850,7 @@ static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* cod
 
 	code = code_attach(code, &index_count);
 
-	ASSERT_OR_IGNORE(interp->values.used() >= index_count);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= index_count);
 
 	u16 leading_element_count;
 
@@ -2859,40 +2858,40 @@ static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* cod
 
 	const TypeId dst_type = write_ctx->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, dst_type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, dst_type);
 
 	if (type_tag != TypeTag::Array && type_tag != TypeTag::ArrayLiteral)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-	const ArrayType* const array_type = type_attachment_from_id<ArrayType>(interp->types, dst_type);
+	const ArrayType* const array_type = type_attachment_from_id<ArrayType>(core->interp.types, dst_type);
 
 	if (is_none(array_type->element_type))
 	{
 		if (leading_element_count != 0 || index_count != 0)
-			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 		return code;
 	}
 
 	const TypeId dst_elem_type = get(array_type->element_type);
 
-	const TypeMetrics dst_elem_metrics = type_metrics_from_id(interp->types, dst_elem_type);
+	const TypeMetrics dst_elem_metrics = type_metrics_from_id(core->interp.types, dst_elem_type);
 
-	CTValue* const indices = interp->values.end() - index_count;
+	CTValue* const indices = core->interp.values.end() - index_count;
 
 	const u64 dst_element_count = array_type->element_count;
 
 	if (dst_element_count > UINT16_MAX)
-		return record_interpreter_error(interp, code, CompileError::ArrayInitializerTooManyElements);
+		return record_interpreter_error(core, code, CompileError::ArrayInitializerTooManyElements);
 
 	if (dst_element_count < leading_element_count)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	for (u16 i = 0; i != leading_element_count; ++i)
 	{
 		const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(i * dst_elem_metrics.stride, dst_elem_metrics.size);
 
-		interp->write_ctxs.append(CTValue{ bytes, dst_elem_metrics.align, true, dst_elem_type });
+		core->interp.write_ctxs.append(CTValue{ bytes, dst_elem_metrics.align, true, dst_elem_type });
 	}
 
 	if (index_count == 0)
@@ -2900,7 +2899,7 @@ static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* cod
 		return code;
 	}
 
-	SeenSet seen = seen_set_init(interp, static_cast<u16>(dst_element_count), leading_element_count);
+	SeenSet seen = seen_set_init(core, static_cast<u16>(dst_element_count), leading_element_count);
 
 	for (u16 i = 0; i != index_count; ++i)
 	{
@@ -2910,40 +2909,40 @@ static const Opcode* handle_array_preinit(Interpreter* interp, const Opcode* cod
 
 		u64 index;
 
-		const U64FromValueRst index_rst = u64_from_value(interp, indices[i], &index);
+		const U64FromValueRst index_rst = u64_from_value(core, indices[i], &index);
 
 		if (index_rst == U64FromValueRst::Inconvertible)
-			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 		else if (index_rst == U64FromValueRst::TooLarge)
-			return record_interpreter_error(interp, code, CompileError::ArrayInitializerIndexTooLarge);
+			return record_interpreter_error(core, code, CompileError::ArrayInitializerIndexTooLarge);
 		else if (index_rst == U64FromValueRst::Negative)
-			return record_interpreter_error(interp, code, CompileError::ArrayInitializerIndexNegative);
+			return record_interpreter_error(core, code, CompileError::ArrayInitializerIndexNegative);
 		else
 			ASSERT_OR_IGNORE(index_rst == U64FromValueRst::Ok);
 
 		if (index + following_element_count > dst_element_count)
-			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 		if (!seen_set_set(seen, static_cast<u16>(index), following_element_count))
-			return record_interpreter_error(interp, code, CompileError::ArrayInitializerDuplicateElement);
+			return record_interpreter_error(core, code, CompileError::ArrayInitializerDuplicateElement);
 
 		for (u16 j = 0; j != following_element_count; ++j)
 		{
 			const MutRange<byte> bytes = write_ctx->bytes.mut_subrange((index + j) * dst_elem_metrics.stride, dst_elem_metrics.size);
 
-			interp->write_ctxs.append(CTValue{ bytes, dst_elem_metrics.align, true, dst_elem_type });
+			core->interp.write_ctxs.append(CTValue{ bytes, dst_elem_metrics.align, true, dst_elem_type });
 		}
 	}
 
 	u16 unused_unseen_index;
 
 	if (seen_set_next_unseen(seen, leading_element_count, &unused_unseen_index))
-		return record_interpreter_error(interp, code, CompileError::ArrayInitializerMissingElement);
+		return record_interpreter_error(core, code, CompileError::ArrayInitializerMissingElement);
 
 	return code;
 }
 
-static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -2963,18 +2962,18 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 	{
 		ASSERT_OR_IGNORE(index_count == 0);
 
-		const TypeId array_type = type_create_array(interp->types, TypeTag::ArrayLiteral, ArrayType{ 0, none<TypeId>() });
+		const TypeId array_type = type_create_array(core->interp.types, TypeTag::ArrayLiteral, ArrayType{ 0, none<TypeId>() });
 
-		CTValue rst = alloc_temporary_value_uninit(interp, 0, 1, array_type);
+		CTValue rst = alloc_temporary_value_uninit(core, 0, 1, array_type);
 
-		return push_location_value(interp, code, write_ctx, rst);
+		return push_location_value(core, code, write_ctx, rst);
 	}
 
-	ASSERT_OR_IGNORE(static_cast<u32>(total_element_count) + index_count <= interp->values.used());
+	ASSERT_OR_IGNORE(static_cast<u32>(total_element_count) + index_count <= core->interp.values.used());
 
-	CTValue* const indices = interp->values.end() - total_element_count - index_count;
+	CTValue* const indices = core->interp.values.end() - total_element_count - index_count;
 
-	CTValue* const element_values = interp->values.end() - total_element_count;
+	CTValue* const element_values = core->interp.values.end() - total_element_count;
 
 	// First, find the common type of all elements, or fail if there is none.
 
@@ -2982,15 +2981,15 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 
 	for (u16 i = 1; i != total_element_count; ++i)
 	{
-		Maybe<TypeId> common_type = type_unify(interp->types, element_type, element_values[i].type);
+		Maybe<TypeId> common_type = type_unify(core->interp.types, element_type, element_values[i].type);
 
 		if (is_none(common_type))
-			return record_interpreter_error(interp, code, CompileError::NoCommonArrayElementType);
+			return record_interpreter_error(core, code, CompileError::NoCommonArrayElementType);
 
 		element_type = get(common_type);
 	}
 
-	const TypeMetrics element_metrics = type_metrics_from_id(interp->types, element_type);
+	const TypeMetrics element_metrics = type_metrics_from_id(core->interp.types, element_type);
 
 
 	// Next, work out how large the array needs to be.
@@ -3003,14 +3002,14 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 	{
 		u64 index;
 
-		const U64FromValueRst index_rst = u64_from_value(interp, indices[i], &index);
+		const U64FromValueRst index_rst = u64_from_value(core, indices[i], &index);
 
 		if (index_rst == U64FromValueRst::Inconvertible)
-			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 		else if (index_rst == U64FromValueRst::TooLarge)
-			return record_interpreter_error(interp, code, CompileError::ArrayInitializerIndexTooLarge);
+			return record_interpreter_error(core, code, CompileError::ArrayInitializerIndexTooLarge);
 		else if (index_rst == U64FromValueRst::Negative)
-			return record_interpreter_error(interp, code, CompileError::ArrayInitializerIndexNegative);
+			return record_interpreter_error(core, code, CompileError::ArrayInitializerIndexNegative);
 		else
 			ASSERT_OR_IGNORE(index_rst == U64FromValueRst::Ok);
 
@@ -3021,7 +3020,7 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 		if (index + following_element_count > max_element_index)
 		{
 			if (max_element_index > UINT16_MAX)
-				return record_interpreter_error(interp, code, CompileError::ArrayInitializerTooManyElements);
+				return record_interpreter_error(core, code, CompileError::ArrayInitializerTooManyElements);
 
 			max_element_index = index + following_element_count;
 		}
@@ -3029,28 +3028,28 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 
 	code = code_before_indices;
 
-	const TypeId array_type = type_create_array(interp->types, TypeTag::ArrayLiteral, ArrayType{ max_element_index, some(element_type) });
+	const TypeId array_type = type_create_array(core->interp.types, TypeTag::ArrayLiteral, ArrayType{ max_element_index, some(element_type) });
 
-	CTValue rst = alloc_temporary_value_uninit(interp, element_metrics.stride * (max_element_index - 1) + element_metrics.size, element_metrics.align, array_type);
+	CTValue rst = alloc_temporary_value_uninit(core, element_metrics.stride * (max_element_index - 1) + element_metrics.size, element_metrics.align, array_type);
 
 	for (u16 i = 0; i != leading_element_count; ++i)
 	{
 		const MutRange<byte> bytes = rst.bytes.mut_subrange(element_metrics.stride * i, element_metrics.size);
 
-		if (type_is_equal(interp->types, element_type, element_values[i].type))
+		if (type_is_equal(core->interp.types, element_type, element_values[i].type))
 			range::mem_copy(bytes, element_values[i].bytes.immut());
-		else if (convert_into_assume_convertible(interp, code, element_values[i], CTValue{ bytes, element_metrics.align, true, element_type }) == nullptr)
+		else if (convert_into_assume_convertible(core, code, element_values[i], CTValue{ bytes, element_metrics.align, true, element_type }) == nullptr)
 			return nullptr;
 	}
 
 	if (index_count == 0)
 	{
-		interp->values.pop_by(total_element_count + index_count);
+		core->interp.values.pop_by(total_element_count + index_count);
 
-		return push_location_value(interp, code, write_ctx, rst);
+		return push_location_value(core, code, write_ctx, rst);
 	}
 
-	SeenSet seen = seen_set_init(interp, static_cast<u16>(max_element_index), leading_element_count);
+	SeenSet seen = seen_set_init(core, static_cast<u16>(max_element_index), leading_element_count);
 
 	u16 value_index = 0;
 
@@ -3058,14 +3057,14 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 	{
 		u64 base_index;
 
-		const U64FromValueRst base_index_rst = u64_from_value(interp, indices[i], &base_index);
+		const U64FromValueRst base_index_rst = u64_from_value(core, indices[i], &base_index);
 
 		if (base_index_rst == U64FromValueRst::Inconvertible)
-			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 		else if (base_index_rst == U64FromValueRst::TooLarge)
-			return record_interpreter_error(interp, code, CompileError::ArrayInitializerIndexTooLarge);
+			return record_interpreter_error(core, code, CompileError::ArrayInitializerIndexTooLarge);
 		else if (base_index_rst == U64FromValueRst::Negative)
-			return record_interpreter_error(interp, code, CompileError::ArrayInitializerIndexNegative);
+			return record_interpreter_error(core, code, CompileError::ArrayInitializerIndexNegative);
 		else
 			ASSERT_OR_IGNORE(base_index_rst == U64FromValueRst::Ok);
 
@@ -3076,20 +3075,20 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 		ASSERT_OR_IGNORE(base_index + following_element_count <= max_element_index);
 
 		if (!seen_set_set(seen, static_cast<u16>(base_index), following_element_count))
-			return record_interpreter_error(interp, code, CompileError::ArrayInitializerDuplicateElement);
+			return record_interpreter_error(core, code, CompileError::ArrayInitializerDuplicateElement);
 
 		for (u16 j = 0; j != following_element_count; ++i)
 		{
 			const MutRange<byte> bytes = rst.bytes.mut_subrange((base_index + j) * element_metrics.stride, element_metrics.size);
 
-			if (convert_into_assume_convertible(interp, code, element_values[value_index + j], CTValue{ bytes, element_metrics.align, true, element_type }) == nullptr)
+			if (convert_into_assume_convertible(core, code, element_values[value_index + j], CTValue{ bytes, element_metrics.align, true, element_type }) == nullptr)
 				return nullptr;
 		}
 
 		value_index += following_element_count;
 	}
 
-	interp->values.pop_by(total_element_count + index_count);
+	core->interp.values.pop_by(total_element_count + index_count);
 
 	u16 unseen_index;
 
@@ -3098,32 +3097,32 @@ static const Opcode* handle_array_postinit(Interpreter* interp, const Opcode* co
 		TODO("Implement array literals with default value");
 	}
 
-	return push_location_value(interp, code, write_ctx, rst);
+	return push_location_value(core, code, write_ctx, rst);
 }
 
-static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx != nullptr);
 
 	const TypeId dst_type = write_ctx->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, dst_type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, dst_type);
 
 	u16 names_count;
 
 	code = code_attach(code, &names_count);
 
 	if (type_tag != TypeTag::CompositeLiteral && type_tag != TypeTag::Composite)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-	const u32 member_count = type_get_composite_member_count(interp->types, dst_type);
+	const u32 member_count = type_get_composite_member_count(core->interp.types, dst_type);
 
 	u16 leading_member_count;
 
 	code = code_attach(code, &leading_member_count);
 
 	if (member_count < leading_member_count)
-		return record_interpreter_error(interp, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
+		return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
 
 	for (u16 i = 0; i != leading_member_count; ++i)
 	{
@@ -3131,16 +3130,16 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 
 		OpcodeId unused_initializer;
 
-		if (!type_member_info_by_rank(interp->types, dst_type, i, &member_info, &unused_initializer))
+		if (!type_member_info_by_rank(core->interp.types, dst_type, i, &member_info, &unused_initializer))
 			ASSERT_UNREACHABLE;
 
 		ASSERT_OR_IGNORE(!member_info.is_global);
 
-		const TypeMetrics member_metrics = type_metrics_from_id(interp->types, member_info.type_id);
+		const TypeMetrics member_metrics = type_metrics_from_id(core->interp.types, member_info.type_id);
 
 		const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(member_info.offset, member_metrics.size);
 
-		interp->write_ctxs.append(CTValue{ bytes, member_metrics.align, write_ctx->is_mut, member_info.type_id });
+		core->interp.write_ctxs.append(CTValue{ bytes, member_metrics.align, write_ctx->is_mut, member_info.type_id });
 	}
 
 	if (names_count == 0)
@@ -3151,20 +3150,20 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 
 			OpcodeId unused_defaulted_member_initializer;
 
-			if (!type_member_info_by_rank(interp->types, dst_type, i, &defaulted_member_info, &unused_defaulted_member_initializer))
+			if (!type_member_info_by_rank(core->interp.types, dst_type, i, &defaulted_member_info, &unused_defaulted_member_initializer))
 				ASSERT_UNREACHABLE;
 
 			if (defaulted_member_info.is_global)
 				continue;
 
 			if (is_none(defaulted_member_info.value_or_default_id))
-				return record_interpreter_error(interp, code, CompileError::CompositeLiteralSourceIsMissingMember);
+				return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
-			const TypeMetrics defaulted_member_metrics = type_metrics_from_id(interp->types, defaulted_member_info.type_id);
+			const TypeMetrics defaulted_member_metrics = type_metrics_from_id(core->interp.types, defaulted_member_info.type_id);
 
 			const MutRange<byte> default_dst = write_ctx->bytes.mut_subrange(defaulted_member_info.offset, defaulted_member_metrics.size);
 
-			const Range<byte> default_src = forever_value_get(interp->globals, get(defaulted_member_info.value_or_default_id)).bytes.immut();
+			const Range<byte> default_src = forever_value_get(core->interp.globals, get(defaulted_member_info.value_or_default_id)).bytes.immut();
 
 			range::mem_copy(default_dst, default_src);
 		}
@@ -3172,7 +3171,7 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 		return code;
 	}
 
-	SeenSet seen = seen_set_init(interp, static_cast<u16>(member_count), leading_member_count);
+	SeenSet seen = seen_set_init(core, static_cast<u16>(member_count), leading_member_count);
 
 	for (u16 i = 0; i != names_count; ++i)
 	{
@@ -3188,26 +3187,26 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 
 		OpcodeId unused_named_initializer;
 
-		const MemberByNameRst rst = type_member_info_by_name(interp->types, dst_type, name, &named_member_info, &unused_named_initializer);
+		const MemberByNameRst rst = type_member_info_by_name(core->interp.types, dst_type, name, &named_member_info, &unused_named_initializer);
 
 		if (rst == MemberByNameRst::NotFound)
-			return record_interpreter_error(interp, code, CompileError::CompositeLiteralTargetIsMissingMember);
+			return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetIsMissingMember);
 
 		ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
 		ASSERT_OR_IGNORE(!named_member_info.is_global);
 
 		if (member_count < static_cast<u32>(named_member_info.rank) + 1 + following_member_count)
-			return record_interpreter_error(interp, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
+			return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
 
 		if (!seen_set_set(seen, named_member_info.rank, following_member_count + 1))
-			return record_interpreter_error(interp, code, CompileError::CompositeLiteralTargetMemberMappedTwice);
+			return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetMemberMappedTwice);
 
-		const TypeMetrics named_member_metrics = type_metrics_from_id(interp->types, named_member_info.type_id);
+		const TypeMetrics named_member_metrics = type_metrics_from_id(core->interp.types, named_member_info.type_id);
 
 		const MutRange<byte> named_bytes = write_ctx->bytes.mut_subrange(named_member_info.offset, named_member_metrics.size);
 
-		interp->write_ctxs.append(CTValue{ named_bytes, named_member_metrics.align, write_ctx->is_mut, named_member_info.type_id });
+		core->interp.write_ctxs.append(CTValue{ named_bytes, named_member_metrics.align, write_ctx->is_mut, named_member_info.type_id });
 
 		for (u16 j = 0; j != following_member_count; ++j)
 		{
@@ -3215,16 +3214,16 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 
 			OpcodeId unused_following_initializer;
 
-			if (!type_member_info_by_rank(interp->types, dst_type, named_member_info.rank + 1 + j, &following_member_info, &unused_following_initializer))
+			if (!type_member_info_by_rank(core->interp.types, dst_type, named_member_info.rank + 1 + j, &following_member_info, &unused_following_initializer))
 				ASSERT_UNREACHABLE;
 
 			ASSERT_OR_IGNORE(!following_member_info.is_global);
 
-			const TypeMetrics following_member_metrics = type_metrics_from_id(interp->types, following_member_info.type_id);
+			const TypeMetrics following_member_metrics = type_metrics_from_id(core->interp.types, following_member_info.type_id);
 
 			const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(following_member_info.offset, following_member_metrics.size);
 
-			interp->write_ctxs.append(CTValue{ bytes, following_member_metrics.align, write_ctx->is_mut, following_member_info.type_id });
+			core->interp.write_ctxs.append(CTValue{ bytes, following_member_metrics.align, write_ctx->is_mut, following_member_info.type_id });
 		}
 	}
 
@@ -3236,20 +3235,20 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 
 		OpcodeId unused_defaulted_member_initializer;
 
-		if (!type_member_info_by_rank(interp->types, dst_type, unseen_index, &defaulted_member_info, &unused_defaulted_member_initializer))
+		if (!type_member_info_by_rank(core->interp.types, dst_type, unseen_index, &defaulted_member_info, &unused_defaulted_member_initializer))
 			ASSERT_UNREACHABLE;
 
 		if (defaulted_member_info.is_global)
 			continue;
 
 		if (is_none(defaulted_member_info.value_or_default_id))
-			return record_interpreter_error(interp, code, CompileError::CompositeLiteralSourceIsMissingMember);
+			return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
-		const TypeMetrics defaulted_member_metrics = type_metrics_from_id(interp->types, defaulted_member_info.type_id);
+		const TypeMetrics defaulted_member_metrics = type_metrics_from_id(core->interp.types, defaulted_member_info.type_id);
 
 		const MutRange<byte> default_dst = write_ctx->bytes.mut_subrange(defaulted_member_info.offset, defaulted_member_metrics.size);
 
-		const Range<byte> default_src = forever_value_get(interp->globals, get(defaulted_member_info.value_or_default_id)).bytes.immut();
+		const Range<byte> default_src = forever_value_get(core->interp.globals, get(defaulted_member_info.value_or_default_id)).bytes.immut();
 
 		range::mem_copy(default_dst, default_src);
 	}
@@ -3257,7 +3256,7 @@ static const Opcode* handle_composite_preinit(Interpreter* interp, const Opcode*
 	return code;
 }
 
-static const Opcode* handle_composite_postinit(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -3265,11 +3264,11 @@ static const Opcode* handle_composite_postinit(Interpreter* interp, const Opcode
 
 	code = code_attach(code, &total_member_count);
 
-	ASSERT_OR_IGNORE(interp->values.used() >= total_member_count);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= total_member_count);
 
-	CTValue* const values = interp->values.end() - total_member_count;
+	CTValue* const values = core->interp.values.end() - total_member_count;
 
-	const TypeId initializer_type = type_create_composite(interp->types, TypeTag::CompositeLiteral, TypeDisposition::Initializer, SourceId::INVALID, total_member_count, true);
+	const TypeId initializer_type = type_create_composite(core->interp.types, TypeTag::CompositeLiteral, TypeDisposition::Initializer, SourceId::INVALID, total_member_count, true);
 
 	for (u16 i = 0; i != total_member_count; ++i)
 	{
@@ -3286,17 +3285,17 @@ static const Opcode* handle_composite_postinit(Interpreter* interp, const Opcode
 		init.is_eval = false;
 		init.offset = 0;
 
-		if (!type_add_composite_member(interp->types, initializer_type, init))
+		if (!type_add_composite_member(core->interp.types, initializer_type, init))
 			ASSERT_UNREACHABLE;
 	}
 
-	type_seal_composite(interp->types, initializer_type, 0, 0, 0);
+	type_seal_composite(core->interp.types, initializer_type, 0, 0, 0);
 
-	const TypeMetrics metrics = type_metrics_from_id(interp->types, initializer_type);
+	const TypeMetrics metrics = type_metrics_from_id(core->interp.types, initializer_type);
 
-	MemberIterator it = members_of(interp->types, initializer_type);
+	MemberIterator it = members_of(core->interp.types, initializer_type);
 
-	CTValue initializer = alloc_temporary_value_uninit(interp, metrics.size, metrics.align, initializer_type);
+	CTValue initializer = alloc_temporary_value_uninit(core, metrics.size, metrics.align, initializer_type);
 
 	for (u16 i = 0; i != total_member_count; ++i)
 	{
@@ -3315,12 +3314,12 @@ static const Opcode* handle_composite_postinit(Interpreter* interp, const Opcode
 		range::mem_copy(initializer.bytes.mut_subrange(member_info.offset, value.bytes.count()), value.bytes.immut());
 	}
 
-	return push_location_value(interp, code, write_ctx, initializer);
+	return push_location_value(core, code, write_ctx, initializer);
 }
 
-static const Opcode* handle_if(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_if(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -3328,24 +3327,24 @@ static const Opcode* handle_if(Interpreter* interp, const Opcode* code, [[maybe_
 
 	code = code_attach(code, &consequent);
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag != TypeTag::Boolean)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const bool condition = *value_as<bool>(top);
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
 	if (condition)
 	{
-		const Opcode* const next = opcode_from_id(interp->opcodes, consequent);
+		const Opcode* const next = opcode_from_id(core->interp.opcodes, consequent);
 
-		push_activation(interp, code);
+		push_activation(core, code);
 
 		return next;
 	}
@@ -3355,9 +3354,9 @@ static const Opcode* handle_if(Interpreter* interp, const Opcode* code, [[maybe_
 	}
 }
 
-static const Opcode* handle_if_else(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_if_else(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	OpcodeId consequent;
 
@@ -3368,33 +3367,33 @@ static const Opcode* handle_if_else(Interpreter* interp, const Opcode* code, CTV
 	code = code_attach(code, &alternative);
 
 	if (write_ctx != nullptr)
-		interp->write_ctxs.append(*write_ctx);
+		core->interp.write_ctxs.append(*write_ctx);
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag != TypeTag::Boolean)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const bool condition = *value_as<bool>(top);
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
-	const Opcode* const next = opcode_from_id(interp->opcodes, condition ? consequent : alternative);
+	const Opcode* const next = opcode_from_id(core->interp.opcodes, condition ? consequent : alternative);
 
-	push_activation(interp, code);
+	push_activation(core, code);
 
 	return next;
 }
 
-static const Opcode* handle_loop(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_loop(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	OpcodeId condition_id;
 
@@ -3404,22 +3403,22 @@ static const Opcode* handle_loop(Interpreter* interp, const Opcode* code, [[mayb
 
 	code = code_attach(code, &body_id);
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag != TypeTag::Boolean)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const bool condition = *value_as<bool>(top);
 
 	if (condition)
 	{
-		push_activation(interp, condition_id);
+		push_activation(core, condition_id);
 
-		return opcode_from_id(interp->opcodes, body_id);
+		return opcode_from_id(core->interp.opcodes, body_id);
 	}
 	else
 	{
@@ -3427,9 +3426,9 @@ static const Opcode* handle_loop(Interpreter* interp, const Opcode* code, [[mayb
 	}
 }
 
-static const Opcode* handle_loop_finally(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_loop_finally(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	OpcodeId condition_id;
 
@@ -3444,36 +3443,36 @@ static const Opcode* handle_loop_finally(Interpreter* interp, const Opcode* code
 	code = code_attach(code, &finally_id);
 
 	if (write_ctx != nullptr)
-		interp->write_ctxs.append(*write_ctx);
+		core->interp.write_ctxs.append(*write_ctx);
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag != TypeTag::Boolean)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const bool condition = *value_as<bool>(top);
 
 	if (condition)
 	{
-		push_activation(interp, condition_id);
+		push_activation(core, condition_id);
 
-		return opcode_from_id(interp->opcodes, body_id);
+		return opcode_from_id(core->interp.opcodes, body_id);
 	}
 	else
 	{
-		push_activation(interp, code);
+		push_activation(core, code);
 
-		return opcode_from_id(interp->opcodes, finally_id);
+		return opcode_from_id(core->interp.opcodes, finally_id);
 	}
 }
 
-static const Opcode* handle_switch(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_switch(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	(void) interp;
+	(void) core;
 
 	(void) code;
 
@@ -3482,11 +3481,11 @@ static const Opcode* handle_switch(Interpreter* interp, const Opcode* code, CTVa
 	TODO("Implement");
 }
 
-static const Opcode* handle_address_of(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_address_of(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
@@ -3498,41 +3497,41 @@ static const Opcode* handle_address_of(Interpreter* interp, const Opcode* code, 
 	ptr_type.is_multi = false;
 	ptr_type.is_mut = top->is_mut;
 
-	const TypeId result_type = type_create_reference(interp->types, TypeTag::Ptr, ptr_type);
+	const TypeId result_type = type_create_reference(core->interp.types, TypeTag::Ptr, ptr_type);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&ptr);
 
-	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(byte*), true, result_type });
+	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(byte*), true, result_type });
 }
 
-static const Opcode* handle_dereference(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_dereference(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag != TypeTag::Ptr)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	byte* const top_value = *value_as<byte*>(top);
 
-	const ReferenceType ptr_type = *type_attachment_from_id<ReferenceType>(interp->types, type);
+	const ReferenceType ptr_type = *type_attachment_from_id<ReferenceType>(core->interp.types, type);
 
 	if (ptr_type.is_opt)
-		return record_interpreter_error(interp, code, CompileError::DerefInvalidOperandType);
+		return record_interpreter_error(core, code, CompileError::DerefInvalidOperandType);
 
-	const TypeMetrics metrics = type_metrics_from_id(interp->types, ptr_type.referenced_type_id);
+	const TypeMetrics metrics = type_metrics_from_id(core->interp.types, ptr_type.referenced_type_id);
 
 	const MutRange<byte> bytes{ top_value, metrics.size };
 
-	return poppush_location_value(interp, code, write_ctx, CTValue{ bytes, metrics.align, ptr_type.is_mut, ptr_type.referenced_type_id });
+	return poppush_location_value(core, code, write_ctx, CTValue{ bytes, metrics.align, ptr_type.is_mut, ptr_type.referenced_type_id });
 }
 
-static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	OpcodeSliceKind kind;
 
@@ -3540,13 +3539,13 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 
 	const u8 argument_count = kind == OpcodeSliceKind::NoBounds ? 1 : kind == OpcodeSliceKind::BothBounds ? 3 : 2;
 
-	ASSERT_OR_IGNORE(interp->values.used() >= argument_count);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= argument_count);
 
-	CTValue* const lhs = interp->values.end() - argument_count;
+	CTValue* const lhs = core->interp.values.end() - argument_count;
 
 	const TypeId type = lhs->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	u64 begin_index;
 
@@ -3566,14 +3565,14 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 	{
 		CTValue* const begin = lhs + 1;
 
-		const U64FromValueRst begin_index_rst = u64_from_value(interp, *begin, &begin_index);
+		const U64FromValueRst begin_index_rst = u64_from_value(core, *begin, &begin_index);
 
 		if (begin_index_rst == U64FromValueRst::Inconvertible)
-			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 		else if (begin_index_rst == U64FromValueRst::TooLarge)
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexTooLarge);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorIndexTooLarge);
 		else if (begin_index_rst == U64FromValueRst::Negative)
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexNegative);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorIndexNegative);
 		else
 			ASSERT_OR_IGNORE(begin_index_rst == U64FromValueRst::Ok);
 
@@ -3587,14 +3586,14 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 
 		begin_index = 0;
 
-		const U64FromValueRst end_index_rst = u64_from_value(interp, *end, &end_index);
+		const U64FromValueRst end_index_rst = u64_from_value(core, *end, &end_index);
 
 		if (end_index_rst == U64FromValueRst::Inconvertible)
-			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 		else if (end_index_rst == U64FromValueRst::TooLarge)
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexTooLarge);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorIndexTooLarge);
 		else if (end_index_rst == U64FromValueRst::Negative)
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexNegative);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorIndexNegative);
 		else
 			ASSERT_OR_IGNORE(end_index_rst == U64FromValueRst::Ok);
 
@@ -3608,49 +3607,49 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 
 		CTValue* const end = lhs + 2;
 
-		const U64FromValueRst begin_index_rst = u64_from_value(interp, *begin, &begin_index);
+		const U64FromValueRst begin_index_rst = u64_from_value(core, *begin, &begin_index);
 
 		if (begin_index_rst == U64FromValueRst::Inconvertible)
-			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 		else if (begin_index_rst == U64FromValueRst::TooLarge)
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexTooLarge);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorIndexTooLarge);
 		else if (begin_index_rst == U64FromValueRst::Negative)
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexNegative);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorIndexNegative);
 		else
 			ASSERT_OR_IGNORE(begin_index_rst == U64FromValueRst::Ok);
 
-		const U64FromValueRst end_index_rst = u64_from_value(interp, *end, &end_index);
+		const U64FromValueRst end_index_rst = u64_from_value(core, *end, &end_index);
 
 		if (end_index_rst == U64FromValueRst::Inconvertible)
-			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 		else if (end_index_rst == U64FromValueRst::TooLarge)
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexTooLarge);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorIndexTooLarge);
 		else if (end_index_rst == U64FromValueRst::Negative)
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexNegative);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorIndexNegative);
 		else
 			ASSERT_OR_IGNORE(end_index_rst == U64FromValueRst::Ok);
 
 		has_end_index = true;
 
 		if (begin_index > end_index)
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndicesReversed);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorIndicesReversed);
 	}
 
 	if (type_tag == TypeTag::Array || type_tag == TypeTag::ArrayLiteral)
 	{
-		const ArrayType array_type = *type_attachment_from_id<ArrayType>(interp->types, type);
+		const ArrayType array_type = *type_attachment_from_id<ArrayType>(core->interp.types, type);
 
 		if (is_none(array_type.element_type))
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorUntypedArrayLiteral);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorUntypedArrayLiteral);
 
 		const u64 max_index = has_end_index ? end_index : begin_index;
 
 		if (max_index >= array_type.element_count)
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexOutOfBounds);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorIndexOutOfBounds);
 
 		const TypeId elem_type = get(array_type.element_type);
 
-		const TypeMetrics elem_metrics = type_metrics_from_id(interp->types, elem_type);
+		const TypeMetrics elem_metrics = type_metrics_from_id(core->interp.types, elem_type);
 
 		byte* const begin_ptr = lhs->bytes.begin() + begin_index * elem_metrics.stride;
 
@@ -3664,26 +3663,26 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 		slice_type.is_multi = false;
 		slice_type.is_mut = lhs->is_mut;
 
-		const TypeId result_type = type_create_reference(interp->types, TypeTag::Slice, slice_type);
+		const TypeId result_type = type_create_reference(core->interp.types, TypeTag::Slice, slice_type);
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&slice);
 
-		interp->values.pop_by(argument_count - 1);
+		core->interp.values.pop_by(argument_count - 1);
 
-		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(MutRange<byte>), true, result_type });
+		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(MutRange<byte>), true, result_type });
 	}
 	else if (type_tag == TypeTag::Slice)
 	{
-		const ReferenceType slice_type = *type_attachment_from_id<ReferenceType>(interp->types, type);
+		const ReferenceType slice_type = *type_attachment_from_id<ReferenceType>(core->interp.types, type);
 
-		const TypeMetrics elem_metrics = type_metrics_from_id(interp->types, slice_type.referenced_type_id);
+		const TypeMetrics elem_metrics = type_metrics_from_id(core->interp.types, slice_type.referenced_type_id);
 
 		MutRange<byte> lhs_value = *value_as<MutRange<byte>>(lhs);
 
 		const u64 max_index = has_end_index ? end_index : begin_index + 1;
 
 		if (max_index * elem_metrics.stride > lhs_value.count())
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorIndexOutOfBounds);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorIndexOutOfBounds);
 
 		byte* const begin_ptr = lhs_value.begin() + begin_index * elem_metrics.stride;
 
@@ -3693,21 +3692,21 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&slice);
 
-		interp->values.pop_by(argument_count - 1);
+		core->interp.values.pop_by(argument_count - 1);
 
-		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(MutRange<byte>), true, type });
+		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(MutRange<byte>), true, type });
 	}
 	else if (type_tag == TypeTag::Ptr)
 	{
-		const ReferenceType ptr_type = *type_attachment_from_id<ReferenceType>(interp->types, type);
+		const ReferenceType ptr_type = *type_attachment_from_id<ReferenceType>(core->interp.types, type);
 
 		if (!ptr_type.is_multi)
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorInvalidLhsType);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorInvalidLhsType);
 
 		if (!has_end_index)
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorMultiPtrElidedEndIndex);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorMultiPtrElidedEndIndex);
 
-		const TypeMetrics elem_metrics = type_metrics_from_id(interp->types, ptr_type.referenced_type_id);
+		const TypeMetrics elem_metrics = type_metrics_from_id(core->interp.types, ptr_type.referenced_type_id);
 
 		byte* const lhs_value = *value_as<byte*>(lhs);
 
@@ -3719,129 +3718,129 @@ static const Opcode* handle_slice(Interpreter* interp, const Opcode* code, CTVal
 		slice_type.is_multi = false;
 		slice_type.is_mut = ptr_type.is_mut;
 
-		const TypeId result_type = type_create_reference(interp->types, TypeTag::Slice, slice_type);
+		const TypeId result_type = type_create_reference(core->interp.types, TypeTag::Slice, slice_type);
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&slice);
 
-		interp->values.pop_by(argument_count - 1);
+		core->interp.values.pop_by(argument_count - 1);
 
-		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(MutRange<byte>), true, result_type });
+		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(MutRange<byte>), true, result_type });
 	}
 	else
 	{
-		return record_interpreter_error(interp, code, CompileError::SliceOperatorInvalidLhsType);
+		return record_interpreter_error(core, code, CompileError::SliceOperatorInvalidLhsType);
 	}
 }
 
-static const Opcode* handle_index(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_index(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 2);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
-	CTValue* const lhs = interp->values.end() - 2;
+	CTValue* const lhs = core->interp.values.end() - 2;
 
 	u64 index;
 
-	const U64FromValueRst index_rst = u64_from_value(interp, lhs[1], &index);
+	const U64FromValueRst index_rst = u64_from_value(core, lhs[1], &index);
 
 	if (index_rst == U64FromValueRst::Inconvertible)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 	else if (index_rst == U64FromValueRst::TooLarge)
-		return record_interpreter_error(interp, code, CompileError::ArrayIndexRhsTooLarge);
+		return record_interpreter_error(core, code, CompileError::ArrayIndexRhsTooLarge);
 	else if (index_rst == U64FromValueRst::Negative)
-		return record_interpreter_error(interp, code, CompileError::ArrayIndexRhsNegative);
+		return record_interpreter_error(core, code, CompileError::ArrayIndexRhsNegative);
 	else
 		ASSERT_OR_IGNORE(index_rst == U64FromValueRst::Ok);
 
 	const TypeId type = lhs->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag == TypeTag::Array || type_tag == TypeTag::ArrayLiteral)
 	{
-		const ArrayType array_type = *type_attachment_from_id<ArrayType>(interp->types, type);
+		const ArrayType array_type = *type_attachment_from_id<ArrayType>(core->interp.types, type);
 
 		if (is_none(array_type.element_type))
-			return record_interpreter_error(interp, code, CompileError::SliceOperatorUntypedArrayLiteral);
+			return record_interpreter_error(core, code, CompileError::SliceOperatorUntypedArrayLiteral);
 
 		if (array_type.element_count <= index)
-			return record_interpreter_error(interp, code, CompileError::ArrayIndexOutOfBounds);
+			return record_interpreter_error(core, code, CompileError::ArrayIndexOutOfBounds);
 
 		const TypeId element_type = get(array_type.element_type);
 
-		const TypeMetrics element_metrics = type_metrics_from_id(interp->types, element_type);
+		const TypeMetrics element_metrics = type_metrics_from_id(core->interp.types, element_type);
 
-		interp->values.pop_by(1);
+		core->interp.values.pop_by(1);
 
 		const MutRange<byte> bytes = lhs->bytes.mut_subrange(index * element_metrics.stride, element_metrics.size);
 
-		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, element_metrics.align, true, element_type });
+		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, element_metrics.align, true, element_type });
 	}
 	else if (type_tag == TypeTag::Slice)
 	{
-		const ReferenceType slice_type = *type_attachment_from_id<ReferenceType>(interp->types, type);
+		const ReferenceType slice_type = *type_attachment_from_id<ReferenceType>(core->interp.types, type);
 
 		const TypeId element_type = slice_type.referenced_type_id;
 
-		const TypeMetrics element_metrics = type_metrics_from_id(interp->types, element_type);
+		const TypeMetrics element_metrics = type_metrics_from_id(core->interp.types, element_type);
 
 		const MutRange<byte> slice = *value_as<MutRange<byte>>(lhs);
 
 		if (index * element_metrics.stride > slice.count())
-			return record_interpreter_error(interp, code, CompileError::ArrayIndexOutOfBounds);
+			return record_interpreter_error(core, code, CompileError::ArrayIndexOutOfBounds);
 
-		interp->values.pop_by(1);
+		core->interp.values.pop_by(1);
 
 		const MutRange<byte> bytes = lhs->bytes.mut_subrange(index * element_metrics.stride, element_metrics.size);
 
-		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, element_metrics.align, true, element_type });
+		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, element_metrics.align, true, element_type });
 	}
 	else if (type_tag == TypeTag::Ptr)
 	{
-		const ReferenceType ptr_type = *type_attachment_from_id<ReferenceType>(interp->types, type);
+		const ReferenceType ptr_type = *type_attachment_from_id<ReferenceType>(core->interp.types, type);
 
 		if (!ptr_type.is_multi)
-			return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 		const TypeId element_type = ptr_type.referenced_type_id;
 
-		const TypeMetrics element_metrics = type_metrics_from_id(interp->types, element_type);
+		const TypeMetrics element_metrics = type_metrics_from_id(core->interp.types, element_type);
 
 		byte* const ptr = *value_as<byte*>(lhs);
 
 		MutRange<byte> bytes{ ptr + index * element_metrics.stride, element_metrics.size };
 
-		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, element_metrics.align, true, element_type });
+		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, element_metrics.align, true, element_type });
 	}
 	else
 	{
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 	}
 }
 
-static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_binary_arithmetic_op(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 2);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
 	OpcodeBinaryArithmeticOpKind kind;
 
 	code = code_attach(code, &kind);
 
-	CTValue* const lhs = interp->values.end() - 2;
+	CTValue* const lhs = core->interp.values.end() - 2;
 
 	CTValue* const rhs = lhs + 1;
 
-	const Maybe<TypeId> unified_type = unify(interp, code, lhs, rhs);
+	const Maybe<TypeId> unified_type = unify(core, code, lhs, rhs);
 
 	if (is_none(unified_type))
 		return nullptr;
 
 	const TypeId type = get(unified_type);
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag == TypeTag::Integer)
 	{
-		const NumericType integer_type = *type_attachment_from_id<NumericType>(interp->types, type);
+		const NumericType integer_type = *type_attachment_from_id<NumericType>(core->interp.types, type);
 
 		if (integer_type.bits <= 64 && is_pow2(integer_type.bits))
 		{
@@ -3869,22 +3868,22 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 				if (kind == OpcodeBinaryArithmeticOpKind::Add || kind == OpcodeBinaryArithmeticOpKind::AddTC)
 				{
 					if (!add_checked_s64(lhs_value_signed, rhs_value_signed, &result_signed) && kind == OpcodeBinaryArithmeticOpKind::Add)
-						return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow);
+						return record_interpreter_error(core, code, CompileError::ArithmeticOverflow);
 				}
 				else if (kind == OpcodeBinaryArithmeticOpKind::Sub || kind == OpcodeBinaryArithmeticOpKind::SubTC)
 				{
 					if (!sub_checked_s64(lhs_value_signed, rhs_value_signed, &result_signed) && kind == OpcodeBinaryArithmeticOpKind::Sub)
-						return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow);
+						return record_interpreter_error(core, code, CompileError::ArithmeticOverflow);
 				}
 				else if (kind == OpcodeBinaryArithmeticOpKind::Mul || kind == OpcodeBinaryArithmeticOpKind::MulTC)
 				{
 					if (!mul_checked_s64(lhs_value_signed, rhs_value_signed, &result_signed) && kind == OpcodeBinaryArithmeticOpKind::Mul)
-						return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow);
+						return record_interpreter_error(core, code, CompileError::ArithmeticOverflow);
 				}
 				else if (kind == OpcodeBinaryArithmeticOpKind::Div)
 				{
 					if (rhs_value_signed == 0)
-						return record_interpreter_error(interp, code, CompileError::DivideByZero);
+						return record_interpreter_error(core, code, CompileError::DivideByZero);
 
 					result_signed = lhs_value_signed / rhs_value_signed;
 				}
@@ -3893,7 +3892,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 					ASSERT_OR_IGNORE(kind == OpcodeBinaryArithmeticOpKind::Mod);
 
 					if (rhs_value_signed == 0)
-						return record_interpreter_error(interp, code, CompileError::ModuloByZero);
+						return record_interpreter_error(core, code, CompileError::ModuloByZero);
 
 					result_signed = lhs_value_signed % rhs_value_signed;
 				}
@@ -3903,7 +3902,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 				const s64 min_value = -max_value - 1;
 
 				if (result_signed > max_value || result_signed < min_value)
-					return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow);
+					return record_interpreter_error(core, code, CompileError::ArithmeticOverflow);
 
 				result = static_cast<u64>(result_signed);
 			}
@@ -3912,22 +3911,22 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 				if (kind == OpcodeBinaryArithmeticOpKind::Add || kind == OpcodeBinaryArithmeticOpKind::AddTC)
 				{
 					if (!add_checked_u64(lhs_value, rhs_value, &result) && kind == OpcodeBinaryArithmeticOpKind::Add)
-						return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow);
+						return record_interpreter_error(core, code, CompileError::ArithmeticOverflow);
 				}
 				else if (kind == OpcodeBinaryArithmeticOpKind::Sub || kind == OpcodeBinaryArithmeticOpKind::SubTC)
 				{
 					if (!sub_checked_u64(lhs_value, rhs_value, &result) && kind == OpcodeBinaryArithmeticOpKind::Sub)
-						return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow);
+						return record_interpreter_error(core, code, CompileError::ArithmeticOverflow);
 				}
 				else if (kind == OpcodeBinaryArithmeticOpKind::Mul || kind == OpcodeBinaryArithmeticOpKind::MulTC)
 				{
 					if (!mul_checked_u64(lhs_value, rhs_value, &result) && kind == OpcodeBinaryArithmeticOpKind::Mul)
-						return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow);
+						return record_interpreter_error(core, code, CompileError::ArithmeticOverflow);
 				}
 				else if (kind == OpcodeBinaryArithmeticOpKind::Div)
 				{
 					if (rhs_value == 0)
-						return record_interpreter_error(interp, code, CompileError::DivideByZero);
+						return record_interpreter_error(core, code, CompileError::DivideByZero);
 
 					result = lhs_value / rhs_value;
 				}
@@ -3936,7 +3935,7 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 					ASSERT_OR_IGNORE(kind == OpcodeBinaryArithmeticOpKind::Mod);
 
 					if (rhs_value == 0)
-						return record_interpreter_error(interp, code, CompileError::ModuloByZero);
+						return record_interpreter_error(core, code, CompileError::ModuloByZero);
 
 					result = lhs_value % rhs_value;
 				}
@@ -3946,56 +3945,56 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 					const u64 max_value = (static_cast<u64>(1) << integer_type.bits) - 1;
 
 					if (result > max_value)
-						return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow);
+						return record_interpreter_error(core, code, CompileError::ArithmeticOverflow);
 				}
 			}
 
 			const MutRange<byte> bytes{ reinterpret_cast<byte*>(&result), static_cast<u64>(integer_type.bits / 8) };
 
-			interp->values.pop_by(1);
+			core->interp.values.pop_by(1);
 
-			return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, rhs->align, true, type });
+			return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, rhs->align, true, type });
 		}
 		else
 		{
-			CTValue result = alloc_temporary_value_uninit(interp, (integer_type.bits + 7 / 8), (integer_type.bits + 7 / 8), type);
+			CTValue result = alloc_temporary_value_uninit(core, (integer_type.bits + 7 / 8), (integer_type.bits + 7 / 8), type);
 
 			if (kind == OpcodeBinaryArithmeticOpKind::Add)
 			{
 				if (!bitwise_add(integer_type.bits, integer_type.is_signed, result.bytes, lhs->bytes.immut(), rhs->bytes.immut()))
-					return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow);
+					return record_interpreter_error(core, code, CompileError::ArithmeticOverflow);
 			}
 			else if (kind == OpcodeBinaryArithmeticOpKind::Sub)
 			{
 				if (!bitwise_sub(integer_type.bits, integer_type.is_signed, result.bytes, lhs->bytes.immut(), rhs->bytes.immut()))
-					return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow);
+					return record_interpreter_error(core, code, CompileError::ArithmeticOverflow);
 			}
 			else if (kind == OpcodeBinaryArithmeticOpKind::Mul)
 			{
 				if (!bitwise_mul(integer_type.bits, integer_type.is_signed, result.bytes, lhs->bytes.immut(), rhs->bytes.immut()))
-					return record_interpreter_error(interp, code, CompileError::ArithmeticOverflow);
+					return record_interpreter_error(core, code, CompileError::ArithmeticOverflow);
 			}
 			else if (kind == OpcodeBinaryArithmeticOpKind::Div)
 			{
 				if (!bitwise_div(integer_type.bits, integer_type.is_signed, result.bytes, lhs->bytes.immut(), rhs->bytes.immut()))
-					return record_interpreter_error(interp, code, CompileError::DivideByZero);
+					return record_interpreter_error(core, code, CompileError::DivideByZero);
 			}
 			else
 			{
 				ASSERT_OR_IGNORE(kind == OpcodeBinaryArithmeticOpKind::Mod);
 
 				if (!bitwise_mod(integer_type.bits, integer_type.is_signed, result.bytes, lhs->bytes.immut(), rhs->bytes.immut()))
-					return record_interpreter_error(interp, code, CompileError::ModuloByZero);
+					return record_interpreter_error(core, code, CompileError::ModuloByZero);
 			}
 
-			interp->values.pop_by(1);
+			core->interp.values.pop_by(1);
 
-			return poppush_temporary_value(interp, code, write_ctx, result);
+			return poppush_temporary_value(core, code, write_ctx, result);
 		}
 	}
 	else if (type_tag == TypeTag::Float)
 	{
-		const NumericType float_type = *type_attachment_from_id<NumericType>(interp->types, type);
+		const NumericType float_type = *type_attachment_from_id<NumericType>(core->interp.types, type);
 
 		if (float_type.bits == 32)
 		{
@@ -4017,15 +4016,15 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 			      || kind == OpcodeBinaryArithmeticOpKind::AddTC
 			      || kind == OpcodeBinaryArithmeticOpKind::SubTC
 			      || kind == OpcodeBinaryArithmeticOpKind::MulTC)
-				return record_interpreter_error(interp, code, CompileError::BinaryOperatorIntegerInvalidArgumentType);
+				return record_interpreter_error(core, code, CompileError::BinaryOperatorIntegerInvalidArgumentType);
 			else
 				ASSERT_UNREACHABLE;
 
 			const MutRange<byte> bytes = range::from_object_bytes_mut(&result);
 
-			interp->values.pop_by(1);
+			core->interp.values.pop_by(1);
 
-			return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(f32), true, type });
+			return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(f32), true, type });
 		}
 		else
 		{
@@ -4049,15 +4048,15 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 			      || kind == OpcodeBinaryArithmeticOpKind::AddTC
 			      || kind == OpcodeBinaryArithmeticOpKind::SubTC
 			      || kind == OpcodeBinaryArithmeticOpKind::MulTC)
-				return record_interpreter_error(interp, code, CompileError::BinaryOperatorIntegerInvalidArgumentType);
+				return record_interpreter_error(core, code, CompileError::BinaryOperatorIntegerInvalidArgumentType);
 			else
 				ASSERT_UNREACHABLE;
 
 			const MutRange<byte> bytes = range::from_object_bytes_mut(&result);
 
-			interp->values.pop_by(1);
+			core->interp.values.pop_by(1);
 
-			return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(f64), true, type });
+			return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(f64), true, type });
 		}
 	}
 	else if (type_tag == TypeTag::CompInteger)
@@ -4083,21 +4082,21 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 		else if (kind == OpcodeBinaryArithmeticOpKind::Div)
 		{
 			if (!comp_integer_div(lhs_value, rhs_value, &result))
-				return record_interpreter_error(interp, code, CompileError::DivideByZero);
+				return record_interpreter_error(core, code, CompileError::DivideByZero);
 		}
 		else
 		{
 			ASSERT_OR_IGNORE(kind == OpcodeBinaryArithmeticOpKind::Mod);
 
 			if (!comp_integer_mod(lhs_value, rhs_value, &result))
-				return record_interpreter_error(interp, code, CompileError::ModuloByZero);
+				return record_interpreter_error(core, code, CompileError::ModuloByZero);
 		}
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&result);
 
-		interp->values.pop_by(1);
+		core->interp.values.pop_by(1);
 
-		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, type });
+		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, type });
 	}
 	else if (type_tag == TypeTag::CompFloat)
 	{
@@ -4119,15 +4118,15 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 		      || kind == OpcodeBinaryArithmeticOpKind::AddTC
 		      || kind == OpcodeBinaryArithmeticOpKind::SubTC
 		      || kind == OpcodeBinaryArithmeticOpKind::MulTC)
-			return record_interpreter_error(interp, code, CompileError::BinaryOperatorIntegerInvalidArgumentType);
+			return record_interpreter_error(core, code, CompileError::BinaryOperatorIntegerInvalidArgumentType);
 		else
 			ASSERT_UNREACHABLE;
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&result);
 
-		interp->values.pop_by(1);
+		core->interp.values.pop_by(1);
 
-		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompFloatValue), true, type });
+		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompFloatValue), true, type });
 	}
 	else
 	{
@@ -4140,47 +4139,47 @@ static const Opcode* handle_binary_arithmetic_op(Interpreter* interp, const Opco
 			? CompileError::BinaryOperatorNumericInvalidArgumentType
 			: CompileError::BinaryOperatorIntegerInvalidArgumentType;
 
-		return record_interpreter_error(interp, code, error);
+		return record_interpreter_error(core, code, error);
 	}
 }
 
-static const Opcode* handle_shift(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_shift(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 2);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
 	OpcodeShiftKind kind;
 
 	code = code_attach(code, &kind);
 
-	CTValue* const lhs = interp->values.end() - 2;
+	CTValue* const lhs = core->interp.values.end() - 2;
 
 	CTValue* const rhs = lhs + 1;
 
 	const TypeId type = lhs->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	u64 shift_amount;
 
-	const U64FromValueRst index_rst = u64_from_value(interp, *rhs, &shift_amount);
+	const U64FromValueRst index_rst = u64_from_value(core, *rhs, &shift_amount);
 
 	if (index_rst == U64FromValueRst::Inconvertible)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 	else if (index_rst == U64FromValueRst::TooLarge)
-		return record_interpreter_error(interp, code, CompileError::ShiftRHSTooLarge);
+		return record_interpreter_error(core, code, CompileError::ShiftRHSTooLarge);
 	else if (index_rst == U64FromValueRst::Negative)
-		return record_interpreter_error(interp, code, CompileError::ShiftRHSNegative);
+		return record_interpreter_error(core, code, CompileError::ShiftRHSNegative);
 	else
 		ASSERT_OR_IGNORE(index_rst == U64FromValueRst::Ok);
 
 	if (type_tag == TypeTag::Integer)
 	{
-		const NumericType integer_type = *type_attachment_from_id<NumericType>(interp->types, type);
+		const NumericType integer_type = *type_attachment_from_id<NumericType>(core->interp.types, type);
 
 		if (shift_amount >= integer_type.bits)
-			return record_interpreter_error(interp, code, CompileError::ShiftRHSTooLarge);
+			return record_interpreter_error(core, code, CompileError::ShiftRHSTooLarge);
 
-		CTValue result = alloc_temporary_value_uninit(interp, (integer_type.bits + 7) / 8, (integer_type.bits + 7) / 8, type);
+		CTValue result = alloc_temporary_value_uninit(core, (integer_type.bits + 7) / 8, (integer_type.bits + 7) / 8, type);
 
 		if (kind == OpcodeShiftKind::Left)
 			bitwise_shift_left(integer_type.bits, result.bytes, lhs->bytes.immut(), shift_amount);
@@ -4189,9 +4188,9 @@ static const Opcode* handle_shift(Interpreter* interp, const Opcode* code, CTVal
 		else
 			ASSERT_UNREACHABLE;
 
-		interp->values.pop_by(1);
+		core->interp.values.pop_by(1);
 
-		return poppush_location_value(interp, code, write_ctx, result);
+		return poppush_location_value(core, code, write_ctx, result);
 	}
 	else if (type_tag == TypeTag::CompInteger)
 	{
@@ -4204,12 +4203,12 @@ static const Opcode* handle_shift(Interpreter* interp, const Opcode* code, CTVal
 		if (kind == OpcodeShiftKind::Left)
 		{
 			if (!comp_integer_shift_left(lhs_value, comp_integer_from_u64(shift_amount), &result))
-				return record_interpreter_error(interp, code, CompileError::ShiftRHSTooLarge);
+				return record_interpreter_error(core, code, CompileError::ShiftRHSTooLarge);
 		}
 		else if (kind == OpcodeShiftKind::Right)
 		{
 			if (!comp_integer_shift_right(lhs_value, rhs_value, &result))
-					return record_interpreter_error(interp, code, CompileError::ShiftRHSTooLarge);
+					return record_interpreter_error(core, code, CompileError::ShiftRHSTooLarge);
 		}
 		else
 		{
@@ -4218,40 +4217,40 @@ static const Opcode* handle_shift(Interpreter* interp, const Opcode* code, CTVal
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&result);
 
-		interp->values.pop_by(1);
+		core->interp.values.pop_by(1);
 
-		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, type });
+		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, type });
 	}
 	else
 	{
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 	}
 }
 
-static const Opcode* handle_binary_bitwise_op(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_binary_bitwise_op(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 2);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
 	OpcodeBinaryBitwiseOpKind kind;
 
 	code = code_attach(code, &kind);
 
-	CTValue* const lhs = interp->values.end() - 2;
+	CTValue* const lhs = core->interp.values.end() - 2;
 
 	CTValue* const rhs = lhs + 1;
 
-	const Maybe<TypeId> unified_type = unify(interp, code, lhs, rhs);
+	const Maybe<TypeId> unified_type = unify(core, code, lhs, rhs);
 
 	if (is_none(unified_type))
 		return nullptr;
 
 	const TypeId type = get(unified_type);
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag == TypeTag::Integer)
 	{
-		const NumericType* const integer_type = type_attachment_from_id<NumericType>(interp->types, type);
+		const NumericType* const integer_type = type_attachment_from_id<NumericType>(core->interp.types, type);
 
 		if (integer_type->bits <= 64 && is_pow2(integer_type->bits))
 		{
@@ -4280,9 +4279,9 @@ static const Opcode* handle_binary_bitwise_op(Interpreter* interp, const Opcode*
 
 			const MutRange<byte> bytes{ reinterpret_cast<byte*>(&result), size };
 
-			interp->values.pop_by(1);
+			core->interp.values.pop_by(1);
 
-			return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(u16), true, type });
+			return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(u16), true, type });
 		}
 		else
 		{
@@ -4319,9 +4318,9 @@ static const Opcode* handle_binary_bitwise_op(Interpreter* interp, const Opcode*
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&result);
 
-		interp->values.pop_by(1);
+		core->interp.values.pop_by(1);
 
-		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, type });
+		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, type });
 	}
 	else if (type_tag == TypeTag::Boolean)
 	{
@@ -4342,29 +4341,29 @@ static const Opcode* handle_binary_bitwise_op(Interpreter* interp, const Opcode*
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&result);
 
-		interp->values.pop_by(1);
+		core->interp.values.pop_by(1);
 
-		return poppush_location_value(interp, code, write_ctx, CTValue{ bytes, alignof(bool), true, type });
+		return poppush_location_value(core, code, write_ctx, CTValue{ bytes, alignof(bool), true, type });
 	}
 	else
 	{
-		return record_interpreter_error(interp, code, CompileError::BinaryOperatorIntegerOrBoolInvalidArgumentType);
+		return record_interpreter_error(core, code, CompileError::BinaryOperatorIntegerOrBoolInvalidArgumentType);
 	}
 }
 
-static const Opcode* handle_bit_not(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_bit_not(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag == TypeTag::Integer)
 	{
-		const NumericType* const integer_type = type_attachment_from_id<NumericType>(interp->types, type);
+		const NumericType* const integer_type = type_attachment_from_id<NumericType>(core->interp.types, type);
 
 		if (integer_type->bits <= 64 && is_pow2(integer_type->bits))
 		{
@@ -4374,7 +4373,7 @@ static const Opcode* handle_bit_not(Interpreter* interp, const Opcode* code, CTV
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
 			}
 			else if (integer_type->bits == 16)
 			{
@@ -4382,7 +4381,7 @@ static const Opcode* handle_bit_not(Interpreter* interp, const Opcode* code, CTV
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
 			}
 			else if (integer_type->bits == 32)
 			{
@@ -4390,7 +4389,7 @@ static const Opcode* handle_bit_not(Interpreter* interp, const Opcode* code, CTV
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
 			}
 			else
 			{
@@ -4400,7 +4399,7 @@ static const Opcode* handle_bit_not(Interpreter* interp, const Opcode* code, CTV
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
 			}
 		}
 		else
@@ -4414,19 +4413,19 @@ static const Opcode* handle_bit_not(Interpreter* interp, const Opcode* code, CTV
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, top->align, true, type });
+		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
 	}
 	else
 	{
-		return record_interpreter_error(interp, code, CompileError::BitNotInvalidOperandType);
+		return record_interpreter_error(core, code, CompileError::BitNotInvalidOperandType);
 	}
 }
 
-static const Opcode* handle_logical_and(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_logical_and(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 2);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
-	CTValue* const lhs = interp->values.end() - 2;
+	CTValue* const lhs = core->interp.values.end() - 2;
 
 	CTValue* const rhs = lhs + 1;
 
@@ -4434,12 +4433,12 @@ static const Opcode* handle_logical_and(Interpreter* interp, const Opcode* code,
 
 	const TypeId rhs_type = rhs->type;
 
-	const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_type);
+	const TypeTag lhs_type_tag = type_tag_from_id(core->interp.types, lhs_type);
 
-	const TypeTag rhs_type_tag = type_tag_from_id(interp->types, rhs_type);
+	const TypeTag rhs_type_tag = type_tag_from_id(core->interp.types, rhs_type);
 
 	if (lhs_type_tag != TypeTag::Boolean || rhs_type_tag != TypeTag::Boolean)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const bool lhs_value = *value_as<bool>(lhs);
 
@@ -4449,18 +4448,18 @@ static const Opcode* handle_logical_and(Interpreter* interp, const Opcode* code,
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
-	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, lhs->align, true, lhs_type });
+	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, lhs->align, true, lhs_type });
 }
 
-static const Opcode* handle_logical_or(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_logical_or(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 2);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
-	ASSERT_OR_IGNORE(interp->values.used() >= 2);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
-	CTValue* const lhs = interp->values.end() - 2;
+	CTValue* const lhs = core->interp.values.end() - 2;
 
 	CTValue* const rhs = lhs + 1;
 
@@ -4468,12 +4467,12 @@ static const Opcode* handle_logical_or(Interpreter* interp, const Opcode* code, 
 
 	const TypeId rhs_type = rhs->type;
 
-	const TypeTag lhs_type_tag = type_tag_from_id(interp->types, lhs_type);
+	const TypeTag lhs_type_tag = type_tag_from_id(core->interp.types, lhs_type);
 
-	const TypeTag rhs_type_tag = type_tag_from_id(interp->types, rhs_type);
+	const TypeTag rhs_type_tag = type_tag_from_id(core->interp.types, rhs_type);
 
 	if (lhs_type_tag != TypeTag::Boolean || rhs_type_tag != TypeTag::Boolean)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const bool lhs_value = *value_as<bool>(lhs);
 
@@ -4483,44 +4482,44 @@ static const Opcode* handle_logical_or(Interpreter* interp, const Opcode* code, 
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
-	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, lhs->align, true, lhs_type });
+	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, lhs->align, true, lhs_type });
 }
 
-static const Opcode* handle_logical_not(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_logical_not(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag != TypeTag::Boolean)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	bool value = !*value_as<bool>(top);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(bool), true, type });
+	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(bool), true, type });
 }
 
-static const Opcode* handle_compare(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_compare(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 2);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
 	OpcodeCompareKind kind;
 
 	code = code_attach(code, &kind);
 
-	CTValue* const lhs = interp->values.end() - 2;
+	CTValue* const lhs = core->interp.values.end() - 2;
 
 	CTValue* const rhs = lhs + 1;
 
-	const Maybe<TypeId> unified_type = unify(interp, code, lhs, rhs);
+	const Maybe<TypeId> unified_type = unify(core, code, lhs, rhs);
 
 	if (is_none(unified_type))
 		return nullptr;
@@ -4531,9 +4530,9 @@ static const Opcode* handle_compare(Interpreter* interp, const Opcode* code, CTV
 
 	const Range<byte> rhs_bytes = rhs->bytes.immut();
 
-	const CompareResult compare_result = compare(interp, code, type, lhs_bytes, rhs_bytes);
+	const CompareResult compare_result = compare(core, code, type, lhs_bytes, rhs_bytes);
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
 	if (compare_result.tag == CompareTag::INVALID)
 		return nullptr;
@@ -4551,7 +4550,7 @@ static const Opcode* handle_compare(Interpreter* interp, const Opcode* code, CTV
 	else
 	{
 		if (compare_result.tag == CompareTag::Equality)
-			return record_interpreter_error(interp, code, CompileError::CompareUnorderedType);
+			return record_interpreter_error(core, code, CompileError::CompareUnorderedType);
 
 		if (kind == OpcodeCompareKind::LessThan)
 			result = compare_result.ordering == WeakCompareOrdering::LessThan;
@@ -4567,27 +4566,27 @@ static const Opcode* handle_compare(Interpreter* interp, const Opcode* code, CTV
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&result);
 
-	const TypeId bool_type = type_create_simple(interp->types, TypeTag::Boolean);
+	const TypeId bool_type = type_create_simple(core->interp.types, TypeTag::Boolean);
 
-	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(bool), true, bool_type });
+	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(bool), true, bool_type });
 }
 
-static const Opcode* handle_negate(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_negate(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag == TypeTag::Integer)
 	{
-		const NumericType* const integer_type = type_attachment_from_id<NumericType>(interp->types, type);
+		const NumericType* const integer_type = type_attachment_from_id<NumericType>(core->interp.types, type);
 
 		if (!integer_type->is_signed)
-			return record_interpreter_error(interp, code, CompileError::NegateInvalidOperandType);
+			return record_interpreter_error(core, code, CompileError::NegateInvalidOperandType);
 
 		if (integer_type->bits <= 64 && is_pow2(integer_type->bits))
 		{
@@ -4597,7 +4596,7 @@ static const Opcode* handle_negate(Interpreter* interp, const Opcode* code, CTVa
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
 			}
 			else if (integer_type->bits == 16)
 			{
@@ -4605,7 +4604,7 @@ static const Opcode* handle_negate(Interpreter* interp, const Opcode* code, CTVa
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
 			}
 			else if (integer_type->bits == 32)
 			{
@@ -4613,7 +4612,7 @@ static const Opcode* handle_negate(Interpreter* interp, const Opcode* code, CTVa
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
 			}
 			else
 			{
@@ -4623,7 +4622,7 @@ static const Opcode* handle_negate(Interpreter* interp, const Opcode* code, CTVa
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
 			}
 		}
 		else
@@ -4633,7 +4632,7 @@ static const Opcode* handle_negate(Interpreter* interp, const Opcode* code, CTVa
 	}
 	else if (type_tag == TypeTag::Float)
 	{
-		const NumericType* const float_type = type_attachment_from_id<NumericType>(interp->types, type);
+		const NumericType* const float_type = type_attachment_from_id<NumericType>(core->interp.types, type);
 
 		if (float_type->bits == 32)
 		{
@@ -4641,7 +4640,7 @@ static const Opcode* handle_negate(Interpreter* interp, const Opcode* code, CTVa
 
 			const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-			return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, top->align, true, type });
+			return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
 		}
 		else
 		{
@@ -4651,7 +4650,7 @@ static const Opcode* handle_negate(Interpreter* interp, const Opcode* code, CTVa
 
 			const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-			return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, top->align, true, type });
+			return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
 		}
 	}
 	else if (type_tag == TypeTag::CompInteger)
@@ -4660,7 +4659,7 @@ static const Opcode* handle_negate(Interpreter* interp, const Opcode* code, CTVa
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, top->align, true, type });
+		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
 	}
 	else if (type_tag == TypeTag::CompFloat)
 	{
@@ -4668,75 +4667,75 @@ static const Opcode* handle_negate(Interpreter* interp, const Opcode* code, CTVa
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-		return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, top->align, true, type });
+		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
 	}
 	else
 	{
-		return record_interpreter_error(interp, code, CompileError::NegateInvalidOperandType);
+		return record_interpreter_error(core, code, CompileError::NegateInvalidOperandType);
 	}
 }
 
-static const Opcode* handle_unary_plus(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_unary_plus(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	const CTValue* const top = interp->values.end() - 1;
+	const CTValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, type);
 
 	if (type_tag != TypeTag::Integer && type_tag != TypeTag::Float && type_tag != TypeTag::CompInteger && type_tag != TypeTag::CompFloat)
-		return record_interpreter_error(interp, code, CompileError::UnaryPlusInvalidOperandType);
+		return record_interpreter_error(core, code, CompileError::UnaryPlusInvalidOperandType);
 
-	return poppush_temporary_value(interp, code, write_ctx, *top);
+	return poppush_temporary_value(core, code, write_ctx, *top);
 }
 
-static const Opcode* handle_array_type(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_array_type(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 2);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
-	CTValue* const element_type_value = interp->values.end() - 1;
+	CTValue* const element_type_value = core->interp.values.end() - 1;
 
 	CTValue* const element_count_value = element_type_value - 1;
 
 	u64 element_count;
 
-	const U64FromValueRst index_rst = u64_from_value(interp, *element_count_value, &element_count);
+	const U64FromValueRst index_rst = u64_from_value(core, *element_count_value, &element_count);
 
 	if (index_rst == U64FromValueRst::Inconvertible)
-		return record_interpreter_error(interp, code, CompileError::TypesCannotConvert);
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 	else if (index_rst == U64FromValueRst::TooLarge)
-		return record_interpreter_error(interp, code, CompileError::TypeArrayCountTooLarge);
+		return record_interpreter_error(core, code, CompileError::TypeArrayCountTooLarge);
 	else if (index_rst == U64FromValueRst::Negative)
-		return record_interpreter_error(interp, code, CompileError::TypeArrayCountNegative);
+		return record_interpreter_error(core, code, CompileError::TypeArrayCountNegative);
 	else
 		ASSERT_OR_IGNORE(index_rst == U64FromValueRst::Ok);
 
 	const TypeId element_type = *value_as<TypeId>(element_type_value);
 
-	TypeId array_type = type_create_array(interp->types, TypeTag::Array, ArrayType{ element_count, some(element_type) });
+	TypeId array_type = type_create_array(core->interp.types, TypeTag::Array, ArrayType{ element_count, some(element_type) });
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&array_type);
 
-	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
-	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_reference_type(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_reference_type(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	OpcodeReferenceTypeFlags flags;
 
 	code = code_attach(code, &flags);
 
-	CTValue* const referenced_type_value = interp->values.end() - 1;
+	CTValue* const referenced_type_value = core->interp.values.end() - 1;
 
-	ASSERT_OR_IGNORE(type_tag_from_id(interp->types, referenced_type_value->type) == TypeTag::Type);
+	ASSERT_OR_IGNORE(type_tag_from_id(core->interp.types, referenced_type_value->type) == TypeTag::Type);
 
 	const TypeId referenced_type = *value_as<TypeId>(referenced_type_value);
 
@@ -4746,22 +4745,22 @@ static const Opcode* handle_reference_type(Interpreter* interp, const Opcode* co
 	attach.is_multi = flags.is_multi;
 	attach.is_mut = flags.is_mut;
 
-	TypeId reference_type = type_create_reference(interp->types, static_cast<TypeTag>(flags.tag), attach);
+	TypeId reference_type = type_create_reference(core->interp.types, static_cast<TypeTag>(flags.tag), attach);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&reference_type);
 
-	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
-	return poppush_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_undefined(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_undefined(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	if (write_ctx == nullptr)
 	{
-		const TypeId undefined_type = type_create_simple(interp->types, TypeTag::Undefined);
+		const TypeId undefined_type = type_create_simple(core->interp.types, TypeTag::Undefined);
 
-		return push_temporary_value(interp, code, write_ctx, CTValue{ {}, 1, true, undefined_type });
+		return push_temporary_value(core, code, write_ctx, CTValue{ {}, 1, true, undefined_type });
 	}
 	else
 	{
@@ -4772,14 +4771,14 @@ static const Opcode* handle_undefined(Interpreter* interp, const Opcode* code, C
 	}
 }
 
-static const Opcode* handle_unreachable([[maybe_unused]] Interpreter* interp, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_unreachable([[maybe_unused]] CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	DEBUGBREAK;
 
-	return record_interpreter_error(interp, code, CompileError::UnreachableReached);
+	return record_interpreter_error(core, code, CompileError::UnreachableReached);
 }
 
-static const Opcode* handle_value_integer(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_value_integer(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	CompIntegerValue value;
 
@@ -4787,12 +4786,12 @@ static const Opcode* handle_value_integer(Interpreter* interp, const Opcode* cod
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-	const TypeId comp_integer_type = type_create_simple(interp->types, TypeTag::CompInteger);
+	const TypeId comp_integer_type = type_create_simple(core->interp.types, TypeTag::CompInteger);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
 }
 
-static const Opcode* handle_value_float(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_value_float(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	CompFloatValue value;
 
@@ -4800,84 +4799,84 @@ static const Opcode* handle_value_float(Interpreter* interp, const Opcode* code,
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-	const TypeId comp_float_type = type_create_simple(interp->types, TypeTag::CompFloat);
+	const TypeId comp_float_type = type_create_simple(core->interp.types, TypeTag::CompFloat);
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, alignof(CompFloatValue), true, comp_float_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompFloatValue), true, comp_float_type });
 }
 
-static const Opcode* handle_value_string(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_value_string(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	ForeverValueId value_id;
 
 	code = code_attach(code, &value_id);
 
-	CTValue value = forever_value_get(interp->globals, value_id);
+	CTValue value = forever_value_get(core->interp.globals, value_id);
 
-	return push_temporary_value(interp, code, write_ctx, value);
+	return push_temporary_value(core, code, write_ctx, value);
 }
 
-static const Opcode* handle_value_void(Interpreter* interp, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_value_void(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	const TypeId void_type = type_create_simple(interp->types, TypeTag::Void);
+	const TypeId void_type = type_create_simple(core->interp.types, TypeTag::Void);
 
-	const MutRange<byte> bytes{interp->temporary_data.end(), static_cast<u64>(0) };
+	const MutRange<byte> bytes{core->interp.temporary_data.end(), static_cast<u64>(0) };
 
-	return push_temporary_value(interp, code, write_ctx, CTValue{ bytes, 1, true, void_type });
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, 1, true, void_type });
 }
 
-static const Opcode* handle_discard_void(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_discard_void(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, top->type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, top->type);
 
 	if (type_tag != TypeTag::Void)
-		return record_interpreter_error(interp, code, CompileError::ExpectedVoid);
+		return record_interpreter_error(core, code, CompileError::ExpectedVoid);
 
-	interp->values.pop_by(1);
+	core->interp.values.pop_by(1);
 
 	return code;
 }
 
-static const Opcode* handle_check_top_void(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_check_top_void(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	ASSERT_OR_IGNORE(interp->values.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = interp->values.end() - 1;
+	CTValue* const top = core->interp.values.end() - 1;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, top->type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, top->type);
 
 	if (type_tag != TypeTag::Void)
-		return record_interpreter_error(interp, code, CompileError::ExpectedVoid);
+		return record_interpreter_error(core, code, CompileError::ExpectedVoid);
 
 	return code;
 }
 
-static const Opcode* handle_check_write_ctx_void(Interpreter* interp, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_check_write_ctx_void(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	ASSERT_OR_IGNORE(interp->write_ctxs.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.write_ctxs.used() >= 1);
 
-	CTValue* const top_write_ctx = interp->write_ctxs.end() - 1;
+	CTValue* const top_write_ctx = core->interp.write_ctxs.end() - 1;
 
-	const TypeTag type_tag = type_tag_from_id(interp->types, top_write_ctx->type);
+	const TypeTag type_tag = type_tag_from_id(core->interp.types, top_write_ctx->type);
 
 	if (type_tag != TypeTag::Void)
-		return record_interpreter_error(interp, code, CompileError::ExpectedVoid);
+		return record_interpreter_error(core, code, CompileError::ExpectedVoid);
 
 	return code;
 }
 
 
 
-static bool type_from_ast(Interpreter* interp, AstNode* ast, TypeId file_type, GlobalFileIndex file_index) noexcept
+static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, GlobalFileIndex file_index) noexcept
 {
 	AstDirectChildIterator it = direct_children_of(ast);
 
@@ -4894,7 +4893,7 @@ static bool type_from_ast(Interpreter* interp, AstNode* ast, TypeId file_type, G
 
 		ASSERT_OR_IGNORE(node->tag == AstTag::Definition);
 
-		const Maybe<Opcode*> initializer = opcodes_from_file_member_ast(interp->opcodes, node, file_index, rank);
+		const Maybe<Opcode*> initializer = opcodes_from_file_member_ast(core->interp.opcodes, node, file_index, rank);
 
 		if (is_none(initializer))
 		{
@@ -4903,20 +4902,20 @@ static bool type_from_ast(Interpreter* interp, AstNode* ast, TypeId file_type, G
 			continue;
 		}
 
-		const OpcodeId initializer_id = id_from_opcode(interp->opcodes, get(initializer));
+		const OpcodeId initializer_id = id_from_opcode(core->interp.opcodes, get(initializer));
 
 		const IdentifierId identifier_id = attachment_of<AstDefinitionData>(node)->identifier_id;
 
-		if (interp->imported_opcodes_log_file.m_rep != nullptr)
-			log_opcodes(interp, get(initializer));
+		if (core->interp.imported_opcodes_log_file.m_rep != nullptr)
+			log_opcodes(core, get(initializer));
 
 		const bool is_pub = has_flag(node, AstFlag::Definition_IsPub);
 
 		const bool is_mut = has_flag(node, AstFlag::Definition_IsMut);
 
-		type_add_file_member(interp->types, file_type, identifier_id, initializer_id, is_pub, is_mut);
+		type_add_file_member(core->interp.types, file_type, identifier_id, initializer_id, is_pub, is_mut);
 
-		file_value_set_initializer(interp->globals, file_index, rank, initializer_id);
+		file_value_set_initializer(core->interp.globals, file_index, rank, initializer_id);
 
 		rank += 1;
 	}
@@ -4924,9 +4923,9 @@ static bool type_from_ast(Interpreter* interp, AstNode* ast, TypeId file_type, G
 	return is_ok;
 }
 
-static Maybe<TypeId> import_file_or_prelude(Interpreter* interp, Range<char8> path, bool is_prelude, bool is_std, SourceFile** out_file) noexcept
+static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, bool is_prelude, bool is_std, SourceFile** out_file) noexcept
 {
-	SourceFileRead read = read_source_file(interp->reader, path);
+	SourceFileRead read = read_source_file(core->interp.reader, path);
 
 	if (read.source_file->has_error)
 		return none<TypeId>();
@@ -4938,7 +4937,7 @@ static Maybe<TypeId> import_file_or_prelude(Interpreter* interp, Range<char8> pa
 		return some(read.source_file->type);
 	}
 
-	const Maybe<AstNode*> maybe_ast = parse(interp->parser, read.content, read.source_file->source_id_base, is_std);
+	const Maybe<AstNode*> maybe_ast = parse(core->interp.parser, read.content, read.source_file->source_id_base, is_std);
 
 	if (is_none(maybe_ast))
 	{
@@ -4949,21 +4948,21 @@ static Maybe<TypeId> import_file_or_prelude(Interpreter* interp, Range<char8> pa
 
 	AstNode* const ast = get(maybe_ast);
 
-	const SourceId root_source_id = source_id_of_ast_node(interp->asts, ast);
+	const SourceId root_source_id = source_id_of_ast_node(core->interp.asts, ast);
 
 	const AstFileData* const root_data = attachment_of<AstFileData>(ast);
 
-	const TypeId type = type_create_composite(interp->types, TypeTag::Composite, TypeDisposition::File, root_source_id, root_data->member_count, true);
+	const TypeId type = type_create_composite(core->interp.types, TypeTag::Composite, TypeDisposition::File, root_source_id, root_data->member_count, true);
 
-	const GlobalFileIndex file_index = file_values_reserve(interp->globals, type, static_cast<u16>(root_data->member_count));
+	const GlobalFileIndex file_index = file_values_reserve(core->interp.globals, type, static_cast<u16>(root_data->member_count));
 
-	read.source_file->ast = id_from_ast_node(interp->asts, ast);
+	read.source_file->ast = id_from_ast_node(core->interp.asts, ast);
 	read.source_file->type = type;
 	read.source_file->file_index = file_index;
 
 	if (is_prelude)
 	{
-		if (!set_prelude_scope(interp->lex, ast, file_index))
+		if (!set_prelude_scope(core->interp.lex, ast, file_index))
 		{
 			read.source_file->has_error = true;
 
@@ -4972,7 +4971,7 @@ static Maybe<TypeId> import_file_or_prelude(Interpreter* interp, Range<char8> pa
 	}
 	else
 	{
-		if (!resolve_names(interp->lex, ast, file_index))
+		if (!resolve_names(core->interp.lex, ast, file_index))
 		{
 			read.source_file->has_error = true;
 
@@ -4980,10 +4979,10 @@ static Maybe<TypeId> import_file_or_prelude(Interpreter* interp, Range<char8> pa
 		}
 	}
 
-	if (interp->imported_asts_log_file.m_rep != nullptr)
-		log_ast(interp, ast);
+	if (core->interp.imported_asts_log_file.m_rep != nullptr)
+		log_ast(core, ast);
 
-	if (!type_from_ast(interp, ast, type, file_index))
+	if (!type_from_ast(core, ast, type, file_index))
 	{
 		read.source_file->has_error = true;
 
@@ -4995,7 +4994,7 @@ static Maybe<TypeId> import_file_or_prelude(Interpreter* interp, Range<char8> pa
 	return some(type);
 }
 
-static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
+static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 {
 	static constexpr OpcodeHandlerFunc HANDLERS[] = {
 		nullptr,                                   // INVALID
@@ -5126,7 +5125,7 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CheckTopVoid)]                  == &handle_check_top_void);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CheckWriteCtxVoid)]             == &handle_check_write_ctx_void);
 
-	interp->is_ok = true;
+	core->interp.is_ok = true;
 
 	while (true)
 	{
@@ -5140,11 +5139,11 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 
 		if (consumes_write_ctx)
 		{
-			ASSERT_OR_IGNORE(interp->write_ctxs.used() >= 1);
+			ASSERT_OR_IGNORE(core->interp.write_ctxs.used() >= 1);
 
-			write_ctx_value = interp->write_ctxs.end()[-1];
+			write_ctx_value = core->interp.write_ctxs.end()[-1];
 
-			interp->write_ctxs.pop_by(1);
+			core->interp.write_ctxs.pop_by(1);
 
 			write_ctx = &write_ctx_value;
 		}
@@ -5160,23 +5159,23 @@ static bool interpret_opcodes(Interpreter* interp, const Opcode* ops) noexcept
 		// A crude helper for looking through the opcode emission logs for the
 		// currently executing operation by its id.
 		// This is actually super-duper helpful for debugging.
-		[[maybe_unused]] const OpcodeId debug_op_id = id_from_opcode(interp->opcodes, ops);
+		[[maybe_unused]] const OpcodeId debug_op_id = id_from_opcode(core->interp.opcodes, ops);
 
 		const OpcodeHandlerFunc handler = HANDLERS[ordinal];
 
-		ops = handler(interp, ops + 1, write_ctx);
+		ops = handler(core, ops + 1, write_ctx);
 
 		if (ops == nullptr)
 		{
-			if (!interp->is_ok)
+			if (!core->interp.is_ok)
 				return false;
 
-			if (interp->activations.used() == 0)
+			if (core->interp.activations.used() == 0)
 				return true;
 
-			ops = opcode_from_id(interp->opcodes, interp->activations.end()[-1]);
+			ops = opcode_from_id(core->interp.opcodes, core->interp.activations.end()[-1]);
 
-			interp->activations.pop_by(1);
+			core->interp.activations.pop_by(1);
 		}
 	}
 }
@@ -5233,31 +5232,31 @@ static TypeId make_func_type(TypePool* types, TypeId return_type, Params... para
 	}
 }
 
-static void init_builtin_infos(Interpreter* interp) noexcept
+static void init_builtin_infos(CoreData* core) noexcept
 {
-	const TypeId type_type = type_create_simple(interp->types, TypeTag::Type);
+	const TypeId type_type = type_create_simple(core->interp.types, TypeTag::Type);
 
-	const TypeId comp_integer_type = type_create_simple(interp->types, TypeTag::CompInteger);
+	const TypeId comp_integer_type = type_create_simple(core->interp.types, TypeTag::CompInteger);
 
-	const TypeId bool_type = type_create_simple(interp->types, TypeTag::Boolean);
+	const TypeId bool_type = type_create_simple(core->interp.types, TypeTag::Boolean);
 
 	// TODO: This is currently unused and replaced by dummies, since
 	//       `type_metrics_from_id` does not yet support `TypeTag::Definition`.
-	// const TypeId definition_type = type_create_simple(interp->types, TypeTag::Definition);
+	// const TypeId definition_type = type_create_simple(core->interp.types, TypeTag::Definition);
 
-	const TypeId type_builder_type = type_create_simple(interp->types, TypeTag::TypeBuilder);
+	const TypeId type_builder_type = type_create_simple(core->interp.types, TypeTag::TypeBuilder);
 
-	const TypeId void_type = type_create_simple(interp->types, TypeTag::Void);
+	const TypeId void_type = type_create_simple(core->interp.types, TypeTag::Void);
 
-	const TypeId type_info_type = type_create_simple(interp->types, TypeTag::TypeInfo);
+	const TypeId type_info_type = type_create_simple(core->interp.types, TypeTag::TypeInfo);
 
-	const TypeId u8_type = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ 8, false });
+	const TypeId u8_type = type_create_numeric(core->interp.types, TypeTag::Integer, NumericType{ 8, false });
 
-	const TypeId u32_type = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ 32, false });
+	const TypeId u32_type = type_create_numeric(core->interp.types, TypeTag::Integer, NumericType{ 32, false });
 
-	const TypeId u64_type = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ 64, false });
+	const TypeId u64_type = type_create_numeric(core->interp.types, TypeTag::Integer, NumericType{ 64, false });
 
-	const TypeId s64_type = type_create_numeric(interp->types, TypeTag::Integer, NumericType{ 64, true });
+	const TypeId s64_type = type_create_numeric(core->interp.types, TypeTag::Integer, NumericType{ 64, true });
 
 	ReferenceType slice_of_u8_attach{};
 	slice_of_u8_attach.is_opt = false;
@@ -5265,209 +5264,209 @@ static void init_builtin_infos(Interpreter* interp) noexcept
 	slice_of_u8_attach.is_mut = false;
 	slice_of_u8_attach.referenced_type_id = u8_type;
 
-	const TypeId slice_of_u8_type = type_create_reference(interp->types, TypeTag::Slice, slice_of_u8_attach);
+	const TypeId slice_of_u8_type = type_create_reference(core->interp.types, TypeTag::Slice, slice_of_u8_attach);
 
 
 
-	const OpcodeId integer_body = opcode_id_from_builtin(interp->opcodes, Builtin::Integer);
+	const OpcodeId integer_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Integer);
 
-	const TypeId integer_signature = make_func_type(interp->types, type_type,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("bits")), u8_type, true },
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("is_signed")), bool_type, true }
+	const TypeId integer_signature = make_func_type(core->interp.types, type_type,
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("bits")), u8_type, true },
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("is_signed")), bool_type, true }
 	);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::Integer) - 1] = BuiltinInfo{ integer_body, integer_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::Integer) - 1] = BuiltinInfo{ integer_body, integer_signature };
 
 
 
-	const OpcodeId float_body = opcode_id_from_builtin(interp->opcodes, Builtin::Float);
+	const OpcodeId float_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Float);
 
-	const TypeId float_signature = make_func_type(interp->types, type_type,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("bits")), u8_type, true }
+	const TypeId float_signature = make_func_type(core->interp.types, type_type,
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("bits")), u8_type, true }
 	);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::Float) - 1] = BuiltinInfo{ float_body, float_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::Float) - 1] = BuiltinInfo{ float_body, float_signature };
 
 
 
-	const OpcodeId type_body = opcode_id_from_builtin(interp->opcodes, Builtin::Type);
+	const OpcodeId type_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Type);
 
-	const TypeId type_signature = make_func_type(interp->types, type_type);
+	const TypeId type_signature = make_func_type(core->interp.types, type_type);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::Type) - 1] = BuiltinInfo{ type_body, type_signature };
-
-
-
-	const OpcodeId definition_body = opcode_id_from_builtin(interp->opcodes, Builtin::Definition);
-
-	const TypeId definition_signature = make_func_type(interp->types, type_type);
-
-	interp->builtin_infos[static_cast<u8>(Builtin::Definition) - 1] = BuiltinInfo{ definition_body, definition_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::Type) - 1] = BuiltinInfo{ type_body, type_signature };
 
 
 
-	const OpcodeId typeinfo_body = opcode_id_from_builtin(interp->opcodes, Builtin::TypeInfo);
+	const OpcodeId definition_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Definition);
 
-	const TypeId typeinfo_signature = make_func_type(interp->types, type_type);
+	const TypeId definition_signature = make_func_type(core->interp.types, type_type);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::TypeInfo) - 1] = BuiltinInfo{ typeinfo_body, typeinfo_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::Definition) - 1] = BuiltinInfo{ definition_body, definition_signature };
 
 
 
-	const OpcodeId typeof_body = opcode_id_from_builtin(interp->opcodes, Builtin::Typeof);
+	const OpcodeId typeinfo_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::TypeInfo);
 
-	const TypeId typeof_signature = make_func_type(interp->types, type_type,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_info_type, true }
+	const TypeId typeinfo_signature = make_func_type(core->interp.types, type_type);
+
+	core->interp.builtin_infos[static_cast<u8>(Builtin::TypeInfo) - 1] = BuiltinInfo{ typeinfo_body, typeinfo_signature };
+
+
+
+	const OpcodeId typeof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Typeof);
+
+	const TypeId typeof_signature = make_func_type(core->interp.types, type_type,
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_info_type, true }
 	);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::Typeof) - 1] = BuiltinInfo{ typeof_body, typeof_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::Typeof) - 1] = BuiltinInfo{ typeof_body, typeof_signature };
 
 
 
-	const OpcodeId returntypeof_body = opcode_id_from_builtin(interp->opcodes, Builtin::Returntypeof);
+	const OpcodeId returntypeof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Returntypeof);
 
-	const TypeId returntypeof_signature = make_func_type(interp->types, type_type,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_info_type, true }
+	const TypeId returntypeof_signature = make_func_type(core->interp.types, type_type,
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_info_type, true }
 	);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::Returntypeof) - 1] = BuiltinInfo{ returntypeof_body, returntypeof_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::Returntypeof) - 1] = BuiltinInfo{ returntypeof_body, returntypeof_signature };
 
 
 
-	const OpcodeId sizeof_body = opcode_id_from_builtin(interp->opcodes, Builtin::Sizeof);
+	const OpcodeId sizeof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Sizeof);
 
-	const TypeId sizeof_signature = make_func_type(interp->types, comp_integer_type,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_type, true }
+	const TypeId sizeof_signature = make_func_type(core->interp.types, comp_integer_type,
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_type, true }
 	);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::Sizeof) - 1] = BuiltinInfo{ sizeof_body, sizeof_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::Sizeof) - 1] = BuiltinInfo{ sizeof_body, sizeof_signature };
 
 
 
-	const OpcodeId alignof_body = opcode_id_from_builtin(interp->opcodes, Builtin::Alignof);
+	const OpcodeId alignof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Alignof);
 
-	const TypeId alignof_signature = make_func_type(interp->types, comp_integer_type,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_type, true }
+	const TypeId alignof_signature = make_func_type(core->interp.types, comp_integer_type,
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_type, true }
 	);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::Alignof) - 1] = BuiltinInfo{ alignof_body, alignof_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::Alignof) - 1] = BuiltinInfo{ alignof_body, alignof_signature };
 
 
 
-	const OpcodeId strideof_body = opcode_id_from_builtin(interp->opcodes, Builtin::Strideof);
+	const OpcodeId strideof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Strideof);
 
-	const TypeId strideof_signature = make_func_type(interp->types, comp_integer_type,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_type, true }
+	const TypeId strideof_signature = make_func_type(core->interp.types, comp_integer_type,
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_type, true }
 	);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::Strideof) - 1] = BuiltinInfo{ strideof_body, strideof_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::Strideof) - 1] = BuiltinInfo{ strideof_body, strideof_signature };
 
 
 
-	const OpcodeId offsetof_body = opcode_id_from_builtin(interp->opcodes, Builtin::Offsetof);
+	const OpcodeId offsetof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Offsetof);
 
-	const TypeId offsetof_signature = make_func_type(interp->types, comp_integer_type);
+	const TypeId offsetof_signature = make_func_type(core->interp.types, comp_integer_type);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::Offsetof) - 1] = BuiltinInfo{ offsetof_body, offsetof_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::Offsetof) - 1] = BuiltinInfo{ offsetof_body, offsetof_signature };
 
 
 
-	const OpcodeId nameof_body = opcode_id_from_builtin(interp->opcodes, Builtin::Nameof);
+	const OpcodeId nameof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Nameof);
 
-	const TypeId nameof_signature = make_func_type(interp->types, slice_of_u8_type,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("arg")), type_info_type, true }
+	const TypeId nameof_signature = make_func_type(core->interp.types, slice_of_u8_type,
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_info_type, true }
 	);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::Nameof) - 1] = BuiltinInfo{ nameof_body, nameof_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::Nameof) - 1] = BuiltinInfo{ nameof_body, nameof_signature };
 
 
 
-	const OpcodeId import_body = opcode_id_from_builtin(interp->opcodes, Builtin::Import);
+	const OpcodeId import_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Import);
 
-	const TypeId import_signature = make_func_type(interp->types, type_type,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("path")), slice_of_u8_type, true },
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("is_std")), bool_type, true },
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("from")), u32_type, true }
+	const TypeId import_signature = make_func_type(core->interp.types, type_type,
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("path")), slice_of_u8_type, true },
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("is_std")), bool_type, true },
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("from")), u32_type, true }
 	);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::Import) - 1] = BuiltinInfo{ import_body, import_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::Import) - 1] = BuiltinInfo{ import_body, import_signature };
 
 
 
-	const OpcodeId create_type_builder_body = opcode_id_from_builtin(interp->opcodes, Builtin::CreateTypeBuilder);
+	const OpcodeId create_type_builder_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::CreateTypeBuilder);
 
-	const TypeId create_type_builder_signature = make_func_type(interp->types, type_builder_type,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("source_id")), u32_type, true }
+	const TypeId create_type_builder_signature = make_func_type(core->interp.types, type_builder_type,
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("source_id")), u32_type, true }
 	);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::CreateTypeBuilder) - 1] = BuiltinInfo{ create_type_builder_body, create_type_builder_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::CreateTypeBuilder) - 1] = BuiltinInfo{ create_type_builder_body, create_type_builder_signature };
 
 
 
-	const OpcodeId add_type_member_body = opcode_id_from_builtin(interp->opcodes, Builtin::AddTypeMember);
+	const OpcodeId add_type_member_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::AddTypeMember);
 
 	// TODO: "definition" should be of type `definition_type`, not `type_type`.
 	//       The current behaviour is due to `TypeTag::Definition` not being
 	//       supported by `type_metrics_from_id` yet, as its actual layout is
 	//       not defined yet.
-	const TypeId add_type_member_signature = make_func_type(interp->types, void_type,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("builder")), type_builder_type, true },
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("definition")), type_type, true },
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("offset")), s64_type, true }
+	const TypeId add_type_member_signature = make_func_type(core->interp.types, void_type,
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("builder")), type_builder_type, true },
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("definition")), type_type, true },
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("offset")), s64_type, true }
 	);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::AddTypeMember) - 1] = BuiltinInfo{ add_type_member_body, add_type_member_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::AddTypeMember) - 1] = BuiltinInfo{ add_type_member_body, add_type_member_signature };
 
 
 
-	const OpcodeId complete_type_body = opcode_id_from_builtin(interp->opcodes, Builtin::CompleteType);
+	const OpcodeId complete_type_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::CompleteType);
 
-	const TypeId complete_type_signature = make_func_type(interp->types, type_type,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("builder")), type_builder_type, true },
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("size")), u64_type, true },
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("align")), u64_type, true },
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("stride")), u64_type, true }
+	const TypeId complete_type_signature = make_func_type(core->interp.types, type_type,
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("builder")), type_builder_type, true },
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("size")), u64_type, true },
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("align")), u64_type, true },
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("stride")), u64_type, true }
 	);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::CompleteType) - 1] = BuiltinInfo{ complete_type_body, complete_type_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::CompleteType) - 1] = BuiltinInfo{ complete_type_body, complete_type_signature };
 
 
 
-	const OpcodeId source_id_body = opcode_id_from_builtin(interp->opcodes, Builtin::SourceId);
+	const OpcodeId source_id_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::SourceId);
 
-	const TypeId source_id_signature = make_func_type(interp->types, u32_type);
+	const TypeId source_id_signature = make_func_type(core->interp.types, u32_type);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::SourceId) - 1] = BuiltinInfo{ source_id_body, source_id_signature };
-
-
-
-	const OpcodeId caller_source_id_body = opcode_id_from_builtin(interp->opcodes, Builtin::CallerSourceId);
-
-	const TypeId caller_source_id_signature = make_func_type(interp->types, u32_type);
-
-	interp->builtin_infos[static_cast<u8>(Builtin::CallerSourceId) - 1] = BuiltinInfo{ caller_source_id_body, caller_source_id_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::SourceId) - 1] = BuiltinInfo{ source_id_body, source_id_signature };
 
 
 
-	const OpcodeId definition_typeof_body = opcode_id_from_builtin(interp->opcodes, Builtin::DefinitionTypeof);
+	const OpcodeId caller_source_id_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::CallerSourceId);
+
+	const TypeId caller_source_id_signature = make_func_type(core->interp.types, u32_type);
+
+	core->interp.builtin_infos[static_cast<u8>(Builtin::CallerSourceId) - 1] = BuiltinInfo{ caller_source_id_body, caller_source_id_signature };
+
+
+
+	const OpcodeId definition_typeof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::DefinitionTypeof);
 
 	// TODO: "definition" should be of type `definition_type`, not `type_type`.
 	//       The current behaviour is due to `TypeTag::Definition` not being
 	//       supported by `type_metrics_from_id` yet, as its actual layout is
 	//       not defined yet.
-	const TypeId definition_typeof_signature = make_func_type(interp->types, type_type,
-		BuiltinParamInfo{ id_from_identifier(interp->identifiers, range::from_literal_string("definition")), type_type, true }
+	const TypeId definition_typeof_signature = make_func_type(core->interp.types, type_type,
+		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("definition")), type_type, true }
 	);
 
-	interp->builtin_infos[static_cast<u8>(Builtin::DefinitionTypeof) - 1] = BuiltinInfo{ definition_typeof_body, definition_typeof_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::DefinitionTypeof) - 1] = BuiltinInfo{ definition_typeof_body, definition_typeof_signature };
 
-	if (interp->imported_opcodes_log_file.m_rep != nullptr)
+	if (core->interp.imported_opcodes_log_file.m_rep != nullptr)
 	{
-		for (u32 i = 0; i != array_count(interp->builtin_infos); ++i)
+		for (u32 i = 0; i != array_count(core->interp.builtin_infos); ++i)
 		{
-			const Opcode* body_code = opcode_from_id(interp->opcodes, interp->builtin_infos[i].body);
+			const Opcode* body_code = opcode_from_id(core->interp.opcodes, core->interp.builtin_infos[i].body);
 
-			log_opcodes(interp, body_code);
+			log_opcodes(core, body_code);
 		}
 	}
 }
@@ -5525,43 +5524,43 @@ void interpreter_init(CoreData* core, MemoryAllocation allocation) noexcept
 	interp->scope_data.init({ allocation.private_data + offset, SCOPE_DATA_RESERVE_SIZE }, SCOPE_DATA_COMMIT_INCREMENT_COUNT);
 	offset += SCOPE_DATA_RESERVE_SIZE;
 
-	interp->values.init({ allocation.private_data + offset, VALUES_RESERVE_SIZE }, VALUES_COMMIT_INCREMENT_COUNT);
+	core->interp.values.init({ allocation.private_data + offset, VALUES_RESERVE_SIZE }, VALUES_COMMIT_INCREMENT_COUNT);
 	offset += VALUES_RESERVE_SIZE;
 
-	interp->temporary_data.init({ allocation.private_data + offset, TEMPORARY_DATA_RESERVE_SIZE }, TEMPORARY_DATA_COMMIT_INCREMENT_COUNT);
+	core->interp.temporary_data.init({ allocation.private_data + offset, TEMPORARY_DATA_RESERVE_SIZE }, TEMPORARY_DATA_COMMIT_INCREMENT_COUNT);
 	offset += TEMPORARY_DATA_RESERVE_SIZE;
 
-	interp->activations.init({ allocation.private_data + offset, ACTIVATIONS_RESERVE_SIZE }, ACTIVATIONS_COMMIT_INCREMENT_COUNT);
+	core->interp.activations.init({ allocation.private_data + offset, ACTIVATIONS_RESERVE_SIZE }, ACTIVATIONS_COMMIT_INCREMENT_COUNT);
 	offset += ACTIVATIONS_RESERVE_SIZE;
 
-	interp->call_activation_indices.init({ allocation.private_data + offset, CALL_ACTIVATION_INDICES_RESERVE_SIZE }, CALL_ACTIVATION_INDICES_COMMIT_INCREMENT_COUNT);
+	core->interp.call_activation_indices.init({ allocation.private_data + offset, CALL_ACTIVATION_INDICES_RESERVE_SIZE }, CALL_ACTIVATION_INDICES_COMMIT_INCREMENT_COUNT);
 	offset += CALL_ACTIVATION_INDICES_RESERVE_SIZE;
 
-	interp->loop_stack.init({ allocation.private_data + offset, LOOP_STACK_RESERVE_SIZE }, LOOP_STACK_COMMIT_INCREMENT_COUNT);
+	core->interp.loop_stack.init({ allocation.private_data + offset, LOOP_STACK_RESERVE_SIZE }, LOOP_STACK_COMMIT_INCREMENT_COUNT);
 	offset += LOOP_STACK_RESERVE_SIZE;
 
-	interp->write_ctxs.init({ allocation.private_data + offset, WRITE_CTXS_RESERVE_SIZE }, WRITE_CTXS_COMMIT_INCREMENT_COUNT);
+	core->interp.write_ctxs.init({ allocation.private_data + offset, WRITE_CTXS_RESERVE_SIZE }, WRITE_CTXS_COMMIT_INCREMENT_COUNT);
 	offset += WRITE_CTXS_RESERVE_SIZE;
 
-	interp->active_closures.init({ allocation.private_data + offset, ACTIVE_CLOSURES_RESERVE_SIZE }, ACTIVE_CLOSURES_COMMIT_INCREMENT_COUNT);
+	core->interp.active_closures.init({ allocation.private_data + offset, ACTIVE_CLOSURES_RESERVE_SIZE }, ACTIVE_CLOSURES_COMMIT_INCREMENT_COUNT);
 	offset += ACTIVE_CLOSURES_RESERVE_SIZE;
 
-	interp->closure_members.init({ allocation.private_data + offset, CLOSURE_MEMBERS_RESERVE_SIZE }, CLOSURE_MEMBERS_COMMIT_INCREMENT_COUNT);
+	core->interp.closure_members.init({ allocation.private_data + offset, CLOSURE_MEMBERS_RESERVE_SIZE }, CLOSURE_MEMBERS_COMMIT_INCREMENT_COUNT);
 	offset += CLOSURE_MEMBERS_RESERVE_SIZE;
 
-	interp->argument_callbacks.init({ allocation.private_data + offset, ARGUMENT_CALLBACKS_RESERVE_SIZE }, ARGUMENT_CALLBACKS_COMMIT_INCREMENT_COUNT);
+	core->interp.argument_callbacks.init({ allocation.private_data + offset, ARGUMENT_CALLBACKS_RESERVE_SIZE }, ARGUMENT_CALLBACKS_COMMIT_INCREMENT_COUNT);
 	offset += ARGUMENT_CALLBACKS_RESERVE_SIZE;
 
-	interp->argument_packs.init({ allocation.private_data + offset, ARGUMENT_PACKS_RESERVE_SIZE }, ARGUMENT_PACKS_COMMIT_INCREMENT_COUNT);
+	core->interp.argument_packs.init({ allocation.private_data + offset, ARGUMENT_PACKS_RESERVE_SIZE }, ARGUMENT_PACKS_COMMIT_INCREMENT_COUNT);
 	offset += ARGUMENT_PACKS_RESERVE_SIZE;
 
-	interp->global_initializations.init({ allocation.private_data + offset, GLOBAL_INITIALIZATIONS_RESERVE_SIZE }, GLOBAL_INITIALIZATIONS_COMMIT_INCREMENT_COUNT);
+	core->interp.global_initializations.init({ allocation.private_data + offset, GLOBAL_INITIALIZATIONS_RESERVE_SIZE }, GLOBAL_INITIALIZATIONS_COMMIT_INCREMENT_COUNT);
 	offset += GLOBAL_INITIALIZATIONS_RESERVE_SIZE;
 
 	// Reserve `ClosureId::INVALID`.
-	interp->closure_members.reserve();
+	core->interp.closure_members.reserve();
 
-	init_builtin_infos(interp);
+	init_builtin_infos(core);
 }
 
 
@@ -5570,7 +5569,7 @@ bool import_prelude(CoreData* core, Range<char8> path) noexcept
 {
 	SourceFile* prelude_file;
 
-	const Maybe<TypeId> maybe_prelude = import_file_or_prelude(&core->interp, path, true, true, &prelude_file);
+	const Maybe<TypeId> maybe_prelude = import_file_or_prelude(core, path, true, true, &prelude_file);
 
 	return is_some(maybe_prelude);
 }
@@ -5579,7 +5578,7 @@ Maybe<TypeId> import_file(CoreData* core, Range<char8> path, bool is_std) noexce
 {
 	SourceFile* unused_file;
 
-	return import_file_or_prelude(&core->interp, path, false, is_std, &unused_file);
+	return import_file_or_prelude(core, path, false, is_std, &unused_file);
 }
 
 bool evaluate_file_definition_by_name(CoreData* core, TypeId file_type, IdentifierId name) noexcept
@@ -5606,7 +5605,7 @@ bool evaluate_file_definition_by_name(CoreData* core, TypeId file_type, Identifi
 
 		const Opcode* const initializer_code = opcode_from_id(core->interp.opcodes, member_initializer);
 
-		return interpret_opcodes(&core->interp, initializer_code);
+		return interpret_opcodes(core, initializer_code);
 	}
 }
 
@@ -5627,7 +5626,7 @@ bool evaluate_all_file_definitions(CoreData* core, TypeId file_type) noexcept
 
 		const Opcode* const initializer_code = opcode_from_id(core->interp.opcodes, member_initializer);
 
-		if (!interpret_opcodes(&core->interp, initializer_code))
+		if (!interpret_opcodes(core, initializer_code))
 			is_ok = false;
 	}
 
