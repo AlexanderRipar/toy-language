@@ -127,6 +127,8 @@ static void print_config_help_node(PrintSink sink, const Config* defaults, const
 	}
 }
 
+
+
 void diag::print_config(PrintSink sink, const Config* config) noexcept
 {
 	print(sink, "\n### CONFIG ###\n\n");
