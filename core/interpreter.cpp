@@ -209,7 +209,7 @@ static const Opcode* record_interpreter_error(CoreData* core, const Opcode* code
 {
 	const SourceId source_id = source_id_of_opcode(core, code - 1);
 
-	record_error(core->interp.errors, source_id, error);
+	record_error(core, source_id, error);
 
 	core->interp.is_ok = false;
 
@@ -5595,7 +5595,7 @@ bool evaluate_file_definition_by_name(CoreData* core, TypeId file_type, Identifi
 	}
 	else if (rst == MemberByNameRst::NotFound)
 	{
-		record_error(core->interp.errors, SourceId::INVALID, CompileError::GlobalNameNotDefined);
+		record_error(core, SourceId::INVALID, CompileError::GlobalNameNotDefined);
 
 		return false;
 	}

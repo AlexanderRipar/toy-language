@@ -1766,14 +1766,14 @@ struct ErrorRecord
 // given `source_id`.
 // Future calls to `get_errors` or `print_errors` will include an `ErrorRecord`
 // with members corresponding to the given arguments.
-void record_error(ErrorSink* errors, SourceId source_id, CompileError error) noexcept;
+void record_error(CoreData* core, SourceId source_id, CompileError error) noexcept;
 
 // Records the given `error` into the `ErrorSink`, associating it with the
 // `SourceId` returned by
 // `source_id_of_ast_node(<AstPool passed to create_error_sink>, source_node)`.
 // Future calls to `get_errors` or `print_errors` will include an `ErrorRecord`
 // with members corresponding to the given arguments.
-void record_error(ErrorSink* errors, const AstNode* source_node, CompileError error) noexcept;
+void record_error(CoreData* core, const AstNode* source_node, CompileError error) noexcept;
 
 // Prints all errors added to the given `ErrorSink` by previous calls to
 // `record_error` to its log file, in the order they were added.
@@ -1783,7 +1783,7 @@ void print_errors(CoreData* core) noexcept;
 
 // Returns a range of `ErrorRecords` representing all previous calls to
 // `record_error` on the given `ErrorSink`.
-Range<ErrorRecord> get_errors(ErrorSink* errors) noexcept;
+Range<ErrorRecord> get_errors(CoreData* core) noexcept;
 
 // Appends the message for the given `CompileError` to `dst`, prefixing it with
 // the `location`.

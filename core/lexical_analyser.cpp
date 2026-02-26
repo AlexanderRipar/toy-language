@@ -183,7 +183,7 @@ static void scope_map_add_nogrow(CoreData* core, ScopeMap* scope, IdentifierId n
 		{
 			if (info.names[index] == name)
 			{
-				(void) record_error(core->lex.errors, error_source, CompileError::ScopeDuplicateName);
+				(void) record_error(core, error_source, CompileError::ScopeDuplicateName);
 
 				core->lex.has_error = true;
 
@@ -325,7 +325,7 @@ static Maybe<ScopeMap*> scope_map_add(CoreData* core, ScopeMap* scope, Identifie
 {
 	if (scope->used == MAX_SCOPE_ENTRY_COUNT)
 	{
-		(void) record_error(core->lex.errors,error_source, CompileError::ScopeTooManyDefinitions);
+		(void) record_error(core, error_source, CompileError::ScopeTooManyDefinitions);
 
 		core->lex.has_error = true;
 
@@ -666,7 +666,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 		// We have traversed up to the outermost scope without finding a match.
 		// As such, we need to indicate an error.
 
-		(void) record_error(core->lex.errors, node, CompileError::ScopeNameNotDefined);
+		(void) record_error(core, node, CompileError::ScopeNameNotDefined);
 
 		core->lex.has_error = true;
 	}

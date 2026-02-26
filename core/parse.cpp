@@ -462,7 +462,7 @@ static u8 hex_char_value(char8 c) noexcept
 NORETURN static void parse_error_fatal(CoreData* core, SourceId source_id, CompileError error) noexcept
 {
 	if (!core->parser.lexer.suppress_errors)
-		(void) record_error(core->parser.lexer.errors, source_id, error);
+		(void) record_error(core, source_id, error);
 
 	longjmp(core->parser.lexer.error_jump_buffer, 1);
 }
@@ -470,7 +470,7 @@ NORETURN static void parse_error_fatal(CoreData* core, SourceId source_id, Compi
 static void parse_error_continuable(CoreData* core, SourceId source_id, CompileError error) noexcept
 {
 	if (!core->parser.lexer.suppress_errors)
-		(void) record_error(core->parser.lexer.errors, source_id, error);
+		(void) record_error(core, source_id, error);
 
 	core->parser.lexer.has_errors = true;
 }

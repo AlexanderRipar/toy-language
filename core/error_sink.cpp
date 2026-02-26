@@ -191,21 +191,21 @@ void error_sink_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 
 
-void record_error(ErrorSink* errors, SourceId source_id, CompileError error) noexcept
+void record_error(CoreData* core, SourceId source_id, CompileError error) noexcept
 {
 	DEBUGBREAK;
 
-	const u32 prev_error_count = errors->error_count;
+	const u32 prev_error_count = core->errors.error_count;
 
-	errors->error_count = prev_error_count + 1;
+	core->errors.error_count = prev_error_count + 1;
 
 	if (prev_error_count < MAX_ERROR_RECORD_COUNT)
-		errors->records.append(ErrorRecord{ error, source_id });
+		core->errors.records.append(ErrorRecord{ error, source_id });
 }
 
-void record_error(ErrorSink* errors, const AstNode* source_node, CompileError error) noexcept
+void record_error(CoreData* core, const AstNode* source_node, CompileError error) noexcept
 {
-	record_error(errors, source_id_of_ast_node(errors->asts, source_node), error);
+	record_error(core, source_id_of_ast_node(core->errors.asts, source_node), error);
 }
 
 void print_errors(CoreData* core) noexcept
@@ -213,7 +213,7 @@ void print_errors(CoreData* core) noexcept
 	if (core->errors.log_file.m_rep == nullptr)
 		return;
 
-	const Range<ErrorRecord> records = get_errors(&core->errors);
+	const Range<ErrorRecord> records = get_errors(core);
 
 	for (const ErrorRecord record : records)
 	{
@@ -223,9 +223,9 @@ void print_errors(CoreData* core) noexcept
 	}
 }
 
-Range<ErrorRecord> get_errors(ErrorSink* errors) noexcept
+Range<ErrorRecord> get_errors(CoreData* core) noexcept
 {
-	return Range<ErrorRecord>{ errors->records.begin(), errors->records.end() };
+	return Range<ErrorRecord>{ core->errors.records.begin(), core->errors.records.end() };
 }
 
 void print_error(minos::FileHandle dst, const SourceLocation* location, CompileError error, u8 tab_size) noexcept
