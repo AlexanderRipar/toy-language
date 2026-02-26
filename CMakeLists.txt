@@ -31,7 +31,6 @@ set(INFRA_SOURCES
 set(CORE_SOURCES
 	core/core.hpp
 	core/core.cpp
-	core/handle_pool.cpp
 	core/ast_pool.cpp
 	core/comp_values.cpp
 	core/config.cpp
