@@ -488,7 +488,7 @@ static ClosureId create_closure(CoreData* core, u32 value_count) noexcept
 	{
 		const CTValue src = values[i];
 
-		const ForeverValueId value_id = forever_value_alloc_initialized(core->interp.globals, false, src);
+		const ForeverValueId value_id = forever_value_alloc_initialized(core, false, src);
 
 		ScopeMember* const dst = closure_members + i;
 
@@ -670,7 +670,7 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 			const MutRange<byte> default_dst = dst.bytes.mut_subrange(member.offset, member_metrics.size);
 
-			const CTValue default_src = forever_value_get(core->interp.globals, get(member.value_or_default_id));
+			const CTValue default_src = forever_value_get(core, get(member.value_or_default_id));
 
 			range::mem_copy(default_dst, default_src.bytes.immut());
 		}
@@ -1749,7 +1749,7 @@ static const Opcode* handle_file_global_alloc_prepare(CoreData* core, const Opco
 
 	code = code_attach(code, &rank);
 
-	file_value_alloc_prepare(core->interp.globals, file_index, rank, is_mut);
+	file_value_alloc_prepare(core, file_index, rank, is_mut);
 
 	GlobalInitialization* const init = core->interp.global_initializations.reserve();
 	init->file_index = file_index;
@@ -1766,7 +1766,7 @@ static const Opcode* handle_file_global_alloc_complete(CoreData* core, const Opc
 
 	const GlobalInitialization init = core->interp.global_initializations.end()[-1];
 
-	file_value_alloc_initialized_complete(core->interp.globals, init.file_index, init.rank);
+	file_value_alloc_initialized_complete(core, init.file_index, init.rank);
 
 	core->interp.global_initializations.pop_by(1);
 
@@ -1798,7 +1798,7 @@ static const Opcode* handle_file_global_alloc_typed(CoreData* core, const Opcode
 
 	TypeId file_type;
 
-	const ForeverCTValue value = file_value_alloc_uninitialized(core->interp.globals, init.file_index, init.rank, member_type, member_metrics, &file_type);
+	const ForeverCTValue value = file_value_alloc_uninitialized(core, init.file_index, init.rank, member_type, member_metrics, &file_type);
 
 	type_set_file_member_info(core->interp.types, file_type, init.rank, member_type, value.id);
 
@@ -1823,7 +1823,7 @@ static const Opcode* handle_file_global_alloc_untyped(CoreData* core, const Opco
 
 	TypeId file_type;
 
-	const ForeverValueId value_id = file_value_alloc_initialized(core->interp.globals, init.file_index, init.rank, *top, &file_type);
+	const ForeverValueId value_id = file_value_alloc_initialized(core, init.file_index, init.rank, *top, &file_type);
 
 	type_set_file_member_info(core->interp.types, file_type, init.rank, top->type, value_id);
 
@@ -1886,7 +1886,7 @@ static const Opcode* handle_load_global(CoreData* core, const Opcode* code, CTVa
 
 	OpcodeId global_code;
 
-	const GlobalFileValueState state = file_value_get(core->interp.globals, index, rank, &global_value, &global_code);
+	const GlobalFileValueState state = file_value_get(core, index, rank, &global_value, &global_code);
 
 	if (state == GlobalFileValueState::Complete)
 	{
@@ -1958,7 +1958,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 		{
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
-			CTValue value = forever_value_get(core->interp.globals, get(info.value_or_default_id));
+			CTValue value = forever_value_get(core, get(info.value_or_default_id));
 
 			return poppush_location_value(core, code, write_ctx, value);
 		}
@@ -1997,7 +1997,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 		{
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
-			CTValue value = forever_value_get(core->interp.globals, get(info.value_or_default_id));
+			CTValue value = forever_value_get(core, get(info.value_or_default_id));
 
 			return poppush_location_value(core, code, write_ctx, value);
 		}
@@ -2026,7 +2026,7 @@ static const Opcode* handle_load_closure(CoreData* core, const Opcode* code, CTV
 
 	const ScopeMember* const member = core->interp.closure_members.begin() + static_cast<u32>(closure) + rank;
 
-	const CTValue closure_value = forever_value_get(core->interp.globals, static_cast<ForeverValueId>(member->offset));
+	const CTValue closure_value = forever_value_get(core, static_cast<ForeverValueId>(member->offset));
 
 	return push_location_value(core, code, write_ctx, closure_value);
 }
@@ -2159,7 +2159,7 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 			ASSERT_OR_IGNORE(type_is_equal(core->interp.types, parameter_type, default_value->type));
 
-			const ForeverValueId default_id = forever_value_alloc_initialized(core->interp.globals, false, *default_value);
+			const ForeverValueId default_id = forever_value_alloc_initialized(core, false, *default_value);
 
 			parameter_default = some(default_id);
 		}
@@ -2186,7 +2186,7 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 			parameter_type = default_value->type;
 
-			const ForeverValueId default_id = forever_value_alloc_initialized(core->interp.globals, false, *default_value);
+			const ForeverValueId default_id = forever_value_alloc_initialized(core, false, *default_value);
 
 			parameter_default = some(default_id);
 		}
@@ -2301,7 +2301,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 				const TypeMetrics parameter_metrics = type_metrics_from_id(core->interp.types, parameter_type);
 
-				const ForeverCTValue default_dst = forever_value_alloc_uninitialized(core->interp.globals, false, parameter_type, parameter_metrics);
+				const ForeverCTValue default_dst = forever_value_alloc_uninitialized(core, false, parameter_type, parameter_metrics);
 
 				if (convert_into(core, code, *default_value, default_dst.value) == nullptr)
 					return nullptr;
@@ -2331,7 +2331,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 				parameter_type = default_value->type;
 
-				const ForeverValueId default_id = forever_value_alloc_initialized(core->interp.globals, false, *default_value);
+				const ForeverValueId default_id = forever_value_alloc_initialized(core, false, *default_value);
 
 				parameter_default = some(default_id);
 			}
@@ -2601,7 +2601,7 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 			if (static_cast<s32>(callback_id) >= 0)
 				break;
 
-			CTValue default_value = forever_value_get(core->interp.globals, static_cast<ForeverValueId>(-static_cast<s32>(callback_id)));
+			CTValue default_value = forever_value_get(core, static_cast<ForeverValueId>(-static_cast<s32>(callback_id)));
 
 			if (convert_into(core, code, default_value, core->interp.write_ctxs.end()[-1]) == nullptr)
 				ASSERT_UNREACHABLE;
@@ -2801,7 +2801,7 @@ static const Opcode* handle_complete_param_typed_with_default(CoreData* core, co
 
 	const TypeId parameter_list_type = argument_pack->parameter_list_type;
 
-	ForeverCTValue default_dst = forever_value_alloc_uninitialized(core->interp.globals, false, parameter_type, parameter_metrics);
+	ForeverCTValue default_dst = forever_value_alloc_uninitialized(core, false, parameter_type, parameter_metrics);
 
 	if (convert_into(core, code, *default_value, default_dst.value) == nullptr)
 		return nullptr;
@@ -2833,7 +2833,7 @@ static const Opcode* handle_complete_param_untyped(CoreData* core, const Opcode*
 
 	const TypeId parameter_list_type = argument_pack->parameter_list_type;
 
-	const ForeverValueId default_id = forever_value_alloc_initialized(core->interp.globals, false, *default_value);
+	const ForeverValueId default_id = forever_value_alloc_initialized(core, false, *default_value);
 
 	type_set_templated_parameter_list_member_info(core->interp.types, parameter_list_type, rank, default_value->type, some(default_id));
 
@@ -3163,7 +3163,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 			const MutRange<byte> default_dst = write_ctx->bytes.mut_subrange(defaulted_member_info.offset, defaulted_member_metrics.size);
 
-			const Range<byte> default_src = forever_value_get(core->interp.globals, get(defaulted_member_info.value_or_default_id)).bytes.immut();
+			const Range<byte> default_src = forever_value_get(core, get(defaulted_member_info.value_or_default_id)).bytes.immut();
 
 			range::mem_copy(default_dst, default_src);
 		}
@@ -3248,7 +3248,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 		const MutRange<byte> default_dst = write_ctx->bytes.mut_subrange(defaulted_member_info.offset, defaulted_member_metrics.size);
 
-		const Range<byte> default_src = forever_value_get(core->interp.globals, get(defaulted_member_info.value_or_default_id)).bytes.immut();
+		const Range<byte> default_src = forever_value_get(core, get(defaulted_member_info.value_or_default_id)).bytes.immut();
 
 		range::mem_copy(default_dst, default_src);
 	}
@@ -4810,7 +4810,7 @@ static const Opcode* handle_value_string(CoreData* core, const Opcode* code, CTV
 
 	code = code_attach(code, &value_id);
 
-	CTValue value = forever_value_get(core->interp.globals, value_id);
+	CTValue value = forever_value_get(core, value_id);
 
 	return push_temporary_value(core, code, write_ctx, value);
 }
@@ -4915,7 +4915,7 @@ static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, Global
 
 		type_add_file_member(core->interp.types, file_type, identifier_id, initializer_id, is_pub, is_mut);
 
-		file_value_set_initializer(core->interp.globals, file_index, rank, initializer_id);
+		file_value_set_initializer(core, file_index, rank, initializer_id);
 
 		rank += 1;
 	}
@@ -4954,7 +4954,7 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 
 	const TypeId type = type_create_composite(core->interp.types, TypeTag::Composite, TypeDisposition::File, root_source_id, root_data->member_count, true);
 
-	const GlobalFileIndex file_index = file_values_reserve(core->interp.globals, type, static_cast<u16>(root_data->member_count));
+	const GlobalFileIndex file_index = file_values_reserve(core, type, static_cast<u16>(root_data->member_count));
 
 	read.source_file->ast = id_from_ast_node(core->interp.asts, ast);
 	read.source_file->type = type;

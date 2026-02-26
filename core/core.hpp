@@ -2361,25 +2361,25 @@ struct ForeverCTValue
 	ForeverValueId id;
 };
 
-GlobalFileIndex file_values_reserve(GlobalValuePool* globals, TypeId file_type_id, u16 definition_count) noexcept;
+GlobalFileIndex file_values_reserve(CoreData* core, TypeId file_type_id, u16 definition_count) noexcept;
 
-void file_value_set_initializer(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, OpcodeId initializer) noexcept;
+void file_value_set_initializer(CoreData* core, GlobalFileIndex file_index, u16 rank, OpcodeId initializer) noexcept;
 
-GlobalFileValueState file_value_get(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept;
+GlobalFileValueState file_value_get(CoreData* core, GlobalFileIndex file_index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept;
 
-void file_value_alloc_prepare(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, bool is_mut) noexcept;
+void file_value_alloc_prepare(CoreData* core, GlobalFileIndex file_index, u16 rank, bool is_mut) noexcept;
 
-ForeverValueId file_value_alloc_initialized(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, CTValue initializer, TypeId* out_file_type) noexcept;
+ForeverValueId file_value_alloc_initialized(CoreData* core, GlobalFileIndex file_index, u16 rank, CTValue initializer, TypeId* out_file_type) noexcept;
 
-ForeverCTValue file_value_alloc_uninitialized(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank, TypeId type, TypeMetrics metrics, TypeId* out_file_type) noexcept;
+ForeverCTValue file_value_alloc_uninitialized(CoreData* core, GlobalFileIndex file_index, u16 rank, TypeId type, TypeMetrics metrics, TypeId* out_file_type) noexcept;
 
-void file_value_alloc_initialized_complete(GlobalValuePool* globals, GlobalFileIndex file_index, u16 rank) noexcept;
+void file_value_alloc_initialized_complete(CoreData* core, GlobalFileIndex file_index, u16 rank) noexcept;
 
-ForeverValueId forever_value_alloc_initialized(GlobalValuePool* globals, bool is_mut, CTValue initializer) noexcept;
+ForeverValueId forever_value_alloc_initialized(CoreData* core, bool is_mut, CTValue initializer) noexcept;
 
-ForeverCTValue forever_value_alloc_uninitialized(GlobalValuePool* globals, bool is_mut, TypeId type, TypeMetrics metrics) noexcept;
+ForeverCTValue forever_value_alloc_uninitialized(CoreData* core, bool is_mut, TypeId type, TypeMetrics metrics) noexcept;
 
-CTValue forever_value_get(GlobalValuePool* globals, ForeverValueId id) noexcept;
+CTValue forever_value_get(CoreData* core, ForeverValueId id) noexcept;
 
 
 
