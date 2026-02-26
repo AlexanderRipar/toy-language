@@ -2684,13 +2684,13 @@ enum class Builtin : u8
 	MAX,
 };
 
-bool import_prelude(Interpreter* interp, Range<char8> path) noexcept;
+bool import_prelude(CoreData* core, Range<char8> path) noexcept;
 
-Maybe<TypeId> import_file(Interpreter* interp, Range<char8> path, bool is_std) noexcept;
+Maybe<TypeId> import_file(CoreData* core, Range<char8> path, bool is_std) noexcept;
 
-bool evaluate_file_definition_by_name(Interpreter* interp, TypeId file_type, IdentifierId name) noexcept;
+bool evaluate_file_definition_by_name(CoreData* core, TypeId file_type, IdentifierId name) noexcept;
 
-bool evaluate_all_file_definitions(Interpreter* interp, TypeId file_type) noexcept;
+bool evaluate_all_file_definitions(CoreData* core, TypeId file_type) noexcept;
 
 const char8* tag_name(Builtin builtin) noexcept;
 

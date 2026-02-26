@@ -1480,7 +1480,8 @@ static const Opcode* builtin_import(Interpreter* interp, const Opcode* code, CTV
 
 	const Range<char8> absolute_path{ absolute_path_buf, absolute_path_chars };
 
-	Maybe<TypeId> file_type = import_file(interp, absolute_path, is_std);
+	// TODO: Fix this silly cast to surrounding type asap.
+	Maybe<TypeId> file_type = import_file(reinterpret_cast<CoreData*>(reinterpret_cast<byte*>(interp) - offsetof(CoreData, interp)), absolute_path, is_std);
 
 	if (is_none(file_type))
 		return nullptr;
@@ -5565,29 +5566,29 @@ void interpreter_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 
 
-bool import_prelude(Interpreter* interp, Range<char8> path) noexcept
+bool import_prelude(CoreData* core, Range<char8> path) noexcept
 {
 	SourceFile* prelude_file;
 
-	const Maybe<TypeId> maybe_prelude = import_file_or_prelude(interp, path, true, true, &prelude_file);
+	const Maybe<TypeId> maybe_prelude = import_file_or_prelude(&core->interp, path, true, true, &prelude_file);
 
 	return is_some(maybe_prelude);
 }
 
-Maybe<TypeId> import_file(Interpreter* interp, Range<char8> path, bool is_std) noexcept
+Maybe<TypeId> import_file(CoreData* core, Range<char8> path, bool is_std) noexcept
 {
 	SourceFile* unused_file;
 
-	return import_file_or_prelude(interp, path, false, is_std, &unused_file);
+	return import_file_or_prelude(&core->interp, path, false, is_std, &unused_file);
 }
 
-bool evaluate_file_definition_by_name(Interpreter* interp, TypeId file_type, IdentifierId name) noexcept
+bool evaluate_file_definition_by_name(CoreData* core, TypeId file_type, IdentifierId name) noexcept
 {
 	MemberInfo unused_member_info;
 
 	OpcodeId member_initializer;
 
-	const MemberByNameRst rst = type_member_info_by_name(interp->types, file_type, name, &unused_member_info, &member_initializer);
+	const MemberByNameRst rst = type_member_info_by_name(core->interp.types, file_type, name, &unused_member_info, &member_initializer);
 
 	if (rst == MemberByNameRst::Ok)
 	{
@@ -5595,7 +5596,7 @@ bool evaluate_file_definition_by_name(Interpreter* interp, TypeId file_type, Ide
 	}
 	else if (rst == MemberByNameRst::NotFound)
 	{
-		record_error(interp->errors, SourceId::INVALID, CompileError::GlobalNameNotDefined);
+		record_error(core->interp.errors, SourceId::INVALID, CompileError::GlobalNameNotDefined);
 
 		return false;
 	}
@@ -5603,15 +5604,15 @@ bool evaluate_file_definition_by_name(Interpreter* interp, TypeId file_type, Ide
 	{
 		ASSERT_OR_IGNORE(rst == MemberByNameRst::Incomplete);
 
-		const Opcode* const initializer_code = opcode_from_id(interp->opcodes, member_initializer);
+		const Opcode* const initializer_code = opcode_from_id(core->interp.opcodes, member_initializer);
 
-		return interpret_opcodes(interp, initializer_code);
+		return interpret_opcodes(&core->interp, initializer_code);
 	}
 }
 
-bool evaluate_all_file_definitions(Interpreter* interp, TypeId file_type) noexcept
+bool evaluate_all_file_definitions(CoreData* core, TypeId file_type) noexcept
 {
-	MemberIterator it = members_of(interp->types, file_type);
+	MemberIterator it = members_of(core->interp.types, file_type);
 
 	bool is_ok = true;
 
@@ -5624,9 +5625,9 @@ bool evaluate_all_file_definitions(Interpreter* interp, TypeId file_type) noexce
 		if (next(&it, &unused_member_info, &member_initializer))
 			continue;
 
-		const Opcode* const initializer_code = opcode_from_id(interp->opcodes, member_initializer);
+		const Opcode* const initializer_code = opcode_from_id(core->interp.opcodes, member_initializer);
 
-		if (!interpret_opcodes(interp, initializer_code))
+		if (!interpret_opcodes(&core->interp, initializer_code))
 			is_ok = false;
 	}
 

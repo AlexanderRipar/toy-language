@@ -226,24 +226,24 @@ void release_core_data(CoreData* core) noexcept
 
 bool run_compilation(CoreData* core, bool main_is_std) noexcept
 {
-	if (!import_prelude(&core->interp, core->config->std.prelude.filepath))
+	if (!import_prelude(core, core->config->std.prelude.filepath))
 		return false;
 
-	const Maybe<TypeId> main_file_type_id = import_file(&core->interp, core->config->entrypoint.filepath, main_is_std);
+	const Maybe<TypeId> main_file_type_id = import_file(core, core->config->entrypoint.filepath, main_is_std);
 
 	if (is_none(main_file_type_id))
 		return false;
 
 	if (core->config->compile_all)
 	{
-		if (!evaluate_all_file_definitions(&core->interp, get(main_file_type_id)))
+		if (!evaluate_all_file_definitions(core, get(main_file_type_id)))
 			return false;
 	}
 	else
 	{
 		const IdentifierId entrypoint_name = id_from_identifier(&core->identifiers, core->config->entrypoint.symbol);
 
-		if (!evaluate_file_definition_by_name(&core->interp, get(main_file_type_id), entrypoint_name))
+		if (!evaluate_file_definition_by_name(core, get(main_file_type_id), entrypoint_name))
 			return false;
 	}
 
