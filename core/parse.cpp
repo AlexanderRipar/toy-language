@@ -1524,7 +1524,7 @@ static void pop_operator(CoreData* core, OperatorStack* stack) noexcept
 	if (top.operator_desc.is_binary)
 		stack->operand_count -= 1;
 
-	const AstBuilderToken operator_token = push_node(core->parser.builder, stack->operand_tokens[stack->operand_count - 1], top.source_id, top.operator_desc.node_flags, top.operator_desc.node_type);
+	const AstBuilderToken operator_token = push_node(core, stack->operand_tokens[stack->operand_count - 1], top.source_id, top.operator_desc.node_flags, top.operator_desc.node_type);
 
 	stack->operand_tokens[stack->operand_count - 1] = operator_token;
 }
@@ -1682,8 +1682,8 @@ static AstBuilderToken parse_definition(CoreData* core, bool is_optional_value, 
 	}
 
 	return is_param
-		? push_node(core->parser.builder, first_child_token, source_id, flags, AstParameterData{ identifier_id })
-		: push_node(core->parser.builder, first_child_token, source_id, flags, AstDefinitionData{ identifier_id });
+		? push_node(core, first_child_token, source_id, flags, AstParameterData{ identifier_id })
+		: push_node(core, first_child_token, source_id, flags, AstDefinitionData{ identifier_id });
 }
 
 static AstBuilderToken parse_return(CoreData* core) noexcept
@@ -1694,7 +1694,7 @@ static AstBuilderToken parse_return(CoreData* core) noexcept
 
 	const AstBuilderToken value_token = parse_expr(core, true);
 
-	return push_node(core->parser.builder, value_token, source_id, AstFlag::EMPTY, AstTag::Return);
+	return push_node(core, value_token, source_id, AstFlag::EMPTY, AstTag::Return);
 }
 
 static AstBuilderToken parse_leave(CoreData* core) noexcept
@@ -1703,7 +1703,7 @@ static AstBuilderToken parse_leave(CoreData* core) noexcept
 
 	const SourceId source_id = next(core).source_id;
 
-	return push_node(core->parser.builder, AstBuilderToken::NO_CHILDREN, source_id, AstFlag::EMPTY, AstTag::Leave);
+	return push_node(core, AstBuilderToken::NO_CHILDREN, source_id, AstFlag::EMPTY, AstTag::Leave);
 }
 
 static AstBuilderToken parse_yield(CoreData* core) noexcept
@@ -1714,7 +1714,7 @@ static AstBuilderToken parse_yield(CoreData* core) noexcept
 
 	const AstBuilderToken value_token = parse_expr(core, true);
 
-	return push_node(core->parser.builder, value_token, source_id, AstFlag::EMPTY, AstTag::Yield);
+	return push_node(core, value_token, source_id, AstFlag::EMPTY, AstTag::Yield);
 }
 
 static AstBuilderToken parse_top_level_expr(CoreData* core, bool is_definition_optional_value, bool* out_is_definition) noexcept
@@ -1755,7 +1755,7 @@ static AstBuilderToken parse_where(CoreData* core) noexcept
 		parse_definition(core, false, false);
 	}
 
-	return push_node(core->parser.builder, first_child_token, source_id, AstFlag::EMPTY, AstTag::Where);
+	return push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstTag::Where);
 }
 
 static AstBuilderToken parse_if(CoreData* core) noexcept
@@ -1795,7 +1795,7 @@ static AstBuilderToken parse_if(CoreData* core) noexcept
 		parse_expr(core, true);
 	}
 
-	return push_node(core->parser.builder, first_child_token, source_id, flags, AstTag::If);
+	return push_node(core, first_child_token, source_id, flags, AstTag::If);
 }
 
 static AstBuilderToken try_parse_foreach(CoreData* core, SourceId source_id) noexcept
@@ -1870,7 +1870,7 @@ static AstBuilderToken try_parse_foreach(CoreData* core, SourceId source_id) noe
 		parse_expr(core, true);
 	}
 
-	return push_node(core->parser.builder, first_child_token, source_id, flags, AstTag::ForEach);
+	return push_node(core, first_child_token, source_id, flags, AstTag::ForEach);
 }
 
 static AstBuilderToken parse_for(CoreData* core) noexcept
@@ -1922,7 +1922,7 @@ static AstBuilderToken parse_for(CoreData* core) noexcept
 		parse_expr(core, true);
 	}
 
-	return push_node(core->parser.builder, first_child_token, source_id, flags, AstTag::For);
+	return push_node(core, first_child_token, source_id, flags, AstTag::For);
 }
 
 static AstBuilderToken parse_case(CoreData* core) noexcept
@@ -1938,7 +1938,7 @@ static AstBuilderToken parse_case(CoreData* core) noexcept
 	if (lexeme.token != Token::ThinArrowR)
 		parse_error_fatal(core, lexeme.source_id, CompileError::ParseCaseMissingThinArrowRight);
 
-	return push_node(core->parser.builder, first_child_token, source_id, AstFlag::EMPTY, AstTag::Case);
+	return push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstTag::Case);
 }
 
 static AstBuilderToken parse_switch(CoreData* core) noexcept
@@ -1979,7 +1979,7 @@ static AstBuilderToken parse_switch(CoreData* core) noexcept
 		parse_error_continuable(core, lexeme.source_id, CompileError::ParseSwitchMissingCase);
 	}
 
-	return push_node(core->parser.builder, first_child_token, source_id, flags, AstTag::Switch);
+	return push_node(core, first_child_token, source_id, flags, AstTag::Switch);
 }
 
 static AstBuilderToken parse_expects(CoreData* core) noexcept
@@ -2000,7 +2000,7 @@ static AstBuilderToken parse_expects(CoreData* core) noexcept
 		parse_expr(core, false);
 	}
 
-	return push_node(core->parser.builder, first_child_token, source_id, AstFlag::EMPTY, AstTag::Expects);
+	return push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstTag::Expects);
 }
 
 static AstBuilderToken parse_ensures(CoreData* core) noexcept
@@ -2021,7 +2021,7 @@ static AstBuilderToken parse_ensures(CoreData* core) noexcept
 		parse_expr(core, false);
 	}
 
-	return push_node(core->parser.builder, first_child_token, source_id, AstFlag::EMPTY, AstTag::Ensures);
+	return push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstTag::Ensures);
 }
 
 static AstBuilderToken parse_signature(CoreData* core) noexcept
@@ -2076,7 +2076,7 @@ static AstBuilderToken parse_signature(CoreData* core) noexcept
 			parse_error_fatal(core, lexeme.source_id, CompileError::ParseSignatureUnexpectedParameterListEnd);
 	}
 
-	const AstBuilderToken parameter_list_token = push_node(core->parser.builder, first_parameter_token, parameter_list_source_id, AstFlag::EMPTY, AstTag::ParameterList);
+	const AstBuilderToken parameter_list_token = push_node(core, first_parameter_token, parameter_list_source_id, AstFlag::EMPTY, AstTag::ParameterList);
 
 	skip(core);
 
@@ -2110,7 +2110,7 @@ static AstBuilderToken parse_signature(CoreData* core) noexcept
 		parse_ensures(core);
 	}
 
-	return push_node(core->parser.builder, parameter_list_token, func_source_id, flags, AstSignatureData{ none<ClosureListId>() });
+	return push_node(core, parameter_list_token, func_source_id, flags, AstSignatureData{ none<ClosureListId>() });
 }
 
 static AstBuilderToken parse_func(CoreData* core) noexcept
@@ -2132,7 +2132,7 @@ static AstBuilderToken parse_func(CoreData* core) noexcept
 
 	parse_expr(core, true);
 
-	return push_node(core->parser.builder, signature_token, func_source_id, flags, AstTag::Func);
+	return push_node(core, signature_token, func_source_id, flags, AstTag::Func);
 }
 
 static AstBuilderToken parse_trait(CoreData* core) noexcept
@@ -2197,7 +2197,7 @@ static AstBuilderToken parse_trait(CoreData* core) noexcept
 	if (first_child_token == AstBuilderToken::NO_CHILDREN)
 		first_child_token = body_token;
 
-	return push_node(core->parser.builder, first_child_token, source_id, flags, AstTag::Trait);
+	return push_node(core, first_child_token, source_id, flags, AstTag::Trait);
 }
 
 static AstBuilderToken parse_impl(CoreData* core) noexcept
@@ -2234,7 +2234,7 @@ static AstBuilderToken parse_impl(CoreData* core) noexcept
 
 	parse_expr(core, true);
 
-	return push_node(core->parser.builder, first_child_token, source_id, flags, AstTag::Impl);
+	return push_node(core, first_child_token, source_id, flags, AstTag::Impl);
 }
 
 static AstBuilderToken parse_definition_or_impl(CoreData* core, bool* out_is_definition) noexcept
@@ -2282,7 +2282,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(core->parser.builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstIdentifierData{ lexeme.identifier_id, NameBinding{} });
+				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstIdentifierData{ lexeme.identifier_id, NameBinding{} });
 
 				push_operand(core, &stack, value_token);
 			}
@@ -2290,7 +2290,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(core->parser.builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitStringData{ lexeme.string.value_id, lexeme.string.type_id });
+				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitStringData{ lexeme.string.value_id, lexeme.string.type_id });
 
 				push_operand(core, &stack, value_token);
 			}
@@ -2298,7 +2298,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(core->parser.builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitFloatData{ lexeme.float_value });
+				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitFloatData{ lexeme.float_value });
 
 				push_operand(core, &stack, value_token);
 			}
@@ -2306,7 +2306,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(core->parser.builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitIntegerData{ lexeme.integer_value });
+				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitIntegerData{ lexeme.integer_value });
 
 				push_operand(core, &stack, value_token);
 			}
@@ -2314,7 +2314,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(core->parser.builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitCharData{ lexeme.char_value });
+				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitCharData{ lexeme.char_value });
 
 				push_operand(core, &stack, value_token);
 			}
@@ -2322,7 +2322,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(core->parser.builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstTag::Wildcard);
+				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstTag::Wildcard);
 
 				push_operand(core, &stack, value_token);
 			}
@@ -2359,7 +2359,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 					}
 				}
 
-				const AstBuilderToken composite_token = push_node(core->parser.builder, first_child_token, source_id, AstFlag::EMPTY, AstTag::CompositeInitializer);
+				const AstBuilderToken composite_token = push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstTag::CompositeInitializer);
 
 				push_operand(core, &stack, composite_token);
 			}
@@ -2396,7 +2396,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 					}
 				}
 
-				const AstBuilderToken array_token = push_node(core->parser.builder, first_child_token, source_id, AstFlag::EMPTY, AstTag::ArrayInitializer);
+				const AstBuilderToken array_token = push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstTag::ArrayInitializer);
 
 				push_operand(core, &stack, array_token);
 			}
@@ -2444,7 +2444,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 						break;
 				}
 
-				const AstBuilderToken block_token = push_node(core->parser.builder, first_child_token, source_id, AstFlag::EMPTY, AstTag::Block);
+				const AstBuilderToken block_token = push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstTag::Block);
 
 				push_operand(core, &stack, block_token);
 			}
@@ -2524,7 +2524,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(core->parser.builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstTag::Unreachable);
+				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstTag::Unreachable);
 
 				push_operand(core, &stack, value_token);
 			}
@@ -2532,7 +2532,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(core->parser.builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstTag::Undefined);
+				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstTag::Undefined);
 
 				push_operand(core, &stack, value_token);
 			}
@@ -2540,7 +2540,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(core->parser.builder, AstBuilderToken::NO_CHILDREN, lexeme.source_id, static_cast<AstFlag>(lexeme.builtin), AstTag::Builtin);
+				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, static_cast<AstFlag>(lexeme.builtin), AstTag::Builtin);
 
 				push_operand(core, &stack, value_token);
 			}
@@ -2557,7 +2557,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 				if (lexeme.token != Token::Ident)
 					parse_error_fatal(core, lexeme.source_id, CompileError::ParseImpliedMemberUnexpectedToken);
 
-				const AstBuilderToken implied_member_token = push_node(core->parser.builder, AstBuilderToken::NO_CHILDREN, source_id, AstFlag::EMPTY, AstImpliedMemberData{ lexeme.identifier_id });
+				const AstBuilderToken implied_member_token = push_node(core, AstBuilderToken::NO_CHILDREN, source_id, AstFlag::EMPTY, AstImpliedMemberData{ lexeme.identifier_id });
 
 				push_operand(core, &stack, implied_member_token);
 			}
@@ -2642,7 +2642,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 					}
 				}
 
-				const AstBuilderToken call_token = push_node(core->parser.builder, stack.operand_tokens[stack.operand_count - 1], source_id, AstFlag::EMPTY, AstTag::Call);
+				const AstBuilderToken call_token = push_node(core, stack.operand_tokens[stack.operand_count - 1], source_id, AstFlag::EMPTY, AstTag::Call);
 
 				stack.operand_tokens[stack.operand_count - 1] = call_token;
 			}
@@ -2691,7 +2691,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 							parse_error_fatal(core, lexeme.source_id, CompileError::ParseSliceUnexpectedToken);
 					}
 
-					const AstBuilderToken slice_token = push_node(core->parser.builder, stack.operand_tokens[stack.operand_count - 1], source_id, flags, AstTag::OpSliceOf);
+					const AstBuilderToken slice_token = push_node(core, stack.operand_tokens[stack.operand_count - 1], source_id, flags, AstTag::OpSliceOf);
 
 					stack.operand_tokens[stack.operand_count - 1] = slice_token;
 				}
@@ -2703,7 +2703,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 
 					if (lexeme.token == Token::BracketR)
 					{
-						const AstBuilderToken index_token = push_node(core->parser.builder, stack.operand_tokens[stack.operand_count - 1], source_id, AstFlag::EMPTY, AstTag::OpArrayIndex);
+						const AstBuilderToken index_token = push_node(core, stack.operand_tokens[stack.operand_count - 1], source_id, AstFlag::EMPTY, AstTag::OpArrayIndex);
 
 						stack.operand_tokens[stack.operand_count - 1] = index_token;
 					}
@@ -2727,7 +2727,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 								parse_error_fatal(core, lexeme.source_id, CompileError::ParseSliceUnexpectedToken);
 						}
 
-						const AstBuilderToken slice_token = push_node(core->parser.builder, stack.operand_tokens[stack.operand_count - 1], source_id, flags, AstTag::OpSliceOf);
+						const AstBuilderToken slice_token = push_node(core, stack.operand_tokens[stack.operand_count - 1], source_id, flags, AstTag::OpSliceOf);
 
 						stack.operand_tokens[stack.operand_count - 1] = slice_token;
 					}
@@ -2763,7 +2763,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 
 				parse_expr(core, false);
 
-				const AstBuilderToken catch_token = push_node(core->parser.builder, stack.operand_tokens[stack.operand_count - 1], source_id, flags, AstTag::Catch);
+				const AstBuilderToken catch_token = push_node(core, stack.operand_tokens[stack.operand_count - 1], source_id, flags, AstTag::Catch);
 
 				stack.operand_tokens[stack.operand_count - 1] = catch_token;
 
@@ -2784,7 +2784,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 				if (lexeme.token != Token::Ident)
 					parse_error_fatal(core, lexeme.source_id, CompileError::ParseMemberUnexpectedToken);
 
-				const AstBuilderToken member_token = push_node(core->parser.builder, stack.operand_tokens[stack.operand_count - 1], source_id, AstFlag::EMPTY, AstMemberData{ lexeme.identifier_id });
+				const AstBuilderToken member_token = push_node(core, stack.operand_tokens[stack.operand_count - 1], source_id, AstFlag::EMPTY, AstMemberData{ lexeme.identifier_id });
 
 				stack.operand_tokens[stack.operand_count - 1] = member_token;
 			}
@@ -2842,7 +2842,7 @@ static bool parse_file(CoreData* core) noexcept
 			first_child_token = curr_token;
 	};
 
-	push_node(core->parser.builder, first_child_token, SourceId{ core->parser.lexer.source_id_base }, AstFlag::EMPTY, AstFileData{ member_count });
+	push_node(core, first_child_token, SourceId{ core->parser.lexer.source_id_base }, AstFlag::EMPTY, AstFileData{ member_count });
 
 	return !core->parser.lexer.has_errors;
 }
@@ -2891,7 +2891,7 @@ Maybe<AstNode*> parse(CoreData* core, Range<char8> content, SourceId source_id_b
 	if (!parse_file(core))
 		return none<AstNode*>();
 
-	AstNode* const root = complete_ast(core->parser.builder);
+	AstNode* const root = complete_ast(core);
 
 	return some(root);
 }

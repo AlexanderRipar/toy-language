@@ -205,7 +205,7 @@ void record_error(CoreData* core, SourceId source_id, CompileError error) noexce
 
 void record_error(CoreData* core, const AstNode* source_node, CompileError error) noexcept
 {
-	record_error(core, source_id_of_ast_node(core->errors.asts, source_node), error);
+	record_error(core, source_id_of_ast_node(core, source_node), error);
 }
 
 void print_errors(CoreData* core) noexcept

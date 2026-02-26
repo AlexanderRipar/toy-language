@@ -389,7 +389,7 @@ static void set_signature_closure_list(CoreData* core, AstNode* node, ScopeMap* 
 		return;
 	}
 
-	ClosureList* const list = alloc_closure_list(core->lex.asts, closure->used);
+	ClosureList* const list = alloc_closure_list(core, closure->used);
 
 	ScopeMapInfo info = scope_map_info(closure);
 
@@ -417,7 +417,7 @@ static void set_signature_closure_list(CoreData* core, AstNode* node, ScopeMap* 
 		dst->source_is_closure = src.closure_source_is_closure;
 	}
 
-	const ClosureListId list_id = id_from_closure_list(core->lex.asts, list);
+	const ClosureListId list_id = id_from_closure_list(core, list);
 
 	attachment_of<AstSignatureData>(node)->closure_list_id = some(list_id);
 }

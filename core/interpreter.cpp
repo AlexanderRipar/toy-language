@@ -172,7 +172,7 @@ using OpcodeHandlerFunc = const Opcode* (*) (CoreData* core, const Opcode* code,
 
 static void log_ast(CoreData* core, AstNode* node) noexcept
 {
-	const SourceId source_id = source_id_of_ast_node(core->interp.asts, node);
+	const SourceId source_id = source_id_of_ast_node(core, node);
 
 	const SourceLocation location = source_location_from_source_id(core, source_id);
 
@@ -4948,7 +4948,7 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 
 	AstNode* const ast = get(maybe_ast);
 
-	const SourceId root_source_id = source_id_of_ast_node(core->interp.asts, ast);
+	const SourceId root_source_id = source_id_of_ast_node(core, ast);
 
 	const AstFileData* const root_data = attachment_of<AstFileData>(ast);
 
@@ -4956,7 +4956,7 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 
 	const GlobalFileIndex file_index = file_values_reserve(core, type, static_cast<u16>(root_data->member_count));
 
-	read.source_file->ast = id_from_ast_node(core->interp.asts, ast);
+	read.source_file->ast = id_from_ast_node(core, ast);
 	read.source_file->type = type;
 	read.source_file->file_index = file_index;
 

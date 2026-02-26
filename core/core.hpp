@@ -1273,12 +1273,12 @@ inline constexpr AstFlag& operator&=(AstFlag& lhs, AstFlag rhs) noexcept
 // `node` must be part of an AST created by a call to `complete_ast` on the
 // same `AstPool`.
 // Use `ast_node_from_id` to retrieve `node` from the returned `AstNodeId`.
-AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept;
+AstNodeId id_from_ast_node(CoreData* core, AstNode* node) noexcept;
 
 // Converts `id` to its corresponding `AstNode*`.
 // `id` must have been obtained from a previous call to `id_from_ast_node` on
 // the same `AstPool`.
-AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept;
+AstNode* ast_node_from_id(CoreData* core, AstNodeId id) noexcept;
 
 
 
@@ -1291,7 +1291,7 @@ AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept;
 // The node's `source_id`, `flags` and `tag` fields will be set to the given
 // values. The node will not have an attachment.
 // To complete the ast builder, call `complete_ast`.
-AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag) noexcept;
+AstBuilderToken push_node(CoreData* core, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag) noexcept;
 
 // Pushes a new `AstNode` with the given attachment into `asts`'s ast builder.
 // Nodes are pushed in post-order, meaning that children are pushed before
@@ -1305,7 +1305,7 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 // argument. Note that the allocated attachment is four-byte aligned, so it is
 // not possible to have attachments requiring a higher alignment.
 // To complete the ast builder, call `complete_ast`.
-AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_dwords, const void* attachment) noexcept;
+AstBuilderToken push_node(CoreData* core, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_dwords, const void* attachment) noexcept;
 
 // Templated helper version of `push_node`.
 // This makes it easier to create a node with a given `attachment`.
@@ -1315,26 +1315,26 @@ AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId s
 // will be set to `T::TAG`.
 // See the non-templated versions of `push_node` for further details.
 template<typename T>
-static AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, T attachment) noexcept
+static AstBuilderToken push_node(CoreData* core, AstBuilderToken first_child, SourceId source_id, AstFlag flags, T attachment) noexcept
 {
 	static_assert(sizeof(T) % sizeof(u64) == 0);
 
-	return push_node(asts, first_child, source_id, flags, T::TAG, sizeof(attachment) / sizeof(u64), &attachment);
+	return push_node(core, first_child, source_id, flags, T::TAG, sizeof(attachment) / sizeof(u64), &attachment);
 }
 
 // Completes the builder of `asts`, returning a pointer to the root node of the
 // resulting ast.
 // To fill the builder, use one of the `push_node` functions.
 // After a call to this function, `asts`'s builder will be reset.
-AstNode* complete_ast(AstPool* asts) noexcept;
+AstNode* complete_ast(CoreData* core) noexcept;
 
 
 
-ClosureList* alloc_closure_list(AstPool* asts, u16 entry_count) noexcept;
+ClosureList* alloc_closure_list(CoreData* core, u16 entry_count) noexcept;
 
-ClosureListId id_from_closure_list(AstPool* asts, ClosureList* closure_list) noexcept;
+ClosureListId id_from_closure_list(CoreData* core, ClosureList* closure_list) noexcept;
 
-ClosureList* closure_list_from_id(AstPool* asts, ClosureListId id) noexcept;
+ClosureList* closure_list_from_id(CoreData* core, ClosureListId id) noexcept;
 
 
 // Checks whether `node` has any child nodes.
@@ -1393,7 +1393,7 @@ inline const T* attachment_of(const AstNode* node) noexcept
 	return reinterpret_cast<const T*>(node + 1);
 }
 
-SourceId source_id_of_ast_node(const AstPool* asts, const AstNode* node) noexcept;
+SourceId source_id_of_ast_node(const CoreData* core, const AstNode* node) noexcept;
 
 
 

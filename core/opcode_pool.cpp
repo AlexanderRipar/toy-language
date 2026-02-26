@@ -405,7 +405,7 @@ static byte* emit_opcode_raw(CoreData* core, Opcode code, bool expects_write_ctx
 
 	const SourceId source_id = node == nullptr
 		? SourceId::INVALID
-		: source_id_of_ast_node(core->opcodes.asts, node);
+		: source_id_of_ast_node(core, node);
 
 	core->opcodes.sources.append(SourceMapping{ opcode_id, source_id });
 
@@ -463,7 +463,7 @@ static void emit_fixup_for_function_body(CoreData* core, Opcode* fixup_dst, AstN
 	fixup->expects_write_ctx = true;
 	fixup->function_body_has_closure = has_closure;
 	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - core->opcodes.codes.begin());
-	fixup->node_id = id_from_ast_node(core->opcodes.asts, node);
+	fixup->node_id = id_from_ast_node(core, node);
 
 	fixup->return_adjust.values_diff = 0;
 	fixup->return_adjust.scopes_diff = 0;
@@ -478,7 +478,7 @@ static void emit_fixup_for_argument(CoreData* core, Opcode* fixup_dst, AstNode* 
 	fixup->allow_return = false;
 	fixup->expects_write_ctx = true;
 	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - core->opcodes.codes.begin());
-	fixup->node_id = id_from_ast_node(core->opcodes.asts, node);
+	fixup->node_id = id_from_ast_node(core, node);
 }
 
 static void emit_fixup_for_template_parameter(CoreData* core, AstNode* node, Maybe<AstNode*> second_node, bool has_type, bool has_value, u8 rank) noexcept
@@ -486,7 +486,7 @@ static void emit_fixup_for_template_parameter(CoreData* core, AstNode* node, May
 	Maybe<AstNodeId> second_node_id;
 
 	if (is_some(second_node))
-		second_node_id = some(id_from_ast_node(core->opcodes.asts, get(second_node)));
+		second_node_id = some(id_from_ast_node(core, get(second_node)));
 	else
 		second_node_id = none<AstNodeId>();
 
@@ -498,7 +498,7 @@ static void emit_fixup_for_template_parameter(CoreData* core, AstNode* node, May
 	fixup->template_parameter_has_value = has_value;
 	fixup->template_parameter_rank = rank;
 	fixup->dst_id = OpcodeId::INVALID;
-	fixup->node_id = id_from_ast_node(core->opcodes.asts, node);
+	fixup->node_id = id_from_ast_node(core, node);
 	fixup->second_node_id = second_node_id;
 }
 
@@ -509,7 +509,7 @@ static void emit_fixup_for_template_return_type(CoreData* core, Opcode* fixup_ds
 	fixup->allow_return = false;
 	fixup->expects_write_ctx = true;
 	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - core->opcodes.codes.begin());
-	fixup->node_id = id_from_ast_node(core->opcodes.asts, node);
+	fixup->node_id = id_from_ast_node(core, node);
 }
 
 static void emit_fixup_for_value_void(CoreData* core, Opcode* fixup_dst, AstNode* node) noexcept
@@ -519,7 +519,7 @@ static void emit_fixup_for_value_void(CoreData* core, Opcode* fixup_dst, AstNode
 	fixup->allow_return = false;
 	fixup->expects_write_ctx = true;
 	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - core->opcodes.codes.begin());
-	fixup->node_id = id_from_ast_node(core->opcodes.asts, node);
+	fixup->node_id = id_from_ast_node(core, node);
 }
 
 static void emit_fixup_for_if_branch(CoreData* core, Opcode* fixup_dst, AstNode* node, bool expects_write_ctx, bool expect_void) noexcept
@@ -530,7 +530,7 @@ static void emit_fixup_for_if_branch(CoreData* core, Opcode* fixup_dst, AstNode*
 	fixup->expects_write_ctx = expects_write_ctx;
 	fixup->if_branch_expect_void = expect_void;
 	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - core->opcodes.codes.begin());
-	fixup->node_id = id_from_ast_node(core->opcodes.asts, node);
+	fixup->node_id = id_from_ast_node(core, node);
 }
 
 static void emit_fixup_for_discarded_if_branch(CoreData* core, Opcode* fixup_dst, AstNode* node) noexcept
@@ -540,7 +540,7 @@ static void emit_fixup_for_discarded_if_branch(CoreData* core, Opcode* fixup_dst
 	fixup->allow_return = core->opcodes.allow_return;
 	fixup->expects_write_ctx = false;
 	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - core->opcodes.codes.begin());
-	fixup->node_id = id_from_ast_node(core->opcodes.asts, node);
+	fixup->node_id = id_from_ast_node(core, node);
 }
 
 static void emit_fixup_for_loop_body(CoreData* core, Opcode* fixup_dst, AstNode* node, Maybe<AstNode*> step_node, bool expects_write_ctx, bool expect_valued_breaks) noexcept
@@ -548,7 +548,7 @@ static void emit_fixup_for_loop_body(CoreData* core, Opcode* fixup_dst, AstNode*
 	Maybe<AstNodeId> step_node_id;
 
 	if (is_some(step_node))
-		step_node_id = some(id_from_ast_node(core->opcodes.asts, get(step_node)));
+		step_node_id = some(id_from_ast_node(core, get(step_node)));
 	else
 		step_node_id = none<AstNodeId>();
 
@@ -558,7 +558,7 @@ static void emit_fixup_for_loop_body(CoreData* core, Opcode* fixup_dst, AstNode*
 	fixup->allow_valued_break = expect_valued_breaks;
 	fixup->expects_write_ctx = expects_write_ctx;
 	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - core->opcodes.codes.begin());
-	fixup->node_id = id_from_ast_node(core->opcodes.asts, node);
+	fixup->node_id = id_from_ast_node(core, node);
 	fixup->second_node_id = step_node_id;
 }
 
@@ -569,7 +569,7 @@ static void emit_fixup_for_loop_finally(CoreData* core, Opcode* fixup_dst, AstNo
 	fixup->allow_return = core->opcodes.allow_return;
 	fixup->expects_write_ctx = expects_write_ctx;
 	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - core->opcodes.codes.begin());
-	fixup->node_id = id_from_ast_node(core->opcodes.asts, node);
+	fixup->node_id = id_from_ast_node(core, node);
 }
 
 
@@ -807,7 +807,7 @@ static bool opcodes_from_signature(CoreData* core, AstNode* node, bool expects_w
 
 		if (is_some(closure_list_id))
 		{
-			const ClosureList* const closure_list = closure_list_from_id(core->opcodes.asts, get(closure_list_id));
+			const ClosureList* const closure_list = closure_list_from_id(core, get(closure_list_id));
 
 			closed_over_value_count = closure_list->count;
 
@@ -1916,7 +1916,7 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 
 		core->opcodes.allow_return = true;
 
-		AstNode* const node = ast_node_from_id(core->opcodes.asts, fixup.node_id);
+		AstNode* const node = ast_node_from_id(core, fixup.node_id);
 
 		if (!opcodes_from_expression(core, node, true))
 			return false;
@@ -1943,7 +1943,7 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 
 		core->opcodes.allow_return = false;
 
-		AstNode* const node = ast_node_from_id(core->opcodes.asts, fixup.node_id);
+		AstNode* const node = ast_node_from_id(core, fixup.node_id);
 
 		if (!opcodes_from_expression(core, node, true))
 			return false;
@@ -1966,14 +1966,14 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 
 		core->opcodes.allow_return = false;
 
-		AstNode* const node = ast_node_from_id(core->opcodes.asts, fixup.node_id);
+		AstNode* const node = ast_node_from_id(core, fixup.node_id);
 
 		if (!opcodes_from_expression(core, node, false))
 			return false;
 
 		if (is_some(fixup.second_node_id))
 		{
-			AstNode* const second_node = ast_node_from_id(core->opcodes.asts, get(fixup.second_node_id));
+			AstNode* const second_node = ast_node_from_id(core, get(fixup.second_node_id));
 
 			if (!opcodes_from_expression(core, second_node, false))
 				return false;
@@ -2012,7 +2012,7 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 
 		core->opcodes.allow_return = false;
 
-		AstNode* const node = ast_node_from_id(core->opcodes.asts, fixup.node_id);
+		AstNode* const node = ast_node_from_id(core, fixup.node_id);
 
 		if (!opcodes_from_expression(core, node, true))
 			return false;
@@ -2036,7 +2036,7 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 
 		core->opcodes.allow_return = false;
 
-		AstNode* const node = ast_node_from_id(core->opcodes.asts, fixup.node_id);
+		AstNode* const node = ast_node_from_id(core, fixup.node_id);
 
 		emit_opcode(core, Opcode::ValueVoid, fixup.expects_write_ctx, node);
 
@@ -2055,7 +2055,7 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 
 		core->opcodes.allow_return = fixup.allow_return;
 
-		AstNode* const node = ast_node_from_id(core->opcodes.asts, fixup.node_id);
+		AstNode* const node = ast_node_from_id(core, fixup.node_id);
 
 		if (fixup.if_branch_expect_void && fixup.expects_write_ctx)
 			emit_opcode(core, Opcode::CheckWriteCtxVoid, false, node);
@@ -2087,7 +2087,7 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 
 		core->opcodes.allow_return = fixup.allow_return;
 
-		AstNode* const node = ast_node_from_id(core->opcodes.asts, fixup.node_id);
+		AstNode* const node = ast_node_from_id(core, fixup.node_id);
 
 		if (!opcodes_from_expression(core, node, true))
 			return false;
@@ -2118,7 +2118,7 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 
 		if (is_some(fixup.second_node_id))
 		{
-			AstNode* const second_node = ast_node_from_id(core->opcodes.asts, get(fixup.second_node_id));
+			AstNode* const second_node = ast_node_from_id(core, get(fixup.second_node_id));
 
 			if (!opcodes_from_expression(core, second_node, false))
 				return false;
@@ -2134,7 +2134,7 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 			);
 		}
 
-		AstNode* const node = ast_node_from_id(core->opcodes.asts, fixup.node_id);
+		AstNode* const node = ast_node_from_id(core, fixup.node_id);
 
 		if (!opcodes_from_expression(core, node, fixup.expects_write_ctx))
 			return false;
@@ -2163,7 +2163,7 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 
 		core->opcodes.allow_return = fixup.allow_return;
 
-		AstNode* const node = ast_node_from_id(core->opcodes.asts, fixup.node_id);
+		AstNode* const node = ast_node_from_id(core, fixup.node_id);
 
 		if (!opcodes_from_expression(core, node, fixup.expects_write_ctx))
 			return false;

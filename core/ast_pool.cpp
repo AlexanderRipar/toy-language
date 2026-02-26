@@ -17,11 +17,11 @@ struct AstAllocation
 	SourceId* sources;
 };
 
-static AstAllocation alloc_ast(AstPool* asts, u32 qwords) noexcept
+static AstAllocation alloc_ast(CoreData* core, u32 qwords) noexcept
 {
-	AstNode* const nodes = static_cast<AstNode*>(asts->nodes.reserve_exact(qwords * sizeof(u64)));
+	AstNode* const nodes = static_cast<AstNode*>(core->asts.nodes.reserve_exact(qwords * sizeof(u64)));
 
-	SourceId* const sources = static_cast<SourceId*>(asts->sources.reserve_exact(qwords * sizeof(SourceId)));
+	SourceId* const sources = static_cast<SourceId*>(core->asts.sources.reserve_exact(qwords * sizeof(SourceId)));
 
 	return AstAllocation{ nodes, sources };
 }
@@ -33,11 +33,11 @@ static AstAllocation alloc_ast(AstPool* asts, u32 qwords) noexcept
 //     if next_sibling_offset != NO_CHILDREN then
 //         direct predecessor gets FLAG_LAST_SIBLING
 //         predecessor at next_sibling_offset gets FLAG_FIRST_SIBLING
-static void set_flags(AstPool* asts) noexcept
+static void set_flags(CoreData* core) noexcept
 {
-	AstNode* const begin = asts->node_builder.begin();
+	AstNode* const begin = core->asts.node_builder.begin();
 
-	AstNode* const end = asts->node_builder.end();
+	AstNode* const end = core->asts.node_builder.end();
 
 	AstNode* prev = nullptr;
 
@@ -73,7 +73,7 @@ static void set_flags(AstPool* asts) noexcept
 }
 
 // Create a linked list modelling a preorder traversal of all nodes.
-static u32 build_traversal_list(AstPool* asts) noexcept
+static u32 build_traversal_list(CoreData* core) noexcept
 {
 	s32 depth = -1;
 
@@ -81,9 +81,9 @@ static u32 build_traversal_list(AstPool* asts) noexcept
 
 	u32 prev_sibling_indices[MAX_AST_DEPTH];
 
-	AstNode* const begin = asts->node_builder.begin();
+	AstNode* const begin = core->asts.node_builder.begin();
 
-	AstNode* const end = asts->node_builder.end();
+	AstNode* const end = core->asts.node_builder.end();
 
 	AstNode* curr = begin;
 
@@ -159,17 +159,17 @@ static u32 build_traversal_list(AstPool* asts) noexcept
 
 // Traverse the linked list created by build_traversal_list, pushing nodes into
 // `asts`.
-static AstNode* copy_postorder_to_preorder(AstPool* asts, u32 src_root_index) noexcept
+static AstNode* copy_postorder_to_preorder(CoreData* core, u32 src_root_index) noexcept
 {
 	u32 prev_sibling_indices[MAX_AST_DEPTH];
 
 	s32 depth = -1;
 
-	const AstAllocation allocation = alloc_ast(asts, asts->node_builder.used());
+	const AstAllocation allocation = alloc_ast(core, core->asts.node_builder.used());
 
-	const AstNode* const src_nodes = asts->node_builder.begin();
+	const AstNode* const src_nodes = core->asts.node_builder.begin();
 
-	const SourceId* const src_sources = asts->source_builder.begin();
+	const SourceId* const src_sources = core->asts.source_builder.begin();
 
 	AstNode* const dst_nodes = allocation.nodes;
 
@@ -242,7 +242,7 @@ static AstNode* copy_postorder_to_preorder(AstPool* asts, u32 src_root_index) no
 
 		AstNode* const prev_sibling = dst_nodes + prev_sibling_index;
 
-		prev_sibling->next_sibling_offset = asts->node_builder.used() - prev_sibling_index;
+		prev_sibling->next_sibling_offset = core->asts.node_builder.used() - prev_sibling_index;
 	}
 
 	return allocation.nodes;
@@ -301,16 +301,16 @@ void ast_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 
 
-AstNodeId id_from_ast_node(AstPool* asts, AstNode* node) noexcept
+AstNodeId id_from_ast_node(CoreData* core, AstNode* node) noexcept
 {
-	return static_cast<AstNodeId>(static_cast<u32>(node - asts->nodes.begin()));
+	return static_cast<AstNodeId>(static_cast<u32>(node - core->asts.nodes.begin()));
 }
 
-AstNode* ast_node_from_id(AstPool* asts, AstNodeId id) noexcept
+AstNode* ast_node_from_id(CoreData* core, AstNodeId id) noexcept
 {
 	ASSERT_OR_IGNORE(id != AstNodeId::INVALID);
 
-	return asts->nodes.begin() + static_cast<u32>(id);
+	return core->asts.nodes.begin() + static_cast<u32>(id);
 }
 
 
@@ -349,92 +349,92 @@ AstNode* first_child_of(AstNode* node) noexcept
 	return node + node->own_qwords;
 }
 
-SourceId source_id_of_ast_node(const AstPool* asts, const AstNode* node) noexcept
+SourceId source_id_of_ast_node(const CoreData* core, const AstNode* node) noexcept
 {
-	const u64 index = node - asts->nodes.begin();
+	const u64 index = node - core->asts.nodes.begin();
 
-	ASSERT_OR_IGNORE(index <= static_cast<u64>(asts->sources.used()));
+	ASSERT_OR_IGNORE(index <= static_cast<u64>(core->asts.sources.used()));
 
-	return asts->sources.begin()[index];
+	return core->asts.sources.begin()[index];
 }
 
 
 
 
-AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag) noexcept
+AstBuilderToken push_node(CoreData* core, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag) noexcept
 {
 	static_assert(sizeof(AstNode) == sizeof(u64));
 
-	AstNode* const node = static_cast<AstNode*>(asts->node_builder.reserve_exact(sizeof(AstNode)));
+	AstNode* const node = static_cast<AstNode*>(core->asts.node_builder.reserve_exact(sizeof(AstNode)));
 	node->tag = tag;
 	node->flags = flags;
 	node->own_qwords = 1;
 	node->structure_flags = first_child == AstBuilderToken::NO_CHILDREN ? AstNode::STRUCTURE_NO_CHILDREN : 0;
 	node->next_sibling_offset = static_cast<u32>(first_child);
 
-	SourceId* const node_source = static_cast<SourceId*>(asts->source_builder.reserve_exact(sizeof(SourceId)));
+	SourceId* const node_source = static_cast<SourceId*>(core->asts.source_builder.reserve_exact(sizeof(SourceId)));
 	*node_source = source_id;
 
-	return static_cast<AstBuilderToken>(node - asts->node_builder.begin());
+	return static_cast<AstBuilderToken>(node - core->asts.node_builder.begin());
 }
 
-AstBuilderToken push_node(AstPool* asts, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_qwords, const void* attachment) noexcept
+AstBuilderToken push_node(CoreData* core, AstBuilderToken first_child, SourceId source_id, AstFlag flags, AstTag tag, u8 attachment_qwords, const void* attachment) noexcept
 {
 	static_assert(sizeof(AstNode) == sizeof(u64));
 
 	const u8 required_qwords = static_cast<u8>(1 + attachment_qwords);
 
-	AstNode* const node = static_cast<AstNode*>(asts->node_builder.reserve_exact(required_qwords * sizeof(u64)));
+	AstNode* const node = static_cast<AstNode*>(core->asts.node_builder.reserve_exact(required_qwords * sizeof(u64)));
 	node->tag = tag;
 	node->flags = flags;
 	node->own_qwords = required_qwords;
 	node->structure_flags = first_child == AstBuilderToken::NO_CHILDREN ? AstNode::STRUCTURE_NO_CHILDREN : 0;
 	node->next_sibling_offset = static_cast<u32>(first_child);
 
-	SourceId* const node_source = static_cast<SourceId*>(asts->source_builder.reserve_exact(required_qwords * sizeof(SourceId)));
+	SourceId* const node_source = static_cast<SourceId*>(core->asts.source_builder.reserve_exact(required_qwords * sizeof(SourceId)));
 	*node_source = source_id;
 
 	memcpy(node + 1, attachment, attachment_qwords * sizeof(u64));
 
-	return static_cast<AstBuilderToken>(node - asts->node_builder.begin());
+	return static_cast<AstBuilderToken>(node - core->asts.node_builder.begin());
 }
 
-AstNode* complete_ast(AstPool* asts) noexcept
+AstNode* complete_ast(CoreData* core) noexcept
 {
-	set_flags(asts);
+	set_flags(core);
 
-	const u32 src_root_index = build_traversal_list(asts);
+	const u32 src_root_index = build_traversal_list(core);
 
-	AstNode* const root = copy_postorder_to_preorder(asts, src_root_index);
+	AstNode* const root = copy_postorder_to_preorder(core, src_root_index);
 
-	asts->node_builder.reset(1 << 17);
+	core->asts.node_builder.reset(1 << 17);
 
-	asts->source_builder.reset(1 << 17);
+	core->asts.source_builder.reset(1 << 17);
 
 	return root;
 }
 
 
 
-ClosureList* alloc_closure_list(AstPool* asts, u16 entry_count) noexcept
+ClosureList* alloc_closure_list(CoreData* core, u16 entry_count) noexcept
 {
-	ClosureList* const list = asts->closure_lists.reserve(entry_count + 1);
+	ClosureList* const list = core->asts.closure_lists.reserve(entry_count + 1);
 	list->count = entry_count;
 	list->unused_ = 0;
 
 	return list;
 }
 
-ClosureListId id_from_closure_list(AstPool* asts, ClosureList* closure_list) noexcept
+ClosureListId id_from_closure_list(CoreData* core, ClosureList* closure_list) noexcept
 {
-	return static_cast<ClosureListId>(closure_list  - asts->closure_lists.begin());
+	return static_cast<ClosureListId>(closure_list  - core->asts.closure_lists.begin());
 }
 
-ClosureList* closure_list_from_id(AstPool* asts, ClosureListId id) noexcept
+ClosureList* closure_list_from_id(CoreData* core, ClosureListId id) noexcept
 {
 	ASSERT_OR_IGNORE(id != ClosureListId::INVALID);
 
-	return asts->closure_lists.begin() + static_cast<u32>(id);
+	return core->asts.closure_lists.begin() + static_cast<u32>(id);
 }
 
 
