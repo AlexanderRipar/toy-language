@@ -1,6 +1,5 @@
 #include "diag.hpp"
 
-#include "../core/structure.hpp"
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
 #include "../infra/range.hpp"
