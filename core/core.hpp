@@ -1590,23 +1590,23 @@ struct SourceLocation
 // the first read of the file (meaning `content` contains the file's contents).
 // If this is a first read, `release_read` must be called once the file's
 // content is no longer needed.
-SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noexcept;
+SourceFileRead read_source_file(CoreData* core, Range<char8> filepath) noexcept;
 
 // Releases the contents and other associated resources of a `SourceFileRead`.
 // The `SourceFile` pointed to by the `source_file` member is however left
 // untouched.
-void release_read(SourceReader* reader, SourceFileRead read) noexcept;
+void release_read(CoreData* core, SourceFileRead read) noexcept;
 
 // Converts `source_id` to a `SourceLocation`.
 // If `source_id` is `SourceId::INVALID`, a dummy location indicating the
 // hard-coded prelude is returned.
-SourceLocation source_location_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
+SourceLocation source_location_from_source_id(CoreData* core, SourceId source_id) noexcept;
 
 // Retrieves the path to the file to which the given `source_id` belongs.
 // This path may not be the same as that from which the file was imported, but
 // can be used to open the file.
 // `source_id` must not be `SourceId::INVALID`.
-Range<char8> source_file_path_from_source_id(SourceReader* reader, SourceId source_id) noexcept;
+Range<char8> source_file_path_from_source_id(CoreData* core, SourceId source_id) noexcept;
 
 
 

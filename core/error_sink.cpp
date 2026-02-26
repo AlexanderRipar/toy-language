@@ -217,7 +217,7 @@ void print_errors(CoreData* core) noexcept
 
 	for (const ErrorRecord record : records)
 	{
-		const SourceLocation location = source_location_from_source_id(core->errors.reader, record.source_id);
+		const SourceLocation location = source_location_from_source_id(core, record.source_id);
 
 		print_error(core->errors.log_file, &location, record.error, core->errors.source_tab_size);
 	}

@@ -174,7 +174,7 @@ static void log_ast(CoreData* core, AstNode* node) noexcept
 {
 	const SourceId source_id = source_id_of_ast_node(core->interp.asts, node);
 
-	const SourceLocation location = source_location_from_source_id(core->interp.reader, source_id);
+	const SourceLocation location = source_location_from_source_id(core, source_id);
 
 	diag::print_header(core->interp.imported_asts_log_file, "%:%:%",
 		location.filepath,
@@ -189,7 +189,7 @@ static void log_opcodes(CoreData* core, const Opcode* code) noexcept
 {
 	const SourceId source_id = source_id_of_opcode(core, code);
 
-	SourceLocation location = source_location_from_source_id(core->interp.reader, source_id);
+	SourceLocation location = source_location_from_source_id(core, source_id);
 
 	const OpcodeId code_id = id_from_opcode(core, code);
 
@@ -1464,7 +1464,7 @@ static const Opcode* builtin_import(CoreData* core, const Opcode* code, CTValue*
 
 	char8 absolute_path_buf[8192];
 
-	const Range<char8> path_base = source_file_path_from_source_id(core->interp.reader, from);
+	const Range<char8> path_base = source_file_path_from_source_id(core, from);
 
 	char8 path_base_parent_buf[8192];
 
@@ -4925,7 +4925,7 @@ static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, Global
 
 static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, bool is_prelude, bool is_std, SourceFile** out_file) noexcept
 {
-	SourceFileRead read = read_source_file(core->interp.reader, path);
+	SourceFileRead read = read_source_file(core, path);
 
 	if (read.source_file->has_error)
 		return none<TypeId>();

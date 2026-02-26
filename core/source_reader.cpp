@@ -135,28 +135,28 @@ static constexpr u32 KNOWN_FILES_BY_IDENTITY_VALUES_COMMIT_INCREMENT_COUNT = sta
 
 
 
-static SourceFile* source_file_from_source_id(SourceReader* reader, SourceId source_id) noexcept
+static SourceFile* source_file_from_source_id(CoreData* core, SourceId source_id) noexcept
 {
 	ASSERT_OR_IGNORE(source_id != SourceId::INVALID);
 
-	ASSERT_OR_IGNORE(reader->source_file_count != 0);
+	ASSERT_OR_IGNORE(core->reader.source_file_count != 0);
 
-	ASSERT_OR_IGNORE(static_cast<u32>(source_id) < reader->curr_source_id_base);
+	ASSERT_OR_IGNORE(static_cast<u32>(source_id) < core->reader.curr_source_id_base);
 
-	SourceFileByIdEntry* const entries = reader->known_files_by_identity.value_from(0);;
+	SourceFileByIdEntry* const entries = core->reader.known_files_by_identity.value_from(0);;
 
 	// By handling the last entry as a special case, we can always index into
 	// `mid + 1`. This is necessary since `SourceFileByIdEntry` only stores the
 	// lowest source id present in the file. However, since entries are
 	// effectively ordered by their source id, the effective end index is the
 	// start id of the next entry.
-	if (static_cast<u32>(entries[reader->source_file_count - 1].data.source_id_base) <= static_cast<u32>(source_id))
-		return &entries[reader->source_file_count - 1].data;
+	if (static_cast<u32>(entries[core->reader.source_file_count - 1].data.source_id_base) <= static_cast<u32>(source_id))
+		return &entries[core->reader.source_file_count - 1].data;
 
 	u32 lo = 0;
 
 	// Ignore last entry, as described above.
-	u32 hi = reader->source_file_count - 2;
+	u32 hi = core->reader.source_file_count - 2;
 
 	while (lo < hi)
 	{
@@ -183,19 +183,19 @@ static SourceFile* source_file_from_source_id(SourceReader* reader, SourceId sou
 		}
 	}
 
-	// We cannot have lo == hi == reader->source_file_count - 1, as we have
+	// We cannot have lo == hi == core->reader.source_file_count - 1, as we have
 	// already checked that we do not exceed the last entry's beginning before
 	// entering the search loop.
-	ASSERT_OR_IGNORE(lo < reader->source_file_count - 1);
+	ASSERT_OR_IGNORE(lo < core->reader.source_file_count - 1);
 
 	return &entries[lo].data;
 }
 
-static Range<char8> source_file_path(SourceReader* reader, SourceFile* source_file) noexcept
+static Range<char8> source_file_path(CoreData* core, SourceFile* source_file) noexcept
 {
 	SourceFileByIdEntry* const id_entry = reinterpret_cast<SourceFileByIdEntry*>(reinterpret_cast<byte*>(source_file) - offsetof(SourceFileByIdEntry, data));
 
-	SourceFileByPathEntry* const path_entry = reader->known_files_by_path.value_from(id_entry->path_entry_index);
+	SourceFileByPathEntry* const path_entry = core->reader.known_files_by_path.value_from(id_entry->path_entry_index);
 
 	return Range{ path_entry->path, path_entry->path_bytes };
 }
@@ -249,11 +249,11 @@ static SourceLocation build_source_location(Range<char8> filepath, Range<char8> 
 	return location;
 }
 
-static SourceLocation source_location_from_source_file_and_source_id(SourceReader* reader, SourceFile* source_file, SourceId source_id) noexcept
+static SourceLocation source_location_from_source_file_and_source_id(CoreData* core, SourceFile* source_file, SourceId source_id) noexcept
 {
 	minos::FileInfo fileinfo;
 
-	Range<char8> filepath = source_file_path(reader, source_file);
+	Range<char8> filepath = source_file_path(core, source_file);
 
 	if (!minos::file_get_info(source_file->file, &fileinfo))
 		panic("Could not get info on source file % while trying to re-read it for error reporting (0x%[|X])\n", filepath, minos::last_error());
@@ -322,7 +322,7 @@ void source_reader_init(CoreData* core, MemoryAllocation allocation) noexcept
 	reader->source_file_count = 0;
 }
 
-SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noexcept
+SourceFileRead read_source_file(CoreData* core, Range<char8> filepath) noexcept
 {
 	// Try lookup via path. This is just approximate, but conservative, meaning
 	// that there *might* be a match here if the file has already been seen,
@@ -330,10 +330,10 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noe
 
 	// TODO: Normalize path to optimize hit rate?
 
-	SourceFileByPathEntry* const path_entry = reader->known_files_by_path.value_from(filepath, fnv1a(filepath.as_byte_range()));
+	SourceFileByPathEntry* const path_entry = core->reader.known_files_by_path.value_from(filepath, fnv1a(filepath.as_byte_range()));
 
 	if (path_entry->id_entry_index != 0)
-		return SourceFileRead{ &reader->known_files_by_identity.value_from(path_entry->id_entry_index)->data, {} };
+		return SourceFileRead{ &core->reader.known_files_by_identity.value_from(path_entry->id_entry_index)->data, {} };
 
 	// Try lookup via file identity. This is exact, meaning there is a match
 	// here if and only if the file has already been seen.
@@ -351,31 +351,31 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noe
 	if (fileinfo.bytes > UINT32_MAX)
 		panic("Could not read source file % as its size % exceeds the supported maximum of % bytes (< 4gb)\n", filepath, fileinfo.bytes, UINT32_MAX);
 
-	SourceFileByIdEntry* const id_entry = reader->known_files_by_identity.value_from(fileinfo.identity, hash_file_identity(fileinfo.identity.index, fileinfo.identity.volume_serial));
+	SourceFileByIdEntry* const id_entry = core->reader.known_files_by_identity.value_from(fileinfo.identity, hash_file_identity(fileinfo.identity.index, fileinfo.identity.volume_serial));
 
-	path_entry->id_entry_index = reader->known_files_by_identity.index_from(id_entry);
+	path_entry->id_entry_index = core->reader.known_files_by_identity.index_from(id_entry);
 
 	if (id_entry->data.file.m_rep != nullptr)
 		return SourceFileRead{ &id_entry->data, {} };
 
 	// File has not been read in yet. Do so.
 
-	id_entry->path_entry_index = reader->known_files_by_path.index_from(path_entry);
+	id_entry->path_entry_index = core->reader.known_files_by_path.index_from(path_entry);
 	id_entry->data.file = file;
 	id_entry->data.ast = AstNodeId::INVALID;
 	id_entry->data.type = TypeId::INVALID;
-	id_entry->data.source_id_base = SourceId{ reader->curr_source_id_base };
+	id_entry->data.source_id_base = SourceId{ core->reader.curr_source_id_base };
 	id_entry->data.file_index = GlobalFileIndex::INVALID;
 	id_entry->data.has_error = false;
 
-	if (fileinfo.bytes + reader->curr_source_id_base > UINT32_MAX)
+	if (fileinfo.bytes + core->reader.curr_source_id_base > UINT32_MAX)
 		panic("Could not read source file % as the maximum total capacity of 4gb of source code was exceeded.\n", filepath);
 
 	// Allow for one extra byte so `parse` can use one-past-end for
 	// `Token::END_OF_FILE` without extra work.
-	reader->curr_source_id_base += static_cast<u32>(fileinfo.bytes) + 1;
+	core->reader.curr_source_id_base += static_cast<u32>(fileinfo.bytes) + 1;
 
-	reader->source_file_count += 1;
+	core->reader.source_file_count += 1;
 
 	char8* const content = static_cast<char8*>(malloc(fileinfo.bytes + 1));
 
@@ -395,12 +395,12 @@ SourceFileRead read_source_file(SourceReader* reader, Range<char8> filepath) noe
 	return SourceFileRead{ &id_entry->data, Range{ content, fileinfo.bytes + 1 } };
 }
 
-void release_read([[maybe_unused]] SourceReader* reader, SourceFileRead read) noexcept
+void release_read([[maybe_unused]] CoreData* core, SourceFileRead read) noexcept
 {
 	free(const_cast<char8*>(read.content.begin()));
 }
 
-SourceLocation source_location_from_source_id(SourceReader* reader, SourceId source_id) noexcept
+SourceLocation source_location_from_source_id(CoreData* core, SourceId source_id) noexcept
 {
 	if (source_id == SourceId::INVALID)
 	{
@@ -408,21 +408,21 @@ SourceLocation source_location_from_source_id(SourceReader* reader, SourceId sou
 	}
 	else
 	{
-		SourceFile* const source_file = source_file_from_source_id(reader, source_id);
+		SourceFile* const source_file = source_file_from_source_id(core, source_id);
 
-		return source_location_from_source_file_and_source_id(reader, source_file, source_id);
+		return source_location_from_source_file_and_source_id(core, source_file, source_id);
 	}
 }
 
-Range<char8> source_file_path_from_source_id(SourceReader* reader, SourceId source_id) noexcept
+Range<char8> source_file_path_from_source_id(CoreData* core, SourceId source_id) noexcept
 {
 	ASSERT_OR_IGNORE(source_id != SourceId::INVALID);
 
-	SourceFile* const source_file = source_file_from_source_id(reader, source_id);
+	SourceFile* const source_file = source_file_from_source_id(core, source_id);
 
 	SourceFileByIdEntry* const id_entry = reinterpret_cast<SourceFileByIdEntry*>(reinterpret_cast<byte*>(source_file) - offsetof(SourceFileByIdEntry, data));
 
-	SourceFileByPathEntry* const path_entry = reader->known_files_by_path.value_from(id_entry->path_entry_index);
+	SourceFileByPathEntry* const path_entry = core->reader.known_files_by_path.value_from(id_entry->path_entry_index);
 
 	return Range{ path_entry->path, path_entry->path_bytes };
 }
