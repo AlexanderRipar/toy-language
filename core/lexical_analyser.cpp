@@ -136,11 +136,11 @@ static u32 scope_map_size(u32 capacity) noexcept
 	return sizeof(ScopeMap) + occupied_bits_bytes + capacity * (sizeof(u32) + sizeof(ScopeEntry));
 }
 
-static ScopeMap* scope_map_alloc_sized(LexicalAnalyser* lex, ScopeMapKind kind, u32 capacity) noexcept
+static ScopeMap* scope_map_alloc_sized(CoreData* core, ScopeMapKind kind, u32 capacity) noexcept
 {
 	ASSERT_OR_IGNORE(is_pow2(capacity));
 
-	MutRange<byte> memory = lex->scope_pool.alloc(scope_map_size(capacity));
+	MutRange<byte> memory = core->lex.scope_pool.alloc(scope_map_size(capacity));
 
 	ScopeMap* const scope = reinterpret_cast<ScopeMap*>(memory.begin());
 	scope->capacity = capacity;
@@ -152,20 +152,20 @@ static ScopeMap* scope_map_alloc_sized(LexicalAnalyser* lex, ScopeMapKind kind, 
 	return scope;
 }
 
-static ScopeMap* scope_map_alloc(LexicalAnalyser* lex, ScopeMapKind kind) noexcept
+static ScopeMap* scope_map_alloc(CoreData* core, ScopeMapKind kind) noexcept
 {
-	return scope_map_alloc_sized(lex, kind, 8);
+	return scope_map_alloc_sized(core, kind, 8);
 }
 
-static void scope_map_dealloc(LexicalAnalyser* lex, ScopeMap* scope) noexcept
+static void scope_map_dealloc(CoreData* core, ScopeMap* scope) noexcept
 {
 	const u32 size = scope_map_size(scope->capacity);
 
-	lex->scope_pool.dealloc({ reinterpret_cast<byte*>(scope), size });
+	core->lex.scope_pool.dealloc({ reinterpret_cast<byte*>(scope), size });
 }
 
 template<bool check_duplicates>
-static void scope_map_add_nogrow(LexicalAnalyser* lex, ScopeMap* scope, IdentifierId name, ScopeEntry entry, const AstNode* error_source) noexcept
+static void scope_map_add_nogrow(CoreData* core, ScopeMap* scope, IdentifierId name, ScopeEntry entry, const AstNode* error_source) noexcept
 {
 	const u32 hash = fnv1a(range::from_object_bytes(&name));
 
@@ -183,9 +183,9 @@ static void scope_map_add_nogrow(LexicalAnalyser* lex, ScopeMap* scope, Identifi
 		{
 			if (info.names[index] == name)
 			{
-				(void) record_error(lex->errors, error_source, CompileError::ScopeDuplicateName);
+				(void) record_error(core->lex.errors, error_source, CompileError::ScopeDuplicateName);
 
-				lex->has_error = true;
+				core->lex.has_error = true;
 
 				return;
 			}
@@ -224,11 +224,11 @@ static void scope_map_add_nogrow(LexicalAnalyser* lex, ScopeMap* scope, Identifi
 	info.entries[index] = entry;
 }
 
-static ScopeMap* scope_map_grow(LexicalAnalyser* lex, ScopeMap* old_scope) noexcept
+static ScopeMap* scope_map_grow(CoreData* core, ScopeMap* old_scope) noexcept
 {
 	const u32 new_capacity = old_scope->capacity * 2;
 
-	ScopeMap* const new_scope = scope_map_alloc_sized(lex, old_scope->kind, new_capacity);
+	ScopeMap* const new_scope = scope_map_alloc_sized(core, old_scope->kind, new_capacity);
 
 	const ScopeMapInfo old_info = scope_map_info(old_scope);
 
@@ -248,7 +248,7 @@ static ScopeMap* scope_map_grow(LexicalAnalyser* lex, ScopeMap* old_scope) noexc
 
 			const u32 index = index_base + least_index;
 
-			scope_map_add_nogrow<false>(lex, new_scope, old_info.names[index], old_info.entries[index], nullptr);
+			scope_map_add_nogrow<false>(core, new_scope, old_info.names[index], old_info.entries[index], nullptr);
 
 			bitmask ^= static_cast<u64>(1) << least_index;
 		}
@@ -258,7 +258,7 @@ static ScopeMap* scope_map_grow(LexicalAnalyser* lex, ScopeMap* old_scope) noexc
 		index_base += 64;
 	}
 
-	scope_map_dealloc(lex, old_scope);
+	scope_map_dealloc(core, old_scope);
 
 	return new_scope;
 }
@@ -321,66 +321,66 @@ static bool scope_map_get(ScopeMap* scope, IdentifierId name, ScopeEntry* out) n
 	}
 }
 
-static Maybe<ScopeMap*> scope_map_add(LexicalAnalyser* lex, ScopeMap* scope, IdentifierId name, ScopeEntry entry, const AstNode* error_source) noexcept
+static Maybe<ScopeMap*> scope_map_add(CoreData* core, ScopeMap* scope, IdentifierId name, ScopeEntry entry, const AstNode* error_source) noexcept
 {
 	if (scope->used == MAX_SCOPE_ENTRY_COUNT)
 	{
-		(void) record_error(lex->errors,error_source, CompileError::ScopeTooManyDefinitions);
+		(void) record_error(core->lex.errors,error_source, CompileError::ScopeTooManyDefinitions);
 
-		lex->has_error = true;
+		core->lex.has_error = true;
 
 		return none<ScopeMap*>();
 	}
 
 	if (static_cast<u32>(scope->used) * 3 > scope->capacity * 2)
-		scope = scope_map_grow(lex, scope);
+		scope = scope_map_grow(core, scope);
 
-	scope_map_add_nogrow<true>(lex, scope, name, entry, error_source);
+	scope_map_add_nogrow<true>(core, scope, name, entry, error_source);
 
 	return some(scope);
 }
 
 
 
-static void push_scope(LexicalAnalyser* lex, ScopeMap* scope) noexcept
+static void push_scope(CoreData* core, ScopeMap* scope) noexcept
 {
-	ASSERT_OR_IGNORE(static_cast<u64>(lex->scopes_top) + 1 < array_count(lex->scopes));
+	ASSERT_OR_IGNORE(static_cast<u64>(core->lex.scopes_top) + 1 < array_count(core->lex.scopes));
 
-	lex->scopes_top += 1;
+	core->lex.scopes_top += 1;
 
-	lex->scopes[lex->scopes_top] = scope;
+	core->lex.scopes[core->lex.scopes_top] = scope;
 }
 
-static void pop_scope(LexicalAnalyser* lex) noexcept
+static void pop_scope(CoreData* core) noexcept
 {
-	ASSERT_OR_IGNORE(lex->scopes_top >= 0);
+	ASSERT_OR_IGNORE(core->lex.scopes_top >= 0);
 
-	ScopeMap* const scope = lex->scopes[lex->scopes_top];
+	ScopeMap* const scope = core->lex.scopes[core->lex.scopes_top];
 
 	if (scope->has_closure)
-		scope_map_dealloc(lex, lex->closures[lex->scopes_top]);
+		scope_map_dealloc(core, core->lex.closures[core->lex.scopes_top]);
 
-	scope_map_dealloc(lex, scope);
+	scope_map_dealloc(core, scope);
 
-	lex->scopes_top -= 1;
+	core->lex.scopes_top -= 1;
 }
 
-static void set_closure(LexicalAnalyser* lex, ScopeMap* closure) noexcept
+static void set_closure(CoreData* core, ScopeMap* closure) noexcept
 {
 	static_assert(sizeof(LexicalAnalyser::scopes) == sizeof(LexicalAnalyser::closures));
 
-	ASSERT_OR_IGNORE(static_cast<u64>(lex->scopes_top) < array_count(lex->scopes));
+	ASSERT_OR_IGNORE(static_cast<u64>(core->lex.scopes_top) < array_count(core->lex.scopes));
 
-	ASSERT_OR_IGNORE(!lex->scopes[lex->scopes_top]->has_closure);
+	ASSERT_OR_IGNORE(!core->lex.scopes[core->lex.scopes_top]->has_closure);
 
-	lex->scopes[lex->scopes_top]->has_closure = true;
+	core->lex.scopes[core->lex.scopes_top]->has_closure = true;
 
-	lex->closures[lex->scopes_top] = closure;
+	core->lex.closures[core->lex.scopes_top] = closure;
 }
 
 
 
-static void set_signature_closure_list(LexicalAnalyser* lex, AstNode* node, ScopeMap* closure) noexcept
+static void set_signature_closure_list(CoreData* core, AstNode* node, ScopeMap* closure) noexcept
 {
 	if (closure->used == 0)
 	{
@@ -389,7 +389,7 @@ static void set_signature_closure_list(LexicalAnalyser* lex, AstNode* node, Scop
 		return;
 	}
 
-	ClosureList* const list = alloc_closure_list(lex->asts, closure->used);
+	ClosureList* const list = alloc_closure_list(core->lex.asts, closure->used);
 
 	ScopeMapInfo info = scope_map_info(closure);
 
@@ -417,12 +417,12 @@ static void set_signature_closure_list(LexicalAnalyser* lex, AstNode* node, Scop
 		dst->source_is_closure = src.closure_source_is_closure;
 	}
 
-	const ClosureListId list_id = id_from_closure_list(lex->asts, list);
+	const ClosureListId list_id = id_from_closure_list(core->lex.asts, list);
 
 	attachment_of<AstSignatureData>(node)->closure_list_id = some(list_id);
 }
 
-static u16 add_name_to_closures(LexicalAnalyser* lex, IdentifierId name, u16 closed_over_rank, s32 scope_index, bool close_in_innermost) noexcept
+static u16 add_name_to_closures(CoreData* core, IdentifierId name, u16 closed_over_rank, s32 scope_index, bool close_in_innermost) noexcept
 {
 	bool closure_source_is_closure = false;
 
@@ -432,12 +432,12 @@ static u16 add_name_to_closures(LexicalAnalyser* lex, IdentifierId name, u16 clo
 		? scope_index + 1
 		: scope_index;
 
-	for (s32 i = innermost_closed; i <= lex->scopes_top; ++i)
+	for (s32 i = innermost_closed; i <= core->lex.scopes_top; ++i)
 	{
-		if (!lex->scopes[i]->has_closure)
+		if (!core->lex.scopes[i]->has_closure)
 			continue;
 
-		ScopeMap* const closure = lex->closures[i];
+		ScopeMap* const closure = core->lex.closures[i];
 
 		ScopeEntry closure_entry;
 
@@ -451,9 +451,9 @@ static u16 add_name_to_closures(LexicalAnalyser* lex, IdentifierId name, u16 clo
 			// This addition can never fail, as we just checked whether the
 			// name is already present. As such, we pass a dummy `nullptr` as
 			// the `error_source`, and don't check our result.
-			const Maybe<ScopeMap*> new_closure = scope_map_add(lex, closure, name, closure_entry, nullptr);
+			const Maybe<ScopeMap*> new_closure = scope_map_add(core, closure, name, closure_entry, nullptr);
 
-			lex->closures[i] = get(new_closure);
+			core->lex.closures[i] = get(new_closure);
 		}
 
 		ASSERT_OR_IGNORE(closure_entry.closure_source_rank == closed_over_rank && closure_entry.closure_source_is_closure == closure_source_is_closure);
@@ -474,7 +474,7 @@ static u16 add_name_to_closures(LexicalAnalyser* lex, IdentifierId name, u16 clo
 
 
 
-static bool check_expression_is_templated(LexicalAnalyser* lex, AstNode* node, bool do_pop) noexcept
+static bool check_expression_is_templated(CoreData* core, AstNode* node, bool do_pop) noexcept
 {
 	if (node->tag == AstTag::Identifier)
 	{
@@ -482,9 +482,9 @@ static bool check_expression_is_templated(LexicalAnalyser* lex, AstNode* node, b
 
 		const IdentifierId name = attachment->identifier_id;
 
-		for (s32 i = lex->scopes_top; i >= 0; --i)
+		for (s32 i = core->lex.scopes_top; i >= 0; --i)
 		{
-			ScopeMap* const scope = lex->scopes[i];
+			ScopeMap* const scope = core->lex.scopes[i];
 
 			ScopeEntry unused_scope_entry;
 
@@ -512,18 +512,18 @@ static bool check_expression_is_templated(LexicalAnalyser* lex, AstNode* node, b
 	{
 		AstNode* const signature = first_child_of(node);
 
-		if (check_expression_is_templated(lex, signature, false))
+		if (check_expression_is_templated(core, signature, false))
 		{
-			pop_scope(lex);
+			pop_scope(core);
 
 			return true;
 		}
 
 		AstNode* const body = next_sibling_of(signature);
 
-		const bool is_templated = check_expression_is_templated(lex, body, true);
+		const bool is_templated = check_expression_is_templated(core, body, true);
 
-		pop_scope(lex);
+		pop_scope(core);
 
 		return is_templated;
 	}
@@ -535,8 +535,8 @@ static bool check_expression_is_templated(LexicalAnalyser* lex, AstNode* node, b
 		{
 			needs_pop = do_pop;
 
-			ScopeMap* const scope = scope_map_alloc(lex, ScopeMapKind::Local);
-			push_scope(lex, scope);
+			ScopeMap* const scope = scope_map_alloc(core, ScopeMapKind::Local);
+			push_scope(core, scope);
 		}
 
 		AstDirectChildIterator it = direct_children_of(node);
@@ -545,27 +545,27 @@ static bool check_expression_is_templated(LexicalAnalyser* lex, AstNode* node, b
 		{
 			AstNode* const child = next(&it);
 
-			if (check_expression_is_templated(lex, child, true))
+			if (check_expression_is_templated(core, child, true))
 			{
 				if (needs_pop)
-					pop_scope(lex);
+					pop_scope(core);
 
 				return true;
 			}
 		}
 
 		if (needs_pop)
-			pop_scope(lex);
+			pop_scope(core);
 
 		return false;
 	}
 }
 
-static bool check_parameter_is_templated(LexicalAnalyser* lex, AstNode* node) noexcept
+static bool check_parameter_is_templated(CoreData* core, AstNode* node) noexcept
 {
 	AstNode* const first_child = first_child_of(node);
 
-	if (check_expression_is_templated(lex, first_child, true))
+	if (check_expression_is_templated(core, first_child, true))
 		return true;
 
 	if (!has_next_sibling(first_child))
@@ -573,14 +573,14 @@ static bool check_parameter_is_templated(LexicalAnalyser* lex, AstNode* node) no
 
 	AstNode* const second_child = next_sibling_of(first_child);
 
-	return check_expression_is_templated(lex, second_child, true);
+	return check_expression_is_templated(core, second_child, true);
 }
 
 
 
-static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop, bool close_in_innermost) noexcept
+static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool close_in_innermost) noexcept
 {
-	ASSERT_OR_IGNORE(lex->scopes_top >= 0 && static_cast<u64>(lex->scopes_top) < array_count(lex->scopes));
+	ASSERT_OR_IGNORE(core->lex.scopes_top >= 0 && static_cast<u64>(core->lex.scopes_top) < array_count(core->lex.scopes));
 
 	const AstTag tag = node->tag;
 
@@ -608,9 +608,9 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop, 
 
 		bool is_closed_over = false;
 
-		for (s32 i = lex->scopes_top; i >= 0; --i)
+		for (s32 i = core->lex.scopes_top; i >= 0; --i)
 		{
-			ScopeMap* const scope = lex->scopes[i];
+			ScopeMap* const scope = core->lex.scopes[i];
 
 			ScopeEntry scope_entry;
 
@@ -625,8 +625,8 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop, 
 					// (in case `i` is 0) or the file index of the file that is
 					// currently being analysed.
 					const u16 file_index_bits = i == 0
-						? static_cast<u16>(lex->prelude_file_index)
-						: static_cast<u16>(lex->active_file_index);
+						? static_cast<u16>(core->lex.prelude_file_index)
+						: static_cast<u16>(core->lex.active_file_index);
 
 					binding->global.is_global_ = true;
 					binding->global.file_index_bits = file_index_bits;
@@ -638,7 +638,7 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop, 
 					// between its definition and its use.
 					// If `close_in_innermost` is `false`, we skip the
 					// innermost closure.
-					const u16 rank_in_closure = add_name_to_closures(lex, name, scope_entry.rank, i, close_in_innermost);
+					const u16 rank_in_closure = add_name_to_closures(core, name, scope_entry.rank, i, close_in_innermost);
 
 					binding->closed.is_global_ = false;
 					binding->closed.is_scoped_ = false;
@@ -650,7 +650,7 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop, 
 					binding->scoped.is_global_ = false;
 					binding->scoped.is_scoped_ = true;
 					binding->scoped.unused_ = 0;
-					binding->scoped.out = static_cast<u16>(lex->scopes_top - i);
+					binding->scoped.out = static_cast<u16>(core->lex.scopes_top - i);
 					binding->scoped.rank = scope_entry.rank;
 				}
 
@@ -666,9 +666,9 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop, 
 		// We have traversed up to the outermost scope without finding a match.
 		// As such, we need to indicate an error.
 
-		(void) record_error(lex->errors, node, CompileError::ScopeNameNotDefined);
+		(void) record_error(core->lex.errors, node, CompileError::ScopeNameNotDefined);
 
-		lex->has_error = true;
+		core->lex.has_error = true;
 	}
 	else if (tag == AstTag::Func)
 	{
@@ -676,17 +676,17 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop, 
 
 		// Defer popping of the signature scope, as it remains active for the
 		// body.
-		resolve_names_rec(lex, signature, false, close_in_innermost);
+		resolve_names_rec(core, signature, false, close_in_innermost);
 
 		AstNode* const body = next_sibling_of(signature);
 
-		resolve_names_rec(lex, body, true, close_in_innermost);
+		resolve_names_rec(core, body, true, close_in_innermost);
 
 		// Since we deferred popping of the signature scope we have to set the
 		// signature AST node's closure list here and then pop its scope.
-		set_signature_closure_list(lex, signature, lex->closures[lex->scopes_top]);
+		set_signature_closure_list(core, signature, core->lex.closures[core->lex.scopes_top]);
 
-		pop_scope(lex);
+		pop_scope(core);
 	}
 	else if (tag == AstTag::Signature)
 	{
@@ -698,15 +698,15 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop, 
 		if (is_some(info.ensures))
 			TODO("Handle signature-level `ensures` in `resolve_names_rec`");
 
-		ScopeMap* const scope = scope_map_alloc(lex, ScopeMapKind::Signature);
-		push_scope(lex, scope);
+		ScopeMap* const scope = scope_map_alloc(core, ScopeMapKind::Signature);
+		push_scope(core, scope);
 
 		// Since we are traversing a function signature, we might encounter
 		// closed-over variables from the surrounding scope. To keep track of
 		// these, we create and associate a closure `ScopeMap` with the current
 		// scope.
-		ScopeMap* const new_closure = scope_map_alloc(lex, ScopeMapKind::Closure);
-		set_closure(lex, new_closure);
+		ScopeMap* const new_closure = scope_map_alloc(core, ScopeMapKind::Closure);
+		set_closure(core, new_closure);
 
 		AstDirectChildIterator parameters = direct_children_of(info.parameters);
 
@@ -721,58 +721,58 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop, 
 			// outer closures if there are any, as they must be available when
 			// the signature is constructed. This is accomplished by setting
 			// `close_in_innermost` to `false` for non-templated parameters.
-			const bool is_templated = check_parameter_is_templated(lex, parameter);
+			const bool is_templated = check_parameter_is_templated(core, parameter);
 
 			if (is_templated)
 				parameter->flags |= AstFlag::Definition_IsTemplatedParam;
 
-			resolve_names_rec(lex, parameter, true, is_templated);
+			resolve_names_rec(core, parameter, true, is_templated);
 		}
 
-		const bool return_type_is_templated = check_expression_is_templated(lex, info.return_type, true);
+		const bool return_type_is_templated = check_expression_is_templated(core, info.return_type, true);
 
 		if (return_type_is_templated)
 			node->flags |= AstFlag::Signature_HasTemplatedReturnType;
 
-		resolve_names_rec(lex, info.return_type, true, return_type_is_templated);
+		resolve_names_rec(core, info.return_type, true, return_type_is_templated);
 
 		if (do_pop)
 		{
-			pop_scope(lex);
+			pop_scope(core);
 
-			set_signature_closure_list(lex, node, lex->closures[lex->scopes_top]);
+			set_signature_closure_list(core, node, core->lex.closures[core->lex.scopes_top]);
 		}
 	}
 	else
 	{
 		if (tag == AstTag::Definition || tag == AstTag::Parameter)
 		{
-			ASSERT_OR_IGNORE(lex->scopes_top >= 0);
+			ASSERT_OR_IGNORE(core->lex.scopes_top >= 0);
 
 			const IdentifierId name = tag == AstTag::Definition
 				? attachment_of<AstDefinitionData>(node)->identifier_id
 				: attachment_of<AstParameterData>(node)->identifier_id;
 
-			ScopeMap* const scope = lex->scopes[lex->scopes_top];
+			ScopeMap* const scope = core->lex.scopes[core->lex.scopes_top];
 
 			ScopeEntry entry;
 			entry.rank = scope->used;
 
-			const Maybe<ScopeMap*> new_scope = scope_map_add(lex, scope, name, entry, node);
+			const Maybe<ScopeMap*> new_scope = scope_map_add(core, scope, name, entry, node);
 
 			if (is_none(new_scope))
 				return;
 
-			lex->scopes[lex->scopes_top] = get(new_scope);
+			core->lex.scopes[core->lex.scopes_top] = get(new_scope);
 		}
 		else if (tag == AstTag::Block)
 		{
 			// Push a new scope, later popping it if `do_pop` is `true` and
 			// leaving it on the stack to be popped externally otherwise.
 
-			ScopeMap* const scope = scope_map_alloc(lex, ScopeMapKind::Local);
+			ScopeMap* const scope = scope_map_alloc(core, ScopeMapKind::Local);
 
-			push_scope(lex, scope);
+			push_scope(core, scope);
 		}
 
 		// Traverse node's children recursively.
@@ -783,19 +783,19 @@ static void resolve_names_rec(LexicalAnalyser* lex, AstNode* node, bool do_pop, 
 		{
 			AstNode* const child = next(&it);
 
-			resolve_names_rec(lex, child, true, close_in_innermost);
+			resolve_names_rec(core, child, true, close_in_innermost);
 		}
 
 		if (tag == AstTag::Block)
-			pop_scope(lex);
+			pop_scope(core);
 	}
 }
 
-static void resolve_names_root(LexicalAnalyser* lex, AstNode* root, GlobalFileIndex file_index) noexcept
+static void resolve_names_root(CoreData* core, AstNode* root, GlobalFileIndex file_index) noexcept
 {
-	lex->active_file_index = file_index;
+	core->lex.active_file_index = file_index;
 
-	ScopeMap* scope = scope_map_alloc(lex, ScopeMapKind::Global);
+	ScopeMap* scope = scope_map_alloc(core, ScopeMapKind::Global);
 
 	u16 rank = 0;
 
@@ -815,7 +815,7 @@ static void resolve_names_root(LexicalAnalyser* lex, AstNode* root, GlobalFileIn
 		ScopeEntry entry;
 		entry.rank = rank;
 
-		const Maybe<ScopeMap*> new_scope = scope_map_add(lex, scope, attach->identifier_id, entry, node);
+		const Maybe<ScopeMap*> new_scope = scope_map_add(core, scope, attach->identifier_id, entry, node);
 
 		if (is_none(new_scope))
 			return;
@@ -825,7 +825,7 @@ static void resolve_names_root(LexicalAnalyser* lex, AstNode* root, GlobalFileIn
 		rank += 1;
 	}
 
-	push_scope(lex, scope);
+	push_scope(core, scope);
 
 	it = direct_children_of(root);
 
@@ -837,20 +837,20 @@ static void resolve_names_root(LexicalAnalyser* lex, AstNode* root, GlobalFileIn
 		{
 			AstNode* child = first_child_of(node);
 
-			resolve_names_rec(lex, child, true, true);
+			resolve_names_rec(core, child, true, true);
 
 			if (has_next_sibling(child))
 			{
 				child = next_sibling_of(child);
 
-				resolve_names_rec(lex, child, true, true);
+				resolve_names_rec(core, child, true, true);
 
 				ASSERT_OR_IGNORE(!has_next_sibling(child));
 			}
 		}
 		else
 		{
-			resolve_names_rec(lex, node, true, true);
+			resolve_names_rec(core, node, true, true);
 		}
 	}
 }
@@ -880,28 +880,28 @@ void lexical_analyser_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 
 
-bool set_prelude_scope(LexicalAnalyser* lex, AstNode* prelude, GlobalFileIndex file_index) noexcept
+bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalFileIndex file_index) noexcept
 {
-	ASSERT_OR_IGNORE(prelude->tag == AstTag::File && lex->scopes_top == -1);
+	ASSERT_OR_IGNORE(prelude->tag == AstTag::File && core->lex.scopes_top == -1);
 
-	lex->prelude_file_index = file_index;
+	core->lex.prelude_file_index = file_index;
 
-	resolve_names_root(lex, prelude, file_index);
+	resolve_names_root(core, prelude, file_index);
 
-	ASSERT_OR_IGNORE(lex->scopes_top == 0);
+	ASSERT_OR_IGNORE(core->lex.scopes_top == 0);
 
-	return !lex->has_error;
+	return !core->lex.has_error;
 }
 
-bool resolve_names(LexicalAnalyser* lex, AstNode* root, GlobalFileIndex file_index) noexcept
+bool resolve_names(CoreData* core, AstNode* root, GlobalFileIndex file_index) noexcept
 {
-	ASSERT_OR_IGNORE(root->tag == AstTag::File && lex->scopes_top == 0);
+	ASSERT_OR_IGNORE(root->tag == AstTag::File && core->lex.scopes_top == 0);
 
-	resolve_names_root(lex, root, file_index);
+	resolve_names_root(core, root, file_index);
 
-	pop_scope(lex);
+	pop_scope(core);
 
-	ASSERT_OR_IGNORE(lex->scopes_top == 0);
+	ASSERT_OR_IGNORE(core->lex.scopes_top == 0);
 
-	return !lex->has_error;
+	return !core->lex.has_error;
 }

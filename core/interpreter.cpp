@@ -4962,7 +4962,7 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 
 	if (is_prelude)
 	{
-		if (!set_prelude_scope(core->interp.lex, ast, file_index))
+		if (!set_prelude_scope(core, ast, file_index))
 		{
 			read.source_file->has_error = true;
 
@@ -4971,7 +4971,7 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 	}
 	else
 	{
-		if (!resolve_names(core->interp.lex, ast, file_index))
+		if (!resolve_names(core, ast, file_index))
 		{
 			read.source_file->has_error = true;
 

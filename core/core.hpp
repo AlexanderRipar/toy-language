@@ -1797,9 +1797,9 @@ void print_error(minos::FileHandle dst, const SourceLocation* location, CompileE
 
 struct LexicalAnalyser;
 
-bool set_prelude_scope(LexicalAnalyser* lex, AstNode* prelude, GlobalFileIndex file_index) noexcept;
+bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalFileIndex file_index) noexcept;
 
-bool resolve_names(LexicalAnalyser* lex, AstNode* root, GlobalFileIndex file_index) noexcept;
+bool resolve_names(CoreData* core, AstNode* root, GlobalFileIndex file_index) noexcept;
 
 
 
