@@ -1,5 +1,7 @@
 #include "diag.hpp"
 
+#include "../core/structure.hpp"
+
 #include "../infra/types.hpp"
 #include "../infra/assert.hpp"
 #include "../infra/panic.hpp"
@@ -13,7 +15,7 @@ struct PrintResult
 	s64 written;
 };
 
-static s64 print_opcodes_impl(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept;
+static s64 print_opcodes_impl(PrintSink sink, CoreData* core, const Opcode* code, bool follow_refs) noexcept;
 
 
 
@@ -27,7 +29,7 @@ static const Opcode* code_attach(const Opcode* code, T* out_attach)
 
 
 
-static PrintResult follow_ref_impl(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code) noexcept
+static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode* code) noexcept
 {
 	const u8 bits = static_cast<u8>(*code);
 
@@ -146,9 +148,9 @@ static PrintResult follow_ref_impl(PrintSink sink, IdentifierPool* identifiers, 
 
 			code = code_attach(code, &return_completion);
 
-			const Opcode* const return_completion_code = opcode_from_id(opcodes, return_completion);
+			const Opcode* const return_completion_code = opcode_from_id(core, return_completion);
 
-			const s64 written = print_opcodes_impl(sink, identifiers, opcodes, return_completion_code, true);
+			const s64 written = print_opcodes_impl(sink, core, return_completion_code, true);
 
 			if (written < 0)
 				return PrintResult{ nullptr, -1 };
@@ -170,9 +172,9 @@ static PrintResult follow_ref_impl(PrintSink sink, IdentifierPool* identifiers, 
 
 				code = code_attach(code, &parameter_completion);
 
-				const Opcode* const parameter_completion_code = opcode_from_id(opcodes, parameter_completion);
+				const Opcode* const parameter_completion_code = opcode_from_id(core, parameter_completion);
 
-				const s64 written = print_opcodes_impl(sink, identifiers, opcodes, parameter_completion_code, true);
+				const s64 written = print_opcodes_impl(sink, core, parameter_completion_code, true);
 
 				if (written < 0)
 					return PrintResult{ nullptr, -1 };
@@ -190,9 +192,9 @@ static PrintResult follow_ref_impl(PrintSink sink, IdentifierPool* identifiers, 
 
 		code = code_attach(code, &body);
 
-		const Opcode* const body_code = opcode_from_id(opcodes, body);
+		const Opcode* const body_code = opcode_from_id(core, body);
 
-		const s64 written = print_opcodes_impl(sink, identifiers, opcodes, body_code, true);
+		const s64 written = print_opcodes_impl(sink, core, body_code, true);
 
 		if (written < 0)
 			return PrintResult{ nullptr, -1 };
@@ -218,9 +220,9 @@ static PrintResult follow_ref_impl(PrintSink sink, IdentifierPool* identifiers, 
 			OpcodeId argument_callback;
 			memcpy(&argument_callback, argument_callbacks + i * sizeof(OpcodeId), sizeof(OpcodeId));
 
-			const Opcode* const argument_callback_code = opcode_from_id(opcodes, argument_callback);
+			const Opcode* const argument_callback_code = opcode_from_id(core, argument_callback);
 
-			const s64 written = print_opcodes_impl(sink, identifiers, opcodes, argument_callback_code, true);
+			const s64 written = print_opcodes_impl(sink, core, argument_callback_code, true);
 
 			if (written < 0)
 				return PrintResult{ nullptr, -1 };
@@ -282,9 +284,9 @@ static PrintResult follow_ref_impl(PrintSink sink, IdentifierPool* identifiers, 
 
 		code = code_attach(code, &consequent);
 
-		const Opcode* const consequent_code = opcode_from_id(opcodes, consequent);
+		const Opcode* const consequent_code = opcode_from_id(core, consequent);
 
-		const s64 written = print_opcodes_impl(sink, identifiers, opcodes, consequent_code, true);
+		const s64 written = print_opcodes_impl(sink, core, consequent_code, true);
 
 		if (written < 0)
 			return PrintResult{ nullptr, -1 };
@@ -302,16 +304,16 @@ static PrintResult follow_ref_impl(PrintSink sink, IdentifierPool* identifiers, 
 
 		code = code_attach(code, &alternative);
 
-		const Opcode* const consequent_code = opcode_from_id(opcodes, consequent);
+		const Opcode* const consequent_code = opcode_from_id(core, consequent);
 
-		const s64 consequent_written = print_opcodes_impl(sink, identifiers, opcodes, consequent_code, true);
+		const s64 consequent_written = print_opcodes_impl(sink, core, consequent_code, true);
 
 		if (consequent_written < 0)
 			return PrintResult{ nullptr, -1 };
 
-		const Opcode* const alternative_code = opcode_from_id(opcodes, alternative);
+		const Opcode* const alternative_code = opcode_from_id(core, alternative);
 
-		const s64 alternative_written = print_opcodes_impl(sink, identifiers, opcodes, alternative_code, true);
+		const s64 alternative_written = print_opcodes_impl(sink, core, alternative_code, true);
 
 		if (alternative_written < 0)
 			return PrintResult{ nullptr, -1 };
@@ -329,16 +331,16 @@ static PrintResult follow_ref_impl(PrintSink sink, IdentifierPool* identifiers, 
 
 		code = code_attach(code, &body);
 
-		const Opcode* const condition_code = opcode_from_id(opcodes, condition);
+		const Opcode* const condition_code = opcode_from_id(core, condition);
 
-		const s64 condition_written = print_opcodes_impl(sink, identifiers, opcodes, condition_code, true);
+		const s64 condition_written = print_opcodes_impl(sink, core, condition_code, true);
 
 		if (condition_written < 0)
 			return PrintResult{ nullptr, -1 };
 
-		const Opcode* const body_code = opcode_from_id(opcodes, body);
+		const Opcode* const body_code = opcode_from_id(core, body);
 
-		const s64 body_written = print_opcodes_impl(sink, identifiers, opcodes, body_code, true);
+		const s64 body_written = print_opcodes_impl(sink, core, body_code, true);
 
 		if (body_written < 0)
 			return PrintResult{ nullptr, -1 };
@@ -360,23 +362,23 @@ static PrintResult follow_ref_impl(PrintSink sink, IdentifierPool* identifiers, 
 
 		code = code_attach(code, &finally);
 
-		const Opcode* const condition_code = opcode_from_id(opcodes, condition);
+		const Opcode* const condition_code = opcode_from_id(core, condition);
 
-		const s64 condition_written = print_opcodes_impl(sink, identifiers, opcodes, condition_code, true);
+		const s64 condition_written = print_opcodes_impl(sink, core, condition_code, true);
 
 		if (condition_written < 0)
 			return PrintResult{ nullptr, -1 };
 
-		const Opcode* const body_code = opcode_from_id(opcodes, body);
+		const Opcode* const body_code = opcode_from_id(core, body);
 
-		const s64 body_written = print_opcodes_impl(sink, identifiers, opcodes, body_code, true);
+		const s64 body_written = print_opcodes_impl(sink, core, body_code, true);
 
 		if (body_written < 0)
 			return PrintResult{ nullptr, -1 };
 
-		const Opcode* const finally_code = opcode_from_id(opcodes, finally);
+		const Opcode* const finally_code = opcode_from_id(core, finally);
 
-		const s64 finally_written = print_opcodes_impl(sink, identifiers, opcodes, finally_code, true);
+		const s64 finally_written = print_opcodes_impl(sink, core, finally_code, true);
 
 		if (finally_written < 0)
 			return PrintResult{ nullptr, -1 };
@@ -436,7 +438,7 @@ static PrintResult follow_ref_impl(PrintSink sink, IdentifierPool* identifiers, 
 	ASSERT_UNREACHABLE;
 }
 
-static s64 follow_refs_impl(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code) noexcept
+static s64 follow_refs_impl(PrintSink sink, CoreData* core, const Opcode* code) noexcept
 {
 	s64 total_written = 0;
 
@@ -444,7 +446,7 @@ static s64 follow_refs_impl(PrintSink sink, IdentifierPool* identifiers, OpcodeP
 
 	while (true)
 	{
-		result = follow_ref_impl(sink, identifiers, opcodes, code);
+		result = follow_ref_impl(sink, core, code);
 
 		if (result.next == nullptr)
 			break;
@@ -457,7 +459,7 @@ static s64 follow_refs_impl(PrintSink sink, IdentifierPool* identifiers, OpcodeP
 	return result.written < 0 ? -1 : total_written + result.written;
 }
 
-static PrintResult print_opcode_impl(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code) noexcept
+static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcode* code) noexcept
 {
 	const u8 bits = static_cast<u8>(*code);
 
@@ -467,7 +469,7 @@ static PrintResult print_opcode_impl(PrintSink sink, IdentifierPool* identifiers
 
 	const char8* op_name = tag_name(op);
 
-	const OpcodeId code_id = id_from_opcode(opcodes, code);
+	const OpcodeId code_id = id_from_opcode(core, code);
 
 	const s64 header_written = print(sink, "%[> 6]  % %",
 		static_cast<u32>(code_id),
@@ -611,7 +613,7 @@ static PrintResult print_opcode_impl(PrintSink sink, IdentifierPool* identifiers
 
 		code = code_attach(code, &name);
 
-		const Range<char8> name_str = identifier_name_from_id(identifiers, name);
+		const Range<char8> name_str = identifier_name_from_id(&core->identifiers, name);
 
 		const s64 written = print(sink, " name=IdentifierId<%> (%)", static_cast<u32>(name), name_str);
 
@@ -683,7 +685,7 @@ static PrintResult print_opcode_impl(PrintSink sink, IdentifierPool* identifiers
 
 			code = code_attach(code, &parameter_flags);
 
-			const Range<char8> parameter_name_str = identifier_name_from_id(identifiers, parameter_name);
+			const Range<char8> parameter_name_str = identifier_name_from_id(&core->identifiers, parameter_name);
 
 			const s64 written = print(sink, "\n     -        %[> 2]: mut=% eval=% type=% default=% name=IdentifierId<%> (%) ",
 				i,
@@ -756,7 +758,7 @@ static PrintResult print_opcode_impl(PrintSink sink, IdentifierPool* identifiers
 
 			code = code_attach(code, &parameter_flags);
 
-			const Range<char8> parameter_name_str = identifier_name_from_id(identifiers, parameter_name);
+			const Range<char8> parameter_name_str = identifier_name_from_id(&core->identifiers, parameter_name);
 
 			const s64 written = print(sink, "\n     -        %[> 2]: mut=% eval=% type=% default=% name=IdentifierId<%> (%) ",
 				i,
@@ -832,7 +834,7 @@ static PrintResult print_opcode_impl(PrintSink sink, IdentifierPool* identifiers
 
 			const Range<char8> argument_name_str = argument_name == IdentifierId::INVALID
 				? range::from_literal_string("<unnamed>")
-				: identifier_name_from_id(identifiers, argument_name);
+				: identifier_name_from_id(&core->identifiers, argument_name);
 
 			const s64 written = print(sink, "\n     -        %[> 2]: callback=OpcodeId<%> name=IdentifierId<%> (%)",
 				i,
@@ -966,7 +968,7 @@ static PrintResult print_opcode_impl(PrintSink sink, IdentifierPool* identifiers
 
 			code = code_attach(code, &following_initializer_count);
 
-			const Range<char8> name_str = identifier_name_from_id(identifiers, name);
+			const Range<char8> name_str = identifier_name_from_id(&core->identifiers, name);
 
 			const s64 written = print(sink, "\n     -        following_elem_count=% name=IdentifierId<%> (%)",
 				following_initializer_count,
@@ -1000,7 +1002,7 @@ static PrintResult print_opcode_impl(PrintSink sink, IdentifierPool* identifiers
 
 			code = code_attach(code, &name);
 
-			const Range<char8> name_str = identifier_name_from_id(identifiers, name);
+			const Range<char8> name_str = identifier_name_from_id(&core->identifiers, name);
 
 			const s64 written = print(sink, "\n     -        name=IdentifierId<%> (%)",
 				static_cast<u32>(name),
@@ -1337,7 +1339,7 @@ static PrintResult print_opcode_impl(PrintSink sink, IdentifierPool* identifiers
 	ASSERT_UNREACHABLE;
 }
 
-static s64 print_opcodes_impl(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept
+static s64 print_opcodes_impl(PrintSink sink, CoreData* core, const Opcode* code, bool follow_refs) noexcept
 {
 	const Opcode* const code_begin = code;
 
@@ -1347,7 +1349,7 @@ static s64 print_opcodes_impl(PrintSink sink, IdentifierPool* identifiers, Opcod
 
 	while (true)
 	{
-		result = print_opcode_impl(sink, identifiers, opcodes, code);
+		result = print_opcode_impl(sink, core, code);
 
 		if (result.next == nullptr)
 			break;
@@ -1378,7 +1380,7 @@ static s64 print_opcodes_impl(PrintSink sink, IdentifierPool* identifiers, Opcod
 
 	if (follow_refs)
 	{
-		const s64 refs_written = follow_refs_impl(sink, identifiers, opcodes, code_begin);
+		const s64 refs_written = follow_refs_impl(sink, core, code_begin);
 
 		if (refs_written < 0)
 			return -1;
@@ -1391,7 +1393,7 @@ static s64 print_opcodes_impl(PrintSink sink, IdentifierPool* identifiers, Opcod
 
 
 
-s64 diag::print_opcodes(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept
+s64 diag::print_opcodes(PrintSink sink, CoreData* core, const Opcode* code, bool follow_refs) noexcept
 {
-	return print_opcodes_impl(sink, identifiers, opcodes, code, follow_refs);
+	return print_opcodes_impl(sink, core, code, follow_refs);
 }

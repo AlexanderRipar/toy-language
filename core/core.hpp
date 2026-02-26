@@ -2554,15 +2554,15 @@ enum class OpcodeId : u32
 	INVALID = 0,
 };
 
-const Maybe<Opcode*> opcodes_from_file_member_ast(OpcodePool* opcodes, AstNode* node, GlobalFileIndex file_index, u16 rank) noexcept;
+const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, GlobalFileIndex file_index, u16 rank) noexcept;
 
-OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept;
+OpcodeId opcode_id_from_builtin(CoreData* core, Builtin builtin) noexcept;
 
-OpcodeId id_from_opcode(OpcodePool* opcodes, const Opcode* code);
+OpcodeId id_from_opcode(CoreData* core, const Opcode* code);
 
-const Opcode* opcode_from_id(OpcodePool* opcodes, OpcodeId id) noexcept;
+const Opcode* opcode_from_id(CoreData* core, OpcodeId id) noexcept;
 
-SourceId source_id_of_opcode(OpcodePool* opcodes, const Opcode* code) noexcept;
+SourceId source_id_of_opcode(CoreData* core, const Opcode* code) noexcept;
 
 const char8* tag_name(Opcode op) noexcept;
 

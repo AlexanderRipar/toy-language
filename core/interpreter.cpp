@@ -187,11 +187,11 @@ static void log_ast(CoreData* core, AstNode* node) noexcept
 
 static void log_opcodes(CoreData* core, const Opcode* code) noexcept
 {
-	const SourceId source_id = source_id_of_opcode(core->interp.opcodes, code);
+	const SourceId source_id = source_id_of_opcode(core, code);
 
 	SourceLocation location = source_location_from_source_id(core->interp.reader, source_id);
 
-	const OpcodeId code_id = id_from_opcode(core->interp.opcodes, code);
+	const OpcodeId code_id = id_from_opcode(core, code);
 
 	diag::print_header(core->interp.imported_opcodes_log_file, "%:%:% (OpcodeId<%>)",
 			location.filepath,
@@ -200,14 +200,14 @@ static void log_opcodes(CoreData* core, const Opcode* code) noexcept
 			static_cast<u32>(code_id)
 	);
 
-	diag::print_opcodes(core->interp.imported_opcodes_log_file, core->interp.identifiers, core->interp.opcodes, code, true);
+	diag::print_opcodes(core->interp.imported_opcodes_log_file, core, code, true);
 }
 
 
 
 static const Opcode* record_interpreter_error(CoreData* core, const Opcode* code, CompileError error) noexcept
 {
-	const SourceId source_id = source_id_of_opcode(core->interp.opcodes, code - 1);
+	const SourceId source_id = source_id_of_opcode(core, code - 1);
 
 	record_error(core->interp.errors, source_id, error);
 
@@ -459,7 +459,7 @@ static void push_activation(CoreData* core, OpcodeId id) noexcept
 
 static void push_activation(CoreData* core, const Opcode* code) noexcept
 {
-	const OpcodeId id = id_from_opcode(core->interp.opcodes, code);
+	const OpcodeId id = id_from_opcode(core, code);
 
 	push_activation(core, id);
 }
@@ -1556,9 +1556,9 @@ static const Opcode* builtin_source_id(CoreData* core, const Opcode* code, CTVal
 
 	const OpcodeId caller_activation = core->interp.activations.begin()[caller_activation_index];
 
-	const Opcode* const caller_activation_code = opcode_from_id(core->interp.opcodes, caller_activation);
+	const Opcode* const caller_activation_code = opcode_from_id(core, caller_activation);
 
-	SourceId source_id = source_id_of_opcode(core->interp.opcodes, caller_activation_code);
+	SourceId source_id = source_id_of_opcode(core, caller_activation_code);
 
 	ASSERT_OR_IGNORE(source_id != SourceId::INVALID);
 
@@ -1903,7 +1903,7 @@ static const Opcode* handle_load_global(CoreData* core, const Opcode* code, CTVa
 		// initializer. Push this instruction as an activation.
 		push_activation(core, code_activation - 1);
 
-		return opcode_from_id(core->interp.opcodes, global_code);
+		return opcode_from_id(core, global_code);
 	}
 	else
 	{
@@ -1952,7 +1952,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 			// initializer. Push this instruction as an activation.
 			push_activation(core, code_activation - 1);
 
-			return opcode_from_id(core->interp.opcodes, initializer_id);
+			return opcode_from_id(core, initializer_id);
 		}
 		else if (info.is_global)
 		{
@@ -1991,7 +1991,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 		{
 			push_activation(core, code_activation - 1);
 
-			return opcode_from_id(core->interp.opcodes, initializer_id);
+			return opcode_from_id(core, initializer_id);
 		}
 		else if (info.is_global)
 		{
@@ -2588,7 +2588,7 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 
 				push_activation(core, code_activation - 1);
 
-				return opcode_from_id(core->interp.opcodes, parameter_initializer_id);
+				return opcode_from_id(core, parameter_initializer_id);
 			}
 
 			if (scope_alloc_typed_member(core, code, parameter_info.is_mut, parameter_info.type_id) == nullptr)
@@ -2609,7 +2609,7 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 
 		push_activation(core, code_activation - 1);
 
-		return opcode_from_id(core->interp.opcodes, callback_id);
+		return opcode_from_id(core, callback_id);
 	}
 	else if (argument_pack->has_templated_return_type)
 	{
@@ -2638,7 +2638,7 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 
 		push_activation(core, code_activation - 1);
 
-		return opcode_from_id(core->interp.opcodes, argument_pack->return_type.completion);
+		return opcode_from_id(core, argument_pack->return_type.completion);
 	}
 	else
 	{
@@ -2716,7 +2716,7 @@ static const Opcode* handle_call(CoreData* core, const Opcode* code, CTValue* wr
 
 	push_activation(core, code);
 
-	return opcode_from_id(core->interp.opcodes, callable.body_id);
+	return opcode_from_id(core, callable.body_id);
 }
 
 static const Opcode* handle_return(CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
@@ -3342,7 +3342,7 @@ static const Opcode* handle_if(CoreData* core, const Opcode* code, [[maybe_unuse
 
 	if (condition)
 	{
-		const Opcode* const next = opcode_from_id(core->interp.opcodes, consequent);
+		const Opcode* const next = opcode_from_id(core, consequent);
 
 		push_activation(core, code);
 
@@ -3382,7 +3382,7 @@ static const Opcode* handle_if_else(CoreData* core, const Opcode* code, CTValue*
 
 	core->interp.values.pop_by(1);
 
-	const Opcode* const next = opcode_from_id(core->interp.opcodes, condition ? consequent : alternative);
+	const Opcode* const next = opcode_from_id(core, condition ? consequent : alternative);
 
 	push_activation(core, code);
 
@@ -3418,7 +3418,7 @@ static const Opcode* handle_loop(CoreData* core, const Opcode* code, [[maybe_unu
 	{
 		push_activation(core, condition_id);
 
-		return opcode_from_id(core->interp.opcodes, body_id);
+		return opcode_from_id(core, body_id);
 	}
 	else
 	{
@@ -3460,13 +3460,13 @@ static const Opcode* handle_loop_finally(CoreData* core, const Opcode* code, CTV
 	{
 		push_activation(core, condition_id);
 
-		return opcode_from_id(core->interp.opcodes, body_id);
+		return opcode_from_id(core, body_id);
 	}
 	else
 	{
 		push_activation(core, code);
 
-		return opcode_from_id(core->interp.opcodes, finally_id);
+		return opcode_from_id(core, finally_id);
 	}
 }
 
@@ -4893,7 +4893,7 @@ static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, Global
 
 		ASSERT_OR_IGNORE(node->tag == AstTag::Definition);
 
-		const Maybe<Opcode*> initializer = opcodes_from_file_member_ast(core->interp.opcodes, node, file_index, rank);
+		const Maybe<Opcode*> initializer = opcodes_from_file_member_ast(core, node, file_index, rank);
 
 		if (is_none(initializer))
 		{
@@ -4902,7 +4902,7 @@ static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, Global
 			continue;
 		}
 
-		const OpcodeId initializer_id = id_from_opcode(core->interp.opcodes, get(initializer));
+		const OpcodeId initializer_id = id_from_opcode(core, get(initializer));
 
 		const IdentifierId identifier_id = attachment_of<AstDefinitionData>(node)->identifier_id;
 
@@ -5159,7 +5159,7 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 		// A crude helper for looking through the opcode emission logs for the
 		// currently executing operation by its id.
 		// This is actually super-duper helpful for debugging.
-		[[maybe_unused]] const OpcodeId debug_op_id = id_from_opcode(core->interp.opcodes, ops);
+		[[maybe_unused]] const OpcodeId debug_op_id = id_from_opcode(core, ops);
 
 		const OpcodeHandlerFunc handler = HANDLERS[ordinal];
 
@@ -5173,7 +5173,7 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 			if (core->interp.activations.used() == 0)
 				return true;
 
-			ops = opcode_from_id(core->interp.opcodes, core->interp.activations.end()[-1]);
+			ops = opcode_from_id(core, core->interp.activations.end()[-1]);
 
 			core->interp.activations.pop_by(1);
 		}
@@ -5268,7 +5268,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId integer_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Integer);
+	const OpcodeId integer_body = opcode_id_from_builtin(core, Builtin::Integer);
 
 	const TypeId integer_signature = make_func_type(core->interp.types, type_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("bits")), u8_type, true },
@@ -5279,7 +5279,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId float_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Float);
+	const OpcodeId float_body = opcode_id_from_builtin(core, Builtin::Float);
 
 	const TypeId float_signature = make_func_type(core->interp.types, type_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("bits")), u8_type, true }
@@ -5289,7 +5289,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId type_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Type);
+	const OpcodeId type_body = opcode_id_from_builtin(core, Builtin::Type);
 
 	const TypeId type_signature = make_func_type(core->interp.types, type_type);
 
@@ -5297,7 +5297,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId definition_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Definition);
+	const OpcodeId definition_body = opcode_id_from_builtin(core, Builtin::Definition);
 
 	const TypeId definition_signature = make_func_type(core->interp.types, type_type);
 
@@ -5305,7 +5305,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId typeinfo_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::TypeInfo);
+	const OpcodeId typeinfo_body = opcode_id_from_builtin(core, Builtin::TypeInfo);
 
 	const TypeId typeinfo_signature = make_func_type(core->interp.types, type_type);
 
@@ -5313,7 +5313,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId typeof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Typeof);
+	const OpcodeId typeof_body = opcode_id_from_builtin(core, Builtin::Typeof);
 
 	const TypeId typeof_signature = make_func_type(core->interp.types, type_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_info_type, true }
@@ -5323,7 +5323,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId returntypeof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Returntypeof);
+	const OpcodeId returntypeof_body = opcode_id_from_builtin(core, Builtin::Returntypeof);
 
 	const TypeId returntypeof_signature = make_func_type(core->interp.types, type_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_info_type, true }
@@ -5333,7 +5333,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId sizeof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Sizeof);
+	const OpcodeId sizeof_body = opcode_id_from_builtin(core, Builtin::Sizeof);
 
 	const TypeId sizeof_signature = make_func_type(core->interp.types, comp_integer_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_type, true }
@@ -5343,7 +5343,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId alignof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Alignof);
+	const OpcodeId alignof_body = opcode_id_from_builtin(core, Builtin::Alignof);
 
 	const TypeId alignof_signature = make_func_type(core->interp.types, comp_integer_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_type, true }
@@ -5353,7 +5353,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId strideof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Strideof);
+	const OpcodeId strideof_body = opcode_id_from_builtin(core, Builtin::Strideof);
 
 	const TypeId strideof_signature = make_func_type(core->interp.types, comp_integer_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_type, true }
@@ -5363,7 +5363,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId offsetof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Offsetof);
+	const OpcodeId offsetof_body = opcode_id_from_builtin(core, Builtin::Offsetof);
 
 	const TypeId offsetof_signature = make_func_type(core->interp.types, comp_integer_type);
 
@@ -5371,7 +5371,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId nameof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Nameof);
+	const OpcodeId nameof_body = opcode_id_from_builtin(core, Builtin::Nameof);
 
 	const TypeId nameof_signature = make_func_type(core->interp.types, slice_of_u8_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("arg")), type_info_type, true }
@@ -5381,7 +5381,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId import_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::Import);
+	const OpcodeId import_body = opcode_id_from_builtin(core, Builtin::Import);
 
 	const TypeId import_signature = make_func_type(core->interp.types, type_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("path")), slice_of_u8_type, true },
@@ -5393,7 +5393,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId create_type_builder_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::CreateTypeBuilder);
+	const OpcodeId create_type_builder_body = opcode_id_from_builtin(core, Builtin::CreateTypeBuilder);
 
 	const TypeId create_type_builder_signature = make_func_type(core->interp.types, type_builder_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("source_id")), u32_type, true }
@@ -5403,7 +5403,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId add_type_member_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::AddTypeMember);
+	const OpcodeId add_type_member_body = opcode_id_from_builtin(core, Builtin::AddTypeMember);
 
 	// TODO: "definition" should be of type `definition_type`, not `type_type`.
 	//       The current behaviour is due to `TypeTag::Definition` not being
@@ -5419,7 +5419,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId complete_type_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::CompleteType);
+	const OpcodeId complete_type_body = opcode_id_from_builtin(core, Builtin::CompleteType);
 
 	const TypeId complete_type_signature = make_func_type(core->interp.types, type_type,
 		BuiltinParamInfo{ id_from_identifier(core->interp.identifiers, range::from_literal_string("builder")), type_builder_type, true },
@@ -5432,7 +5432,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId source_id_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::SourceId);
+	const OpcodeId source_id_body = opcode_id_from_builtin(core, Builtin::SourceId);
 
 	const TypeId source_id_signature = make_func_type(core->interp.types, u32_type);
 
@@ -5440,7 +5440,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId caller_source_id_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::CallerSourceId);
+	const OpcodeId caller_source_id_body = opcode_id_from_builtin(core, Builtin::CallerSourceId);
 
 	const TypeId caller_source_id_signature = make_func_type(core->interp.types, u32_type);
 
@@ -5448,7 +5448,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId definition_typeof_body = opcode_id_from_builtin(core->interp.opcodes, Builtin::DefinitionTypeof);
+	const OpcodeId definition_typeof_body = opcode_id_from_builtin(core, Builtin::DefinitionTypeof);
 
 	// TODO: "definition" should be of type `definition_type`, not `type_type`.
 	//       The current behaviour is due to `TypeTag::Definition` not being
@@ -5464,7 +5464,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 	{
 		for (u32 i = 0; i != array_count(core->interp.builtin_infos); ++i)
 		{
-			const Opcode* body_code = opcode_from_id(core->interp.opcodes, core->interp.builtin_infos[i].body);
+			const Opcode* body_code = opcode_from_id(core, core->interp.builtin_infos[i].body);
 
 			log_opcodes(core, body_code);
 		}
@@ -5603,7 +5603,7 @@ bool evaluate_file_definition_by_name(CoreData* core, TypeId file_type, Identifi
 	{
 		ASSERT_OR_IGNORE(rst == MemberByNameRst::Incomplete);
 
-		const Opcode* const initializer_code = opcode_from_id(core->interp.opcodes, member_initializer);
+		const Opcode* const initializer_code = opcode_from_id(core, member_initializer);
 
 		return interpret_opcodes(core, initializer_code);
 	}
@@ -5624,7 +5624,7 @@ bool evaluate_all_file_definitions(CoreData* core, TypeId file_type) noexcept
 		if (next(&it, &unused_member_info, &member_initializer))
 			continue;
 
-		const Opcode* const initializer_code = opcode_from_id(core->interp.opcodes, member_initializer);
+		const Opcode* const initializer_code = opcode_from_id(core, member_initializer);
 
 		if (!interpret_opcodes(core, initializer_code))
 			is_ok = false;

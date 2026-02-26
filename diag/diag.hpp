@@ -12,7 +12,7 @@ namespace diag
 
 	void print_config_help(PrintSink sink, u32 depth = 0) noexcept;
 
-	s64 print_opcodes(PrintSink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept;
+	s64 print_opcodes(PrintSink sink, CoreData* core, const Opcode* code, bool follow_refs) noexcept;
 
 	s64 print_type(PrintSink sink, IdentifierPool* identifiers, TypePool* types, TypeId type_id) noexcept;
 
@@ -56,9 +56,9 @@ namespace diag
 	}
 
 	template<typename Sink>
-	s64 print_opcodes(Sink sink, IdentifierPool* identifiers, OpcodePool* opcodes, const Opcode* code, bool follow_refs) noexcept
+	s64 print_opcodes(Sink sink, CoreData* core, const Opcode* code, bool follow_refs) noexcept
 	{
-		return print_opcodes(print_make_sink(sink), identifiers, opcodes, code, follow_refs);
+		return print_opcodes(print_make_sink(sink), core, code, follow_refs);
 	}
 
 	template<typename Sink>

@@ -2245,14 +2245,14 @@ void opcode_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 
 
-const Maybe<Opcode*> opcodes_from_file_member_ast(OpcodePool* opcodes, AstNode* node, GlobalFileIndex file_index, u16 rank) noexcept
+const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, GlobalFileIndex file_index, u16 rank) noexcept
 {
-	opcodes->state.values_diff = 0;
-	opcodes->state.scopes_diff = 0;
-	opcodes->state.write_ctxs_diff = 0;
-	opcodes->state.closures_diff = 0;
+	core->opcodes.state.values_diff = 0;
+	core->opcodes.state.scopes_diff = 0;
+	core->opcodes.state.write_ctxs_diff = 0;
+	core->opcodes.state.closures_diff = 0;
 
-	Opcode* const first_opcode = opcodes->codes.end();
+	Opcode* const first_opcode = core->opcodes.codes.end();
 
 	DefinitionInfo info = get_definition_info(node);
 
@@ -2262,91 +2262,91 @@ const Maybe<Opcode*> opcodes_from_file_member_ast(OpcodePool* opcodes, AstNode* 
 
 	const bool is_mut = has_flag(node, AstFlag::Definition_IsMut);
 
-	emit_opcode(opcodes, Opcode::FileGlobalAllocPrepare, false, node, is_mut, file_index, rank);
+	emit_opcode(&core->opcodes, Opcode::FileGlobalAllocPrepare, false, node, is_mut, file_index, rank);
 
 	if (has_type)
 	{
-		if (!opcodes_from_expression(opcodes, get(info.type), false))
+		if (!opcodes_from_expression(&core->opcodes, get(info.type), false))
 			return none<Opcode*>();
 
-		emit_opcode(opcodes, Opcode::FileGlobalAllocTyped, false, node);
+		emit_opcode(&core->opcodes, Opcode::FileGlobalAllocTyped, false, node);
 	}
 
-	if (!opcodes_from_expression(opcodes, get(info.value), has_type))
+	if (!opcodes_from_expression(&core->opcodes, get(info.value), has_type))
 		return none<Opcode*>();
 
 	if (has_type)
-		emit_opcode(opcodes, Opcode::FileGlobalAllocComplete, false, node);
+		emit_opcode(&core->opcodes, Opcode::FileGlobalAllocComplete, false, node);
 	else
-		emit_opcode(opcodes, Opcode::FileGlobalAllocUntyped, false, node);
+		emit_opcode(&core->opcodes, Opcode::FileGlobalAllocUntyped, false, node);
 
-	emit_opcode(opcodes, Opcode::EndCode, false, node);
+	emit_opcode(&core->opcodes, Opcode::EndCode, false, node);
 
-	if (!complete_fixups(opcodes))
+	if (!complete_fixups(&core->opcodes))
 		return none<Opcode*>();
 
 	ASSERT_OR_IGNORE(
-		opcodes->state.values_diff == 0
-	 && opcodes->state.scopes_diff == 0
-	 && opcodes->state.write_ctxs_diff == 0
-	 && opcodes->state.closures_diff == 0
+		core->opcodes.state.values_diff == 0
+	 && core->opcodes.state.scopes_diff == 0
+	 && core->opcodes.state.write_ctxs_diff == 0
+	 && core->opcodes.state.closures_diff == 0
 	);
 
 	return some(first_opcode);
 }
 
-OpcodeId opcode_id_from_builtin(OpcodePool* opcodes, Builtin builtin) noexcept
+OpcodeId opcode_id_from_builtin(CoreData* core, Builtin builtin) noexcept
 {
-	opcodes->state.values_diff = 0;
-	opcodes->state.scopes_diff = 0;
-	opcodes->state.write_ctxs_diff = 1;
-	opcodes->state.closures_diff = 0;
+	core->opcodes.state.values_diff = 0;
+	core->opcodes.state.scopes_diff = 0;
+	core->opcodes.state.write_ctxs_diff = 1;
+	core->opcodes.state.closures_diff = 0;
 
-	opcodes->allow_return = false;
+	core->opcodes.allow_return = false;
 
-	const OpcodeId first_opcode_id = static_cast<OpcodeId>(opcodes->codes.used());
+	const OpcodeId first_opcode_id = static_cast<OpcodeId>(core->opcodes.codes.used());
 
-	emit_opcode(opcodes, Opcode::ExecBuiltin, true, nullptr, builtin);
+	emit_opcode(&core->opcodes, Opcode::ExecBuiltin, true, nullptr, builtin);
 
-	emit_opcode(opcodes, Opcode::Return, false, nullptr);
+	emit_opcode(&core->opcodes, Opcode::Return, false, nullptr);
 
 	ASSERT_OR_IGNORE(
-		opcodes->state.values_diff == 0
-	 && opcodes->state.scopes_diff == 0
-	 && opcodes->state.write_ctxs_diff == 0
-	 && opcodes->state.closures_diff == 0
+		core->opcodes.state.values_diff == 0
+	 && core->opcodes.state.scopes_diff == 0
+	 && core->opcodes.state.write_ctxs_diff == 0
+	 && core->opcodes.state.closures_diff == 0
 	);
 
 	return first_opcode_id;
 }
 
-OpcodeId id_from_opcode(OpcodePool* opcodes, const Opcode* code)
+OpcodeId id_from_opcode(CoreData* core, const Opcode* code)
 {
-	ASSERT_OR_IGNORE(code >= opcodes->codes.begin() && code < opcodes->codes.end());
+	ASSERT_OR_IGNORE(code >= core->opcodes.codes.begin() && code < core->opcodes.codes.end());
 
-	return static_cast<OpcodeId>(code - opcodes->codes.begin());
+	return static_cast<OpcodeId>(code - core->opcodes.codes.begin());
 }
 
-const Opcode* opcode_from_id(OpcodePool* opcodes, OpcodeId id) noexcept
+const Opcode* opcode_from_id(CoreData* core, OpcodeId id) noexcept
 {
-	ASSERT_OR_IGNORE(id != OpcodeId::INVALID && static_cast<u32>(id) < opcodes->codes.used());
+	ASSERT_OR_IGNORE(id != OpcodeId::INVALID && static_cast<u32>(id) < core->opcodes.codes.used());
 
-	return opcodes->codes.begin() + static_cast<u32>(id);
+	return core->opcodes.codes.begin() + static_cast<u32>(id);
 }
 
-SourceId source_id_of_opcode(OpcodePool* opcodes, const Opcode* code) noexcept
+SourceId source_id_of_opcode(CoreData* core, const Opcode* code) noexcept
 {
-	ASSERT_OR_IGNORE(code > opcodes->codes.begin() && code < opcodes->codes.end());
+	ASSERT_OR_IGNORE(code > core->opcodes.codes.begin() && code < core->opcodes.codes.end());
 
-	ASSERT_OR_IGNORE(opcodes->sources.used() != 0);
+	ASSERT_OR_IGNORE(core->opcodes.sources.used() != 0);
 
-	SourceMapping* const sources = opcodes->sources.begin();
+	SourceMapping* const sources = core->opcodes.sources.begin();
 
-	const OpcodeId target = id_from_opcode(opcodes, code);
+	const OpcodeId target = id_from_opcode(core, code);
 
 	u32 lo = 0;
 
-	u32 hi = opcodes->sources.used() - 1;
+	u32 hi = core->opcodes.sources.used() - 1;
 
 	if (sources[hi].code_begin <= target)
 		return sources[hi].source;
