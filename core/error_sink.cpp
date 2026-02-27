@@ -263,3 +263,168 @@ void print_error(minos::FileHandle dst, const SourceLocation* location, CompileE
 
 	print(dst, "^\n");
 }
+
+static constexpr const char8* COMPILE_ERROR_NAMES[] = {
+	"[Unknown]",
+	"CompIntegerValueTooLarge",
+	"TypesCannotConvert",
+	"CompositeLiteralTargetIsMissingMember",
+	"CompositeLiteralTargetHasTooFewMembers",
+	"CompositeLiteralTargetMemberMappedTwice",
+	"CompositeLiteralMemberTypesCannotConvert",
+	"CompositeLiteralSourceIsMissingMember",
+	"NoCommonArgumentType",
+	"NoCommonArrayElementType",
+	"CallNoSuchNamedParameter",
+	"CallArgumentMappedTwice",
+	"CallTooManyArgs",
+	"CallMissingArg",
+	"SliceOperatorInvalidLhsType",
+	"SliceOperatorMultiPtrElidedEndIndex",
+	"SliceOperatorIndexOutOfBounds",
+	"SliceOperatorIndicesReversed",
+	"SliceOperatorIndexTooLarge",
+	"SliceOperatorIndexNegative",
+	"SliceOperatorUntypedArrayLiteral",
+	"DerefInvalidOperandType",
+	"BitNotInvalidOperandType",
+	"NegateInvalidOperandType",
+	"UnaryPlusInvalidOperandType",
+	"BinaryOperatorNumericInvalidArgumentType",
+	"BinaryOperatorIntegerInvalidArgumentType",
+	"BinaryOperatorIntegerOrBoolInvalidArgumentType",
+	"ArithmeticOverflow",
+	"DivideByZero",
+	"ModuloByZero",
+	"ShiftRHSNegative",
+	"ShiftRHSTooLarge",
+	"MemberNoSuchName",
+	"MemberInvalidLhsType",
+	"MemberNonGlobalAccessedThroughType",
+	"CompareIncomparableType",
+	"CompareUnorderedType",
+	"SetLhsNotMutable",
+	"TypeArrayCountTooLarge",
+	"TypeArrayCountNegative",
+	"ArrayIndexRhsTooLarge",
+	"ArrayIndexRhsNegative",
+	"ArrayIndexOutOfBounds",
+	"ArrayInitializerTooManyElements",
+	"ArrayInitializerMissingElement",
+	"ArrayInitializerDuplicateElement",
+	"ArrayInitializerIndexTooLarge",
+	"ArrayInitializerIndexNegative",
+	"ExpectedVoid",
+	"BuiltinCompleteTypeAlignTooLarge",
+	"BuiltinCompleteTypeAlignZero",
+	"BuiltinCompleteTypeAlignNotPowTwo",
+	"ReturntypeofTemplatedReturnType",
+	"CyclicGlobalInitializerDependency",
+	"UnreachableReached",
+	"GlobalNameNotDefined",
+	"ScopeTooManyDefinitions",
+	"ScopeDuplicateName",
+	"ScopeNameNotDefined",
+	"LexUnexpectedCharacter",
+	"LexNullCharacter",
+	"LexCommentMismatchedBegin",
+	"LexCommentMismatchedEnd",
+	"LexBuiltinUnknown",
+	"LexNumberWithBaseMissingDigits",
+	"LexNumberUnexpectedCharacterAfterDecimalPoint",
+	"LexNumberUnexpectedCharacterAfterInteger",
+	"LexNumberUnexpectedCharacterAfterFloat",
+	"LexNumberFloatTooLarge",
+	"LexCharacterBadSurrogateCodeUnit",
+	"LexCharacterBadLeadCodeUnit",
+	"LexCharacterEscapeSequenceLowerXBadChar",
+	"LexCharacterEscapeSequenceUpperXInvalidChar",
+	"LexCharacterEscapeSequenceUpperXCodepointTooLarge",
+	"LexCharacterEscapeSequenceUInvalidChar",
+	"LexCharacterEscapeSequenceUnknown",
+	"LexCharacterExpectedEnd",
+	"LexStringTooLong",
+	"LexStringCrossesNewline",
+	"LexStringMissingEnd",
+	"LexIdentifierInitialUnderscore",
+	"LexConfigUnexpectedControlCharacter",
+	"LexConfigSingleLineStringCrossesNewline",
+	"LexConfigUnexpectedCharacter",
+	"ParseUnaryOperatorMissingOperand",
+	"ParseBinaryOperatorMissingOperand",
+	"ParseOpenOperandCountTooLarge",
+	"ParseOpenOperatorCountTooLarge",
+	"ParseOperatorOperandCountMismatch",
+	"ParseFunctionParameterIsPub",
+	"ParseDefinitionMultiplePub",
+	"ParseDefinitionMultipleMut",
+	"ParseDefinitionMissingName",
+	"ParseDefinitionMissingEquals",
+	"ParseForeachExpectThinArrowLeft",
+	"ParseCaseMissingThinArrowRight",
+	"ParseSwitchMissingCase",
+	"ParseSignatureMissingReturnType",
+	"ParseSignatureMissingParenthesisAfterProc",
+	"ParseSignatureMissingParenthesisAfterFunc",
+	"ParseSignatureMissingParenthesisAfterTrait",
+	"ParseSignatureTooManyParameters",
+	"ParseSignatureUnexpectedParameterListEnd",
+	"ParseTraitMissingSetOrExpects",
+	"ParseTraitMissingSet",
+	"ParseUnexpectedTopLevelExpr",
+	"ParseCompositeLiteralUnexpectedToken",
+	"ParseArrayLiteralUnexpectedToken",
+	"ParseArrayTypeUnexpectedToken",
+	"ParseImpliedMemberUnexpectedToken",
+	"ParseExprExpectOperand",
+	"ParseCallTooManyArguments",
+	"ParseCallUnexpectedToken",
+	"ParseSliceUnexpectedToken",
+	"ParseArrayIndexUnexpectedToken",
+	"ParseCatchMissingThinArrowRightAfterDefinition",
+	"ParseMemberUnexpectedToken",
+	"ParseConfigKeyNestingLimitExceeded",
+	"ParseConfigKeyNotExpectingSubkeys",
+	"ParseConfigKeyDoesNotExist",
+	"ParseConfigExpectedKey",
+	"ParseConfigExpectedEquals",
+	"ParseConfigExpectedClosingCurlyOrComma",
+	"ParseConfigExpectedValue",
+	"ParseConfigWrongValueTypeForKey",
+	"ParseConfigEscapeSequenceLowerUTooFewCharacters",
+	"ParseConfigEscapeSequenceUpperUTooFewCharacters",
+	"ParseConfigEscapeSequenceUtfInvalidCharacter",
+	"ParseConfigEscapeSequenceUtfCodepointTooLarge",
+	"ParseConfigEscapeSequenceInvalid",
+	"ParseConfigPathTooLong",
+	"ParseConfigExpectedClosingBracket",
+	"ParseConfigExpectedEqualsOrDot",
+};
+
+const char8* tag_name(CompileError error) noexcept
+{
+	u32 ordinal = static_cast<u32>(error);
+
+	if (ordinal >= array_count(COMPILE_ERROR_NAMES))
+		ordinal = 0;
+
+	return COMPILE_ERROR_NAMES[ordinal];
+}
+
+Maybe<CompileError> compile_error_from_name(Range<char8> name) noexcept
+{
+	for (u32 ordinal = 1; ordinal != array_count(COMPILE_ERROR_NAMES); ++ordinal)
+	{
+		const char8* const curr = COMPILE_ERROR_NAMES[ordinal];
+
+		u64 i = 0;
+
+		while (i != name.count() && curr[i] == name[i])
+			i += 1;
+
+		if (i == name.count() && curr[i] == '\0')
+			return some(static_cast<CompileError>(ordinal));
+	}
+
+	return none<CompileError>();
+}

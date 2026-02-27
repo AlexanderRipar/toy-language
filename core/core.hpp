@@ -1814,6 +1814,10 @@ Range<ErrorRecord> get_errors(CoreData* core) noexcept;
 // `ErrorSink` available at that point.
 void print_error(minos::FileHandle dst, const SourceLocation* location, CompileError error, u8 tab_size) noexcept;
 
+const char8* tag_name(CompileError error) noexcept;
+
+Maybe<CompileError> compile_error_from_name(Range<char8> name) noexcept;
+
 
 
 
