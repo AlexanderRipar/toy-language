@@ -1,5 +1,0 @@
-compile-all = true
-
-std.prelude.filepath = '../../sample/std/prelude.evl'
-
-logging.diagnostics.enable = false
