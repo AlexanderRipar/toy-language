@@ -160,17 +160,17 @@ static Config dummy_config(Range<char8> filepath, bool expect_failure) noexcept
 	return config;
 }
 
-static void run_integration_test(Range<char8> filepath, bool is_std, bool expect_failure) noexcept
+static void run_integration_test(Range<char8> filepath) noexcept
 {
 	const IntegrationTestExpectation expectation = parse_integration_test_header(filepath);
 
 	TEST_BEGIN_NAMED(filepath);
 
-	const Config config = dummy_config(filepath, expect_failure);
+	const Config config = dummy_config(filepath, is_some(expectation.error));
 
 	CoreData* const core = create_core_data(&config);
 
-	TEST_EQUAL(run_compilation(core, is_std), is_none(expectation.error));
+	TEST_EQUAL(run_compilation(core, false), is_none(expectation.error));
 
 	if (is_some(expectation.error))
 	{
@@ -231,13 +231,8 @@ void integration_tests() noexcept
 
 		const Range<char8> filename = range::from_cstring(rst.filename);
 
-		// Skip files that do not have one of the test prefixes `(u|s)(t|f)_`
-		// or the suffix `.evl`.
-		if (filename.count() < 7
-		|| (filename[0] != 'u' && filename[0] != 's')
-		|| (filename[1] != 't' && filename[1] != 'f')
-		||  filename[2] != '-'
-		|| !range::mem_equal(filename.subrange(filename.count() - 4), range::from_literal_string(".evl")))
+		// Skip files that do not end in `.evl`.
+		if (filename.count() < 4 || !range::mem_equal(filename.subrange(filename.count() - 4), range::from_literal_string(".evl")))
 		{
 			status = minos::directory_enumeration_next(dir, &rst);
 
@@ -256,7 +251,7 @@ void integration_tests() noexcept
 
 		const Range<char8> path = path_buf.subrange(0, test_directory.count() + 1  + filename.count());
 
-		run_integration_test(path, filename[0] == 's', filename[1] == 'f');
+		run_integration_test(path);
 
 		status = minos::directory_enumeration_next(dir, &rst);
 	}
