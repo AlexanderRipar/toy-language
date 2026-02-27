@@ -1,3 +1,5 @@
+// success
+
 let g = func() -> u32 => {
 	let x = 5
 

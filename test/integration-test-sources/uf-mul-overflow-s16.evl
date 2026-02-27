@@ -1,3 +1,5 @@
+// ArithmeticOverflow:7:11
+
 let a: u16 = 500
 
 let b: u16 = 500

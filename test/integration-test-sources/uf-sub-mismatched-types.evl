@@ -1,3 +1,5 @@
+// NoCommonArgumentType:7:11
+
 let a: u32 = 1
 
 let b: s16 = 2

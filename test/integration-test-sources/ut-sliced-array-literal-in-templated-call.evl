@@ -1,3 +1,5 @@
+// success
+
 let f = func(T: Type, ts: []T) -> T => ts[0]
 
 let rf = f(u32, .[0x4C, 0x18][..])

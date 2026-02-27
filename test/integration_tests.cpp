@@ -5,6 +5,150 @@
 #include "../infra/range.hpp"
 #include "../core/core.hpp"
 
+struct IntegrationTestExpectation
+{
+	Maybe<CompileError> error;
+
+	bool has_line_number;
+
+	bool has_column_number;
+
+	u32 line_number;
+
+	u32 column_number;
+};
+
+static IntegrationTestExpectation parse_integration_test_header(Range<char8> filepath) noexcept
+{
+	minos::FileHandle file;
+
+	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, nullptr, false, &file))
+		panic("Failed to open integration test source file `%` (0x%[|X]).\n", filepath, minos::last_error());
+
+	minos::FileInfo file_info;
+
+	if (!minos::file_get_info(file, &file_info))
+		panic("Failed to get size integration test source file `%` (0x%[|X]).\n", filepath, minos::last_error());
+
+	char8 header_buffer[4096];
+
+	u32 bytes_read;
+
+	if (!minos::file_read(file, MutRange{ header_buffer, sizeof(header_buffer) - 1 }.as_mut_byte_range(), 0, &bytes_read))
+		panic("Failed to read header of integration test source file `%` (0x%[|X]).\n", filepath, minos::last_error());
+
+	minos::file_close(file);
+
+	header_buffer[bytes_read] = '\0';
+
+	const char8* curr = header_buffer;
+
+	while (*curr == ' ' || *curr == '\t' || *curr == '\n' || *curr == '\r')
+		curr += 1;
+
+	if (*curr != '/' || curr[1] != '/')
+		panic("Integration test source file `%` appears to be missing a header.\n", filepath);
+
+	curr += 2;
+
+	while (*curr == ' ' || *curr == '\t')
+		curr += 1;
+
+	if ((*curr < 'a' || *curr > 'z') && (*curr < 'A' || *curr > 'Z'))
+		panic("Integration test source file `%` has a malformed header.\n", filepath);
+
+	const char8* const error_name_begin = curr;
+
+	curr += 1;
+
+	while ((*curr >= 'a' && *curr <= 'z') || (*curr >= 'A' && *curr <= 'Z'))
+		curr += 1;
+
+	const char8* const error_name_end = curr;
+
+	while (*curr == ' ' || *curr == '\t')
+		curr += 1;
+
+	u32 line_number = 0;
+
+	const bool has_line_number = *curr == ':';
+
+	if (has_line_number)
+	{
+		curr += 1;
+
+		while (*curr == ' ' || *curr == '\t')
+			curr += 1;
+
+		if (*curr < '0' || *curr > '9')
+			panic("Integration test source file `%` has a malformed header.\n", filepath);
+
+		while (*curr >= '0' && *curr <= '9')
+		{
+			line_number = line_number * 10 + *curr - '0';
+
+			curr += 1;
+		}
+
+		while (*curr == ' ' || *curr == '\t')
+			curr += 1;
+	}
+
+	u32 column_number = 0;
+
+	const bool has_column_number = *curr == ':';
+
+	if (has_column_number)
+	{
+		curr += 1;
+
+		while (*curr == ' ' || *curr == '\t')
+			curr += 1;
+
+		if (*curr < '0' || *curr > '9')
+			panic("Integration test source file `%` has a malformed header.\n", filepath);
+
+		while (*curr >= '0' && *curr <= '9')
+		{
+			column_number = column_number * 10 + *curr - '0';
+
+			curr += 1;
+		}
+
+		while (*curr == ' ' || *curr == '\t')
+			curr += 1;
+	}
+
+	if (*curr != '\n' && *curr != '\r')
+		panic("Integration test source file `%` has a malformed header.\n", filepath);
+
+	const Range<char8> error_name{ error_name_begin, error_name_end };
+
+	const Range<char8> success_name = range::from_literal_string("success");
+
+	Maybe<CompileError> error;
+
+	if (error_name.count() == success_name.count() && range::mem_equal(error_name, success_name))
+	{
+		error = none<CompileError>();
+	}
+	else
+	{
+		error = compile_error_from_name(Range{ error_name_begin, error_name_end });
+
+		if (is_none(error))
+			panic("Integration test source file `%` specifies an unknown `CompileError` `%` in its header.\n", filepath, error_name);
+	}
+
+	return IntegrationTestExpectation{
+		error,
+		has_line_number,
+		has_column_number,
+		line_number,
+		column_number
+	};
+}
+
 static Config dummy_config(Range<char8> filepath, bool expect_failure) noexcept
 {
 	Config config{};
@@ -18,13 +162,45 @@ static Config dummy_config(Range<char8> filepath, bool expect_failure) noexcept
 
 static void run_integration_test(Range<char8> filepath, bool is_std, bool expect_failure) noexcept
 {
+	const IntegrationTestExpectation expectation = parse_integration_test_header(filepath);
+
 	TEST_BEGIN_NAMED(filepath);
 
 	const Config config = dummy_config(filepath, expect_failure);
 
 	CoreData* const core = create_core_data(&config);
 
-	TEST_EQUAL(!run_compilation(core, is_std), expect_failure);
+	TEST_EQUAL(run_compilation(core, is_std), is_none(expectation.error));
+
+	if (is_some(expectation.error))
+	{
+		bool has_expected_error = false;
+
+		const Range<ErrorRecord> errors = get_errors(core);
+
+		for (const ErrorRecord& error : errors)
+		{
+			if (error.error != get(expectation.error))
+				continue;
+
+			if (expectation.has_line_number)
+			{
+				const SourceLocation location = source_location_from_source_id(core, error.source_id);
+
+				if (expectation.line_number != location.line_number)
+					continue;
+
+				if (expectation.has_column_number && expectation.column_number != location.column_number)
+					continue;
+			}
+
+			has_expected_error = true;
+
+			break;
+		}
+
+		TEST_EQUAL(has_expected_error, true);
+	}
 
 	release_core_data(core);
 

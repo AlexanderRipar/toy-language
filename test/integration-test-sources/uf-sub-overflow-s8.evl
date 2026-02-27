@@ -1,3 +1,5 @@
+// ArithmeticOverflow:9:11
+
 let a: s8 = 0
 
 let b: s8 = 100

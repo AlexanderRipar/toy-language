@@ -1,1 +1,3 @@
+// success
+
 let x = std.assert(true)
