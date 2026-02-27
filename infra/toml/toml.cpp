@@ -971,7 +971,7 @@ static TomlParser init_toml_parser(Range<char8> filepath, const TreeSchemaNode* 
 
 	minos::FileHandle filehandle;
 
-	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, nullptr, false, &filehandle))
+	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, none<const minos::CompletionInitializer*>(), false, &filehandle))
 		panic("Could not open config file '%' (0x%[|X])\n", filepath, minos::last_error());
 
 	minos::FileInfo fileinfo;

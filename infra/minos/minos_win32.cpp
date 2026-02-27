@@ -58,6 +58,20 @@ static constexpr u32 MAX_COMMAND_LINE_CHARS = 32767;
 
 std::atomic<HANDLE> g_job;
 
+template<typename Handle>
+static HANDLE as_native_handle(Handle h) noexcept
+{
+	return reinterpret_cast<HANDLE>(h);
+}
+
+template<typename Handle>
+static Handle native_as(HANDLE h) noexcept
+{
+	static_assert(sizeof(Handle) == sizeof(HANDLE));
+
+	return static_cast<Handle>(reinterpret_cast<u64>(h));
+}
+
 static bool map_path(Range<char8> path, MutRange<char16> buffer, u32* out_chars = nullptr, bool remove_last_element = false) noexcept
 {
 	if (path.count() > INT32_MAX)
@@ -257,20 +271,22 @@ u32 minos::logical_processor_count() noexcept
 	return si.dwNumberOfProcessors;
 }
 
-bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_name, ThreadHandle* opt_out) noexcept
+bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_name, Maybe<ThreadHandle*> opt_out) noexcept
 {
 	static constexpr u32 MAX_THREAD_NAME_CHARS = 255;
 
-	if (opt_out != nullptr)
-		opt_out->m_rep = nullptr;
+	if (is_some(opt_out))
+		*get(opt_out) = ThreadHandle::INVALID;
 
 	if (thread_name.count() > MAX_THREAD_NAME_CHARS)
 		panic("Thread name with length % bytes exceeds maximum supported length of % bytes: %\n", thread_name.count(), MAX_THREAD_NAME_CHARS, thread_name);
 
-	ThreadHandle handle = { CreateThread(nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(proc), param, 0, nullptr) };
+	const HANDLE win32_handle = CreateThread(nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(proc), param, 0, nullptr);
 
-	if (handle.m_rep == nullptr)
+	if (win32_handle == nullptr)
 		return false;
+
+	const ThreadHandle handle = native_as<ThreadHandle>(win32_handle);
 
 	if (thread_name.count() != 0)
 	{
@@ -287,7 +303,7 @@ bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_nam
 
 		buf[chars] = '\0';
 
-		if (FAILED(SetThreadDescription(handle.m_rep, buf)))
+		if (FAILED(SetThreadDescription(win32_handle, buf)))
 		{
 			thread_close(handle);
 
@@ -295,8 +311,8 @@ bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_nam
 		}
 	}
 
-	if (opt_out != nullptr)
-		*opt_out = handle;
+	if (is_some(opt_out))
+		*get(opt_out) = handle;
 	else
 		thread_close(handle);
 
@@ -305,29 +321,29 @@ bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_nam
 
 void minos::thread_close(ThreadHandle handle) noexcept
 {
-	if (!CloseHandle(handle.m_rep))
+	if (!CloseHandle(as_native_handle(handle)))
 		panic("CloseHandle(ThreadHandle) failed (0x%[|X])\n", last_error());
 }
 
-void minos::thread_wait(ThreadHandle handle, u32* opt_out_result) noexcept
+void minos::thread_wait(ThreadHandle handle, Maybe<u32*> opt_out_result) noexcept
 {
-	if (WaitForSingleObject(handle.m_rep, INFINITE) != WAIT_OBJECT_0)
+	if (WaitForSingleObject(as_native_handle(handle), INFINITE) != WAIT_OBJECT_0)
 		panic("WaitForSingleObject(ThreadHandle) failed (0x%[|X])\n", last_error());
 
-	if (opt_out_result != nullptr)
+	if (is_some(opt_out_result))
 	{
 		DWORD exit_code;
 
-		if (!GetExitCodeThread(handle.m_rep, &exit_code))
+		if (!GetExitCodeThread(as_native_handle(handle), &exit_code))
 			panic("GetExitCodeThread failed (0x%[|X])\n", last_error());
 
-		*opt_out_result = exit_code;
+		*get(opt_out_result) = exit_code;
 	}
 }
 
-[[nodiscard]] bool minos::thread_wait_timeout(ThreadHandle handle, u32 milliseconds, u32* opt_out_result) noexcept
+[[nodiscard]] bool minos::thread_wait_timeout(ThreadHandle handle, u32 milliseconds, Maybe<u32*> opt_out_result) noexcept
 {
-	const u32 result = WaitForSingleObject(handle.m_rep, milliseconds);
+	const u32 result = WaitForSingleObject(as_native_handle(handle), milliseconds);
 
 	if (result == WAIT_TIMEOUT)
 		return false;
@@ -335,20 +351,20 @@ void minos::thread_wait(ThreadHandle handle, u32* opt_out_result) noexcept
 	if (result != WAIT_OBJECT_0)
 		panic("WaitForSingleObject(ThreadHandle) failed (0x%[|X])\n", last_error());
 
-	if (opt_out_result != nullptr)
+	if (is_some(opt_out_result))
 	{
 		DWORD exit_code;
 
-		if (!GetExitCodeThread(handle.m_rep, &exit_code))
+		if (!GetExitCodeThread(as_native_handle(handle), &exit_code))
 			panic("GetExitCodeThread failed (0x%[|X])\n", last_error());
 
-		*opt_out_result = exit_code;
+		*get(opt_out_result) = exit_code;
 	}
 
 	return true;
 }
 
-bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_mode, NewMode new_mode, AccessPattern pattern, const CompletionInitializer* opt_completion, bool inheritable, FileHandle* out) noexcept
+bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_mode, NewMode new_mode, AccessPattern pattern, Maybe<const CompletionInitializer*> opt_completion, bool inheritable, FileHandle* out) noexcept
 {
 	char16 path_utf16[MAX_PATH_CHARS + 1];
 
@@ -417,7 +433,7 @@ bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_
 		ASSERT_UNREACHABLE;
 	}
 
-	if (opt_completion != nullptr)
+	if (is_some(opt_completion))
 		native_flags |= FILE_FLAG_OVERLAPPED;
 
 	SECURITY_ATTRIBUTES security_attributes{ sizeof(SECURITY_ATTRIBUTES), nullptr, inheritable };
@@ -427,20 +443,20 @@ bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_
 	if (handle == INVALID_HANDLE_VALUE)
 		return false;
 
-	if (opt_completion != nullptr)
+	if (is_some(opt_completion))
 	{
-		if (CreateIoCompletionPort(handle, opt_completion->completion.m_rep, opt_completion->key, 0) == nullptr)
+		if (CreateIoCompletionPort(handle, as_native_handle(get(opt_completion)->completion), get(opt_completion)->key, 0) == nullptr)
 			panic("CreateIoCompletionPort failed to associate file (0x%[|X])\n", last_error());
 	}
 
-	out->m_rep = handle;
+	*out = native_as<FileHandle>(handle);
 
 	return true;
 }
 
 void minos::file_close(FileHandle handle) noexcept
 {
-	if (!CloseHandle(handle.m_rep))
+	if (!CloseHandle(as_native_handle(handle)))
 		panic("CloseHandle(FileHandle) failed (0x%[|X])\n", last_error());
 }
 
@@ -471,7 +487,7 @@ minos::FileHandle minos::standard_file_handle(StdFileName name) noexcept
 	if (handle == INVALID_HANDLE_VALUE)
 		panic("GetStdHandle failed (0x%[|X])\n", last_error());
 
-	return FileHandle{ handle };
+	return native_as<FileHandle>(handle);
 }
 
 bool minos::file_read(FileHandle handle, MutRange<byte> buffer, u64 offset, u32* out_bytes_read) noexcept
@@ -483,7 +499,7 @@ bool minos::file_read(FileHandle handle, MutRange<byte> buffer, u64 offset, u32*
 	Overlapped overlapped{};
 	overlapped.offset = offset;
 
-	if (ReadFile(handle.m_rep, buffer.begin(), bytes_to_read, &bytes_read, reinterpret_cast<OVERLAPPED*>(&overlapped)))
+	if (ReadFile(as_native_handle(handle), buffer.begin(), bytes_to_read, &bytes_read, reinterpret_cast<OVERLAPPED*>(&overlapped)))
 	{
 		*out_bytes_read = bytes_read;
 
@@ -506,7 +522,7 @@ bool minos::file_read_async(FileHandle handle, MutRange<byte> buffer, Overlapped
 {
 	const u32 bytes_to_read = buffer.count() < UINT32_MAX ? static_cast<u32>(buffer.count()) : UINT32_MAX;
 
-	if (ReadFile(handle.m_rep, buffer.begin(), bytes_to_read, nullptr, reinterpret_cast<OVERLAPPED*>(overlapped)))
+	if (ReadFile(as_native_handle(handle), buffer.begin(), bytes_to_read, nullptr, reinterpret_cast<OVERLAPPED*>(overlapped)))
 		return true;
 
 	return GetLastError() == ERROR_IO_PENDING;
@@ -526,7 +542,7 @@ bool minos::file_write(FileHandle handle, Range<byte> buffer, u64 offset) noexce
 
 	DWORD bytes_written;
 
-	return WriteFile(handle.m_rep, buffer.begin(), static_cast<u32>(buffer.count()), &bytes_written, reinterpret_cast<OVERLAPPED*>(&overlapped)) && bytes_written == buffer.count();
+	return WriteFile(as_native_handle(handle), buffer.begin(), static_cast<u32>(buffer.count()), &bytes_written, reinterpret_cast<OVERLAPPED*>(&overlapped)) && bytes_written == buffer.count();
 }
 
 bool minos::file_write_async(FileHandle handle, Range<byte> buffer, Overlapped* overlapped) noexcept
@@ -538,7 +554,7 @@ bool minos::file_write_async(FileHandle handle, Range<byte> buffer, Overlapped* 
 		return false;
 	}
 
-	if (WriteFile(handle.m_rep, buffer.begin(), static_cast<u32>(buffer.count()), nullptr, reinterpret_cast<OVERLAPPED*>(overlapped)))
+	if (WriteFile(as_native_handle(handle), buffer.begin(), static_cast<u32>(buffer.count()), nullptr, reinterpret_cast<OVERLAPPED*>(overlapped)))
 		return true;
 
 	return GetLastError() == ERROR_IO_PENDING;
@@ -548,7 +564,7 @@ bool minos::file_get_info(FileHandle handle, FileInfo* out) noexcept
 {
 	BY_HANDLE_FILE_INFORMATION info;
 
-	if (!GetFileInformationByHandle(handle.m_rep, &info))
+	if (!GetFileInformationByHandle(as_native_handle(handle), &info))
 		return false;
 
 	out->identity.volume_serial = info.dwVolumeSerialNumber;
@@ -567,10 +583,10 @@ bool minos::file_resize(FileHandle handle, u64 new_bytes) noexcept
 	LARGE_INTEGER destination;
 	destination.QuadPart = new_bytes;
 
-	if (!SetFilePointerEx(handle.m_rep, destination, nullptr, FILE_BEGIN))
+	if (!SetFilePointerEx(as_native_handle(handle), destination, nullptr, FILE_BEGIN))
 		return false;
 
-	return SetEndOfFile(handle.m_rep);
+	return SetEndOfFile(as_native_handle(handle));
 }
 
 bool minos::event_create(EventHandle* out) noexcept
@@ -582,26 +598,26 @@ bool minos::event_create(EventHandle* out) noexcept
 	if (event == nullptr)
 		return false;
 
-	out->m_rep = event;
+	*out = native_as<EventHandle>(event);
 
 	return true;
 }
 
 void minos::event_close(EventHandle handle) noexcept
 {
-	if (!CloseHandle(handle.m_rep))
+	if (!CloseHandle(as_native_handle(handle)))
 		panic("CloseHandle(EventHandle) failed (0x%[|X])\n", last_error());
 }
 
 void minos::event_wake(EventHandle handle) noexcept
 {
-	if (!SetEvent(handle.m_rep))
+	if (!SetEvent(as_native_handle(handle)))
 		panic("SetEvent failed (0x%[|X])\n", last_error());
 }
 
 void minos::event_wait(EventHandle handle) noexcept
 {
-	const u32 wait_result = WaitForSingleObject(handle.m_rep, INFINITE);
+	const u32 wait_result = WaitForSingleObject(as_native_handle(handle), INFINITE);
 
 	if (wait_result != 0)
 		panic("WaitForSingleObject(EventHandle) failed with 0x%[|X] (0x%[|X])\n", wait_result, last_error());
@@ -609,7 +625,7 @@ void minos::event_wait(EventHandle handle) noexcept
 
 bool minos::event_wait_timeout(EventHandle handle, u32 milliseconds) noexcept
 {
-	const u32 wait_result = WaitForSingleObject(handle.m_rep, milliseconds);
+	const u32 wait_result = WaitForSingleObject(as_native_handle(handle), milliseconds);
 
 	if (wait_result == 0)
 		return true;
@@ -626,21 +642,21 @@ bool minos::completion_create(CompletionHandle* out) noexcept
 	if (handle == nullptr)
 		return false;
 
-	out->m_rep = handle;
+	*out = native_as<CompletionHandle>(handle);
 
 	return true;
 }
 
 void minos::completion_close(CompletionHandle handle) noexcept
 {
-	if (!CloseHandle(handle.m_rep))
+	if (!CloseHandle(as_native_handle(handle)))
 		panic("CloseHandle(CompletionHandle) failed (0x%[|X])\n", last_error());
 }
 
 bool minos::completion_wait(CompletionHandle completion, CompletionResult* out) noexcept
 {
 	if (GetQueuedCompletionStatus(
-			completion.m_rep,
+			as_native_handle(completion),
 			reinterpret_cast<DWORD*>(&out->bytes),
 			reinterpret_cast<ULONG_PTR*>(&out->key),
 			reinterpret_cast<OVERLAPPED**>(&out->overlapped), INFINITE
@@ -895,49 +911,49 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 	if (!CloseHandle(process_info.hThread))
 		panic("CloseHandle(ThreadHandle) failed (0x%[|X])\n", last_error());
 
-	out->m_rep = process_info.hProcess;
+	*out = native_as<ProcessHandle>(process_info.hProcess);
 
 	return true;
 }
 
 void minos::process_close(ProcessHandle handle) noexcept
 {
-	if (!CloseHandle(handle.m_rep))
+	if (!CloseHandle(as_native_handle(handle)))
 		panic("CloseHandle(ProcessHandle) failed (0x%[|X])\n", last_error());
 }
 
-void minos::process_wait(ProcessHandle handle, u32* opt_out_result) noexcept
+void minos::process_wait(ProcessHandle handle, Maybe<u32*> opt_out_result) noexcept
 {
-	const u32 wait_result = WaitForSingleObject(handle.m_rep, INFINITE);
+	const u32 wait_result = WaitForSingleObject(as_native_handle(handle), INFINITE);
 
 	if (wait_result != WAIT_OBJECT_0)
 		panic("WaitForSingleObject(ProcessHandle) failed with 0x%[|X] (0x%[|X])\n", wait_result, last_error());
 
-	if (opt_out_result != nullptr)
+	if (is_some(opt_out_result))
 	{
 		DWORD exit_code;
 
-		if (!GetExitCodeProcess(handle.m_rep, &exit_code))
+		if (!GetExitCodeProcess(as_native_handle(handle), &exit_code))
 			panic("GetExitCodeProcess failed (0x%[|X])\n", last_error());
 
-		*opt_out_result = exit_code;
+		*get(opt_out_result) = exit_code;
 	}
 }
 
-bool minos::process_wait_timeout(ProcessHandle handle, u32 milliseconds, u32* opt_out_result) noexcept
+bool minos::process_wait_timeout(ProcessHandle handle, u32 milliseconds, Maybe<u32*> opt_out_result) noexcept
 {
-	const u32 wait_result = WaitForSingleObject(handle.m_rep, milliseconds);
+	const u32 wait_result = WaitForSingleObject(as_native_handle(handle), milliseconds);
 
 	if (wait_result == WAIT_OBJECT_0)
 	{
-		if (opt_out_result != nullptr)
+		if (is_some(opt_out_result))
 		{
 			DWORD exit_code;
 
-			if (!GetExitCodeProcess(handle.m_rep, &exit_code))
+			if (!GetExitCodeProcess(as_native_handle(handle), &exit_code))
 				panic("GetExitCodeProcess failed (0x%[|X])\n", last_error());
 
-			*opt_out_result = exit_code;
+			*get(opt_out_result) = exit_code;
 		}
 
 		return true;
@@ -1000,14 +1016,14 @@ bool minos::shm_create(Access access, u64 bytes, ShmHandle* out) noexcept
 	if ((access & minos::Access::Execute) == minos::Access::Execute)
 		access_flag_bits |= 2;
 
-	out->m_rep = reinterpret_cast<void*>(handle_bits | access_flag_bits);
+	*out = native_as<ShmHandle>(reinterpret_cast<void*>(handle_bits | access_flag_bits));
 
 	return true;
 }
 
 void minos::shm_close(ShmHandle handle) noexcept
 {
-	if (!CloseHandle(handle.m_rep))
+	if (!CloseHandle(as_native_handle(handle)))
 		panic("CloseHandle(ShmHandle) failed (0x%[|X])\n", last_error());
 }
 
@@ -1023,7 +1039,7 @@ void* minos::shm_reserve(ShmHandle handle, u64 offset, u64 bytes) noexcept
 
 	// Retrieve access rights set in `shm_create` call.
 
-	const u64 handle_tag_bits = reinterpret_cast<u64>(handle.m_rep);
+	const u64 handle_tag_bits = reinterpret_cast<u64>(as_native_handle(handle));
 
 	DWORD native_access = FILE_MAP_READ;
 
@@ -1033,7 +1049,7 @@ void* minos::shm_reserve(ShmHandle handle, u64 offset, u64 bytes) noexcept
 	if ((handle_tag_bits & 2) == 2)
 		native_access |= FILE_MAP_EXECUTE;
 
-	void* const ptr = MapViewOfFile(handle.m_rep, native_access, static_cast<u32>(aligned_offset >> 32), static_cast<u32>(aligned_offset), adjusted_bytes);
+	void* const ptr = MapViewOfFile(as_native_handle(handle), native_access, static_cast<u32>(aligned_offset >> 32), static_cast<u32>(aligned_offset), adjusted_bytes);
 
 	if (ptr == nullptr)
 		return nullptr;
@@ -1090,26 +1106,26 @@ bool minos::sempahore_create(u32 initial_count, SemaphoreHandle* out) noexcept
 	if (handle == nullptr)
 		return false;
 
-	out->m_rep = handle;
+	*out = native_as<SemaphoreHandle>(handle);
 
 	return true;
 }
 
 void minos::semaphore_close(SemaphoreHandle handle) noexcept
 {
-	if (!CloseHandle(handle.m_rep))
+	if (!CloseHandle(as_native_handle(handle)))
 		panic("CloseHandle(SemaphoreHandle) failed (0x%[|X])\n", last_error());
 }
 
 void minos::semaphore_post(SemaphoreHandle handle, u32 count) noexcept
 {
-	if (!ReleaseSemaphore(handle.m_rep, count, nullptr))
+	if (!ReleaseSemaphore(as_native_handle(handle), count, nullptr))
 		panic("ReleaseSemaphore failed (0x%[|X])\n", last_error());
 }
 
 void minos::semaphore_wait(SemaphoreHandle handle) noexcept
 {
-	const u32 wait_result = WaitForSingleObject(handle.m_rep, INFINITE);
+	const u32 wait_result = WaitForSingleObject(as_native_handle(handle), INFINITE);
 
 	if (wait_result != 0)
 		panic("WaitForSingleObject(SemaphoreHandle) failed with 0x%[|X] (0x%[|X])\n", wait_result, last_error());
@@ -1117,7 +1133,7 @@ void minos::semaphore_wait(SemaphoreHandle handle) noexcept
 
 bool minos::semaphore_wait_timeout(SemaphoreHandle handle, u32 milliseconds) noexcept
 {
-	const u32 wait_result = WaitForSingleObject(handle.m_rep, milliseconds);
+	const u32 wait_result = WaitForSingleObject(as_native_handle(handle), milliseconds);
 
 	if (wait_result == 0)
 		return true;
@@ -1166,7 +1182,7 @@ minos::DirectoryEnumerationStatus minos::directory_enumeration_create(Range<char
 	if (handle == INVALID_HANDLE_VALUE)
 		return last_error() == ERROR_FILE_NOT_FOUND ? DirectoryEnumerationStatus::NoMoreFiles : DirectoryEnumerationStatus::Error;
 
-	out->m_rep = handle;
+	*out = native_as<DirectoryEnumerationHandle>(handle);
 
 	while (first.cFileName[0] == '.' && (first.cFileName[1] == '\0' || (first.cFileName[1] == '.' && first.cFileName[2] == '\0')))
 	{
@@ -1183,7 +1199,7 @@ minos::DirectoryEnumerationStatus minos::directory_enumeration_next(DirectoryEnu
 {
 	WIN32_FIND_DATAW data;
 
-	if (!FindNextFileW(handle.m_rep, &data))
+	if (!FindNextFileW(as_native_handle(handle), &data))
 		return last_error() == ERROR_NO_MORE_FILES ? DirectoryEnumerationStatus::NoMoreFiles : DirectoryEnumerationStatus::Error;
 
 	make_directory_enumeration_result(&data, out);
@@ -1193,10 +1209,10 @@ minos::DirectoryEnumerationStatus minos::directory_enumeration_next(DirectoryEnu
 
 void minos::directory_enumeration_close(DirectoryEnumerationHandle handle) noexcept
 {
-	if (handle.m_rep == nullptr)
+	if (as_native_handle(handle) == nullptr)
 		return;
 
-	if (!FindClose(handle.m_rep))
+	if (!FindClose(as_native_handle(handle)))
 		panic("FindClose failed (0x%[|X])\n", last_error());
 }
 

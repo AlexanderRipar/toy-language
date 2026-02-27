@@ -4,6 +4,7 @@
 #include "../types.hpp"
 #include "../host_compiler.hpp"
 #include "../range.hpp"
+#include "../opt.hpp"
 
 namespace minos
 {
@@ -97,59 +98,49 @@ namespace minos
 		return static_cast<FileInfoMask>(static_cast<u32>(lhs) & static_cast<u32>(rhs));
 	}
 
-	struct ThreadHandle
+	enum class ThreadHandle : u64
 	{
-		void* m_rep;
+		INVALID = 0,
 	};
 
-	struct FileHandle
+	enum class FileHandle : u64
 	{
-		void* m_rep;
+		INVALID = 0,
 	};
 
-	struct EventHandle
+	enum class EventHandle : u64
 	{
-		void* m_rep;
+		INVALID = 0,
 	};
 
-	struct CompletionHandle
+	enum class CompletionHandle : u64
 	{
-		void* m_rep;
+		INVALID = 0,
 	};
 
-	struct ProcessHandle
+	enum class ProcessHandle : u64
 	{
-		void* m_rep;
+		INVALID = 0,
 	};
 
-	struct ShmHandle
+	enum class ShmHandle : u64
 	{
-		void* m_rep;
+		INVALID = 0,
 	};
 
-	struct SemaphoreHandle
+	enum class SemaphoreHandle : u64
 	{
-		void* m_rep;
+		INVALIND = 0,
 	};
 
-	struct DirectoryEnumerationHandle
+	enum class DirectoryEnumerationHandle : u64
 	{
-		void* m_rep;
+		INVALID = 0,
 	};
 
-	struct GenericHandle
+	enum class GenericHandle : u64
 	{
-		void* m_rep;
-
-		GenericHandle(ProcessHandle h) noexcept : m_rep{ h.m_rep } {}
-
-		GenericHandle(EventHandle h) noexcept : m_rep{ h.m_rep } {}
-
-		GenericHandle(FileHandle h) noexcept : m_rep{ h.m_rep } {}
-
-		GenericHandle(ShmHandle h) noexcept : m_rep{ h.m_rep } {}
-
-		GenericHandle(SemaphoreHandle h) noexcept : m_rep{ h.m_rep } {}
+		INVALID = 0,
 	};
 
 	struct FileIdentity
@@ -331,14 +322,14 @@ namespace minos
 	// characters. In case `thread_name` exceeds this length, it is truncated.
 	// If opt_out is non-null, a handle to the created thread is stored in it.
 	// This handle must be freed by a call to `minos::thread_close`.
-	[[nodiscard]] bool thread_create(thread_proc proc, void* param, Range<char8> thread_name, ThreadHandle* opt_out = nullptr) noexcept;
+	[[nodiscard]] bool thread_create(thread_proc proc, void* param, Range<char8> thread_name, Maybe<ThreadHandle*> opt_out = none<ThreadHandle*>()) noexcept;
 
 	// Closes a handle to a thread obtained from `minos::thread_create`.
 	void thread_close(ThreadHandle handle) noexcept;
 
-	void thread_wait(ThreadHandle handle, u32* opt_out_result) noexcept;
+	void thread_wait(ThreadHandle handle, Maybe<u32*> opt_out_result) noexcept;
 
-	[[nodiscard]] bool thread_wait_timeout(ThreadHandle handle, u32 milliseconds, u32* opt_out_result) noexcept;
+	[[nodiscard]] bool thread_wait_timeout(ThreadHandle handle, u32 milliseconds, Maybe<u32*> opt_out_result) noexcept;
 
 	// Opens or creates the file referred to by `filepath`.
 	//
@@ -400,7 +391,7 @@ namespace minos
 	// `minos::file_close`.
 	// If `file_create` fails, the contents of `out` are undefined and must not
 	// be passed to `minos::file_close`.
-	[[nodiscard]] bool file_create(Range<char8> filepath, Access access, ExistsMode exists_mode, NewMode new_mode, AccessPattern pattern, const CompletionInitializer* opt_completion, bool inheritable, FileHandle* out) noexcept;
+	[[nodiscard]] bool file_create(Range<char8> filepath, Access access, ExistsMode exists_mode, NewMode new_mode, AccessPattern pattern, Maybe<const CompletionInitializer*> opt_completion, bool inheritable, FileHandle* out) noexcept;
 
 	// Closes a `minos::FileHandle` obtained from a previous call to
 	// `minos::file_create`.
@@ -442,9 +433,9 @@ namespace minos
 
 	void process_close(ProcessHandle handle) noexcept;
 
-	void process_wait(ProcessHandle handle, u32* opt_out_result) noexcept;
+	void process_wait(ProcessHandle handle, Maybe<u32*> opt_out_result) noexcept;
 
-	[[nodiscard]] bool process_wait_timeout(ProcessHandle handle, u32 milliseconds, u32* opt_out_result) noexcept;
+	[[nodiscard]] bool process_wait_timeout(ProcessHandle handle, u32 milliseconds, Maybe<u32*> opt_out_result) noexcept;
 
 	[[nodiscard]] bool shm_create(Access access, u64 bytes, ShmHandle* out) noexcept;
 

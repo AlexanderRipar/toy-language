@@ -134,10 +134,10 @@ CoreData* create_core_data(const Config* config) noexcept
 
 
 
-	const minos::FileHandle config_log_file = config_open_log_file(config->logging.config, some(minos::StdFileName::StdOut));
+	const Maybe<minos::FileHandle> config_log_file = config_open_log_file(config->logging.config, some(minos::StdFileName::StdOut));
 
-	if (config_log_file.m_rep != nullptr)
-		diag::print_config(config_log_file, config);
+	if (is_some(config_log_file))
+		diag::print_config(get(config_log_file), config);
 
 
 

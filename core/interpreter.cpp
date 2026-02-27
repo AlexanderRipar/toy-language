@@ -176,13 +176,13 @@ static void log_ast(CoreData* core, AstNode* node) noexcept
 
 	const SourceLocation location = source_location_from_source_id(core, source_id);
 
-	diag::print_header(core->interp.imported_asts_log_file, "%:%:%",
+	diag::print_header(get(core->interp.imported_asts_log_file), "%:%:%",
 		location.filepath,
 		location.line_number,
 		location.column_number
 	);
 
-	diag::print_ast(core->interp.imported_asts_log_file, core, node);
+	diag::print_ast(get(core->interp.imported_asts_log_file), core, node);
 }
 
 static void log_opcodes(CoreData* core, const Opcode* code) noexcept
@@ -193,14 +193,14 @@ static void log_opcodes(CoreData* core, const Opcode* code) noexcept
 
 	const OpcodeId code_id = id_from_opcode(core, code);
 
-	diag::print_header(core->interp.imported_opcodes_log_file, "%:%:% (OpcodeId<%>)",
+	diag::print_header(get(core->interp.imported_opcodes_log_file), "%:%:% (OpcodeId<%>)",
 			location.filepath,
 			location.line_number,
 			location.column_number,
 			static_cast<u32>(code_id)
 	);
 
-	diag::print_opcodes(core->interp.imported_opcodes_log_file, core, code, true);
+	diag::print_opcodes(get(core->interp.imported_opcodes_log_file), core, code, true);
 }
 
 
@@ -4906,7 +4906,7 @@ static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, Global
 
 		const IdentifierId identifier_id = attachment_of<AstDefinitionData>(node)->identifier_id;
 
-		if (core->interp.imported_opcodes_log_file.m_rep != nullptr)
+		if (is_some(core->interp.imported_opcodes_log_file))
 			log_opcodes(core, get(initializer));
 
 		const bool is_pub = has_flag(node, AstFlag::Definition_IsPub);
@@ -4979,7 +4979,7 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 		}
 	}
 
-	if (core->interp.imported_asts_log_file.m_rep != nullptr)
+	if (is_some(core->interp.imported_asts_log_file))
 		log_ast(core, ast);
 
 	if (!type_from_ast(core, ast, type, file_index))
@@ -5460,7 +5460,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::DefinitionTypeof) - 1] = BuiltinInfo{ definition_typeof_body, definition_typeof_signature };
 
-	if (core->interp.imported_opcodes_log_file.m_rep != nullptr)
+	if (is_some(core->interp.imported_opcodes_log_file))
 	{
 		for (u32 i = 0; i != array_count(core->interp.builtin_infos); ++i)
 		{

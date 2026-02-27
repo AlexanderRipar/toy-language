@@ -581,7 +581,7 @@ ERROR:
 	return true;
 }
 
-[[nodiscard]] static minos::FileHandle m_io_uring_register_file(MinosIoUring* ring, s32 file_fd, u64 key) noexcept
+[[nodiscard]] static Maybe<minos::FileHandle> m_io_uring_register_file(MinosIoUring* ring, s32 file_fd, u64 key) noexcept
 {
 	u32 slot;
 
@@ -595,7 +595,7 @@ ERROR:
 			break;
 
 		if (!m_io_uring_grow_registered_files(ring, file_fd, &slot))
-			return { nullptr };
+			return none<minos::FileHandle>();
 
 		if (slot != 0)
 		{
@@ -622,7 +622,7 @@ ERROR:
 
 			errno = -update_ok;
 
-			return { nullptr };
+			return none<minos::FileHandle>();
 		}
 	}
 
@@ -630,17 +630,17 @@ ERROR:
 
 	const u64 full_value = static_cast<u64>(file_fd) | (static_cast<u64>(ring - g_io_urings.rings) << 32) | (static_cast<u64>(slot) << (32 + MINOS_IO_URING_MAX_COUNT_LOG2));
 
-	return { reinterpret_cast<void*>(full_value) };
+	return some(static_cast<minos::FileHandle>(full_value));
 }
 
 static void m_io_uring_unregister_file(minos::FileHandle file) noexcept
 {
-	MinosIoUring* const ring = g_io_urings.rings + ((reinterpret_cast<u64>(file.m_rep) >> 32) & (MINOS_IO_URING_MAX_COUNT - 1));
+	MinosIoUring* const ring = g_io_urings.rings + ((static_cast<u64>(file) >> 32) & (MINOS_IO_URING_MAX_COUNT - 1));
 
-	const u32 slot = (reinterpret_cast<u64>(file.m_rep) >> (32 + MINOS_IO_URING_MAX_COUNT_LOG2));
+	const u32 slot = (static_cast<u64>(file) >> (32 + MINOS_IO_URING_MAX_COUNT_LOG2));
 
 #ifndef NDEBUG
-	const s32 expected_fd = static_cast<s32>(reinterpret_cast<u64>(file.m_rep));
+	const s32 expected_fd = static_cast<s32>(static_cast<u64>(file));
 
 	const s32 actual_fd = ring->data.registered_files[slot - 1].exchange(-1, std::memory_order_release);
 
@@ -662,9 +662,9 @@ static void m_io_uring_unregister_file(minos::FileHandle file) noexcept
 
 static bool m_io_uring_submit_io(u32 opcode, minos::FileHandle handle, minos::Overlapped* overlapped, u32 bytes, void* buffer) noexcept
 {
-	MinosIoUring* const ring = g_io_urings.rings + ((reinterpret_cast<u64>(handle.m_rep) >> 32) & (MINOS_IO_URING_MAX_COUNT - 1));
+	MinosIoUring* const ring = g_io_urings.rings + ((static_cast<u64>(handle) >> 32) & (MINOS_IO_URING_MAX_COUNT - 1));
 
-	const s32 file_slot = (reinterpret_cast<u64>(handle.m_rep) >> (32 + MINOS_IO_URING_MAX_COUNT_LOG2));
+	const s32 file_slot = (static_cast<u64>(handle) >> (32 + MINOS_IO_URING_MAX_COUNT_LOG2));
 
 	ring->lock.mutex.acquire();
 
@@ -931,7 +931,7 @@ static void* trampoline_thread_proc(void* param) noexcept
 	return reinterpret_cast<void*>(data.proc(data.param));
 }
 
-bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_name, ThreadHandle* opt_out) noexcept
+bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_name, Maybe<ThreadHandle*> opt_out) noexcept
 {
 	pthread_t thread;
 
@@ -952,8 +952,8 @@ bool minos::thread_create(thread_proc proc, void* param, Range<char8> thread_nam
 	if (result != 0)
 		return false;
 
-	if (opt_out != nullptr)
-		*opt_out = { reinterpret_cast<void*>(thread) };
+	if (is_some(opt_out))
+		*get(opt_out) = static_cast<minos::ThreadHandle>(thread);
 
 	if (thread_name.count())
 	{
@@ -979,22 +979,22 @@ void minos::thread_close([[maybe_unused]] ThreadHandle handle) noexcept
 	// No-op
 }
 
-void minos::thread_wait(ThreadHandle handle, u32* opt_out_result) noexcept
+void minos::thread_wait(ThreadHandle handle, Maybe<u32*> opt_out_result) noexcept
 {
 	void* retval;
 
-	if (pthread_join(reinterpret_cast<pthread_t>(handle.m_rep), &retval) != 0)
+	if (pthread_join(reinterpret_cast<pthread_t>(static_cast<u64>(handle)), &retval) != 0)
 		panic("thread_join failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 
 	const u64 retval_int = reinterpret_cast<u64>(retval);
 
 	ASSERT_OR_IGNORE((retval_int >> 32) == 0);
 
-	if (opt_out_result != nullptr)
-		*opt_out_result = static_cast<u32>(retval_int);
+	if (is_some(opt_out_result))
+		*get(opt_out_result) = static_cast<u32>(retval_int);
 }
 
-bool minos::thread_wait_timeout(ThreadHandle handle, u32 milliseconds, u32* opt_out_result) noexcept
+bool minos::thread_wait_timeout(ThreadHandle handle, u32 milliseconds, Maybe<u32*> opt_out_result) noexcept
 {
 	void* retval;
 
@@ -1015,7 +1015,7 @@ bool minos::thread_wait_timeout(ThreadHandle handle, u32 milliseconds, u32* opt_
 		ts.tv_sec += 1;
 	}
 
-	const s32 join_ok = pthread_timedjoin_np(reinterpret_cast<pthread_t>(handle.m_rep), &retval, &ts);
+	const s32 join_ok = pthread_timedjoin_np(reinterpret_cast<pthread_t>(static_cast<u64>(handle)), &retval, &ts);
 
 	if (join_ok != 0)
 	{
@@ -1029,13 +1029,13 @@ bool minos::thread_wait_timeout(ThreadHandle handle, u32 milliseconds, u32* opt_
 
 	ASSERT_OR_IGNORE((retval_int >> 32) == 0);
 
-	if (opt_out_result != nullptr)
-		*opt_out_result = static_cast<u32>(retval_int);
+	if (is_some(opt_out_result))
+		*get(opt_out_result) = static_cast<u32>(retval_int);
 
 	return true;
 }
 
-bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_mode, NewMode new_mode, AccessPattern pattern, const CompletionInitializer* opt_completion, [[maybe_unused]] bool inheritable, FileHandle* out) noexcept
+bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_mode, NewMode new_mode, AccessPattern pattern, Maybe<const CompletionInitializer*> opt_completion, [[maybe_unused]] bool inheritable, FileHandle* out) noexcept
 {
 	if (filepath.count() > PATH_MAX)
 		return false;
@@ -1098,13 +1098,13 @@ bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_
 	if (fd == -1)
 		return false;
 
-	if (opt_completion != nullptr)
+	if (is_some(opt_completion))
 	{
-		MinosIoUring* const ring = static_cast<MinosIoUring*>(opt_completion->completion.m_rep);
+		MinosIoUring* const ring = reinterpret_cast<MinosIoUring*>(static_cast<u64>(get(opt_completion)->completion));
 
-		const FileHandle handle = m_io_uring_register_file(ring, fd, opt_completion->key);
+		const Maybe<FileHandle> handle = m_io_uring_register_file(ring, fd, get(opt_completion)->key);
 
-		if (handle.m_rep == nullptr)
+		if (is_none(handle))
 		{
 			if (close(fd) != 0)
 				panic("Failed to close fd after failing to register it with io_uring (0x%[|X] - %)\n", errno, strerror(errno));
@@ -1112,11 +1112,11 @@ bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_
 			return false;
 		}
 
-		*out = handle;
+		*out = get(handle);
 	}
 	else
 	{
-		*out = { reinterpret_cast<void*>(fd) };
+		*out = static_cast<FileHandle>(fd);
 	}
 
 	return true;
@@ -1124,7 +1124,7 @@ bool minos::file_create(Range<char8> filepath, Access access, ExistsMode exists_
 
 void minos::file_close(FileHandle handle) noexcept
 {
-	const u64 handle_value = reinterpret_cast<u64>(handle.m_rep);
+	const u64 handle_value = static_cast<u64>(handle);
 
 	if ((handle_value >> 32) != 0)
 		m_io_uring_unregister_file(handle);
@@ -1138,13 +1138,13 @@ minos::FileHandle minos::standard_file_handle(StdFileName name) noexcept
 	switch (name)
 	{
 	case StdFileName::StdIn:
-		return FileHandle{ reinterpret_cast<void*>(STDIN_FILENO) };
+		return static_cast<FileHandle>(STDIN_FILENO);
 
 	case StdFileName::StdOut:
-		return FileHandle{ reinterpret_cast<void*>(STDOUT_FILENO) };
+		return static_cast<FileHandle>(STDOUT_FILENO);
 
 	case StdFileName::StdErr:
-		return FileHandle{ reinterpret_cast<void*>(STDERR_FILENO) };
+		return static_cast<FileHandle>(STDERR_FILENO);
 
 	default:
 		ASSERT_UNREACHABLE;
@@ -1153,11 +1153,11 @@ minos::FileHandle minos::standard_file_handle(StdFileName name) noexcept
 
 bool minos::file_read(FileHandle handle, MutRange<byte> buffer, u64 offset, u32* out_bytes_read) noexcept
 {
-	ASSERT_OR_IGNORE((reinterpret_cast<u64>(handle.m_rep)) >> 32 == 0);
+	ASSERT_OR_IGNORE((static_cast<u64>(handle)) >> 32 == 0);
 
 	const u32 bytes_to_read = buffer.count() < UINT32_MAX ? static_cast<u32>(buffer.count()) : UINT32_MAX;
 
-	const s64 result = pread(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), buffer.begin(), bytes_to_read, offset);
+	const s64 result = pread(static_cast<s32>(static_cast<u64>(handle)), buffer.begin(), bytes_to_read, offset);
 
 	if (result < 0)
 		return false;
@@ -1171,7 +1171,7 @@ bool minos::file_read(FileHandle handle, MutRange<byte> buffer, u64 offset, u32*
 
 bool minos::file_read_async(FileHandle handle, MutRange<byte> buffer, Overlapped* overlapped) noexcept
 {
-	ASSERT_OR_IGNORE((reinterpret_cast<u64>(handle.m_rep)) >> 32 != 0);
+	ASSERT_OR_IGNORE((static_cast<u64>(handle)) >> 32 != 0);
 
 	const u32 bytes_to_read = buffer.count() < UINT32_MAX ? static_cast<u32>(buffer.count()) : UINT32_MAX;
 
@@ -1180,7 +1180,7 @@ bool minos::file_read_async(FileHandle handle, MutRange<byte> buffer, Overlapped
 
 bool minos::file_write(FileHandle handle, Range<byte> buffer, u64 offset) noexcept
 {
-	ASSERT_OR_IGNORE((reinterpret_cast<u64>(handle.m_rep) >> 32) == 0);
+	ASSERT_OR_IGNORE((static_cast<u64>(handle) >> 32) == 0);
 
 	if (buffer.count() > UINT32_MAX)
 	{
@@ -1191,7 +1191,7 @@ bool minos::file_write(FileHandle handle, Range<byte> buffer, u64 offset) noexce
 
 	if (offset == FILE_WRITE_APPEND)
 	{
-		const s64 end_offset = lseek(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), 0, SEEK_END);
+		const s64 end_offset = lseek(static_cast<s32>(static_cast<u64>(handle)), 0, SEEK_END);
 
 		ASSERT_OR_IGNORE(end_offset >= -1);
 
@@ -1201,17 +1201,17 @@ bool minos::file_write(FileHandle handle, Range<byte> buffer, u64 offset) noexce
 		if (end_offset == -1 && errno != ESPIPE)
 			panic("lseek failed (0x%[|X] - %)\n", errno, strerror(errno));
 
-		return write(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), buffer.begin(), buffer.count()) == static_cast<s64>(buffer.count());
+		return write(static_cast<s32>(static_cast<u64>(handle)), buffer.begin(), buffer.count()) == static_cast<s64>(buffer.count());
 	}
 	else
 	{
-		return pwrite(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), buffer.begin(), buffer.count(), offset) == static_cast<s64>(buffer.count());
+		return pwrite(static_cast<s32>(static_cast<u64>(handle)), buffer.begin(), buffer.count(), offset) == static_cast<s64>(buffer.count());
 	}
 }
 
 bool minos::file_write_async(FileHandle handle, Range<byte> buffer, Overlapped* overlapped) noexcept
 {
-	ASSERT_OR_IGNORE((reinterpret_cast<u64>(handle.m_rep) >> 32) == 0);
+	ASSERT_OR_IGNORE((static_cast<u64>(handle) >> 32) == 0);
 
 	if (buffer.count() > UINT32_MAX)
 	{
@@ -1227,7 +1227,7 @@ bool minos::file_get_info(FileHandle handle, FileInfo* out) noexcept
 {
 	struct stat info;
 
-	if (fstat(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &info) != 0)
+	if (fstat(static_cast<s32>(static_cast<u64>(handle)), &info) != 0)
 		return false;
 
 	out->identity.volume_serial = info.st_dev;
@@ -1243,7 +1243,7 @@ bool minos::file_get_info(FileHandle handle, FileInfo* out) noexcept
 
 bool minos::file_resize(FileHandle handle, u64 new_bytes) noexcept
 {
-	return ftruncate(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), new_bytes) == 0;
+	return ftruncate(static_cast<s32>(static_cast<u64>(handle)), new_bytes) == 0;
 }
 
 static s32 event_create_impl(bool is_semaphore, u32 initial_value) noexcept
@@ -1341,14 +1341,14 @@ bool minos::event_create(EventHandle* out) noexcept
 	if (fd == -1)
 		return false;
 
-	*out = { reinterpret_cast<void*>(static_cast<u64>(fd)) };
+	*out = static_cast<EventHandle>(fd);
 
 	return true;
 }
 
 void minos::event_close(EventHandle handle) noexcept
 {
-	if (close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))) != 0)
+	if (close(static_cast<s32>(static_cast<u64>(handle))) != 0)
 		panic("close(eventfd) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
@@ -1356,13 +1356,13 @@ void minos::event_wake(EventHandle handle) noexcept
 {
 	u64 increment = 1;
 
-	if (write(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &increment, sizeof(increment)) < 0)
+	if (write(static_cast<s32>(static_cast<u64>(handle)), &increment, sizeof(increment)) < 0)
 		panic("write(eventfd) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 void minos::event_wait(EventHandle handle) noexcept
 {
-	(void) event_wait_impl(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), nullptr);
+	(void) event_wait_impl(static_cast<s32>(static_cast<u64>(handle)), nullptr);
 }
 
 bool minos::event_wait_timeout(EventHandle handle, u32 milliseconds) noexcept
@@ -1371,7 +1371,7 @@ bool minos::event_wait_timeout(EventHandle handle, u32 milliseconds) noexcept
 	ts.tv_sec = milliseconds / 1000;
 	ts.tv_nsec = (milliseconds % 1000) * 1'000'000;
 
-	return event_wait_impl(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &ts);
+	return event_wait_impl(static_cast<s32>(static_cast<u64>(handle)), &ts);
 }
 
 bool minos::completion_create(CompletionHandle* out) noexcept
@@ -1381,14 +1381,14 @@ bool minos::completion_create(CompletionHandle* out) noexcept
 	if (!m_io_uring_create(&ring))
 		return false;
 
-	out->m_rep = ring;
+	*out = static_cast<CompletionHandle>(reinterpret_cast<u64>(ring));
 
 	return true;
 }
 
 void minos::completion_close(CompletionHandle handle) noexcept
 {
-	MinosIoUring* const ring = static_cast<MinosIoUring*>(handle.m_rep);
+	MinosIoUring* const ring = reinterpret_cast<MinosIoUring*>(static_cast<u64>(handle));
 
 	if (munmap(ring->lock.submit_memory, ring->lock.submit_memory_bytes) != 0)
 		panic("munmap(io_uring submit_memory) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
@@ -1410,7 +1410,7 @@ void minos::completion_close(CompletionHandle handle) noexcept
 
 bool minos::completion_wait(CompletionHandle completion, CompletionResult* out) noexcept
 {
-	MinosIoUring* const ring = static_cast<MinosIoUring*>(completion.m_rep);
+	MinosIoUring* const ring = reinterpret_cast<MinosIoUring*>(static_cast<u64>(completion));
 
 	io_uring_cqe result;
 
@@ -1482,7 +1482,7 @@ static void prepare_fds_for_exec(Range<minos::GenericHandle> inherited_handles) 
 {
 	for (minos::GenericHandle handle : inherited_handles)
 	{
-		const s32 fd = static_cast<s32>(reinterpret_cast<u64>(handle.m_rep));
+		const s32 fd = static_cast<s32>(static_cast<u64>(handle));
 
 		const s32 flags = fcntl(fd, F_GETFD);
 
@@ -1521,7 +1521,7 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 		if (fcntl(child_fd, F_SETFD, FD_CLOEXEC) != 0)
 			panic("fcntl(pidfd) failed (0x%[|X] - %)", last_error(), strerror(last_error()));
 
-		*out = { reinterpret_cast<void*>(static_cast<u64>(child_fd)) };
+		*out = static_cast<ProcessHandle>(child_fd);
 
 		return true;
 	}
@@ -1597,16 +1597,16 @@ bool minos::process_create(Range<char8> exe_path, Range<Range<char8>> command_li
 
 void minos::process_close(ProcessHandle handle) noexcept
 {
-	if (close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))) != 0)
+	if (close(static_cast<s32>(static_cast<u64>(handle))) != 0)
 		panic("close(pidfd) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
-[[nodiscard]] static bool process_wait_impl(minos::ProcessHandle handle, const timespec* opt_timeout, u32* opt_out_result) noexcept
+[[nodiscard]] static bool process_wait_impl(minos::ProcessHandle handle, const timespec* opt_timeout, Maybe<u32*> opt_out_result) noexcept
 {
 	if (opt_timeout != nullptr)
 	{
 		pollfd fd;
-		fd.fd = static_cast<s32>(reinterpret_cast<u64>(handle.m_rep));
+		fd.fd = static_cast<s32>(static_cast<u64>(handle));
 		fd.events = POLLIN;
 		fd.revents = 0;
 
@@ -1627,21 +1627,21 @@ void minos::process_close(ProcessHandle handle) noexcept
 	// WEXITED: Only wait for exited, not temporarily stopped processes.
 	// WNOWAIT: This allows multiple waits. Otherwise, only the first one would
 	//          succeed.
-	if (waitid(P_PIDFD, static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &exit_info, WEXITED | WNOWAIT) != 0)
+	if (waitid(P_PIDFD, static_cast<s32>(static_cast<u64>(handle)), &exit_info, WEXITED | WNOWAIT) != 0)
 		panic("waitid(pidfd) failed (0x%[|X] - %)\n", minos::last_error(), strerror(minos::last_error()));
 
-	if (opt_out_result != nullptr)
-		*opt_out_result = exit_info.si_status;
+	if (is_some(opt_out_result))
+		*get(opt_out_result) = exit_info.si_status;
 
 	return true;
 }
 
-void minos::process_wait(ProcessHandle handle, u32* opt_out_result) noexcept
+void minos::process_wait(ProcessHandle handle, Maybe<u32*> opt_out_result) noexcept
 {
 	(void) process_wait_impl(handle, nullptr, opt_out_result);
 }
 
-bool minos::process_wait_timeout(ProcessHandle handle, u32 milliseconds, u32* opt_out_result) noexcept
+bool minos::process_wait_timeout(ProcessHandle handle, u32 milliseconds, Maybe<u32*> opt_out_result) noexcept
 {
 	timespec ts;
 	ts.tv_sec = milliseconds / 1000;
@@ -1665,20 +1665,20 @@ bool minos::shm_create([[maybe_unused]] Access access, u64 bytes, ShmHandle* out
 		return false;
 	}
 
-	*out = { reinterpret_cast<void*>(static_cast<u64>(fd)) };
+	*out = static_cast<ShmHandle>(fd);
 
 	return true;
 }
 
 void minos::shm_close(ShmHandle handle) noexcept
 {
-	if (close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))) != 0)
+	if (close(static_cast<s32>(static_cast<u64>(handle))) != 0)
 		panic("close(memfd) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 void* minos::shm_reserve(ShmHandle handle, u64 offset, u64 bytes) noexcept
 {
-	const s32 fd = static_cast<s32>(reinterpret_cast<u64>(handle.m_rep));
+	const s32 fd = static_cast<s32>(static_cast<u64>(handle));
 
 	const u64 aligned_offset = offset & ~static_cast<u64>(page_bytes() - 1);
 
@@ -1736,14 +1736,14 @@ bool minos::sempahore_create(u32 initial_count, SemaphoreHandle* out) noexcept
 	if (fd == -1)
 		return false;
 
-	*out = { reinterpret_cast<void*>(fd) };
+	*out = static_cast<SemaphoreHandle>(fd);
 
 	return true;
 }
 
 void minos::semaphore_close(SemaphoreHandle handle) noexcept
 {
-	if (close(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep))) != 0)
+	if (close(static_cast<s32>(static_cast<u64>(handle))) != 0)
 		panic("close(eventfd semaphore) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
@@ -1751,13 +1751,13 @@ void minos::semaphore_post(SemaphoreHandle handle, u32 count) noexcept
 {
 	u64 increment = count;
 
-	if (write(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &increment, sizeof(increment)) < 0)
+	if (write(static_cast<s32>(static_cast<u64>(handle)), &increment, sizeof(increment)) < 0)
 		panic("write(eventfd semaphore) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 void minos::semaphore_wait(SemaphoreHandle handle) noexcept
 {
-	(void) event_wait_impl(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), nullptr);
+	(void) event_wait_impl(static_cast<s32>(static_cast<u64>(handle)), nullptr);
 }
 
 bool minos::semaphore_wait_timeout(SemaphoreHandle handle, u32 milliseconds) noexcept
@@ -1766,7 +1766,7 @@ bool minos::semaphore_wait_timeout(SemaphoreHandle handle, u32 milliseconds) noe
 	ts.tv_sec = milliseconds / 1000;
 	ts.tv_nsec = (milliseconds % 1000) * 1'000'000;
 
-	return event_wait_impl(static_cast<s32>(reinterpret_cast<u64>(handle.m_rep)), &ts);
+	return event_wait_impl(static_cast<s32>(handle), &ts);
 }
 
 minos::DirectoryEnumerationStatus minos::directory_enumeration_create(Range<char8> directory_path, DirectoryEnumerationHandle* out, DirectoryEnumerationResult* out_first) noexcept
@@ -1789,12 +1789,14 @@ minos::DirectoryEnumerationStatus minos::directory_enumeration_create(Range<char
 	if (dir == nullptr)
 		return DirectoryEnumerationStatus::Error;
 
-	*out = { dir };
+	const DirectoryEnumerationHandle handle = static_cast<DirectoryEnumerationHandle>(reinterpret_cast<u64>(dir));
 
-	const DirectoryEnumerationStatus first_ok = directory_enumeration_next({ dir }, out_first);
+	*out = handle;
+
+	const DirectoryEnumerationStatus first_ok = directory_enumeration_next(handle, out_first);
 
 	if (first_ok == DirectoryEnumerationStatus::Error)
-		directory_enumeration_close({ dir });
+		directory_enumeration_close(handle);
 
 	return first_ok;
 }
@@ -1818,12 +1820,12 @@ static dirent* get_non_virtual_dirent(DIR* dir) noexcept
 
 minos::DirectoryEnumerationStatus minos::directory_enumeration_next(DirectoryEnumerationHandle handle, DirectoryEnumerationResult* out) noexcept
 {
-	dirent* const entry = get_non_virtual_dirent(static_cast<DIR*>(handle.m_rep));
+	dirent* const entry = get_non_virtual_dirent(reinterpret_cast<DIR*>(static_cast<u64>(handle)));
 
 	if (entry == nullptr)
 		return errno == 0 ? DirectoryEnumerationStatus::NoMoreFiles : DirectoryEnumerationStatus::Error;
 
-	const s32 dir_fd = dirfd(static_cast<DIR*>(handle.m_rep));
+	const s32 dir_fd = dirfd(reinterpret_cast<DIR*>(static_cast<u64>(handle)));
 
 	if (dir_fd == -1)
 		return DirectoryEnumerationStatus::Error;
@@ -1856,7 +1858,7 @@ minos::DirectoryEnumerationStatus minos::directory_enumeration_next(DirectoryEnu
 
 void minos::directory_enumeration_close(DirectoryEnumerationHandle handle) noexcept
 {
-	if (closedir(static_cast<DIR*>(handle.m_rep)) != 0)
+	if (closedir(reinterpret_cast<DIR*>(static_cast<u64>(handle))) != 0)
 		panic("closedir failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 

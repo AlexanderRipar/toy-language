@@ -22,7 +22,7 @@ static IntegrationTestExpectation parse_integration_test_header(Range<char8> fil
 {
 	minos::FileHandle file;
 
-	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, nullptr, false, &file))
+	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, none<const minos::CompletionInitializer*>(), false, &file))
 		panic("Failed to open integration test source file `%` (0x%[|X]).\n", filepath, minos::last_error());
 
 	minos::FileInfo file_info;

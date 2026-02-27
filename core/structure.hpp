@@ -37,7 +37,7 @@ struct ErrorSink
 
 	ReservedVec<ErrorRecord> records;
 
-	minos::FileHandle log_file;
+	Maybe<minos::FileHandle> log_file;
 };
 
 
@@ -117,11 +117,11 @@ struct Interpreter
 
 	BuiltinInfo builtin_infos[static_cast<u8>(Builtin::MAX) - 1];
 
-	minos::FileHandle imported_asts_log_file;
+	Maybe<minos::FileHandle> imported_asts_log_file;
 
-	minos::FileHandle imported_opcodes_log_file;
+	Maybe<minos::FileHandle> imported_opcodes_log_file;
 
-	minos::FileHandle imported_types_log_file;
+	Maybe<minos::FileHandle> imported_types_log_file;
 };
 
 

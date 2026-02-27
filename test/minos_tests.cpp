@@ -81,7 +81,7 @@ static Range<char8> format_u64(u64 n, MutRange<char8> out) noexcept
 
 static Range<char8> format_handle(minos::GenericHandle handle, MutRange<char8> out) noexcept
 {
-	return format_u64(reinterpret_cast<u64>(handle.m_rep), out);
+	return format_u64(static_cast<u64>(handle), out);
 }
 
 
@@ -327,7 +327,7 @@ static void thread_create_and_thread_wait_work() noexcept
 
 	minos::ThreadHandle thread;
 
-	const bool thread_ok = minos::thread_create(thread_test_proc, &modified_value, range::from_literal_string("thread test"), &thread);
+	const bool thread_ok = minos::thread_create(thread_test_proc, &modified_value, range::from_literal_string("thread test"), some(&thread));
 
 	TEST_EQUAL(thread_ok, true);
 
@@ -335,7 +335,7 @@ static void thread_create_and_thread_wait_work() noexcept
 	{
 		u32 thread_result;
 
-		minos::thread_wait(thread, &thread_result);
+		minos::thread_wait(thread, some(&thread_result));
 
 		TEST_EQUAL(modified_value, 1);
 
@@ -353,13 +353,13 @@ static void thread_wait_timeout_succeeds_on_short_thread() noexcept
 
 	minos::ThreadHandle thread;
 
-	const bool thread_ok = minos::thread_create(wait_test_proc, reinterpret_cast<void*>(0), range::from_literal_string("empty test"), &thread);
+	const bool thread_ok = minos::thread_create(wait_test_proc, reinterpret_cast<void*>(0), range::from_literal_string("empty test"), some(&thread));
 
 	if (thread_ok)
 	{
 		u32 thread_result;
 
-		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, &thread_result), true);
+		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, some(&thread_result)), true);
 
 		TEST_EQUAL(thread_result, 42);
 
@@ -375,13 +375,13 @@ static void thread_wait_timeout_times_out_on_long_thread() noexcept
 
 	minos::ThreadHandle thread;
 
-	const bool thread_ok = minos::thread_create(wait_test_proc, reinterpret_cast<void*>(1000), range::from_literal_string("empty test"), &thread);
+	const bool thread_ok = minos::thread_create(wait_test_proc, reinterpret_cast<void*>(1000), range::from_literal_string("empty test"), some(&thread));
 
 	if (thread_ok)
 	{
 		u32 thread_result;
 
-		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, &thread_result), false);
+		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, some(&thread_result)), false);
 
 		minos::thread_close(thread);
 	}
@@ -423,7 +423,7 @@ static void address_wait_with_4_bytes_and_wake_single_with_changed_value_wakes()
 
 	minos::ThreadHandle thread;
 
-	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), &thread);
+	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), some(&thread));
 
 	TEST_EQUAL(thread_ok, true);
 
@@ -433,7 +433,7 @@ static void address_wait_with_4_bytes_and_wake_single_with_changed_value_wakes()
 
 		minos::address_wake_single(params.address);
 
-		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), true);
+		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, none<u32*>()), true);
 
 		minos::thread_close(thread);
 	}
@@ -456,7 +456,7 @@ static void address_wait_with_4_bytes_and_wake_single_with_unchanged_value_sleep
 
 	minos::ThreadHandle thread;
 
-	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait sleep"), &thread);
+	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait sleep"), some(&thread));
 
 	TEST_EQUAL(thread_ok, true);
 
@@ -464,14 +464,14 @@ static void address_wait_with_4_bytes_and_wake_single_with_unchanged_value_sleep
 	{
 		minos::address_wake_single(params.address);
 
-		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), false);
+		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, none<u32*>()), false);
 
 		// Just so we don't have a lingering thread
 		address -= 1;
 
 		minos::address_wake_single(params.address);
 
-		minos::thread_wait(thread, nullptr);
+		minos::thread_wait(thread, none<u32*>());
 
 		minos::thread_close(thread);
 	}
@@ -499,7 +499,7 @@ static void address_wait_with_2_bytes_and_wake_single_with_changed_value_wakes()
 
 	minos::ThreadHandle thread;
 
-	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), &thread);
+	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), some(&thread));
 
 	TEST_EQUAL(thread_ok, true);
 
@@ -509,7 +509,7 @@ static void address_wait_with_2_bytes_and_wake_single_with_changed_value_wakes()
 
 		minos::address_wake_single(params.address);
 
-		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), true);
+		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, none<u32*>()), true);
 
 		minos::thread_close(thread);
 	}
@@ -537,7 +537,7 @@ static void address_wait_with_2_bytes_and_wake_single_with_unchanged_value_sleep
 
 	minos::ThreadHandle thread;
 
-	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait sleep"), &thread);
+	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait sleep"), some(&thread));
 
 	TEST_EQUAL(thread_ok, true);
 
@@ -545,14 +545,14 @@ static void address_wait_with_2_bytes_and_wake_single_with_unchanged_value_sleep
 	{
 		// minos::address_wake_single(params.address);
 
-		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), false);
+		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, none<u32*>()), false);
 
 		// Just so we don't have a lingering thread
 		unaligned_2_bytes.address -= 1;
 
 		minos::address_wake_single(params.address);
 
-		minos::thread_wait(thread, nullptr);
+		minos::thread_wait(thread, none<u32*>());
 
 		minos::thread_close(thread);
 	}
@@ -580,7 +580,7 @@ static void address_wait_with_1_byte_and_wake_single_with_changed_value_wakes() 
 
 	minos::ThreadHandle thread;
 
-	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), &thread);
+	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), some(&thread));
 
 	TEST_EQUAL(thread_ok, true);
 
@@ -590,7 +590,7 @@ static void address_wait_with_1_byte_and_wake_single_with_changed_value_wakes() 
 
 		minos::address_wake_single(params.address);
 
-		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), true);
+		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, none<u32*>()), true);
 
 		minos::thread_close(thread);
 	}
@@ -618,7 +618,7 @@ static void address_wait_with_1_byte_and_wake_single_with_unchanged_value_sleeps
 
 	minos::ThreadHandle thread;
 
-	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), &thread);
+	const bool thread_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), some(&thread));
 
 	TEST_EQUAL(thread_ok, true);
 
@@ -626,14 +626,14 @@ static void address_wait_with_1_byte_and_wake_single_with_unchanged_value_sleeps
 	{
 		minos::address_wake_single(params.address);
 
-		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), false);
+		TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, none<u32*>()), false);
 
 		// Just so we don't have a lingering thread
 		unaligned_1_bytes.address -= 1;
 
 		minos::address_wake_single(params.address);
 
-		minos::thread_wait(thread, nullptr);
+		minos::thread_wait(thread, none<u32*>());
 
 		minos::thread_close(thread);
 	}
@@ -656,13 +656,13 @@ static void multiple_address_wait_and_wake_all_with_changed_value_wakes_all() no
 
 	minos::ThreadHandle thread1;
 
-	const bool thread1_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), &thread1);
+	const bool thread1_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), some(&thread1));
 
 	TEST_EQUAL(thread1_ok, true);
 
 	minos::ThreadHandle thread2;
 
-	const bool thread2_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), &thread2);
+	const bool thread2_ok = minos::thread_create(address_wait_test_proc, &params, range::from_literal_string("addr_wait wake"), some(&thread2));
 
 	TEST_EQUAL(thread2_ok, true);
 
@@ -672,9 +672,9 @@ static void multiple_address_wait_and_wake_all_with_changed_value_wakes_all() no
 
 		minos::address_wake_all(params.address);
 
-		TEST_EQUAL(minos::thread_wait_timeout(thread1, TIMEOUT_TEST_MILLIS, nullptr), true);
+		TEST_EQUAL(minos::thread_wait_timeout(thread1, TIMEOUT_TEST_MILLIS, none<u32*>()), true);
 
-		TEST_EQUAL(minos::thread_wait_timeout(thread2, TIMEOUT_TEST_MILLIS, nullptr), true);
+		TEST_EQUAL(minos::thread_wait_timeout(thread2, TIMEOUT_TEST_MILLIS, none<u32*>()), true);
 
 		minos::thread_close(thread1);
 
@@ -697,7 +697,7 @@ static void file_create_with_existing_file_path_and_read_access_opens_file() noe
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -719,7 +719,7 @@ static void file_create_with_existing_file_path_and_write_access_opens_file() no
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -741,7 +741,7 @@ static void file_create_with_existing_file_path_and_readwrite_access_opens_file(
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -763,7 +763,7 @@ static void file_create_with_existing_file_path_and_none_access_opens_file() noe
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -785,7 +785,7 @@ static void file_create_with_existing_file_path_and_unbuffered_access_pattern_op
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Unbuffered,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -807,7 +807,7 @@ static void file_create_with_existing_file_path_and_exists_mode_fail_fails() noe
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create, // Create instead of Fail as exists_mode and new_mode cannot both be Fail
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), false);
@@ -827,7 +827,7 @@ static void file_create_with_existing_file_path_and_exists_mode_truncate_succeed
 			minos::ExistsMode::Truncate,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -849,7 +849,7 @@ static void file_create_with_existing_file_path_and_exists_mode_open_succeeds() 
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -871,7 +871,7 @@ static void file_create_with_existing_directory_path_and_none_access_opens_file(
 			minos::ExistsMode::OpenDirectory,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -893,7 +893,7 @@ static void file_create_with_new_file_path_and_new_mode_fail_fails() noexcept
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), false);
@@ -913,7 +913,7 @@ static void file_create_with_new_file_path_and_new_mode_create_succeeds() noexce
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -936,7 +936,7 @@ static void file_read_on_empty_file_returns_no_bytes() noexcept
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -966,7 +966,7 @@ static void file_read_on_file_shorter_than_buffer_returns_file_size_bytes() noex
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -996,7 +996,7 @@ static void file_read_on_file_longer_than_buffer_returns_buffer_size_bytes() noe
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1026,7 +1026,7 @@ static void file_read_unbuffered_file_with_page_alignment_and_zero_offset_on_sho
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Unbuffered,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1064,7 +1064,7 @@ static void file_read_unbuffered_file_with_page_alignment_and_zero_offset_on_lon
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Unbuffered,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1102,7 +1102,7 @@ static void file_read_unbuffered_file_with_page_alignment_and_nonzero_offset_on_
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Unbuffered,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1142,7 +1142,7 @@ static void file_read_unbuffered_file_with_page_alignment_and_nonzero_offset_on_
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Unbuffered,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1183,7 +1183,7 @@ static void file_write_on_empty_file_appends_to_that_file() noexcept
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1215,7 +1215,7 @@ static void file_write_on_existing_file_part_overwrites_it() noexcept
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1263,7 +1263,7 @@ static void file_write_unbuffered_file_with_page_alignment_on_existing_file_part
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
 			minos::AccessPattern::Unbuffered,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1317,7 +1317,7 @@ static void file_write_unbuffered_file_with_page_alignment_on_unaligned_file_end
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
 			minos::AccessPattern::Unbuffered,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1376,7 +1376,7 @@ static void file_get_info_on_file_handle_returns_not_is_directory_and_file_size(
 			minos::ExistsMode::Open,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1406,7 +1406,7 @@ static void file_get_info_on_directory_handle_returns_is_directory() noexcept
 			minos::ExistsMode::OpenDirectory,
 			minos::NewMode::Fail,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1435,7 +1435,7 @@ static void file_resize_to_grow_empty_file_succeeds() noexcept
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1465,7 +1465,7 @@ static void file_resize_to_grow_file_succeeds() noexcept
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1497,7 +1497,7 @@ static void file_resize_to_shrink_file_succeeds() noexcept
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1529,7 +1529,7 @@ static void file_resize_to_empty_file_succeeds() noexcept
 			minos::ExistsMode::Fail,
 			minos::NewMode::Create,
 			minos::AccessPattern::Sequential,
-			nullptr,
+			none<const minos::CompletionInitializer*>(),
 			false,
 			&file
 		), true);
@@ -1620,15 +1620,15 @@ static void event_wait_waits_until_wake() noexcept
 	params.event = event;
 	params.has_timeout = false;
 
-	TEST_EQUAL(minos::thread_create(event_test_proc, &params, range::from_literal_string("event_wait"), &thread), true);
+	TEST_EQUAL(minos::thread_create(event_test_proc, &params, range::from_literal_string("event_wait"), some(&thread)), true);
 
-	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), false);
+	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, none<u32*>()), false);
 
 	minos::event_wake(event);
 
 	u32 thread_result;
 
-	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, &thread_result), true);
+	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, some(&thread_result)), true);
 
 	TEST_EQUAL(thread_result, 0);
 
@@ -1654,15 +1654,15 @@ static void event_wait_timeout_with_long_timeout_waits_until_wake() noexcept
 	params.has_timeout = true;
 	params.timeout_milliseconds = 1000;
 
-	TEST_EQUAL(minos::thread_create(event_test_proc, &params, range::from_literal_string("event_wait"), &thread), true);
+	TEST_EQUAL(minos::thread_create(event_test_proc, &params, range::from_literal_string("event_wait"), some(&thread)), true);
 
-	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, nullptr), false);
+	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, none<u32*>()), false);
 
 	minos::event_wake(event);
 
 	u32 thread_result;
 
-	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, &thread_result), true);
+	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, some(&thread_result)), true);
 
 	TEST_EQUAL(thread_result, 0);
 
@@ -1688,11 +1688,11 @@ static void event_wait_timeout_with_no_wakes_times_out() noexcept
 	params.has_timeout = true;
 	params.timeout_milliseconds = 20;
 
-	TEST_EQUAL(minos::thread_create(event_test_proc, &params, range::from_literal_string("event_wait"), &thread), true);
+	TEST_EQUAL(minos::thread_create(event_test_proc, &params, range::from_literal_string("event_wait"), some(&thread)), true);
 
 	u32 thread_result;
 
-	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, &thread_result), true);
+	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, some(&thread_result)), true);
 
 	TEST_EQUAL(thread_result, 1);
 
@@ -1717,12 +1717,12 @@ static void event_wait_and_wake_work_across_processes() noexcept
 
 	const Range<char8> command_line[] = {
 		range::from_literal_string("--event-wait"),
-		format_handle(event, MutRange{ event_buf }),
+		format_handle(static_cast<minos::GenericHandle>(event), MutRange{ event_buf }),
 		range::from_literal_string("--timeout"),
 		format_u64(50, MutRange{ timeout_buf }),
 	};
 
-	const minos::GenericHandle generic_event = event;
+	const minos::GenericHandle generic_event = static_cast<minos::GenericHandle>(event);
 
 	minos::ProcessHandle process;
 
@@ -1732,7 +1732,7 @@ static void event_wait_and_wake_work_across_processes() noexcept
 
 	minos::event_wake(event);
 
-	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, some(&process_result)), true);
 
 	TEST_EQUAL(process_result, 0);
 
@@ -1771,7 +1771,7 @@ static void file_create_with_completion_works() noexcept
 
 	minos::FileHandle file;
 
-	TEST_EQUAL(minos::file_create(range::from_literal_string("minos_fs_data/short_file"), minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, &completion_init, false, &file), true);
+	TEST_EQUAL(minos::file_create(range::from_literal_string("minos_fs_data/short_file"), minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, some<const minos::CompletionInitializer*>(&completion_init), false, &file), true);
 
 	minos::file_close(file);
 
@@ -1794,7 +1794,7 @@ static void file_read_with_completion_works() noexcept
 
 	minos::FileHandle file;
 
-	TEST_EQUAL(minos::file_create(range::from_literal_string("minos_fs_data/short_file"), minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, &completion_init, false, &file), true);
+	TEST_EQUAL(minos::file_create(range::from_literal_string("minos_fs_data/short_file"), minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, some<const minos::CompletionInitializer*>(&completion_init), false, &file), true);
 
 	byte buf[1024];
 
@@ -1834,7 +1834,7 @@ static void file_read_twice_with_completion_works() noexcept
 
 	minos::FileHandle file;
 
-	TEST_EQUAL(minos::file_create(range::from_literal_string("minos_fs_data/short_file"), minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, &completion_init, false, &file), true);
+	TEST_EQUAL(minos::file_create(range::from_literal_string("minos_fs_data/short_file"), minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, some<const minos::CompletionInitializer*>(&completion_init), false, &file), true);
 
 	byte buf1[1024];
 
@@ -1905,7 +1905,7 @@ static void process_create_with_empty_exe_path_and_empty_working_directory_spawn
 
 	u32 process_result;
 
-	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, some(&process_result)), true);
 
 	TEST_EQUAL(process_result, 0);
 
@@ -1929,7 +1929,7 @@ static void process_create_with_empty_exe_path_and_given_working_directory_spawn
 
 	u32 process_result;
 
-	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, some(&process_result)), true);
 
 	TEST_EQUAL(process_result, 0);
 
@@ -1952,7 +1952,7 @@ static void process_create_with_given_exe_path_and_empty_working_directory_spawn
 
 	u32 process_result;
 
-	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, some(&process_result)), true);
 
 	TEST_EQUAL(process_result, 0);
 
@@ -1975,7 +1975,7 @@ static void process_create_with_given_exe_path_and_given_working_directory_spawn
 
 	u32 process_result;
 
-	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, some(&process_result)), true);
 
 	TEST_EQUAL(process_result, 0);
 
@@ -1999,20 +1999,20 @@ static void process_create_makes_inherited_handles_available_to_child() noexcept
 
 	Range<char8> command_line[] {
 		range::from_literal_string("--event-wait"),
-		format_u64(reinterpret_cast<u64>(event.m_rep), MutRange{ event_buf }),
+		format_u64(static_cast<u64>(event), MutRange{ event_buf }),
 	};
 
 	minos::ProcessHandle process;
 
 	minos::GenericHandle inherited_handles[] = {
-		event
+		static_cast<minos::GenericHandle>(event)
 	};
 
 	TEST_EQUAL(minos::process_create({}, Range{ command_line }, {}, Range{ inherited_handles }, false, &process), true);
 
 	u32 process_result;
 
-	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, some(&process_result)), true);
 
 	TEST_EQUAL(process_result, 0);
 
@@ -2035,24 +2035,24 @@ static void process_wait_timeout_on_sleeping_process_times_out() noexcept
 
 	Range<char8> command_line[] {
 		range::from_literal_string("--event-wait"),
-		format_u64(reinterpret_cast<u64>(event.m_rep), MutRange{ event_buf }),
+		format_u64(static_cast<u64>(event), MutRange{ event_buf }),
 	};
 
 	minos::ProcessHandle process;
 
 	minos::GenericHandle inherited_handles[] = {
-		event
+		static_cast<minos::GenericHandle>(event)
 	};
 
 	TEST_EQUAL(minos::process_create({}, Range{ command_line }, {}, Range{ inherited_handles }, false, &process), true);
 
-	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, nullptr), false);
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, none<u32*>()), false);
 
 	minos::event_wake(event);
 
 	u32 process_result;
 
-	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, some(&process_result)), true);
 
 	TEST_EQUAL(process_result, 0);
 
@@ -2075,7 +2075,7 @@ static void process_wait_waits_for_process_to_exit() noexcept
 
 	Range<char8> command_line[] {
 		range::from_literal_string("--event-wait"),
-		format_u64(reinterpret_cast<u64>(event.m_rep), MutRange{ event_buf }),
+		format_u64(static_cast<u64>(event), MutRange{ event_buf }),
 		range::from_literal_string("--timeout"),
 		range::from_literal_string("1"),
 	};
@@ -2083,14 +2083,14 @@ static void process_wait_waits_for_process_to_exit() noexcept
 	minos::ProcessHandle process;
 
 	minos::GenericHandle inherited_handles[] = {
-		event
+		static_cast<minos::GenericHandle>(event)
 	};
 
 	TEST_EQUAL(minos::process_create({}, Range{ command_line }, {}, Range{ inherited_handles }, false, &process), true);
 
 	u32 process_result;
 
-	minos::process_wait(process, &process_result);
+	minos::process_wait(process, some(&process_result));
 
 	TEST_EQUAL(process_result, 2);
 
@@ -2116,9 +2116,9 @@ static void process_wait_on_exited_process_still_works() noexcept
 
 	u32 process_result;
 
-	minos::process_wait(process, nullptr);
+	minos::process_wait(process, none<u32*>());
 
-	minos::process_wait(process, &process_result);
+	minos::process_wait(process, some(&process_result));
 
 	TEST_EQUAL(process_result, 17);
 
@@ -2319,7 +2319,7 @@ static void shm_works_across_processes() noexcept
 
 	Range<char8> command_line[] = {
 		range::from_literal_string("--shm"),
-		format_handle(shm, MutRange{ arg_bufs[0] }),
+		format_handle(static_cast<minos::GenericHandle>(shm), MutRange{ arg_bufs[0] }),
 		format_u64(0, MutRange{ arg_bufs[1] }), // reserve offset
 		format_u64(1024 * 1024, MutRange{ arg_bufs[2] }), // reserve bytes
 		format_u64(0, MutRange{ arg_bufs[3] }), // commit offset
@@ -2330,7 +2330,9 @@ static void shm_works_across_processes() noexcept
 		format_u64(0xF3, MutRange{ arg_bufs[8] }), // write value
 	};
 
-	minos::GenericHandle inherited_handles[] = { shm };
+	minos::GenericHandle inherited_handles[] = {
+		static_cast<minos::GenericHandle>(shm)
+	};
 
 	minos::ProcessHandle process;
 
@@ -2338,7 +2340,7 @@ static void shm_works_across_processes() noexcept
 
 	u32 process_result;
 
-	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, some(&process_result)), true);
 
 	TEST_EQUAL(process_result, 0);
 
@@ -2493,13 +2495,13 @@ static void sem_wait_waits_until_post() noexcept
 
 	minos::ThreadHandle thread;
 
-	TEST_EQUAL(minos::thread_create(semaphore_wait_proc, &params, range::from_literal_string("semaphore_wait"), &thread), true);
+	TEST_EQUAL(minos::thread_create(semaphore_wait_proc, &params, range::from_literal_string("semaphore_wait"), some(&thread)), true);
 
 	minos::semaphore_post(semaphore, 1);
 
 	u32 thread_result;
 
-	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, &thread_result), true);
+	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, some(&thread_result)), true);
 
 	TEST_EQUAL(thread_result, 0);
 
@@ -2523,13 +2525,13 @@ static void sem_wait_timeout_with_long_timeout_waits_until_post() noexcept
 
 	minos::ThreadHandle thread;
 
-	TEST_EQUAL(minos::thread_create(semaphore_wait_proc, &params, range::from_literal_string("semaphore_wait"), &thread), true);
+	TEST_EQUAL(minos::thread_create(semaphore_wait_proc, &params, range::from_literal_string("semaphore_wait"), some(&thread)), true);
 
 	minos::semaphore_post(semaphore, 1);
 
 	u32 thread_result;
 
-	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, &thread_result), true);
+	TEST_EQUAL(minos::thread_wait_timeout(thread, TIMEOUT_TEST_MILLIS, some(&thread_result)), true);
 
 	TEST_EQUAL(thread_result, 0);
 
@@ -2552,12 +2554,14 @@ static void sem_wait_and_post_work_across_processes() noexcept
 
 	Range<char8> command_line[] = {
 		range::from_literal_string("--semaphore-wait"),
-		format_handle(semaphore, MutRange{ semaphore_buf }),
+		format_handle(static_cast<minos::GenericHandle>(semaphore), MutRange{ semaphore_buf }),
 		range::from_literal_string("--timeout"),
 		format_u64(TIMEOUT_TEST_MILLIS, MutRange{ timeout_buf }),
 	};
 
-	minos::GenericHandle inherited_handles[] = { semaphore };
+	minos::GenericHandle inherited_handles[] = {
+		static_cast<minos::GenericHandle>(semaphore)
+	};
 
 	minos::ProcessHandle process;
 
@@ -2565,7 +2569,7 @@ static void sem_wait_and_post_work_across_processes() noexcept
 
 	u32 process_result;
 
-	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, &process_result), true);
+	TEST_EQUAL(minos::process_wait_timeout(process, TIMEOUT_TEST_MILLIS, some(&process_result)), true);
 
 	TEST_EQUAL(process_result, 0);
 
@@ -2716,7 +2720,7 @@ static void path_remove_file_on_file_path_succeeds() noexcept
 
 	minos::FileHandle file;
 
-	TEST_EQUAL(minos::file_create(range::from_literal_string(TEST_DIRECTORY "/DELETEME_J"), minos::Access::Write, minos::ExistsMode::Fail, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &file), true);
+	TEST_EQUAL(minos::file_create(range::from_literal_string(TEST_DIRECTORY "/DELETEME_J"), minos::Access::Write, minos::ExistsMode::Fail, minos::NewMode::Create, minos::AccessPattern::Sequential, none<const minos::CompletionInitializer*>(), false, &file), true);
 
 	minos::file_close(file);
 
@@ -2763,7 +2767,7 @@ static void path_remove_directory_on_file_path_fails() noexcept
 
 	minos::FileHandle file;
 
-	TEST_EQUAL(minos::file_create(range::from_literal_string(TEST_DIRECTORY "/DELETEME_K"), minos::Access::Write, minos::ExistsMode::Fail, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &file), true);
+	TEST_EQUAL(minos::file_create(range::from_literal_string(TEST_DIRECTORY "/DELETEME_K"), minos::Access::Write, minos::ExistsMode::Fail, minos::NewMode::Create, minos::AccessPattern::Sequential, none<const minos::CompletionInitializer*>(), false, &file), true);
 
 	minos::file_close(file);
 

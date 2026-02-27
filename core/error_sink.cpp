@@ -206,7 +206,7 @@ void record_error(CoreData* core, const AstNode* source_node, CompileError error
 
 void print_errors(CoreData* core) noexcept
 {
-	if (core->errors.log_file.m_rep == nullptr)
+	if (is_none(core->errors.log_file))
 		return;
 
 	const Range<ErrorRecord> records = get_errors(core);
@@ -215,7 +215,7 @@ void print_errors(CoreData* core) noexcept
 	{
 		const SourceLocation location = source_location_from_source_id(core, record.source_id);
 
-		print_error(core->errors.log_file, &location, record.error, core->errors.source_tab_size);
+		print_error(get(core->errors.log_file), &location, record.error, core->errors.source_tab_size);
 	}
 }
 

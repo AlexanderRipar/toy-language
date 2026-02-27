@@ -270,7 +270,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 			out->type = first_char == 'e' ? InvocationType::Event : InvocationType::Semaphore;
 
-			out->cmd.event.handle.m_rep = reinterpret_cast<void*>(n);
+			out->cmd.event.handle = static_cast<minos::EventHandle>(n);
 
 			arg_index += 2;
 		}
@@ -325,7 +325,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 				return false;
 			}
 
-			out->cmd.shm.handle.m_rep = reinterpret_cast<void*>(n);
+			out->cmd.shm.handle = static_cast<minos::ShmHandle>(n);
 
 			if (!parse_u64(argv[arg_index + 2], &out->cmd.shm.reserve_offset))
 			{

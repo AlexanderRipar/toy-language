@@ -255,14 +255,14 @@ static SourceLocation source_location_from_source_file_and_source_id(CoreData* c
 
 	Range<char8> filepath = source_file_path(core, source_file);
 
-	if (!minos::file_get_info(source_file->file, &fileinfo))
+	if (!minos::file_get_info(get(source_file->file), &fileinfo))
 		panic("Could not get info on source file % while trying to re-read it for error reporting (0x%[|X])\n", filepath, minos::last_error());
 
 	char8* const buffer = static_cast<char8*>(malloc(fileinfo.bytes));
 
 	u32 bytes_read;
 
-	if (!minos::file_read(source_file->file, MutRange{ buffer, fileinfo.bytes }.as_mut_byte_range(), 0, &bytes_read))
+	if (!minos::file_read(get(source_file->file), MutRange{ buffer, fileinfo.bytes }.as_mut_byte_range(), 0, &bytes_read))
 		panic("Could not read source file % while trying to re-read it for error reporting (0x%[|X])\n", filepath, minos::last_error());
 
 	if (bytes_read != fileinfo.bytes)
@@ -345,7 +345,7 @@ SourceFileRead read_source_file(CoreData* core, Range<char8> filepath) noexcept
 
 	minos::FileHandle file;
 
-	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, nullptr, false, &file))
+	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, none<const minos::CompletionInitializer*>(), false, &file))
 		panic("Could not open source file % for reading (0x%[|X])\n", filepath, minos::last_error());
 
 	minos::FileInfo fileinfo;
@@ -360,13 +360,13 @@ SourceFileRead read_source_file(CoreData* core, Range<char8> filepath) noexcept
 
 	path_entry->id_entry_index = core->reader.known_files_by_identity.index_from(id_entry);
 
-	if (id_entry->data.file.m_rep != nullptr)
+	if (is_some(id_entry->data.file))
 		return SourceFileRead{ &id_entry->data, {} };
 
 	// File has not been read in yet. Do so.
 
 	id_entry->path_entry_index = core->reader.known_files_by_path.index_from(path_entry);
-	id_entry->data.file = file;
+	id_entry->data.file = some(file);
 	id_entry->data.ast = AstNodeId::INVALID;
 	id_entry->data.type = TypeId::INVALID;
 	id_entry->data.source_id_base = SourceId{ core->reader.curr_source_id_base };

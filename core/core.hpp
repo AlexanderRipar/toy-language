@@ -166,7 +166,7 @@ struct Config
 	bool compile_all = false;
 };
 
-minos::FileHandle config_open_log_file(ConfigLogFileRef file_ref, Maybe<minos::StdFileName> fallback) noexcept;
+Maybe<minos::FileHandle> config_open_log_file(ConfigLogFileRef file_ref, Maybe<minos::StdFileName> fallback) noexcept;
 
 const TreeSchemaNode* config_schema() noexcept;
 
@@ -1533,7 +1533,7 @@ enum class SourceId : u32
 struct SourceFile
 {
 	// Handle to the file.
-	minos::FileHandle file;
+	Maybe<minos::FileHandle> file;
 
 	// Id of the root of the associated AST. If the file has not yet been
 	// parsed, this is set to `AstNodeId::INVALID`.

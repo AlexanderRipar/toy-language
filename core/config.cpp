@@ -133,20 +133,20 @@ static constexpr TreeSchemaNode CONFIG = make_container_info(Range<TreeSchemaNod
 
 
 
-minos::FileHandle config_open_log_file(ConfigLogFileRef log_file, Maybe<minos::StdFileName> fallback) noexcept
+Maybe<minos::FileHandle> config_open_log_file(ConfigLogFileRef log_file, Maybe<minos::StdFileName> fallback) noexcept
 {
 	if (!log_file.enable)
-		return minos::FileHandle{};
+		return none<minos::FileHandle>();
 
 	if (log_file.filepath.count() == 0)
-		return is_some(fallback) ? minos::standard_file_handle(get(fallback)) : minos::FileHandle{};
+		return is_some(fallback) ? some(minos::standard_file_handle(get(fallback))) : none<minos::FileHandle>();
 
 	minos::FileHandle file;
 
-	if (!minos::file_create(log_file.filepath, minos::Access::Write, minos::ExistsMode::Truncate, minos::NewMode::Create, minos::AccessPattern::Sequential, nullptr, false, &file))
+	if (!minos::file_create(log_file.filepath, minos::Access::Write, minos::ExistsMode::Truncate, minos::NewMode::Create, minos::AccessPattern::Sequential, none<const minos::CompletionInitializer*>(), false, &file))
 		panic("Failed to open log file % (0x%[|X])\n", log_file.filepath, minos::last_error());
 
-	return file;
+	return some(file);
 }
 
 const TreeSchemaNode* config_schema() noexcept
