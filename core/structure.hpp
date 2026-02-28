@@ -61,7 +61,7 @@ struct alignas(8) IdentifierEntry;
 
 struct IdentifierPool
 {
-	IndexMap2<Range<char8>, IdentifierEntry> map;
+	IndexMap<Range<char8>, IdentifierEntry> map;
 };
 
 
@@ -254,9 +254,9 @@ struct SourceFileByIdEntry;
 
 struct SourceReader
 {
-	IndexMap2<Range<char8>, SourceFileByPathEntry> known_files_by_path;
+	IndexMap<Range<char8>, SourceFileByPathEntry> known_files_by_path;
 
-	IndexMap2<minos::FileIdentity, SourceFileByIdEntry> known_files_by_identity;
+	IndexMap<minos::FileIdentity, SourceFileByIdEntry> known_files_by_identity;
 
 	u32 curr_source_id_base;
 
@@ -275,7 +275,7 @@ struct alignas(8) DeduplicatedTypeInfo;
 
 struct TypePool
 {
-	IndexMap2<DeduplicatedTypeInit, DeduplicatedTypeInfo> dedup;
+	IndexMap<DeduplicatedTypeInit, DeduplicatedTypeInfo> dedup;
 
 	ReservedHeap<MIN_STRUCTURE_SIZE_LOG2, MAX_STRUCTURE_SIZE_LOG2> structures;
 

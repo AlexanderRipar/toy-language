@@ -10,7 +10,7 @@
 #include <cstring>
 
 template<typename K, typename V>
-struct IndexMap2
+struct IndexMap
 {
 private:
 
