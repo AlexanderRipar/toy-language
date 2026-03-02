@@ -250,6 +250,73 @@ static constexpr u64 SCRATCH_COMMIT_INCREMENT_COUNT = static_cast<u32>(1) << 12;
 
 
 
+static constexpr u16 min_composite_structure_alloc_size_log2(u32 min_alloc_size_log2) noexcept
+{
+	const u32 header_size = sizeof(TypeStructure) + sizeof(CompositeType);
+
+	while ((static_cast<u32>(1) << min_alloc_size_log2) < header_size)
+		min_alloc_size_log2 += 1;
+		
+	return static_cast<u16>(min_alloc_size_log2);
+}
+
+static constexpr u16 MIN_COMPOSITE_STRUCTURE_ALLOC_SIZE_LOG2 = min_composite_structure_alloc_size_log2(MIN_STRUCTURE_SIZE_LOG2);
+
+static constexpr u16 MIN_MEMBER_STRIDE = sizeof(ParameterListOrUserMemberData) < sizeof(FileMemberData)
+	? sizeof(ParameterListOrUserMemberData) < sizeof(InitializerMemberData) ? sizeof(ParameterListOrUserMemberData) : sizeof(InitializerMemberData)
+	: sizeof(FileMemberData) < sizeof(InitializerMemberData) ? sizeof(FileMemberData) : sizeof(InitializerMemberData);
+
+static constexpr u16 MAX_MEMBER_STRIDE = sizeof(ParameterListOrUserMemberData) > sizeof(FileMemberData)
+	? sizeof(ParameterListOrUserMemberData) > sizeof(InitializerMemberData) ? sizeof(ParameterListOrUserMemberData) : sizeof(InitializerMemberData)
+	: sizeof(FileMemberData) > sizeof(InitializerMemberData) ? sizeof(FileMemberData) : sizeof(InitializerMemberData);
+
+
+struct MemberCapacities
+{
+	u16 capacities[1 + (MAX_MEMBER_STRIDE - MIN_MEMBER_STRIDE) / 8][1 + MAX_STRUCTURE_SIZE_LOG2 - MIN_COMPOSITE_STRUCTURE_ALLOC_SIZE_LOG2];
+};
+
+static constexpr u16 member_capacity(u32 alloc_size, u32 member_stride) noexcept
+{
+	const u32 header_size = sizeof(TypeStructure) + sizeof(CompositeType);
+
+	const u32 remaining_size = alloc_size - header_size;
+
+	const u16 approx_capacity = static_cast<u16>(remaining_size / (member_stride + sizeof(IdentifierId)));
+
+	// If the number of members is even, we're good to go. Otherwise we need to
+	// insert an extra `IdentifierId` of padding, which might reduce our actual
+	// capacity by one.
+	if ((approx_capacity & 1) == 0)
+		return approx_capacity;
+
+	// Add an extra `IdentifierId` of padding to the size.
+	const u32 used_size = header_size + approx_capacity * (member_stride + sizeof(IdentifierId)) + sizeof(IdentifierId);
+
+	// All members fit into the allocation size, even with the extra padding.
+	if (used_size < alloc_size)
+		return approx_capacity;
+
+	// Since not all members fit, we reduce the number of members by 1, which
+	// will always fit.
+	return approx_capacity - 1;
+}
+
+static constexpr MemberCapacities member_capacities(u32 min_alloc_size_log2) noexcept
+{
+	MemberCapacities capacities{};
+
+	for (u16 i = 0; i != array_count(capacities.capacities); ++i)
+	{
+		for (u16 j = 0; j != array_count(capacities.capacities[0]); ++j)
+			capacities.capacities[i][j] = member_capacity(1 << (min_alloc_size_log2 + j), MIN_MEMBER_STRIDE + 8 * i);
+	}
+
+	return capacities;
+}
+
+
+
 static u8 members_stride_for(TypeDisposition disposition) noexcept
 {
 	static constexpr u8 MEMBER_STRIDES[] = {
@@ -266,25 +333,21 @@ static u8 members_stride_for(TypeDisposition disposition) noexcept
 
 static CompositeTypeAllocInfo composite_type_alloc_info(TypeDisposition disposition, u64 member_count) noexcept
 {
-	static constexpr u16 MEMBER_CAPACITIES[3][11] = {
-		{ 2, 6, 18, 38, 82, 166, 338, 678, 1362, 2726, 5458, },
-		{ 0, 4, 10, 22, 48, 100, 202, 406,  816, 1636, 3274, },
-		{ 0, 2,  6, 16, 34,  70, 144, 290,  582, 1168, 2338, },
-	};
+	static constexpr MemberCapacities CAPACITIES = member_capacities(MIN_COMPOSITE_STRUCTURE_ALLOC_SIZE_LOG2);
 
 	const u8 member_stride = members_stride_for(disposition);
 
-	ASSERT_OR_IGNORE(member_stride == 8 || member_stride == 16 || member_stride == 24);
+	ASSERT_OR_IGNORE(member_stride == 8 || member_stride == 16);
 
 	const u8 stride_index = (member_stride >> 3) - 1;
 
-	for (u32 i = 0; i != array_count(MEMBER_CAPACITIES[0]); ++i)
+	for (u32 i = 0; i != array_count(CAPACITIES.capacities[0]); ++i)
 	{
-		const u16 member_capacity = MEMBER_CAPACITIES[stride_index][i];
+		const u16 member_capacity = CAPACITIES.capacities[stride_index][i];
 
 		if (member_capacity >= member_count)
 		{
-			const u16 alloc_size = static_cast<u16>(64 << i);
+			const u16 alloc_size = static_cast<u16>(1) << (i + MIN_COMPOSITE_STRUCTURE_ALLOC_SIZE_LOG2);
 
 			CompositeTypeAllocInfo rst;
 			rst.alloc_size = static_cast<u16>(alloc_size - sizeof(TypeStructure));
