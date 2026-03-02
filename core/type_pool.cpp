@@ -616,7 +616,6 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 	case TypeTag::Float:
 	case TypeTag::Array:
 	case TypeTag::Func:
-	case TypeTag::Builtin:
 	case TypeTag::Composite:
 	case TypeTag::TailArray:
 	case TypeTag::Variadic:
@@ -1115,7 +1114,6 @@ static TypeEq type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type
 	}
 
 	case TypeTag::Func:
-	case TypeTag::Builtin:
 	{
 		const SignatureType2* const a_attach = reinterpret_cast<SignatureType2*>(a->attach);
 
@@ -1292,7 +1290,7 @@ TypeId type_create_array(CoreData* core, TypeTag tag, ArrayType attach) noexcept
 
 TypeId type_create_signature(CoreData* core, TypeTag tag, SignatureType2 attach) noexcept
 {
-	ASSERT_OR_IGNORE(tag == TypeTag::Builtin || tag == TypeTag::Func);
+	ASSERT_OR_IGNORE(tag == TypeTag::Func);
 
 	return type_create_deduplicated(core, tag, range::from_object_bytes(&attach));
 }
@@ -1847,7 +1845,6 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 	}
 
 	case TypeTag::Func:
-	case TypeTag::Builtin:
 	{
 		return { 16, 16, 8 };
 	}

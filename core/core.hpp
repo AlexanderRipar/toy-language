@@ -1916,9 +1916,6 @@ enum class TypeTag : u8
 	// Tag of function types. Its structure is represented by a `SignatureType`.
 	Func,
 
-	// Tag of builtin types. Its structure is represented by a `SignatureType`.
-	Builtin,
-
 	// Tag of composite types created via `create_open_type`. These have a
 	// more complex (and address-instable) representation, meaning that their
 	// structural information cannot be accessed directly. Instead their
@@ -2319,7 +2316,7 @@ const T* type_attachment_from_id(CoreData* core, TypeId type_id) noexcept
 		else if constexpr (is_same_cpp_type<T, ArrayType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Array || tag == TypeTag::ArrayLiteral);
 		else if constexpr (is_same_cpp_type<T, SignatureType2>)
-			ASSERT_OR_IGNORE(tag == TypeTag::Func || tag == TypeTag::Builtin);
+			ASSERT_OR_IGNORE(tag == TypeTag::Func);
 		else
 			static_assert(false, "Unexpected attachment passed to type_attachment_from_id");
 	#endif // !NDEBUG

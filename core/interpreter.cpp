@@ -740,7 +740,6 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 	case TypeTag::Float:
 	case TypeTag::Array:
 	case TypeTag::Func:
-	case TypeTag::Builtin:
 	case TypeTag::Composite:
 	case TypeTag::TailArray:
 	case TypeTag::Variadic:
@@ -1078,7 +1077,6 @@ static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Ra
 	case TypeTag::Definition:
 	case TypeTag::Undefined:
 	case TypeTag::Func:
-	case TypeTag::Builtin:
 	case TypeTag::TailArray:
 	case TypeTag::CompositeLiteral:
 	case TypeTag::Variadic:
@@ -2432,7 +2430,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 	const TypeTag top_type_tag = type_tag_from_id(core, top_type);
 
-	if (top_type_tag != TypeTag::Func && top_type_tag != TypeTag::Builtin)
+	if (top_type_tag != TypeTag::Func)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	SignatureType2 signature = *type_attachment_from_id<SignatureType2>(core, top_type);
