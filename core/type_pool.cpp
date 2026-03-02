@@ -1209,7 +1209,7 @@ MemoryRequirements type_pool_memory_requirements([[maybe_unused]] const Config* 
 	reqs.private_reserve = DEDUP_LOOKUPS_RESERVE + DEDUP_VALUES_RESERVE + SCRATCH_RESERVE;
 	reqs.id_requirements_count = 1;
 	reqs.id_requirements[0].reserve = STRUCTURES_RESERVE;
-	reqs.id_requirements[0].alignment = alignof(TypeStructure);
+	reqs.id_requirements[0].alignment = 1 << MIN_STRUCTURE_SIZE_LOG2;
 
 	return reqs;
 }
