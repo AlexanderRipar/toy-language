@@ -269,13 +269,15 @@ static constexpr u32 MIN_STRUCTURE_SIZE_LOG2 = 4;
 
 static constexpr u32 MAX_STRUCTURE_SIZE_LOG2 = 12;
 
-struct DeduplicatedTypeInit;
+struct alignas(8) HolotypeInit;
 
-struct alignas(8) DeduplicatedTypeInfo;
+struct alignas(8) TypeStructure;
+
+struct Holotype;
 
 struct TypePool
 {
-	IndexMap<DeduplicatedTypeInit, DeduplicatedTypeInfo> dedup;
+	IndexMap<HolotypeInit, Holotype> holotypes;
 
 	ReservedHeap<MIN_STRUCTURE_SIZE_LOG2, MAX_STRUCTURE_SIZE_LOG2> structures;
 

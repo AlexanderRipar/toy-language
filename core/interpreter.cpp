@@ -2126,7 +2126,7 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 	CTValue* value = core->interp.values.end() - value_count;
 
-	const TypeId parameter_list_type = type_create_composite(core, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
+	TypeId parameter_list_type = type_create_composite(core, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
 
 	for (u32 i = 0; i != parameter_count; ++i)
 	{
@@ -2202,6 +2202,8 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 			ASSERT_UNREACHABLE;
 	}
 
+	parameter_list_type = type_seal_composite(core, parameter_list_type, 0, 0, 0);
+
 	if (type_tag_from_id(core, value->type) != TypeTag::Type)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
@@ -2258,7 +2260,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 	CTValue* value = core->interp.values.end() - value_count;
 
-	const TypeId parameter_list_type = type_create_composite(core, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
+	TypeId parameter_list_type = type_create_composite(core, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
 
 	for (u32 i = 0; i != parameter_count; ++i)
 	{
@@ -2347,6 +2349,8 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 				ASSERT_UNREACHABLE;
 		}
 	}
+
+	parameter_list_type = type_seal_composite(core, parameter_list_type, 0, 0, 0);
 
 	SignatureType2 attach{};
 	attach.parameter_list_type_id = parameter_list_type;
@@ -2513,7 +2517,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 	ArgumentPack* const argument_pack = core->interp.argument_packs.reserve();
 	argument_pack->parameter_list_type = templated_mask == 0
 		? signature.parameter_list_type_id
-		: type_copy_composite(core, signature.parameter_list_type_id, signature.parameter_count, true);
+		: type_copy_templated_parameter_list(core, signature.parameter_list_type_id);
 	argument_pack->return_type.completion = signature.return_type.completion_id;
 	argument_pack->scope_first_member_index = core->interp.scope_members.used();
 	argument_pack->count = signature.parameter_count;
@@ -5182,7 +5186,7 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 
 static TypeId make_func_type_from_array(CoreData* core, TypeId return_type, u8 parameter_count, const BuiltinParamInfo* params) noexcept
 {
-	const TypeId parameter_list_type = type_create_composite(core, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
+	TypeId parameter_list_type = type_create_composite(core, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
 
 	for (u8 i = 0; i != parameter_count; ++i)
 	{
@@ -5200,8 +5204,7 @@ static TypeId make_func_type_from_array(CoreData* core, TypeId return_type, u8 p
 			ASSERT_UNREACHABLE;
 	}
 
-	type_seal_composite(core, parameter_list_type, 0, 0, 0);
-
+	parameter_list_type = type_seal_composite(core, parameter_list_type, 0, 0, 0);
 
 	SignatureType2 signature_type{};
 	signature_type.parameter_list_type_id = parameter_list_type;

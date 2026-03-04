@@ -2217,7 +2217,7 @@ void type_set_templated_parameter_list_member_info(CoreData* core, TypeId type_i
 
 void type_set_file_member_info(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, ForeverValueId value_id) noexcept;
 
-TypeId type_copy_composite(CoreData* core, TypeId type_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
+TypeId type_copy_templated_parameter_list(CoreData* core, TypeId type_id) noexcept;
 
 // Retrieves the number of members in the type referenced by `type_id`, which
 // must reference a sealed composite type.
