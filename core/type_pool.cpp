@@ -537,6 +537,8 @@ static bool fill_member_info(const CompositeType* composite, u16 rank, const voi
 	ASSERT_UNREACHABLE;
 }
 
+
+
 static TypeId id_from_structure(const CoreData* core, const TypeStructure* structure) noexcept
 {
 	const TypeId id = static_cast<TypeId>(reinterpret_cast<const u64*>(structure) - reinterpret_cast<const u64*>(core->types.structures.begin()));
@@ -576,6 +578,8 @@ static const TypeStructure* follow_indirection(CoreData* core, const TypeStructu
 
 	return dir;
 }
+
+
 
 static TypeStructure* make_structure(CoreData* core, TypeTag tag, Range<byte> attach, u64 reserve_size, SourceId distinct_source_id) noexcept
 {
@@ -620,6 +624,8 @@ static TypeId type_create_deduplicated(CoreData* core, TypeTag tag, Range<byte> 
 	return core->types.dedup.value_from(init, hash)->type_id;
 }
 
+
+
 static void unify_holotype(TypeStructure* a, TypeStructure* b) noexcept
 {
 	const TypeId h_a = static_cast<TypeId>(a->holotype_id_bits);
@@ -653,6 +659,8 @@ static void unify_holotype_with_indirection(TypeStructure* a, TypeStructure* ind
 		b->holotype_id_bits = static_cast<u32>(h_a);
 	}
 }
+
+
 
 static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, TypeId from_type_id, TypeId to_type_id) noexcept
 {
@@ -856,6 +864,8 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 
 	ASSERT_UNREACHABLE;
 }
+
+
 
 static void eq_state_init(EqualityState* out) noexcept
 {
@@ -1260,6 +1270,221 @@ static TypeEq type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type
 	}
 
 	ASSERT_UNREACHABLE;
+}
+
+
+
+static bool is_noncyclic_type(CoreData* core, TypeId id) noexcept
+{
+	const TypeStructure* const structure = structure_from_id(core, id);
+
+	const TypeTag tag = static_cast<TypeTag>(structure->tag_bits);
+
+	return tag != TypeTag::INDIRECTION
+	    && tag != TypeTag::Composite
+	    && tag != TypeTag::CompositeLiteral
+	    && tag != TypeTag::Func;
+}
+
+static u32 hash_type_by_id(CoreData* core, u32 hash, TypeId type) noexcept;
+
+static u32 hash_composite_type_members(CoreData* core, u32 hash, const CompositeType* composite, u32 count, const void* data) noexcept
+{
+	switch (composite->disposition)
+	{
+	case TypeDisposition::Initializer:
+	{
+		const InitializerMemberData* const members = static_cast<const InitializerMemberData*>(data);
+
+		for (u32 i = 0; i != count; ++i)
+		{
+			const TypeId member_type = static_cast<TypeId>(members[i].type_and_flags.type_id_bits);
+
+			if (is_noncyclic_type(core, member_type))
+				hash = hash_type_by_id(core, hash, member_type);
+		}
+
+		return hash;
+	}
+
+	case TypeDisposition::File:
+	{
+		// Since the hash of the `distinct_source_id` of the enclosing
+		// `TypeStructure` is already unique for file types, there is no need
+		// to add more data to the mix.
+		return hash;
+	}
+
+	case TypeDisposition::ParameterList:
+	{
+		const ParameterListOrUserMemberData* const members = static_cast<const ParameterListOrUserMemberData*>(data);
+
+		for (u32 i = 0; i != count; ++i)
+		{
+			// Skip templated members.
+			if (members[i].type_and_flags.is_pending)
+				continue;
+
+			const TypeId member_type = static_cast<TypeId>(members[i].type_and_flags.type_id_bits);
+
+			if (is_noncyclic_type(core, member_type))
+				hash = hash_type_by_id(core, hash, member_type);
+		}
+
+		return hash;
+	}
+
+	case TypeDisposition::User:
+	{
+		const ParameterListOrUserMemberData* const members = static_cast<const ParameterListOrUserMemberData*>(data);
+
+		for (u32 i = 0; i != count; ++i)
+		{
+			ASSERT_OR_IGNORE(!members[i].type_and_flags.is_pending);
+
+			const TypeId member_type = static_cast<TypeId>(members[i].type_and_flags.type_id_bits);
+
+			if (is_noncyclic_type(core, member_type))
+				hash = hash_type_by_id(core, hash, member_type);
+		}
+
+		return hash;
+	}
+
+	case TypeDisposition::INVALID:
+		; // Fallthrough to unreachable.
+	}
+
+	ASSERT_UNREACHABLE;
+}
+
+static u32 hash_composite_type(CoreData* core, u32 hash, const CompositeType* attach) noexcept
+{
+	if (attach->is_open)
+		panic("Tried hashing open composite type.\n");
+
+	CompositeMembers members = composite_members(attach);
+
+	for (u32 i = 0; i != members.count; ++i)
+		hash = fnv1a_step(hash, range::from_object_bytes(&members.names[i]));
+
+	return hash_composite_type_members(core, hash, attach, members.count, members.members);
+}
+
+static u32 hash_numeric_type([[maybe_unused]] CoreData* core, u32 hash, const NumericType* attach) noexcept
+{
+	hash = fnv1a_step(hash, static_cast<byte>(attach->is_signed));
+
+	return fnv1a_step(hash, range::from_object_bytes(&attach->bits));
+}
+
+static u32 hash_reference_type([[maybe_unused]] CoreData* core, u32 hash, const ReferenceType* attach) noexcept
+{
+	const byte flags = (static_cast<byte>(attach->is_multi))
+	                 | (static_cast<byte>(attach->is_mut) << 1)
+	                 | (static_cast<byte>(attach->is_opt) << 2);
+
+	hash = fnv1a_step(hash, flags);
+
+	return fnv1a_step(hash, range::from_object_bytes(&attach->referenced_type_id));
+}
+
+static u32 hash_array_type(CoreData* core, u32 hash, const ArrayType* attach) noexcept
+{
+	hash = fnv1a_step(hash, range::from_object_bytes(&attach->element_count));
+
+	if (is_none(attach->element_type))
+		return hash;
+
+	return hash_type_by_id(core, hash, get(attach->element_type));
+}
+
+static u32 hash_signature_type(CoreData* core, u32 hash, const SignatureType2* attach) noexcept
+{
+	const TypeStructure* const parameter_list_structure = structure_from_id(core, attach->parameter_list_type_id);
+
+	ASSERT_OR_IGNORE(static_cast<TypeTag>(parameter_list_structure->tag_bits) == TypeTag::Composite);
+
+	const CompositeType* const parameter_list_type = reinterpret_cast<const CompositeType*>(parameter_list_structure->attach);
+
+	ASSERT_OR_IGNORE(parameter_list_type->disposition == TypeDisposition::ParameterList);
+
+	hash = hash_composite_type(core, hash, parameter_list_type);
+
+	if (!attach->has_templated_return_type)
+		hash = hash_type_by_id(core, hash, attach->return_type.type_id);
+
+	if (is_some(attach->closure_id))
+		TODO("Implement hashing of closures");
+
+	const byte flags = (static_cast<byte>(attach->is_func))
+	                 | (static_cast<byte>(attach->has_templated_parameter_list) << 1)
+	                 | (static_cast<byte>(attach->has_templated_return_type) << 2);
+
+	hash = fnv1a_step(hash, flags);
+
+	return fnv1a_step(hash, static_cast<byte>(attach->parameter_count));
+}
+
+static u32 hash_type_structure(CoreData* core, u32 hash, const TypeStructure* structure) noexcept
+{
+	const TypeTag tag = static_cast<TypeTag>(structure->tag_bits);
+
+	hash = fnv1a_step(hash, static_cast<byte>(tag));
+
+	hash = fnv1a_step(hash, range::from_object_bytes(&structure->distinct_source_id));
+
+	switch (tag)
+	{
+	case TypeTag::Void:
+	case TypeTag::Type:
+	case TypeTag::CompInteger:
+	case TypeTag::CompFloat:
+	case TypeTag::Boolean:
+	case TypeTag::TypeInfo:
+	case TypeTag::TypeBuilder:
+	case TypeTag::Divergent:
+	case TypeTag::Undefined:
+		return hash;
+
+	case TypeTag::Integer:
+	case TypeTag::Float:
+		return hash_numeric_type(core, hash, reinterpret_cast<const NumericType*>(structure->attach));
+
+	case TypeTag::Slice:
+	case TypeTag::Ptr:
+	case TypeTag::TailArray:
+		return hash_reference_type(core, hash, reinterpret_cast<const ReferenceType*>(structure->attach));
+
+	case TypeTag::Array:
+	case TypeTag::ArrayLiteral:
+		return hash_array_type(core, hash, reinterpret_cast<const ArrayType*>(structure->attach));
+
+	case TypeTag::Func:
+		return hash_signature_type(core, hash, reinterpret_cast<const SignatureType2*>(structure->attach));
+
+	case TypeTag::Composite:
+	case TypeTag::CompositeLiteral:
+		return hash_composite_type(core, hash, reinterpret_cast<const CompositeType*>(structure->attach));
+
+	case TypeTag::Variadic:
+	case TypeTag::Definition:
+	case TypeTag::Trait:
+		TODO("Implement `type_hash` for Variadic, Definition and Trait");
+
+	case TypeTag::INVALID:
+	case TypeTag::INDIRECTION:
+		; // Fallthrough to unreachable.
+	}
+
+	ASSERT_UNREACHABLE;
+}
+
+static u32 hash_type_by_id(CoreData* core, u32 hash, TypeId id) noexcept
+{
+	const TypeStructure* const structure = follow_indirection(core, structure_from_id(core, id));
+
+	return hash_type_structure(core, hash, structure);
 }
 
 
