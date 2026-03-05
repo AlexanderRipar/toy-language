@@ -95,7 +95,7 @@ struct alignas(8) ParameterListOrUserMemberData
 	s64 offset;
 };
 
-struct CompositeMembers
+struct CompositeMemberInfo
 {
 	TypeDisposition disposition;
 
@@ -362,9 +362,9 @@ static CompositeTypeAllocInfo composite_type_alloc_info(TypeDisposition disposit
 	ASSERT_UNREACHABLE;
 }
 
-static CompositeMembers composite_members(CompositeType* composite) noexcept
+static CompositeMemberInfo composite_members(CompositeType* composite) noexcept
 {
-	CompositeMembers result;
+	CompositeMemberInfo result;
 	result.disposition = composite->disposition;
 	result.member_stride = members_stride_for(composite->disposition);
 	result.count = composite->member_used;
@@ -374,12 +374,12 @@ static CompositeMembers composite_members(CompositeType* composite) noexcept
 	return result;
 }
 
-static CompositeMembers composite_members(const CompositeType* composite) noexcept
+static CompositeMemberInfo composite_members(const CompositeType* composite) noexcept
 {
 	return composite_members(const_cast<CompositeType*>(composite));
 }
 
-static void composite_realloc(CoreData* core, TypeStructure* indirect_structure, TypeStructure** inout_direct_structure, CompositeType** inout_composite, CompositeMembers* inout_members) noexcept
+static void composite_realloc(CoreData* core, TypeStructure* indirect_structure, TypeStructure** inout_direct_structure, CompositeType** inout_composite, CompositeMemberInfo* inout_members) noexcept
 {
 	ASSERT_OR_IGNORE(!(*inout_composite)->is_fixed);
 
@@ -407,9 +407,9 @@ static void composite_realloc(CoreData* core, TypeStructure* indirect_structure,
 
 	new_composite->member_capacity = alloc_info.member_capacity;
 
-	const CompositeMembers old_members = *inout_members;
+	const CompositeMemberInfo old_members = *inout_members;
 
-	const CompositeMembers new_members = composite_members(new_composite);
+	const CompositeMemberInfo new_members = composite_members(new_composite);
 
 	memcpy(new_members.names, old_members.names, old_member_capacity * sizeof(IdentifierId));
 
@@ -424,12 +424,12 @@ static void composite_realloc(CoreData* core, TypeStructure* indirect_structure,
 	core->types.structures.dealloc(to_dealloc);
 }
 
-static void* member_at(const CompositeMembers* members, u32 index) noexcept
+static void* member_at(const CompositeMemberInfo* members, u32 index) noexcept
 {
 	return static_cast<byte*>(members->members) + static_cast<u64>(members->member_stride) * index;
 }
 
-static bool find_member_by_name(const CompositeMembers* members, IdentifierId name, u16* out_rank, const void** out_data) noexcept
+static bool find_member_by_name(const CompositeMemberInfo* members, IdentifierId name, u16* out_rank, const void** out_data) noexcept
 {
 	for (u32 i = 0; i != members->count; ++i)
 	{
@@ -858,7 +858,7 @@ static u32 hash_composite_type(CoreData* core, u32 hash, SeenSet* seen, const Co
 	if (attach->is_open)
 		return 0;
 
-	CompositeMembers members = composite_members(attach);
+	CompositeMemberInfo members = composite_members(attach);
 
 	for (u32 i = 0; i != members.count; ++i)
 		hash = fnv1a_step(hash, range::from_object_bytes(&members.names[i])) | 1;
@@ -1107,9 +1107,9 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 
 		u32 to_rank = 0;
 
-		const CompositeMembers from_members = composite_members(from_attach);
+		const CompositeMemberInfo from_members = composite_members(from_attach);
 
-		const CompositeMembers to_members = composite_members(to_attach);
+		const CompositeMemberInfo to_members = composite_members(to_attach);
 
 		// Check whether all members in `from` have a corresponding non-global
 		// member in `to` of a type they can be converted to.
@@ -1360,9 +1360,9 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 			return false;
 		}
 
-		const CompositeMembers a_members = composite_members(a_attach);
+		const CompositeMemberInfo a_members = composite_members(a_attach);
 
-		const CompositeMembers b_members = composite_members(b_attach);
+		const CompositeMemberInfo b_members = composite_members(b_attach);
 
 		for (u16 rank = 0; rank != a_attach->member_used; ++rank)
 		{
@@ -1838,7 +1838,7 @@ bool type_add_composite_member(CoreData* core, TypeId type_id, MemberInit init) 
 
 	ASSERT_OR_IGNORE(init.name != IdentifierId::INVALID || composite->disposition == TypeDisposition::Initializer);
 
-	CompositeMembers members = composite_members(composite);
+	CompositeMemberInfo members = composite_members(composite);
 
 	if (composite->member_capacity == composite->member_used)
 		composite_realloc(core, structure, &direct_structure, &composite, &members);
@@ -1929,7 +1929,7 @@ void type_add_file_member(CoreData* core, TypeId type_id, IdentifierId name, Opc
 
 	ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::File);
 
-	CompositeMembers members = composite_members(composite);
+	CompositeMemberInfo members = composite_members(composite);
 
 	if (composite->member_capacity == composite->member_used)
 		composite_realloc(core, structure, &direct_structure, &composite, &members);
@@ -1963,7 +1963,7 @@ void type_add_templated_parameter_list_member(CoreData* core, TypeId type_id, Id
 
 	ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::ParameterList);
 
-	CompositeMembers members = composite_members(composite);
+	CompositeMemberInfo members = composite_members(composite);
 
 	if (composite->member_capacity == composite->member_used)
 		composite_realloc(core, structure, &direct_structure, &composite, &members);
@@ -1998,7 +1998,7 @@ void type_set_file_member_info(CoreData* core, TypeId type_id, u16 rank, TypeId 
 
 	ASSERT_OR_IGNORE(rank < composite->member_used);
 
-	const CompositeMembers members = composite_members(composite);
+	const CompositeMemberInfo members = composite_members(composite);
 
 	FileMemberData* const member = static_cast<FileMemberData*>(member_at(&members, rank));
 
@@ -2025,7 +2025,7 @@ void type_set_templated_parameter_list_member_info(CoreData* core, TypeId type_i
 
 	ASSERT_OR_IGNORE(rank < composite->member_used);
 
-	const CompositeMembers members = composite_members(composite);
+	const CompositeMemberInfo members = composite_members(composite);
 
 	const TypeMetrics metrics = type_metrics_from_id(core, member_type_id);
 
@@ -2071,9 +2071,9 @@ TypeId type_copy_templated_parameter_list(CoreData* core, TypeId type_id) noexce
 	new_composite->is_fixed = true;
 	new_composite->member_capacity = alloc_info.member_capacity;
 
-	const CompositeMembers old_members = composite_members(old_composite);
+	const CompositeMemberInfo old_members = composite_members(old_composite);
 
-	const CompositeMembers new_members = composite_members(new_composite);
+	const CompositeMemberInfo new_members = composite_members(new_composite);
 
 	memcpy(new_members.members, old_members.members, old_members.count * old_members.member_stride);
 
@@ -2347,7 +2347,7 @@ bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberIn
 
 	ASSERT_OR_IGNORE(composite->member_used > rank);
 
-	const CompositeMembers members = composite_members(composite);
+	const CompositeMemberInfo members = composite_members(composite);
 
 	return fill_member_info(composite, rank, member_at(&members, rank), out_info, out_completion_id);
 }
@@ -2362,7 +2362,7 @@ MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, Identif
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
-	const CompositeMembers members = composite_members(composite);
+	const CompositeMemberInfo members = composite_members(composite);
 
 	u16 rank;
 
@@ -2386,7 +2386,7 @@ IdentifierId type_member_name_by_rank(CoreData* core, TypeId type_id, u16 rank) 
 
 	ASSERT_OR_IGNORE(composite->member_used > rank);
 
-	const CompositeMembers members = composite_members(composite);
+	const CompositeMemberInfo members = composite_members(composite);
 
 	return members.names[rank];
 }
@@ -2454,7 +2454,7 @@ MemberIterator members_of(CoreData* core, TypeId type_id) noexcept
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(direct_structure->attach);
 
-	const CompositeMembers members = composite_members(composite);
+	const CompositeMemberInfo members = composite_members(composite);
 
 	MemberIterator it;
 	it.structure = composite->member_used == 0 ? nullptr : composite->is_fixed ? direct_structure : structure;
@@ -2476,7 +2476,7 @@ bool next(MemberIterator* it, MemberInfo* out_info, OpcodeId* out_completion_id)
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
-	CompositeMembers members;
+	CompositeMemberInfo members;
 
 	if (it->names == reinterpret_cast<const IdentifierId*>(composite + 1))
 	{
