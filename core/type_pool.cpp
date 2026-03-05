@@ -1284,9 +1284,26 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 
 	const u32 b_seen_index = seen_set_push(core, b_seen, type_id_b);
 
+	// If the returned back-loop indices are unequal, the types we are
+	// currently comparing are also unequal.
+	//
+	// TODO: This does not actually necessarily hold, if the back-loop at the
+	// lower non-zero index would compare equal to the type at that index in
+	// the other `SeenSet`. This is however super-duper exotic, and I'm not
+	// even sure how it could be made to happen right now, even though it seems
+	// possible to concoct something in theory.
 	if (a_seen_index != b_seen_index)
 		return false;
 
+	// If both types reference a type we have already seen, and that type is
+	// the same number of steps removed from both types, we consider the types
+	// equal. If the types in question turn out to be different at a later
+	// point, e.g. by having different later members, the comparison as a whole
+	// will still return `false`. Otherwise, our assumption that the
+	// back-references were equal holds and we can correctly return `true`.
+	//
+	// Note also that we cannot recurse here, since this would lead to an
+	// infinite loop (or rather an overflow of our `SeenSet`s).
 	if (a_seen_index != 0)
 		return true;
 
