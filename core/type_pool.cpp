@@ -48,6 +48,26 @@ struct SeenSet
 	u32 capacity;
 };
 
+struct CompositeTypeAllocInfo
+{
+	u16 alloc_size;
+
+	u16 member_capacity;
+};
+
+struct CompositeMemberInfo
+{
+	TypeDisposition disposition;
+
+	u8 member_stride;
+
+	u32 count;
+
+	IdentifierId* names;
+
+	void* members;
+};
+
 struct TypeIdAndFlags
 {
 	u32 type_id_bits : 28;
@@ -95,20 +115,7 @@ struct alignas(8) ParameterListOrUserMemberData
 	s64 offset;
 };
 
-struct CompositeMemberInfo
-{
-	TypeDisposition disposition;
-
-	u8 member_stride;
-
-	u32 count;
-
-	IdentifierId* names;
-
-	void* members;
-};
-
-struct CompositeType
+struct alignas(8) CompositeType
 {
 	u64 size;
 
@@ -134,9 +141,35 @@ struct CompositeType
 	// ::ParameterList, ::User -> ParameterListOrUserMemberData[header->member_count];
 };
 
-struct IndirectionType
+struct alignas(8) TraitMemberData
+{
+	TypeIdAndFlags type_and_flags;
+
+	Maybe<ForeverValueId> default_id;
+};
+
+struct alignas(8) TraitType
+{
+	u16 parameter_count;
+
+	u16 member_count;
+
+	u32 member_data_offset;
+
+	// IdentifierId parameter_names[parameter_count];
+
+	// IdentifierId member_names[member_count];
+
+	// u32 unused_padding_[(parameter_count + member_count) & 1];
+
+	// TraitMemberData member_data[member_count];
+};
+
+struct alignas(8) IndirectionType
 {
 	TypeId indirection_type_id;
+
+	u32 unused_ = 0;
 };
 
 struct alignas(8) TypeStructure
@@ -206,22 +239,15 @@ struct alignas(8) Holotype
 		return type_is_equal(key.core, m_holotype_id, key_type_id);
 	}
 
-	void init(HolotypeInit key, u32 key_hash) noexcept
+	void init([[maybe_unused]] HolotypeInit key, u32 key_hash) noexcept
 	{
 		ASSERT_OR_IGNORE(key.structure->hash == key_hash);
 
 		ASSERT_OR_IGNORE(key_hash != 0);
 
 		m_holotype_id = TypeId::INVALID;
-		m_hash = key.structure->hash;
+		m_hash = key_hash;
 	}
-};
-
-struct CompositeTypeAllocInfo
-{
-	u16 alloc_size;
-
-	u16 member_capacity;
 };
 
 
@@ -922,6 +948,34 @@ static u32 hash_signature_type(CoreData* core, u32 hash, SeenSet* seen, const Si
 	return fnv1a_step(fnv1a_step(hash, flags), static_cast<byte>(attach->parameter_count)) | 1;
 }
 
+static u32 hash_trait_type(CoreData* core, u32 hash, SeenSet* seen, const TraitType* attach) noexcept
+{
+	const Range header_and_names{ reinterpret_cast<const byte*>(attach), sizeof(TraitType) + (attach->parameter_count + attach->parameter_count) * sizeof(IdentifierId) };
+
+	hash = fnv1a_step(hash, header_and_names) | 1;
+
+	const TraitMemberData* const members = reinterpret_cast<const TraitMemberData*>(attach) + attach->member_data_offset;
+
+	for (u16 i = 0; i != attach->member_count; ++i)
+	{
+		const TraitMemberData member = members[i];
+
+		const byte flags = (static_cast<byte>(member.type_and_flags.is_mut))
+		                 | (static_cast<byte>(is_some(member.default_id)) << 1);
+
+		hash = fnv1a_step(hash, flags);
+
+		const TypeId member_type_id = static_cast<TypeId>(member.type_and_flags.type_id_bits);
+
+		hash = hash_type_id(core, hash, seen, member_type_id);
+
+		if (hash == 0)
+			return 0;
+	}
+
+	return hash;
+}
+
 static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, const TypeStructure* structure) noexcept
 {
 	if (structure->hash != 0)
@@ -966,9 +1020,11 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 	case TypeTag::CompositeLiteral:
 		return hash_composite_type(core, hash, seen, reinterpret_cast<const CompositeType*>(structure->attach));
 
+	case TypeTag::Trait:
+		return hash_trait_type(core, hash, seen, reinterpret_cast<const TraitType*>(structure->attach));
+
 	case TypeTag::Variadic:
 	case TypeTag::Definition:
-	case TypeTag::Trait:
 		TODO("Implement `type_hash` for Variadic, Definition and Trait");
 
 	case TypeTag::INVALID:
@@ -1573,9 +1629,59 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 		return result;
 	}
 
+	case TypeTag::Trait:
+	{
+		const TraitType* const a_attach = reinterpret_cast<TraitType*>(a->attach);
+
+		const TraitType* const b_attach = reinterpret_cast<TraitType*>(b->attach);
+
+		const u64 names_size = (a_attach->parameter_count + a_attach->member_count) * sizeof(IdentifierId);
+
+		if (a_attach->parameter_count != b_attach->parameter_count
+		 || a_attach->member_count != b_attach->member_count
+		 || memcmp(a_attach + 1, b_attach + 1, names_size) != 0
+		) {
+			seen_set_pop(a_seen);
+
+			seen_set_pop(b_seen);
+
+			return false;
+		}
+
+		const TraitMemberData* const a_members = reinterpret_cast<const TraitMemberData*>(a_attach) + a_attach->member_data_offset;
+
+		const TraitMemberData* const b_members = reinterpret_cast<const TraitMemberData*>(b_attach) + a_attach->member_data_offset;
+
+		for (u16 i = 0; i != a_attach->member_count; ++i)
+		{
+			const TraitMemberData a_member = a_members[i];
+
+			const TraitMemberData b_member = b_members[i];
+
+			const TypeId a_member_type_id = static_cast<TypeId>(a_member.type_and_flags.type_id_bits);
+
+			const TypeId b_member_type_id = static_cast<TypeId>(b_member.type_and_flags.type_id_bits);
+
+			if (a_member.type_and_flags.is_mut != b_member.type_and_flags.is_mut
+			 || !type_is_equal_noloop(core, a_member_type_id, b_member_type_id, a_seen, b_seen)
+			) {
+				seen_set_pop(a_seen);
+
+				seen_set_pop(b_seen);
+
+				return false;
+			}
+		}
+
+		seen_set_pop(a_seen);
+
+		seen_set_pop(b_seen);
+
+		return true;
+	}
+
 	case TypeTag::CompositeLiteral:
 	case TypeTag::Variadic:
-	case TypeTag::Trait:
 		TODO("Implement `type_is_equal_noloop` for CompositeLiteral, ArrayLiteral, Variadic and Trait");
 
 	case TypeTag::INVALID:
@@ -1740,6 +1846,68 @@ TypeId type_create_signature(CoreData* core, TypeTag tag, SignatureType2 attach)
 	return holotype_id_from_attachment(core, tag, range::from_object_bytes(&attach));
 }
 
+TypeId type_create_trait(CoreData* core, SourceId distinct_source_id, Range<IdentifierId> parameter_names, Range<IdentifierId> member_names) noexcept
+{
+	const u32 member_data_offset = static_cast<u32>(sizeof(TraitType) / sizeof(TraitMemberData) + (member_names.count() + parameter_names.count() + 1) * sizeof(IdentifierId) / sizeof(TraitMemberData));
+
+	TraitType attach{};
+	attach.parameter_count = static_cast<u16>(parameter_names.count());
+	attach.member_count = static_cast<u16>(member_names.count());
+	attach.member_data_offset = member_data_offset;
+
+	TypeStructure* const structure = make_structure_nohash(core, TypeTag::Trait, range::from_object_bytes(&attach), member_data_offset + member_names.count() * sizeof(TraitMemberData), distinct_source_id);
+
+	memcpy(structure + 1, parameter_names.begin(), parameter_names.count() * sizeof(IdentifierId));
+
+	memcpy(reinterpret_cast<IdentifierId*>(structure + 1) + parameter_names.count(), member_names.begin(), member_names.count() * sizeof(IdentifierId));
+
+	return id_from_structure(core, structure);
+}
+
+TypeId type_seal_trait(CoreData* core, TypeId trait_type_id) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, trait_type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Trait);
+
+	SeenSet seen = seen_set_create(core);
+
+	const u32 hash = hash_type_structure(core, FNV1A_SEED, &seen, structure);
+
+	seen_set_release(core, seen);
+
+	if (hash == 0)
+		return trait_type_id;
+
+	structure->hash = hash;
+
+	return holotype_id_from_interned_type_structure(core, structure);
+}
+
+void type_add_trait_member(CoreData* core, TypeId trait_type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> default_id, bool is_mut) noexcept
+{
+	ASSERT_OR_IGNORE(trait_type_id != TypeId::INVALID);
+
+	ASSERT_OR_IGNORE(member_type_id != TypeId::INVALID);
+
+	TypeStructure* const structure = structure_from_id(core, trait_type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Trait);
+
+	TraitType* const trait = reinterpret_cast<TraitType*>(structure->attach);
+
+	ASSERT_OR_IGNORE(rank < trait->member_count);
+
+	TraitMemberData* const member = reinterpret_cast<TraitMemberData*>(trait) + trait->member_data_offset + rank;
+
+	member->type_and_flags.type_id_bits = static_cast<u32>(member_type_id);
+	member->type_and_flags.is_pending = false;
+	member->type_and_flags.is_pub = true;
+	member->type_and_flags.is_mut = is_mut;
+	member->type_and_flags.is_eval = false;
+	member->default_id = default_id;
+}
+
 TypeId type_create_composite(CoreData* core, TypeTag tag, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept
 {
 	ASSERT_OR_IGNORE(tag == TypeTag::Composite || tag == TypeTag::CompositeLiteral);
@@ -1814,8 +1982,6 @@ TypeId type_seal_composite(CoreData* core, TypeId type_id, u64 size, u32 align, 
 
 	structure->hash = hash;
 
-	// TODO: Clean up references to indirection and potentially abandoned
-	// structure.
 	return holotype_id_from_interned_type_structure(core, structure);
 }
 
@@ -2230,6 +2396,7 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 	case TypeTag::Type:
 	case TypeTag::TypeInfo:
 	case TypeTag::TypeBuilder:
+	case TypeTag::Trait:
 	{
 		return { 4, 4, 4 };
 	}
@@ -2312,8 +2479,7 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 
 	case TypeTag::Definition:
 	case TypeTag::TailArray:
-	case TypeTag::Trait:
-		TODO("Implement `type_metrics_from_id` for TailArray and Trait.");
+		TODO("Implement `type_metrics_from_id` for Definition and TailArray.");
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:

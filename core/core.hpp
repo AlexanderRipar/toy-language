@@ -2153,6 +2153,12 @@ TypeId type_create_array(CoreData* core, TypeTag tag, ArrayType attach) noexcept
 // `SignatureType` further describing it.
 TypeId type_create_signature(CoreData* core, TypeTag tag, SignatureType2 attach) noexcept;
 
+TypeId type_create_trait(CoreData* core, SourceId distinct_source_id, Range<IdentifierId> parameter_names, Range<IdentifierId> member_names) noexcept;
+
+TypeId type_seal_trait(CoreData* core, TypeId trait_type_id) noexcept;
+
+void type_add_trait_member(CoreData* core, TypeId trait_type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> default_id, bool is_mut) noexcept;
+
 // Creates a composite type with no members that can have members added by
 // calling `type_add_composite_member` on it.
 //
