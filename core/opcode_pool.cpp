@@ -1886,7 +1886,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	case AstTag::OpSetBitXor:
 	case AstTag::OpSetShiftL:
 	case AstTag::OpSetShiftR:
-		TODO("Implement");
+		TODO("Implement `opcodes_from_expression(%)`", tag_name(node->tag));
 
 	case AstTag::INVALID:
 	case AstTag::File:
