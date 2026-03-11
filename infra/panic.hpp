@@ -24,6 +24,22 @@ void warn(const char8* format, Inserts... inserts) noexcept
 	DEBUGBREAK;
 }
 
-#define TODO(message) panic("Encountered open TODO in % at %:%: %\n", __FUNCTION__, __FILE__, __LINE__, *(message) == '\0' ? "?" : (message))
+template<typename... Inserts>
+NORETURN void todo_helper(const char8* function, const char8* file, u32 line, const char8* format, Inserts... inserts) noexcept
+{
+	const minos::FileHandle err = minos::standard_file_handle(minos::StdFileName::StdErr);
+
+	(void) print(err, "Encountered open TODO in % at %:%:\n    ", function, file, line);
+
+	(void) print(err, format, inserts...);
+
+	(void) print(err, "\n");
+
+	DEBUGBREAK;
+
+	minos::exit_process(1);
+}
+
+#define TODO(...) todo_helper(__FUNCTION__, __FILE__, __LINE__, __VA_ARGS__)
 
 #endif // PANIC_INCLUDE_GUARD
