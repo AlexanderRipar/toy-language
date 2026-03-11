@@ -33,7 +33,6 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 	case TypeTag::TypeBuilder:
 	case TypeTag::Divergent:
 	case TypeTag::Undefined:
-	case TypeTag::Trait:
 	case TypeTag::TypeInfo:
 	case TypeTag::TailArray:
 	{
@@ -110,47 +109,50 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 		return indent_written + written + element_written;
 	}
 
-	case TypeTag::Func:
+	case TypeTag::Signature:
+	case TypeTag::Trait:
 	case TypeTag::Composite:
 	case TypeTag::CompositeLiteral:
 	{
-		const SignatureType2* signature_type;
+		s64 total_written = 0;
 
-		TypeId composite_type_id;
-
-		if (tag == TypeTag::Func)
+		if (tag == TypeTag::Trait)
 		{
-			signature_type = type_attachment_from_id<SignatureType2>(core, type_id);
+			const Range<IdentifierId> parameter_names = type_trait_parameters(core, type_id);
 
-			composite_type_id = signature_type->parameter_list_type_id;
+			const s64 written = print(sink, "(");
+
+			if (written < 0)
+				return -1;
+
+			total_written += written;
+
+			for (u64 i = 0; i != parameter_names.count(); ++i)
+			{
+				const Range<char8> parameter_name_str = identifier_name_from_id(core, parameter_names[i]);
+
+				const s64 parameter_written = print(sink, "%[]%",
+					parameter_name_str,
+					i + 1 == parameter_names.count() ? ")" : ", "
+				);
+
+				if (parameter_written < 0)
+					return -1;
+
+				total_written += parameter_written;
+			}
 		}
-		else
+
+		if (type_has_metrics(core, type_id))
 		{
-			signature_type = nullptr;
+		const TypeMetrics metrics = type_metrics_from_id(core, type_id);
 
-			composite_type_id = type_id;
-		}
+			const s64 written = print(sink, " (size=% align=% stride=%) {",
+				metrics.size,
+				metrics.align,
+				metrics.stride
+			);
 
-		const TypeMetrics metrics = type_has_metrics(core, composite_type_id)
-			? type_metrics_from_id(core, composite_type_id)
-			: TypeMetrics{ 0, 0, 0 };
-
-		s64 total_written = print(sink, "% (sz=%, al=%, st=%) {",
-			tag == TypeTag::Func ? "Func" : tag == TypeTag::Composite ? "Composite" : "CompositeLiteral",
-			metrics.size,
-			metrics.align,
-			metrics.stride
-		);
-
-		if (total_written < 0)
-			return -1;
-
-		bool has_members = false;
-
-		if (composite_type_id == TypeId::INVALID)
-		{
-			const s64 written = print(sink, "%[< %]<INCOMPLETE>", "", (indent + 1) * 2);
-			
 			if (written < 0)
 				return -1;
 
@@ -158,90 +160,116 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 		}
 		else
 		{
-			MemberIterator it = members_of(core, composite_type_id);
+			const s64 written = print(sink, " (size=? align=? stride=?) {");
 
-			while (has_next(&it))
-			{
-				MemberInfo member_info;
+			if (written < 0)
+				return -1;
 
-				OpcodeId member_initializer;
-
-				const bool is_complete = next(&it, &member_info, &member_initializer);
-
-				const IdentifierId member_name = type_member_name_by_rank(core, composite_type_id, member_info.rank);
-
-				const s64 flags_written = print(sink, "%[]%[< %]%[]%",
-					has_members ? "" : "\n",
-					"", (indent + 1) * 2,
-					member_info.is_pub ? "pub " : "",
-					member_info.is_mut ? "mut " : ""
-				);
-
-				if (flags_written < 0)
-					return -1;
-
-				total_written += flags_written;
-
-				s64 name_written;
-
-				if (member_name < IdentifierId::FirstNatural)
-				{
-					name_written = print(sink, "\"_%\" ", static_cast<u32>(member_name));
-				}
-				else
-				{
-					const Range<char8> name = identifier_name_from_id(core, member_name);
-
-					name_written = print(sink, "\"%\" ", name);
-				}
-
-				if (name_written < 0)
-					return -1;
-
-				total_written += name_written;
-
-				s64 type_written;
-
-				if (is_complete)
-				{
-					const s64 offset_written = print(sink, "(%) :: ", member_info.offset);
-
-					if (offset_written < 0)
-						return -1;
-
-					total_written += offset_written;
-
-					type_written = print_type_impl(sink, core, member_info.type_id, indent + 1, true);
-				}
-				else
-				{
-					type_written = print(sink, ":: OpcodeId<%u>", static_cast<u32>(member_initializer));
-				}
-
-				if (type_written < 0)
-					return -1;
-
-				total_written += type_written;
-
-				has_members = true;
-			}
+			total_written += written;
 		}
 
-		const s64 end_written = print(sink, "%[< %]}", "", has_members ? indent * 2 : 1, tag == TypeTag::Func ? " -> " : "\n");
+		bool has_members = false;
+
+		MemberIterator it = members_of(core, type_id);
+
+		while (has_next(&it))
+		{
+			MemberInfo member_info;
+
+			OpcodeId member_initializer;
+
+			const bool is_complete = next(&it, &member_info, &member_initializer);
+
+			const IdentifierId member_name = type_member_name_by_rank(core, type_id, member_info.rank);
+
+			const s64 flags_written = print(sink, "\n%[< %] global=% pub=% mut=% eval=% ",
+				"", (indent + 1) * 2,
+				member_info.is_global,
+				member_info.is_pub,
+				member_info.is_mut,
+				member_info.is_eval
+			);
+
+			if (flags_written < 0)
+				return -1;
+
+			total_written += flags_written;
+
+			if (is_complete && !member_info.is_global)
+			{
+				const s64 offset_written = print(sink, "offset=% ", member_info.offset);
+
+				if (offset_written < 0)
+					return -1;
+
+				total_written += offset_written;
+			}
+
+			s64 name_written;
+
+			if (member_name < IdentifierId::FirstNatural)
+			{
+				name_written = print(sink, "name=\"_%\" :: ", static_cast<u32>(member_name));
+			}
+			else
+			{
+				const Range<char8> name = identifier_name_from_id(core, member_name);
+
+				name_written = print(sink, "name=\"%\" :: ", name);
+			}
+
+			if (name_written < 0)
+				return -1;
+
+			total_written += name_written;
+
+			s64 type_written;
+
+			if (is_complete)
+			{
+				type_written = print_type_impl(sink, core, member_info.type_id, indent + 1, true);
+			}
+			else
+			{
+				type_written = print(sink, "OpcodeId<%u>", static_cast<u32>(member_initializer));
+			}
+
+			if (type_written < 0)
+				return -1;
+
+			total_written += type_written;
+
+			has_members = true;
+		}
+
+		const s64 end_written = print(sink, "%[< %]}", "", has_members ? indent * 2 : 1, "");
 
 		if (end_written < 0)
 			return -1;
 
 		total_written += end_written;
 
-		if (tag == TypeTag::Func)
+		if (tag == TypeTag::Signature)
 		{
+			const SignatureTypeInfo info = type_signature_info_from_id(core, type_id);
+
 			s64 return_type_written;
 
-			if (signature_type->has_templated_return_type)
-				return_type_written = print(sink, "<TEMPLATED>\n");
+			if (info.has_templated_return_type)
+			{
+				return_type_written = print(sink, " -> OpcodeId<%>", static_cast<u32>(info.return_type.templated.completion_id));
+			}
 			else
-				return_type_written = print_type_impl(sink, core, signature_type->return_type.type_id, indent + 1, true);
+			{
+				const s64 arrow_written = print(sink, " -> ");
+
+				if (arrow_written < 0)
+					return -1;
+
+				total_written += arrow_written;
+
+				return_type_written = print_type_impl(sink, core, info.return_type.complete.type_id, indent + 1, true);
+			}
 
 			if (return_type_written < 0)
 				return -1;

@@ -19,9 +19,9 @@ static TypeStructure* structure_from_id(CoreData* core, TypeId id) noexcept;
 
 static TypeId id_from_structure(const CoreData* core, const TypeStructure* structure) noexcept;
 
-static TypeStructure* make_structure_nohash(CoreData* core, TypeTag tag, Range<byte> attach, u64 reserve_size, SourceId distinct_source_id) noexcept;
+static TypeStructure* make_structure_nohash(CoreData* core, TypeTag tag, Range<byte> attach, u64 reserve_size) noexcept;
 
-static TypeStructure* make_structure_hash(CoreData* core, TypeTag tag, Range<byte> attach, u64 reserve_size, SourceId distinct_source_id) noexcept;
+static TypeStructure* make_structure_hash(CoreData* core, TypeTag tag, Range<byte> attach, u64 reserve_size) noexcept;
 
 
 
@@ -48,27 +48,98 @@ struct SeenSet
 	u32 capacity;
 };
 
-struct CompositeTypeAllocInfo
-{
-	u16 alloc_size;
 
-	u16 member_capacity;
+
+enum class CompositeKind : u8
+{
+	INVALID = 0,
+	File,
+	Trait,
+	Impl,
+	Signature,
+	User,
+	COUNT = User,
 };
 
-struct CompositeMemberInfo
+enum class CompositeFlags : u8
 {
-	TypeDisposition disposition;
+	EMPTY = 0,
 
-	u8 member_stride;
+	Signature_IsFunc                 = 0x01,
 
-	u32 count;
-
-	IdentifierId* names;
-
-	void* members;
+	User_IsOpen                      = 0x01,
 };
 
-struct TypeIdAndFlags
+static constexpr CompositeFlags operator&(CompositeFlags lhs, CompositeFlags rhs) noexcept
+{
+	return static_cast<CompositeFlags>(static_cast<u8>(lhs) & static_cast<u8>(rhs));
+}
+
+static constexpr CompositeFlags& operator&=(CompositeFlags& lhs, CompositeFlags rhs) noexcept
+{
+	lhs = lhs & rhs;
+
+	return lhs;
+}
+
+static constexpr CompositeFlags operator~(CompositeFlags f) noexcept
+{
+	return static_cast<CompositeFlags>(~static_cast<u8>(f));
+}
+
+struct alignas(8) CompositeFileExtraData
+{
+	SourceId definition_site;
+
+	u32 unused_ = 0;
+};
+
+struct alignas(8) CompositeTraitExtraData
+{
+	u32 parameter_count;
+
+	u32 parameter_names_index;
+};
+
+struct alignas(8) CompositeImplExtraData
+{
+	TypeId trait_id;
+
+	u32 impl_index;
+};
+
+struct alignas(8) CompositeSignatureExtraData
+{
+	union
+	{
+		TypeId type_id;
+
+		OpcodeId completion_id;
+	} return_type;
+
+	Maybe<ClosureId> closure_id;
+
+	bool is_func;
+
+	u8 templated_parameter_count;
+
+	bool has_templated_return_type;
+
+	byte unused_[5];
+};
+
+struct alignas(8) CompositeUserExtraData
+{
+	u64 size;
+
+	u64 stride;
+
+	u32 align;
+
+	SourceId definition_site;
+};
+
+struct alignas(8) CompositeMember2
 {
 	u32 type_id_bits : 28;
 
@@ -79,91 +150,70 @@ struct TypeIdAndFlags
 	u32 is_mut : 1;
 
 	u32 is_eval : 1;
-};
-
-// Used for Composite Literal types.
-struct alignas(8) InitializerMemberData
-{
-	TypeIdAndFlags type_and_flags;
-
-	u32 offset;
-};
-
-struct alignas(8) FileMemberData
-{
-	TypeIdAndFlags type_and_flags;
 
 	union
 	{
-		ForeverValueId value_id;
+		Maybe<ForeverValueId> value_or_default_id;
 
 		OpcodeId completion_id;
 	};
 };
 
-struct alignas(8) ParameterListOrUserMemberData
+struct alignas(8) CompositeType2
 {
-	TypeIdAndFlags type_and_flags;
-
-	union
-	{
-		Maybe<ForeverValueId> default_id;
-
-		OpcodeId parameter_completion_id;
-	};
-
-	s64 offset;
-};
-
-struct alignas(8) CompositeType
-{
-	u64 size;
-
-	u64 stride;
-
-	u8 align_log2;
-
-	bool is_open;
-
-	bool is_fixed;
-
-	TypeDisposition disposition;
-
 	u16 member_used;
 
 	u16 member_capacity;
 
-	// IdentifierId[header->member_count];
+	CompositeKind kind;
 
-	// Depending on header->disposition:
-	// ::Initializer           -> InitializerMemberData[header->member_count];
-	// ::File                  -> FileMemberData[header->member_count];
-	// ::ParameterList, ::User -> ParameterListOrUserMemberData[header->member_count];
-};
+	CompositeFlags flags;
 
-struct alignas(8) TraitMemberData
-{
-	TypeIdAndFlags type_and_flags;
+	bool may_realloc;
 
-	Maybe<ForeverValueId> default_id;
-};
+	u8 extra_data_size;
 
-struct alignas(8) TraitType
-{
-	u16 parameter_count;
+	// Depending on `kind`:
+	// File => Nothing
+	// Trait => Nothing
+	// Impl => `CompositeImplExtraData`
+	// Signature => `CompositeSignatureExtraData`
+	// User => `CompositeUserExtraData`
 
-	u16 member_count;
-
-	u32 member_data_offset;
-
-	// IdentifierId parameter_names[parameter_count];
-
+	// @sizeas(IdentifierId[member_capacity])
 	// IdentifierId member_names[member_count];
 
-	// u32 unused_padding_[(parameter_count + member_count) & 1];
+	// @sizeas(CompositeMember[member_capacity])
+	// CompositeMember members_types[member_count];
 
-	// TraitMemberData member_data[member_count];
+	// Depending on `kind`:
+	// File, Trait, Impl, Signature => Nothing
+	// User => @sizeas(s64[member_capacity]) s64 member_offsets[member_count];
 };
+
+
+
+struct CompositeAllocInfo
+{
+	u16 alloc_size;
+
+	u16 member_capacity;
+};
+
+struct CompositeInfo
+{
+	CompositeKind kind;
+
+	u32 member_count;
+
+	IdentifierId* member_names;
+
+	CompositeMember2* member_types;
+
+	Maybe<s64*> member_offsets;
+};
+
+
 
 struct alignas(8) IndirectionType
 {
@@ -172,15 +222,17 @@ struct alignas(8) IndirectionType
 	u32 unused_ = 0;
 };
 
+
+
 struct alignas(8) TypeStructure
 {
 	TypeTag tag;
 
 	TypeId holotype_id;
 
-	SourceId distinct_source_id;
-
 	u32 hash;
+
+	u32 unused_ = 0;
 
 	#if COMPILER_GCC
 		#pragma GCC diagnostic push
@@ -191,6 +243,8 @@ struct alignas(8) TypeStructure
 		#pragma GCC diagnostic pop
 	#endif
 };
+
+
 
 struct alignas(8) HolotypeInit
 {
@@ -251,6 +305,83 @@ struct alignas(8) Holotype
 };
 
 
+struct alignas(8) ImplInit
+{
+	CoreData* core;
+
+	TypeId trait_type_id;
+
+	Range<TypeId> arguments;
+};
+
+struct alignas(8) ImplEntry
+{
+	u32 m_hash;
+
+	u32 argument_count;
+
+	TypeId trait_type_id;
+
+	TypeId impl_type_id;
+
+	// TypeId arguments[argument_count];
+
+	static constexpr u32 stride() noexcept
+	{
+		return 8;
+	}
+
+	static u32 required_strides(ImplInit key) noexcept
+	{
+		return static_cast<u32>((sizeof(ImplEntry) + key.arguments.count() * sizeof(TypeId)) / stride());
+	}
+
+	u32 used_strides() const noexcept
+	{
+		return (sizeof(ImplEntry) + argument_count * sizeof(TypeId)) / stride();
+	}
+
+	u32 hash() const noexcept
+	{
+		return m_hash;
+	}
+
+	bool equal_to_key(ImplInit key, u32 key_hash) const noexcept
+	{
+		if (key_hash != m_hash)
+			return false;
+
+		if (key.arguments.count() != argument_count)
+			return false;
+
+		if (!type_is_equal(key.core, key.trait_type_id, trait_type_id))
+			return false;
+
+		const TypeId* const own_arguments = reinterpret_cast<const TypeId*>(this + 1);
+
+		for (u32 i = 0; i != argument_count; ++i)
+		{
+			if (!type_is_equal(key.core, key.arguments[i], own_arguments[i]))
+				return false;
+		}
+
+		return true;
+	}
+
+	void init([[maybe_unused]] ImplInit key, u32 key_hash) noexcept
+	{
+		ASSERT_OR_IGNORE(key.arguments.count() <= 64);
+
+		m_hash = key_hash;
+		argument_count = static_cast<u32>(key.arguments.count());
+		trait_type_id = key.trait_type_id;
+		impl_type_id = TypeId::INVALID;
+
+		memcpy(reinterpret_cast<TypeId*>(this + 1), key.arguments.begin(), key.arguments.count() * sizeof(TypeId));
+	}
+};
+
+
 
 static constexpr u32 STRUCTURES_CAPACITIES[MAX_STRUCTURE_SIZE_LOG2 - MIN_STRUCTURE_SIZE_LOG2 + 1] = {
 	131072, 65536, 65536, 32768, 16384,
@@ -278,66 +409,65 @@ static constexpr u64 SCRATCH_COMMIT_INCREMENT_COUNT = static_cast<u32>(1) << 12;
 
 
 
-static constexpr u16 min_composite_structure_alloc_size_log2(u32 min_alloc_size_log2) noexcept
+static constexpr u16 calculate_min_composite_structure_alloc_size_log2(u32 min_alloc_size_log2) noexcept
 {
-	const u32 header_size = sizeof(TypeStructure) + sizeof(CompositeType);
+	const u32 header_size = sizeof(TypeStructure) + sizeof(CompositeType2);
 
 	while ((static_cast<u32>(1) << min_alloc_size_log2) < header_size)
 		min_alloc_size_log2 += 1;
-		
+
 	return static_cast<u16>(min_alloc_size_log2);
 }
 
-static constexpr u16 MIN_COMPOSITE_STRUCTURE_ALLOC_SIZE_LOG2 = min_composite_structure_alloc_size_log2(MIN_STRUCTURE_SIZE_LOG2);
+static constexpr u16 COMPOSITE_MIN_STRUCTURE_ALLOC_SIZE_LOG2 = calculate_min_composite_structure_alloc_size_log2(MIN_STRUCTURE_SIZE_LOG2);
 
-static constexpr u16 MIN_MEMBER_STRIDE = sizeof(ParameterListOrUserMemberData) < sizeof(FileMemberData)
-	? sizeof(ParameterListOrUserMemberData) < sizeof(InitializerMemberData) ? sizeof(ParameterListOrUserMemberData) : sizeof(InitializerMemberData)
-	: sizeof(FileMemberData) < sizeof(InitializerMemberData) ? sizeof(FileMemberData) : sizeof(InitializerMemberData);
+static constexpr u16 COMPOSITE_ALLOC_SIZE_COUNT = 1 + MAX_STRUCTURE_SIZE_LOG2 - COMPOSITE_MIN_STRUCTURE_ALLOC_SIZE_LOG2;
 
-static constexpr u16 MAX_MEMBER_STRIDE = sizeof(ParameterListOrUserMemberData) > sizeof(FileMemberData)
-	? sizeof(ParameterListOrUserMemberData) > sizeof(InitializerMemberData) ? sizeof(ParameterListOrUserMemberData) : sizeof(InitializerMemberData)
-	: sizeof(FileMemberData) > sizeof(InitializerMemberData) ? sizeof(FileMemberData) : sizeof(InitializerMemberData);
+static constexpr u8 COMPOSITE_EXTRA_DATA_SIZES[] = {
+	sizeof(CompositeFileExtraData),      // File
+	sizeof(CompositeTraitExtraData),     // Trait
+	sizeof(CompositeImplExtraData),      // Impl
+	sizeof(CompositeSignatureExtraData), // Signature
+	sizeof(CompositeUserExtraData),      // User
+};
 
+static constexpr u8 COMPOSITE_MEMBER_SIZES[] = {
+	sizeof(CompositeMember2),               // File
+	sizeof(CompositeMember2),               // Trait
+	sizeof(CompositeMember2),               // Impl
+	sizeof(CompositeMember2),               // Signature
+	sizeof(CompositeMember2) + sizeof(s64), // User
+};
 
 struct MemberCapacities
 {
-	u16 capacities[1 + (MAX_MEMBER_STRIDE - MIN_MEMBER_STRIDE) / 8][1 + MAX_STRUCTURE_SIZE_LOG2 - MIN_COMPOSITE_STRUCTURE_ALLOC_SIZE_LOG2];
+	u16 caps[static_cast<u8>(CompositeKind::COUNT)][COMPOSITE_ALLOC_SIZE_COUNT];
 };
 
-static constexpr u16 member_capacity(u32 alloc_size, u32 member_stride) noexcept
+static constexpr u16 calculate_member_capacity(u32 alloc_size, u32 extra_data_size, u32 member_size) noexcept
 {
-	const u32 header_size = sizeof(TypeStructure) + sizeof(CompositeType);
+	const u32 header_size = sizeof(TypeStructure) + sizeof(CompositeType2) + extra_data_size;
+
+	if (header_size > alloc_size)
+		return UINT16_MAX;
 
 	const u32 remaining_size = alloc_size - header_size;
 
-	const u16 approx_capacity = static_cast<u16>(remaining_size / (member_stride + sizeof(IdentifierId)));
-
-	// If the number of members is even, we're good to go. Otherwise we need to
-	// insert an extra `IdentifierId` of padding, which might reduce our actual
-	// capacity by one.
-	if ((approx_capacity & 1) == 0)
-		return approx_capacity;
-
-	// Add an extra `IdentifierId` of padding to the size.
-	const u32 used_size = header_size + approx_capacity * (member_stride + sizeof(IdentifierId)) + sizeof(IdentifierId);
-
-	// All members fit into the allocation size, even with the extra padding.
-	if (used_size < alloc_size)
-		return approx_capacity;
-
-	// Since not all members fit, we reduce the number of members by 1, which
-	// will always fit.
-	return approx_capacity - 1;
+	return static_cast<u16>((remaining_size / (member_size + sizeof(IdentifierId))) & ~1);
 }
 
-static constexpr MemberCapacities member_capacities(u32 min_alloc_size_log2) noexcept
+static constexpr MemberCapacities calculate_member_capacities(u32 min_alloc_size_log2) noexcept
 {
 	MemberCapacities capacities{};
 
-	for (u16 i = 0; i != array_count(capacities.capacities); ++i)
+	for (u16 i = 0; i != array_count(capacities.caps); ++i)
 	{
-		for (u16 j = 0; j != array_count(capacities.capacities[0]); ++j)
-			capacities.capacities[i][j] = member_capacity(1 << (min_alloc_size_log2 + j), MIN_MEMBER_STRIDE + 8 * i);
+		for (u16 j = 0; j != array_count(capacities.caps[0]); ++j)
+		{
+			const u32 alloc_size = 1 << (min_alloc_size_log2 + j);
+
+			capacities.caps[i][j] = calculate_member_capacity(alloc_size, COMPOSITE_EXTRA_DATA_SIZES[i], COMPOSITE_MEMBER_SIZES[i]);
+		}
 	}
 
 	return capacities;
@@ -345,39 +475,61 @@ static constexpr MemberCapacities member_capacities(u32 min_alloc_size_log2) noe
 
 
 
-static u8 members_stride_for(TypeDisposition disposition) noexcept
+static CompositeInfo composite_info(CompositeType2* composite) noexcept
 {
-	static constexpr u8 MEMBER_STRIDES[] = {
-		sizeof(InitializerMemberData),
-		sizeof(FileMemberData),
-		sizeof(ParameterListOrUserMemberData),
-		sizeof(ParameterListOrUserMemberData),
-	};
+	byte* const extra_data = reinterpret_cast<byte*>(composite + 1);
 
-	ASSERT_OR_IGNORE(disposition == TypeDisposition::Initializer || disposition == TypeDisposition::File || disposition == TypeDisposition::ParameterList || disposition == TypeDisposition::User);
+	IdentifierId* const member_names = reinterpret_cast<IdentifierId*>(extra_data + composite->extra_data_size);
 
-	return MEMBER_STRIDES[static_cast<u8>(disposition) - 1];
+	CompositeMember2* const member_types = reinterpret_cast<CompositeMember2*>(member_names + composite->member_capacity);
+
+	const Maybe<s64*> member_offsets = composite->kind == CompositeKind::User
+		? some(reinterpret_cast<s64*>(member_types + composite->member_capacity))
+		: none<s64*>();
+
+	CompositeInfo result;
+	result.kind = composite->kind;
+	result.member_count = composite->member_used;
+	result.member_names = member_names;
+	result.member_types = member_types;
+	result.member_offsets = member_offsets;
+
+	return result;
 }
 
-static CompositeTypeAllocInfo composite_type_alloc_info(TypeDisposition disposition, u64 member_count) noexcept
+static CompositeInfo composite_info(const CompositeType2* composite) noexcept
 {
-	static constexpr MemberCapacities CAPACITIES = member_capacities(MIN_COMPOSITE_STRUCTURE_ALLOC_SIZE_LOG2);
+	return composite_info(const_cast<CompositeType2*>(composite));
+}
 
-	const u8 member_stride = members_stride_for(disposition);
+MutRange<IdentifierId> trait_parameter_names(CoreData* core, const CompositeType2* trait_composite) noexcept
+{
+	ASSERT_OR_IGNORE(trait_composite->kind == CompositeKind::Trait);
 
-	ASSERT_OR_IGNORE(member_stride == 8 || member_stride == 16);
+	const CompositeTraitExtraData* const trait = reinterpret_cast<const CompositeTraitExtraData*>(trait_composite + 1);
 
-	const u8 stride_index = (member_stride >> 3) - 1;
+	IdentifierId* const parameter_names = reinterpret_cast<IdentifierId*>(reinterpret_cast<u64*>(core->types.structures.begin()) + trait->parameter_names_index);
 
-	for (u32 i = 0; i != array_count(CAPACITIES.capacities[0]); ++i)
+	return MutRange{ parameter_names, trait->parameter_count };
+}
+
+
+
+static CompositeAllocInfo composite_alloc_info(CompositeKind kind, u64 member_count) noexcept
+{
+	static constexpr MemberCapacities CAPACITIES = calculate_member_capacities(COMPOSITE_MIN_STRUCTURE_ALLOC_SIZE_LOG2);
+
+	ASSERT_OR_IGNORE(static_cast<u8>(kind) <= array_count(CAPACITIES.caps));
+
+	for (u32 i = 0; i != array_count(CAPACITIES.caps[0]); ++i)
 	{
-		const u16 member_capacity = CAPACITIES.capacities[stride_index][i];
+		const u16 member_capacity = CAPACITIES.caps[static_cast<u8>(kind) - 1][i];
 
-		if (member_capacity >= member_count)
+		if (member_capacity != UINT16_MAX && member_capacity >= member_count)
 		{
-			const u16 alloc_size = static_cast<u16>(1) << (i + MIN_COMPOSITE_STRUCTURE_ALLOC_SIZE_LOG2);
+			const u16 alloc_size = static_cast<u16>(1) << (i + COMPOSITE_MIN_STRUCTURE_ALLOC_SIZE_LOG2);
 
-			CompositeTypeAllocInfo rst;
+			CompositeAllocInfo rst;
 			rst.alloc_size = static_cast<u16>(alloc_size - sizeof(TypeStructure));
 			rst.member_capacity = static_cast<u16>(member_capacity);
 
@@ -388,82 +540,84 @@ static CompositeTypeAllocInfo composite_type_alloc_info(TypeDisposition disposit
 	ASSERT_UNREACHABLE;
 }
 
-static CompositeMemberInfo composite_members(CompositeType* composite) noexcept
+static TypeStructure* composite_alloc(CoreData* core, TypeTag tag, CompositeKind kind, CompositeFlags flags, u32 member_count, bool may_realloc) noexcept
 {
-	CompositeMemberInfo result;
-	result.disposition = composite->disposition;
-	result.member_stride = members_stride_for(composite->disposition);
-	result.count = composite->member_used;
-	result.names = reinterpret_cast<IdentifierId*>(composite + 1);
-	result.members = result.names + composite->member_capacity;
+	const CompositeAllocInfo alloc_info = composite_alloc_info(kind, member_count);
 
-	return result;
+	TypeStructure* const structure = make_structure_nohash(core, tag, {}, alloc_info.alloc_size);
+
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
+	composite->member_used = 0;
+	composite->member_capacity = alloc_info.member_capacity;
+	composite->kind = kind;
+	composite->flags = flags;
+	composite->may_realloc = may_realloc;
+	composite->extra_data_size = COMPOSITE_EXTRA_DATA_SIZES[static_cast<u8>(kind) - 1];
+
+	return structure;
 }
 
-static CompositeMemberInfo composite_members(const CompositeType* composite) noexcept
+static void composite_dealloc(CoreData* core, TypeStructure* composite_structure) noexcept
 {
-	return composite_members(const_cast<CompositeType*>(composite));
-}
+	const CompositeType2* const composite = reinterpret_cast<CompositeType2*>(composite_structure + 1);
 
-static void composite_realloc(CoreData* core, TypeStructure* indirect_structure, TypeStructure** inout_direct_structure, CompositeType** inout_composite, CompositeMemberInfo* inout_members) noexcept
-{
-	ASSERT_OR_IGNORE(!(*inout_composite)->is_fixed);
+	if (composite->kind == CompositeKind::Trait)
+	{
+		const MutRange<byte> parameter_names_bytes = trait_parameter_names(core, composite).as_mut_byte_range();
 
-	ASSERT_OR_IGNORE(indirect_structure->tag == TypeTag::INDIRECTION);
+		core->types.structures.dealloc(parameter_names_bytes);
+	}
+	const CompositeAllocInfo dealloc_info = composite_alloc_info(CompositeKind::Signature, composite->member_capacity);
 
-	TypeStructure* const old_direct_structure = *inout_direct_structure;
-
-	CompositeType* const old_composite = *inout_composite;
-
-	const u16 old_member_capacity = old_composite->member_capacity;
-
-	const CompositeTypeAllocInfo alloc_info = composite_type_alloc_info(old_composite->disposition, old_member_capacity + 1);
-
-	const MutRange<byte> to_dealloc = { reinterpret_cast<byte*>(old_direct_structure), (alloc_info.alloc_size + sizeof(TypeStructure)) / 2 };
-
-	const Range<byte> to_copy = range::from_object_bytes(old_composite);
-
-	TypeStructure* const new_direct_structure = make_structure_nohash(core, TypeTag::Composite, to_copy, alloc_info.alloc_size, old_direct_structure->distinct_source_id);
-
-	IndirectionType* const indirection = reinterpret_cast<IndirectionType*>(indirect_structure->attach);
-
-	indirection->indirection_type_id = id_from_structure(core, new_direct_structure);
-
-	CompositeType* const new_composite = reinterpret_cast<CompositeType*>(new_direct_structure->attach);
-
-	new_composite->member_capacity = alloc_info.member_capacity;
-
-	const CompositeMemberInfo old_members = *inout_members;
-
-	const CompositeMemberInfo new_members = composite_members(new_composite);
-
-	memcpy(new_members.names, old_members.names, old_member_capacity * sizeof(IdentifierId));
-
-	memcpy(new_members.members, old_members.members, old_member_capacity * old_members.member_stride);
-
-	*inout_direct_structure = new_direct_structure;
-
-	*inout_composite = new_composite;
-
-	*inout_members = new_members;
+	const MutRange<byte> to_dealloc{ reinterpret_cast<byte*>(composite_structure), sizeof(TypeStructure) + dealloc_info.alloc_size };
 
 	core->types.structures.dealloc(to_dealloc);
 }
 
-static void* member_at(const CompositeMemberInfo* members, u32 index) noexcept
+static TypeStructure* composite_realloc(CoreData* core, TypeStructure* indirection_structure, TypeStructure* old_composite_structure) noexcept
 {
-	return static_cast<byte*>(members->members) + static_cast<u64>(members->member_stride) * index;
+	ASSERT_OR_IGNORE(indirection_structure->tag == TypeTag::INDIRECTION);
+
+	// Make sure we are only reallocating user-defined `Composites`, for which
+	// `TypeTag::Composite` is sufficient.
+	ASSERT_OR_IGNORE(old_composite_structure->tag == TypeTag::Composite);
+
+	const CompositeType2* const old_composite = reinterpret_cast<CompositeType2*>(old_composite_structure + 1);
+
+	ASSERT_OR_IGNORE(old_composite->kind == CompositeKind::User);
+
+	const u32 old_member_capacity = old_composite->member_capacity;
+
+	TypeStructure* const new_composite_structure = composite_alloc(core, old_composite_structure->tag, old_composite->kind, old_composite->flags, old_member_capacity + 1, true);
+
+	IndirectionType* const indirection = reinterpret_cast<IndirectionType*>(indirection_structure->attach);
+	indirection->indirection_type_id = id_from_structure(core, new_composite_structure);
+
+	CompositeType2* const new_composite = reinterpret_cast<CompositeType2*>(new_composite_structure->attach);
+
+	const CompositeInfo old_info = composite_info(old_composite);
+
+	const CompositeInfo new_info = composite_info(new_composite);
+
+	memcpy(new_composite, old_composite, sizeof(CompositeType2) + old_composite->extra_data_size + old_member_capacity * sizeof(IdentifierId));
+
+	memcpy(new_info.member_types, old_info.member_types, old_member_capacity * sizeof(CompositeMember2));
+
+	if (is_some(old_info.member_offsets))
+		memcpy(get(new_info.member_offsets), get(old_info.member_offsets), old_member_capacity * sizeof(s64));
+
+	composite_dealloc(core, old_composite_structure);
+
+	return new_composite_structure;
 }
 
-static bool find_member_by_name(const CompositeMemberInfo* members, IdentifierId name, u16* out_rank, const void** out_data) noexcept
+static bool find_member_by_name(CompositeInfo info, IdentifierId name, u16* out_rank) noexcept
 {
-	for (u32 i = 0; i != members->count; ++i)
+	for (u32 i = 0; i != info.member_count; ++i)
 	{
-		if (members->names[i] == name)
+		if (info.member_names[i] == name)
 		{
 			*out_rank = static_cast<u16>(i);
-
-			*out_data = member_at(members, i);
 
 			return true;
 		}
@@ -472,99 +626,41 @@ static bool find_member_by_name(const CompositeMemberInfo* members, IdentifierId
 	return false;
 }
 
-static bool fill_member_info(const CompositeType* composite, u16 rank, const void* data, MemberInfo* out_info, OpcodeId* out_completion_id) noexcept
+static bool fill_member_info(CompositeInfo info, u16 rank, MemberInfo* out_info, OpcodeId* out_completion_id) noexcept
 {
-	switch (composite->disposition)
-	{
-	case TypeDisposition::Initializer:
-	{
-		const InitializerMemberData* const member = static_cast<const InitializerMemberData*>(data);
+	ASSERT_OR_IGNORE(rank < info.member_count);
 
-		ASSERT_OR_IGNORE(
-			!member->type_and_flags.is_pending
-		 && !member->type_and_flags.is_pub
-		 &&  member->type_and_flags.is_mut
-		 && !member->type_and_flags.is_eval
-		);
+	const CompositeMember2 type = info.member_types[rank];
 
-		out_info->type_id = static_cast<TypeId>(member->type_and_flags.type_id_bits);
+	if (type.is_pending)
+	{
+		*out_completion_id = type.completion_id;
+
+		out_info->type_id = TypeId::INVALID;
 		out_info->value_or_default_id = none<ForeverValueId>();
-		out_info->is_pub = false;
-		out_info->is_mut = true;
-		out_info->is_eval = false;
-		out_info->is_global = false;
 		out_info->rank = rank;
-		out_info->offset = static_cast<s64>(static_cast<u64>(member->offset));
+		out_info->is_pub = type.is_pub;
+		out_info->is_mut = type.is_mut;
+		out_info->is_eval = type.is_eval;
+		out_info->is_global = info.kind != CompositeKind::User && info.kind != CompositeKind::Signature;
 
-		return true;
+		return false;
 	}
-
-	case TypeDisposition::File:
+	else
 	{
-		const FileMemberData* const member = static_cast<const FileMemberData*>(data);
+		*out_completion_id = OpcodeId::INVALID;
 
-		ASSERT_OR_IGNORE(!member->type_and_flags.is_eval);
-
-		if (member->type_and_flags.is_pending)
-		{
-			*out_completion_id = member->completion_id;
-
-			out_info->rank = rank;
-			out_info->is_pub = member->type_and_flags.is_pub;
-			out_info->is_mut = member->type_and_flags.is_mut;
-			out_info->is_eval = member->type_and_flags.is_eval;
-			out_info->is_global = true;
-
-			return false;
-		}
-
-		out_info->type_id = static_cast<TypeId>(member->type_and_flags.type_id_bits);
-		out_info->value_or_default_id = some(member->value_id);
-		out_info->is_pub = member->type_and_flags.is_pub;
-		out_info->is_mut = member->type_and_flags.is_mut;
-		out_info->is_eval = member->type_and_flags.is_eval;
-		out_info->is_global = true;
+		out_info->type_id = static_cast<TypeId>(type.type_id_bits);
+		out_info->value_or_default_id = type.value_or_default_id;
+		out_info->is_pub = type.is_pub;
+		out_info->is_mut = type.is_mut;
+		out_info->is_eval = type.is_eval;
+		out_info->is_global = info.kind != CompositeKind::User && info.kind != CompositeKind::Signature;
 		out_info->rank = rank;
-		out_info->offset = 0;
+		out_info->offset = is_some(info.member_offsets) ? get(info.member_offsets)[rank] : 0;
 
 		return true;
 	}
-
-	case TypeDisposition::ParameterList:
-	case TypeDisposition::User:
-	{
-		const ParameterListOrUserMemberData* const member = static_cast<const ParameterListOrUserMemberData*>(data);
-
-		if (member->type_and_flags.is_pending)
-		{
-			*out_completion_id = member->parameter_completion_id;
-
-			out_info->rank = rank;
-			out_info->is_pub = member->type_and_flags.is_pub;
-			out_info->is_mut = member->type_and_flags.is_mut;
-			out_info->is_eval = member->type_and_flags.is_eval;
-			out_info->is_global = false;
-
-			return false;
-		}
-
-		out_info->type_id = static_cast<TypeId>(member->type_and_flags.type_id_bits);
-		out_info->value_or_default_id = member->default_id;
-		out_info->is_pub = member->type_and_flags.is_pub;
-		out_info->is_mut = member->type_and_flags.is_mut;
-		out_info->is_eval = member->type_and_flags.is_eval;
-		out_info->is_global = false;
-		out_info->rank = rank;
-		out_info->offset = member->offset;
-
-		return true;
-	}
-
-	case TypeDisposition::INVALID:
-		; // Fallthrough to unreachable
-	}
-
-	ASSERT_UNREACHABLE;
 }
 
 
@@ -585,26 +681,12 @@ static TypeStructure* structure_from_id(CoreData* core, TypeId id) noexcept
 	return reinterpret_cast<TypeStructure*>(reinterpret_cast<u64*>(core->types.structures.begin()) + static_cast<u32>(id));
 }
 
-static TypeStructure* follow_indirection(CoreData* core, TypeStructure* indir) noexcept
+static TypeStructure* follow_indirection(CoreData* core, TypeStructure* indirection) noexcept
 {
-	if (indir->tag != TypeTag::INDIRECTION)
-		return indir;
+	if (indirection->tag != TypeTag::INDIRECTION)
+		return indirection;
 
-	IndirectionType* const attach = reinterpret_cast<IndirectionType*>(indir->attach);
-
-	TypeStructure* const dir = structure_from_id(core, attach->indirection_type_id);
-
-	ASSERT_OR_IGNORE(dir->tag == TypeTag::Composite || dir->tag == TypeTag::CompositeLiteral);
-
-	return dir;
-}
-
-static const TypeStructure* follow_indirection(CoreData* core, const TypeStructure* indir) noexcept
-{
-	if (indir->tag != TypeTag::INDIRECTION)
-		return indir;
-
-	const IndirectionType* const attach = reinterpret_cast<const IndirectionType*>(indir->attach);
+	IndirectionType* const attach = reinterpret_cast<IndirectionType*>(indirection->attach);
 
 	TypeStructure* const dir = structure_from_id(core, attach->indirection_type_id);
 
@@ -618,6 +700,8 @@ static const TypeStructure* follow_indirection(CoreData* core, const TypeStructu
 static TypeId holotype_id_from_interned_type_structure(CoreData* core, TypeStructure* structure) noexcept
 {
 	ASSERT_OR_IGNORE(structure->holotype_id == TypeId::INVALID);
+
+	ASSERT_OR_IGNORE(structure->hash != 0);
 
 	HolotypeInit init;
 	init.structure = structure;
@@ -643,7 +727,7 @@ static TypeId holotype_id_from_interned_type_structure(CoreData* core, TypeStruc
 
 static TypeId holotype_id_from_attachment(CoreData* core, TypeTag tag, Range<byte> attach) noexcept
 {
-	TypeStructure* const structure = make_structure_hash(core, tag, attach, attach.count(), SourceId::INVALID);
+	TypeStructure* const structure = make_structure_hash(core, tag, attach, attach.count());
 
 	ASSERT_OR_IGNORE(structure->holotype_id == TypeId::INVALID);
 
@@ -803,93 +887,110 @@ static void seen_set_pop(SeenSet* set) noexcept
 
 static u32 hash_type_id(CoreData* core, u32 hash, SeenSet* seen, TypeId type) noexcept;
 
-static u32 hash_composite_type_members(CoreData* core, u32 hash, SeenSet* seen, const CompositeType* composite, u32 count, const void* data) noexcept
+static u32 hash_composite_type_extra_data(CoreData* core, u32 hash, SeenSet* seen, const CompositeType2* attach) noexcept
 {
-	switch (composite->disposition)
+	switch (attach->kind)
 	{
-	case TypeDisposition::Initializer:
+	case CompositeKind::File:
 	{
-		const InitializerMemberData* const members = static_cast<const InitializerMemberData*>(data);
+		const CompositeFileExtraData* const file = reinterpret_cast<const CompositeFileExtraData*>(attach + 1);
 
-		for (u32 i = 0; i != count; ++i)
+		return fnv1a_step(hash, range::from_object_bytes(&file->definition_site)) | 1;
+	}
+
+	case CompositeKind::Trait:
+	{
+		const Range<byte> parameter_name_bytes = trait_parameter_names(core, attach).as_byte_range();
+
+		return fnv1a_step(hash, parameter_name_bytes) | 1;
+	}
+
+	case CompositeKind::Impl:
+	{
+		const CompositeImplExtraData* const impl = reinterpret_cast<const CompositeImplExtraData*>(attach + 1);
+
+		const u32 impl_hash = core->types.impls.value_from(impl->impl_index)->m_hash;
+
+		return fnv1a_step(hash, range::from_object_bytes(&impl_hash)) | 1;
+	}
+
+	case CompositeKind::Signature:
+	{
+		const CompositeSignatureExtraData* const signature = reinterpret_cast<const CompositeSignatureExtraData*>(attach + 1);
+
+		if (!signature->has_templated_return_type)
 		{
-			const TypeId member_type = static_cast<TypeId>(members[i].type_and_flags.type_id_bits);
-
-			hash = hash_type_id(core, hash, seen, member_type);
+			hash = hash_type_id(core, hash, seen, signature->return_type.type_id);
 
 			if (hash == 0)
 				return 0;
 		}
 
-		return hash;
+		const byte flags = (static_cast<byte>(signature->has_templated_return_type))
+		                 | (static_cast<byte>(signature->is_func) << 1)
+						 | (static_cast<byte>(signature->templated_parameter_count) << 2);
+
+		return fnv1a_step(hash, flags) | 1;
 	}
 
-	case TypeDisposition::File:
+	case CompositeKind::User:
 	{
-		// Since the hash of the `distinct_source_id` of the enclosing
-		// `TypeStructure` is already unique for file types, there is no need
-		// to add more data to the mix.
-		return hash;
+		const CompositeUserExtraData* const user = reinterpret_cast<const CompositeUserExtraData*>(attach + 1);
+
+		if ((attach->flags & CompositeFlags::User_IsOpen) != CompositeFlags::EMPTY)
+			return 0;
+
+		return fnv1a_step(hash, range::from_object_bytes(user)) | 1;
 	}
 
-	case TypeDisposition::ParameterList:
-	{
-		const ParameterListOrUserMemberData* const members = static_cast<const ParameterListOrUserMemberData*>(data);
-
-		for (u32 i = 0; i != count; ++i)
-		{
-			// Skip templated members.
-			if (members[i].type_and_flags.is_pending)
-				continue;
-
-			const TypeId member_type = static_cast<TypeId>(members[i].type_and_flags.type_id_bits);
-
-			hash = hash_type_id(core, hash, seen, member_type);
-
-			if (hash == 0)
-				return 0;
-		}
-
-		return hash;
-	}
-
-	case TypeDisposition::User:
-	{
-		const ParameterListOrUserMemberData* const members = static_cast<const ParameterListOrUserMemberData*>(data);
-
-		for (u32 i = 0; i != count; ++i)
-		{
-			ASSERT_OR_IGNORE(!members[i].type_and_flags.is_pending);
-
-			const TypeId member_type = static_cast<TypeId>(members[i].type_and_flags.type_id_bits);
-
-			hash = hash_type_id(core, hash, seen, member_type);
-
-			if (hash == 0)
-				return 0;
-		}
-
-		return hash;
-	}
-
-	case TypeDisposition::INVALID:
+	case CompositeKind::INVALID:
 		; // Fallthrough to unreachable.
 	}
 
 	ASSERT_UNREACHABLE;
 }
 
-static u32 hash_composite_type(CoreData* core, u32 hash, SeenSet* seen, const CompositeType* attach) noexcept
+static u32 hash_composite_type(CoreData* core, u32 hash, SeenSet* seen, const CompositeType2* attach) noexcept
 {
-	if (attach->is_open)
-		return 0;
+	hash = hash_composite_type_extra_data(core, hash, seen, attach);
 
-	CompositeMemberInfo members = composite_members(attach);
+	if (hash == 0)
+		return hash;
 
-	for (u32 i = 0; i != members.count; ++i)
-		hash = fnv1a_step(hash, range::from_object_bytes(&members.names[i])) | 1;
+	CompositeInfo info = composite_info(attach);
 
-	return hash_composite_type_members(core, hash, seen, attach, members.count, members.members);
+	hash = fnv1a_step(hash, Range{ info.member_names, info.member_count }.as_byte_range()) | 1;
+
+	if (info.kind == CompositeKind::File || info.kind == CompositeKind::Impl || info.kind == CompositeKind::Trait)
+		return hash;
+
+	for (u32 i = 0; i != info.member_count; ++i)
+	{
+		const CompositeMember2 member_type = info.member_types[i];
+
+		if (member_type.is_pending)
+		{
+			if (info.kind == CompositeKind::Signature)
+				continue;
+			else
+				return 0;
+		}
+
+		ASSERT_OR_IGNORE(!member_type.is_pending);
+
+		const byte flags = (static_cast<byte>(member_type.is_pub))
+		                 | (static_cast<byte>(member_type.is_mut) << 1)
+		                 | (static_cast<byte>(member_type.is_eval) << 2);
+
+		hash = fnv1a_step(hash, flags) | 1;
+
+		hash = hash_type_id(core, hash, seen, static_cast<TypeId>(member_type.type_id_bits));
+
+		if (hash == 0)
+			return 0;
+	}
+
+	return hash;
 }
 
 static u32 hash_numeric_type([[maybe_unused]] CoreData* core, u32 hash, const NumericType* attach) noexcept
@@ -918,64 +1019,6 @@ static u32 hash_array_type(CoreData* core, u32 hash, SeenSet* seen, const ArrayT
 		return hash;
 }
 
-static u32 hash_signature_type(CoreData* core, u32 hash, SeenSet* seen, const SignatureType2* attach) noexcept
-{
-	const TypeStructure* const parameter_list_structure = structure_from_id(core, attach->parameter_list_type_id);
-
-	ASSERT_OR_IGNORE(parameter_list_structure->tag == TypeTag::Composite);
-
-	const CompositeType* const parameter_list_type = reinterpret_cast<const CompositeType*>(parameter_list_structure->attach);
-
-	ASSERT_OR_IGNORE(parameter_list_type->disposition == TypeDisposition::ParameterList);
-
-	hash = hash_composite_type(core, hash, seen, parameter_list_type);
-
-	if (hash == 0)
-		return 0;
-
-	if (!attach->has_templated_return_type)
-	{
-		hash = hash_type_id(core, hash, seen, attach->return_type.type_id);
-
-		if (hash == 0)
-			return 0;
-	}
-
-	const byte flags = (static_cast<byte>(attach->is_func))
-	                 | (static_cast<byte>(attach->has_templated_parameter_list) << 1)
-	                 | (static_cast<byte>(attach->has_templated_return_type) << 2);
-
-	return fnv1a_step(fnv1a_step(hash, flags), static_cast<byte>(attach->parameter_count)) | 1;
-}
-
-static u32 hash_trait_type(CoreData* core, u32 hash, SeenSet* seen, const TraitType* attach) noexcept
-{
-	const Range header_and_names{ reinterpret_cast<const byte*>(attach), sizeof(TraitType) + (attach->parameter_count + attach->parameter_count) * sizeof(IdentifierId) };
-
-	hash = fnv1a_step(hash, header_and_names) | 1;
-
-	const TraitMemberData* const members = reinterpret_cast<const TraitMemberData*>(attach) + attach->member_data_offset;
-
-	for (u16 i = 0; i != attach->member_count; ++i)
-	{
-		const TraitMemberData member = members[i];
-
-		const byte flags = (static_cast<byte>(member.type_and_flags.is_mut))
-		                 | (static_cast<byte>(is_some(member.default_id)) << 1);
-
-		hash = fnv1a_step(hash, flags);
-
-		const TypeId member_type_id = static_cast<TypeId>(member.type_and_flags.type_id_bits);
-
-		hash = hash_type_id(core, hash, seen, member_type_id);
-
-		if (hash == 0)
-			return 0;
-	}
-
-	return hash;
-}
-
 static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, const TypeStructure* structure) noexcept
 {
 	if (structure->hash != 0)
@@ -983,9 +1026,7 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 
 	const TypeTag tag = structure->tag;
 
-	hash = fnv1a_step(hash, static_cast<byte>(tag));
-
-	hash = fnv1a_step(hash, range::from_object_bytes(&structure->distinct_source_id));
+	hash = fnv1a_step(hash, static_cast<byte>(tag)) | 1;
 
 	switch (tag)
 	{
@@ -1013,15 +1054,11 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 	case TypeTag::ArrayLiteral:
 		return hash_array_type(core, hash, seen, reinterpret_cast<const ArrayType*>(structure->attach));
 
-	case TypeTag::Func:
-		return hash_signature_type(core, hash, seen, reinterpret_cast<const SignatureType2*>(structure->attach));
-
+	case TypeTag::Signature:
 	case TypeTag::Composite:
 	case TypeTag::CompositeLiteral:
-		return hash_composite_type(core, hash, seen, reinterpret_cast<const CompositeType*>(structure->attach));
-
 	case TypeTag::Trait:
-		return hash_trait_type(core, hash, seen, reinterpret_cast<const TraitType*>(structure->attach));
+		return hash_composite_type(core, hash, seen, reinterpret_cast<const CompositeType2*>(structure->attach));
 
 	case TypeTag::Variadic:
 	case TypeTag::Definition:
@@ -1063,6 +1100,24 @@ static u32 hash_type_id(CoreData* core, u32 hash, SeenSet* seen, TypeId id) noex
 	return hash;
 }
 
+static bool init_structure_hash(CoreData* core, TypeStructure* structure) noexcept
+{
+	ASSERT_OR_IGNORE(structure->hash == 0);
+
+	SeenSet seen = seen_set_create(core);
+
+	const u32 hash = hash_type_structure(core, FNV1A_SEED, &seen, structure);
+
+	seen_set_release(core, seen);
+
+	if (hash == 0)
+		return false;
+
+	structure->hash = hash;
+
+	return true;
+}
+
 
 
 static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, TypeId from_type_id, TypeId to_type_id) noexcept
@@ -1089,7 +1144,7 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 	case TypeTag::Integer:
 	case TypeTag::Float:
 	case TypeTag::Array:
-	case TypeTag::Func:
+	case TypeTag::Signature:
 	case TypeTag::Composite:
 	case TypeTag::TailArray:
 	case TypeTag::Variadic:
@@ -1149,11 +1204,14 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 		if (to_tag != TypeTag::Composite)
 			return false;
 
-		const CompositeType* const from_attach = reinterpret_cast<const CompositeType*>(from->attach);
+		const CompositeType2* const from_attach = reinterpret_cast<const CompositeType2*>(from->attach);
 
-		const CompositeType* const to_attach = reinterpret_cast<const CompositeType*>(to->attach);
+		const CompositeType2* const to_attach = reinterpret_cast<const CompositeType2*>(to->attach);
 
-		ASSERT_OR_IGNORE(from_attach->disposition == TypeDisposition::Initializer && to_attach->disposition == TypeDisposition::User);
+		ASSERT_OR_IGNORE(from_attach->kind == CompositeKind::User);
+
+		if (to_attach->kind != CompositeKind::User)
+			return false;
 
 		const u32 required_seen_qwords = to_attach->member_used / 64 + 63;
 
@@ -1163,31 +1221,23 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 
 		u32 to_rank = 0;
 
-		const CompositeMemberInfo from_members = composite_members(from_attach);
+		const CompositeInfo from_info = composite_info(from_attach);
 
-		const CompositeMemberInfo to_members = composite_members(to_attach);
+		const CompositeInfo to_info = composite_info(to_attach);
 
 		// Check whether all members in `from` have a corresponding non-global
 		// member in `to` of a type they can be converted to.
-		for (u32 i = 0; i != from_attach->member_used; ++i)
+		for (u32 i = 0; i != from_info.member_count; ++i)
 		{
-			InitializerMemberData* const from_member = static_cast<InitializerMemberData*>(member_at(&from_members, i));
+			CompositeMember2 const from_member = from_info.member_types[i];
 
-			const IdentifierId from_name = from_members.names[i];
+			const IdentifierId from_name = from_info.member_names[i];
 
-			const ParameterListOrUserMemberData* to_member;
-
-			if (from_name == IdentifierId::INVALID)
-			{
-				to_member = static_cast<const ParameterListOrUserMemberData*>(member_at(&to_members, to_rank));
-			}
-			else
+			if (from_name != IdentifierId::INVALID)
 			{
 				u16 found_rank;
 
-				const void* raw_to_member;
-
-				if (!find_member_by_name(&to_members, from_name, &found_rank, &raw_to_member))
+				if (!find_member_by_name(to_info, from_name, &found_rank))
 				{
 					core->types.scratch.pop_by(required_seen_qwords);
 
@@ -1195,19 +1245,20 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 				}
 
 				to_rank = found_rank;
-
-				to_member = static_cast<const ParameterListOrUserMemberData*>(raw_to_member);
 			}
 
-			if (to_member->type_and_flags.is_pending)
+			const CompositeMember2 to_member = to_info.member_types[to_rank];
+
+			if (to_member.is_pending)
 				TODO("Implement implicit convertability check from composite literal to incomplete type");
 
-			const TypeId from_member_type_id = static_cast<TypeId>(from_member->type_and_flags.type_id_bits);
+			const TypeId from_member_type_id = static_cast<TypeId>(from_member.type_id_bits);
 
-			const TypeId to_member_type_id = static_cast<TypeId>(to_member->type_and_flags.type_id_bits);
+			const TypeId to_member_type_id = static_cast<TypeId>(to_member.type_id_bits);
 
-			if (!type_can_implicitly_convert_from_to(core, from_member_type_id, to_member_type_id))
-			{
+			if (!type_is_equal(core, from_member_type_id, to_member_type_id)
+			 && !type_can_implicitly_convert_from_to_assume_unequal(core, from_member_type_id, to_member_type_id)
+			) {
 				core->types.scratch.pop_by(required_seen_qwords);
 
 				return false;
@@ -1225,9 +1276,9 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 			if ((seen_member_bits[i >> 6] & (static_cast<u64>(1) << (i & 63))) != 0)
 				continue;
 
-			const ParameterListOrUserMemberData* const to_member = static_cast<const ParameterListOrUserMemberData*>(member_at(&to_members, i));
+			const CompositeMember2 to_member = to_info.member_types[i];
 
-			if (is_none(to_member->default_id))
+			if (is_none(to_member.value_or_default_id))
 			{
 				core->types.scratch.pop_by(required_seen_qwords);
 
@@ -1257,7 +1308,8 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 		if (is_none(from_attach->element_type))
 			return true;
 
-		return type_can_implicitly_convert_from_to(core, get(from_attach->element_type), get(to_attach->element_type));
+		return type_is_equal(core, get(from_attach->element_type), get(to_attach->element_type))
+		    || type_can_implicitly_convert_from_to_assume_unequal(core, get(from_attach->element_type), get(to_attach->element_type));
 	}
 
 	case TypeTag::INVALID:
@@ -1282,37 +1334,11 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 	if (a == b)
 		return true;
 
-	if (a->hash == 0)
-	{
-		SeenSet hash_seen = seen_set_create(core);
+	if (a->hash == 0 && init_structure_hash(core, a))
+		(void) holotype_id_from_interned_type_structure(core, a);
 
-		const u32 hash = hash_type_structure(core, FNV1A_SEED, &hash_seen, a);
-
-		seen_set_release(core, hash_seen);
-
-		if (hash != 0)
-		{
-			a->hash = hash;
-
-			(void) holotype_id_from_interned_type_structure(core, a);
-		}
-	}
-
-	if (b->hash == 0)
-	{
-		SeenSet hash_seen = seen_set_create(core);
-
-		const u32 hash = hash_type_structure(core, FNV1A_SEED, &hash_seen, b);
-
-		seen_set_release(core, hash_seen);
-
-		if (hash != 0)
-		{
-			b->hash = hash;
-
-			(void) holotype_id_from_interned_type_structure(core, b);
-		}
-	}
+	if (b->hash == 0 && init_structure_hash(core, b))
+		(void) holotype_id_from_interned_type_structure(core, b);
 
 	// This is assumed to be the common case, so we check for it as early as
 	// possible.
@@ -1328,10 +1354,6 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 
 	// Types with differing tags can never be equal.
 	if (a->tag != b->tag)
-		return false;
-
-	// Types from different sources can definitionally never be equal.
-	if (a->distinct_source_id != b->distinct_source_id)
 		return false;
 
 	const TypeTag tag = a->tag;
@@ -1397,17 +1419,16 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 		return a_attach->bits == b_attach->bits && a_attach->is_signed == b_attach->is_signed;
 	}
 
+	case TypeTag::Signature:
 	case TypeTag::Composite:
+	case TypeTag::CompositeLiteral:
+	case TypeTag::Trait:
 	{
-		const CompositeType* const a_attach = reinterpret_cast<CompositeType*>(a->attach);
+		const CompositeType2* const a_attach = reinterpret_cast<CompositeType2*>(a->attach);
 
-		const CompositeType* const b_attach = reinterpret_cast<CompositeType*>(b->attach);
+		const CompositeType2* const b_attach = reinterpret_cast<CompositeType2*>(b->attach);
 
-		if (a_attach->disposition != b_attach->disposition
-		 || a_attach->stride != b_attach->stride
-		 || a_attach->align_log2 != b_attach->align_log2
-		 || a_attach->size != b_attach->size
-		 || a_attach->member_used != b_attach->member_used)
+		if (a_attach->kind != b_attach->kind || a_attach->member_used != b_attach->member_used)
 		{
 			seen_set_pop(a_seen);
 
@@ -1416,26 +1437,71 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 			return false;
 		}
 
-		const CompositeMemberInfo a_members = composite_members(a_attach);
+		const CompositeInfo a_info = composite_info(a_attach);
 
-		const CompositeMemberInfo b_members = composite_members(b_attach);
+		const CompositeInfo b_info = composite_info(b_attach);
 
-		for (u16 rank = 0; rank != a_attach->member_used; ++rank)
+		switch (a_info.kind)
 		{
-			void* const a_member = member_at(&a_members, rank);
+		case CompositeKind::Trait:
+		{
+			const CompositeTraitExtraData* const a_trait = reinterpret_cast<const CompositeTraitExtraData*>(a_attach + 1);
 
-			void* const b_member = member_at(&b_members, rank);
+			const CompositeTraitExtraData* const b_trait = reinterpret_cast<const CompositeTraitExtraData*>(b_attach + 1);
 
-			const TypeIdAndFlags a_type_and_flags = *static_cast<const TypeIdAndFlags*>(a_member);
+			if (a_trait->parameter_count != b_trait->parameter_count)
+			{
+				seen_set_pop(a_seen);
 
-			const TypeIdAndFlags b_type_and_flags = *static_cast<const TypeIdAndFlags*>(b_member);
+				seen_set_pop(b_seen);
 
-			if (a_type_and_flags.is_pending != b_type_and_flags.is_pending)
-				TODO("Handle pending composite member types in `type_is_equal_noloop`");
+				return false;
+			}
 
-			if (a_type_and_flags.is_pub != b_type_and_flags.is_pub
-			 || a_type_and_flags.is_mut != b_type_and_flags.is_mut
-			 || a_type_and_flags.is_eval != b_type_and_flags.is_eval
+			const Range<IdentifierId> a_parameter_names = trait_parameter_names(core, a_attach).immut();
+
+			const Range<IdentifierId> b_parameter_names = trait_parameter_names(core, b_attach).immut();
+
+			if (!range::mem_equal(a_parameter_names, b_parameter_names))
+			{
+				seen_set_pop(a_seen);
+
+				seen_set_pop(b_seen);
+
+				return false;
+			}
+
+			break;
+		}
+
+		case CompositeKind::Impl:
+		{
+			const CompositeImplExtraData* const a_impl = reinterpret_cast<const CompositeImplExtraData*>(a_attach + 1);
+
+			const CompositeImplExtraData* const b_impl = reinterpret_cast<const CompositeImplExtraData*>(b_attach + 1);
+
+			if (a_impl->impl_index != b_impl->impl_index)
+			{
+				seen_set_pop(a_seen);
+
+				seen_set_pop(b_seen);
+
+				return false;
+			}
+
+			break;
+		}
+
+		case CompositeKind::Signature:
+		{
+			const CompositeSignatureExtraData* const a_signature = reinterpret_cast<const CompositeSignatureExtraData*>(a_attach + 1);
+
+			const CompositeSignatureExtraData* const b_signature = reinterpret_cast<const CompositeSignatureExtraData*>(b_attach + 1);
+
+			if (a_signature->has_templated_return_type != b_signature->has_templated_return_type
+			 || a_signature->templated_parameter_count != b_signature->templated_parameter_count
+			 || a_signature->is_func != b_signature->is_func
+			 || is_some(a_signature->closure_id) != is_some(b_signature->closure_id)
 			) {
 				seen_set_pop(a_seen);
 
@@ -1444,60 +1510,103 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 				return false;
 			}
 
-			if (a_attach->disposition == TypeDisposition::Initializer)
+			if (a_signature->has_templated_return_type)
 			{
-				const InitializerMemberData* const a_typed_member = static_cast<const InitializerMemberData*>(a_member);
-
-				const InitializerMemberData* const b_typed_member = static_cast<const InitializerMemberData*>(b_member);
-
-				if (a_typed_member->offset != b_typed_member->offset)
-				{
-					seen_set_pop(a_seen);
-
-					seen_set_pop(b_seen);
-
-					return false;
-				}
+				TODO("Handle comparison of signature types with templated return types.");
 			}
-			else if (a_attach->disposition == TypeDisposition::File)
+			else if (!type_is_equal_noloop(core, a_signature->return_type.type_id, b_signature->return_type.type_id, a_seen, b_seen))
 			{
-				FileMemberData* const a_typed_member = static_cast<FileMemberData*>(a_member);
+				seen_set_pop(a_seen);
 
-				FileMemberData* const b_typed_member = static_cast<FileMemberData*>(b_member);
+				seen_set_pop(b_seen);
 
-				if (a_typed_member->value_id != b_typed_member->value_id)
-				{
-					seen_set_pop(a_seen);
-
-					seen_set_pop(b_seen);
-
-					return false;
-				}
-			}
-			else
-			{
-				ASSERT_OR_IGNORE(a_attach->disposition == TypeDisposition::ParameterList || a_attach->disposition == TypeDisposition::User);
-
-				const ParameterListOrUserMemberData* const a_typed_member = static_cast<const ParameterListOrUserMemberData*>(a_member);
-
-				const ParameterListOrUserMemberData* const b_typed_member = static_cast<const ParameterListOrUserMemberData*>(b_member);
-
-				if (a_typed_member->offset != b_typed_member->offset
-				 || a_typed_member->default_id != b_typed_member->default_id
-				) {
-					seen_set_pop(a_seen);
-
-					seen_set_pop(b_seen);
-
-					return false;
-				}
+				return false;
 			}
 
-			const TypeId a_member_type_id = static_cast<TypeId>(a_type_and_flags.type_id_bits);
+			if (is_some(a_signature->closure_id))
+				TODO("Handle comparison of signatures that hold a closure.");
 
-			const TypeId b_member_type_id = static_cast<TypeId>(b_type_and_flags.type_id_bits);
+			break;
+		}
 
-			if (!type_is_equal_noloop(core, a_member_type_id, b_member_type_id, a_seen, b_seen))
+		case CompositeKind::User:
+		{
+			const CompositeUserExtraData* const a_user = reinterpret_cast<const CompositeUserExtraData*>(a_attach + 1);
+
+			const CompositeUserExtraData* const b_user = reinterpret_cast<const CompositeUserExtraData*>(b_attach + 1);
+
+			if (
+				a_user->size != b_user->size
+			 || a_user->stride != b_user->stride
+			 || a_user->align != b_user->align
+			 || a_user->definition_site != b_user->definition_site
+			) {
+				seen_set_pop(a_seen);
+
+				seen_set_pop(b_seen);
+
+				return false;
+			}
+
+			break;
+		}
+
+		default:
+			break;
+		}
+
+		for (u16 rank = 0; rank != a_attach->member_used; ++rank)
+		{
+			const CompositeMember2 a_member = a_info.member_types[rank];
+
+			const CompositeMember2 b_member = b_info.member_types[rank];
+
+			if (a_member.is_pending != b_member.is_pending)
+				TODO("Handle pending composite member types in `type_is_equal_noloop`");
+
+			if (a_member.is_pub != b_member.is_pub
+			 || a_member.is_mut != b_member.is_mut
+			 || a_member.is_eval != b_member.is_eval
+			) {
+				seen_set_pop(a_seen);
+
+				seen_set_pop(b_seen);
+
+				return false;
+			}
+
+			if (a_member.value_or_default_id != b_member.value_or_default_id)
+			{
+				seen_set_pop(a_seen);
+
+				seen_set_pop(b_seen);
+
+				return false;
+			}
+
+			const TypeId a_member_type_id = static_cast<TypeId>(a_member.type_id_bits);
+
+			const TypeId b_member_type_id = static_cast<TypeId>(b_member.type_id_bits);
+
+			ASSERT_OR_IGNORE((a_member_type_id == TypeId::INVALID) == (b_member_type_id == TypeId::INVALID));
+
+			if (a_member_type_id != TypeId::INVALID
+			 && b_member_type_id != TypeId::INVALID
+			 && !type_is_equal_noloop(core, a_member_type_id, b_member_type_id, a_seen, b_seen)
+			) {
+				seen_set_pop(a_seen);
+
+				seen_set_pop(b_seen);
+
+				return false;
+			}
+		}
+
+		ASSERT_OR_IGNORE(is_some(a_info.member_offsets) == is_some(b_info.member_offsets));
+
+		if (is_some(a_info.member_offsets))
+		{
+			if (memcmp(get(a_info.member_offsets), get(b_info.member_offsets), a_info.member_count * sizeof(s64)) != 0)
 			{
 				seen_set_pop(a_seen);
 
@@ -1582,107 +1691,8 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 		return element_result;
 	}
 
-	case TypeTag::Func:
-	{
-		const SignatureType2* const a_attach = reinterpret_cast<SignatureType2*>(a->attach);
-
-		const SignatureType2* const b_attach = reinterpret_cast<SignatureType2*>(b->attach);
-
-		if (a_attach->is_func                      != b_attach->is_func
-		 || a_attach->parameter_count              != b_attach->parameter_count
-		 || a_attach->has_templated_parameter_list != b_attach->has_templated_parameter_list
-		 || a_attach->has_templated_return_type    != b_attach->has_templated_return_type
-		) {
-			seen_set_pop(a_seen);
-
-			seen_set_pop(b_seen);
-
-			return false;
-		}
-
-		if (a_attach->has_templated_parameter_list || a_attach->has_templated_return_type)
-			TODO("Handle comparison of template signature types.\n");
-
-		const TypeId a_return_type_id = a_attach->return_type.type_id;
-
-		const TypeId b_return_type_id = b_attach->return_type.type_id;
-
-		if (!type_is_equal_noloop(core, a_return_type_id, b_return_type_id, a_seen, b_seen))
-		{
-			seen_set_pop(a_seen);
-
-			seen_set_pop(b_seen);
-
-			return false;
-		}
-
-		const TypeId a_params_type_id = a_attach->parameter_list_type_id;
-
-		const TypeId b_params_type_id = b_attach->parameter_list_type_id;
-
-		const bool result = type_is_equal_noloop(core, a_params_type_id, b_params_type_id, a_seen, b_seen);
-
-		seen_set_pop(a_seen);
-
-		seen_set_pop(b_seen);
-
-		return result;
-	}
-
-	case TypeTag::Trait:
-	{
-		const TraitType* const a_attach = reinterpret_cast<TraitType*>(a->attach);
-
-		const TraitType* const b_attach = reinterpret_cast<TraitType*>(b->attach);
-
-		const u64 names_size = (a_attach->parameter_count + a_attach->member_count) * sizeof(IdentifierId);
-
-		if (a_attach->parameter_count != b_attach->parameter_count
-		 || a_attach->member_count != b_attach->member_count
-		 || memcmp(a_attach + 1, b_attach + 1, names_size) != 0
-		) {
-			seen_set_pop(a_seen);
-
-			seen_set_pop(b_seen);
-
-			return false;
-		}
-
-		const TraitMemberData* const a_members = reinterpret_cast<const TraitMemberData*>(a_attach) + a_attach->member_data_offset;
-
-		const TraitMemberData* const b_members = reinterpret_cast<const TraitMemberData*>(b_attach) + a_attach->member_data_offset;
-
-		for (u16 i = 0; i != a_attach->member_count; ++i)
-		{
-			const TraitMemberData a_member = a_members[i];
-
-			const TraitMemberData b_member = b_members[i];
-
-			const TypeId a_member_type_id = static_cast<TypeId>(a_member.type_and_flags.type_id_bits);
-
-			const TypeId b_member_type_id = static_cast<TypeId>(b_member.type_and_flags.type_id_bits);
-
-			if (a_member.type_and_flags.is_mut != b_member.type_and_flags.is_mut
-			 || !type_is_equal_noloop(core, a_member_type_id, b_member_type_id, a_seen, b_seen)
-			) {
-				seen_set_pop(a_seen);
-
-				seen_set_pop(b_seen);
-
-				return false;
-			}
-		}
-
-		seen_set_pop(a_seen);
-
-		seen_set_pop(b_seen);
-
-		return true;
-	}
-
-	case TypeTag::CompositeLiteral:
 	case TypeTag::Variadic:
-		TODO("Implement `type_is_equal_noloop` for CompositeLiteral, ArrayLiteral, Variadic and Trait");
+		TODO("Implement `type_is_equal_noloop` for Variadic.");
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
@@ -1694,7 +1704,7 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 
 
 
-static TypeStructure* make_structure_nohash(CoreData* core, TypeTag tag, Range<byte> attach, u64 reserve_size, SourceId distinct_source_id) noexcept
+static TypeStructure* make_structure_nohash(CoreData* core, TypeTag tag, Range<byte> attach, u64 reserve_size) noexcept
 {
 	ASSERT_OR_IGNORE(reserve_size <= UINT16_MAX && reserve_size >= attach.count());
 
@@ -1703,8 +1713,8 @@ static TypeStructure* make_structure_nohash(CoreData* core, TypeTag tag, Range<b
 	TypeStructure* const structure = reinterpret_cast<TypeStructure*>(memory.begin());
 	structure->tag = tag;
 	structure->holotype_id = TypeId::INVALID;
-	structure->distinct_source_id = distinct_source_id;
 	structure->hash = 0;
+	structure->unused_ = 0;
 
 	if (attach.count() != 0)
 		memcpy(structure->attach, attach.begin(), attach.count());
@@ -1712,33 +1722,11 @@ static TypeStructure* make_structure_nohash(CoreData* core, TypeTag tag, Range<b
 	return structure;
 }
 
-static TypeStructure* make_structure_hash(CoreData* core, TypeTag tag, Range<byte> attach, u64 reserve_size, SourceId distinct_source_id) noexcept
+static TypeStructure* make_structure_hash(CoreData* core, TypeTag tag, Range<byte> attach, u64 reserve_size) noexcept
 {
-	TypeStructure* const structure = make_structure_nohash(core, tag, attach, reserve_size, distinct_source_id);
+	TypeStructure* const structure = make_structure_nohash(core, tag, attach, reserve_size);
 
-	SeenSet seen = seen_set_create(core);
-
-	structure->hash = hash_type_structure(core, FNV1A_SEED, &seen, structure);
-
-	seen_set_release(core, seen);
-
-	return structure;
-}
-
-static TypeStructure* make_indirection(CoreData* core, TypeId indirected_type_id) noexcept
-{
-	ASSERT_OR_IGNORE(indirected_type_id != TypeId::INVALID);
-
-	MutRange<byte> memory = core->types.structures.alloc(sizeof(TypeStructure) + sizeof(IndirectionType));
-
-	TypeStructure* const structure = reinterpret_cast<TypeStructure*>(memory.begin());
-	structure->tag = TypeTag::INDIRECTION;
-	structure->holotype_id = TypeId::INVALID;
-	structure->distinct_source_id = SourceId::INVALID;
-	structure->hash = 0;
-
-	IndirectionType* const attach = reinterpret_cast<IndirectionType*>(structure->attach);
-	attach->indirection_type_id = indirected_type_id;
+	(void) init_structure_hash(core, structure);
 
 	return structure;
 }
@@ -1794,7 +1782,7 @@ void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 	{
 		// TODO: Once hashing is implemented for all types, this pseudo-hashing
 		// can be removed.
-		TypeStructure* const structure = make_structure_nohash(core, static_cast<TypeTag>(ordinal), {}, 0, SourceId::INVALID);
+		TypeStructure* const structure = make_structure_nohash(core, static_cast<TypeTag>(ordinal), {}, 0);
 		structure->hash = ordinal;
 
 		(void) holotype_id_from_interned_type_structure(core, structure);
@@ -1839,443 +1827,572 @@ TypeId type_create_array(CoreData* core, TypeTag tag, ArrayType attach) noexcept
 	return holotype_id_from_attachment(core, tag, range::from_object_bytes(&attach));
 }
 
-TypeId type_create_signature(CoreData* core, TypeTag tag, SignatureType2 attach) noexcept
+
+
+TypeId type_create_signature(CoreData* core, bool is_func, u8 parameter_count) noexcept
 {
-	ASSERT_OR_IGNORE(tag == TypeTag::Func);
+	ASSERT_OR_IGNORE(parameter_count <= 64);
 
-	return holotype_id_from_attachment(core, tag, range::from_object_bytes(&attach));
-}
+	TypeStructure* const structure = composite_alloc(core, TypeTag::Signature, CompositeKind::Signature, is_func ? CompositeFlags::Signature_IsFunc : CompositeFlags::EMPTY, parameter_count, false);
 
-TypeId type_create_trait(CoreData* core, SourceId distinct_source_id, Range<IdentifierId> parameter_names, Range<IdentifierId> member_names) noexcept
-{
-	const u32 member_data_offset = static_cast<u32>(sizeof(TraitType) / sizeof(TraitMemberData) + (member_names.count() + parameter_names.count() + 1) * sizeof(IdentifierId) / sizeof(TraitMemberData));
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
 
-	TraitType attach{};
-	attach.parameter_count = static_cast<u16>(parameter_names.count());
-	attach.member_count = static_cast<u16>(member_names.count());
-	attach.member_data_offset = member_data_offset;
-
-	TypeStructure* const structure = make_structure_nohash(core, TypeTag::Trait, range::from_object_bytes(&attach), member_data_offset + member_names.count() * sizeof(TraitMemberData), distinct_source_id);
-
-	memcpy(structure + 1, parameter_names.begin(), parameter_names.count() * sizeof(IdentifierId));
-
-	memcpy(reinterpret_cast<IdentifierId*>(structure + 1) + parameter_names.count(), member_names.begin(), member_names.count() * sizeof(IdentifierId));
+	CompositeSignatureExtraData* const signature = reinterpret_cast<CompositeSignatureExtraData*>(composite + 1);
+	signature->return_type.type_id = TypeId::INVALID;
+	signature->closure_id = none<ClosureId>();
+	signature->is_func = is_func;
+	signature->templated_parameter_count = 0;
+	signature->has_templated_return_type = false;
 
 	return id_from_structure(core, structure);
 }
 
-TypeId type_seal_trait(CoreData* core, TypeId trait_type_id) noexcept
+void type_add_signature_parameter(CoreData* core, TypeId type_id, SignatureParameterInit init) noexcept
 {
-	TypeStructure* const structure = structure_from_id(core, trait_type_id);
+	TypeStructure* const structure = structure_from_id(core, type_id);
 
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Trait);
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Signature);
+
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
+
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::Signature);
+
+	ASSERT_OR_IGNORE(composite->member_used < composite->member_capacity);
+
+	CompositeInfo info = composite_info(composite);
+
+	info.member_names[info.member_count] = init.name;
+
+	info.member_types[info.member_count].is_pending = init.is_templated;
+	info.member_types[info.member_count].is_pub = false;
+	info.member_types[info.member_count].is_mut = init.is_mut;
+	info.member_types[info.member_count].is_eval = init.is_eval;
+
+	if (init.is_templated)
+	{
+		info.member_types[info.member_count].type_id_bits = static_cast<u32>(TypeId::INVALID);
+		info.member_types[info.member_count].completion_id = init.templated.completion_id;
+
+		CompositeSignatureExtraData* const signature = reinterpret_cast<CompositeSignatureExtraData*>(composite + 1);
+
+		signature->templated_parameter_count += 1;
+	}
+	else
+	{
+		info.member_types[info.member_count].type_id_bits = static_cast<u32>(init.complete.type_id);
+		info.member_types[info.member_count].value_or_default_id = init.complete.default_id;
+	}
+
+	composite->member_used += 1;
+}
+
+TypeId type_seal_signature(CoreData* core, TypeId type_id, SignatureSealInfo seal_info) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Signature);
+
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
+
+	CompositeSignatureExtraData* const signature = reinterpret_cast<CompositeSignatureExtraData*>(composite + 1);
+
+	if (seal_info.has_templated_return_type)
+	{
+		signature->has_templated_return_type = true;
+		signature->return_type.completion_id = seal_info.return_type.templated.completion_id;
+	}
+	else
+	{
+		signature->has_templated_return_type = false;
+		signature->return_type.type_id = seal_info.return_type.complete.type_id;
+	}
+
+	signature->closure_id = seal_info.closure_id;
+
+	if (!init_structure_hash(core, structure))
+		ASSERT_UNREACHABLE;
+
+	const TypeId holotype_id = holotype_id_from_interned_type_structure(core, structure);
+
+	if (holotype_id != type_id)
+		composite_dealloc(core, structure);
+
+	return holotype_id;
+}
+
+TypeId type_instantiate_templated_signature(CoreData* core, TypeId type_id) noexcept
+{
+	TypeStructure* const original_structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(original_structure->tag == TypeTag::Signature);
+
+	CompositeType2* const original_composite = reinterpret_cast<CompositeType2*>(original_structure + 1);
+
+	ASSERT_OR_IGNORE(
+		reinterpret_cast<CompositeSignatureExtraData*>(original_composite + 1)->templated_parameter_count != 0
+	 || reinterpret_cast<CompositeSignatureExtraData*>(original_composite + 1)->has_templated_return_type
+	);
+
+	TypeStructure* const copied_structure = composite_alloc(core, TypeTag::Signature, CompositeKind::Signature, original_composite->flags, original_composite->member_used, false);
+
+	CompositeType2* const copied_composite = reinterpret_cast<CompositeType2*>(copied_structure + 1);
+	copied_composite->member_used = original_composite->member_used;
+
+	ASSERT_OR_IGNORE(original_composite->member_capacity == copied_composite->member_capacity);
+
+	const u64 tail_size = sizeof(CompositeSignatureExtraData) + original_composite->member_capacity * (sizeof(IdentifierId) + sizeof(CompositeMember2));
+
+	memcpy(copied_composite + 1, original_composite + 1, tail_size);
+
+	return id_from_structure(core, copied_structure);
+}
+
+void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> default_id) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Signature);
+
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
+
+	ASSERT_OR_IGNORE(rank < composite->member_used);
+
+	CompositeInfo info = composite_info(composite);
+
+	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
+
+	info.member_types[rank].type_id_bits = static_cast<u32>(member_type_id);
+	info.member_types[rank].is_pending = false;
+	info.member_types[rank].value_or_default_id = default_id;
+
+	CompositeSignatureExtraData* const signature = reinterpret_cast<CompositeSignatureExtraData*>(composite + 1);
+
+	ASSERT_OR_IGNORE(signature->templated_parameter_count != 0);
+
+	signature->templated_parameter_count -= 1;
+}
+
+
+
+TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names, u16 member_count) noexcept
+{
+	ASSERT_OR_IGNORE(parameter_names.count() <= 64);
+
+	TypeStructure* const structure = composite_alloc(core, TypeTag::Trait, CompositeKind::Trait, CompositeFlags::EMPTY, member_count, false);
+
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
+
+	const u32 parameter_names_size = static_cast<u32>(parameter_names.count() * sizeof(IdentifierId));
+
+	IdentifierId* const interned_parameter_names = reinterpret_cast<IdentifierId*>(core->types.structures.alloc(parameter_names_size).begin());
+
+	memcpy(interned_parameter_names, parameter_names.begin(), parameter_names_size);
+
+	CompositeTraitExtraData* const trait = reinterpret_cast<CompositeTraitExtraData*>(composite + 1);
+	trait->parameter_count = static_cast<u32>(parameter_names.count());
+	trait->parameter_names_index = static_cast<u32>(reinterpret_cast<u64*>(interned_parameter_names) - reinterpret_cast<u64*>(core->types.structures.begin()));
+
+	return id_from_structure(core, structure);
+}
+
+void type_add_trait_member(CoreData* core, TypeId type_id, TraitParameterInit init) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
+
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
+
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::Trait);
+
+	ASSERT_OR_IGNORE(composite->member_used < composite->member_capacity);
+
+	CompositeInfo info = composite_info(composite);
+
+	info.member_names[info.member_count] = init.name;
+
+	info.member_types[info.member_count].type_id_bits = static_cast<u32>(TypeId::INVALID);
+	info.member_types[info.member_count].is_pending = true;
+	info.member_types[info.member_count].is_pub = true;
+	info.member_types[info.member_count].is_mut = init.is_mut;
+	info.member_types[info.member_count].is_eval = false;
+	info.member_types[info.member_count].completion_id = init.completion_id;
+
+	composite->member_used += 1;
+}
+
+TypeId type_seal_trait(CoreData* core, TypeId type_id) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
+
+	ASSERT_OR_IGNORE(reinterpret_cast<CompositeType2*>(structure + 1)->kind == CompositeKind::Trait);
+
+	const TypeId holotype_id = holotype_id_from_interned_type_structure(core, structure);
+
+	if (holotype_id != type_id)
+		composite_dealloc(core, structure);
+
+	return holotype_id;
+}
+
+
+
+TypeId type_create_impl(CoreData* core, Range<TypeId> arguments, TypeId trait_type_id) noexcept
+{
+	const TypeStructure* const trait_structure = structure_from_id(core, trait_type_id);
+
+	ASSERT_OR_IGNORE(trait_structure->tag == TypeTag::Trait);
+
+	const CompositeType2* const trait_composite = reinterpret_cast<const CompositeType2*>(trait_structure + 1);
+
+	const CompositeTraitExtraData* const trait = reinterpret_cast<const CompositeTraitExtraData*>(trait_composite + 1);
+
+	ASSERT_OR_IGNORE(arguments.count() == trait->parameter_count);
+
+	TypeStructure* const structure = composite_alloc(core, TypeTag::Composite, CompositeKind::Impl, CompositeFlags::EMPTY, trait_composite->member_used, false);
+
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
+
+	CompositeImplExtraData* const impl = reinterpret_cast<CompositeImplExtraData*>(composite + 1);
+
+	ImplInit init{};
+	init.core = core;
+	init.trait_type_id = trait_type_id;
+	init.arguments = arguments;
 
 	SeenSet seen = seen_set_create(core);
 
-	const u32 hash = hash_type_structure(core, FNV1A_SEED, &seen, structure);
+	u32 init_hash = hash_type_id(core, FNV1A_SEED, &seen, trait_type_id);
 
-	seen_set_release(core, seen);
+	if (init_hash == 0)
+		TODO("Handle impls of incomplete traits.");
 
-	if (hash == 0)
-		return trait_type_id;
+	for (const TypeId argument : arguments)
+	{
+		init_hash = hash_type_id(core, init_hash, &seen, argument);
+		
+		if (init_hash == 0)
+			TODO("Handle impls over incomplete types.");
+	}
 
-	structure->hash = hash;
+	ImplEntry* const entry = core->types.impls.value_from(init, init_hash);
 
-	return holotype_id_from_interned_type_structure(core, structure);
+	if (entry->impl_type_id != TypeId::INVALID)
+		TODO("Deal with conflicting impls");
+
+	impl->trait_id = trait_type_id;
+	impl->impl_index = core->types.impls.index_from(entry);
+
+	CompositeInfo info = composite_info(composite);
+	memset(info.member_names, 0, trait_composite->member_used * sizeof(IdentifierId));
+
+	const TypeId impl_type_id = id_from_structure(core, structure);
+
+	entry->impl_type_id = impl_type_id;
+
+	return impl_type_id;
 }
 
-void type_add_trait_member(CoreData* core, TypeId trait_type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> default_id, bool is_mut) noexcept
+bool type_add_impl_member(CoreData* core, TypeId type_id, ImplParameterInit init) noexcept
 {
-	ASSERT_OR_IGNORE(trait_type_id != TypeId::INVALID);
+	TypeStructure* const structure = structure_from_id(core, type_id);
 
-	ASSERT_OR_IGNORE(member_type_id != TypeId::INVALID);
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
 
-	TypeStructure* const structure = structure_from_id(core, trait_type_id);
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
 
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Trait);
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::Impl);
 
-	TraitType* const trait = reinterpret_cast<TraitType*>(structure->attach);
+	CompositeImplExtraData* const impl = reinterpret_cast<CompositeImplExtraData*>(composite + 1);
 
-	ASSERT_OR_IGNORE(rank < trait->member_count);
+	const TypeStructure* const trait_structure = structure_from_id(core, impl->trait_id);
 
-	TraitMemberData* const member = reinterpret_cast<TraitMemberData*>(trait) + trait->member_data_offset + rank;
+	ASSERT_OR_IGNORE(trait_structure->tag == TypeTag::Trait);
 
-	member->type_and_flags.type_id_bits = static_cast<u32>(member_type_id);
-	member->type_and_flags.is_pending = false;
-	member->type_and_flags.is_pub = true;
-	member->type_and_flags.is_mut = is_mut;
-	member->type_and_flags.is_eval = false;
-	member->default_id = default_id;
+	const CompositeType2* const trait_composite = reinterpret_cast<const CompositeType2*>(trait_structure + 1);
+
+	ASSERT_OR_IGNORE(trait_composite->kind == CompositeKind::Trait);
+
+	ASSERT_OR_IGNORE(composite->member_capacity == trait_composite->member_capacity);
+
+	const CompositeInfo trait_info = composite_info(trait_composite);
+
+	u16 rank;
+
+	if (!find_member_by_name(trait_info, init.name, &rank))
+		return false;
+
+	ASSERT_OR_IGNORE(rank < composite->member_capacity);
+
+	const CompositeMember2 trait_member = trait_info.member_types[rank];
+
+	CompositeInfo info = composite_info(composite);
+
+	ASSERT_OR_IGNORE(info.member_names[rank] == IdentifierId::INVALID);
+
+	if (static_cast<bool>(trait_member.is_mut) != init.is_mut)
+		TODO("Handle mismatch between trait and impl members' mutability.");
+
+	info.member_names[rank] = init.name;
+
+	info.member_types[rank].type_id_bits = static_cast<u32>(TypeId::INVALID);
+	info.member_types[rank].is_pending = true;
+	info.member_types[rank].is_pub = true;
+	info.member_types[rank].is_mut = init.is_mut;
+	info.member_types[rank].is_eval = false;
+	info.member_types[rank].completion_id = init.completion_id;
+
+	return true;
 }
 
-TypeId type_create_composite(CoreData* core, TypeTag tag, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept
+Maybe<IdentifierId> type_complete_impl_with_trait_defaults(CoreData* core, TypeId type_id) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
+
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
+
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::Impl);
+
+	CompositeImplExtraData* const impl = reinterpret_cast<CompositeImplExtraData*>(composite + 1);
+
+	const TypeStructure* const trait_structure = structure_from_id(core, impl->trait_id);
+
+	ASSERT_OR_IGNORE(trait_structure->tag == TypeTag::Trait);
+
+	const CompositeType2* const trait_composite = reinterpret_cast<const CompositeType2*>(trait_structure + 1);
+
+	ASSERT_OR_IGNORE(trait_composite->kind == CompositeKind::Trait);
+
+	const CompositeInfo trait_info = composite_info(trait_composite);
+
+	CompositeInfo info = composite_info(composite);
+
+	for (u16 i = 0; i != trait_composite->member_used; ++i)
+	{
+		if (info.member_names[i] != IdentifierId::INVALID)
+			continue;
+
+		if (is_none(trait_info.member_types[i].value_or_default_id))
+			return some(trait_info.member_names[i]);
+
+		info.member_types[i] = trait_info.member_types[i];
+	}
+
+	composite->member_used = trait_composite->member_used;
+
+	return none<IdentifierId>();
+}
+
+TypeId type_seal_impl(CoreData* core, TypeId type_id) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
+
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
+
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::Impl);
+
+	#ifndef NDEBUG
+		CompositeInfo info = composite_info(composite);
+
+		for (u16 i = 0; i != composite->member_used; ++i)
+			ASSERT_OR_IGNORE(!info.member_types[i].is_pending);
+	#endif // !NDEBUG
+
+	if (!init_structure_hash(core, structure))
+		ASSERT_UNREACHABLE;
+
+	const TypeId holotype_id = holotype_id_from_interned_type_structure(core, structure);
+
+	if (holotype_id != type_id)
+		composite_dealloc(core, structure);
+
+	return holotype_id;
+}
+
+
+
+TypeId type_create_user_composite(CoreData* core, TypeTag tag, SourceId definition_site) noexcept
 {
 	ASSERT_OR_IGNORE(tag == TypeTag::Composite || tag == TypeTag::CompositeLiteral);
 
-	ASSERT_OR_IGNORE(disposition != TypeDisposition::INVALID);
+	ASSERT_OR_IGNORE(definition_site != SourceId::INVALID);
 
-	const CompositeTypeAllocInfo alloc_info = composite_type_alloc_info(disposition, initial_member_capacity);
+	TypeStructure* const structure = composite_alloc(core, tag, CompositeKind::User, CompositeFlags::User_IsOpen, 4, false);
 
-	CompositeType composite{};
-	composite.size = 0;
-	composite.stride = 0;
-	composite.align_log2 = 0;
-	composite.is_open = true;
-	composite.is_fixed = is_fixed_member_capacity;
-	composite.disposition = disposition;
-	composite.member_used = 0;
-	composite.member_capacity = alloc_info.member_capacity;
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
 
-	TypeStructure* const structure = make_structure_nohash(core, tag, range::from_object_bytes(&composite), alloc_info.alloc_size, distinct_source_id);
+	CompositeUserExtraData* const user = reinterpret_cast<CompositeUserExtraData*>(composite + 1);
+	user->size = 0;
+	user->stride = 0;
+	user->align = 0;
+	user->definition_site = definition_site;
 
-	const TypeId structure_type_id = id_from_structure(core, structure);
+	const TypeId user_type_id = id_from_structure(core, structure);
 
-	if (is_fixed_member_capacity)
-		return structure_type_id;
+	IndirectionType indirection_attach{};
+	indirection_attach.indirection_type_id = user_type_id;
 
-	TypeStructure* const indirection = make_indirection(core, structure_type_id);
+	TypeStructure* const indirection_structure = make_structure_nohash(core, TypeTag::INDIRECTION, range::from_object_bytes(&indirection_attach), sizeof(IndirectionType));
 
-	const TypeId indirection_type_id = id_from_structure(core, indirection);
-
-	return indirection_type_id;
+	return id_from_structure(core, indirection_structure);
 }
 
-TypeId type_seal_composite(CoreData* core, TypeId type_id, u64 size, u32 align, u64 stride) noexcept
+bool type_add_user_composite_member(CoreData* core, TypeId type_id, UserCompositeMemberInit init) noexcept
 {
-	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
+	TypeStructure* const indirection_structure = structure_from_id(core, type_id);
 
-	ASSERT_OR_IGNORE(align <= UINT16_MAX);
+	ASSERT_OR_IGNORE(indirection_structure->tag == TypeTag::INDIRECTION);
 
-	TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
+	TypeStructure* structure = follow_indirection(core, indirection_structure);
 
 	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
 
-	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
+	CompositeType2* composite = reinterpret_cast<CompositeType2*>(structure + 1);
 
-	ASSERT_OR_IGNORE(composite->is_open);
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::User);
 
-	if (composite->disposition == TypeDisposition::User)
+	if (composite->member_used == composite->member_capacity)
 	{
-		ASSERT_OR_IGNORE(align != 0 && is_pow2(align));
+		structure = composite_realloc(core, indirection_structure, structure);
 
-		composite->size = size;
-		composite->align_log2 = count_trailing_zeros_assume_one(align);
-		composite->stride = stride;
-	}
-	else
-	{
-		ASSERT_OR_IGNORE(size == 0 && align == 0 && stride == 0);
-
-		composite->stride = next_multiple(composite->size, static_cast<u64>(1) << composite->align_log2);
+		composite = reinterpret_cast<CompositeType2*>(structure + 1);
 	}
 
-	composite->is_open = false;
+	ASSERT_OR_IGNORE(composite->member_used < composite->member_capacity);
 
-	SeenSet seen = seen_set_create(core);
+	CompositeInfo info = composite_info(composite);
 
-	const u32 hash = hash_type_structure(core, FNV1A_SEED, &seen, structure);
+	u16 unused_rank;
 
-	seen_set_release(core, seen);
+	if (find_member_by_name(info, init.name, &unused_rank))
+		return false;
 
-	if (hash == 0)
-		return type_id;
+	info.member_names[info.member_count] = init.name;
 
-	structure->hash = hash;
+	info.member_types[info.member_count].type_id_bits = static_cast<u32>(init.type_id);
+	info.member_types[info.member_count].is_pending = false;
+	info.member_types[info.member_count].is_pub = init.is_pub;
+	info.member_types[info.member_count].is_mut = init.is_mut;
+	info.member_types[info.member_count].is_eval = false;
+	info.member_types[info.member_count].value_or_default_id = init.default_id;
 
-	return holotype_id_from_interned_type_structure(core, structure);
-}
-
-bool type_add_composite_member(CoreData* core, TypeId type_id, MemberInit init) noexcept
-{
-	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
-
-	TypeStructure* const structure = structure_from_id(core, type_id);
-
-	TypeStructure* direct_structure = follow_indirection(core, structure);
-
-	ASSERT_OR_IGNORE(direct_structure->tag == TypeTag::Composite || direct_structure->tag == TypeTag::CompositeLiteral);
-
-	CompositeType* composite = reinterpret_cast<CompositeType*>(direct_structure->attach);
-
-	ASSERT_OR_IGNORE(composite->is_open);
-
-	// File members go through `type_add_file_member`.
-	ASSERT_OR_IGNORE(composite->disposition != TypeDisposition::File);
-
-	ASSERT_OR_IGNORE(init.name != IdentifierId::INVALID || composite->disposition == TypeDisposition::Initializer);
-
-	CompositeMemberInfo members = composite_members(composite);
-
-	if (composite->member_capacity == composite->member_used)
-		composite_realloc(core, structure, &direct_structure, &composite, &members);
-
-	if (init.name != IdentifierId::INVALID)
-	{
-		u16 unused_rank;
-
-		const void* unused_data;
-
-		if (find_member_by_name(&members, init.name, &unused_rank, &unused_data))
-			return false;
-	}
-
-	if (composite->disposition != TypeDisposition::User)
-	{
-		ASSERT_OR_IGNORE(init.offset == 0);
-
-		const TypeMetrics metrics = type_metrics_from_id(core, init.type_id);
-
-		const u64 member_begin = next_multiple(composite->size, static_cast<u64>(metrics.align));
-
-		init.offset = member_begin;
-
-		composite->size = member_begin + metrics.size;
-
-		const u8 align_log2 = count_trailing_zeros_assume_one(metrics.align);
-
-		if (composite->align_log2 < align_log2)
-			composite->align_log2 = align_log2;
-	}
-
-	members.names[composite->member_used] = init.name;
-
-	void* const member_data = member_at(&members, composite->member_used);
-
-	if (composite->disposition == TypeDisposition::Initializer)
-	{
-		ASSERT_OR_IGNORE(!init.is_eval
-		              && !init.is_pub
-		              && init.offset <= UINT32_MAX
-		              && is_none(init.default_id)
-		);
-
-		InitializerMemberData* const member = static_cast<InitializerMemberData*>(member_data);
-		member->type_and_flags.type_id_bits = static_cast<u32>(init.type_id);
-		member->type_and_flags.is_pending = false;
-		member->type_and_flags.is_pub = false;
-		member->type_and_flags.is_mut = init.is_mut;
-		member->type_and_flags.is_eval = false;
-		member->offset = static_cast<u32>(init.offset);
-	}
-	else
-	{
-		ASSERT_OR_IGNORE(
-			(composite->disposition == TypeDisposition::ParameterList && !init.is_pub) ||
-			(composite->disposition == TypeDisposition::User && !init.is_pub && !init.is_eval)
-		);
-
-		ParameterListOrUserMemberData* const member = static_cast<ParameterListOrUserMemberData*>(member_data);
-		member->type_and_flags.type_id_bits = static_cast<u32>(init.type_id);
-		member->type_and_flags.is_pending = false;
-		member->type_and_flags.is_pub = false;
-		member->type_and_flags.is_mut = init.is_mut;
-		member->type_and_flags.is_eval = init.is_eval;
-		member->offset = init.offset;
-		member->default_id = init.default_id;
-	}
+	get(info.member_offsets)[info.member_count] = init.offset;
 
 	composite->member_used += 1;
 
 	return true;
 }
 
-void type_add_file_member(CoreData* core, TypeId type_id, IdentifierId name, OpcodeId completion_opcode, bool is_pub, bool is_mut) noexcept
+TypeId type_seal_user_composite(CoreData* core, TypeId type_id, UserCompositeSealInfo seal_info) noexcept
 {
-	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && name != IdentifierId::INVALID && completion_opcode != OpcodeId::INVALID);
+	TypeStructure* const indirection_structure = structure_from_id(core, type_id);
 
-	TypeStructure* const structure = structure_from_id(core, type_id);
+	ASSERT_OR_IGNORE(indirection_structure->tag == TypeTag::INDIRECTION);
 
-	TypeStructure* direct_structure = follow_indirection(core, structure);
+	TypeStructure* structure = follow_indirection(core, indirection_structure);
 
-	ASSERT_OR_IGNORE(direct_structure->tag == TypeTag::Composite);
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
 
-	CompositeType* composite = reinterpret_cast<CompositeType*>(direct_structure->attach);
+	CompositeType2* composite = reinterpret_cast<CompositeType2*>(structure + 1);
 
-	ASSERT_OR_IGNORE(composite->is_open);
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::User);
 
-	ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::File);
+	ASSERT_OR_IGNORE((composite->flags & CompositeFlags::User_IsOpen) != CompositeFlags::EMPTY);
 
-	CompositeMemberInfo members = composite_members(composite);
+	composite->flags &= ~CompositeFlags::User_IsOpen;
 
-	if (composite->member_capacity == composite->member_used)
-		composite_realloc(core, structure, &direct_structure, &composite, &members);
+	CompositeUserExtraData* const user = reinterpret_cast<CompositeUserExtraData*>(composite + 1);
+	user->size = seal_info.size;
+	user->stride = seal_info.stride;
+	user->align = seal_info.align;
 
-	members.names[composite->member_used] = name;
+	if (!init_structure_hash(core, structure))
+		return type_id;
 
-	FileMemberData* const member = static_cast<FileMemberData*>(member_at(&members, composite->member_used));
-	member->type_and_flags.type_id_bits = static_cast<u32>(TypeId::INVALID);
-	member->type_and_flags.is_pending = true;
-	member->type_and_flags.is_pub = is_pub;
-	member->type_and_flags.is_mut = is_mut;
-	member->type_and_flags.is_eval = false;
-	member->completion_id = completion_opcode;
+	const TypeId holotype_id = holotype_id_from_interned_type_structure(core, structure);
 
-	composite->member_used += 1;
+	const TypeId direct_type_id = id_from_structure(core, structure);
+
+	if (holotype_id != direct_type_id)
+	{
+		composite_dealloc(core, structure);
+
+		IndirectionType* const indirection = reinterpret_cast<IndirectionType*>(indirection_structure + 1);
+
+		indirection->indirection_type_id = holotype_id;
+	}
+
+	return holotype_id;
 }
 
-void type_add_templated_parameter_list_member(CoreData* core, TypeId type_id, IdentifierId name, OpcodeId completion_opcode, bool is_eval, bool is_mut) noexcept
+
+
+TypeId type_create_file_composite(CoreData* core, u16 member_count, SourceId definition_site) noexcept
 {
-	ASSERT_OR_IGNORE(type_id != TypeId::INVALID && name != IdentifierId::INVALID);
+	ASSERT_OR_IGNORE(definition_site != SourceId::INVALID);
 
-	TypeStructure* const structure = structure_from_id(core, type_id);
+	TypeStructure* const structure = composite_alloc(core, TypeTag::Composite, CompositeKind::File, CompositeFlags::EMPTY, member_count, false);
 
-	TypeStructure* direct_structure = follow_indirection(core, structure);
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
 
-	ASSERT_OR_IGNORE(direct_structure->tag == TypeTag::Composite);
+	CompositeFileExtraData* const file = reinterpret_cast<CompositeFileExtraData*>(composite + 1);
+	file->definition_site = definition_site;
+	file->unused_ = 0;
 
-	CompositeType* composite = reinterpret_cast<CompositeType*>(direct_structure->attach);
-
-	ASSERT_OR_IGNORE(composite->is_open);
-
-	ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::ParameterList);
-
-	CompositeMemberInfo members = composite_members(composite);
-
-	if (composite->member_capacity == composite->member_used)
-		composite_realloc(core, structure, &direct_structure, &composite, &members);
-
-	members.names[composite->member_used] = name;
-
-	ParameterListOrUserMemberData* const member = static_cast<ParameterListOrUserMemberData*>(member_at(&members, composite->member_used));
-	member->type_and_flags.type_id_bits = static_cast<u32>(TypeId::INVALID);
-	member->type_and_flags.is_pending = true;
-	member->type_and_flags.is_pub = false;
-	member->type_and_flags.is_mut = is_mut;
-	member->type_and_flags.is_eval = is_eval;
-	member->parameter_completion_id = completion_opcode;
-	member->offset = 0;
-
-	composite->member_used += 1;
+	return id_from_structure(core, structure);
 }
 
-void type_set_file_member_info(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, ForeverValueId value_id) noexcept
+void type_add_file_composite_member(CoreData* core, TypeId type_id, FileCompositeMemberInit init) noexcept
 {
-	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
-
-	ASSERT_OR_IGNORE(member_type_id != TypeId::INVALID);
-
-	TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
+	TypeStructure* const structure = structure_from_id(core, type_id);
 
 	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
 
-	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
 
-	ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::File);
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::File);
+
+	ASSERT_OR_IGNORE(composite->member_used < composite->member_capacity);
+
+	CompositeInfo info = composite_info(composite);
+
+	info.member_names[info.member_count] = init.name;
+
+	info.member_types[info.member_count].type_id_bits = static_cast<u32>(TypeId::INVALID);
+	info.member_types[info.member_count].is_pending = true;
+	info.member_types[info.member_count].is_pub = init.is_pub;
+	info.member_types[info.member_count].is_mut = init.is_mut;
+	info.member_types[info.member_count].is_eval = false;
+	info.member_types[info.member_count].completion_id = init.completion_id;
+
+	composite->member_used += 1;
+}
+
+void type_complete_file_composite_member(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, ForeverValueId value_id) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
+
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure + 1);
+
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::File);
 
 	ASSERT_OR_IGNORE(rank < composite->member_used);
 
-	const CompositeMemberInfo members = composite_members(composite);
+	CompositeInfo info = composite_info(composite);
 
-	FileMemberData* const member = static_cast<FileMemberData*>(member_at(&members, rank));
+	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
 
-	ASSERT_OR_IGNORE(member->type_and_flags.is_pending);
-
-	member->type_and_flags.type_id_bits = static_cast<u32>(member_type_id);
-	member->type_and_flags.is_pending = false;
-	member->value_id = value_id;
-}
-
-void type_set_templated_parameter_list_member_info(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> member_default_id) noexcept
-{
-	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
-
-	ASSERT_OR_IGNORE(member_type_id != TypeId::INVALID);
-
-	TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
-
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
-
-	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
-
-	ASSERT_OR_IGNORE(composite->disposition == TypeDisposition::ParameterList);
-
-	ASSERT_OR_IGNORE(rank < composite->member_used);
-
-	const CompositeMemberInfo members = composite_members(composite);
-
-	const TypeMetrics metrics = type_metrics_from_id(core, member_type_id);
-
-	const u64 member_offset = (composite->size + metrics.align - 1) & ~static_cast<u64>(metrics.align - 1);
-
-	ParameterListOrUserMemberData* const member = static_cast<ParameterListOrUserMemberData*>(member_at(&members, rank));
-
-	ASSERT_OR_IGNORE(member->type_and_flags.is_pending);
-
-	member->type_and_flags.type_id_bits = static_cast<u32>(member_type_id);
-	member->type_and_flags.is_pending = false;
-	member->default_id = member_default_id;
-	member->offset = member_offset;
-
-	composite->size = member_offset + metrics.size;
-
-	const u8 align_log2 = count_trailing_zeros_assume_one(metrics.align);
-
-	if (composite->align_log2 < align_log2)
-		composite->align_log2 = align_log2;
-}
-
-TypeId type_copy_templated_parameter_list(CoreData* core, TypeId type_id) noexcept
-{
-	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
-
-	const TypeStructure* const old_structure = follow_indirection(core, structure_from_id(core, type_id));
-
-	ASSERT_OR_IGNORE(old_structure->tag == TypeTag::Composite || old_structure->tag == TypeTag::CompositeLiteral);
-
-	const CompositeType* const old_composite = reinterpret_cast<const CompositeType*>(old_structure->attach);
-
-	ASSERT_OR_IGNORE(old_composite->disposition == TypeDisposition::ParameterList && !old_composite->is_open);
-
-	const CompositeTypeAllocInfo alloc_info = composite_type_alloc_info(old_composite->disposition, old_composite->member_used);
-
-	const Range<byte> to_copy{ reinterpret_cast<const byte*>(old_composite), sizeof(CompositeType) + old_composite->member_used * sizeof(IdentifierId) };
-
-	TypeStructure* const new_structure = make_structure_nohash(core, TypeTag::Composite, to_copy, alloc_info.alloc_size, old_structure->distinct_source_id);
-	new_structure->holotype_id = TypeId::INVALID;
-
-	CompositeType* const new_composite = reinterpret_cast<CompositeType*>(new_structure->attach);
-	new_composite->is_fixed = true;
-	new_composite->member_capacity = alloc_info.member_capacity;
-
-	const CompositeMemberInfo old_members = composite_members(old_composite);
-
-	const CompositeMemberInfo new_members = composite_members(new_composite);
-
-	memcpy(new_members.members, old_members.members, old_members.count * old_members.member_stride);
-
-	const TypeId new_structure_type_id = id_from_structure(core, new_structure);
-
-	return new_structure_type_id;
-}
-
-u32 type_get_composite_member_count(CoreData* core, TypeId type_id) noexcept
-{
-	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
-
-	TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
-
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
-
-	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
-
-	ASSERT_OR_IGNORE(!composite->is_open);
-
-	return composite->member_used;
-}
-
-void type_discard(CoreData* core, TypeId type_id) noexcept
-{
-	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
-
-	TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
-
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
-
-	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
-
-	const CompositeTypeAllocInfo dealloc_info = composite_type_alloc_info(composite->disposition, composite->member_capacity);
-
-	core->types.structures.dealloc({ reinterpret_cast<byte*>(structure), dealloc_info.alloc_size + sizeof(TypeStructure) });
+	info.member_types[rank].type_id_bits = static_cast<u32>(member_type_id);
+	info.member_types[rank].is_pending = false;
+	info.member_types[rank].value_or_default_id = some(value_id);
 }
 
 
@@ -2337,33 +2454,66 @@ bool type_can_implicitly_convert_from_to(CoreData* core, TypeId from_type_id, Ty
 	return type_can_implicitly_convert_from_to_assume_unequal(core, from_type_id, to_type_id);
 }
 
-Maybe<TypeId> type_unify(CoreData* core, TypeId type_id_a, TypeId type_id_b) noexcept
-{
-	ASSERT_OR_IGNORE(type_id_a != TypeId::INVALID && type_id_b != TypeId::INVALID);
-
-	if (type_is_equal(core, type_id_a, type_id_b))
-		return some(type_id_a < type_id_b ? type_id_a : type_id_b);
-
-	if (type_can_implicitly_convert_from_to_assume_unequal(core, type_id_a, type_id_b))
-		return some(type_id_b);
-
-	if (type_can_implicitly_convert_from_to_assume_unequal(core, type_id_b, type_id_a))
-		return some(type_id_a);
-
-	return none<TypeId>();
-}
 
 
-
-TypeDisposition type_disposition_from_id(CoreData* core, TypeId type_id) noexcept
+Range<IdentifierId> type_trait_parameters(CoreData* core, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
+	const TypeStructure* const structure = structure_from_id(core, type_id);
 
-	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Trait);
 
-	return composite->disposition;
+	const CompositeType2* const composite = reinterpret_cast<const CompositeType2*>(structure->attach);
+
+	return trait_parameter_names(core, composite).immut();
+}
+
+u32 type_member_count(CoreData* core, TypeId type_id) noexcept
+{
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
+
+	TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
+
+	CompositeType2* const composite = reinterpret_cast<CompositeType2*>(structure->attach);
+
+	ASSERT_OR_IGNORE(
+		composite->kind != CompositeKind::User
+	 || (composite->flags & CompositeFlags::User_IsOpen) == CompositeFlags::EMPTY
+	);
+
+	return composite->member_used;
+}
+
+SignatureTypeInfo type_signature_info_from_id(CoreData* core, TypeId type_id) noexcept
+{
+	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
+
+	const TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Signature);
+
+	const CompositeType2* const composite = reinterpret_cast<const CompositeType2*>(structure + 1);
+
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::Signature);
+
+	const CompositeSignatureExtraData* const signature = reinterpret_cast<const CompositeSignatureExtraData*>(composite + 1);
+
+	SignatureTypeInfo info{};
+	info.templated_parameter_count = signature->templated_parameter_count;
+	info.parameter_count = static_cast<u8>(composite->member_used);
+	info.is_func = signature->is_func;
+	info.has_templated_return_type = signature->has_templated_return_type;
+	info.closure_id = signature->closure_id;
+	
+	if (signature->has_templated_return_type)
+		info.return_type.templated.completion_id = signature->return_type.completion_id;
+	else
+		info.return_type.complete.type_id = signature->return_type.type_id;
+
+	return info;
 }
 
 bool type_has_metrics(CoreData* core, TypeId type_id) noexcept
@@ -2375,9 +2525,9 @@ bool type_has_metrics(CoreData* core, TypeId type_id) noexcept
 	if (structure->tag != TypeTag::Composite)
 		return true;
 
-	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
+	const CompositeType2* const composite = reinterpret_cast<const CompositeType2*>(structure->attach);
 
-	return composite->disposition != TypeDisposition::User || !composite->is_open;
+	return composite->kind != CompositeKind::User || (composite->flags & CompositeFlags::User_IsOpen) == CompositeFlags::EMPTY;
 }
 
 TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
@@ -2389,6 +2539,7 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 	switch (structure->tag)
 	{
 	case TypeTag::Void:
+	case TypeTag::Trait:
 	{
 		return { 0, 0, 1 };
 	}
@@ -2396,7 +2547,6 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 	case TypeTag::Type:
 	case TypeTag::TypeInfo:
 	case TypeTag::TypeBuilder:
-	case TypeTag::Trait:
 	{
 		return { 4, 4, 4 };
 	}
@@ -2462,7 +2612,7 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 		return { element_metrics.stride * (array->element_count - 1) + element_metrics.size, (element_metrics.stride * array->element_count), element_metrics.align };
 	}
 
-	case TypeTag::Func:
+	case TypeTag::Signature:
 	{
 		return { 16, 16, 8 };
 	}
@@ -2470,11 +2620,16 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 	case TypeTag::Composite:
 	case TypeTag::CompositeLiteral:
 	{
-		const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
+		const CompositeType2* const composite = reinterpret_cast<const CompositeType2*>(structure->attach);
 
-		ASSERT_OR_IGNORE(!composite->is_open);
+		if (composite->kind != CompositeKind::User)
+			return { 0, 0, 1 };
 
-		return TypeMetrics{ composite->size, composite->stride, static_cast<u32>(1) << composite->align_log2 };
+		ASSERT_OR_IGNORE((composite->flags & CompositeFlags::User_IsOpen) == CompositeFlags::EMPTY);
+
+		const CompositeUserExtraData* const user = reinterpret_cast<const CompositeUserExtraData*>(composite + 1);
+
+		return TypeMetrics{ user->size, user->stride, user->align };
 	}
 
 	case TypeTag::Definition:
@@ -2507,15 +2662,19 @@ bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberIn
 
 	const TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
 
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite
+	              || structure->tag == TypeTag::CompositeLiteral
+	              || structure->tag == TypeTag::Signature
+	              || structure->tag == TypeTag::Trait
+	);
 
-	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
+	const CompositeType2* const composite = reinterpret_cast<const CompositeType2*>(structure + 1);
 
-	ASSERT_OR_IGNORE(composite->member_used > rank);
+	ASSERT_OR_IGNORE(rank < composite->member_used);
 
-	const CompositeMemberInfo members = composite_members(composite);
+	CompositeInfo info = composite_info(composite);
 
-	return fill_member_info(composite, rank, member_at(&members, rank), out_info, out_completion_id);
+	return fill_member_info(info, rank, out_info, out_completion_id);
 }
 
 MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, IdentifierId name, MemberInfo* out_info, OpcodeId* out_completion_id) noexcept
@@ -2526,18 +2685,18 @@ MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, Identif
 
 	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
 
-	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
+	const CompositeType2* const composite = reinterpret_cast<const CompositeType2*>(structure->attach);
 
-	const CompositeMemberInfo members = composite_members(composite);
+	const CompositeInfo info = composite_info(composite);
 
 	u16 rank;
 
-	const void* member;
-
-	if (!find_member_by_name(&members, name, &rank, &member))
+	if (!find_member_by_name(info, name, &rank))
 		return MemberByNameRst::NotFound;
 
-	return fill_member_info(composite, rank, member, out_info, out_completion_id) ? MemberByNameRst::Ok : MemberByNameRst::Incomplete;
+	return fill_member_info(info, rank, out_info, out_completion_id)
+		? MemberByNameRst::Ok
+		: MemberByNameRst::Incomplete;
 }
 
 IdentifierId type_member_name_by_rank(CoreData* core, TypeId type_id, u16 rank) noexcept
@@ -2548,13 +2707,13 @@ IdentifierId type_member_name_by_rank(CoreData* core, TypeId type_id, u16 rank) 
 
 	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
 
-	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
+	const CompositeType2* const composite = reinterpret_cast<const CompositeType2*>(structure->attach);
 
-	ASSERT_OR_IGNORE(composite->member_used > rank);
+	ASSERT_OR_IGNORE(rank < composite->member_used);
 
-	const CompositeMemberInfo members = composite_members(composite);
+	const CompositeInfo info = composite_info(composite);
 
-	return members.names[rank];
+	return info.member_names[rank];
 }
 
 const void* type_attachment_from_id_raw(CoreData* core, TypeId type_id) noexcept
@@ -2612,24 +2771,24 @@ MemberIterator members_of(CoreData* core, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
-	const TypeStructure* const structure = structure_from_id(core, type_id);
+	const TypeStructure* const structure = follow_indirection(core, structure_from_id(core, type_id));
 
-	const TypeStructure* const direct_structure = follow_indirection(core, structure);
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
 
-	ASSERT_OR_IGNORE(direct_structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
+	const CompositeType2* const composite = reinterpret_cast<const CompositeType2*>(structure + 1);
 
-	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(direct_structure->attach);
+	ASSERT_OR_IGNORE((composite->flags & CompositeFlags::User_IsOpen) == CompositeFlags::EMPTY);
 
-	const CompositeMemberInfo members = composite_members(composite);
+	const CompositeInfo info = composite_info(composite);
 
 	MemberIterator it;
-	it.structure = composite->member_used == 0 ? nullptr : composite->is_fixed ? direct_structure : structure;
-	it.names = members.names;
-	it.members = members.members;
 	it.core = core;
-	it.member_stride = members.member_stride;
-	it.is_indirect = !composite->is_fixed;
+	it.names = info.member_names;
+	it.types = info.member_types;
+	it.offsets = info.member_offsets;
+	it.count = info.member_count;
 	it.rank = 0;
+	it.kind_bits = static_cast<u8>(composite->kind);
 
 	return it;
 }
@@ -2638,41 +2797,23 @@ bool next(MemberIterator* it, MemberInfo* out_info, OpcodeId* out_completion_id)
 {
 	ASSERT_OR_IGNORE(has_next(it));
 
-	const TypeStructure* const structure = follow_indirection(it->core, static_cast<const TypeStructure*>(it->structure));
+	const u16 rank = it->rank;
 
-	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
+	it->rank += 1;
 
-	CompositeMemberInfo members;
+	CompositeInfo info;
+	info.kind = static_cast<CompositeKind>(it->kind_bits);
+	info.member_count = it->count;
+	info.member_names = const_cast<IdentifierId*>(it->names);
+	info.member_types = const_cast<CompositeMember2*>(static_cast<const CompositeMember2*>(it->types));
+	info.member_offsets = is_some(it->offsets) ? some(const_cast<s64*>(get(it->offsets))) : none<s64*>();
 
-	if (it->names == reinterpret_cast<const IdentifierId*>(composite + 1))
-	{
-		members.disposition = composite->disposition;
-		members.member_stride = it->member_stride;
-		members.count = composite->member_used;
-		members.names = const_cast<IdentifierId*>(it->names);
-		members.members = const_cast<void*>(it->members);
-	}
-	else
-	{
-		members = composite_members(composite);
-
-		it->names = members.names;
-		it->members = members.members;
-	}
-
-	const u16 curr_rank = it->rank;
-
-	const void* const curr_member = member_at(&members, curr_rank);
-
-	it->rank = curr_rank + 1;
-
-	if (composite->member_used == it->rank)
-		it->structure = nullptr;
-
-	return fill_member_info(composite, curr_rank, curr_member, out_info, out_completion_id);
+	return fill_member_info(info, rank, out_info, out_completion_id);
 }
 
 bool has_next(const MemberIterator* it) noexcept
 {
-	return it->structure != nullptr;
+	ASSERT_OR_IGNORE(it->rank <= it->count);
+
+	return it->rank != it->count;
 }

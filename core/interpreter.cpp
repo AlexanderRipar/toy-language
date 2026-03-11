@@ -79,7 +79,7 @@ struct CompareResult
 
 struct alignas(8) ArgumentPack
 {
-	TypeId parameter_list_type;
+	TypeId signature_type;
 
 	union
 	{
@@ -575,7 +575,7 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 	{
 		ASSERT_OR_IGNORE(type_tag_from_id(core, dst.type) == TypeTag::Composite);
 
-		const u32 dst_member_count = type_get_composite_member_count(core, dst.type);
+		const u32 dst_member_count = type_member_count(core, dst.type);
 
 		const u32 seen_members_size = ((dst_member_count + 7) / 8 + sizeof(u64) - 1) & ~(sizeof(u64) - 1);
 
@@ -703,7 +703,8 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 		}
 		else
 		{
-			ASSERT_OR_IGNORE(type_can_implicitly_convert_from_to(core, src_elem_type, dst_elem_type));
+			ASSERT_OR_IGNORE(type_relation(core, src_elem_type, dst_elem_type) == TypeRelation::Equal
+			              || type_relation(core, src_elem_type, dst_elem_type) == TypeRelation::FirstConvertsToSecond);
 
 			const TypeMetrics dst_elem_metrics = type_metrics_from_id(core, dst_elem_type);
 
@@ -739,7 +740,7 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 	case TypeTag::Integer:
 	case TypeTag::Float:
 	case TypeTag::Array:
-	case TypeTag::Func:
+	case TypeTag::Signature:
 	case TypeTag::Composite:
 	case TypeTag::TailArray:
 	case TypeTag::Variadic:
@@ -1076,7 +1077,7 @@ static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Ra
 
 	case TypeTag::Definition:
 	case TypeTag::Undefined:
-	case TypeTag::Func:
+	case TypeTag::Signature:
 	case TypeTag::TailArray:
 	case TypeTag::CompositeLiteral:
 	case TypeTag::Variadic:
@@ -1296,23 +1297,21 @@ static const Opcode* builtin_typeof(CoreData* core, const Opcode* code, CTValue*
 
 static const Opcode* builtin_returntypeof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	const TypeId type = get_builtin_param<TypeId>(core, 0);
+	const TypeId signature_type = get_builtin_param<TypeId>(core, 0);
 
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	const TypeTag type_tag = type_tag_from_id(core, type);
+	const TypeTag type_tag = type_tag_from_id(core, signature_type);
 
-	if (type_tag != TypeTag::Func)
+	if (type_tag != TypeTag::Signature)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-	const SignatureType2* const signature = type_attachment_from_id<SignatureType2>(core, type);
+	SignatureTypeInfo info = type_signature_info_from_id(core, signature_type);
 
-	if (signature->has_templated_return_type)
+	if (info.has_templated_return_type)
 		return record_interpreter_error(core, code, CompileError::ReturntypeofTemplatedReturnType);
 
-	TypeId return_type = signature->return_type.type_id;
-
-	const MutRange<byte> bytes = range::from_object_bytes_mut(&return_type);
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&info.return_type.complete.type_id);
 
 	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
@@ -1496,7 +1495,7 @@ static const Opcode* builtin_create_type_builder(CoreData* core, const Opcode* c
 
 	const TypeId type_builder_type = type_create_simple(core, TypeTag::TypeBuilder);
 
-	TypeId builder = type_create_composite(core, TypeTag::Composite, TypeDisposition::User, source_id, 0, false);
+	TypeId builder = type_create_user_composite(core, TypeTag::Composite, source_id);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&builder);
 
@@ -1533,7 +1532,12 @@ static const Opcode* builtin_complete_type(CoreData* core, const Opcode* code, C
 	if (align > UINT32_MAX)
 		return record_interpreter_error(core, code, CompileError::BuiltinCompleteTypeAlignTooLarge);
 
-	TypeId type = type_seal_composite(core, builder, size, static_cast<u32>(align), stride);
+	UserCompositeSealInfo seal{};
+	seal.size = size;
+	seal.stride = stride;
+	seal.align = static_cast<u32>(align);
+
+	TypeId type = type_seal_user_composite(core, builder, seal);
 
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
@@ -1798,7 +1802,7 @@ static const Opcode* handle_file_global_alloc_typed(CoreData* core, const Opcode
 
 	const ForeverCTValue value = file_value_alloc_uninitialized(core, init.file_index, init.rank, member_type, member_metrics, &file_type);
 
-	type_set_file_member_info(core, file_type, init.rank, member_type, value.id);
+	type_complete_file_composite_member(core, file_type, init.rank, member_type, value.id);
 
 	core->interp.values.pop_by(1);
 
@@ -1823,7 +1827,7 @@ static const Opcode* handle_file_global_alloc_untyped(CoreData* core, const Opco
 
 	const ForeverValueId value_id = file_value_alloc_initialized(core, init.file_index, init.rank, *top, &file_type);
 
-	type_set_file_member_info(core, file_type, init.rank, top->type, value_id);
+	type_complete_file_composite_member(core, file_type, init.rank, top->type, value_id);
 
 	core->interp.global_initializations.pop_by(1);
 
@@ -2126,7 +2130,7 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 	CTValue* value = core->interp.values.end() - value_count;
 
-	TypeId parameter_list_type = type_create_composite(core, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
+	TypeId signature_type = type_create_signature(core, signature_flags.is_func, parameter_count);
 
 	for (u32 i = 0; i != parameter_count; ++i)
 	{
@@ -2189,20 +2193,16 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 			parameter_default = some(default_id);
 		}
 
-		MemberInit init{};
+		SignatureParameterInit init{};
 		init.name = parameter_name;
-		init.type_id = parameter_type;
-		init.default_id = parameter_default;
-		init.is_pub = false;
-		init.is_mut = parameter_flags.is_mut;
+		init.complete.type_id = parameter_type;
+		init.complete.default_id = parameter_default;
+		init.is_templated = false;
 		init.is_eval = parameter_flags.is_eval;
-		init.offset = 0;
+		init.is_mut = parameter_flags.is_mut;
 
-		if (!type_add_composite_member(core, parameter_list_type, init))
-			ASSERT_UNREACHABLE;
+		type_add_signature_parameter(core, signature_type, init);
 	}
-
-	parameter_list_type = type_seal_composite(core, parameter_list_type, 0, 0, 0);
 
 	if (type_tag_from_id(core, value->type) != TypeTag::Type)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
@@ -2213,16 +2213,12 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 	core->interp.values.pop_by(value_count - 1);
 
-	SignatureType2 attach{};
-	attach.parameter_list_type_id = parameter_list_type;
-	attach.return_type.type_id = return_type;
-	attach.closure_id = none<ClosureId>();
-	attach.is_func = signature_flags.is_func;
-	attach.has_templated_parameter_list = false;
-	attach.has_templated_return_type = false;
-	attach.parameter_count = parameter_count;
+	SignatureSealInfo seal{};
+	seal.closure_id = none<ClosureId>();
+	seal.return_type.complete.type_id = return_type;
+	seal.has_templated_return_type = false;
 
-	TypeId signature_type = type_create_signature(core, TypeTag::Func, attach);
+	signature_type = type_seal_signature(core, signature_type, seal);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&signature_type);
 
@@ -2260,7 +2256,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 	CTValue* value = core->interp.values.end() - value_count;
 
-	TypeId parameter_list_type = type_create_composite(core, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
+	TypeId signature_type = type_create_signature(core, signature_flags.is_func, parameter_count);
 
 	for (u32 i = 0; i != parameter_count; ++i)
 	{
@@ -2272,13 +2268,19 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 		code = code_attach(code, &parameter_flags);
 
+		SignatureParameterInit init{};
+		init.name = name;
+		init.is_templated = parameter_flags.is_templated;
+		init.is_eval = parameter_flags.is_eval;
+		init.is_mut = parameter_flags.is_mut;
+
 		if (parameter_flags.is_templated)
 		{
 			OpcodeId parameter_completion;
 
 			code = code_attach(code, &parameter_completion);
 
-			type_add_templated_parameter_list_member(core, parameter_list_type, name, parameter_completion, parameter_flags.is_eval, parameter_flags.is_mut);
+			init.templated.completion_id = parameter_completion;
 		}
 		else
 		{
@@ -2336,45 +2338,32 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 				parameter_default = some(default_id);
 			}
 
-			MemberInit init{};
-			init.name = name;
-			init.type_id = parameter_type;
-			init.default_id = parameter_default;
-			init.is_pub = false;
-			init.is_mut = parameter_flags.is_mut;
-			init.is_eval = parameter_flags.is_eval;
-			init.offset = 0;
-
-			if (!type_add_composite_member(core, parameter_list_type, init))
-				ASSERT_UNREACHABLE;
+			init.complete.type_id = parameter_type;
+			init.complete.default_id = parameter_default;
 		}
+
+		type_add_signature_parameter(core, signature_type, init);
 	}
 
-	parameter_list_type = type_seal_composite(core, parameter_list_type, 0, 0, 0);
-
-	SignatureType2 attach{};
-	attach.parameter_list_type_id = parameter_list_type;
-	attach.closure_id = some(closure);
-	attach.is_func = signature_flags.is_func;
-	attach.has_templated_parameter_list = signature_flags.has_templated_parameter_list;
-	attach.has_templated_return_type = signature_flags.has_templated_return_type;
-	attach.parameter_count = parameter_count;
+	SignatureSealInfo seal{};
+	seal.closure_id = some(closure);
+	seal.has_templated_return_type = signature_flags.has_templated_return_type;
 
 	if (signature_flags.has_templated_return_type)
 	{
-		attach.return_type.completion_id = get(return_completion);
+		seal.return_type.templated.completion_id = get(return_completion);
 	}
 	else
 	{
 		if (type_tag_from_id(core, value->type) != TypeTag::Type)
 			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-		attach.return_type.type_id = *value_as<TypeId>(value);
+		seal.return_type.complete.type_id = *value_as<TypeId>(value);
 	}
 
-	core->interp.values.pop_by(value_count);
+	signature_type = type_seal_signature(core, signature_type, seal);
 
-	TypeId signature_type = type_create_signature(core, TypeTag::Func, attach);
+	core->interp.values.pop_by(value_count);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&signature_type);
 
@@ -2397,13 +2386,13 @@ static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CTValu
 
 	const TypeId signature_type = *value_as<TypeId>(top);
 
-	ASSERT_OR_IGNORE(type_tag_from_id(core, signature_type) == TypeTag::Func);
+	ASSERT_OR_IGNORE(type_tag_from_id(core, signature_type) == TypeTag::Signature);
 
-	const SignatureType2* const signature = type_attachment_from_id<SignatureType2>(core, signature_type);
+	const SignatureTypeInfo info = type_signature_info_from_id(core, signature_type);
 
 	Callable callable{};
 	callable.body_id = body_id;
-	callable.closure_id = signature->closure_id;
+	callable.closure_id = info.closure_id;
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&callable);
 
@@ -2430,21 +2419,19 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 	CTValue* const top = core->interp.values.end() - 1;
 
-	const TypeId top_type = top->type;
+	const TypeId signature_type = top->type;
 
-	const TypeTag top_type_tag = type_tag_from_id(core, top_type);
+	const TypeTag top_type_tag = type_tag_from_id(core, signature_type);
 
-	if (top_type_tag != TypeTag::Func)
+	if (top_type_tag != TypeTag::Signature)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-	SignatureType2 signature = *type_attachment_from_id<SignatureType2>(core, top_type);
+	const SignatureTypeInfo info = type_signature_info_from_id(core, signature_type);
 
-	if (is_some(signature.closure_id))
-		core->interp.active_closures.append(get(signature.closure_id));
+	if (is_some(info.closure_id))
+		core->interp.active_closures.append(get(info.closure_id));
 
-	OpcodeId* const ordered_callbacks = core->interp.argument_callbacks.reserve(signature.parameter_count);
-
-	u64 templated_mask = 0;
+	OpcodeId* const ordered_callbacks = core->interp.argument_callbacks.reserve(info.parameter_count);
 
 	u64 seen_parameters = 0;
 
@@ -2456,7 +2443,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 		if (name == IdentifierId::INVALID)
 		{
-			if (parameter_index >= signature.parameter_count)
+			if (parameter_index >= info.parameter_count)
 				return record_interpreter_error(core, code, CompileError::CallTooManyArgs);
 		}
 		else
@@ -2465,7 +2452,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 			OpcodeId unused_initializer;
 
-			const MemberByNameRst rst = type_member_info_by_name(core, signature.parameter_list_type_id, name, &parameter_info, &unused_initializer);
+			const MemberByNameRst rst = type_member_info_by_name(core, signature_type, name, &parameter_info, &unused_initializer);
 
 			if (rst == MemberByNameRst::NotFound)
 				return record_interpreter_error(core, code, CompileError::CallNoSuchNamedParameter);
@@ -2473,9 +2460,6 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok || rst == MemberByNameRst::Incomplete);
 
 			parameter_index = static_cast<u8>(parameter_info.rank);
-
-			if (rst == MemberByNameRst::Incomplete)
-				templated_mask |= static_cast<u64>(1) << parameter_info.rank;
 		}
 
 		const u64 parameter_mask = static_cast<u64>(1) << parameter_index;
@@ -2494,7 +2478,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 	// Default "callbacks" receive the negation of their `ForeverValueId` to
 	// distinguish them from - always positive, or rather less-than-2^31 -
 	// `OpcodeId`s used for normal callbacks.
-	for (u8 i = 0; i != signature.parameter_count; ++i)
+	for (u8 i = 0; i != info.parameter_count; ++i)
 	{
 		const u64 parameter_mask = static_cast<u64>(1) << i;
 
@@ -2505,8 +2489,8 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 		OpcodeId unused_initializer;
 
-		if (!type_member_info_by_rank(core, signature.parameter_list_type_id, i, &parameter_info, &unused_initializer))
-			ASSERT_UNREACHABLE;
+		if (!type_member_info_by_rank(core, signature_type, i, &parameter_info, &unused_initializer))
+			TODO("Handle usage of templated parameter defaults.");
 
 		if (is_none(parameter_info.value_or_default_id))
 			return record_interpreter_error(core, code, CompileError::CallMissingArg);
@@ -2515,16 +2499,23 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 	}
 
 	ArgumentPack* const argument_pack = core->interp.argument_packs.reserve();
-	argument_pack->parameter_list_type = templated_mask == 0
-		? signature.parameter_list_type_id
-		: type_copy_templated_parameter_list(core, signature.parameter_list_type_id);
-	argument_pack->return_type.completion = signature.return_type.completion_id;
+	argument_pack->signature_type = signature_type;
 	argument_pack->scope_first_member_index = core->interp.scope_members.used();
-	argument_pack->count = signature.parameter_count;
 	argument_pack->index = 0;
-	argument_pack->has_templated_parameter_list = signature.has_templated_parameter_list;
-	argument_pack->has_templated_return_type = signature.has_templated_return_type;
+	argument_pack->count = info.parameter_count;
+	argument_pack->has_templated_parameter_list = info.templated_parameter_count != 0;
+	argument_pack->has_templated_return_type = info.has_templated_return_type;
 	argument_pack->has_just_completed_template_parameter = false;
+
+	if (info.templated_parameter_count != 0 || info.has_templated_return_type)
+		argument_pack->signature_type = type_instantiate_templated_signature(core, signature_type);
+	else
+		argument_pack->signature_type = signature_type;
+
+	if (info.has_templated_return_type)
+		argument_pack->return_type.completion = info.return_type.templated.completion_id;
+	else
+		argument_pack->return_type.type = info.return_type.complete.type_id;
 
 	return code;
 }
@@ -2575,7 +2566,7 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 			// Since the initializer must not pop the callee scope as we need
 			// it later, we set `has_just_completed_template_member` so that we
 			// deactivate the scope on the next round through `handle_call`.
-			if (!type_member_info_by_rank(core, argument_pack->parameter_list_type, argument_pack->index, &parameter_info, &parameter_initializer_id))
+			if (!type_member_info_by_rank(core, argument_pack->signature_type, argument_pack->index, &parameter_info, &parameter_initializer_id))
 			{
 				// Set `temporary_data_used` to the nonsense value 0, since
 				// this will never really be properly "popped", just
@@ -2701,7 +2692,7 @@ static const Opcode* handle_call(CoreData* core, const Opcode* code, CTValue* wr
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	ASSERT_OR_IGNORE(type_tag_from_id(core, core->interp.values.end()[-1].type) == TypeTag::Func);
+	ASSERT_OR_IGNORE(type_tag_from_id(core, core->interp.values.end()[-1].type) == TypeTag::Signature);
 
 	const Callable callable = *value_as<Callable>(core->interp.values.end() - 1);
 
@@ -2759,15 +2750,13 @@ static const Opcode* handle_complete_param_typed_no_default(CoreData* core, cons
 	if (type_tag != TypeTag::Type)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-	const TypeId member_type = *value_as<TypeId>(top);
+	const TypeId parameter_type = *value_as<TypeId>(top);
 
 	core->interp.values.pop_by(1);
 
 	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
 
-	const TypeId parameter_list_type = argument_pack->parameter_list_type;
-
-	type_set_templated_parameter_list_member_info(core, parameter_list_type, rank, member_type, none<ForeverValueId>());
+	type_complete_templated_signature_parameter(core, argument_pack->signature_type, rank, parameter_type, none<ForeverValueId>());
 
 	return code;
 }
@@ -2801,14 +2790,12 @@ static const Opcode* handle_complete_param_typed_with_default(CoreData* core, co
 
 	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
 
-	const TypeId parameter_list_type = argument_pack->parameter_list_type;
-
 	ForeverCTValue default_dst = forever_value_alloc_uninitialized(core, false, parameter_type, parameter_metrics);
 
 	if (convert_into(core, code, *default_value, default_dst.value) == nullptr)
 		return nullptr;
 
-	type_set_templated_parameter_list_member_info(core, parameter_list_type, rank, parameter_type, some(default_dst.id));
+	type_complete_templated_signature_parameter(core, argument_pack->signature_type, rank, parameter_type, some(default_dst.id));
 
 	core->interp.write_ctxs.append(default_dst.value);
 
@@ -2833,11 +2820,9 @@ static const Opcode* handle_complete_param_untyped(CoreData* core, const Opcode*
 
 	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
 
-	const TypeId parameter_list_type = argument_pack->parameter_list_type;
-
 	const ForeverValueId default_id = forever_value_alloc_initialized(core, false, *default_value);
 
-	type_set_templated_parameter_list_member_info(core, parameter_list_type, rank, default_value->type, some(default_id));
+	type_complete_templated_signature_parameter(core, argument_pack->signature_type, rank, default_value->type, some(default_id));
 
 	core->interp.values.pop_by(1);
 
@@ -2983,12 +2968,12 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 
 	for (u16 i = 1; i != total_element_count; ++i)
 	{
-		Maybe<TypeId> common_type = type_unify(core, element_type, element_values[i].type);
+		const TypeRelation relation = type_relation(core, element_type, element_values[i].type);
 
-		if (is_none(common_type))
+		if (relation == TypeRelation::Unrelated)
 			return record_interpreter_error(core, code, CompileError::NoCommonArrayElementType);
-
-		element_type = get(common_type);
+		else if (relation == TypeRelation::FirstConvertsToSecond)
+			element_type = element_values[i].type;
 	}
 
 	const TypeMetrics element_metrics = type_metrics_from_id(core, element_type);
@@ -3117,7 +3102,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 	if (type_tag != TypeTag::CompositeLiteral && type_tag != TypeTag::Composite)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-	const u32 member_count = type_get_composite_member_count(core, dst_type);
+	const u32 member_count = type_member_count(core, dst_type);
 
 	u16 leading_member_count;
 
@@ -3270,7 +3255,11 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 
 	CTValue* const values = core->interp.values.end() - total_member_count;
 
-	const TypeId initializer_type = type_create_composite(core, TypeTag::CompositeLiteral, TypeDisposition::Initializer, SourceId::INVALID, total_member_count, true);
+	TypeId initializer_type = type_create_user_composite(core, TypeTag::CompositeLiteral, source_id_of_opcode(core, code));
+
+	u64 size = 0;
+
+	u32 align = 1;
 
 	for (u16 i = 0; i != total_member_count; ++i)
 	{
@@ -3278,20 +3267,34 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 
 		code = code_attach(code, &name);
 
-		MemberInit init{};
-		init.name = name;
-		init.type_id = values[i].type;
-		init.default_id = none<ForeverValueId>();
-		init.is_pub = false;
-		init.is_mut = true;
-		init.is_eval = false;
-		init.offset = 0;
+		const TypeId member_type = values[i].type;
 
-		if (!type_add_composite_member(core, initializer_type, init))
+		const TypeMetrics member_metrics = type_metrics_from_id(core, member_type);
+
+		size = next_multiple(size, static_cast<u64>(member_metrics.align));
+
+		UserCompositeMemberInit init{};
+		init.name = name;
+		init.type_id = member_type;
+		init.default_id = none<ForeverValueId>();
+		init.is_pub = true;
+		init.is_mut = true;
+		init.offset = size;
+
+		size += member_metrics.size;
+
+		if (align < member_metrics.align)
+			align = member_metrics.align;
+
+		if (!type_add_user_composite_member(core, initializer_type, init))
 			ASSERT_UNREACHABLE;
 	}
 
-	type_seal_composite(core, initializer_type, 0, 0, 0);
+	UserCompositeSealInfo seal{};
+	seal.size = size;
+	seal.stride = next_multiple(size, static_cast<u64>(align));
+
+	initializer_type = type_seal_user_composite(core, initializer_type, seal);
 
 	const TypeMetrics metrics = type_metrics_from_id(core, initializer_type);
 
@@ -4915,7 +4918,13 @@ static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, Global
 
 		const bool is_mut = has_flag(node, AstFlag::Definition_IsMut);
 
-		type_add_file_member(core, file_type, identifier_id, initializer_id, is_pub, is_mut);
+		FileCompositeMemberInit init{};
+		init.name = identifier_id;
+		init.completion_id = initializer_id;
+		init.is_pub = is_pub;
+		init.is_mut = is_mut;
+
+		type_add_file_composite_member(core, file_type, init);
 
 		file_value_set_initializer(core, file_index, rank, initializer_id);
 
@@ -4954,7 +4963,7 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 
 	const AstFileData* const root_data = attachment_of<AstFileData>(ast);
 
-	const TypeId type = type_create_composite(core, TypeTag::Composite, TypeDisposition::File, root_source_id, root_data->member_count, true);
+	const TypeId type = type_create_file_composite(core, static_cast<u16>(root_data->member_count), root_source_id);
 
 	const GlobalFileIndex file_index = file_values_reserve(core, type, static_cast<u16>(root_data->member_count));
 
@@ -5186,36 +5195,28 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 
 static TypeId make_func_type_from_array(CoreData* core, TypeId return_type, u8 parameter_count, const BuiltinParamInfo* params) noexcept
 {
-	TypeId parameter_list_type = type_create_composite(core, TypeTag::Composite, TypeDisposition::ParameterList, SourceId::INVALID, parameter_count, true);
+	TypeId signature_type = type_create_signature(core, true, parameter_count);
 
 	for (u8 i = 0; i != parameter_count; ++i)
 	{
-		MemberInit member_init{};
-		member_init.name = params[i].name;
-		member_init.type_id = params[i].type;
-		member_init.default_id = none<ForeverValueId>();
-		member_init.is_pub = false;
-		member_init.is_mut = false;
-		member_init.is_eval = params[i].is_comptime_known;
-		member_init.is_eval = params[i].is_comptime_known;
-		member_init.offset = 0;
+		SignatureParameterInit init{};
+		init.name = params[i].name;
+		init.complete.type_id = params[i].type;
+		init.complete.default_id = none<ForeverValueId>();
+		init.is_mut = false;
+		init.is_eval = params[i].is_comptime_known;
 
-		if (!type_add_composite_member(core, parameter_list_type, member_init))
-			ASSERT_UNREACHABLE;
+		type_add_signature_parameter(core, signature_type, init);
 	}
 
-	parameter_list_type = type_seal_composite(core, parameter_list_type, 0, 0, 0);
+	SignatureSealInfo seal{};
+	seal.closure_id = none<ClosureId>();
+	seal.has_templated_return_type = false;
+	seal.return_type.complete.type_id = return_type;
 
-	SignatureType2 signature_type{};
-	signature_type.parameter_list_type_id = parameter_list_type;
-	signature_type.return_type.type_id = return_type;
-	signature_type.closure_id = none<ClosureId>();
-	signature_type.is_func = true;
-	signature_type.has_templated_parameter_list = false;
-	signature_type.has_templated_return_type = false;
-	signature_type.parameter_count = parameter_count;
+	
 
-	return type_create_signature(core, TypeTag::Func, signature_type);
+	return type_seal_signature(core, signature_type, seal);
 }
 
 template<typename... Params>

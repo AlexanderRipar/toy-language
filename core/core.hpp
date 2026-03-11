@@ -1914,7 +1914,7 @@ enum class TypeTag : u8
 	Array,
 
 	// Tag of function types. Its structure is represented by a `SignatureType`.
-	Func,
+	Signature,
 
 	// Tag of composite types created via `create_open_type`. These have a
 	// more complex (and address-instable) representation, meaning that their
@@ -1950,21 +1950,19 @@ enum class TypeTag : u8
 	Trait,
 };
 
-enum class TypeDisposition : u8
-{
-	INVALID = 0,
-	Initializer,
-	File,
-	ParameterList,
-	User,
-};
-
 enum class TypeRelation : u8
 {
 	Equal,
 	FirstConvertsToSecond,
 	SecondConvertsToFirst,
 	Unrelated,
+};
+
+enum class MemberByNameRst : u8
+{
+	Ok,
+	Incomplete,
+	NotFound,
 };
 
 // Allocation metrics returned by `type_metrics_by_id`, describing the size,
@@ -1986,42 +1984,30 @@ struct TypeMetrics
 	u32 align;
 };
 
-// Iterator over the members of a composite type.
-// To create a `MemberIterator` call `members_of`.
-// This iterator is resistant to the iterated type having its members or itself
-// completed during iteration.
-struct MemberIterator
+struct SignatureTypeInfo
 {
-	const void* structure;
+	u8 templated_parameter_count;
 
-	const IdentifierId* names;
+	u8 parameter_count;
 
-	const void* members;
+	bool is_func;
+	
+	bool has_templated_return_type;
 
-	CoreData* core;
+	union
+	{
+		struct
+		{
+			TypeId type_id;
+		} complete;
 
-	u8 member_stride;
+		struct
+		{
+			OpcodeId completion_id;
+		} templated;
+	} return_type;
 
-	bool is_indirect;
-
-	u16 rank;
-};
-
-struct MemberInit
-{
-	IdentifierId name;
-
-	TypeId type_id;
-
-	Maybe<ForeverValueId> default_id;
-
-	bool is_pub : 1;
-
-	bool is_mut : 1;
-
-	bool is_eval : 1;
-
-	s64 offset;
+	Maybe<ClosureId> closure_id;
 };
 
 struct MemberInfo
@@ -2042,6 +2028,130 @@ struct MemberInfo
 
 	s64 offset;
 };
+
+// Iterator over the members of a composite type.
+// To create a `MemberIterator` call `members_of`.
+// This iterator is resistant to the iterated type having its members or itself
+// completed during iteration.
+struct MemberIterator
+{
+	u8 kind_bits;
+
+	u16 rank;
+
+	u32 count;
+
+	const IdentifierId* names;
+
+	const void* types;
+
+	Maybe<s64*> offsets;
+
+	CoreData* core;
+};
+
+
+
+struct SignatureParameterInit
+{
+	IdentifierId name;
+
+	union
+	{
+		struct
+		{
+			TypeId type_id;
+			
+			Maybe<ForeverValueId> default_id;
+		} complete;
+
+		struct
+		{
+			OpcodeId completion_id;
+		} templated;
+	};
+
+	bool is_templated;
+
+	bool is_eval;
+
+	bool is_mut;
+};
+
+struct SignatureSealInfo
+{
+	Maybe<ClosureId> closure_id;
+
+	union
+	{
+		struct
+		{
+			TypeId type_id;
+		} complete;
+
+		struct
+		{
+			OpcodeId completion_id;
+		} templated;
+	} return_type;
+
+	bool has_templated_return_type;
+};
+
+struct TraitParameterInit
+{
+	IdentifierId name;
+
+	OpcodeId completion_id;
+
+	bool is_mut;
+};
+
+struct ImplParameterInit
+{
+	IdentifierId name;
+
+	OpcodeId completion_id;
+
+	bool is_mut;
+};
+
+struct UserCompositeMemberInit
+{
+	IdentifierId name;
+
+	TypeId type_id;
+
+	Maybe<ForeverValueId> default_id;
+
+	bool is_pub;
+
+	bool is_mut;
+
+	s64 offset;
+};
+
+struct UserCompositeSealInfo
+{
+	u64 size;
+
+	u64 stride;
+
+	u32 align;
+};
+
+struct FileCompositeMemberInit
+{
+	IdentifierId name;
+
+	OpcodeId completion_id;
+
+	bool is_pub;
+
+	bool is_mut;
+};
+
+
 
 // Structural data for `Ptr`, `Slice` and `TailArray` types.
 struct ReferenceType
@@ -2097,35 +2207,6 @@ struct ArrayType
 	u32 unused_ = 0;
 };
 
-struct SignatureType2
-{
-	TypeId parameter_list_type_id;
-
-	union
-	{
-		TypeId type_id;
-
-		OpcodeId completion_id;
-	} return_type;
-
-	Maybe<ClosureId> closure_id;
-
-	bool is_func;
-
-	bool has_templated_parameter_list;
-
-	bool has_templated_return_type;
-
-	u8 parameter_count;
-};
-
-enum class MemberByNameRst : u8
-{
-	Ok,
-	Incomplete,
-	NotFound,
-};
-
 
 
 // Creates a "simple" type. This takes a `tag`, which
@@ -2148,88 +2229,51 @@ TypeId type_create_reference(CoreData* core, TypeTag tag, ReferenceType attach) 
 // further describing it.
 TypeId type_create_array(CoreData* core, TypeTag tag, ArrayType attach) noexcept;
 
-// Creates a "signature", i.e. a `Builtin` or `Function` type.
-// This takes a tag indicating which type to create, along with a
-// `SignatureType` further describing it.
-TypeId type_create_signature(CoreData* core, TypeTag tag, SignatureType2 attach) noexcept;
 
-TypeId type_create_trait(CoreData* core, SourceId distinct_source_id, Range<IdentifierId> parameter_names, Range<IdentifierId> member_names) noexcept;
 
-TypeId type_seal_trait(CoreData* core, TypeId trait_type_id) noexcept;
+TypeId type_create_signature(CoreData* core, bool is_func, u8 parameter_count) noexcept;
 
-void type_add_trait_member(CoreData* core, TypeId trait_type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> default_id, bool is_mut) noexcept;
+void type_add_signature_parameter(CoreData* core, TypeId type_id, SignatureParameterInit init) noexcept;
 
-// Creates a composite type with no members that can have members added by
-// calling `type_add_composite_member` on it.
-//
-// `tag` must be one of `TypeTag::Composite` and `TypeTag::CompositeLiteral`
-// and determines whether the created type will be a composite or a composite
-// literal.
-//
-// `lexical_parent_source_id` indicates the type lexically surrounding the
-// newly created type, and is used during name lookup.
-//
-// `distinct_source_id` serves to distinguish structurally equivalent types.
-// This is usually set to the type's creation site's source, meaning that
-// structurally equivalent types created at that site are equivalent. However,
-// this can be initialized differently to get different distinguishing
-// behaviour, e.g. to the creation function's caller to create distinct types
-// for each callsite.
-//
-// `disposition` indicates what sort of type is being created.
-// - `TypeDisposition::User` indicates a user-defined type, including e.g. the
-//   result of `import`. These types support calls to `_sizeof`, `_alignof`,
-//   etc. However, all their members must be of concrete types - otherwise
-//   layout queries would not generally make sense.
-// - `TypeDisposition::Signature` indicates that the type corresponds to a
-//   function signature. These types do not support layout queries, but may
-//   contain dependently typed members - i.e., parameters.
-// - `TypeDisposition::Block` indicates that the type corresponds to a block.
-//   These types behave similarly to `TypeDisposition::Signature`, apart from
-//   an additional constraint on accessing their members: Since blocks are
-//   ordered, members - corresponding to definitions - may only be referred to
-//   from points in the source after they are defined.
-//
-// Call `type_seal_composite` to stop the addition of further members.
-// Call `type_add_composite_member` to add a member to this type.
-// Call `type_set_composite_member_info` to set the type or value of a member
-// that was added with `has_pending_type` or `has_pending_value` respectively
-// set to `true`.
-TypeId type_create_composite(CoreData* core, TypeTag tag, TypeDisposition disposition, SourceId distinct_source_id, u32 initial_member_capacity, bool is_fixed_member_capacity) noexcept;
+TypeId type_seal_signature(CoreData* core, TypeId type_id, SignatureSealInfo seal_info) noexcept;
 
-// Seals an open composite type, preventing the addition of further members and
-// setting the type's metrics (`size`, `align` and `stride`).
-// Members that have already been added but that have not yet had their type or
-// value set can still be manipulated via `type_set_composite_member_info` even
-// after this call returns.
-// For types created with `TypeDisposition::Block` or
-// `TypeDisposition::Signature`, `size`, `align` and `stride` must all be `0`,
-// as their values are tracked implicitly as members are added and completed.
-// Otherwise, `size` and `stride` are unrestricted, while `align` must not be
-// `0`.
-TypeId type_seal_composite(CoreData* core, TypeId type_id, u64 size, u32 align, u64 stride) noexcept;
+TypeId type_instantiate_templated_signature(CoreData* core, TypeId type_id) noexcept;
 
-// Adds a member to the open composite type referenced by `open_type_id`.
-// The member is initialized with the data in `member`.
-// Returns `true` if the member was successfully added, and `false` if there
-// was a name collision with an existing member.
-bool type_add_composite_member(CoreData* core, TypeId type_id, MemberInit init) noexcept;
+void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> default_id) noexcept;
 
-void type_add_file_member(CoreData* core, TypeId type_id, IdentifierId name, OpcodeId completion_opcode, bool is_pub, bool is_mut) noexcept;
 
-void type_add_templated_parameter_list_member(CoreData* core, TypeId type_id, IdentifierId name, OpcodeId completion_opcode, bool is_eval, bool is_mut) noexcept;
 
-void type_set_templated_parameter_list_member_info(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> member_default_id) noexcept;
+TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names, u16 member_count) noexcept;
 
-void type_set_file_member_info(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, ForeverValueId value_id) noexcept;
+void type_add_trait_member(CoreData* core, TypeId type_id, TraitParameterInit init) noexcept;
 
-TypeId type_copy_templated_parameter_list(CoreData* core, TypeId type_id) noexcept;
+TypeId type_seal_trait(CoreData* core, TypeId type_id) noexcept;
 
-// Retrieves the number of members in the type referenced by `type_id`, which
-// must reference a sealed composite type.
-u32 type_get_composite_member_count(CoreData* core, TypeId type_id) noexcept;
 
-void type_discard(CoreData* core, TypeId type_id) noexcept;
+
+TypeId type_create_impl(CoreData* core, Range<TypeId> arguments, TypeId trait_type_id) noexcept;
+
+bool type_add_impl_member(CoreData* core, TypeId type_id, ImplParameterInit init) noexcept;
+
+Maybe<IdentifierId> type_complete_impl_with_trait_defaults(CoreData* core, TypeId type_id) noexcept;
+
+TypeId type_seal_impl(CoreData* core, TypeId type_id) noexcept;
+
+
+
+TypeId type_create_user_composite(CoreData* core, TypeTag tag, SourceId definition_site) noexcept;
+
+bool type_add_user_composite_member(CoreData* core, TypeId type_id, UserCompositeMemberInit init) noexcept;
+
+TypeId type_seal_user_composite(CoreData* core, TypeId type_id, UserCompositeSealInfo seal_info) noexcept;
+
+
+
+TypeId type_create_file_composite(CoreData* core, u16 member_count, SourceId definition_site) noexcept;
+
+void type_add_file_composite_member(CoreData* core, TypeId type_id, FileCompositeMemberInit init) noexcept;
+
+void type_complete_file_composite_member(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, ForeverValueId value_id) noexcept;
 
 
 
@@ -2239,41 +2283,7 @@ TypeRelation type_relation(CoreData* core, TypeId first_type_id, TypeId second_t
 // non-distinct aliases of the same type.
 bool type_is_equal(CoreData* core, TypeId type_id_a, TypeId type_id_b) noexcept;
 
-// Checks whether `from_type_id` can be implicitly converted to `to_type_id`.
-// If `from_type_id` and `to_type_id` refer to the same type according to
-// `type_is_equal`, implicit conversion is allowed.
-// Otherwise the allowed implicit conversion are as follows:
-//
-// |   `from`    |   `to`    |                    Notes & Semantics                    |
-// |-------------|-----------|---------------------------------------------------------|
-// | CompInteger | Integer   | Works for all `Integer` types, dynamic check for fit.   |
-// | CompFloat   | Float     | Works for all `Float` types.                            |
-// | Array       | Slice     | Creates a slice over the whole array.                   |
-// | mut Slice   | Slice     |                                                         |
-// | mut Ptr     | Ptr       |                                                         |
-// | multi Ptr   | Ptr       |                                                         |
-// | Ptr         | opt Ptr   |                                                         |
-// | Divergent   | Anything  | `Divergent` can be converted to any other type.         |
-// | Anything    | TypeInfo  | Any type can become a `TypeInfo` - this is its purpose. |
-//
-// Note that pointer conversions can occur together as one implicit conversion.
-// E.g., `[*]mut u32` can be converted to `?u32`.
-bool type_can_implicitly_convert_from_to(CoreData* core, TypeId from_type_id, TypeId to_type_id) noexcept;
 
-// Returns the common type of `type_id_a` and `type_id_b`.
-// If `type_id_a` and `type_id_b` are considered the equivalent by
-// `type_is_equal`, the lower of the two is returned. This is done to ensure
-// repeatability regardless of operand order.
-// Otherwise, if one of the types is implicitly convertible to the other, the
-// converted-to type is returned. E.g., when `type_id_a` is a `CompInteger` and
-// `type_id_b` is an `Integer`, `type_id_b` is returned.
-// If `type_id_a` and `type_id_b` do not share a common type, `TypeId::INVALID`
-// is returned.
-Maybe<TypeId> type_unify(CoreData* core, TypeId type_id_a, TypeId type_id_b) noexcept;
-
-
-
-TypeDisposition type_disposition_from_id(CoreData* core, TypeId type_id) noexcept;
 
 // Checks whether `type_metrics_from_id` may be called on `type_id`.
 // This returns false iff `type_id` refers to a composite type that has a
@@ -2295,6 +2305,14 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept;
 // aliased type.
 // For types created by `create_open_type`, this is `TypeTag::Composite`.
 TypeTag type_tag_from_id(CoreData* core, TypeId type_id) noexcept;
+
+// Retrieves the number of members in the type referenced by `type_id`, which
+// must reference a sealed composite type.
+u32 type_member_count(CoreData* core, TypeId type_id) noexcept;
+
+SignatureTypeInfo type_signature_info_from_id(CoreData* core, TypeId type_id) noexcept;
+
+Range<IdentifierId> type_trait_parameters(CoreData* core, TypeId type_id) noexcept;
 
 bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberInfo* out_info, OpcodeId* out_initializer);
 
@@ -2321,8 +2339,6 @@ const T* type_attachment_from_id(CoreData* core, TypeId type_id) noexcept
 			ASSERT_OR_IGNORE(tag == TypeTag::Integer || tag == TypeTag::Float);
 		else if constexpr (is_same_cpp_type<T, ArrayType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Array || tag == TypeTag::ArrayLiteral);
-		else if constexpr (is_same_cpp_type<T, SignatureType2>)
-			ASSERT_OR_IGNORE(tag == TypeTag::Func);
 		else
 			static_assert(false, "Unexpected attachment passed to type_attachment_from_id");
 	#endif // !NDEBUG
