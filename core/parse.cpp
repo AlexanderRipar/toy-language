@@ -369,7 +369,7 @@ static constexpr OperatorDesc UNARY_OPERATOR_DESCS[] = {
 	{ AstTag::UOpBitNot,          AstFlag::EMPTY,       2, false, false }, // ~
 	{ AstTag::UOpLogNot,          AstFlag::EMPTY,       2, false, false }, // !
 	{ AstTag::UOpTypeOptPtr,      AstFlag::Type_IsMut,  2, false, false }, // ?
-	{ AstTag::UOpTypeVarArgs,         AstFlag::EMPTY,       2, false, false }, // ...
+	{ AstTag::UOpTypeVarArgs,     AstFlag::EMPTY,       2, false, false }, // ...
 	{ AstTag::UOpTypeTailArray,   AstFlag::EMPTY,       2, false, false }, // [...]
 	{ AstTag::UOpTypeMultiPtr,    AstFlag::Type_IsMut,  2, false, false }, // [*]
 	{ AstTag::UOpTypeOptMultiPtr, AstFlag::Type_IsMut,  2, false, false }, // [?]
@@ -2200,69 +2200,6 @@ static AstBuilderToken parse_trait(CoreData* core) noexcept
 	return push_node(core, first_child_token, source_id, flags, AstTag::Trait);
 }
 
-static AstBuilderToken parse_impl(CoreData* core) noexcept
-{
-	ASSERT_OR_IGNORE(peek(core).token == Token::KwdImpl);
-
-	AstFlag flags = AstFlag::EMPTY;
-
-	const SourceId source_id = next(core).source_id;
-
-	const AstBuilderToken first_child_token = parse_expr(core, false);
-
-	Lexeme lexeme = peek(core);
-
-	if (lexeme.token == Token::KwdExpects)
-	{
-		flags |= AstFlag::Impl_HasExpects;
-
-		parse_expects(core);
-
-		lexeme = peek(core);
-	}
-
-	if (lexeme.token != Token::OpSet)
-	{
-		const CompileError error = (flags & AstFlag::Trait_HasExpects) == AstFlag::EMPTY
-			? CompileError::ParseTraitMissingSetOrExpects
-			: CompileError::ParseTraitMissingSet;
-
-		parse_error_fatal(core, lexeme.source_id, error);
-	}
-
-	skip(core);
-
-	parse_expr(core, true);
-
-	return push_node(core, first_child_token, source_id, flags, AstTag::Impl);
-}
-
-static AstBuilderToken parse_definition_or_impl(CoreData* core, bool* out_is_definition) noexcept
-{
-	const Lexeme lexeme = peek(core);
-
-	bool is_definition = is_definition_start(lexeme.token);
-
-	*out_is_definition = is_definition;
-
-	if (is_definition)
-		return parse_definition(core, false, false);
-	else if (lexeme.token == Token::KwdImpl)
-		return parse_impl(core);
-	else
-	{
-		parse_error_continuable(core, lexeme.source_id, CompileError::ParseUnexpectedTopLevelExpr);
-
-		core->parser.suppress_errors = true;
-
-		const AstBuilderToken result = parse_expr(core, true);
-
-		core->parser.suppress_errors = false;
-
-		return result;
-	}
-}
-
 static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 {
 	Lexeme lexeme = peek(core);
@@ -2503,18 +2440,6 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 				const AstBuilderToken trait_token = parse_trait(core);
 
 				push_operand(core, &stack, trait_token);
-
-				lexeme = peek(core);
-
-				continue;
-			}
-			else if (lexeme.token == Token::KwdImpl)
-			{
-				expecting_operand = false;
-
-				const AstBuilderToken impl_token = parse_impl(core);
-
-				push_operand(core, &stack, impl_token);
 
 				lexeme = peek(core);
 
@@ -2788,6 +2713,37 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 
 				stack.operand_tokens[stack.operand_count - 1] = member_token;
 			}
+			else if (lexeme.token == Token::KwdImpl)
+			{
+				const SourceId source_id = lexeme.source_id;
+
+				AstFlag flags = AstFlag::EMPTY;
+
+				pop_to_precedence(core, &stack, 9, true);
+
+				skip(core);
+
+				parse_expr(core, false);
+
+				lexeme = next(core);
+
+				if (lexeme.token != Token::CurlyL)
+					parse_error_fatal(core, lexeme.source_id, CompileError::INVALID); // TODO
+
+				while (true)
+				{
+					lexeme = peek(core);
+
+					if (lexeme.token == Token::CurlyR)
+						break;
+
+					parse_definition(core, false, false);
+				}
+
+				const AstBuilderToken impl_token = push_node(core, stack.operand_tokens[stack.operand_count - 1], source_id, flags, AstTag::Impl);
+
+				stack.operand_tokens[stack.operand_count - 1] = impl_token;
+			}
 			else // Binary operator
 			{
 				const u8 token_ordinal = static_cast<u8>(lexeme.token);
@@ -2828,18 +2784,36 @@ static bool parse_file(CoreData* core) noexcept
 	{
 		const Lexeme lexeme = peek(core);
 
-		if (lexeme.token == Token::END_OF_SOURCE)
-			break;
+		if (is_definition_start(lexeme.token))
+		{
+			const AstBuilderToken curr_token = parse_definition(core, false, false);
 
-		bool is_definition;
+			if (first_child_token == AstBuilderToken::NO_CHILDREN)
+				first_child_token = curr_token;
 
-		const AstBuilderToken curr_token = parse_definition_or_impl(core, &is_definition);
-
-		if (is_definition)
 			member_count += 1;
+		}
+		else if (lexeme.token == Token::END_OF_SOURCE)
+		{
+			break;
+		}
+		else
+		{
+			// Only definitions are legal at a file's top-level. If we end up
+			// encountering something else, we log an error and try to parse
+			// on, treating it as an expression.
 
-		if (first_child_token == AstBuilderToken::NO_CHILDREN)
-			first_child_token = curr_token;
+			parse_error_continuable(core, lexeme.source_id, CompileError::ParseUnexpectedTopLevelExpr);
+
+			core->parser.suppress_errors = true;
+
+			const AstBuilderToken curr_token = parse_expr(core, true);
+
+			core->parser.suppress_errors = false;
+
+			if (first_child_token == AstBuilderToken::NO_CHILDREN)
+				first_child_token = curr_token;
+		}
 	};
 
 	push_node(core, first_child_token, SourceId{ core->parser.source_id_base }, AstFlag::EMPTY, AstFileData{ member_count });
