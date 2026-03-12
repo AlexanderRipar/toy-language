@@ -692,6 +692,7 @@ enum class AstTag : u8
 	Leave,
 	Yield,
 	ParameterList,
+	TraitParameterList,
 	Call,
 	UOpTypeTailArray,
 	UOpTypeSlice,
@@ -783,8 +784,6 @@ enum class AstFlag : u8
 	Signature_HasTemplatedReturnType = 0x08,
 
 	Trait_HasExpects                 = 0x01,
-
-	Impl_HasExpects                  = 0x01,
 
 	Catch_HasDefinition              = 0x01,
 

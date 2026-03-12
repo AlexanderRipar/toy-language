@@ -2148,54 +2148,55 @@ static AstBuilderToken parse_trait(CoreData* core) noexcept
 	if (lexeme.token != Token::ParenL)
 		parse_error_fatal(core, lexeme.source_id, CompileError::ParseSignatureMissingParenthesisAfterTrait);
 
-	lexeme = peek(core);
+	const SourceId parameter_list_source_id = lexeme.source_id;
 
-	AstBuilderToken first_child_token = AstBuilderToken::NO_CHILDREN;
+	lexeme = next(core);
+
+	AstBuilderToken first_parameter_token = AstBuilderToken::NO_CHILDREN;
 
 	while (lexeme.token != Token::ParenR)
 	{
-		const AstBuilderToken parameter_token = parse_definition(core, true, false);
+		if (lexeme.token != Token::Ident)
+			parse_error_fatal(core, lexeme.source_id, CompileError::INVALID);
 
-		if (first_child_token == AstBuilderToken::NO_CHILDREN)
-			first_child_token = parameter_token;
+		const AstBuilderToken parameter_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstIdentifierData{ lexeme.identifier_id });
+
+		if (first_parameter_token == AstBuilderToken::NO_CHILDREN)
+			first_parameter_token = parameter_token;
 
 		lexeme = next(core);
 
 		if (lexeme.token == Token::Comma)
-			lexeme = peek(core);
+			lexeme = next(core);
 		else if (lexeme.token != Token::ParenR)
-			parse_error_fatal(core, lexeme.source_id, CompileError::ParseSignatureUnexpectedParameterListEnd);
+			parse_error_fatal(core, lexeme.source_id, CompileError::INVALID);
 	}
 
-	lexeme = peek(core);
+	const AstBuilderToken first_child_token = push_node(core, first_parameter_token, parameter_list_source_id, AstFlag::EMPTY, AstTag::TraitParameterList);
+
+	lexeme = next(core);
 
 	if (lexeme.token == Token::KwdExpects)
 	{
-		flags |= AstFlag::Trait_HasExpects;
+		parse_expects(core);
 
-		const AstBuilderToken expects_token = parse_expects(core);
-
-		if (first_child_token == AstBuilderToken::NO_CHILDREN)
-			first_child_token = expects_token;
-
-		lexeme = peek(core);
+		lexeme = next(core);
 	}
 
-	if (lexeme.token != Token::OpSet)
-	{
-		const CompileError error = (flags & AstFlag::Trait_HasExpects) == AstFlag::EMPTY
-			? CompileError::ParseTraitMissingSetOrExpects
-			: CompileError::ParseTraitMissingSet;
+	if (lexeme.token != Token::CurlyL)
+		parse_error_fatal(core, lexeme.source_id, CompileError::INVALID);
 
-		parse_error_fatal(core, lexeme.source_id, error);
+	while (true)
+	{
+		lexeme = peek(core);
+
+		if (lexeme.token == Token::CurlyR)
+			break;
+
+		parse_definition(core, true, false);
 	}
 
 	skip(core);
-
-	const AstBuilderToken body_token = parse_expr(core, true);
-
-	if (first_child_token == AstBuilderToken::NO_CHILDREN)
-		first_child_token = body_token;
 
 	return push_node(core, first_child_token, source_id, flags, AstTag::Trait);
 }

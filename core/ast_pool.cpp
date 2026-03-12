@@ -902,6 +902,7 @@ const char8* tag_name(AstTag tag) noexcept
 		"Leave",
 		"Yield",
 		"ParameterList",
+		"TraitParameterList",
 		"Call",
 		"UOpTypeTailArray",
 		"UOpTypeSlice",
