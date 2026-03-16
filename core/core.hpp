@@ -1112,6 +1112,15 @@ struct alignas(8) AstSignatureData
 	u32 unused_ = 0;
 };
 
+struct alignas(8) AstTraitParameterListData
+{
+	static constexpr AstTag TAG = AstTag::TraitParameterList;
+
+	u32 parameter_count;
+
+	u32 unused_ = 0;
+};
+
 // Neatly structured summary of the child structure of an `AstNode` with tag
 // `AstTag::Func`. To obtain this for a given node, call `get_func_info`.
 struct SignatureInfo
@@ -2028,6 +2037,15 @@ struct MemberInfo
 	s64 offset;
 };
 
+struct TraitMemberInfo
+{
+	OpcodeId type_completion_id;
+
+	Maybe<OpcodeId> default_completion_id;
+
+	bool is_mut;
+};
+
 // Iterator over the members of a composite type.
 // To create a `MemberIterator` call `members_of`.
 // This iterator is resistant to the iterated type having its members or itself
@@ -2097,16 +2115,18 @@ struct SignatureSealInfo
 	bool has_templated_return_type;
 };
 
-struct TraitParameterInit
+struct TraitMemberInit
 {
 	IdentifierId name;
 
-	OpcodeId completion_id;
+	OpcodeId type_completion_id;
+
+	Maybe<OpcodeId> default_completion_id;
 
 	bool is_mut;
 };
 
-struct ImplParameterInit
+struct ImplMemberInit
 {
 	IdentifierId name;
 
@@ -2244,7 +2264,7 @@ void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id,
 
 TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names, u16 member_count) noexcept;
 
-void type_add_trait_member(CoreData* core, TypeId type_id, TraitParameterInit init) noexcept;
+void type_add_trait_member(CoreData* core, TypeId type_id, TraitMemberInit init) noexcept;
 
 TypeId type_seal_trait(CoreData* core, TypeId type_id) noexcept;
 
@@ -2252,7 +2272,7 @@ TypeId type_seal_trait(CoreData* core, TypeId type_id) noexcept;
 
 TypeId type_create_impl(CoreData* core, Range<TypeId> arguments, TypeId trait_type_id) noexcept;
 
-bool type_add_impl_member(CoreData* core, TypeId type_id, ImplParameterInit init) noexcept;
+bool type_add_impl_member(CoreData* core, TypeId type_id, ImplMemberInit init) noexcept;
 
 Maybe<IdentifierId> type_complete_impl_with_trait_defaults(CoreData* core, TypeId type_id) noexcept;
 
@@ -2313,7 +2333,11 @@ SignatureTypeInfo type_signature_info_from_id(CoreData* core, TypeId type_id) no
 
 Range<IdentifierId> type_trait_parameters(CoreData* core, TypeId type_id) noexcept;
 
-bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberInfo* out_info, OpcodeId* out_initializer);
+void type_trait_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, TraitMemberInfo* out_info) noexcept;
+
+bool type_trait_member_info_by_name(CoreData* core, TypeId type_id, IdentifierId name, TraitMemberInfo* out_info) noexcept;
+
+bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberInfo* out_info, OpcodeId* out_initializer) noexcept;
 
 MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, IdentifierId name, MemberInfo* out_info, OpcodeId* out_initializer) noexcept;
 
@@ -2512,6 +2536,13 @@ enum class Opcode : u8
 	DiscardVoid,
 	CheckTopVoid,
 	CheckWriteCtxVoid,
+	Trait,
+	Impl,
+	ImplSetSelf,
+	ImplMemberAllocPrepare,
+	ImplMemberAllocExplicitType,
+	ImplMemberAllocImplicitType,
+	ImplMemberAllocComplete,
 };
 
 enum class OpcodeSliceKind : u8

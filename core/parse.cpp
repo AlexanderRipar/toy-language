@@ -1598,7 +1598,7 @@ static bool is_definition_start(Token token) noexcept
 
 static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept;
 
-static AstBuilderToken parse_definition(CoreData* core, bool is_optional_value, bool is_param) noexcept
+static AstBuilderToken parse_definition(CoreData* core, bool is_optional_type, bool is_optional_value, bool is_param) noexcept
 {
 	AstFlag flags = AstFlag::EMPTY;
 
@@ -1666,6 +1666,10 @@ static AstBuilderToken parse_definition(CoreData* core, bool is_optional_value, 
 
 		lexeme = peek(core);
 	}
+	else if (!is_optional_type)
+	{
+		parse_error_continuable(core, lexeme.source_id, CompileError::INVALID); // TODO: Error message
+	}
 
 	if (lexeme.token == Token::OpSet)
 	{
@@ -1678,7 +1682,7 @@ static AstBuilderToken parse_definition(CoreData* core, bool is_optional_value, 
 	}
 	else if (!is_optional_value)
 	{
-		parse_error_fatal(core, lexeme.source_id, CompileError::ParseDefinitionMissingEquals);
+		parse_error_continuable(core, lexeme.source_id, CompileError::ParseDefinitionMissingEquals);
 	}
 
 	return is_param
@@ -1726,7 +1730,7 @@ static AstBuilderToken parse_top_level_expr(CoreData* core, bool is_definition_o
 	*out_is_definition = is_definition;
 
 	if (is_definition)
-		return parse_definition(core, is_definition_optional_value, false);
+		return parse_definition(core, true, is_definition_optional_value, false);
 	else if (lexeme.token == Token::KwdReturn)
 		return parse_return(core);
 	else if (lexeme.token == Token::KwdLeave)
@@ -1743,7 +1747,7 @@ static AstBuilderToken parse_where(CoreData* core) noexcept
 
 	const SourceId source_id = next(core).source_id;
 
-	const AstBuilderToken first_child_token = parse_definition(core, false, false);
+	const AstBuilderToken first_child_token = parse_definition(core, true, false, false);
 
 	while (true)
 	{
@@ -1752,7 +1756,7 @@ static AstBuilderToken parse_where(CoreData* core) noexcept
 
 		skip(core);
 
-		parse_definition(core, false, false);
+		parse_definition(core, true, false, false);
 	}
 
 	return push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstTag::Where);
@@ -1823,7 +1827,7 @@ static AstBuilderToken try_parse_foreach(CoreData* core, SourceId source_id) noe
 
 	AstFlag flags = AstFlag::EMPTY;
 
-	const AstBuilderToken first_child_token = parse_definition(core, true, false);
+	const AstBuilderToken first_child_token = parse_definition(core, true, true, false);
 
 	Lexeme lexeme = peek(core);
 
@@ -1833,7 +1837,7 @@ static AstBuilderToken try_parse_foreach(CoreData* core, SourceId source_id) noe
 
 		skip(core);
 
-		parse_definition(core, true, false);
+		parse_definition(core, true, true, false);
 
 		lexeme = peek(core);
 	}
@@ -2063,7 +2067,7 @@ static AstBuilderToken parse_signature(CoreData* core) noexcept
 
 		param_count += 1;
 
-		const AstBuilderToken parameter_token = parse_definition(core, true, true);
+		const AstBuilderToken parameter_token = parse_definition(core, true, true, true);
 
 		if (first_parameter_token == AstBuilderToken::NO_CHILDREN)
 			first_parameter_token = parameter_token;
@@ -2154,12 +2158,16 @@ static AstBuilderToken parse_trait(CoreData* core) noexcept
 
 	AstBuilderToken first_parameter_token = AstBuilderToken::NO_CHILDREN;
 
+	u32 parameter_count = 0;
+
 	while (lexeme.token != Token::ParenR)
 	{
+		parameter_count += 1;
+
 		if (lexeme.token != Token::Ident)
 			parse_error_fatal(core, lexeme.source_id, CompileError::INVALID);
 
-		const AstBuilderToken parameter_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstIdentifierData{ lexeme.identifier_id });
+		const AstBuilderToken parameter_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstIdentifierData{ lexeme.identifier_id, NameBinding{} });
 
 		if (first_parameter_token == AstBuilderToken::NO_CHILDREN)
 			first_parameter_token = parameter_token;
@@ -2172,7 +2180,7 @@ static AstBuilderToken parse_trait(CoreData* core) noexcept
 			parse_error_fatal(core, lexeme.source_id, CompileError::INVALID);
 	}
 
-	const AstBuilderToken first_child_token = push_node(core, first_parameter_token, parameter_list_source_id, AstFlag::EMPTY, AstTag::TraitParameterList);
+	const AstBuilderToken first_child_token = push_node(core, first_parameter_token, parameter_list_source_id, AstFlag::EMPTY, AstTraitParameterListData{ parameter_count });
 
 	lexeme = next(core);
 
@@ -2193,7 +2201,7 @@ static AstBuilderToken parse_trait(CoreData* core) noexcept
 		if (lexeme.token == Token::CurlyR)
 			break;
 
-		parse_definition(core, true, false);
+		parse_definition(core, false, true, false);
 	}
 
 	skip(core);
@@ -2679,7 +2687,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 				{
 					flags |= AstFlag::Catch_HasDefinition;
 
-					parse_definition(core, true, false);
+					parse_definition(core, true, true, false);
 
 					lexeme = next(core);
 
@@ -2738,7 +2746,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 					if (lexeme.token == Token::CurlyR)
 						break;
 
-					parse_definition(core, false, false);
+					parse_definition(core, true, false, false);
 				}
 
 				const AstBuilderToken impl_token = push_node(core, stack.operand_tokens[stack.operand_count - 1], source_id, flags, AstTag::Impl);
@@ -2787,7 +2795,7 @@ static bool parse_file(CoreData* core) noexcept
 
 		if (is_definition_start(lexeme.token))
 		{
-			const AstBuilderToken curr_token = parse_definition(core, false, false);
+			const AstBuilderToken curr_token = parse_definition(core, true, false, false);
 
 			if (first_child_token == AstBuilderToken::NO_CHILDREN)
 				first_child_token = curr_token;

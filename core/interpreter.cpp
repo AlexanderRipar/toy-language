@@ -1760,7 +1760,7 @@ static const Opcode* handle_file_global_alloc_prepare(CoreData* core, const Opco
 	return code;
 }
 
-static const Opcode* handle_file_global_alloc_complete(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_global_alloc_complete(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.global_initializations.used() >= 1);
 
@@ -1775,7 +1775,7 @@ static const Opcode* handle_file_global_alloc_complete(CoreData* core, const Opc
 	return code;
 }
 
-static const Opcode* handle_file_global_alloc_typed(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_global_alloc_typed(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -1811,7 +1811,7 @@ static const Opcode* handle_file_global_alloc_typed(CoreData* core, const Opcode
 	return code;
 }
 
-static const Opcode* handle_file_global_alloc_untyped(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_global_alloc_untyped(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -4879,6 +4879,83 @@ static const Opcode* handle_check_write_ctx_void(CoreData* core, const Opcode* c
 	return code;
 }
 
+static const Opcode* handle_trait(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+{
+	(void) core;
+
+	(void) code;
+
+	(void) write_ctx;
+
+	TODO("Implement");
+}
+
+static const Opcode* handle_impl(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+{
+	(void) core;
+
+	(void) code;
+
+	(void) write_ctx;
+
+	TODO("Implement");
+}
+
+static const Opcode* handle_impl_set_self(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+{
+	(void) core;
+
+	(void) code;
+
+	(void) write_ctx;
+
+	TODO("Implement");
+}
+
+static const Opcode* handle_impl_member_alloc_prepare(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+{
+	(void) core;
+
+	(void) code;
+
+	(void) write_ctx;
+
+	TODO("Implement");
+}
+
+static const Opcode* handle_impl_member_alloc_explicit_type(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+{
+	(void) core;
+
+	(void) code;
+
+	(void) write_ctx;
+
+	TODO("Implement");
+}
+
+static const Opcode* handle_impl_member_alloc_implicit_type(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+{
+	(void) core;
+
+	(void) code;
+
+	(void) write_ctx;
+
+	TODO("Implement");
+}
+
+static const Opcode* handle_impl_member_alloc_complete(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+{
+	(void) core;
+
+	(void) code;
+
+	(void) write_ctx;
+
+	TODO("Implement");
+}
+
 
 
 static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, GlobalFileIndex file_index) noexcept
@@ -5017,9 +5094,9 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 		&handle_scope_alloc_typed,                 // ScopeAllocTyped
 		&handle_scope_alloc_untyped,               // ScopeAllocUntyped
 		&handle_file_global_alloc_prepare,         // FileGlobalAllocPrepare
-		&handle_file_global_alloc_complete,        // FileGlobalAllocComplete
-		&handle_file_global_alloc_typed,           // FileGlobalAllocTyped
-		&handle_file_global_alloc_untyped,         // FileGlobalAllocUntyped
+		&handle_global_alloc_complete,             // FileGlobalAllocComplete
+		&handle_global_alloc_typed,                // FileGlobalAllocTyped
+		&handle_global_alloc_untyped,              // FileGlobalAllocUntyped
 		&handle_pop_closure,                       // PopClosure
 		&handle_load_scope,                        // LoadScope
 		&handle_load_global,                       // LoadGlobal
@@ -5071,6 +5148,13 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 		&handle_discard_void,                      // DiscardVoid
 		&handle_check_top_void,                    // CheckTopVoid
 		&handle_check_write_ctx_void,              // CheckWriteCtxVoid
+		&handle_trait,                             // Trait
+		&handle_impl,                              // Impl
+		&handle_impl_set_self,                     // ImplSetSelf
+		&handle_impl_member_alloc_prepare,         // ImplMemberAllocPrepare
+		&handle_impl_member_alloc_explicit_type,   // ImplMemberAllocExplicitType
+		&handle_impl_member_alloc_implicit_type,   // ImplMemberAllocImplicitType
+		&handle_impl_member_alloc_complete,        // ImplMemberAllocComplete
 	};
 
 	static_assert(HANDLERS[static_cast<u8>(Opcode::EndCode)]                       == &handle_end_code);
@@ -5081,9 +5165,9 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeAllocTyped)]               == &handle_scope_alloc_typed);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeAllocUntyped)]             == &handle_scope_alloc_untyped);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocPrepare)]        == &handle_file_global_alloc_prepare);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocComplete)]       == &handle_file_global_alloc_complete);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocTyped)]          == &handle_file_global_alloc_typed);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocUntyped)]        == &handle_file_global_alloc_untyped);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocComplete)]       == &handle_global_alloc_complete);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocTyped)]          == &handle_global_alloc_typed);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocUntyped)]        == &handle_global_alloc_untyped);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::PopClosure)]                    == &handle_pop_closure);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::LoadScope)]                     == &handle_load_scope);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::LoadGlobal)]                    == &handle_load_global);
@@ -5135,6 +5219,13 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::DiscardVoid)]                   == &handle_discard_void);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CheckTopVoid)]                  == &handle_check_top_void);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CheckWriteCtxVoid)]             == &handle_check_write_ctx_void);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::Trait)]                         == &handle_trait);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::Impl)]                          == &handle_impl);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplSetSelf)]                   == &handle_impl_set_self);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplMemberAllocPrepare)]        == &handle_impl_member_alloc_prepare);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplMemberAllocExplicitType)]   == &handle_impl_member_alloc_explicit_type);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplMemberAllocImplicitType)]   == &handle_impl_member_alloc_implicit_type);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplMemberAllocComplete)]       == &handle_impl_member_alloc_complete);
 
 	core->interp.is_ok = true;
 

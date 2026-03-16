@@ -32,6 +32,9 @@ enum class FixupKind : u8
 	DiscardedIfBranch,
 	LoopBody,
 	LoopFinally,
+	TraitMemberType,
+	TraitMemberDefault,
+	ImplMember,
 };
 
 struct Fixup
@@ -94,6 +97,9 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	case Opcode::Return:
 	case Opcode::CheckTopVoid:
 	case Opcode::CheckWriteCtxVoid:
+	case Opcode::ImplSetSelf:
+	case Opcode::ImplMemberAllocPrepare:
+	case Opcode::ImplMemberAllocComplete:
 	{
 		ASSERT_OR_IGNORE(!expects_write_ctx);
 
@@ -172,6 +178,7 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	case Opcode::ValueFloat:
 	case Opcode::ValueString:
 	case Opcode::ValueVoid:
+	case Opcode::Trait:
 	{
 		if (expects_write_ctx)
 			rst.write_ctxs_diff = -1;
@@ -333,6 +340,7 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	case Opcode::If:
 	case Opcode::Loop:
 	case Opcode::DiscardVoid:
+	case Opcode::ImplMemberAllocExplicitType:
 	{
 		ASSERT_OR_IGNORE(!expects_write_ctx);
 
@@ -373,6 +381,7 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	case Opcode::LogicalOr:
 	case Opcode::Compare:
 	case Opcode::ArrayType:
+	case Opcode::Impl:
 	{
 		if (expects_write_ctx)
 		{
@@ -383,6 +392,13 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 		{
 			rst.values_diff = -1;
 		}
+
+		return rst;
+	}
+
+	case Opcode::ImplMemberAllocImplicitType:
+	{
+		rst.write_ctxs_diff = 1;
 
 		return rst;
 	}
@@ -568,6 +584,38 @@ static void emit_fixup_for_loop_finally(CoreData* core, Opcode* fixup_dst, AstNo
 	fixup->kind = FixupKind::LoopFinally;
 	fixup->allow_return = core->opcodes.allow_return;
 	fixup->expects_write_ctx = expects_write_ctx;
+	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - core->opcodes.codes.begin());
+	fixup->node_id = id_from_ast_node(core, node);
+}
+
+static void emit_fixup_for_trait_member_type(CoreData* core, Opcode* fixup_dst, AstNode* node) noexcept
+{
+	Fixup* const fixup = core->opcodes.fixups.reserve();
+	fixup->kind = FixupKind::TraitMemberType;
+	fixup->allow_return = true;
+	fixup->expects_write_ctx = false;
+	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - core->opcodes.codes.begin());
+	fixup->node_id = id_from_ast_node(core, node);
+}
+
+static void emit_fixup_for_trait_member_default(CoreData* core, Opcode* fixup_dst, AstNode* node) noexcept
+{
+	Fixup* const fixup = core->opcodes.fixups.reserve();
+	fixup->kind = FixupKind::TraitMemberDefault;
+	fixup->allow_return = true;
+	fixup->expects_write_ctx = false;
+	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - core->opcodes.codes.begin());
+	fixup->node_id = id_from_ast_node(core, node);
+}
+
+static void emit_fixup_for_impl_member(CoreData* core, Opcode* fixup_dst, AstNode* node) noexcept
+{
+	ASSERT_OR_IGNORE(node->tag == AstTag::Definition);
+
+	Fixup* const fixup = core->opcodes.fixups.reserve();
+	fixup->kind = FixupKind::ImplMember;
+	fixup->allow_return = true;
+	fixup->expects_write_ctx = false;
 	fixup->dst_id = static_cast<OpcodeId>(fixup_dst - core->opcodes.codes.begin());
 	fixup->node_id = id_from_ast_node(core, node);
 }
@@ -902,6 +950,77 @@ static bool opcodes_from_signature(CoreData* core, AstNode* node, bool expects_w
 			}
 		}
 	}
+
+	return true;
+}
+
+static bool opcodes_from_call_args(CoreData* core, AstNode* node) noexcept
+{
+	AstNode* const callee = first_child_of(node);
+
+	if (!opcodes_from_expression(core, callee, false))
+		return false;
+
+	u8 argument_count = 0;
+
+	for (AstNode* argument = callee; has_next_sibling(argument); argument = next_sibling_of(argument))
+		argument_count += 1;
+
+	// Since we use `emit_opcode_raw` and not `emit_opcode`, we need would
+	// normally need to manually adjust and check the current state.
+	// However, in this case there is nothing to update, as `Opcode::PrepareArgs`
+	// has no direct effect on (the recorded part of) the state.
+	byte* const attach = emit_opcode_raw(core, Opcode::PrepareArgs, false, node, sizeof(u8) + argument_count * (sizeof(IdentifierId) + sizeof(OpcodeId)));
+
+	memcpy(attach, &argument_count, sizeof(u8));
+
+	if (argument_count != 0)
+	{
+		byte* const names_attach = attach + 1;
+
+		byte* const callbacks_attach = attach + 1 + argument_count * sizeof(IdentifierId);
+
+		u8 argument_index = 0;
+
+		AstNode* argument = next_sibling_of(callee);
+
+		while (true)
+		{
+			IdentifierId argument_name;
+
+			AstNode* argument_value;
+
+			if (argument->tag == AstTag::OpSet)
+			{
+				AstNode* const name = first_child_of(argument);
+
+				const AstImpliedMemberData* const name_attach = attachment_of<AstImpliedMemberData>(name);
+
+				argument_name = name_attach->identifier_id;
+
+				argument_value = next_sibling_of(name);
+			}
+			else
+			{
+				argument_name = IdentifierId::INVALID;
+
+				argument_value = argument;
+			}
+
+			memcpy(names_attach + argument_index * sizeof(IdentifierId), &argument_name, sizeof(IdentifierId));
+
+			emit_fixup_for_argument(core, reinterpret_cast<Opcode*>(callbacks_attach + argument_index * sizeof(OpcodeId)), argument_value);
+
+			if (!has_next_sibling(argument))
+				break;
+
+			argument = next_sibling_of(argument);
+
+			argument_index += 1;
+		}
+	}
+
+	emit_opcode(core, Opcode::ExecArgs, false, node);
 
 	return true;
 }
@@ -1309,6 +1428,166 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		return opcodes_from_signature(core, node, expects_write_ctx, &unused_closed_over_value_count);
 	}
 
+	case AstTag::Trait:
+	{
+		AstNode* const parameter_list = first_child_of(node);
+
+		const u32 parameter_count = attachment_of<AstTraitParameterListData>(parameter_list)->parameter_count;
+
+		u16 member_count = 0;
+
+		AstNode* curr = parameter_list;
+
+		while (has_next_sibling(curr))
+		{
+			curr = next_sibling_of(curr);
+
+			ASSERT_OR_IGNORE(curr->tag == AstTag::Definition);
+
+			if (member_count == UINT16_MAX)
+				return false; // TODO: Error message
+
+			member_count += 1;
+		}
+
+		const u32 attachment_size = sizeof(u8) // paremeter count
+		                          + sizeof(u16) // member count
+		                          + parameter_count * sizeof(IdentifierId) // parameter names
+		                          + member_count * (sizeof(IdentifierId) + sizeof(bool) + 2 * sizeof(OpcodeId)); // member initializers
+
+		byte* attach = emit_opcode_raw(core, Opcode::Trait, expects_write_ctx, node, attachment_size);
+
+		// Since we just emitted a raw opcode, we must update the tracked state
+		// for manually. For `Opcode::Trait`, this means pushing an extra value
+		// or writing it into `write_ctx` instead, if provided.
+		if (expects_write_ctx)
+		{
+			ASSERT_OR_IGNORE(core->opcodes.state.write_ctxs_diff >= 1);
+
+			core->opcodes.state.write_ctxs_diff -= 1;
+		}
+		else
+		{
+			core->opcodes.state.values_diff += 1;
+		}
+
+		memcpy(attach, &parameter_count, sizeof(u8));
+		attach += sizeof(u8);
+
+		memcpy(attach, &member_count, sizeof(u16));
+		attach += sizeof(u16);
+
+		AstDirectChildIterator parameters = direct_children_of(parameter_list);
+
+		while (has_next(&parameters))
+		{
+			AstNode* const parameter = next(&parameters);
+
+			const IdentifierId name = attachment_of<AstIdentifierData>(parameter)->identifier_id;
+
+			memcpy(attach, &name, sizeof(IdentifierId));
+			attach += sizeof(IdentifierId);
+		}
+
+		curr = parameter_list;
+
+		while (has_next_sibling(curr))
+		{
+			curr = next_sibling_of(curr);
+
+			const IdentifierId name = attachment_of<AstDefinitionData>(curr)->identifier_id;
+
+			DefinitionInfo info = get_definition_info(curr);
+
+			memcpy(attach, &name, sizeof(IdentifierId));
+			attach += sizeof(IdentifierId);
+
+			const bool is_mut = has_flag(curr, AstFlag::Definition_IsMut);
+
+			memcpy(attach, &is_mut, sizeof(bool));
+			attach += sizeof(bool);
+
+			ASSERT_OR_IGNORE(is_some(info.type));
+
+			emit_fixup_for_trait_member_type(core, reinterpret_cast<Opcode*>(attach), get(info.type));
+
+			attach += sizeof(OpcodeId);
+
+			if (is_some(info.value))				
+				emit_fixup_for_trait_member_default(core, reinterpret_cast<Opcode*>(attach), curr);
+			else
+				memset(attach, 0, sizeof(OpcodeId));
+
+			attach += sizeof(OpcodeId);
+		}
+
+		return true;
+	}
+
+	case AstTag::Impl:
+	{
+		AstNode* const on = first_child_of(node);
+
+		if (!opcodes_from_expression(core, on, false))
+			return false;
+
+		emit_opcode(core, Opcode::ImplSetSelf, false, node);
+
+		AstNode* const trait = next_sibling_of(on);
+
+		if (trait->tag != AstTag::Call)
+			return false; // TODO: Error message.
+
+		opcodes_from_call_args(core, trait);
+
+		AstNode* curr = trait;
+
+		u16 member_count = 0;
+
+		while (has_next_sibling(curr))
+		{
+			curr = next_sibling_of(curr);
+
+			ASSERT_OR_IGNORE(curr->tag == AstTag::Definition);
+
+			if (member_count == UINT16_MAX)
+				return false; // TODO: Error message.
+
+			member_count += 1;
+		}
+
+		const u32 attach_size = sizeof(u16) // member_count
+		                      + member_count * (sizeof(IdentifierId) + sizeof(bool) + sizeof(OpcodeId)); // members
+
+		byte* attach = emit_opcode_raw(core, Opcode::Impl, expects_write_ctx, node, attach_size);
+
+		memcpy(attach, &member_count, sizeof(u16));
+		attach += sizeof(u16);
+
+		curr = trait;
+
+		while (has_next_sibling(curr))
+		{
+			curr = next_sibling_of(curr);
+
+			const IdentifierId name_id = attachment_of<AstDefinitionData>(curr)->identifier_id;
+
+			memcpy(attach, &name_id, sizeof(IdentifierId));
+			attach += sizeof(IdentifierId);
+
+			const bool is_mut = has_flag(curr, AstFlag::Definition_IsMut);
+
+			memcpy(attach, &is_mut, sizeof(bool));
+			attach += sizeof(bool);
+
+			emit_fixup_for_impl_member(core, reinterpret_cast<Opcode*>(attach), curr);
+
+			attach += sizeof(OpcodeId);
+		}
+
+		return true;
+	}
+
 	case AstTag::Unreachable:
 	{
 		emit_opcode(core, Opcode::Unreachable, expects_write_ctx, node);
@@ -1430,71 +1709,8 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 	case AstTag::Call:
 	{
-		AstNode* const callee = first_child_of(node);
-
-		if (!opcodes_from_expression(core, callee, false))
+		if (!opcodes_from_call_args(core, node))
 			return false;
-
-		u8 argument_count = 0;
-
-		for (AstNode* argument = callee; has_next_sibling(argument); argument = next_sibling_of(argument))
-			argument_count += 1;
-
-		// Since we use `emit_opcode_raw` and not `emit_opcode`, we need would
-		// normally need to manually adjust and check the current state.
-		// However, in this case there is nothing to update, as `Opcode::PrepareArgs`
-		// has no direct effect on (the recorded part of) the state.
-		byte* const attach = emit_opcode_raw(core, Opcode::PrepareArgs, false, node, sizeof(u8) + argument_count * (sizeof(IdentifierId) + sizeof(OpcodeId)));
-
-		memcpy(attach, &argument_count, sizeof(u8));
-
-		if (argument_count != 0)
-		{
-			byte* const names_attach = attach + 1;
-
-			byte* const callbacks_attach = attach + 1 + argument_count * sizeof(IdentifierId);
-
-			u8 argument_index = 0;
-
-			AstNode* argument = next_sibling_of(callee);
-
-			while (true)
-			{
-				IdentifierId argument_name;
-
-				AstNode* argument_value;
-
-				if (argument->tag == AstTag::OpSet)
-				{
-					AstNode* const name = first_child_of(argument);
-
-					const AstImpliedMemberData* const name_attach = attachment_of<AstImpliedMemberData>(name);
-
-					argument_name = name_attach->identifier_id;
-
-					argument_value = next_sibling_of(name);
-				}
-				else
-				{
-					argument_name = IdentifierId::INVALID;
-
-					argument_value = argument;
-				}
-
-				memcpy(names_attach + argument_index * sizeof(IdentifierId), &argument_name, sizeof(IdentifierId));
-
-				emit_fixup_for_argument(core, reinterpret_cast<Opcode*>(callbacks_attach + argument_index * sizeof(OpcodeId)), argument_value);
-
-				if (!has_next_sibling(argument))
-					break;
-
-				argument = next_sibling_of(argument);
-
-				argument_index += 1;
-			}
-		}
-
-		emit_opcode(core, Opcode::ExecArgs, false, node);
 
 		emit_opcode(core, Opcode::Call, expects_write_ctx, node);
 
@@ -1861,8 +2077,6 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	case AstTag::Definition:
 	case AstTag::ForEach:
 	case AstTag::Switch:
-	case AstTag::Trait:
-	case AstTag::Impl:
 	case AstTag::Catch:
 	case AstTag::Leave:
 	case AstTag::Yield:
@@ -1894,6 +2108,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	case AstTag::Parameter:
 	case AstTag::Case:
 	case AstTag::ParameterList:
+	case AstTag::TraitParameterList:
 	case AstTag::ImpliedMember:
 	case AstTag::MAX:
 		; // Fallthrough to unreachable
@@ -2180,6 +2395,117 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 		return true;
 	}
 
+	case FixupKind::TraitMemberType:
+	{
+		core->opcodes.state = OpcodeEffects{};
+		core->opcodes.state.write_ctxs_diff = 1;
+
+		core->opcodes.allow_return = false;
+
+		AstNode* const node = ast_node_from_id(core, fixup.node_id);
+
+		if (!opcodes_from_expression(core, node, true))
+			return false;
+
+		emit_opcode(core, Opcode::EndCode, false, node);
+
+		ASSERT_OR_IGNORE(
+			core->opcodes.state.values_diff == 0
+		 && core->opcodes.state.scopes_diff == 0
+		 && core->opcodes.state.write_ctxs_diff == 0
+		 && core->opcodes.state.closures_diff == 0
+		);
+
+		return true;
+	}
+
+	case FixupKind::TraitMemberDefault:
+	{
+		core->opcodes.state = OpcodeEffects{};
+		core->opcodes.state.write_ctxs_diff = 1;
+
+		core->opcodes.allow_return = false;
+
+		AstNode* const node = ast_node_from_id(core, fixup.node_id);
+
+		const IdentifierId name_id = attachment_of<AstDefinitionData>(node)->identifier_id;
+
+		const bool is_mut = has_flag(node, AstFlag::Definition_IsMut);
+
+		DefinitionInfo info = get_definition_info(node);
+
+		ASSERT_OR_IGNORE(is_some(info.value));
+
+		emit_opcode(core, Opcode::ImplMemberAllocPrepare, false, get(info.value), name_id, is_mut);
+
+		emit_opcode(core, Opcode::ImplMemberAllocImplicitType, false, get(info.value));
+
+		if (!opcodes_from_expression(core, node, true))
+			return false;
+
+		emit_opcode(core, Opcode::ImplMemberAllocComplete, false, get(info.value));
+
+		emit_opcode(core, Opcode::EndCode, false, node);
+
+		ASSERT_OR_IGNORE(
+			core->opcodes.state.values_diff == 0
+		 && core->opcodes.state.scopes_diff == 0
+		 && core->opcodes.state.write_ctxs_diff == 0
+		 && core->opcodes.state.closures_diff == 0
+		);
+
+		return true;
+	}
+
+	case FixupKind::ImplMember:
+	{
+		core->opcodes.state = OpcodeEffects{};
+
+		core->opcodes.allow_return = false;
+
+		AstNode* const node = ast_node_from_id(core, fixup.node_id);
+
+		ASSERT_OR_IGNORE(node->tag == AstTag::Definition);
+
+		const bool is_mut = has_flag(node, AstFlag::Definition_IsMut);
+
+		const IdentifierId name = attachment_of<AstDefinitionData>(node)->identifier_id;
+
+		DefinitionInfo info = get_definition_info(node);
+
+		emit_opcode(core, Opcode::ImplMemberAllocPrepare, false, node, name, is_mut);
+
+		if (is_some(info.type))
+		{
+			if (!opcodes_from_expression(core, get(info.type), false))
+				return false;
+
+			emit_opcode(core, Opcode::ImplMemberAllocExplicitType, false, node);
+		}
+		else
+		{
+			emit_opcode(core, Opcode::ImplMemberAllocImplicitType, false, node);
+		}
+
+		ASSERT_OR_IGNORE(is_some(info.value));
+
+		if (!opcodes_from_expression(core, get(info.value), true))
+			return false;
+
+		emit_opcode(core, Opcode::ImplMemberAllocComplete, false, node);
+
+		emit_opcode(core, Opcode::EndCode, false, node);
+
+		ASSERT_OR_IGNORE(
+			core->opcodes.state.values_diff == 0
+		 && core->opcodes.state.scopes_diff == 0
+		 && core->opcodes.state.write_ctxs_diff == 0
+		 && core->opcodes.state.closures_diff == 0
+		);
+
+		return true;
+	}
+
 	case FixupKind::INVALID:
 		; // Fallthrough to unreachable.
 	}
@@ -2256,15 +2582,15 @@ const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node,
 
 	Opcode* const first_opcode = core->opcodes.codes.end();
 
-	DefinitionInfo info = get_definition_info(node);
-
-	ASSERT_OR_IGNORE(is_some(info.value));
-
-	const bool has_type = is_some(info.type);
-
 	const bool is_mut = has_flag(node, AstFlag::Definition_IsMut);
 
 	emit_opcode(core, Opcode::FileGlobalAllocPrepare, false, node, is_mut, file_index, rank);
+
+	DefinitionInfo info = get_definition_info(node);
+
+	const bool has_type = is_some(info.type);
+
+	const bool has_value = is_some(info.value);
 
 	if (has_type)
 	{
@@ -2274,8 +2600,11 @@ const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node,
 		emit_opcode(core, Opcode::FileGlobalAllocTyped, false, node);
 	}
 
-	if (!opcodes_from_expression(core, get(info.value), has_type))
-		return none<Opcode*>();
+	if (has_value)
+	{
+		if (!opcodes_from_expression(core, get(info.value), has_type))
+			return none<Opcode*>();
+	}
 
 	if (has_type)
 		emit_opcode(core, Opcode::FileGlobalAllocComplete, false, node);
@@ -2447,6 +2776,13 @@ const char8* tag_name(Opcode op) noexcept
 		"DiscardVoid",
 		"CheckTopVoid",
 		"CheckWriteCtxVoid",
+		"Trait",
+		"Impl",
+		"ImplSetSelf",
+		"ImplMemberAllocPrepare",
+		"ImplMemberAllocExplicitType",
+		"ImplMemberAllocImplicitType",
+		"ImplMemberAllocComplete",
 	};
 
 	u8 ordinal = static_cast<u8>(op);

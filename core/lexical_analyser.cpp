@@ -738,10 +738,93 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 		if (do_pop)
 		{
-			pop_scope(core);
-
 			set_signature_closure_list(core, node, core->lex.closures[core->lex.scopes_top]);
+
+			pop_scope(core);
 		}
+	}
+	else if (tag == AstTag::Trait)
+	{
+		if (has_flag(node, AstFlag::Trait_HasExpects))
+			TODO("Handle trait-level `expects` in `resolve_names_rec`");
+
+		ScopeMap* const parameter_list_scope = scope_map_alloc(core, ScopeMapKind::Signature);
+		push_scope(core, parameter_list_scope);
+
+		ScopeMap* const parameter_list_closure = scope_map_alloc(core, ScopeMapKind::Closure);
+		set_closure(core, parameter_list_closure);
+
+		AstNode* const parameters = first_child_of(node);
+
+		ASSERT_OR_IGNORE(parameters->tag == AstTag::TraitParameterList);
+
+		AstDirectChildIterator it = direct_children_of(parameters);
+
+		while (has_next(&it))
+		{
+			AstNode* const parameter = next(&it);
+
+			ASSERT_OR_IGNORE(parameter->tag == AstTag::Identifier);
+
+			const IdentifierId name = attachment_of<AstIdentifierData>(parameter)->identifier_id;
+
+			ScopeMap* const scope = core->lex.scopes[core->lex.scopes_top];
+
+			ScopeEntry entry;
+			entry.rank = scope->used;
+
+			const Maybe<ScopeMap*> new_scope = scope_map_add(core, scope, name, entry, node);
+
+			if (is_none(new_scope))
+				return;
+
+			core->lex.scopes[core->lex.scopes_top] = get(new_scope);
+		}
+
+		AstNode* curr = parameters;
+
+		ScopeMap* const body_scope = scope_map_alloc(core, ScopeMapKind::Global);
+		push_scope(core, body_scope);
+
+		while (has_next_sibling(curr))
+		{
+			curr = next_sibling_of(curr);
+
+			resolve_names_rec(core, curr, true, close_in_innermost);
+		}
+
+		pop_scope(core);
+
+		pop_scope(core);
+	}
+	else if (tag == AstTag::Impl)
+	{
+		AstNode* const on = first_child_of(node);
+
+		resolve_names_rec(core, on, true, close_in_innermost);
+
+		AstNode* const trait = next_sibling_of(on);
+
+		resolve_names_rec(core, trait, true, close_in_innermost);
+
+		ScopeMap* const scope = scope_map_alloc(core, ScopeMapKind::Global);
+		push_scope(core, scope);
+
+		ScopeMap* const closure = scope_map_alloc(core, ScopeMapKind::Closure);
+		set_closure(core, closure);
+
+		AstNode* curr = trait;
+
+		while (has_next_sibling(curr))
+		{
+			curr = next_sibling_of(curr);
+
+			ASSERT_OR_IGNORE(curr->tag == AstTag::Definition);
+
+			resolve_names_rec(core, curr, true, close_in_innermost);
+		}
+
+		pop_scope(core);
 	}
 	else
 	{

@@ -42,6 +42,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::Return:
 	case Opcode::FileGlobalAllocComplete:
 	case Opcode::FileGlobalAllocUntyped:
+	case Opcode::ImplMemberAllocComplete:
 	{
 		return PrintResult{ nullptr, 0 };
 	}
@@ -69,6 +70,9 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::DiscardVoid:
 	case Opcode::CheckTopVoid:
 	case Opcode::CheckWriteCtxVoid:
+	case Opcode::ImplSetSelf:
+	case Opcode::ImplMemberAllocExplicitType:
+	case Opcode::ImplMemberAllocImplicitType:
 	{
 		return PrintResult{ code, 0 };
 	}
@@ -429,6 +433,85 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 		return PrintResult{ code + sizeof(ForeverValueId), 0 };
 	}
 
+	case Opcode::Trait:
+	{
+		u8 parameter_count;
+		code = code_attach(code, &parameter_count);
+
+		u16 member_count;
+		code = code_attach(code, &member_count);
+
+		code += parameter_count * sizeof(IdentifierId);
+
+		s64 total_written = 0;
+
+		for (u16 i = 0; i != member_count; ++i)
+		{
+			code += sizeof(IdentifierId) + sizeof(bool);
+
+			OpcodeId type_completion;
+			code = code_attach(code, &type_completion);
+
+			const Opcode* const type_completion_code = opcode_from_id(core, type_completion);
+
+			const s64 type_written = print_opcodes_impl(sink, core, type_completion_code, true);
+
+			if (type_written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			total_written += type_written;
+
+			Maybe<OpcodeId> default_completion;
+			code = code_attach(code, &default_completion);
+
+			if (is_some(default_completion))
+			{
+				const Opcode* const default_completion_code = opcode_from_id(core, get(default_completion));
+
+				const s64 default_written = print_opcodes_impl(sink, core, default_completion_code, true);
+
+				if (default_written < 0)
+					return PrintResult{ nullptr, -1 };
+
+				total_written += default_written;
+			}
+		}
+
+		return PrintResult{ code, total_written };
+	}
+
+	case Opcode::Impl:
+	{
+		u16 member_count;
+		code = code_attach(code, &member_count);
+
+		s64 total_written = 0;
+
+		for (u16 i = 0; i != member_count; ++i)
+		{
+			code += sizeof(IdentifierId) + sizeof(bool);
+
+			OpcodeId completion;
+			code = code_attach(code, &completion);
+
+			const Opcode* const completion_code = opcode_from_id(core, completion);
+
+			const s64 written = print_opcodes_impl(sink, core, completion_code, true);
+
+			if (written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			total_written += written;
+		}
+
+		return PrintResult{ code, total_written };
+	}
+
+	case Opcode::ImplMemberAllocPrepare:
+	{
+		return PrintResult{ code + sizeof(bool) + sizeof(IdentifierId), 0 };
+	}
+
 	case Opcode::Switch:
 		TODO("Implement");
 	}
@@ -487,6 +570,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	case Opcode::Return:
 	case Opcode::FileGlobalAllocComplete:
 	case Opcode::FileGlobalAllocUntyped:
+	case Opcode::ImplMemberAllocComplete:
 	{
 		return PrintResult{ nullptr, header_written };
 	}
@@ -514,6 +598,9 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	case Opcode::DiscardVoid:
 	case Opcode::CheckTopVoid:
 	case Opcode::CheckWriteCtxVoid:
+	case Opcode::ImplSetSelf:
+	case Opcode::ImplMemberAllocExplicitType:
+	case Opcode::ImplMemberAllocImplicitType:
 	{
 		return PrintResult{ code, header_written };
 	}
@@ -685,7 +772,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 			const Range<char8> parameter_name_str = identifier_name_from_id(core, parameter_name);
 
-			const s64 written = print(sink, "\n     -        %[> 2]: mut=% eval=% type=% default=% name=IdentifierId<%> (%) ",
+			const s64 written = print(sink, "\n     -        %[> 2]: mut=% eval=% type=% default=% name=IdentifierId<%> (%)",
 				i,
 				static_cast<bool>(parameter_flags.is_mut),
 				static_cast<bool>(parameter_flags.is_eval),
@@ -758,7 +845,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 			const Range<char8> parameter_name_str = identifier_name_from_id(core, parameter_name);
 
-			const s64 written = print(sink, "\n     -        %[> 2]: mut=% eval=% type=% default=% name=IdentifierId<%> (%) ",
+			const s64 written = print(sink, "\n     -        %[> 2]: mut=% eval=% type=% default=% name=IdentifierId<%> (%)",
 				i,
 				static_cast<bool>(parameter_flags.is_mut),
 				static_cast<bool>(parameter_flags.is_eval),
@@ -1324,6 +1411,169 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 		const s64 written = print(sink, " ForeverValueId<%>", static_cast<u32>(value));
 
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
+	}
+
+	case Opcode::Trait:
+	{
+		u8 parameter_count;
+
+		code = code_attach(code, &parameter_count);
+
+		u16 member_count;
+
+		code = code_attach(code, &member_count);
+
+		s64 written = print(sink, " parameter_count=% member_count=%",
+			parameter_count,
+			member_count
+		);
+
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		for (u8 i = 0; i != parameter_count; ++i)
+		{
+			IdentifierId parameter_name_id;
+
+			code = code_attach(code, &parameter_name_id);
+
+			const Range<char8> parameter_name_str = identifier_name_from_id(core, parameter_name_id);
+
+			const s64 parameter_written = print(sink, "\n     -        %[> 2]: name=IdentifierId<%> (%)",
+				i,
+				static_cast<u32>(parameter_name_id),
+				parameter_name_str
+			);
+
+			if (parameter_written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			written += parameter_written;
+		}
+
+		if (member_count != 0)
+		{
+			const s64 member_header_written = print(sink, "\n     -         --------------------------------------");
+
+			if (member_header_written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			written += member_header_written;
+		}
+
+		for (u16 i = 0; i != member_count; ++i)
+		{
+			IdentifierId name_id;
+			code = code_attach(code, &name_id);
+
+			bool is_mut;
+			code = code_attach(code, &is_mut);
+
+			OpcodeId type_completion;
+			code = code_attach(code, &type_completion);
+
+			Maybe<OpcodeId> default_completion;
+			code = code_attach(code, &default_completion);
+
+			const Range<char8> name_str = identifier_name_from_id(core, name_id);
+
+			const s64 member_written = print(sink, "\n     -        %[> 2]: is_mut=% type=OpcodeId<%> default=",
+				i,
+				is_mut,
+				static_cast<u32>(type_completion)
+			);
+
+			if (member_written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			written += member_written;
+
+			s64 default_written;
+
+			if (is_some(default_completion))
+				default_written = print(sink, "OpcodeId<%>", static_cast<u32>(get(default_completion)));
+			else
+				default_written = print(sink, "none");
+
+			if (default_written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			written += default_written;
+
+			const s64 name_written = print(sink, " name=IdentifierId<%> (%)",
+				static_cast<u32>(name_id),
+				name_str
+			);
+
+			if (name_written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			written += name_written;
+		}
+
+		return PrintResult{ code, header_written + written };
+	}
+
+	case Opcode::Impl:
+	{
+		u16 member_count;
+
+		code = code_attach(code, &member_count);
+
+		s64 written = print(sink, " member_count=%", member_count);
+
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		for (u16 i = 0; i != member_count; ++i)
+		{
+			IdentifierId name_id;
+			code = code_attach(code, &name_id);
+
+			bool is_mut;
+			code = code_attach(code, &is_mut);
+
+			OpcodeId completion_id;
+			code = code_attach(code, &completion_id);
+
+			const Range<char8> name_str = identifier_name_from_id(core, name_id);
+
+			const s64 member_written = print(sink, "\n     -        is_mut=% completion=OpcodeId<%> name=IdentifierId<%> (%)",
+				is_mut,
+				static_cast<u32>(completion_id),
+				static_cast<u32>(name_id),
+				name_str
+			);
+
+			if (member_written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			written += member_written;
+		}
+
+		return PrintResult{ code, header_written + written };
+	}
+
+	case Opcode::ImplMemberAllocPrepare:
+	{
+		IdentifierId name_id;
+		code = code_attach(code, &name_id);
+
+		bool is_mut;
+		code = code_attach(code, &is_mut);
+
+		const Range<char8> name_str = identifier_name_from_id(core, name_id);
+
+		const s64 written = print(sink, " is_mut=% name=IdentifierId<%> (%)",
+			is_mut,
+			static_cast<u32>(name_id),
+			name_str
+		);
+		
 		if (written < 0)
 			return PrintResult{ nullptr, -1 };
 
