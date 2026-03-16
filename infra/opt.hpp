@@ -52,12 +52,6 @@ struct Maybe
 		return t != rhs.t;
 	}
 
-	template<typename Enable_ = std::enable_if_t<is_ptr_type<T>>>
-	operator Maybe<const_ptr_type<T>>() const noexcept
-	{
-		return Maybe<const_ptr_type<T>>{ t };
-	}
-
 private:
 
 	Maybe(T t) noexcept : t{ t } {}
