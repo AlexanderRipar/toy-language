@@ -1607,7 +1607,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		const NameBinding binding = attachment_of<AstIdentifierData>(node)->binding;
 
 		if (binding.is_global)
-			emit_opcode(core, Opcode::LoadGlobal, expects_write_ctx, node, static_cast<GlobalFileIndex>(binding.global.file_index_bits), binding.global.rank);
+			emit_opcode(core, Opcode::LoadGlobal, expects_write_ctx, node, static_cast<GlobalCompositeIndex>(binding.global.file_index_bits), binding.global.rank);
 		else if (binding.is_scoped)
 			emit_opcode(core, Opcode::LoadScope, expects_write_ctx, node, binding.scoped.out, binding.scoped.rank);
 		else
@@ -2573,7 +2573,7 @@ void opcode_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 
 
-const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, GlobalFileIndex file_index, u16 rank) noexcept
+const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, GlobalCompositeIndex file_index, u16 rank) noexcept
 {
 	core->opcodes.state.values_diff = 0;
 	core->opcodes.state.scopes_diff = 0;

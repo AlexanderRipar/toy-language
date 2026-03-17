@@ -103,7 +103,7 @@ struct alignas(8) ArgumentPack
 
 struct alignas(4) GlobalInitialization
 {
-	GlobalFileIndex file_index;
+	GlobalCompositeIndex file_index;
 
 	u16 rank;
 };
@@ -1743,7 +1743,7 @@ static const Opcode* handle_file_global_alloc_prepare(CoreData* core, const Opco
 
 	code = code_attach(code, &is_mut);
 
-	GlobalFileIndex file_index;
+	GlobalCompositeIndex file_index;
 
 	code = code_attach(code, &file_index);
 
@@ -1751,7 +1751,7 @@ static const Opcode* handle_file_global_alloc_prepare(CoreData* core, const Opco
 
 	code = code_attach(code, &rank);
 
-	file_value_alloc_prepare(core, file_index, rank, is_mut);
+	global_composite_value_alloc_prepare(core, file_index, rank, is_mut);
 
 	GlobalInitialization* const init = core->interp.global_initializations.reserve();
 	init->file_index = file_index;
@@ -1768,7 +1768,7 @@ static const Opcode* handle_global_alloc_complete(CoreData* core, const Opcode* 
 
 	const GlobalInitialization init = core->interp.global_initializations.end()[-1];
 
-	file_value_alloc_initialized_complete(core, init.file_index, init.rank);
+	global_composite_value_alloc_initialized_complete(core, init.file_index, init.rank);
 
 	core->interp.global_initializations.pop_by(1);
 
@@ -1800,7 +1800,7 @@ static const Opcode* handle_global_alloc_typed(CoreData* core, const Opcode* cod
 
 	TypeId file_type;
 
-	const ForeverCTValue value = file_value_alloc_uninitialized(core, init.file_index, init.rank, member_type, member_metrics, &file_type);
+	const ForeverCTValue value = global_composite_value_alloc_uninitialized(core, init.file_index, init.rank, member_type, member_metrics, &file_type);
 
 	type_complete_file_composite_member(core, file_type, init.rank, member_type, value.id);
 
@@ -1825,7 +1825,7 @@ static const Opcode* handle_global_alloc_untyped(CoreData* core, const Opcode* c
 
 	TypeId file_type;
 
-	const ForeverValueId value_id = file_value_alloc_initialized(core, init.file_index, init.rank, *top, &file_type);
+	const ForeverValueId value_id = global_composite_value_alloc_initialized(core, init.file_index, init.rank, *top, &file_type);
 
 	type_complete_file_composite_member(core, file_type, init.rank, top->type, value_id);
 
@@ -1876,7 +1876,7 @@ static const Opcode* handle_load_global(CoreData* core, const Opcode* code, CTVa
 {
 	const Opcode* const code_activation = code;
 
-	GlobalFileIndex index;
+	GlobalCompositeIndex index;
 
 	code = code_attach(code, &index);
 
@@ -1888,7 +1888,7 @@ static const Opcode* handle_load_global(CoreData* core, const Opcode* code, CTVa
 
 	OpcodeId global_code;
 
-	const GlobalFileValueState state = file_value_get(core, index, rank, &global_value, &global_code);
+	const GlobalFileValueState state = global_composite_value_get(core, index, rank, &global_value, &global_code);
 
 	if (state == GlobalFileValueState::Complete)
 	{
@@ -4958,7 +4958,7 @@ static const Opcode* handle_impl_member_alloc_complete(CoreData* core, const Opc
 
 
 
-static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, GlobalFileIndex file_index) noexcept
+static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, GlobalCompositeIndex file_index) noexcept
 {
 	AstDirectChildIterator it = direct_children_of(ast);
 
@@ -5003,7 +5003,7 @@ static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, Global
 
 		type_add_file_composite_member(core, file_type, init);
 
-		file_value_set_initializer(core, file_index, rank, initializer_id);
+		global_composite_value_set_initializer(core, file_index, rank, initializer_id);
 
 		rank += 1;
 	}
@@ -5042,7 +5042,7 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 
 	const TypeId type = type_create_file_composite(core, static_cast<u16>(root_data->member_count), root_source_id);
 
-	const GlobalFileIndex file_index = file_values_reserve(core, type, static_cast<u16>(root_data->member_count));
+	const GlobalCompositeIndex file_index = global_composite_reserve(core, type, static_cast<u16>(root_data->member_count));
 
 	read.source_file->ast = id_from_ast_node(core, ast);
 	read.source_file->type = type;

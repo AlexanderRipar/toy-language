@@ -140,11 +140,11 @@ struct LexicalAnalyser
 
 	s32 scopes_top;
 
-	GlobalFileIndex active_file_index;
+	GlobalCompositeIndex active_file_index;
 
 	bool has_error;
 
-	GlobalFileIndex prelude_file_index;
+	GlobalCompositeIndex prelude_file_index;
 
 	ScopeMap* scopes[MAX_AST_DEPTH];
 

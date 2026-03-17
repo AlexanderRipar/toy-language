@@ -57,11 +57,11 @@ static ForeverValue* forever_value_from_id(CoreData* core, ForeverValueId id) no
 	return core->globals.forever_values.begin() + static_cast<u32>(id);
 }
 
-static GlobalFile* global_file_from_index(CoreData* core, GlobalFileIndex file_index) noexcept
+static GlobalFile* global_file_from_index(CoreData* core, GlobalCompositeIndex index) noexcept
 {
-	ASSERT_OR_IGNORE(file_index != GlobalFileIndex::INVALID && static_cast<u16>(file_index) < core->globals.files.used());
+	ASSERT_OR_IGNORE(index != GlobalCompositeIndex::INVALID && static_cast<u16>(index) < core->globals.files.used());
 
-	return core->globals.files.begin() + static_cast<u16>(file_index);
+	return core->globals.files.begin() + static_cast<u16>(index);
 }
 
 static ForeverValueId forever_value_id_from_file_and_rank([[maybe_unused]] CoreData* core, const GlobalFile* file, u16 rank) noexcept
@@ -78,16 +78,16 @@ static ForeverValue* forever_value_from_file_and_rank(CoreData* core, const Glob
 	return forever_value_from_id(core, id);
 }
 
-static ForeverValueId forever_value_id_from_file_index_and_rank(CoreData* core, GlobalFileIndex file_index, u16 rank) noexcept
+static ForeverValueId forever_value_id_from_global_composite_index_and_rank(CoreData* core, GlobalCompositeIndex index, u16 rank) noexcept
 {
-	const GlobalFile* const file = global_file_from_index(core, file_index);
+	const GlobalFile* const file = global_file_from_index(core, index);
 
 	return forever_value_id_from_file_and_rank(core, file, rank);
 }
 
-static ForeverValue* forever_value_from_file_index_and_rank(CoreData* core, GlobalFileIndex file_index, u16 rank) noexcept
+static ForeverValue* forever_value_from_global_composite_index_and_rank(CoreData* core, GlobalCompositeIndex index, u16 rank) noexcept
 {
-	const GlobalFile* const file = global_file_from_index(core, file_index);
+	const GlobalFile* const file = global_file_from_index(core, index);
 
 	return forever_value_from_file_and_rank(core, file, rank);
 }
@@ -124,7 +124,7 @@ void global_value_pool_init(CoreData* core, MemoryAllocation allocation) noexcep
 
 	globals->data.init(allocation.private_data, DATA_COMMIT_INCREMENT_COUNT);
 
-	// Reserve `GlobalFileIndex::INVALID`.
+	// Reserve `GlobalCompositeIndex::INVALID`.
 	(void) globals->files.reserve();
 
 	// Reserve `ForeverValueId::INVALID`.
@@ -133,22 +133,22 @@ void global_value_pool_init(CoreData* core, MemoryAllocation allocation) noexcep
 
 
 
-GlobalFileIndex file_values_reserve(CoreData* core, TypeId file_type_id, u16 definition_count) noexcept
+GlobalCompositeIndex global_composite_reserve(CoreData* core, TypeId type_id, u16 definition_count) noexcept
 {
 	GlobalFile file;
 	file.first_value_id = static_cast<ForeverValueId>(core->globals.forever_values.used());
-	file.type_id = file_type_id;
+	file.type_id = type_id;
 
 	core->globals.files.append(file);
 
 	core->globals.forever_values.reserve(definition_count);
 
-	return static_cast<GlobalFileIndex>(core->globals.files.used() - 1);
+	return static_cast<GlobalCompositeIndex>(core->globals.files.used() - 1);
 }
 
-void file_value_set_initializer(CoreData* core, GlobalFileIndex file_index, u16 rank, OpcodeId initializer) noexcept
+void global_composite_value_set_initializer(CoreData* core, GlobalCompositeIndex index, u16 rank, OpcodeId initializer) noexcept
 {
-	ForeverValue* const value = forever_value_from_file_index_and_rank(core, file_index, rank);
+	ForeverValue* const value = forever_value_from_global_composite_index_and_rank(core, index, rank);
 
 	ASSERT_OR_IGNORE(value->initializer == OpcodeId::INVALID);
 
@@ -156,9 +156,9 @@ void file_value_set_initializer(CoreData* core, GlobalFileIndex file_index, u16 
 	value->state = static_cast<u8>(GlobalFileValueState::Uninitialized);
 }
 
-GlobalFileValueState file_value_get(CoreData* core, GlobalFileIndex file_index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept
+GlobalFileValueState global_composite_value_get(CoreData* core, GlobalCompositeIndex index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept
 {
-	const ForeverValueId value_id = forever_value_id_from_file_index_and_rank(core, file_index, rank);
+	const ForeverValueId value_id = forever_value_id_from_global_composite_index_and_rank(core, index, rank);
 
 	const ForeverValue* const value = forever_value_from_id(core, value_id);
 
@@ -186,9 +186,9 @@ GlobalFileValueState file_value_get(CoreData* core, GlobalFileIndex file_index, 
 	return state;
 }
 
-void file_value_alloc_prepare(CoreData* core, GlobalFileIndex file_index, u16 rank, bool is_mut) noexcept
+void global_composite_value_alloc_prepare(CoreData* core, GlobalCompositeIndex index, u16 rank, bool is_mut) noexcept
 {
-	ForeverValue* const value = forever_value_from_file_index_and_rank(core, file_index, rank);
+	ForeverValue* const value = forever_value_from_global_composite_index_and_rank(core, index, rank);
 
 	ASSERT_OR_IGNORE(static_cast<GlobalFileValueState>(value->state) == GlobalFileValueState::Uninitialized);
 
@@ -196,9 +196,9 @@ void file_value_alloc_prepare(CoreData* core, GlobalFileIndex file_index, u16 ra
 	value->is_mut = is_mut;
 }
 
-ForeverValueId file_value_alloc_initialized(CoreData* core, GlobalFileIndex file_index, u16 rank, CTValue initializer, TypeId* out_file_type) noexcept
+ForeverValueId global_composite_value_alloc_initialized(CoreData* core, GlobalCompositeIndex index, u16 rank, CTValue initializer, TypeId* out_file_type) noexcept
 {
-	const GlobalFile* const file = global_file_from_index(core, file_index);
+	const GlobalFile* const file = global_file_from_index(core, index);
 
 	const ForeverValueId value_id = forever_value_id_from_file_and_rank(core, file, rank);
 
@@ -225,9 +225,9 @@ ForeverValueId file_value_alloc_initialized(CoreData* core, GlobalFileIndex file
 	return value_id;
 }
 
-ForeverCTValue file_value_alloc_uninitialized(CoreData* core, GlobalFileIndex file_index, u16 rank, TypeId type, TypeMetrics metrics, TypeId* out_file_type) noexcept
+ForeverCTValue global_composite_value_alloc_uninitialized(CoreData* core, GlobalCompositeIndex index, u16 rank, TypeId type, TypeMetrics metrics, TypeId* out_file_type) noexcept
 {
-	const GlobalFile* const file = global_file_from_index(core, file_index);
+	const GlobalFile* const file = global_file_from_index(core, index);
 
 	const ForeverValueId value_id = forever_value_id_from_file_and_rank(core, file, rank);
 
@@ -255,9 +255,9 @@ ForeverCTValue file_value_alloc_uninitialized(CoreData* core, GlobalFileIndex fi
 	return ForeverCTValue{ ct_value, value_id };
 }
 
-void file_value_alloc_initialized_complete(CoreData* core, GlobalFileIndex file_index, u16 rank) noexcept
+void global_composite_value_alloc_initialized_complete(CoreData* core, GlobalCompositeIndex index, u16 rank) noexcept
 {
-	ForeverValue* const value = forever_value_from_file_index_and_rank(core, file_index, rank);
+	ForeverValue* const value = forever_value_from_global_composite_index_and_rank(core, index, rank);
 
 	ASSERT_OR_IGNORE(static_cast<GlobalFileValueState>(value->state) == GlobalFileValueState::Initializing);
 

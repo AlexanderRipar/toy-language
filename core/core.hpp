@@ -31,7 +31,7 @@ enum class ClosureId : u32;
 
 enum class OpcodeId : u32;
 
-enum class GlobalFileIndex : u16;
+enum class GlobalCompositeIndex : u16;
 
 union alignas(4) NameBinding
 {
@@ -1557,7 +1557,7 @@ struct SourceFile
 	// `SourceId` of the first byte in this file.
 	SourceId source_id_base;
 
-	GlobalFileIndex file_index;
+	GlobalCompositeIndex file_index;
 
 	bool has_error;
 };
@@ -1832,9 +1832,9 @@ Maybe<CompileError> compile_error_from_name(Range<char8> name) noexcept;
 
 struct LexicalAnalyser;
 
-bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalFileIndex file_index) noexcept;
+bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalCompositeIndex file_index) noexcept;
 
-bool resolve_names(CoreData* core, AstNode* root, GlobalFileIndex file_index) noexcept;
+bool resolve_names(CoreData* core, AstNode* root, GlobalCompositeIndex file_index) noexcept;
 
 
 
@@ -2411,7 +2411,7 @@ enum class ForeverValueId : u32
 	INVALID = 0,
 };
 
-enum class GlobalFileIndex : u16
+enum class GlobalCompositeIndex : u16
 {
 	INVALID = 0,
 };
@@ -2430,19 +2430,19 @@ struct ForeverCTValue
 	ForeverValueId id;
 };
 
-GlobalFileIndex file_values_reserve(CoreData* core, TypeId file_type_id, u16 definition_count) noexcept;
+GlobalCompositeIndex global_composite_reserve(CoreData* core, TypeId type_id, u16 definition_count) noexcept;
 
-void file_value_set_initializer(CoreData* core, GlobalFileIndex file_index, u16 rank, OpcodeId initializer) noexcept;
+void global_composite_value_set_initializer(CoreData* core, GlobalCompositeIndex index, u16 rank, OpcodeId initializer) noexcept;
 
-GlobalFileValueState file_value_get(CoreData* core, GlobalFileIndex file_index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept;
+GlobalFileValueState global_composite_value_get(CoreData* core, GlobalCompositeIndex index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept;
 
-void file_value_alloc_prepare(CoreData* core, GlobalFileIndex file_index, u16 rank, bool is_mut) noexcept;
+void global_composite_value_alloc_prepare(CoreData* core, GlobalCompositeIndex index, u16 rank, bool is_mut) noexcept;
 
-ForeverValueId file_value_alloc_initialized(CoreData* core, GlobalFileIndex file_index, u16 rank, CTValue initializer, TypeId* out_file_type) noexcept;
+ForeverValueId global_composite_value_alloc_initialized(CoreData* core, GlobalCompositeIndex index, u16 rank, CTValue initializer, TypeId* out_file_type) noexcept;
 
-ForeverCTValue file_value_alloc_uninitialized(CoreData* core, GlobalFileIndex file_index, u16 rank, TypeId type, TypeMetrics metrics, TypeId* out_file_type) noexcept;
+ForeverCTValue global_composite_value_alloc_uninitialized(CoreData* core, GlobalCompositeIndex index, u16 rank, TypeId type, TypeMetrics metrics, TypeId* out_file_type) noexcept;
 
-void file_value_alloc_initialized_complete(CoreData* core, GlobalFileIndex file_index, u16 rank) noexcept;
+void global_composite_value_alloc_initialized_complete(CoreData* core, GlobalCompositeIndex index, u16 rank) noexcept;
 
 ForeverValueId forever_value_alloc_initialized(CoreData* core, bool is_mut, CTValue initializer) noexcept;
 
@@ -2630,7 +2630,7 @@ enum class OpcodeId : u32
 	INVALID = 0,
 };
 
-const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, GlobalFileIndex file_index, u16 rank) noexcept;
+const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, GlobalCompositeIndex file_index, u16 rank) noexcept;
 
 OpcodeId opcode_id_from_builtin(CoreData* core, Builtin builtin) noexcept;
 

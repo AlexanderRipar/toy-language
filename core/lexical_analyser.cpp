@@ -874,7 +874,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 	}
 }
 
-static void resolve_names_root(CoreData* core, AstNode* root, GlobalFileIndex file_index) noexcept
+static void resolve_names_root(CoreData* core, AstNode* root, GlobalCompositeIndex file_index) noexcept
 {
 	core->lex.active_file_index = file_index;
 
@@ -962,7 +962,7 @@ void lexical_analyser_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 
 
-bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalFileIndex file_index) noexcept
+bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalCompositeIndex file_index) noexcept
 {
 	ASSERT_OR_IGNORE(prelude->tag == AstTag::File && core->lex.scopes_top == -1);
 
@@ -975,7 +975,7 @@ bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalFileIndex file_in
 	return !core->lex.has_error;
 }
 
-bool resolve_names(CoreData* core, AstNode* root, GlobalFileIndex file_index) noexcept
+bool resolve_names(CoreData* core, AstNode* root, GlobalCompositeIndex file_index) noexcept
 {
 	ASSERT_OR_IGNORE(root->tag == AstTag::File && core->lex.scopes_top == 0);
 

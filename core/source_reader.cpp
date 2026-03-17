@@ -370,7 +370,7 @@ SourceFileRead read_source_file(CoreData* core, Range<char8> filepath) noexcept
 	id_entry->data.ast = AstNodeId::INVALID;
 	id_entry->data.type = TypeId::INVALID;
 	id_entry->data.source_id_base = SourceId{ core->reader.curr_source_id_base };
-	id_entry->data.file_index = GlobalFileIndex::INVALID;
+	id_entry->data.file_index = GlobalCompositeIndex::INVALID;
 	id_entry->data.has_error = false;
 
 	if (fileinfo.bytes + core->reader.curr_source_id_base > UINT32_MAX)
