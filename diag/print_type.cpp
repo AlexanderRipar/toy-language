@@ -116,33 +116,6 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 	{
 		s64 total_written = 0;
 
-		if (tag == TypeTag::Trait)
-		{
-			const Range<IdentifierId> parameter_names = type_trait_parameters(core, type_id);
-
-			const s64 written = print(sink, "(");
-
-			if (written < 0)
-				return -1;
-
-			total_written += written;
-
-			for (u64 i = 0; i != parameter_names.count(); ++i)
-			{
-				const Range<char8> parameter_name_str = identifier_name_from_id(core, parameter_names[i]);
-
-				const s64 parameter_written = print(sink, "%[]%",
-					parameter_name_str,
-					i + 1 == parameter_names.count() ? ")" : ", "
-				);
-
-				if (parameter_written < 0)
-					return -1;
-
-				total_written += parameter_written;
-			}
-		}
-
 		if (type_has_metrics(core, type_id))
 		{
 		const TypeMetrics metrics = type_metrics_from_id(core, type_id);

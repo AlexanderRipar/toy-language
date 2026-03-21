@@ -124,6 +124,14 @@ struct BuiltinParamInfo
 	bool is_comptime_known;
 };
 
+struct alignas(8) TraitValue
+{
+	Maybe<ClosureId> closure;
+
+	// This simply points into the opcode stream.
+	OpcodeId member_completions;
+};
+
 static constexpr u32 SCOPES_RESERVE_SIZE = sizeof(Scope) << 18;
 static constexpr u32 SCOPES_COMMIT_INCREMENT_COUNT = 2048;
 
@@ -4881,16 +4889,32 @@ static const Opcode* handle_check_write_ctx_void(CoreData* core, const Opcode* c
 
 static const Opcode* handle_trait(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	(void) core;
+	u8 parameter_count;
+	code = code_attach(code, &parameter_count);
 
-	(void) code;
+	const IdentifierId* const first_parameter_name = reinterpret_cast<const IdentifierId*>(code);
 
-	(void) write_ctx;
+	const Range<IdentifierId> parameter_names{ first_parameter_name, parameter_count };
 
-	TODO("Implement");
+	code += parameter_count * sizeof(IdentifierId);
+
+	u16 member_count;
+	code = code_attach(code, &member_count);
+
+	const TypeId trait_type = type_create_trait(core, parameter_names);
+
+	TraitValue trait{};
+	trait.closure = none<ClosureId>(); // TODO: Implement trait body closures.
+	trait.member_completions = id_from_opcode(core, code - sizeof(u16));
+
+	code += member_count * (sizeof(IdentifierId) + sizeof(bool) + sizeof(OpcodeId) + sizeof(Maybe<OpcodeId>));
+
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&trait);
+
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TraitValue), true, trait_type });
 }
 
-static const Opcode* handle_impl(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_impl_set_self(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	(void) core;
 
@@ -4901,7 +4925,18 @@ static const Opcode* handle_impl(CoreData* core, const Opcode* code, CTValue* wr
 	TODO("Implement");
 }
 
-static const Opcode* handle_impl_set_self(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_impl_trait_call(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+{
+	(void) core;
+
+	(void) code;
+
+	(void) write_ctx;
+
+	TODO("Implement");
+}
+
+static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	(void) core;
 
@@ -5149,8 +5184,9 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 		&handle_check_top_void,                    // CheckTopVoid
 		&handle_check_write_ctx_void,              // CheckWriteCtxVoid
 		&handle_trait,                             // Trait
-		&handle_impl,                              // Impl
 		&handle_impl_set_self,                     // ImplSetSelf
+		&handle_impl_trait_call,                   // ImplTraitCall
+		&handle_impl_body,                         // ImplBody
 		&handle_impl_member_alloc_prepare,         // ImplMemberAllocPrepare
 		&handle_impl_member_alloc_explicit_type,   // ImplMemberAllocExplicitType
 		&handle_impl_member_alloc_implicit_type,   // ImplMemberAllocImplicitType
@@ -5220,8 +5256,9 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CheckTopVoid)]                  == &handle_check_top_void);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CheckWriteCtxVoid)]             == &handle_check_write_ctx_void);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::Trait)]                         == &handle_trait);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::Impl)]                          == &handle_impl);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplSetSelf)]                   == &handle_impl_set_self);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplTraitCall)]                 == &handle_impl_trait_call);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplBody)]                      == &handle_impl_body);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplMemberAllocPrepare)]        == &handle_impl_member_alloc_prepare);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplMemberAllocExplicitType)]   == &handle_impl_member_alloc_explicit_type);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplMemberAllocImplicitType)]   == &handle_impl_member_alloc_implicit_type);

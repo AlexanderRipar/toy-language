@@ -71,6 +71,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::CheckTopVoid:
 	case Opcode::CheckWriteCtxVoid:
 	case Opcode::ImplSetSelf:
+	case Opcode::ImplTraitCall:
 	case Opcode::ImplMemberAllocExplicitType:
 	case Opcode::ImplMemberAllocImplicitType:
 	{
@@ -438,10 +439,10 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 		u8 parameter_count;
 		code = code_attach(code, &parameter_count);
 
+		code += parameter_count * sizeof(IdentifierId);
+
 		u16 member_count;
 		code = code_attach(code, &member_count);
-
-		code += parameter_count * sizeof(IdentifierId);
 
 		s64 total_written = 0;
 
@@ -480,7 +481,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 		return PrintResult{ code, total_written };
 	}
 
-	case Opcode::Impl:
+	case Opcode::ImplBody:
 	{
 		u16 member_count;
 		code = code_attach(code, &member_count);
@@ -599,6 +600,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	case Opcode::CheckTopVoid:
 	case Opcode::CheckWriteCtxVoid:
 	case Opcode::ImplSetSelf:
+	case Opcode::ImplTraitCall:
 	case Opcode::ImplMemberAllocExplicitType:
 	case Opcode::ImplMemberAllocImplicitType:
 	{
@@ -1420,17 +1422,9 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	case Opcode::Trait:
 	{
 		u8 parameter_count;
-
 		code = code_attach(code, &parameter_count);
 
-		u16 member_count;
-
-		code = code_attach(code, &member_count);
-
-		s64 written = print(sink, " parameter_count=% member_count=%",
-			parameter_count,
-			member_count
-		);
+		s64 written = print(sink, " parameter_count=%", parameter_count);
 
 		if (written < 0)
 			return PrintResult{ nullptr, -1 };
@@ -1455,15 +1449,15 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 			written += parameter_written;
 		}
 
-		if (member_count != 0)
-		{
-			const s64 member_header_written = print(sink, "\n     -         --------------------------------------");
+		u16 member_count;
+		code = code_attach(code, &member_count);
 
-			if (member_header_written < 0)
-				return PrintResult{ nullptr, -1 };
+		const s64 member_header_written = print(sink, "\n     -     member_count=%", member_count);
 
-			written += member_header_written;
-		}
+		if (member_header_written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		written += member_header_written;
 
 		for (u16 i = 0; i != member_count; ++i)
 		{
@@ -1518,10 +1512,9 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 		return PrintResult{ code, header_written + written };
 	}
 
-	case Opcode::Impl:
+	case Opcode::ImplBody:
 	{
 		u16 member_count;
-
 		code = code_attach(code, &member_count);
 
 		s64 written = print(sink, " member_count=%", member_count);
@@ -1557,7 +1550,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 		return PrintResult{ code, header_written + written };
 	}
-
+ 
 	case Opcode::ImplMemberAllocPrepare:
 	{
 		IdentifierId name_id;

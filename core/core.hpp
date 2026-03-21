@@ -2037,15 +2037,6 @@ struct MemberInfo
 	s64 offset;
 };
 
-struct TraitMemberInfo
-{
-	OpcodeId type_completion_id;
-
-	Maybe<OpcodeId> default_completion_id;
-
-	bool is_mut;
-};
-
 // Iterator over the members of a composite type.
 // To create a `MemberIterator` call `members_of`.
 // This iterator is resistant to the iterated type having its members or itself
@@ -2262,19 +2253,13 @@ void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id,
 
 
 
-TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names, u16 member_count) noexcept;
-
-void type_add_trait_member(CoreData* core, TypeId type_id, TraitMemberInit init) noexcept;
-
-TypeId type_seal_trait(CoreData* core, TypeId type_id) noexcept;
+TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names) noexcept;
 
 
 
 TypeId type_create_impl(CoreData* core, Range<TypeId> arguments, TypeId trait_type_id) noexcept;
 
 bool type_add_impl_member(CoreData* core, TypeId type_id, ImplMemberInit init) noexcept;
-
-Maybe<IdentifierId> type_complete_impl_with_trait_defaults(CoreData* core, TypeId type_id) noexcept;
 
 TypeId type_seal_impl(CoreData* core, TypeId type_id) noexcept;
 
@@ -2330,12 +2315,6 @@ TypeTag type_tag_from_id(CoreData* core, TypeId type_id) noexcept;
 u32 type_member_count(CoreData* core, TypeId type_id) noexcept;
 
 SignatureTypeInfo type_signature_info_from_id(CoreData* core, TypeId type_id) noexcept;
-
-Range<IdentifierId> type_trait_parameters(CoreData* core, TypeId type_id) noexcept;
-
-void type_trait_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, TraitMemberInfo* out_info) noexcept;
-
-bool type_trait_member_info_by_name(CoreData* core, TypeId type_id, IdentifierId name, TraitMemberInfo* out_info) noexcept;
 
 bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberInfo* out_info, OpcodeId* out_initializer) noexcept;
 
@@ -2537,8 +2516,9 @@ enum class Opcode : u8
 	CheckTopVoid,
 	CheckWriteCtxVoid,
 	Trait,
-	Impl,
 	ImplSetSelf,
+	ImplTraitCall,
+	ImplBody,
 	ImplMemberAllocPrepare,
 	ImplMemberAllocExplicitType,
 	ImplMemberAllocImplicitType,
