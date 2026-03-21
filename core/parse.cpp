@@ -30,6 +30,7 @@ enum class Token : u8
 		KwdProc,              // proc
 		KwdTrait,             // trait
 		KwdImpl,              // impl
+		KwdSelf,              // self
 		KwdWhere,             // where
 		KwdExpects,           // expects
 		KwdEnsures,           // ensures
@@ -134,6 +135,7 @@ const char8* token_name(Token token) noexcept
 		"proc",
 		"trait",
 		"impl",
+		"self",
 		"where",
 		"expects",
 		"ensures",
@@ -246,6 +248,7 @@ static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
 	range::from_literal_string("proc",        static_cast<u8>(Token::KwdProc)),
 	range::from_literal_string("trait",       static_cast<u8>(Token::KwdTrait)),
 	range::from_literal_string("impl",        static_cast<u8>(Token::KwdImpl)),
+	range::from_literal_string("self",        static_cast<u8>(Token::KwdSelf)),
 	range::from_literal_string("where",       static_cast<u8>(Token::KwdWhere)),
 	range::from_literal_string("expects",     static_cast<u8>(Token::KwdExpects)),
 	range::from_literal_string("ensures",     static_cast<u8>(Token::KwdEnsures)),
@@ -2467,6 +2470,14 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 				expecting_operand = false;
 
 				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstTag::Undefined);
+
+				push_operand(core, &stack, value_token);
+			}
+			else if (lexeme.token == Token::KwdSelf)
+			{
+				expecting_operand = false;
+
+				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstTag::Self);
 
 				push_operand(core, &stack, value_token);
 			}

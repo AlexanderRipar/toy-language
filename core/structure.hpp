@@ -170,13 +170,24 @@ struct OpcodeEffects
 	s32 closures_diff;
 };
 
+struct OpcodeTranslationFlags
+{
+	bool allow_return : 1;
+
+	bool allow_self : 1;
+
+	bool allow_void_break : 1;
+
+	bool allow_valued_break : 1;
+};
+
 struct OpcodePool
 {
 	OpcodeEffects state;
 
 	OpcodeEffects return_adjust;
 
-	bool allow_return;
+	OpcodeTranslationFlags flags;
 
 	ReservedVec<Opcode> codes;
 

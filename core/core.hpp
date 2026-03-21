@@ -679,6 +679,7 @@ enum class AstTag : u8
 	Signature,
 	Trait,
 	Impl,
+	Self,
 	Catch,
 	Unreachable,
 	Undefined,
@@ -2523,6 +2524,7 @@ enum class Opcode : u8
 	ImplMemberAllocExplicitType,
 	ImplMemberAllocImplicitType,
 	ImplMemberAllocComplete,
+	GetSelf,
 };
 
 enum class OpcodeSliceKind : u8

@@ -74,6 +74,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::ImplTraitCall:
 	case Opcode::ImplMemberAllocExplicitType:
 	case Opcode::ImplMemberAllocImplicitType:
+	case Opcode::GetSelf:
 	{
 		return PrintResult{ code, 0 };
 	}
@@ -603,6 +604,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	case Opcode::ImplTraitCall:
 	case Opcode::ImplMemberAllocExplicitType:
 	case Opcode::ImplMemberAllocImplicitType:
+	case Opcode::GetSelf:
 	{
 		return PrintResult{ code, header_written };
 	}

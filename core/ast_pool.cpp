@@ -889,6 +889,7 @@ const char8* tag_name(AstTag tag) noexcept
 		"Signature",
 		"Trait",
 		"Impl",
+		"Self",
 		"Catch",
 		"Unreachable",
 		"Undefined",
