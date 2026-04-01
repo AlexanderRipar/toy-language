@@ -130,7 +130,7 @@ inline u8 count_leading_ones_assume_zero(T n) noexcept
 }
 
 template<typename T>
-inline bool count_trailing_zeros(T n) noexcept
+inline u8 count_trailing_zeros(T n) noexcept
 {
 	return ctz_shim_<T, false>(n);
 }
