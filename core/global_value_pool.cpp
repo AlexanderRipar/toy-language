@@ -94,6 +94,11 @@ static ForeverValue* forever_value_from_global_composite_index_and_rank(CoreData
 
 
 
+bool global_value_pool_validate_config([[maybe_unused]] const Config* config, [[maybe_unused]] PrintSink sink) noexcept
+{
+	return true;
+}
+
 MemoryRequirements global_value_pool_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;

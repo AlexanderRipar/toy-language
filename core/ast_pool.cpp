@@ -260,6 +260,11 @@ static constexpr u64 SOURCE_BUILDER_RESERVE_SIZE = (static_cast<u64>(1) << 26) *
 
 static constexpr u64 CLOSURE_LISTS_RESERVE_SIZE = (static_cast<u64>(1) << 24) * sizeof(ClosureListEntry);
 
+bool ast_pool_validate_config([[maybe_unused]] const Config* config, [[maybe_unused]] PrintSink sink) noexcept
+{
+	return true;
+}
+
 MemoryRequirements ast_pool_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;

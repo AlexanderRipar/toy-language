@@ -161,6 +161,13 @@ static const char8* error_message_of(CompileError error) noexcept
 
 
 
+bool error_sink_validate_config([[maybe_unused]] const Config* config, [[maybe_unused]] PrintSink sink) noexcept
+{
+	ASSERT_OR_IGNORE(config->logging.diagnostics.source_tab_size >= 0);
+
+	return true;
+}
+
 MemoryRequirements error_sink_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;

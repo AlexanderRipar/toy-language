@@ -2587,6 +2587,11 @@ static bool complete_fixups(CoreData* core) noexcept
 
 
 
+bool opcode_pool_validate_config([[maybe_unused]] const Config* config, [[maybe_unused]] PrintSink sink) noexcept
+{
+	return true;
+}
+
 MemoryRequirements opcode_pool_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;

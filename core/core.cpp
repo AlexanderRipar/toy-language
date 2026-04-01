@@ -119,16 +119,16 @@ CoreData* create_core_data(const Config* config) noexcept
 {
 	static constexpr validate_config_func VALIDATE_CONFIG_FUNCS[] = {
 		&comp_heap_validate_config,
-		&comp_heap_validate_config,
-		&comp_heap_validate_config,
-		&comp_heap_validate_config,
-		&comp_heap_validate_config,
-		&comp_heap_validate_config,
-		&comp_heap_validate_config,
-		&comp_heap_validate_config,
-		&comp_heap_validate_config,
-		&comp_heap_validate_config,
-		&comp_heap_validate_config,
+		&ast_pool_validate_config,
+		&error_sink_validate_config,
+		&global_value_pool_validate_config,
+		&identifier_pool_validate_config,
+		&lexical_analyser_validate_config,
+		&opcode_pool_validate_config,
+		&type_pool_validate_config,
+		&parser_validate_config,
+		&source_reader_validate_config,
+		&interpreter_validate_config,
 	};
 
 	static constexpr memory_requirements_func MEMORY_REQUIREMENTS_FUNCS[] = {

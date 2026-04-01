@@ -277,6 +277,11 @@ static SourceLocation source_location_from_source_file_and_source_id(CoreData* c
 
 
 
+bool source_reader_validate_config([[maybe_unused]] const Config* config, [[maybe_unused]] PrintSink sink) noexcept
+{
+	return true;
+}
+
 MemoryRequirements source_reader_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;
@@ -326,6 +331,8 @@ void source_reader_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	reader->source_file_count = 0;
 }
+
+
 
 SourceFileRead read_source_file(CoreData* core, Range<char8> filepath) noexcept
 {

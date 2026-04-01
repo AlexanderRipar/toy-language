@@ -2843,6 +2843,11 @@ static bool parse_file(CoreData* core) noexcept
 
 
 
+bool parser_validate_config([[maybe_unused]] const Config* config, [[maybe_unused]] PrintSink sink) noexcept
+{
+	return true;
+}
+
 MemoryRequirements parser_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;

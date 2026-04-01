@@ -75,6 +75,11 @@ static constexpr u32 IDENTIFIER_ENTRY_COMMIT_INCREMENT_COUNT = static_cast<u32>(
 
 
 
+bool identifier_pool_validate_config([[maybe_unused]] const Config* config, [[maybe_unused]] PrintSink sink) noexcept
+{
+	return true;
+}
+
 MemoryRequirements identifier_pool_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;

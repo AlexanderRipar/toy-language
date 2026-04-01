@@ -940,6 +940,11 @@ static void resolve_names_root(CoreData* core, AstNode* root, GlobalCompositeInd
 
 
 
+bool lexical_analyser_validate_config([[maybe_unused]] const Config* config, [[maybe_unused]] PrintSink sink) noexcept
+{
+	return true;
+}
+
 MemoryRequirements lexical_analyser_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;
