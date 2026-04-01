@@ -32,6 +32,7 @@ set(CORE_SOURCES
 	core/core.hpp
 	core/core.cpp
 	core/ast_pool.cpp
+	core/comp_heap.cpp
 	core/comp_values.cpp
 	core/config.cpp
 	core/error_sink.cpp

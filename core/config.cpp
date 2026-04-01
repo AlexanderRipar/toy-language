@@ -68,6 +68,12 @@ static constexpr TreeSchemaNode CONFIG_STD[] = {
 	make_container_info(Range<TreeSchemaNode>{ CONFIG_STD_PRELUDE }, "prelude", "Prelude parameters"),
 };
 
+static constexpr TreeSchemaNode CONFIG_HEAP[] = {
+	make_integer_info(offsetof(Config, heap.reserve), 0, INT64_MAX, "reserve", "Size the managed heap's small allocation section can grow to, in bytes"),
+	make_integer_info(offsetof(Config, heap.commit_increment), 0, INT64_MAX, "commit-increment", "Number of bytes the managed heap's small allocation section is resized in"),
+	make_integer_info(offsetof(Config, heap.max_huge_alloc_count), 0, INT64_MAX, "max-huge-allocation-count", "Maximum number of huge allocations that may be alive at the same time in the managed heap"),
+};
+
 static constexpr TreeSchemaNode CONFIG_LOGGING_IMPORTS_ASTS[] = {
 	make_boolean_info(offsetof(Config, logging.imports.asts.enable), "enable", "Print ASTs after they are parsed"),
 	make_path_info(offsetof(Config, logging.imports.asts.filepath), "log-file", "Path of the log file. Defaults to stdout"),
@@ -107,6 +113,7 @@ static constexpr TreeSchemaNode CONFIG_LOGGING[] = {
 };
 
 static constexpr TreeSchemaNode CONFIG_ENABLE[] = {
+	make_boolean_info(offsetof(Config, enable.heap), "ast_pool", "Whether to initialize the managed heap. Shared storage for all kinds of stuff with interesting lifetimes"),
 	make_boolean_info(offsetof(Config, enable.ast_pool), "ast_pool", "Whether to initialize the ast pool. Responsible for storing parsed ASTs"),
 	make_boolean_info(offsetof(Config, enable.error_sink), "error_sink", "Whether to initialize the error sink. Responsible for reporting compilation errors"),
 	make_boolean_info(offsetof(Config, enable.global_value_pool), "global_value_pool", "Whether to initialize the global value pool. Responsible for storing global values and values with global lifetime during compilation"),
@@ -122,6 +129,7 @@ static constexpr TreeSchemaNode CONFIG_ENABLE[] = {
 static constexpr TreeSchemaNode CONFIG_ROOTS[] = {
 	make_container_info(Range<TreeSchemaNode>{ CONFIG_ENTRYPOINT }, "entrypoint", "Entrypoint configuration"),
 	make_container_info(Range<TreeSchemaNode>{ CONFIG_STD }, "std", "Standard library configuration"),
+	make_container_info(Range<TreeSchemaNode>{ CONFIG_HEAP }, "heap", "Managed heap configuration"),
 	make_container_info(Range<TreeSchemaNode>{ CONFIG_LOGGING }, "logging", "Debug log configuration"),
 	make_container_info(Range<TreeSchemaNode>{ CONFIG_ENABLE }, "enable", "Allows only initializing certain submodules. Mainly intended for testing, when not all modules are exercised"),
 	make_boolean_info(offsetof(Config, compile_all), "compile-all", "Whether to compile all top-level definitions"),

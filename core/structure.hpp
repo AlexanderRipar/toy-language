@@ -301,11 +301,55 @@ struct TypePool
 
 
 
+static constexpr u8 COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2 = 4;
+
+static constexpr u8 COMP_HEAP_MAX_ALLOCATION_SIZE_LOG2 = 18;
+
+static constexpr u64 COMP_HEAP_MIN_ALLOCATION_SIZE = 1 << COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2;
+
+static constexpr u64 COMP_HEAP_MAX_ALLOCATION_SIZE = 1 << COMP_HEAP_MAX_ALLOCATION_SIZE_LOG2;
+
+static constexpr u64 COMP_HEAP_ZERO_ADDRESS_MASK = COMP_HEAP_MIN_ALLOCATION_SIZE - 1;
+
+struct HugeAllocDesc
+{
+	byte* begin;
+
+	byte* end;
+};
+
+struct CompHeap
+{
+	byte* memory;
+
+	u64 used;
+
+	u64 commit;
+
+	u64 reserve;
+
+	u64 commit_increment;
+
+	byte* gc_bitmap;
+
+	HugeAllocDesc* huge_alloc_map;
+
+	u64 huge_alloc_map_used;
+
+	u64 huge_alloc_map_reserve;
+
+	byte* freelists[COMP_HEAP_MAX_ALLOCATION_SIZE_LOG2 - COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2];
+};
+
+
+
 struct CoreData
 {
 	u64 allocation_size;
 
 	const Config* config;
+
+	CompHeap heap;
 
 	AstPool asts;
 
@@ -341,9 +385,9 @@ struct MemoryIdRequirements
 
 struct MemoryRequirements
 {
-	u32 private_reserve;
+	u64 private_reserve;
 
-	u32 id_requirements_count;
+	u64 id_requirements_count;
 
 	MemoryIdRequirements id_requirements[MAX_MEMORY_ID_REQUIREMENTS_COUNT];
 };

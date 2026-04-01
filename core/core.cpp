@@ -16,6 +16,32 @@ struct IdAllocation
 
 
 
+bool comp_heap_validate_config(const Config* config, PrintSink sink) noexcept;
+
+bool ast_pool_validate_config(const Config* config, PrintSink sink) noexcept;
+
+bool error_sink_validate_config(const Config* config, PrintSink sink) noexcept;
+
+bool global_value_pool_validate_config(const Config* config, PrintSink sink) noexcept;
+
+bool identifier_pool_validate_config(const Config* config, PrintSink sink) noexcept;
+
+bool interpreter_validate_config(const Config* config, PrintSink sink) noexcept;
+
+bool lexical_analyser_validate_config(const Config* config, PrintSink sink) noexcept;
+
+bool opcode_pool_validate_config(const Config* config, PrintSink sink) noexcept;
+
+bool parser_validate_config(const Config* config, PrintSink sink) noexcept;
+
+bool source_reader_validate_config(const Config* config, PrintSink sink) noexcept;
+
+bool type_pool_validate_config(const Config* config, PrintSink sink) noexcept;
+
+
+
+MemoryRequirements comp_heap_memory_requirements(const Config* config) noexcept;
+
 MemoryRequirements ast_pool_memory_requirements(const Config* config) noexcept;
 
 MemoryRequirements error_sink_memory_requirements(const Config* config) noexcept;
@@ -37,6 +63,8 @@ MemoryRequirements source_reader_memory_requirements(const Config* config) noexc
 MemoryRequirements type_pool_memory_requirements(const Config* config) noexcept;
 
 
+
+void comp_heap_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
 void ast_pool_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
@@ -60,13 +88,15 @@ void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
 
 
+using validate_config_func = bool (*) (const Config* config, PrintSink sink) noexcept;
+
 using memory_requirements_func = MemoryRequirements (*) (const Config* config) noexcept;
 
 using init_func = void (*) (CoreData* core, MemoryAllocation allocation) noexcept;
 
 
 
-struct MemoryIdRequirementsPtrComparator
+struct MemoryIdRequirementsAlignmentComparator
 {
 	static s32 compare(const MemoryIdRequirements* a, const MemoryIdRequirements* b) noexcept
 	{
@@ -87,7 +117,22 @@ static u32 id_requirements_index_from_ptr(const MemoryIdRequirements* ptr, const
 
 CoreData* create_core_data(const Config* config) noexcept
 {
+	static constexpr validate_config_func VALIDATE_CONFIG_FUNCS[] = {
+		&comp_heap_validate_config,
+		&comp_heap_validate_config,
+		&comp_heap_validate_config,
+		&comp_heap_validate_config,
+		&comp_heap_validate_config,
+		&comp_heap_validate_config,
+		&comp_heap_validate_config,
+		&comp_heap_validate_config,
+		&comp_heap_validate_config,
+		&comp_heap_validate_config,
+		&comp_heap_validate_config,
+	};
+
 	static constexpr memory_requirements_func MEMORY_REQUIREMENTS_FUNCS[] = {
+		&comp_heap_memory_requirements,
 		&ast_pool_memory_requirements,
 		&error_sink_memory_requirements,
 		&global_value_pool_memory_requirements,
@@ -101,6 +146,7 @@ CoreData* create_core_data(const Config* config) noexcept
 	};
 
 	static constexpr init_func INIT_FUNCS[] = {
+		&comp_heap_init,
 		&ast_pool_init,
 		&error_sink_init,
 		&global_value_pool_init,
@@ -114,6 +160,7 @@ CoreData* create_core_data(const Config* config) noexcept
 	};
 
 	const bool enable_flags[] = {
+		config->enable.heap,
 		config->enable.ast_pool,
 		config->enable.error_sink,
 		config->enable.global_value_pool,
@@ -126,9 +173,11 @@ CoreData* create_core_data(const Config* config) noexcept
 		config->enable.interpreter,
 	};
 
-	static_assert(array_count(MEMORY_REQUIREMENTS_FUNCS) == array_count(INIT_FUNCS));
+	static_assert(array_count(VALIDATE_CONFIG_FUNCS) == array_count(MEMORY_REQUIREMENTS_FUNCS));
 
-	static_assert(array_count(enable_flags) == array_count(INIT_FUNCS));
+	static_assert(array_count(VALIDATE_CONFIG_FUNCS) == array_count(INIT_FUNCS));
+
+	static_assert(array_count(VALIDATE_CONFIG_FUNCS) == array_count(enable_flags));
 
 	static constexpr u32 MEMBER_COUNT = static_cast<u32>(array_count(MEMORY_REQUIREMENTS_FUNCS));
 
@@ -141,7 +190,20 @@ CoreData* create_core_data(const Config* config) noexcept
 
 
 
-	const u64 page_mask = minos::page_bytes() - 1;
+	bool is_valid_config = true;
+
+	const minos::FileHandle config_validation_log_file = minos::standard_file_handle(minos::StdFileName::StdErr);
+
+	for (u64 i = 0; i != MEMBER_COUNT; ++i)
+	{
+		if (enable_flags[i] && !VALIDATE_CONFIG_FUNCS[i](config, print_make_sink(config_validation_log_file)))
+			is_valid_config = false;
+	}
+
+	if (!is_valid_config)
+		minos::exit_process(1);
+
+
 
 	MemoryRequirements memory_requirements[MEMBER_COUNT];
 
@@ -171,7 +233,9 @@ CoreData* create_core_data(const Config* config) noexcept
 
 	const MutRange<MemoryIdRequirements*> id_requirements{ id_requirements_buf, id_requirements_count };
 
-	inplace_sort<MemoryIdRequirements*, MemoryIdRequirementsPtrComparator>(id_requirements);
+	inplace_sort<MemoryIdRequirements*, MemoryIdRequirementsAlignmentComparator>(id_requirements);
+
+	const u64 page_mask = minos::page_bytes() - 1;
 
 	u64 total_allocation_size = sizeof(CoreData);
 

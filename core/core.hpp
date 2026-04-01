@@ -121,6 +121,15 @@ struct Config
 
 	struct
 	{
+		u64 reserve = 1 << 30;
+
+		u64 commit_increment = 1 << 18;
+
+		u64 max_huge_alloc_count = 1 << 16;
+	} heap;
+
+	struct
+	{
 		struct
 		{
 			ConfigLogFileRef asts{ false, {} };
@@ -142,6 +151,8 @@ struct Config
 
 	struct
 	{
+		bool heap = true;
+
 		bool ast_pool = true;
 
 		bool error_sink = true;
