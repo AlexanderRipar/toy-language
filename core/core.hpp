@@ -185,6 +185,28 @@ const TreeSchemaNode* config_schema() noexcept;
 
 
 
+Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align, bool allow_huge) noexcept;
+
+void comp_heap_gc_begin(CoreData* core) noexcept;
+
+bool comp_heap_gc_mark(CoreData* core, MutRange<byte> memory) noexcept;
+
+void comp_heap_gc_end(CoreData* core) noexcept;
+
+u64 comp_heap_arena_mark(CoreData* core) noexcept;
+
+void* comp_heap_arena_alloc(CoreData* core, u64 size, u64 align) noexcept;
+
+void comp_heap_arena_release(CoreData* core, u64 arena_mark) noexcept;
+
+byte* comp_heap_small_allocation_base(CoreData* core) noexcept;
+
+byte* comp_heap_small_allocation_tip(CoreData* core) noexcept;
+
+
+
+
+
 // Identifier Pool.
 // This deduplicates identifiers, making it possible to refer to them with
 // fixed-size `IdentifierId`s.
