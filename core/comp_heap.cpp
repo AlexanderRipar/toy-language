@@ -96,7 +96,7 @@ static bool comp_heap_gc_mark_small_unchecked(CoreData* core, MutRange<byte> mem
 	return true;
 }
 
-static MutRange<byte> comp_heap_huge_alloc(CoreData* core, u64 size, u64 align) noexcept
+static Maybe<void*> comp_heap_huge_alloc(CoreData* core, u64 size, u64 align) noexcept
 {
 	ASSERT_OR_IGNORE(size > COMP_HEAP_MAX_ALLOCATION_SIZE);
 
@@ -109,10 +109,10 @@ static MutRange<byte> comp_heap_huge_alloc(CoreData* core, u64 size, u64 align) 
 	if ((core->heap.huge_alloc_map_used & page_mask) == 0)
 	{
 		if (core->heap.huge_alloc_map_used * sizeof(HugeAllocDesc) == core->heap.huge_alloc_map_reserve)
-			return MutRange<byte>{};
+			return none<void*>();
 
 		if (!minos::mem_commit(core->heap.huge_alloc_map + core->heap.huge_alloc_map_used, page_size))
-			return MutRange<byte>{};
+			return none<void*>();
 	}
 
 	const u64 allocation_slack = align > page_size ? align - 1 : page_mask;
@@ -122,7 +122,7 @@ static MutRange<byte> comp_heap_huge_alloc(CoreData* core, u64 size, u64 align) 
 	void* const memory = minos::mem_reserve(allocation_size);
 
 	if (memory == nullptr)
-		return MutRange<byte>{};
+		return none<void*>();
 
 	core->heap.huge_alloc_map[core->heap.huge_alloc_map_used].begin = static_cast<byte*>(memory);
 	core->heap.huge_alloc_map[core->heap.huge_alloc_map_used].end = static_cast<byte*>(memory) + allocation_size;
@@ -132,11 +132,11 @@ static MutRange<byte> comp_heap_huge_alloc(CoreData* core, u64 size, u64 align) 
 	void* const aligned_memory = reinterpret_cast<void*>((reinterpret_cast<u64>(memory) + align - 1) & ~(align - 1));
 
 	if (!minos::mem_commit(aligned_memory, (size + page_mask) & ~page_mask))
-		return MutRange<byte>{};
+		return none<void*>();
 
 	ASSERT_OR_IGNORE(static_cast<byte*>(aligned_memory) + size <= static_cast<byte*>(memory) + allocation_size);
 
-	return MutRange<byte>{ static_cast<byte*>(aligned_memory), size };
+	return some(aligned_memory);
 }
 
 static bool comp_heap_gc_mark_huge(CoreData* core, MutRange<byte> memory) noexcept
@@ -248,7 +248,7 @@ void comp_heap_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 
 
-MutRange<byte> comp_heap_alloc(CoreData* core, u64 size, u64 align, bool allow_huge) noexcept
+Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align, bool allow_huge) noexcept
 {
 	ASSERT_OR_IGNORE(is_pow2(align));
 
@@ -257,7 +257,7 @@ MutRange<byte> comp_heap_alloc(CoreData* core, u64 size, u64 align, bool allow_h
 		if (allow_huge)
 			return comp_heap_huge_alloc(core, size, align);
 
-		panic("Called `comp_heap_alloc` without allowing huge allocations and requested size % exceeding maximum small allocation size of %.\n", size, COMP_HEAP_MAX_ALLOCATION_SIZE);
+		return none<void*>();
 	}
 
 	// Try satisfying allocations with an alignment of at most
@@ -282,7 +282,7 @@ MutRange<byte> comp_heap_alloc(CoreData* core, u64 size, u64 align, bool allow_h
 			if (entry_size - size >= COMP_HEAP_MIN_ALLOCATION_SIZE)
 				comp_heap_add_to_freelist(core, MutRange<byte>{ head + size, entry_size - size });
 
-			return MutRange<byte>{ head, size };
+			return some<void*>(head);
 		}
 	}
 
@@ -293,7 +293,7 @@ MutRange<byte> comp_heap_alloc(CoreData* core, u64 size, u64 align, bool allow_h
 	const u64 new_used = (aligned_begin + size + COMP_HEAP_ZERO_ADDRESS_MASK) & ~COMP_HEAP_ZERO_ADDRESS_MASK;
 
 	if (!comp_heap_ensure_commit(core, new_used))
-		return MutRange<byte>{};
+		return none<void*>();
 
 	core->heap.used = new_used;
 
@@ -306,7 +306,7 @@ MutRange<byte> comp_heap_alloc(CoreData* core, u64 size, u64 align, bool allow_h
 
 	core->heap.used = new_used;
 
-	return MutRange<byte>{ begin, size };
+	return some<void*>(begin);
 }
 
 
