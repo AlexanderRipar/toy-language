@@ -199,6 +199,8 @@ void* comp_heap_arena_alloc(CoreData* core, u64 size, u64 align) noexcept;
 
 void comp_heap_arena_release(CoreData* core, u64 arena_mark) noexcept;
 
+void* comp_heap_arena_release_and_preserve(CoreData* core, u64 arena_mark, MutRange<byte> preserve) noexcept;
+
 byte* comp_heap_small_allocation_base(CoreData* core) noexcept;
 
 byte* comp_heap_small_allocation_tip(CoreData* core) noexcept;

@@ -370,6 +370,27 @@ void comp_heap_arena_release(CoreData* core, u64 arena_mark) noexcept
 	core->heap.used = arena_mark;
 }
 
+void* comp_heap_arena_release_and_preserve(CoreData* core, u64 arena_mark, MutRange<byte> preserve) noexcept
+{
+	ASSERT_OR_IGNORE(core->heap.arena_count == 1);
+
+	ASSERT_OR_IGNORE(core->heap.arena_begin == arena_mark);
+
+	ASSERT_OR_IGNORE(preserve.begin() >= core->heap.memory + core->heap.arena_begin);
+
+	ASSERT_OR_IGNORE(preserve.end() <= core->heap.memory + core->heap.used);
+
+	core->heap.arena_count -= 1;
+
+	byte* const preserved_begin = core->heap.memory + arena_mark;
+
+	memmove(preserved_begin, preserve.begin(), preserve.count());
+
+	core->heap.used = arena_mark + preserve.count();
+
+	return preserved_begin;
+}
+
 
 
 void comp_heap_gc_begin(CoreData* core) noexcept
