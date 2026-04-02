@@ -9,6 +9,7 @@ static CoreData* create_tiny_core() noexcept
 	Config config{};
 	config.enable = { 0 };
 	config.enable.type_pool = true;
+	config.enable.heap = true;
 
 	return create_core_data(&config);
 }
