@@ -330,6 +330,10 @@ struct CompHeap
 
 	u64 commit_increment;
 
+	u64 arena_count;
+
+	u64 arena_begin;
+
 	byte* gc_bitmap;
 
 	HugeAllocDesc* huge_alloc_map;

@@ -238,6 +238,8 @@ void comp_heap_init(CoreData* core, MemoryAllocation allocation) noexcept
 	core->heap.commit = commit_increment;
 	core->heap.reserve = heap_size;
 	core->heap.commit_increment = commit_increment;
+	core->heap.arena_count = 0;
+	core->heap.arena_begin = 0;
 	core->heap.gc_bitmap = reinterpret_cast<u8*>(allocation.private_data.begin()) + heap_size;
 	core->heap.huge_alloc_map = reinterpret_cast<HugeAllocDesc*>(reinterpret_cast<byte*>(allocation.private_data.begin()) + heap_size + gc_bitmap_size);
 	core->heap.huge_alloc_map_used = 0;
@@ -250,6 +252,8 @@ void comp_heap_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align, bool allow_huge) noexcept
 {
+	ASSERT_OR_IGNORE(core->heap.arena_count == 0);
+
 	ASSERT_OR_IGNORE(is_pow2(align));
 
 	if (size > COMP_HEAP_MAX_ALLOCATION_SIZE)
@@ -307,6 +311,48 @@ Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align, bool allow_hug
 	core->heap.used = new_used;
 
 	return some<void*>(begin);
+}
+
+
+
+u64 comp_heap_arena_mark(CoreData* core) noexcept
+{
+	ASSERT_OR_IGNORE(core->heap.arena_count == 0 || core->heap.arena_begin <= core->heap.used);
+
+	if (core->heap.arena_count == 0)
+		core->heap.arena_begin = core->heap.used;
+
+	core->heap.arena_count += 1;
+
+	return core->heap.used;
+}
+
+void* comp_heap_arena_alloc(CoreData* core, u64 size, u64 align) noexcept
+{
+	ASSERT_OR_IGNORE(core->heap.arena_count != 0);
+
+	ASSERT_OR_IGNORE(is_pow2(align));
+
+	const u64 aligned_begin = (core->heap.used + align - 1) & ~(align - 1);
+
+	const u64 new_used = aligned_begin + size;
+
+	if (!comp_heap_ensure_commit(core, new_used))
+		panic("Failed to allocate % bytes in global arena.\n", size);
+
+	core->heap.used = new_used;
+
+	return core->heap.memory + aligned_begin;
+}
+
+void comp_heap_arena_release(CoreData* core) noexcept
+{
+	ASSERT_OR_IGNORE(core->heap.arena_count != 0);
+
+	core->heap.arena_count -= 1;
+
+	if (core->heap.arena_count == 0)
+		core->heap.used = core->heap.arena_begin;
 }
 
 
