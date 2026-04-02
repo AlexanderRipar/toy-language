@@ -246,7 +246,7 @@ void comp_heap_init(CoreData* core, MemoryAllocation allocation) noexcept
 		panic("Could not commit % bytes of memory for compile-time heap header and initial commit (0x%[|X]).\n", commit_increment, minos::last_error());
 
 	core->heap.memory = allocation.private_data.begin();
-	core->heap.used = 0;
+	core->heap.used = COMP_HEAP_MIN_ALLOCATION_SIZE; // Reserve the slot as a pseudo-null value for indices.
 	core->heap.commit = commit_increment;
 	core->heap.reserve = heap_size;
 	core->heap.commit_increment = commit_increment;
@@ -390,6 +390,9 @@ void comp_heap_gc_begin(CoreData* core) noexcept
 	// to explicitly mark it via the small heap marking function, as it would
 	// otherwise not be recognized as part of the normal heap.
 	(void) comp_heap_gc_mark_small_unchecked(core, MutRange<byte>{ core->heap.memory + core->heap.used, 1 });
+
+	// Preserve the first slot, since it acts as a `null` for ids.
+	(void) comp_heap_gc_mark_small_unchecked(core, MutRange<byte>{ core->heap.memory, 1 });
 
 	// Forget our old freelists. Their contents will be collected and coalesced
 	// by the GC.
