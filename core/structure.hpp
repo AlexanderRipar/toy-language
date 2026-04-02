@@ -270,10 +270,6 @@ struct SourceReader
 
 
 
-static constexpr u32 MIN_STRUCTURE_SIZE_LOG2 = 4;
-
-static constexpr u32 MAX_STRUCTURE_SIZE_LOG2 = 12;
-
 struct alignas(8) HolotypeInit;
 
 struct alignas(8) Holotype;
@@ -285,12 +281,6 @@ struct alignas(8) ImplEntry;
 struct TypePool
 {
 	IndexMap<HolotypeInit, Holotype> holotypes;
-
-	ReservedHeap<MIN_STRUCTURE_SIZE_LOG2, MAX_STRUCTURE_SIZE_LOG2> structures;
-
-	IndexMap<ImplInit, ImplEntry> impls;
-
-	ReservedVec<u64> scratch;
 };
 
 
