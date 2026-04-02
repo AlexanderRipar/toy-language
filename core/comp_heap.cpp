@@ -347,14 +347,17 @@ void* comp_heap_arena_alloc(CoreData* core, u64 size, u64 align) noexcept
 	return core->heap.memory + aligned_begin;
 }
 
-void comp_heap_arena_release(CoreData* core) noexcept
+void comp_heap_arena_release(CoreData* core, u64 arena_mark) noexcept
 {
 	ASSERT_OR_IGNORE(core->heap.arena_count != 0);
 
+	ASSERT_OR_IGNORE(core->heap.arena_begin <= arena_mark);
+
+	ASSERT_OR_IGNORE(core->heap.arena_count != 1 || core->heap.arena_begin == arena_mark);
+
 	core->heap.arena_count -= 1;
 
-	if (core->heap.arena_count == 0)
-		core->heap.used = core->heap.arena_begin;
+	core->heap.used = arena_mark;
 }
 
 
