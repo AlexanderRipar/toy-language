@@ -179,6 +179,8 @@ bool comp_heap_validate_config(const Config* config, PrintSink sink) noexcept
 
 	ASSERT_OR_IGNORE(config->heap.commit_increment >= 0);
 
+	ASSERT_OR_IGNORE(config->heap.reserve <= (static_cast<u64>(1) << 32) * COMP_HEAP_MIN_ALLOCATION_SIZE);
+
 	ASSERT_OR_IGNORE(config->heap.max_huge_alloc_count >= 0);
 
 	if (config->heap.reserve >= config->heap.commit_increment)

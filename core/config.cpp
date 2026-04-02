@@ -69,7 +69,7 @@ static constexpr TreeSchemaNode CONFIG_STD[] = {
 };
 
 static constexpr TreeSchemaNode CONFIG_HEAP[] = {
-	make_integer_info(offsetof(Config, heap.reserve), 0, INT64_MAX, "reserve", "Size the managed heap's small allocation section can grow to, in bytes"),
+	make_integer_info(offsetof(Config, heap.reserve), 0, (static_cast<s64>(1) << 32) * 16, "reserve", "Size the managed heap's small allocation section can grow to, in bytes"),
 	make_integer_info(offsetof(Config, heap.commit_increment), 0, INT64_MAX, "commit-increment", "Number of bytes the managed heap's small allocation section is resized in"),
 	make_integer_info(offsetof(Config, heap.max_huge_alloc_count), 0, INT64_MAX, "max-huge-allocation-count", "Maximum number of huge allocations that may be alive at the same time in the managed heap"),
 };
