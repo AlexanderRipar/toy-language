@@ -315,7 +315,7 @@ Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align, bool allow_hug
 
 	// If we had to insert padding to achieve the requested alignment, add it
 	// to the relevant freelist.
-	if (core->heap.used != aligned_begin)
+	if (unaligned_begin != aligned_begin)
 		comp_heap_add_to_freelist(core, MutRange<byte>{ core->heap.memory + unaligned_begin, core->heap.memory + aligned_begin });
 
 	byte* const begin = core->heap.memory + aligned_begin;
