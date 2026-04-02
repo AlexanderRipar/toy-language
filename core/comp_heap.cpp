@@ -157,8 +157,18 @@ static bool comp_heap_gc_mark_huge(CoreData* core, MutRange<byte> memory) noexce
 
 		const byte* const end = huge_alloc_map[mid].end;
 
-		if (begin <= memory.begin() && end >= memory.end())
+		if (begin > memory.end())
 		{
+			lo = mid + 1;
+		}
+		else if (end < memory.begin())
+		{
+			hi = mid - 1;
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(begin <= memory.begin() && end >= memory.end());
+
 			if ((reinterpret_cast<u64>(end) & 1) != 0)
 				return false;
 
