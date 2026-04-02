@@ -503,3 +503,15 @@ void comp_heap_gc_end(CoreData* core) noexcept
 
 	core->heap.huge_alloc_map_used = new_huge_alloc_map_used;
 }
+
+
+
+byte* comp_heap_small_allocation_base(CoreData* core) noexcept
+{
+	return core->heap.memory;
+}
+
+byte* comp_heap_small_allocation_tip(CoreData* core) noexcept
+{
+	return core->heap.memory + core->heap.used;
+}
