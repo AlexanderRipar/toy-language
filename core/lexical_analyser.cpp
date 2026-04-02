@@ -14,20 +14,6 @@
 
 static constexpr u16 MAX_SCOPE_ENTRY_COUNT = static_cast<u16>(1 << 15);
 
-static constexpr u32 SCOPE_POOL_CAPACITIES[MAX_SCOPE_MAP_SIZE_LOG2 - MIN_SCOPE_MAP_SIZE_LOG2 + 1] = {
-	MAX_AST_DEPTH     , MAX_AST_DEPTH    , MAX_AST_DEPTH    , MAX_AST_DEPTH / 2, MAX_AST_DEPTH / 2 ,
-	MAX_AST_DEPTH /  2, MAX_AST_DEPTH / 4, MAX_AST_DEPTH / 4, MAX_AST_DEPTH / 8, MAX_AST_DEPTH / 16,
-	MAX_AST_DEPTH / 32,
-};
-
-static constexpr u32 SCOPE_POOL_COMMITS[MAX_SCOPE_MAP_SIZE_LOG2 - MIN_SCOPE_MAP_SIZE_LOG2 + 1] = {
-	64, 32, 16, 8, 4,
-	 2,  1,  1, 1, 1,
-	 1,
-};
-
-static constexpr u64 SCOPE_POOL_RESERVE = decltype(LexicalAnalyser::scope_pool)::memory_size(Range{ SCOPE_POOL_CAPACITIES });
-
 enum class ScopeMapKind : u8
 {
 	Local,
@@ -140,9 +126,7 @@ static ScopeMap* scope_map_alloc_sized(CoreData* core, ScopeMapKind kind, u32 ca
 {
 	ASSERT_OR_IGNORE(is_pow2(capacity));
 
-	MutRange<byte> memory = core->lex.scope_pool.alloc(scope_map_size(capacity));
-
-	ScopeMap* const scope = reinterpret_cast<ScopeMap*>(memory.begin());
+	ScopeMap* const scope = static_cast<ScopeMap*>(comp_heap_arena_alloc(core, scope_map_size(capacity), alignof(ScopeMap)));
 	scope->capacity = capacity;
 	scope->used = 0;
 	scope->kind = kind;
@@ -155,13 +139,6 @@ static ScopeMap* scope_map_alloc_sized(CoreData* core, ScopeMapKind kind, u32 ca
 static ScopeMap* scope_map_alloc(CoreData* core, ScopeMapKind kind) noexcept
 {
 	return scope_map_alloc_sized(core, kind, 8);
-}
-
-static void scope_map_dealloc(CoreData* core, ScopeMap* scope) noexcept
-{
-	const u32 size = scope_map_size(scope->capacity);
-
-	core->lex.scope_pool.dealloc({ reinterpret_cast<byte*>(scope), size });
 }
 
 template<bool check_duplicates>
@@ -258,9 +235,18 @@ static ScopeMap* scope_map_grow(CoreData* core, ScopeMap* old_scope) noexcept
 		index_base += 64;
 	}
 
-	scope_map_dealloc(core, old_scope);
-
 	return new_scope;
+}
+
+static void scope_map_dealloc(CoreData* core, ScopeMap* scope) noexcept
+{
+	// This does not currently do anything, since the `CompHeap` does not allow
+	// freeing individual entries. Should this capability come back in future,
+	// it will be used here.
+
+	(void) core;
+
+	(void) scope;
 }
 
 static bool scope_map_get(ScopeMap* scope, IdentifierId name, ScopeEntry* out) noexcept
@@ -948,19 +934,15 @@ bool lexical_analyser_validate_config([[maybe_unused]] const Config* config, [[m
 MemoryRequirements lexical_analyser_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;
-	reqs.private_reserve = SCOPE_POOL_RESERVE;
+	reqs.private_reserve = 0;
 	reqs.id_requirements_count = 0;
 
 	return reqs;
 }
 
-void lexical_analyser_init(CoreData* core, MemoryAllocation allocation) noexcept
+void lexical_analyser_init(CoreData* core, [[maybe_unused]] MemoryAllocation allocation) noexcept
 {
-	ASSERT_OR_IGNORE(allocation.private_data.count() == SCOPE_POOL_RESERVE);
-
 	LexicalAnalyser* const lex = &core->lex;
-
-	lex->scope_pool.init(allocation.private_data, Range{ SCOPE_POOL_CAPACITIES }, Range{ SCOPE_POOL_COMMITS });
 	lex->scopes_top = -1;
 	lex->has_error = false;
 }
@@ -971,11 +953,23 @@ bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalCompositeIndex fi
 {
 	ASSERT_OR_IGNORE(prelude->tag == AstTag::File && core->lex.scopes_top == -1);
 
+	const u64 arena_mark = comp_heap_arena_mark(core);
+
 	core->lex.prelude_file_index = file_index;
 
 	resolve_names_root(core, prelude, file_index);
 
 	ASSERT_OR_IGNORE(core->lex.scopes_top == 0);
+
+	ScopeMap* const prelude_scope = core->lex.scopes[0];
+
+	const u64 prelude_scope_size = scope_map_size(prelude_scope->capacity);
+
+	const MutRange<byte> prelude_scope_memory{ reinterpret_cast<byte*>(prelude_scope), prelude_scope_size };
+
+	ScopeMap* const preserved_prelude_scope = static_cast<ScopeMap*>(comp_heap_arena_release_and_preserve(core, arena_mark, prelude_scope_memory));
+
+	core->lex.scopes[0] = preserved_prelude_scope;
 
 	return !core->lex.has_error;
 }
@@ -984,11 +978,15 @@ bool resolve_names(CoreData* core, AstNode* root, GlobalCompositeIndex file_inde
 {
 	ASSERT_OR_IGNORE(root->tag == AstTag::File && core->lex.scopes_top == 0);
 
+	const u64 arena_mark = comp_heap_arena_mark(core);
+
 	resolve_names_root(core, root, file_index);
 
 	pop_scope(core);
 
 	ASSERT_OR_IGNORE(core->lex.scopes_top == 0);
+
+	comp_heap_arena_release(core, arena_mark);
 
 	return !core->lex.has_error;
 }

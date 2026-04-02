@@ -126,18 +126,12 @@ struct Interpreter
 
 
 
-static constexpr u32 MIN_SCOPE_MAP_SIZE_LOG2 = 6;
-
-static constexpr u32 MAX_SCOPE_MAP_SIZE_LOG2 = 16;
-
 enum class ScopeMapKind : u8;
 
 struct alignas(8) ScopeMap;
 
 struct LexicalAnalyser
 {
-	ReservedHeap<MIN_SCOPE_MAP_SIZE_LOG2, MAX_SCOPE_MAP_SIZE_LOG2> scope_pool;
-
 	s32 scopes_top;
 
 	GlobalCompositeIndex active_file_index;
