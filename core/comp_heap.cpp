@@ -320,8 +320,6 @@ Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align, bool allow_hug
 
 	byte* const begin = core->heap.memory + aligned_begin;
 
-	core->heap.used = new_used;
-
 	return some<void*>(begin);
 }
 
