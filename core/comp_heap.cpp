@@ -347,10 +347,12 @@ void* comp_heap_arena_alloc(CoreData* core, u64 size, u64 align) noexcept
 
 	const u64 new_used = aligned_begin + size;
 
+	// Arena allocations are not padded to slot boundaries, to allow
+	// consecutive allocations to use contiguous addresses.
+	core->heap.used = new_used;
+
 	if (!comp_heap_ensure_commit(core, new_used))
 		panic("Failed to allocate % bytes in global arena.\n", size);
-
-	core->heap.used = new_used;
 
 	return core->heap.memory + aligned_begin;
 }
