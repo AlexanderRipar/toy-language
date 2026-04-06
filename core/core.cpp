@@ -334,3 +334,21 @@ bool run_compilation(CoreData* core, bool main_is_std) noexcept
 
 	return true;
 }
+
+void* address_from_core_id(CoreData* core, CoreId id) noexcept
+{
+	ASSERT_OR_IGNORE((static_cast<u64>(id) << COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2) >= sizeof(CoreData));
+
+	ASSERT_OR_IGNORE((static_cast<u64>(id) << COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2) < core->allocation_size);
+
+	return reinterpret_cast<byte*>(core) + (static_cast<u64>(id) << COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2);
+}
+
+CoreId core_id_from_address(CoreData* core, const void* memory) noexcept
+{
+	ASSERT_OR_IGNORE(memory >= core + 1);
+
+	ASSERT_OR_IGNORE(memory < reinterpret_cast<byte*>(core) + core->allocation_size);
+
+	return static_cast<CoreId>((static_cast<const byte*>(memory) - reinterpret_cast<byte*>(core)) >> COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2);
+}

@@ -19,7 +19,7 @@ static UserCompositeMemberInit dummy_user_member() noexcept
 	UserCompositeMemberInit member{};
 	member.name = static_cast<IdentifierId>(42);
 	member.type_id = TypeId::INVALID;
-	member.default_id = none<ForeverValueId>();
+	member.default_value = none<CoreId>();
 	member.is_pub = false;
 	member.is_mut = false;
 	member.offset = 0;
@@ -284,7 +284,7 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 
 		TEST_EQUAL(member_info.type_id, member_init.type_id);
 
-		TEST_EQUAL(member_info.value_or_default_id, member_init.default_id);
+		TEST_EQUAL(member_info.value_or_default, member_init.default_value);
 
 		member_count += 1;
 	}

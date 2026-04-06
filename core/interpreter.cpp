@@ -26,15 +26,17 @@ struct Scope
 	u32 temporary_data_used;
 };
 
-struct alignas(8) ScopeMember
+struct alignas(16) ScopeMember
 {
-	u32 offset;
+	u32 begin;
 
 	u32 size;
 
-	u32 align : 31;
+	u32 align : 30;
 
 	u32 is_mut : 1;
+
+	u32 is_closure_member : 1;
 
 	TypeId type;
 };
@@ -77,7 +79,7 @@ struct CompareResult
 	explicit CompareResult(CompareEquality equality) : tag{ CompareTag::Equality }, equality{ equality } {}
 };
 
-struct alignas(8) ArgumentPack
+struct alignas(16) ArgumentPack
 {
 	TypeId signature_type;
 
@@ -101,9 +103,9 @@ struct alignas(8) ArgumentPack
 	bool has_just_completed_template_parameter;
 };
 
-struct alignas(4) GlobalInitialization
+struct alignas(8) GlobalInitialization
 {
-	GlobalCompositeIndex file_index;
+	GlobalCompositeId file_id;
 
 	u16 rank;
 };
@@ -496,15 +498,23 @@ static ClosureId create_closure(CoreData* core, u32 value_count) noexcept
 	{
 		const CTValue src = values[i];
 
-		const ForeverValueId value_id = forever_value_alloc_initialized(core, false, src);
+		const Maybe<void*> allocation = comp_heap_alloc(core, src.bytes.count(), src.align);
+
+		if (is_none(allocation))
+			TODO("Implement GC traversal.");
 
 		ScopeMember* const dst = closure_members + i;
 
-		dst->offset = static_cast<u32>(value_id);
+		const CoreId allocation_id = core_id_from_address(core, get(allocation));
+
+		dst->begin = static_cast<u32>(allocation_id);
 		dst->size = static_cast<u32>(src.bytes.count());
 		dst->align = src.align;
 		dst->is_mut = false;
+		dst->is_closure_member = true;
 		dst->type = src.type;
+
+		memcpy(get(allocation), src.bytes.begin(), src.bytes.count());
 	}
 
 	core->interp.values.pop_by(value_count);
@@ -671,16 +681,16 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 			if (!type_member_info_by_rank(core, dst.type, static_cast<u16>(i), &member, &unused_initializer))
 				ASSERT_UNREACHABLE;
 
-			if (is_none(member.value_or_default_id))
+			if (is_none(member.value_or_default))
 				return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
 			const TypeMetrics member_metrics = type_metrics_from_id(core, member.type_id);
 
-			const MutRange<byte> default_dst = dst.bytes.mut_subrange(member.offset, member_metrics.size);
+			byte* const default_dst = dst.bytes.begin() + member.offset;
 
-			const CTValue default_src = forever_value_get(core, get(member.value_or_default_id));
+			const void* default_src = address_from_core_id(core, get(member.value_or_default));
 
-			range::mem_copy(default_dst, default_src.bytes.immut());
+			memcpy(default_dst, default_src, member_metrics.size);
 		}
 
 		return code;
@@ -1114,13 +1124,16 @@ static const Opcode* scope_alloc_typed_member(CoreData* core, const Opcode* code
 
 	core->interp.scope_data.pad_to_alignment(member_metrics.align);
 
+	const u32 member_begin = core->interp.scope_data.used();
+
 	byte* const member_value = core->interp.scope_data.reserve(static_cast<u32>(member_metrics.size));
 
 	ScopeMember* const member = core->interp.scope_members.reserve();
-	member->offset = static_cast<u32>(member_value - core->interp.scope_data.begin());
+	member->begin = member_begin;
 	member->size = static_cast<u32>(member_metrics.size);
 	member->align = member_metrics.align;
 	member->is_mut = is_mut;
+	member->is_closure_member = false;
 	member->type = type;
 
 	const MutRange<byte> bytes = MutRange<byte>{ member_value, member_metrics.size };
@@ -1140,7 +1153,13 @@ static void scope_pop(CoreData* core) noexcept
 
 	if (scope.first_member_index != core->interp.scope_members.used())
 	{
-		const u32 scope_data_begin = core->interp.scope_members.begin()[scope.first_member_index].offset;
+		ASSERT_OR_IGNORE(scope.first_member_index < core->interp.scope_members.used());
+
+		ScopeMember* first_member = core->interp.scope_members.begin() + scope.first_member_index;
+
+		ASSERT_OR_IGNORE(!first_member->is_closure_member);
+
+		const u32 scope_data_begin = first_member->begin;
 
 		core->interp.scope_members.pop_to(scope.first_member_index);
 
@@ -1218,7 +1237,9 @@ static CTValue get_builtin_param_raw(CoreData* core, u8 rank) noexcept
 
 	ScopeMember* const member = core->interp.scope_members.begin() + scope->first_member_index + rank;
 
-	const MutRange<byte> bytes{ core->interp.scope_data.begin() + member->offset, member->size };
+	ASSERT_OR_IGNORE(!member->is_closure_member);
+
+	const MutRange<byte> bytes{ core->interp.scope_data.begin() + member->begin, member->size };
 
 	return CTValue{ bytes, member->align, member->is_mut, member->type };
 }
@@ -1728,12 +1749,15 @@ static const Opcode* handle_scope_alloc_untyped(CoreData* core, const Opcode* co
 
 	core->interp.scope_data.pad_to_alignment(top->align);
 
+	const u32 begin = core->interp.scope_data.used();
+
 	byte* const member_value = core->interp.scope_data.reserve(static_cast<u32>(top->bytes.count()));
 
-	member->offset = static_cast<u32>(member_value - core->interp.scope_data.begin());
+	member->begin = begin;
 	member->size = static_cast<u32>(top->bytes.count());
 	member->align = top->align;
 	member->is_mut = is_mut;
+	member->is_closure_member = false;
 	member->type = top->type;
 
 	memcpy(member_value, top->bytes.begin(), top->bytes.count());
@@ -1751,18 +1775,18 @@ static const Opcode* handle_file_global_alloc_prepare(CoreData* core, const Opco
 
 	code = code_attach(code, &is_mut);
 
-	GlobalCompositeIndex file_index;
+	GlobalCompositeId file_id;
 
-	code = code_attach(code, &file_index);
+	code = code_attach(code, &file_id);
 
 	u16 rank;
 
 	code = code_attach(code, &rank);
 
-	global_composite_value_alloc_prepare(core, file_index, rank, is_mut);
+	global_composite_value_alloc_prepare(core, file_id, rank, is_mut);
 
 	GlobalInitialization* const init = core->interp.global_initializations.reserve();
-	init->file_index = file_index;
+	init->file_id = file_id;
 	init->rank = rank;
 
 	return code;
@@ -1776,7 +1800,7 @@ static const Opcode* handle_global_alloc_complete(CoreData* core, const Opcode* 
 
 	const GlobalInitialization init = core->interp.global_initializations.end()[-1];
 
-	global_composite_value_alloc_initialized_complete(core, init.file_index, init.rank);
+	global_composite_value_alloc_uninitialized_complete(core, init.file_id, init.rank);
 
 	core->interp.global_initializations.pop_by(1);
 
@@ -1808,13 +1832,15 @@ static const Opcode* handle_global_alloc_typed(CoreData* core, const Opcode* cod
 
 	TypeId file_type;
 
-	const ForeverCTValue value = global_composite_value_alloc_uninitialized(core, init.file_index, init.rank, member_type, member_metrics, &file_type);
+	const CTValue value = global_composite_value_alloc_uninitialized(core, init.file_id, init.rank, member_type, member_metrics, &file_type);
 
-	type_complete_file_composite_member(core, file_type, init.rank, member_type, value.id);
+	const CoreId value_id = core_id_from_address(core, value.bytes.begin());
+
+	type_complete_file_composite_member(core, file_type, init.rank, member_type, value_id);
 
 	core->interp.values.pop_by(1);
 
-	core->interp.write_ctxs.append(value.value);
+	core->interp.write_ctxs.append(value);
 
 	return code;
 }
@@ -1833,7 +1859,9 @@ static const Opcode* handle_global_alloc_untyped(CoreData* core, const Opcode* c
 
 	TypeId file_type;
 
-	const ForeverValueId value_id = global_composite_value_alloc_initialized(core, init.file_index, init.rank, *top, &file_type);
+	const CTValue value = global_composite_value_alloc_initialized(core, init.file_id, init.rank, *top, &file_type);
+
+	const CoreId value_id = core_id_from_address(core, value.bytes.begin());
 
 	type_complete_file_composite_member(core, file_type, init.rank, top->type, value_id);
 
@@ -1859,7 +1887,7 @@ static const Opcode* handle_load_scope(CoreData* core, const Opcode* code, CTVal
 {
 	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
-	u16 out;
+	u8 out;
 
 	code = code_attach(code, &out);
 
@@ -1875,7 +1903,11 @@ static const Opcode* handle_load_scope(CoreData* core, const Opcode* code, CTVal
 
 	ScopeMember* const member = core->interp.scope_members.begin() + scope->first_member_index + rank;
 
-	CTValue loaded_value{MutRange<byte>{ core->interp.scope_data.begin() + member->offset, member->size }, member->align, member->is_mut, member->type };
+	ASSERT_OR_IGNORE(!member->is_closure_member);
+
+	byte* const begin = core->interp.scope_data.begin() + member->begin;
+
+	CTValue loaded_value{MutRange<byte>{ begin, member->size }, member->align, member->is_mut, member->type };
 
 	return push_location_value(core, code, write_ctx, loaded_value);
 }
@@ -1884,25 +1916,25 @@ static const Opcode* handle_load_global(CoreData* core, const Opcode* code, CTVa
 {
 	const Opcode* const code_activation = code;
 
-	GlobalCompositeIndex index;
+	GlobalCompositeId file_id;
 
-	code = code_attach(code, &index);
+	code = code_attach(code, &file_id);
 
 	u16 rank;
 
 	code = code_attach(code, &rank);
 
-	ForeverCTValue global_value;
+	CTValue global_value;
 
 	OpcodeId global_code;
 
-	const GlobalFileValueState state = global_composite_value_get(core, index, rank, &global_value, &global_code);
+	const GlobalCompositeValueState state = global_composite_value_get(core, file_id, rank, &global_value, &global_code);
 
-	if (state == GlobalFileValueState::Complete)
+	if (state == GlobalCompositeValueState::Complete)
 	{
-		return push_location_value(core, code, write_ctx, global_value.value);
+		return push_location_value(core, code, write_ctx, global_value);
 	}
-	else if (state == GlobalFileValueState::Uninitialized)
+	else if (state == GlobalCompositeValueState::Uninitialized)
 	{
 		// Push back the write_ctx if we have one, so it's still there on the
 		// next go around.
@@ -1917,7 +1949,7 @@ static const Opcode* handle_load_global(CoreData* core, const Opcode* code, CTVa
 	}
 	else
 	{
-		ASSERT_OR_IGNORE(state == GlobalFileValueState::Initializing);
+		ASSERT_OR_IGNORE(state == GlobalCompositeValueState::Initializing);
 
 		return record_interpreter_error(core, code, CompileError::CyclicGlobalInitializerDependency);
 	}
@@ -1968,7 +2000,13 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 		{
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
-			CTValue value = forever_value_get(core, get(info.value_or_default_id));
+			const TypeMetrics metrics = type_metrics_from_id(core, info.type_id);
+
+			byte* const begin = static_cast<byte*>(address_from_core_id(core, get(info.value_or_default)));
+
+			const MutRange<byte> bytes{ begin, metrics.size };
+
+			const CTValue value{ bytes, metrics.align, info.is_mut, info.type_id };
 
 			return poppush_location_value(core, code, write_ctx, value);
 		}
@@ -1980,7 +2018,9 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 
 			const MutRange<byte> bytes = top->bytes.mut_subrange(info.offset, metrics.size);
 
-			return poppush_location_value(core, code, write_ctx, CTValue{ bytes, metrics.align, info.is_mut, info.type_id });
+			const CTValue value{ bytes, metrics.align, info.is_mut, info.type_id };
+
+			return poppush_location_value(core, code, write_ctx, value);
 		}
 	}
 	else if (type_tag == TypeTag::Type)
@@ -2007,7 +2047,13 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 		{
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
-			CTValue value = forever_value_get(core, get(info.value_or_default_id));
+			const TypeMetrics metrics = type_metrics_from_id(core, info.type_id);
+
+			byte* const begin = static_cast<byte*>(address_from_core_id(core, get(info.value_or_default)));
+
+			const MutRange<byte> bytes{ begin, metrics.size };
+
+			const CTValue value{ bytes, metrics.align, info.is_mut, info.type_id };
 
 			return poppush_location_value(core, code, write_ctx, value);
 		}
@@ -2036,7 +2082,13 @@ static const Opcode* handle_load_closure(CoreData* core, const Opcode* code, CTV
 
 	const ScopeMember* const member = core->interp.closure_members.begin() + static_cast<u32>(closure) + rank;
 
-	const CTValue closure_value = forever_value_get(core, static_cast<ForeverValueId>(member->offset));
+	ASSERT_OR_IGNORE(member->is_closure_member);
+
+	byte* const begin = static_cast<byte*>(address_from_core_id(core, static_cast<CoreId>(member->begin)));
+
+	const MutRange<byte> bytes{ begin, member->size };
+
+	const CTValue closure_value{ bytes, member->align, member->is_mut, member->type };
 
 	return push_location_value(core, code, write_ctx, closure_value);
 }
@@ -2152,7 +2204,7 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 		TypeId parameter_type;
 
-		Maybe<ForeverValueId> parameter_default;
+		Maybe<CoreId> parameter_default;
 
 		if (parameter_flags.has_type && parameter_flags.has_default)
 		{
@@ -2169,9 +2221,14 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 			ASSERT_OR_IGNORE(type_is_equal(core, parameter_type, default_value->type));
 
-			const ForeverValueId default_id = forever_value_alloc_initialized(core, false, *default_value);
+			const Maybe<void*> allocation = comp_heap_alloc(core, default_value->bytes.count(), default_value->align);
 
-			parameter_default = some(default_id);
+			if (is_none(allocation))
+				TODO("Implement GC traversal.");
+
+			memcpy(get(allocation), default_value->bytes.begin(), default_value->bytes.count());
+
+			parameter_default = some(core_id_from_address(core, get(allocation)));
 		}
 		else if (parameter_flags.has_type)
 		{
@@ -2184,7 +2241,7 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 			parameter_type = *value_as<TypeId>(type_value);
 
-			parameter_default = none<ForeverValueId>();
+			parameter_default = none<CoreId>();
 		}
 		else
 		{
@@ -2196,15 +2253,20 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 			parameter_type = default_value->type;
 
-			const ForeverValueId default_id = forever_value_alloc_initialized(core, false, *default_value);
+			const Maybe<void*> allocation = comp_heap_alloc(core, default_value->bytes.count(), default_value->align);
 
-			parameter_default = some(default_id);
+			if (is_none(allocation))
+				TODO("Implement GC traversal.");
+
+			memcpy(get(allocation), default_value->bytes.begin(), default_value->bytes.count());
+
+			parameter_default = some(core_id_from_address(core, get(allocation)));
 		}
 
 		SignatureParameterInit init{};
 		init.name = parameter_name;
 		init.complete.type_id = parameter_type;
-		init.complete.default_id = parameter_default;
+		init.complete.default_value = parameter_default;
 		init.is_templated = false;
 		init.is_eval = parameter_flags.is_eval;
 		init.is_mut = parameter_flags.is_mut;
@@ -2294,7 +2356,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 		{
 			TypeId parameter_type;
 
-			Maybe<ForeverValueId> parameter_default;
+			Maybe<CoreId> parameter_default;
 
 			if (parameter_flags.has_type && parameter_flags.has_default)
 			{
@@ -2311,12 +2373,17 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 				const TypeMetrics parameter_metrics = type_metrics_from_id(core, parameter_type);
 
-				const ForeverCTValue default_dst = forever_value_alloc_uninitialized(core, false, parameter_type, parameter_metrics);
+				const Maybe<void*> allocation = comp_heap_alloc(core, parameter_metrics.size, parameter_metrics.align);
 
-				if (convert_into(core, code, *default_value, default_dst.value) == nullptr)
+				if (is_none(allocation))
+					TODO("Implement GC traversal.");
+
+				const CTValue default_dst{ MutRange<byte>{ static_cast<byte*>(get(allocation)), parameter_metrics.size }, parameter_metrics.align, true, parameter_type };
+
+				if (convert_into(core, code, *default_value, default_dst) == nullptr)
 					return nullptr;
 
-				parameter_default = some(default_dst.id);
+				parameter_default = some(core_id_from_address(core, get(allocation)));
 			}
 			else if (parameter_flags.has_type)
 			{
@@ -2329,7 +2396,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 				parameter_type = *value_as<TypeId>(type_value);
 
-				parameter_default = none<ForeverValueId>();
+				parameter_default = none<CoreId>();
 			}
 			else
 			{
@@ -2341,13 +2408,18 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 				parameter_type = default_value->type;
 
-				const ForeverValueId default_id = forever_value_alloc_initialized(core, false, *default_value);
+				const Maybe<void*> allocation = comp_heap_alloc(core, default_value->bytes.count(), default_value->align);
 
-				parameter_default = some(default_id);
+				if (is_none(allocation))
+					TODO("Implement GC traversal.");
+
+				memcpy(get(allocation), default_value->bytes.begin(), default_value->bytes.count());
+
+				parameter_default = some(core_id_from_address(core, get(allocation)));
 			}
 
 			init.complete.type_id = parameter_type;
-			init.complete.default_id = parameter_default;
+			init.complete.default_value = parameter_default;
 		}
 
 		type_add_signature_parameter(core, signature_type, init);
@@ -2439,7 +2511,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 	if (is_some(info.closure_id))
 		core->interp.active_closures.append(get(info.closure_id));
 
-	OpcodeId* const ordered_callbacks = core->interp.argument_callbacks.reserve(info.parameter_count);
+	Maybe<OpcodeId>* const ordered_callbacks = core->interp.argument_callbacks.reserve(info.parameter_count);
 
 	u64 seen_parameters = 0;
 
@@ -2477,7 +2549,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 		seen_parameters |= parameter_mask;
 
-		ordered_callbacks[parameter_index] = argument_callbacks[i];
+		ordered_callbacks[parameter_index] = some(argument_callbacks[i]);
 
 		parameter_index += 1;
 	}
@@ -2500,10 +2572,10 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 		if (!type_member_info_by_rank(core, signature_type, i, &parameter_info, &unused_initializer))
 			TODO("Handle usage of templated parameter defaults.");
 
-		if (is_none(parameter_info.value_or_default_id))
+		if (is_none(parameter_info.value_or_default))
 			return record_interpreter_error(core, code, CompileError::CallMissingArg);
 
-		ordered_callbacks[i] = static_cast<OpcodeId>(-static_cast<s32>(get(parameter_info.value_or_default_id)));
+		ordered_callbacks[i] = none<OpcodeId>();
 	}
 
 	ArgumentPack* const argument_pack = core->interp.argument_packs.reserve();
@@ -2549,68 +2621,79 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 
 	if (argument_pack->index < argument_pack->count)
 	{
-		// If there are still arguments that have not been processed, then
-		// we check whether it is templated. If so, we transfer control to
-		// the template callback and mark the parameter as non-templated so
-		// we know not to do so again on the next round through. Otherwise
-		// we transfer control to the argument value callback, and advance
-		// the argument pack's index since we are done with the current
-		// argument.
+		// If there are still arguments that have not been processed, then we
+		// check whether it is templated. If so, we transfer control to the
+		// template callback and mark the parameter as non-templated so we know
+		// not to do so again on the next round through. Otherwise we transfer
+		// control to the argument value callback, and advance the argument
+		// pack's index since we are done with the current argument.
 
 		MemberInfo parameter_info;
 
 		OpcodeId parameter_initializer_id;
 
-		OpcodeId callback_id;
-
-		// We loop until we get to a parameter that has an argument. For all
-		// the preceding ones, we set them to their default.
-		// Note that default values are recorded by their negated
-		// `ForeverValueId` being put into the initializer `OpcodeId`.
-		while (true)
+		if (!type_member_info_by_rank(core, argument_pack->signature_type, argument_pack->index, &parameter_info, &parameter_initializer_id))
 		{
-			// If the parameter is incomplete it is templated, so we evaluate
-			// its initializer in the callee's scope.
+			// The parameter is incomplete it is templated, so we evaluate its
+			// initializer in the callee's scope.
 			// Since the initializer must not pop the callee scope as we need
 			// it later, we set `has_just_completed_template_member` so that we
 			// deactivate the scope on the next round through `handle_call`.
-			if (!type_member_info_by_rank(core, argument_pack->signature_type, argument_pack->index, &parameter_info, &parameter_initializer_id))
-			{
-				// Set `temporary_data_used` to the nonsense value 0, since
-				// this will never really be properly "popped", just
-				// temporarily deactivated by removing it from the scope stack
-				// without any effect on the scope members and temporary data
-				// stacks.
-				Scope* const signature_scope = core->interp.scopes.reserve();
-				signature_scope->first_member_index = argument_pack->scope_first_member_index;
-				signature_scope->temporary_data_used = 0;
 
-				argument_pack->has_just_completed_template_parameter = true;
+			// Set `temporary_data_used` to the nonsense value 0, since
+			// this will never really be properly "popped", just
+			// temporarily deactivated by removing it from the scope stack
+			// without any effect on the scope members and temporary data
+			// stacks.
+			Scope* const signature_scope = core->interp.scopes.reserve();
+			signature_scope->first_member_index = argument_pack->scope_first_member_index;
+			signature_scope->temporary_data_used = 0;
 
-				push_activation(core, code_activation - 1);
+			argument_pack->has_just_completed_template_parameter = true;
 
-				return opcode_from_id(core, parameter_initializer_id);
-			}
+			push_activation(core, code_activation - 1);
 
-			if (scope_alloc_typed_member(core, code, parameter_info.is_mut, parameter_info.type_id) == nullptr)
-				return nullptr;
+			return opcode_from_id(core, parameter_initializer_id);
+		}
+		
+		if (scope_alloc_typed_member(core, code, parameter_info.is_mut, parameter_info.type_id) == nullptr)
+			return nullptr;
 
-			callback_id = core->interp.argument_callbacks.end()[-argument_pack->count + argument_pack->index];
+		const Maybe<OpcodeId> callback_id = core->interp.argument_callbacks.end()[-argument_pack->count + argument_pack->index];
 
-			argument_pack->index += 1;
+		argument_pack->index += 1;
 
-			if (static_cast<s32>(callback_id) >= 0)
-				break;
+		if (is_some(callback_id))
+		{
+			// We have a parameter with a supplied argument. We need to
+			// evaluate the callback into the previously allocated callee-local
+			// slot, and then return to control back to this instruction to
+			// process the next callback or default.
 
-			CTValue default_value = forever_value_get(core, static_cast<ForeverValueId>(-static_cast<s32>(callback_id)));
+			push_activation(core, code_activation - 1);
+
+			return opcode_from_id(core, get(callback_id));
+		}
+		else
+		{
+			// We are dealing with a parameter that had no argument supplied.
+			// Thus, it has a default which we need to copy into the allocated
+			// callee-local slot, and then proceed to the next parameter by
+			// transferring control to ourselves.
+
+			const TypeMetrics parameter_metrics = type_metrics_from_id(core, parameter_info.type_id);
+
+			byte* const begin = static_cast<byte*>(address_from_core_id(core, get(parameter_info.value_or_default)));
+
+			const MutRange<byte> bytes{ begin, parameter_metrics.size };
+
+			const CTValue default_value{ bytes, parameter_metrics.align, false, parameter_info.type_id };
 
 			if (convert_into(core, code, default_value, core->interp.write_ctxs.end()[-1]) == nullptr)
 				ASSERT_UNREACHABLE;
+
+			return code_activation - 1;
 		}
-
-		push_activation(core, code_activation - 1);
-
-		return opcode_from_id(core, callback_id);
 	}
 	else if (argument_pack->has_templated_return_type)
 	{
@@ -2764,7 +2847,7 @@ static const Opcode* handle_complete_param_typed_no_default(CoreData* core, cons
 
 	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
 
-	type_complete_templated_signature_parameter(core, argument_pack->signature_type, rank, parameter_type, none<ForeverValueId>());
+	type_complete_templated_signature_parameter(core, argument_pack->signature_type, rank, parameter_type, none<CoreId>());
 
 	return code;
 }
@@ -2798,14 +2881,23 @@ static const Opcode* handle_complete_param_typed_with_default(CoreData* core, co
 
 	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
 
-	ForeverCTValue default_dst = forever_value_alloc_uninitialized(core, false, parameter_type, parameter_metrics);
+	const Maybe<void*> allocation = comp_heap_alloc(core, parameter_metrics.size, parameter_metrics.align);
 
-	if (convert_into(core, code, *default_value, default_dst.value) == nullptr)
+	if (is_none(allocation))
+		TODO("Implement GC traversal.");
+
+	const MutRange<byte> bytes{ static_cast<byte*>(get(allocation)), parameter_metrics.size };
+
+	const CTValue default_dst{ bytes, parameter_metrics.align, true, parameter_type };
+
+	if (convert_into(core, code, *default_value, default_dst) == nullptr)
 		return nullptr;
 
-	type_complete_templated_signature_parameter(core, argument_pack->signature_type, rank, parameter_type, some(default_dst.id));
+	const CoreId default_id = core_id_from_address(core, get(allocation));
 
-	core->interp.write_ctxs.append(default_dst.value);
+	type_complete_templated_signature_parameter(core, argument_pack->signature_type, rank, parameter_type, some(default_id));
+
+	core->interp.write_ctxs.append(default_dst);
 
 	core->interp.values.pop_by(2);
 
@@ -2828,7 +2920,14 @@ static const Opcode* handle_complete_param_untyped(CoreData* core, const Opcode*
 
 	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
 
-	const ForeverValueId default_id = forever_value_alloc_initialized(core, false, *default_value);
+	const Maybe<void*> allocation = comp_heap_alloc(core, default_value->bytes.count(), default_value->align);
+
+	if (is_none(allocation))
+		TODO("Implement GC traversal.");
+
+	memcpy(get(allocation), default_value->bytes.begin(), default_value->bytes.count());
+
+	const CoreId default_id = core_id_from_address(core, get(allocation));
 
 	type_complete_templated_signature_parameter(core, argument_pack->signature_type, rank, default_value->type, some(default_id));
 
@@ -3151,16 +3250,16 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 			if (defaulted_member_info.is_global)
 				continue;
 
-			if (is_none(defaulted_member_info.value_or_default_id))
+			if (is_none(defaulted_member_info.value_or_default))
 				return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
 			const TypeMetrics defaulted_member_metrics = type_metrics_from_id(core, defaulted_member_info.type_id);
 
-			const MutRange<byte> default_dst = write_ctx->bytes.mut_subrange(defaulted_member_info.offset, defaulted_member_metrics.size);
+			void* const default_dst = write_ctx->bytes.begin() + defaulted_member_info.offset;
 
-			const Range<byte> default_src = forever_value_get(core, get(defaulted_member_info.value_or_default_id)).bytes.immut();
+			const void* const default_src = address_from_core_id(core, get(defaulted_member_info.value_or_default));
 
-			range::mem_copy(default_dst, default_src);
+			memcpy(default_dst, default_src, defaulted_member_metrics.size);
 		}
 
 		return code;
@@ -3236,16 +3335,16 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 		if (defaulted_member_info.is_global)
 			continue;
 
-		if (is_none(defaulted_member_info.value_or_default_id))
+		if (is_none(defaulted_member_info.value_or_default))
 			return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
 		const TypeMetrics defaulted_member_metrics = type_metrics_from_id(core, defaulted_member_info.type_id);
 
-		const MutRange<byte> default_dst = write_ctx->bytes.mut_subrange(defaulted_member_info.offset, defaulted_member_metrics.size);
+		void* const default_dst = write_ctx->bytes.begin() + defaulted_member_info.offset;
 
-		const Range<byte> default_src = forever_value_get(core, get(defaulted_member_info.value_or_default_id)).bytes.immut();
+		const void* const default_src = address_from_core_id(core, get(defaulted_member_info.value_or_default));
 
-		range::mem_copy(default_dst, default_src);
+		memcpy(default_dst, default_src, defaulted_member_metrics.size);
 	}
 
 	return code;
@@ -3284,7 +3383,7 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 		UserCompositeMemberInit init{};
 		init.name = name;
 		init.type_id = member_type;
-		init.default_id = none<ForeverValueId>();
+		init.default_value = none<CoreId>();
 		init.is_pub = true;
 		init.is_mut = true;
 		init.offset = size;
@@ -4819,11 +4918,18 @@ static const Opcode* handle_value_float(CoreData* core, const Opcode* code, CTVa
 
 static const Opcode* handle_value_string(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	ForeverValueId value_id;
+	byte* value_begin;
+	code = code_attach(code, &value_begin);
 
-	code = code_attach(code, &value_id);
+	u32 value_size;
+	code = code_attach(code, &value_size);
 
-	CTValue value = forever_value_get(core, value_id);
+	TypeId type;
+	code = code_attach(code, &type);
+
+	const MutRange<byte> bytes{ value_begin, value_size };
+
+	const CTValue value{ bytes, 1, false, type };
 
 	return push_temporary_value(core, code, write_ctx, value);
 }
@@ -4993,7 +5099,7 @@ static const Opcode* handle_impl_member_alloc_complete(CoreData* core, const Opc
 
 
 
-static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, GlobalCompositeIndex file_index) noexcept
+static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, GlobalCompositeId file_id) noexcept
 {
 	AstDirectChildIterator it = direct_children_of(ast);
 
@@ -5010,7 +5116,7 @@ static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, Global
 
 		ASSERT_OR_IGNORE(node->tag == AstTag::Definition);
 
-		const Maybe<Opcode*> initializer = opcodes_from_file_member_ast(core, node, file_index, rank);
+		const Maybe<Opcode*> initializer = opcodes_from_file_member_ast(core, node, file_id, rank);
 
 		if (is_none(initializer))
 		{
@@ -5038,7 +5144,7 @@ static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, Global
 
 		type_add_file_composite_member(core, file_type, init);
 
-		global_composite_value_set_initializer(core, file_index, rank, initializer_id);
+		global_composite_value_set_initializer(core, file_id, rank, initializer_id);
 
 		rank += 1;
 	}
@@ -5077,15 +5183,15 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 
 	const TypeId type = type_create_file_composite(core, static_cast<u16>(root_data->member_count), root_source_id);
 
-	const GlobalCompositeIndex file_index = global_composite_reserve(core, type, static_cast<u16>(root_data->member_count));
+	const GlobalCompositeId file_id = global_composite_reserve(core, type, static_cast<u16>(root_data->member_count));
 
 	read.source_file->ast = id_from_ast_node(core, ast);
 	read.source_file->type = type;
-	read.source_file->file_index = file_index;
+	read.source_file->file_id = file_id;
 
 	if (is_prelude)
 	{
-		if (!set_prelude_scope(core, ast, file_index))
+		if (!set_prelude_scope(core, ast, file_id))
 		{
 			read.source_file->has_error = true;
 
@@ -5094,7 +5200,7 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 	}
 	else
 	{
-		if (!resolve_names(core, ast, file_index))
+		if (!resolve_names(core, ast, file_id))
 		{
 			read.source_file->has_error = true;
 
@@ -5105,7 +5211,7 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 	if (is_some(core->interp.imported_asts_log_file))
 		log_ast(core, ast);
 
-	if (!type_from_ast(core, ast, type, file_index))
+	if (!type_from_ast(core, ast, type, file_id))
 	{
 		read.source_file->has_error = true;
 
@@ -5330,7 +5436,7 @@ static TypeId make_func_type_from_array(CoreData* core, TypeId return_type, u8 p
 		SignatureParameterInit init{};
 		init.name = params[i].name;
 		init.complete.type_id = params[i].type;
-		init.complete.default_id = none<ForeverValueId>();
+		init.complete.default_value = none<CoreId>();
 		init.is_mut = false;
 		init.is_eval = params[i].is_comptime_known;
 

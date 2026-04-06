@@ -7,15 +7,14 @@
 #include "../infra/range.hpp"
 #include "../infra/container/reserved_vec.hpp"
 
-struct alignas(8) GlobalFile
-{
-	ForeverValueId first_value_id;
-
-	TypeId type_id;
-};
-
 struct alignas(8) ForeverValue
 {
+	void* data_begin;
+
+	u32 data_size;
+
+	u32 data_align;
+
 	union
 	{
 		TypeId type;
@@ -23,73 +22,53 @@ struct alignas(8) ForeverValue
 		OpcodeId initializer;
 	};
 
-	u32 data_offset;
+	GlobalCompositeValueState state;
 
-	u32 data_size;
-
-	u32 state : 2;
-
-	u32 is_mut : 1;
-
-	u32 data_align : 29;
+	bool is_mut;
 };
 
-
-
-static constexpr u32 FILES_RESERVE_SIZE = 65536;
-
-static constexpr u32 FILES_COMMIT_INCREMENT_COUNT = 1024;
-
-static constexpr u32 FOREVER_VALUES_RESERVE_SIZE = 1 << 22;
-
-static constexpr u32 FOREVER_VALUES_COMMIT_INCREMENT_COUNT = 65536 / sizeof(ForeverValue);
-
-static constexpr u32 DATA_RESERVE_SIZE = 1 << 28;
-
-static constexpr u32 DATA_COMMIT_INCREMENT_COUNT = 65536;
-
-
-
-static ForeverValue* forever_value_from_id(CoreData* core, ForeverValueId id) noexcept
+struct alignas(8) GlobalFile
 {
-	ASSERT_OR_IGNORE(id != ForeverValueId::INVALID && static_cast<u32>(id) < core->globals.forever_values.used());
+	TypeId type_id;
 
-	return core->globals.forever_values.begin() + static_cast<u32>(id);
+	u32 member_count;
+	
+	u64 unused_[2];
+
+	ForeverValue members[];
+};
+
+static_assert(sizeof(ForeverValue) == 24);
+
+static_assert(sizeof(GlobalFile) == 24);
+
+
+
+static constexpr u32 FILES_RESERVE_SIZE = sizeof(ForeverValue) << 20;
+
+static constexpr u32 FILES_COMMIT_INCREMENT_COUNT = 4096;
+
+
+
+static GlobalFile* global_file_from_index(CoreData* core, GlobalCompositeId id) noexcept
+{
+	ASSERT_OR_IGNORE(id != GlobalCompositeId::INVALID && static_cast<u32>(id) < core->globals.files.used());
+
+	return core->globals.files.begin() + static_cast<u16>(id);
 }
 
-static GlobalFile* global_file_from_index(CoreData* core, GlobalCompositeIndex index) noexcept
+static ForeverValue* forever_value_from_file_and_rank(GlobalFile* file, u16 rank) noexcept
 {
-	ASSERT_OR_IGNORE(index != GlobalCompositeIndex::INVALID && static_cast<u16>(index) < core->globals.files.used());
+	ASSERT_OR_IGNORE(rank < file->member_count);
 
-	return core->globals.files.begin() + static_cast<u16>(index);
+	return &file->members[rank];
 }
 
-static ForeverValueId forever_value_id_from_file_and_rank([[maybe_unused]] CoreData* core, const GlobalFile* file, u16 rank) noexcept
+static ForeverValue* forever_value_from_global_composite_index_and_rank(CoreData* core, GlobalCompositeId id, u16 rank) noexcept
 {
-	ASSERT_OR_IGNORE(static_cast<u32>(file->first_value_id) + rank < core->globals.forever_values.used());
+	GlobalFile* const file = global_file_from_index(core, id);
 
-	return static_cast<ForeverValueId>(static_cast<u32>(file->first_value_id) + rank);
-}
-
-static ForeverValue* forever_value_from_file_and_rank(CoreData* core, const GlobalFile* file, u16 rank) noexcept
-{
-	const ForeverValueId id = forever_value_id_from_file_and_rank(core, file, rank);
-
-	return forever_value_from_id(core, id);
-}
-
-static ForeverValueId forever_value_id_from_global_composite_index_and_rank(CoreData* core, GlobalCompositeIndex index, u16 rank) noexcept
-{
-	const GlobalFile* const file = global_file_from_index(core, index);
-
-	return forever_value_id_from_file_and_rank(core, file, rank);
-}
-
-static ForeverValue* forever_value_from_global_composite_index_and_rank(CoreData* core, GlobalCompositeIndex index, u16 rank) noexcept
-{
-	const GlobalFile* const file = global_file_from_index(core, index);
-
-	return forever_value_from_file_and_rank(core, file, rank);
+	return forever_value_from_file_and_rank(file, rank);
 }
 
 
@@ -103,81 +82,63 @@ MemoryRequirements global_value_pool_memory_requirements([[maybe_unused]] const 
 {
 	MemoryRequirements reqs;
 
-	reqs.private_reserve = DATA_RESERVE_SIZE;
-	reqs.id_requirements_count = 2;
+	reqs.private_reserve = 0;
+	reqs.id_requirements_count = 1;
 	reqs.id_requirements[0].reserve = FILES_RESERVE_SIZE;
 	reqs.id_requirements[0].alignment = alignof(GlobalFile);
-	reqs.id_requirements[1].reserve = FOREVER_VALUES_RESERVE_SIZE;
-	reqs.id_requirements[1].alignment = alignof(ForeverValue);
 
 	return reqs;
 }
 
 void global_value_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
-	ASSERT_OR_IGNORE(allocation.ids[0].count() == FILES_RESERVE_SIZE);
-	
-	ASSERT_OR_IGNORE(allocation.ids[1].count() == FOREVER_VALUES_RESERVE_SIZE);
+	ASSERT_OR_IGNORE(allocation.private_data.count() == 0);
 
-	ASSERT_OR_IGNORE(allocation.private_data.count() == DATA_RESERVE_SIZE);
+	ASSERT_OR_IGNORE(allocation.ids[0].count() == FILES_RESERVE_SIZE);
 
 	GlobalValuePool* const globals = &core->globals;
 
 	globals->files.init(allocation.ids[0], FILES_COMMIT_INCREMENT_COUNT);
 
-	globals->forever_values.init(allocation.ids[1], FOREVER_VALUES_COMMIT_INCREMENT_COUNT);
-
-	globals->data.init(allocation.private_data, DATA_COMMIT_INCREMENT_COUNT);
-
 	// Reserve `GlobalCompositeIndex::INVALID`.
 	(void) globals->files.reserve();
-
-	// Reserve `ForeverValueId::INVALID`.
-	(void) globals->forever_values.reserve();
 }
 
 
 
-GlobalCompositeIndex global_composite_reserve(CoreData* core, TypeId type_id, u16 definition_count) noexcept
+GlobalCompositeId global_composite_reserve(CoreData* core, TypeId type_id, u16 definition_count) noexcept
 {
-	GlobalFile file;
-	file.first_value_id = static_cast<ForeverValueId>(core->globals.forever_values.used());
-	file.type_id = type_id;
+	GlobalFile* const file = core->globals.files.reserve(1 + definition_count);
 
-	core->globals.files.append(file);
+	file->type_id = type_id;
+	file->member_count = definition_count;
 
-	core->globals.forever_values.reserve(definition_count);
-
-	return static_cast<GlobalCompositeIndex>(core->globals.files.used() - 1);
+	return static_cast<GlobalCompositeId>(file - core->globals.files.begin());
 }
 
-void global_composite_value_set_initializer(CoreData* core, GlobalCompositeIndex index, u16 rank, OpcodeId initializer) noexcept
+void global_composite_value_set_initializer(CoreData* core, GlobalCompositeId id, u16 rank, OpcodeId initializer) noexcept
 {
-	ForeverValue* const value = forever_value_from_global_composite_index_and_rank(core, index, rank);
+	ForeverValue* const value = forever_value_from_global_composite_index_and_rank(core, id, rank);
 
 	ASSERT_OR_IGNORE(value->initializer == OpcodeId::INVALID);
 
 	value->initializer = initializer;
-	value->state = static_cast<u8>(GlobalFileValueState::Uninitialized);
+	value->state = GlobalCompositeValueState::Uninitialized;
 }
 
-GlobalFileValueState global_composite_value_get(CoreData* core, GlobalCompositeIndex index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept
+GlobalCompositeValueState global_composite_value_get(CoreData* core, GlobalCompositeId id, u16 rank, CTValue* out_value, OpcodeId* out_code) noexcept
 {
-	const ForeverValueId value_id = forever_value_id_from_global_composite_index_and_rank(core, index, rank);
+	ForeverValue* const value = forever_value_from_global_composite_index_and_rank(core, id, rank);
 
-	const ForeverValue* const value = forever_value_from_id(core, value_id);
+	const GlobalCompositeValueState state = static_cast<GlobalCompositeValueState>(value->state);
 
-	const GlobalFileValueState state = static_cast<GlobalFileValueState>(value->state);
-
-	if (state == GlobalFileValueState::Complete)
+	if (state == GlobalCompositeValueState::Complete)
 	{
-		const MutRange<byte> bytes{ core->globals.data.begin() + value->data_offset, value->data_size };
+		const MutRange<byte> bytes{ static_cast<byte*>(value->data_begin), value->data_size };
 
-		const CTValue ct_value{ bytes, value->data_align, static_cast<bool>(value->is_mut), value->type };
-
-		*out_value = ForeverCTValue{ ct_value, value_id };
+		*out_value = CTValue{ bytes, value->data_align, static_cast<bool>(value->is_mut), value->type };
 	}
-	else if (state == GlobalFileValueState::Uninitialized)
+	else if (state == GlobalCompositeValueState::Uninitialized)
 	{
 		ASSERT_OR_IGNORE(value->initializer != OpcodeId::INVALID);
 
@@ -185,151 +146,80 @@ GlobalFileValueState global_composite_value_get(CoreData* core, GlobalCompositeI
 	}
 	else
 	{
-		ASSERT_OR_IGNORE(state == GlobalFileValueState::Initializing);
+		ASSERT_OR_IGNORE(state == GlobalCompositeValueState::Initializing);
 	}
 
 	return state;
 }
 
-void global_composite_value_alloc_prepare(CoreData* core, GlobalCompositeIndex index, u16 rank, bool is_mut) noexcept
+void global_composite_value_alloc_prepare(CoreData* core, GlobalCompositeId id, u16 rank, bool is_mut) noexcept
 {
-	ForeverValue* const value = forever_value_from_global_composite_index_and_rank(core, index, rank);
+	ForeverValue* const value = forever_value_from_global_composite_index_and_rank(core, id, rank);
 
-	ASSERT_OR_IGNORE(static_cast<GlobalFileValueState>(value->state) == GlobalFileValueState::Uninitialized);
+	ASSERT_OR_IGNORE(static_cast<GlobalCompositeValueState>(value->state) == GlobalCompositeValueState::Uninitialized);
 
-	value->state = static_cast<u8>(GlobalFileValueState::Initializing);
+	value->state = GlobalCompositeValueState::Initializing;
 	value->is_mut = is_mut;
 }
 
-ForeverValueId global_composite_value_alloc_initialized(CoreData* core, GlobalCompositeIndex index, u16 rank, CTValue initializer, TypeId* out_file_type) noexcept
+CTValue global_composite_value_alloc_initialized(CoreData* core, GlobalCompositeId id, u16 rank, CTValue initializer, TypeId* out_file_type) noexcept
 {
-	const GlobalFile* const file = global_file_from_index(core, index);
+	GlobalFile* const file = global_file_from_index(core, id);
 
-	const ForeverValueId value_id = forever_value_id_from_file_and_rank(core, file, rank);
+	ForeverValue* const value = forever_value_from_file_and_rank(file, rank);
 
-	ForeverValue* const value = forever_value_from_id(core, value_id);
+	ASSERT_OR_IGNORE(static_cast<GlobalCompositeValueState>(value->state) == GlobalCompositeValueState::Initializing);
 
-	ASSERT_OR_IGNORE(static_cast<GlobalFileValueState>(value->state) == GlobalFileValueState::Initializing);
+	const Maybe<void*> allocation = comp_heap_alloc(core, initializer.bytes.count(), initializer.align);
 
-	core->globals.data.pad_to_alignment(initializer.align);
-
-	const u32 data_offset = core->globals.data.used();
-
-	core->globals.data.reserve(static_cast<u32>(initializer.bytes.count()));
+	if (is_none(allocation))
+		TODO("Implement GC traversal.");
 
 	value->type = initializer.type;
-	value->data_offset = data_offset;
+	value->data_begin = get(allocation);
 	value->data_size = static_cast<u32>(initializer.bytes.count());
-	value->state = static_cast<u8>(GlobalFileValueState::Complete);
+	value->state = GlobalCompositeValueState::Complete;
 	value->data_align = initializer.align;
 
 	*out_file_type = file->type_id;
 
-	memcpy(core->globals.data.begin() + data_offset, initializer.bytes.begin(), initializer.bytes.count());
+	memcpy(get(allocation), initializer.bytes.begin(), initializer.bytes.count());
 
-	return value_id;
+	const MutRange<byte> bytes{ static_cast<byte*>(get(allocation)), initializer.bytes.count() };
+
+	return CTValue{ bytes, value->data_align, value->is_mut, value->type };
 }
 
-ForeverCTValue global_composite_value_alloc_uninitialized(CoreData* core, GlobalCompositeIndex index, u16 rank, TypeId type, TypeMetrics metrics, TypeId* out_file_type) noexcept
+CTValue global_composite_value_alloc_uninitialized(CoreData* core, GlobalCompositeId id, u16 rank, TypeId type, TypeMetrics metrics, TypeId* out_file_type) noexcept
 {
-	const GlobalFile* const file = global_file_from_index(core, index);
+	GlobalFile* const file = global_file_from_index(core, id);
 
-	const ForeverValueId value_id = forever_value_id_from_file_and_rank(core, file, rank);
+	ForeverValue* const value = forever_value_from_file_and_rank(file, rank);
 
-	ForeverValue* const value = forever_value_from_id(core, value_id);
+	ASSERT_OR_IGNORE(static_cast<GlobalCompositeValueState>(value->state) == GlobalCompositeValueState::Initializing);
 
-	ASSERT_OR_IGNORE(static_cast<GlobalFileValueState>(value->state) == GlobalFileValueState::Initializing);
+	const Maybe<void*> allocation = comp_heap_alloc(core, metrics.size, metrics.align);
 
-	core->globals.data.pad_to_alignment(metrics.align);
-
-	const u32 data_offset = core->globals.data.used();
-
-	core->globals.data.reserve(static_cast<u32>(metrics.size));
+	if (is_none(allocation))
+		TODO("Implement GC traversal.");
 
 	value->type = type;
-	value->data_offset = data_offset;
+	value->data_begin = get(allocation);
 	value->data_size = static_cast<u32>(metrics.size);
 	value->data_align = metrics.align;
 
 	*out_file_type = file->type_id;
 
-	const MutRange<byte> bytes{ core->globals.data.begin() + data_offset, metrics.size };
+	const MutRange<byte> bytes{ static_cast<byte*>(get(allocation)), metrics.size };
 
-	const CTValue ct_value{ bytes, metrics.align, value->is_mut, type };
-
-	return ForeverCTValue{ ct_value, value_id };
+	return CTValue{ bytes, metrics.align, value->is_mut, type };
 }
 
-void global_composite_value_alloc_initialized_complete(CoreData* core, GlobalCompositeIndex index, u16 rank) noexcept
+void global_composite_value_alloc_uninitialized_complete(CoreData* core, GlobalCompositeId id, u16 rank) noexcept
 {
-	ForeverValue* const value = forever_value_from_global_composite_index_and_rank(core, index, rank);
+	ForeverValue* const value = forever_value_from_global_composite_index_and_rank(core, id, rank);
 
-	ASSERT_OR_IGNORE(static_cast<GlobalFileValueState>(value->state) == GlobalFileValueState::Initializing);
+	ASSERT_OR_IGNORE(static_cast<GlobalCompositeValueState>(value->state) == GlobalCompositeValueState::Initializing);
 
-	value->state = static_cast<u8>(GlobalFileValueState::Complete);
-}
-
-ForeverValueId forever_value_alloc_initialized(CoreData* core, bool is_mut, CTValue initializer) noexcept
-{
-	const ForeverValueId value_id = static_cast<ForeverValueId>(core->globals.forever_values.used());
-
-	ForeverValue* const value = core->globals.forever_values.reserve();
-
-	core->globals.data.pad_to_alignment(initializer.align);
-
-	const u32 data_offset = core->globals.data.used();
-
-	core->globals.data.reserve(static_cast<u32>(initializer.bytes.count()));
-
-	value->type = initializer.type;
-	value->data_offset = data_offset;
-	value->data_size = static_cast<u32>(initializer.bytes.count());
-	value->state = static_cast<u8>(GlobalFileValueState::Complete);
-	value->is_mut = is_mut;
-	value->data_align = initializer.align;
-	core->globals.forever_values.reserve(static_cast<u32>(initializer.bytes.count()));
-
-	const MutRange<byte> bytes{ core->globals.data.begin() + data_offset, initializer.bytes.count() };
-
-	range::mem_copy(bytes, initializer.bytes.immut());
-
-	return value_id;
-}
-
-ForeverCTValue forever_value_alloc_uninitialized(CoreData* core, bool is_mut, TypeId type, TypeMetrics metrics) noexcept
-{
-	const ForeverValueId forever_value_id = static_cast<ForeverValueId>(core->globals.forever_values.used());
-
-	ForeverValue* const value = core->globals.forever_values.reserve();
-
-	core->globals.data.pad_to_alignment(metrics.align);
-
-	const u32 data_offset = core->globals.data.used();
-
-	core->globals.data.reserve(static_cast<u32>(metrics.size));
-
-	value->type = type;
-	value->data_offset = data_offset;
-	value->data_size = static_cast<u32>(metrics.size);
-	value->state = static_cast<u8>(GlobalFileValueState::Complete);
-	value->is_mut = is_mut;
-	value->data_align = metrics.align;
-	core->globals.forever_values.reserve(static_cast<u32>(metrics.size));
-
-	const MutRange<byte> bytes{ core->globals.data.begin() + data_offset, metrics.size };
-
-	const CTValue ct_value{ bytes, metrics.align, is_mut, type };
-
-	return ForeverCTValue{ ct_value, forever_value_id };
-}
-
-CTValue forever_value_get(CoreData* core, ForeverValueId id) noexcept
-{
-	ASSERT_OR_IGNORE(id != ForeverValueId::INVALID && static_cast<u32>(id) < core->globals.forever_values.used());
-
-	const ForeverValue* const value = core->globals.forever_values.begin() + static_cast<u32>(id);
-
-	const MutRange<byte> bytes{ core->globals.data.begin() + value->data_offset, value->data_size };
-
-	return CTValue{ bytes, value->data_align, static_cast<bool>(value->is_mut), value->type };
+	value->state = GlobalCompositeValueState::Complete;
 }

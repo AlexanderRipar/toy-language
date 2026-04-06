@@ -743,7 +743,7 @@ static void emit_signature_closure_values(CoreData* core, AstNode* node, const C
 		if (entry.source_is_closure)
 			emit_opcode(core, Opcode::LoadClosure, false, node, entry.source_rank);
 		else
-			emit_opcode(core, Opcode::LoadScope, false, node, static_cast<u16>(entry.source_out), entry.source_rank);
+			emit_opcode(core, Opcode::LoadScope, false, node, entry.source_out, entry.source_rank);
 	}
 }
 
@@ -1759,12 +1759,14 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	{
 		const NameBinding binding = attachment_of<AstIdentifierData>(node)->binding;
 
-		if (binding.is_global)
-			emit_opcode(core, Opcode::LoadGlobal, expects_write_ctx, node, static_cast<GlobalCompositeIndex>(binding.global.file_index_bits), binding.global.rank);
-		else if (binding.is_scoped)
+		if (binding.kind == NameBindingKind::Global)
+			emit_opcode(core, Opcode::LoadGlobal, expects_write_ctx, node, binding.global.file_id, binding.global.rank);
+		else if (binding.kind == NameBindingKind::Scoped)
 			emit_opcode(core, Opcode::LoadScope, expects_write_ctx, node, binding.scoped.out, binding.scoped.rank);
-		else
+		else if (binding.kind == NameBindingKind::Closed)
 			emit_opcode(core, Opcode::LoadClosure, expects_write_ctx, node, binding.closed.rank_in_closure);
+		else
+			ASSERT_UNREACHABLE;
 
 		return true;
 	}
@@ -1794,7 +1796,9 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 	case AstTag::LitString:
 	{
-		emit_opcode(core, Opcode::ValueString, expects_write_ctx, node, attachment_of<AstLitStringData>(node)->string_value_id);
+		const AstLitStringData attach = *attachment_of<AstLitStringData>(node);
+
+		emit_opcode(core, Opcode::ValueString, expects_write_ctx, node, attach.value_begin, attach.value_size, attach.type_id);
 
 		return true;
 	}
@@ -2623,7 +2627,7 @@ void opcode_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 
 
-const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, GlobalCompositeIndex file_index, u16 rank) noexcept
+const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, GlobalCompositeId file_id, u16 rank) noexcept
 {
 	core->opcodes.state.values_diff = 0;
 	core->opcodes.state.scopes_diff = 0;
@@ -2639,7 +2643,7 @@ const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node,
 
 	const bool is_mut = has_flag(node, AstFlag::Definition_IsMut);
 
-	emit_opcode(core, Opcode::FileGlobalAllocPrepare, false, node, is_mut, file_index, rank);
+	emit_opcode(core, Opcode::FileGlobalAllocPrepare, false, node, is_mut, file_id, rank);
 
 	DefinitionInfo info = get_definition_info(node);
 

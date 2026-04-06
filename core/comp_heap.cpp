@@ -96,91 +96,6 @@ static bool comp_heap_gc_mark_small_unchecked(CoreData* core, MutRange<byte> mem
 	return true;
 }
 
-static Maybe<void*> comp_heap_huge_alloc(CoreData* core, u64 size, u64 align) noexcept
-{
-	ASSERT_OR_IGNORE(size > COMP_HEAP_MAX_ALLOCATION_SIZE);
-
-	ASSERT_OR_IGNORE(is_pow2(align));
-
-	const u64 page_size = minos::page_bytes();
-
-	const u64 page_mask = page_size - 1;
-
-	if ((core->heap.huge_alloc_map_used & page_mask) == 0)
-	{
-		if (core->heap.huge_alloc_map_used * sizeof(HugeAllocDesc) == core->heap.huge_alloc_map_reserve)
-			return none<void*>();
-
-		if (!minos::mem_commit(core->heap.huge_alloc_map + core->heap.huge_alloc_map_used, page_size))
-			return none<void*>();
-	}
-
-	const u64 allocation_slack = align > page_size ? align - 1 : page_mask;
-	
-	const u64 allocation_size = (size + allocation_slack) & ~page_mask;
-
-	void* const memory = minos::mem_reserve(allocation_size);
-
-	if (memory == nullptr)
-		return none<void*>();
-
-	core->heap.huge_alloc_map[core->heap.huge_alloc_map_used].begin = static_cast<byte*>(memory);
-	core->heap.huge_alloc_map[core->heap.huge_alloc_map_used].end = static_cast<byte*>(memory) + allocation_size;
-
-	core->heap.huge_alloc_map_used += 1;
-
-	void* const aligned_memory = reinterpret_cast<void*>((reinterpret_cast<u64>(memory) + align - 1) & ~(align - 1));
-
-	if (!minos::mem_commit(aligned_memory, (size + page_mask) & ~page_mask))
-		return none<void*>();
-
-	ASSERT_OR_IGNORE(static_cast<byte*>(aligned_memory) + size <= static_cast<byte*>(memory) + allocation_size);
-
-	return some(aligned_memory);
-}
-
-static bool comp_heap_gc_mark_huge(CoreData* core, MutRange<byte> memory) noexcept
-{
-	ASSERT_OR_IGNORE(memory.count() > COMP_HEAP_MAX_ALLOCATION_SIZE);
-
-	u64 lo = 0;
-
-	u64 hi = core->heap.huge_alloc_map_used - 1;
-
-	HugeAllocDesc* const huge_alloc_map = core->heap.huge_alloc_map;
-
-	while (lo <= hi)
-	{
-		const u64 mid = (lo + hi) >> 1;
-
-		const byte* const begin = huge_alloc_map[mid].begin;
-
-		const byte* const end = huge_alloc_map[mid].end;
-
-		if (begin > memory.end())
-		{
-			lo = mid + 1;
-		}
-		else if (end < memory.begin())
-		{
-			hi = mid - 1;
-		}
-		else
-		{
-			ASSERT_OR_IGNORE(begin <= memory.begin() && end >= memory.end());
-
-			if ((reinterpret_cast<u64>(end) & 1) != 0)
-				return false;
-
-			huge_alloc_map[mid].end = reinterpret_cast<byte*>(reinterpret_cast<u64>(end) | 1);
-
-			return true;
-		}
-	}
-
-	ASSERT_UNREACHABLE;
-}
-
 
 
 bool comp_heap_validate_config(const Config* config, PrintSink sink) noexcept
@@ -215,9 +130,7 @@ MemoryRequirements comp_heap_memory_requirements(const Config* config) noexcept
 
 	const u64 gc_bitmap_size = (heap_size / (8 * COMP_HEAP_MIN_ALLOCATION_SIZE) + page_mask) & ~page_mask;
 
-	const u64 huge_alloc_map_size = (config->heap.max_huge_alloc_count * sizeof(HugeAllocDesc) + page_mask) & ~page_mask;
-
-	const u64 total_size = heap_size + gc_bitmap_size + huge_alloc_map_size;
+	const u64 total_size = heap_size + gc_bitmap_size;
 
 	MemoryRequirements reqs{};
 	reqs.private_reserve = total_size;
@@ -230,17 +143,11 @@ void comp_heap_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
 	const u64 page_size = minos::page_bytes();
 
-	const u64 page_mask = page_size - 1;
-
 	const u64 commit_increment = core->config->heap.commit_increment < page_size
 		? page_size
 		: next_pow2(core->config->heap.commit_increment);
 
 	const u64 heap_size = (core->config->heap.reserve + commit_increment - 1) & ~(commit_increment - 1);
-
-	const u64 gc_bitmap_size = (heap_size / (8 * COMP_HEAP_MIN_ALLOCATION_SIZE) + page_mask) & ~page_mask;
-
-	const u64 huge_alloc_map_size = (core->config->heap.max_huge_alloc_count * sizeof(HugeAllocDesc) + page_mask) & ~page_mask;
 
 	if (!minos::mem_commit(allocation.private_data.begin(), commit_increment))
 		panic("Could not commit % bytes of memory for compile-time heap header and initial commit (0x%[|X]).\n", commit_increment, minos::last_error());
@@ -253,28 +160,20 @@ void comp_heap_init(CoreData* core, MemoryAllocation allocation) noexcept
 	core->heap.arena_count = 0;
 	core->heap.arena_begin = 0;
 	core->heap.gc_bitmap = reinterpret_cast<u8*>(allocation.private_data.begin()) + heap_size;
-	core->heap.huge_alloc_map = reinterpret_cast<HugeAllocDesc*>(reinterpret_cast<byte*>(allocation.private_data.begin()) + heap_size + gc_bitmap_size);
-	core->heap.huge_alloc_map_used = 0;
-	core->heap.huge_alloc_map_reserve = huge_alloc_map_size;
 
 	memset(core->heap.freelists, 0, sizeof(core->heap.freelists));
 }
 
 
 
-Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align, bool allow_huge) noexcept
+Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align) noexcept
 {
 	ASSERT_OR_IGNORE(core->heap.arena_count == 0);
 
 	ASSERT_OR_IGNORE(is_pow2(align));
 
 	if (size > COMP_HEAP_MAX_ALLOCATION_SIZE)
-	{
-		if (allow_huge)
-			return comp_heap_huge_alloc(core, size, align);
-
 		return none<void*>();
-	}
 
 	// Try satisfying allocations with an alignment of at most
 	// `COMP_HEAP_MIN_ALLOCATION_SIZE` from the relevant freelist if they are
@@ -418,38 +317,17 @@ void comp_heap_gc_begin(CoreData* core) noexcept
 	// Forget our old freelists. Their contents will be collected and coalesced
 	// by the GC.
 	memset(core->heap.freelists, 0, sizeof(core->heap.freelists));
-
-	// Order the huge allocations so that we can use binary search when marking
-	// them.
-
-	struct HugeAllocDescBeginComparator
-	{
-		static s32 compare(HugeAllocDesc a, HugeAllocDesc b) noexcept
-		{
-			const s64 diff = reinterpret_cast<u64>(a.begin) - reinterpret_cast<u64>(b.begin);
-
-			if (diff < 0)
-				return -1;
-			else if (diff > 0)
-				return 1;
-			else
-				return 0;
-		}
-	};
-
-	const MutRange<HugeAllocDesc> huge_alloc_map{ core->heap.huge_alloc_map, core->heap.huge_alloc_map_used };
-
-	inplace_sort<HugeAllocDesc, HugeAllocDescBeginComparator>(huge_alloc_map);
 }
 
 bool comp_heap_gc_mark(CoreData* core, MutRange<byte> memory) noexcept
 {
 	ASSERT_OR_IGNORE((reinterpret_cast<u64>(memory.begin()) & COMP_HEAP_ZERO_ADDRESS_MASK) == 0);
 
-	if (memory.begin() >= core->heap.memory && memory.end() <= core->heap.memory + core->heap.used)
-		return comp_heap_gc_mark_small_unchecked(core, memory);
+	ASSERT_OR_IGNORE(memory.begin() >= core->heap.memory);
+	
+	ASSERT_OR_IGNORE(memory.end() <= core->heap.memory + core->heap.used);
 
-	return comp_heap_gc_mark_huge(core, memory);
+	return comp_heap_gc_mark_small_unchecked(core, memory);
 }
 
 void comp_heap_gc_end(CoreData* core) noexcept
@@ -506,49 +384,4 @@ void comp_heap_gc_end(CoreData* core) noexcept
 	core->heap.used = last_alive_index;
 
 	minos::mem_decommit(core->heap.gc_bitmap, gc_bitmap_commit);
-
-	// Deal with huge allocations now. The `end` field's lowest bit encodes
-	// each allocation's liveness.
-
-	HugeAllocDesc* const huge_alloc_map = core->heap.huge_alloc_map;
-
-	u64 new_huge_alloc_map_used = 0;
-
-	for (u64 i = 0; i != core->heap.huge_alloc_map_used; ++i)
-	{
-		if ((reinterpret_cast<u64>(huge_alloc_map[i].end) & 1) == 0)
-		{
-			minos::mem_unreserve(huge_alloc_map[i].begin, huge_alloc_map[i].end - huge_alloc_map[i].begin);
-		}
-		else
-		{
-			huge_alloc_map[new_huge_alloc_map_used].begin = huge_alloc_map[i].begin;
-			huge_alloc_map[new_huge_alloc_map_used].end = reinterpret_cast<byte*>(reinterpret_cast<u64>(huge_alloc_map[i].end) & ~1);
-
-			new_huge_alloc_map_used += 1;
-		}
-	}
-
-	const u64 new_huge_alloc_map_commit = (new_huge_alloc_map_used + page_mask) & ~page_mask;
-
-	const u64 old_huge_alloc_map_commit = (core->heap.huge_alloc_map_used + page_mask) & ~page_mask;
-
-	ASSERT_OR_IGNORE(new_huge_alloc_map_commit <= old_huge_alloc_map_commit);
-
-	if (new_huge_alloc_map_commit != old_huge_alloc_map_commit)
-		minos::mem_decommit(core->heap.huge_alloc_map + new_huge_alloc_map_commit, old_huge_alloc_map_commit - new_huge_alloc_map_commit);
-
-	core->heap.huge_alloc_map_used = new_huge_alloc_map_used;
-}
-
-
-
-byte* comp_heap_small_allocation_base(CoreData* core) noexcept
-{
-	return core->heap.memory;
-}
-
-byte* comp_heap_small_allocation_tip(CoreData* core) noexcept
-{
-	return core->heap.memory + core->heap.used;
 }

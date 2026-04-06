@@ -17,7 +17,7 @@ struct TypeStructure;
 
 static TypeStructure* structure_from_id(CoreData* core, TypeId id) noexcept;
 
-static TypeId id_from_structure(const CoreData* core, const TypeStructure* structure) noexcept;
+static TypeId id_from_structure(CoreData* core, TypeStructure* structure) noexcept;
 
 static TypeStructure* make_structure_nohash(CoreData* core, TypeTag tag, Range<byte> attach, u64 reserve_size) noexcept;
 
@@ -133,22 +133,24 @@ struct alignas(8) CompositeUserExtraData
 
 struct alignas(8) CompositeMember
 {
-	u32 type_id_bits : 28;
+	TypeId type_id;
 
-	u32 is_pending : 1;
+	bool is_pending : 1;
 
-	u32 is_pub : 1;
+	bool is_pub : 1;
 
-	u32 is_mut : 1;
+	bool is_mut : 1;
 
-	u32 is_eval : 1;
+	bool is_eval : 1;
 
 	union
 	{
-		Maybe<ForeverValueId> value_or_default_id;
+		Maybe<CoreId> value_or_default;
 
 		OpcodeId completion_id;
 	};
+
+	u32 unused_;
 };
 
 struct alignas(8) CompositeType
@@ -531,7 +533,7 @@ static bool fill_member_info(CompositeInfo info, u16 rank, MemberInfo* out_info,
 		*out_completion_id = type.completion_id;
 
 		out_info->type_id = TypeId::INVALID;
-		out_info->value_or_default_id = none<ForeverValueId>();
+		out_info->value_or_default = none<CoreId>();
 		out_info->rank = rank;
 		out_info->is_pub = type.is_pub;
 		out_info->is_mut = type.is_mut;
@@ -544,8 +546,8 @@ static bool fill_member_info(CompositeInfo info, u16 rank, MemberInfo* out_info,
 	{
 		*out_completion_id = OpcodeId::INVALID;
 
-		out_info->type_id = static_cast<TypeId>(type.type_id_bits);
-		out_info->value_or_default_id = type.value_or_default_id;
+		out_info->type_id = type.type_id;
+		out_info->value_or_default = type.value_or_default;
 		out_info->is_pub = type.is_pub;
 		out_info->is_mut = type.is_mut;
 		out_info->is_eval = type.is_eval;
@@ -559,22 +561,16 @@ static bool fill_member_info(CompositeInfo info, u16 rank, MemberInfo* out_info,
 
 
 
-static TypeId id_from_structure(const CoreData* core, const TypeStructure* structure) noexcept
+static TypeId id_from_structure(CoreData* core, TypeStructure* structure) noexcept
 {
-	ASSERT_OR_IGNORE(reinterpret_cast<const byte*>(structure) > comp_heap_small_allocation_base(const_cast<CoreData*>(core)));
-
-	ASSERT_OR_IGNORE(reinterpret_cast<const byte*>(structure) <= comp_heap_small_allocation_tip(const_cast<CoreData*>(core)));
-
-	return static_cast<TypeId>((reinterpret_cast<const byte*>(structure) - comp_heap_small_allocation_base(const_cast<CoreData*>(core))) >> COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2);
+	return static_cast<TypeId>(core_id_from_address(core, structure));
 }
 
 static TypeStructure* structure_from_id(CoreData* core, TypeId id) noexcept
 {
 	ASSERT_OR_IGNORE(id != TypeId::INVALID);
 
-	ASSERT_OR_IGNORE(static_cast<u64>(comp_heap_small_allocation_tip(core) - comp_heap_small_allocation_base(core)) > (static_cast<u64>(id) << COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2));
-
-	return reinterpret_cast<TypeStructure*>(reinterpret_cast<byte*>(comp_heap_small_allocation_base(core)) + (static_cast<u64>(id) << COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2));
+	return static_cast<TypeStructure*>(address_from_core_id(core, static_cast<CoreId>(id)));
 }
 
 static TypeStructure* follow_indirection(CoreData* core, TypeStructure* indirection) noexcept
@@ -855,7 +851,7 @@ static u32 hash_composite_type(CoreData* core, u32 hash, SeenSet* seen, const Co
 
 		hash = fnv1a_step(hash, flags) | 1;
 
-		hash = hash_type_id(core, hash, seen, static_cast<TypeId>(member_type.type_id_bits));
+		hash = hash_type_id(core, hash, seen, member_type.type_id);
 
 		if (hash == 0)
 			return 0;
@@ -890,7 +886,7 @@ static u32 hash_array_type(CoreData* core, u32 hash, SeenSet* seen, const ArrayT
 		return hash;
 }
 
-static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, const TypeStructure* structure) noexcept
+static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, TypeStructure* structure) noexcept
 {
 	if (structure->hash != 0)
 		return structure->hash;
@@ -943,7 +939,7 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 	ASSERT_UNREACHABLE;
 }
 
-static u32 hash_type_structure(CoreData* core, u32 hash, SeenSet* seen, const TypeStructure* structure) noexcept
+static u32 hash_type_structure(CoreData* core, u32 hash, SeenSet* seen, TypeStructure* structure) noexcept
 {
 	const TypeId id = id_from_structure(core, structure);
 
@@ -964,7 +960,7 @@ static u32 hash_type_structure(CoreData* core, u32 hash, SeenSet* seen, const Ty
 
 static u32 hash_type_id(CoreData* core, u32 hash, SeenSet* seen, TypeId id) noexcept
 {
-	const TypeStructure* const structure = follow_indirection(core, structure_from_id(core, id));
+	TypeStructure* const structure = follow_indirection(core, structure_from_id(core, id));
 
 	hash = hash_type_structure(core, hash, seen, structure);
 
@@ -1104,7 +1100,7 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 		// member in `to` of a type they can be converted to.
 		for (u32 i = 0; i != from_info.member_count; ++i)
 		{
-			CompositeMember const from_member = from_info.member_types[i];
+			const CompositeMember from_member = from_info.member_types[i];
 
 			const IdentifierId from_name = from_info.member_names[i];
 
@@ -1127,12 +1123,8 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 			if (to_member.is_pending)
 				TODO("Implement implicit convertability check from composite literal to incomplete type");
 
-			const TypeId from_member_type_id = static_cast<TypeId>(from_member.type_id_bits);
-
-			const TypeId to_member_type_id = static_cast<TypeId>(to_member.type_id_bits);
-
-			if (!type_is_equal(core, from_member_type_id, to_member_type_id)
-			 && !type_can_implicitly_convert_from_to_assume_unequal(core, from_member_type_id, to_member_type_id)
+			if (!type_is_equal(core, from_member.type_id, to_member.type_id)
+			 && !type_can_implicitly_convert_from_to_assume_unequal(core, from_member.type_id, to_member.type_id)
 			) {
 				comp_heap_arena_release(core, arena_mark);
 
@@ -1153,7 +1145,7 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 
 			const CompositeMember to_member = to_info.member_types[i];
 
-			if (is_none(to_member.value_or_default_id))
+			if (is_none(to_member.value_or_default))
 			{
 				comp_heap_arena_release(core, arena_mark);
 
@@ -1419,7 +1411,7 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 				return false;
 			}
 
-			if (a_member.value_or_default_id != b_member.value_or_default_id)
+			if (a_member.value_or_default != b_member.value_or_default)
 			{
 				seen_set_pop(a_seen);
 
@@ -1428,15 +1420,11 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 				return false;
 			}
 
-			const TypeId a_member_type_id = static_cast<TypeId>(a_member.type_id_bits);
+			ASSERT_OR_IGNORE((a_member.type_id == TypeId::INVALID) == (b_member.type_id == TypeId::INVALID));
 
-			const TypeId b_member_type_id = static_cast<TypeId>(b_member.type_id_bits);
-
-			ASSERT_OR_IGNORE((a_member_type_id == TypeId::INVALID) == (b_member_type_id == TypeId::INVALID));
-
-			if (a_member_type_id != TypeId::INVALID
-			 && b_member_type_id != TypeId::INVALID
-			 && !type_is_equal_noloop(core, a_member_type_id, b_member_type_id, a_seen, b_seen)
+			if (a_member.type_id != TypeId::INVALID
+			 && b_member.type_id != TypeId::INVALID
+			 && !type_is_equal_noloop(core, a_member.type_id, b_member.type_id, a_seen, b_seen)
 			) {
 				seen_set_pop(a_seen);
 
@@ -1552,7 +1540,7 @@ static TypeStructure* make_structure_nohash(CoreData* core, TypeTag tag, Range<b
 {
 	ASSERT_OR_IGNORE(reserve_size <= UINT16_MAX && reserve_size >= attach.count());
 
-	const Maybe<void*> allocation = comp_heap_alloc(core, sizeof(TypeStructure) + reserve_size, 16, false);
+	const Maybe<void*> allocation = comp_heap_alloc(core, sizeof(TypeStructure) + reserve_size, 16);
 
 	if (is_none(allocation))
 		TODO("Implement GC traversal.");
@@ -1612,14 +1600,19 @@ void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 	);
 
 	// Reserve simple types for use with `type_create_simple`.
-	for (u8 ordinal = static_cast<u8>(TypeTag::Void); ordinal != static_cast<u8>(TypeTag::Undefined) + 1; ++ordinal)
+	
+	TypeStructure* const first_simple_structure = make_structure_nohash(core, TypeTag::Void, {}, 0);
+
+	core->types.simple_type_base_id = core_id_from_address(core, first_simple_structure);
+
+	for (u8 ordinal = static_cast<u8>(TypeTag::Void) + 1; ordinal != static_cast<u8>(TypeTag::Undefined) + 1; ++ordinal)
 	{
 		// TODO: Once hashing is implemented for all types, this pseudo-hashing
 		// can be removed.
-		TypeStructure* const structure = make_structure_nohash(core, static_cast<TypeTag>(ordinal), {}, 0);
-		structure->hash = ordinal;
+		TypeStructure* const simple_structure = make_structure_nohash(core, static_cast<TypeTag>(ordinal), {}, 0);
+		simple_structure->hash = ordinal;
 
-		(void) holotype_id_from_interned_type_structure(core, structure);
+		(void) holotype_id_from_interned_type_structure(core, simple_structure);
 	}
 }
 
@@ -1629,7 +1622,7 @@ TypeId type_create_simple([[maybe_unused]] CoreData* core, TypeTag tag) noexcept
 {
 	ASSERT_OR_IGNORE(tag >= TypeTag::Void && tag <= TypeTag::Undefined);
 
-	const TypeId type_id = static_cast<TypeId>(static_cast<u32>(tag) - 1);
+	const TypeId type_id = static_cast<TypeId>(static_cast<u32>(core->types.simple_type_base_id) + static_cast<u32>(tag) - static_cast<u32>(TypeTag::Void));
 
 	ASSERT_OR_IGNORE(type_tag_from_id(core, type_id) == tag);
 
@@ -1704,7 +1697,7 @@ void type_add_signature_parameter(CoreData* core, TypeId type_id, SignatureParam
 
 	if (init.is_templated)
 	{
-		info.member_types[info.member_count].type_id_bits = static_cast<u32>(TypeId::INVALID);
+		info.member_types[info.member_count].type_id = TypeId::INVALID;
 		info.member_types[info.member_count].completion_id = init.templated.completion_id;
 
 		CompositeSignatureExtraData* const signature = reinterpret_cast<CompositeSignatureExtraData*>(composite + 1);
@@ -1713,8 +1706,8 @@ void type_add_signature_parameter(CoreData* core, TypeId type_id, SignatureParam
 	}
 	else
 	{
-		info.member_types[info.member_count].type_id_bits = static_cast<u32>(init.complete.type_id);
-		info.member_types[info.member_count].value_or_default_id = init.complete.default_id;
+		info.member_types[info.member_count].type_id = init.complete.type_id;
+		info.member_types[info.member_count].value_or_default = init.complete.default_value;
 	}
 
 	composite->member_used += 1;
@@ -1776,7 +1769,7 @@ TypeId type_instantiate_templated_signature(CoreData* core, TypeId type_id) noex
 	return id_from_structure(core, copied_structure);
 }
 
-void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> default_id) noexcept
+void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<CoreId> default_value) noexcept
 {
 	TypeStructure* const structure = structure_from_id(core, type_id);
 
@@ -1790,9 +1783,9 @@ void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id,
 
 	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
 
-	info.member_types[rank].type_id_bits = static_cast<u32>(member_type_id);
+	info.member_types[rank].type_id = member_type_id;
 	info.member_types[rank].is_pending = false;
-	info.member_types[rank].value_or_default_id = default_id;
+	info.member_types[rank].value_or_default = default_value;
 
 	CompositeSignatureExtraData* const signature = reinterpret_cast<CompositeSignatureExtraData*>(composite + 1);
 
@@ -1826,12 +1819,12 @@ TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names) no
 	{
 		info.member_names[i] = parameter_names[i];
 
-		info.member_types[i].type_id_bits = static_cast<u32>(type_type_id);
+		info.member_types[i].type_id = type_type_id;
 		info.member_types[i].is_pending = false;
 		info.member_types[i].is_pub = false;
 		info.member_types[i].is_mut = false;
 		info.member_types[i].is_eval = true;
-		info.member_types[i].value_or_default_id = none<ForeverValueId>();
+		info.member_types[i].value_or_default = none<CoreId>();
 	}
 
 	if (!init_structure_hash(core, structure))
@@ -1895,7 +1888,7 @@ bool type_add_impl_member(CoreData* core, TypeId type_id, ImplMemberInit init) n
 
 	info.member_names[rank] = init.name;
 
-	info.member_types[rank].type_id_bits = static_cast<u32>(TypeId::INVALID);
+	info.member_types[rank].type_id = TypeId::INVALID;
 	info.member_types[rank].is_pending = true;
 	info.member_types[rank].is_pub = true;
 	info.member_types[rank].is_mut = init.is_mut;
@@ -1986,12 +1979,12 @@ bool type_add_user_composite_member(CoreData* core, TypeId type_id, UserComposit
 
 	info.member_names[info.member_count] = init.name;
 
-	info.member_types[info.member_count].type_id_bits = static_cast<u32>(init.type_id);
+	info.member_types[info.member_count].type_id = init.type_id;
 	info.member_types[info.member_count].is_pending = false;
 	info.member_types[info.member_count].is_pub = init.is_pub;
 	info.member_types[info.member_count].is_mut = init.is_mut;
 	info.member_types[info.member_count].is_eval = false;
-	info.member_types[info.member_count].value_or_default_id = init.default_id;
+	info.member_types[info.member_count].value_or_default = init.default_value;
 
 	get(info.member_offsets)[info.member_count] = init.offset;
 
@@ -2062,7 +2055,7 @@ void type_add_file_composite_member(CoreData* core, TypeId type_id, FileComposit
 
 	info.member_names[info.member_count] = init.name;
 
-	info.member_types[info.member_count].type_id_bits = static_cast<u32>(TypeId::INVALID);
+	info.member_types[info.member_count].type_id = TypeId::INVALID;
 	info.member_types[info.member_count].is_pending = true;
 	info.member_types[info.member_count].is_pub = init.is_pub;
 	info.member_types[info.member_count].is_mut = init.is_mut;
@@ -2072,7 +2065,7 @@ void type_add_file_composite_member(CoreData* core, TypeId type_id, FileComposit
 	composite->member_used += 1;
 }
 
-void type_complete_file_composite_member(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, ForeverValueId value_id) noexcept
+void type_complete_file_composite_member(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, CoreId value) noexcept
 {
 	TypeStructure* const structure = structure_from_id(core, type_id);
 
@@ -2088,9 +2081,9 @@ void type_complete_file_composite_member(CoreData* core, TypeId type_id, u16 ran
 
 	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
 
-	info.member_types[rank].type_id_bits = static_cast<u32>(member_type_id);
+	info.member_types[rank].type_id = member_type_id;
 	info.member_types[rank].is_pending = false;
-	info.member_types[rank].value_or_default_id = some(value_id);
+	info.member_types[rank].value_or_default = some(value);
 }
 
 

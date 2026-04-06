@@ -42,22 +42,17 @@ struct ErrorSink
 
 
 
-struct alignas(8) GlobalFile;
+struct GlobalFile;
 
-struct alignas(8) ForeverValue;
-
+// TODO: This has to be reworked to `CompHeap`
 struct GlobalValuePool
 {
 	ReservedVec<GlobalFile> files;
-
-	ReservedVec<ForeverValue> forever_values;
-
-	ReservedVec<byte> data;
 };
 
 
 
-struct alignas(8) IdentifierEntry;
+struct IdentifierEntry;
 
 struct IdentifierPool
 {
@@ -68,13 +63,13 @@ struct IdentifierPool
 
 struct Scope;
 
-struct alignas(8) ScopeMember;
+struct ScopeMember;
 
 struct LoopInfo;
 
-struct alignas(8) ArgumentPack;
+struct ArgumentPack;
 
-struct alignas(4) GlobalInitialization;
+struct GlobalInitialization;
 
 struct BuiltinInfo
 {
@@ -107,7 +102,7 @@ struct Interpreter
 
 	ReservedVec<ScopeMember> closure_members;
 
-	ReservedVec<OpcodeId> argument_callbacks;
+	ReservedVec<Maybe<OpcodeId>> argument_callbacks;
 
 	ReservedVec<ArgumentPack> argument_packs;
 
@@ -128,17 +123,17 @@ struct Interpreter
 
 enum class ScopeMapKind : u8;
 
-struct alignas(8) ScopeMap;
+struct ScopeMap;
 
 struct LexicalAnalyser
 {
 	s32 scopes_top;
 
-	GlobalCompositeIndex active_file_index;
+	GlobalCompositeId active_file_id;
 
 	bool has_error;
 
-	GlobalCompositeIndex prelude_file_index;
+	GlobalCompositeId prelude_file_id;
 
 	ScopeMap* scopes[MAX_AST_DEPTH];
 
@@ -187,6 +182,7 @@ struct OpcodePool
 
 	ReservedVec<SourceMapping> sources;
 
+	// TODO: This might be replaceable with `comp_heap_arena_*`
 	ReservedVec<Fixup> fixups;
 };
 
@@ -214,7 +210,9 @@ struct Lexeme
 
 		struct
 		{
-			ForeverValueId value_id;
+			byte* value_begin;
+
+			u32 value_size;
 
 			TypeId type_id;
 		} string;
@@ -270,17 +268,19 @@ struct SourceReader
 
 
 
-struct alignas(8) HolotypeInit;
+struct HolotypeInit;
 
-struct alignas(8) Holotype;
+struct Holotype;
 
-struct alignas(8) ImplInit;
+struct ImplInit;
 
-struct alignas(8) ImplEntry;
+struct ImplEntry;
 
 struct TypePool
 {
 	IndexMap<HolotypeInit, Holotype> holotypes;
+
+	CoreId simple_type_base_id;
 };
 
 
@@ -294,13 +294,6 @@ static constexpr u64 COMP_HEAP_MIN_ALLOCATION_SIZE = 1 << COMP_HEAP_MIN_ALLOCATI
 static constexpr u64 COMP_HEAP_MAX_ALLOCATION_SIZE = 1 << COMP_HEAP_MAX_ALLOCATION_SIZE_LOG2;
 
 static constexpr u64 COMP_HEAP_ZERO_ADDRESS_MASK = COMP_HEAP_MIN_ALLOCATION_SIZE - 1;
-
-struct HugeAllocDesc
-{
-	byte* begin;
-
-	byte* end;
-};
 
 struct CompHeap
 {
@@ -319,12 +312,6 @@ struct CompHeap
 	u64 arena_begin;
 
 	byte* gc_bitmap;
-
-	HugeAllocDesc* huge_alloc_map;
-
-	u64 huge_alloc_map_used;
-
-	u64 huge_alloc_map_reserve;
 
 	byte* freelists[COMP_HEAP_MAX_ALLOCATION_SIZE_LOG2 - COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2];
 };

@@ -282,47 +282,6 @@ static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
 	range::from_literal_string("_definition_typeof",   static_cast<u8>(Builtin::DefinitionTypeof)),
 };
 
-struct RawLexeme
-{
-	Token token;
-
-	union
-	{
-		CompIntegerValue integer_value;
-
-		CompFloatValue float_value;
-
-		u32 char_value;
-
-		IdentifierId identifier_id;
-
-		Builtin builtin;
-
-		struct
-		{
-			ForeverValueId value_id;
-
-			TypeId type_id;
-		} string;
-	};
-
-	RawLexeme() noexcept = default;
-
-	RawLexeme(Token token) noexcept : token{ token } {}
-
-	RawLexeme(Token token, CompIntegerValue integer_value) noexcept : token{ token }, integer_value{ integer_value } {}
-
-	RawLexeme(Token token, CompFloatValue float_value) noexcept : token{ token }, float_value{ float_value } {}
-
-	RawLexeme(Token token, u32 char_value) noexcept : token{ token }, char_value{ char_value } {}
-
-	RawLexeme(Token token, IdentifierId identifier_id) noexcept : token{ token }, identifier_id{ identifier_id } {}
-
-	RawLexeme(Token token, Builtin builtin) noexcept : token{ token }, builtin{ builtin } {}
-
-	RawLexeme(Token token, ForeverValueId string_value_id, TypeId string_type_id) noexcept : token{ token }, string{ string_value_id, string_type_id } {}
-};
-
 // Operator Description Tuple. Consists of:
 //  - `AstTag` with the node type
 //  - `AstFlag` with the node flags
@@ -571,7 +530,7 @@ static void skip_whitespace(CoreData* core) noexcept
 	core->parser.curr = curr;
 }
 
-static RawLexeme scan_identifier_token(CoreData* core, bool is_builtin) noexcept
+static Lexeme scan_identifier_token(CoreData* core, bool is_builtin) noexcept
 {
 	const char8* curr = core->parser.curr;
 
@@ -595,17 +554,25 @@ static RawLexeme scan_identifier_token(CoreData* core, bool is_builtin) noexcept
 		if (builtin == Builtin::INVALID)
 			parse_error_fatal(core, core->parser.peek.source_id, CompileError::LexBuiltinUnknown);
 
-		return { Token::Builtin, builtin };
+		Lexeme rst;
+		rst.token = Token::Builtin;
+		rst.builtin = builtin;
+
+		return rst;
 	}
 	else
 	{
 		const Token token = identifier_attachment == 0 ? Token::Ident : static_cast<Token>(identifier_attachment);
 
-		return { token, token == Token::Ident ? identifier_id : IdentifierId::INVALID };
+		Lexeme rst;
+		rst.token = token;
+		rst.identifier_id = token == Token::Ident ? identifier_id : IdentifierId::INVALID;
+
+		return rst;
 	}
 }
 
-static RawLexeme scan_number_token_with_base(CoreData* core, char8 base) noexcept
+static Lexeme scan_number_token_with_base(CoreData* core, char8 base) noexcept
 {
 	const char8* curr = core->parser.curr;
 
@@ -658,7 +625,11 @@ static RawLexeme scan_number_token_with_base(CoreData* core, char8 base) noexcep
 
 	core->parser.curr = curr;
 
-	return { Token::LitInteger, integer_value };
+	Lexeme rst;
+	rst.token = Token::LitInteger;
+	rst.integer_value = integer_value;
+
+	return rst;
 }
 
 static u32 scan_utf8_char_surrogates(CoreData* core, u32 leader_value, u32 surrogate_count) noexcept
@@ -826,7 +797,7 @@ static u32 scan_escape_char(CoreData* core) noexcept
 	return codepoint;
 }
 
-static RawLexeme scan_number_token(CoreData* core, char8 first) noexcept
+static Lexeme scan_number_token(CoreData* core, char8 first) noexcept
 {
 	const char8* curr = core->parser.curr;
 
@@ -878,7 +849,11 @@ static RawLexeme scan_number_token(CoreData* core, char8 first) noexcept
 
 		core->parser.curr = curr;
 
-		return { Token::LitFloat, comp_float_from_f64(float_value) };
+		Lexeme rst;
+		rst.token = Token::LitFloat;
+		rst.float_value = comp_float_from_f64(float_value);
+
+		return rst;
 	}
 	else
 	{
@@ -887,11 +862,15 @@ static RawLexeme scan_number_token(CoreData* core, char8 first) noexcept
 
 		core->parser.curr = curr;
 
-		return { Token::LitInteger, integer_value };
+		Lexeme rst;
+		rst.token = Token::LitInteger;
+		rst.integer_value = integer_value;
+
+		return rst;
 	}
 }
 
-static RawLexeme scan_char_token(CoreData* core) noexcept
+static Lexeme scan_char_token(CoreData* core) noexcept
 {
 	u32 codepoint;
 
@@ -905,10 +884,14 @@ static RawLexeme scan_char_token(CoreData* core) noexcept
 
 	core->parser.curr += 1;
 
-	return { Token::LitChar, codepoint };
+	Lexeme rst;
+	rst.token = Token::LitChar;
+	rst.char_value = codepoint;
+
+	return rst;
 }
 
-static RawLexeme scan_string_token(CoreData* core) noexcept
+static Lexeme scan_string_token(CoreData* core) noexcept
 {
 	char8 buffer[MAX_STRING_LITERAL_BYTES];
 
@@ -1015,18 +998,25 @@ static RawLexeme scan_string_token(CoreData* core) noexcept
 
 	const TypeId string_type_id = type_create_array(core, TypeTag::Array, ArrayType{ buffer_index, some(core->parser.u8_type_id) });
 
-	const MutRange<byte> string_bytes{ reinterpret_cast<byte*>(buffer), buffer_index };
+	const Maybe<void*> allocation = comp_heap_alloc(core, buffer_index, 1);
 
-	const CTValue string_value{ string_bytes, alignof(u8), false, string_type_id };
+	if (is_none(allocation))
+		TODO("Implement GC traversal.");
 
-	const ForeverValueId forever_value_id = forever_value_alloc_initialized(core, false, string_value);
+	memcpy(get(allocation), buffer, buffer_index);
 
 	core->parser.curr = curr + 1;
 
-	return { Token::LitString, forever_value_id, string_type_id };
+	Lexeme rst;
+	rst.token = Token::LitString;
+	rst.string.value_begin = static_cast<byte*>(get(allocation));
+	rst.string.value_size = buffer_index;
+	rst.string.type_id = string_type_id;
+
+	return rst;
 }
 
-static RawLexeme raw_next(CoreData* core) noexcept
+static Lexeme next_without_source(CoreData* core) noexcept
 {
 	const char8 first = *core->parser.curr;
 
@@ -1460,11 +1450,13 @@ static Lexeme next(CoreData* core) noexcept
 
 	skip_whitespace(core);
 
-	core->parser.peek.source_id = SourceId{ core->parser.source_id_base + static_cast<u32>(core->parser.curr - core->parser.begin) };
+	const SourceId source_id = static_cast<SourceId>(core->parser.source_id_base + static_cast<u32>(core->parser.curr - core->parser.begin));
 
-	const RawLexeme raw = raw_next(core);
+	Lexeme rst = next_without_source(core);
 
-	return { raw.token, core->parser.peek.source_id, { raw.integer_value } };
+	rst.source_id = source_id;
+
+	return rst;
 }
 
 static Lexeme peek(CoreData* core) noexcept
@@ -2239,7 +2231,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitStringData{ lexeme.string.value_id, lexeme.string.type_id });
+				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitStringData{ lexeme.string.value_begin, lexeme.string.value_size, lexeme.string.type_id });
 
 				push_operand(core, &stack, value_token);
 			}

@@ -92,17 +92,17 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 
 	case Opcode::FileGlobalAllocPrepare:
 	{
-		return PrintResult{ code + sizeof(bool) + sizeof(GlobalCompositeIndex) + sizeof(u16), 0 };
+		return PrintResult{ code + sizeof(bool) + sizeof(GlobalCompositeId) + sizeof(u16), 0 };
 	}
 
 	case Opcode::LoadScope:
 	{
-		return PrintResult{ code + sizeof(u16) + sizeof(u16), 0 };
+		return PrintResult{ code + sizeof(u8) + sizeof(u16), 0 };
 	}
 
 	case Opcode::LoadGlobal:
 	{
-		return PrintResult{ code + sizeof(GlobalCompositeIndex) + sizeof(u16), 0 };
+		return PrintResult{ code + sizeof(GlobalCompositeId) + sizeof(u16), 0 };
 	}
 
 	case Opcode::LoadMember:
@@ -432,7 +432,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 
 	case Opcode::ValueString:
 	{
-		return PrintResult{ code + sizeof(ForeverValueId), 0 };
+		return PrintResult{ code + sizeof(byte*) + sizeof(u32) + sizeof(TypeId), 0 };
 	}
 
 	case Opcode::Trait:
@@ -644,15 +644,15 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 		code = code_attach(code, &is_mut);
 
-		GlobalCompositeIndex file_index;
+		GlobalCompositeId file_id;
 
-		code = code_attach(code, &file_index);
+		code = code_attach(code, &file_id);
 
 		u16 rank;
 
 		code = code_attach(code, &rank);
 
-		const s64 written = print(sink, " is_mut=% file_index=% rank=%", is_mut, static_cast<u16>(file_index), rank);
+		const s64 written = print(sink, " is_mut=% file_id=% rank=%", is_mut, static_cast<u16>(file_id), rank);
 
 		if (written < 0)
 			return PrintResult{ nullptr, -1 };
@@ -662,7 +662,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 	case Opcode::LoadScope:
 	{
-		u16 out;
+		u8 out;
 
 		code = code_attach(code, &out);
 
@@ -680,15 +680,15 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 	case Opcode::LoadGlobal:
 	{
-		GlobalCompositeIndex index;
+		GlobalCompositeId file_id;
 
-		code = code_attach(code, &index);
+		code = code_attach(code, &file_id);
 
 		u16 rank;
 
 		code = code_attach(code, &rank);
 
-		const s64 written = print(sink, " file_index=% rank=%", static_cast<u16>(index), rank);
+		const s64 written = print(sink, " file_id=% rank=%", static_cast<u16>(file_id), rank);
 
 		if (written < 0)
 			return PrintResult{ nullptr, -1 };
@@ -1409,11 +1409,16 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 	case Opcode::ValueString:
 	{
-		ForeverValueId value;
+		char8* value_begin;
+		code = code_attach(code, &value_begin);
 
-		code = code_attach(code, &value);
+		u32 value_size;
+		code = code_attach(code, &value_size);
 
-		const s64 written = print(sink, " ForeverValueId<%>", static_cast<u32>(value));
+		TypeId type_id;
+		code = code_attach(code, &type_id);
+
+		const s64 written = print(sink, " type=TypeId<%> value=\"%\"", static_cast<u32>(type_id), Range<char8>{ value_begin, value_size });
 
 		if (written < 0)
 			return PrintResult{ nullptr, -1 };

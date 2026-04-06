@@ -39,12 +39,14 @@ static s64 print_node_header(PrintSink sink, CoreData* core, const AstNode* node
 
 		s64 written;
 
-		if (attach->binding.is_global)
-			written = print(sink, " g%@%", attach->binding.global.rank, attach->binding.global.file_index_bits);
-		else if (attach->binding.is_scoped)
+		if (attach->binding.kind == NameBindingKind::Global)
+			written = print(sink, " g%@%", attach->binding.global.rank, static_cast<u32>(attach->binding.global.file_id));
+		else if (attach->binding.kind == NameBindingKind::Scoped)
 			written = print(sink, " s%@%", attach->binding.scoped.rank, attach->binding.scoped.out);
-		else
+		else if (attach->binding.kind == NameBindingKind::Closed)
 			written = print(sink, " c%", attach->binding.closed.rank_in_closure);
+		else
+			ASSERT_UNREACHABLE;
 
 		if (written < 0)
 			return -1;

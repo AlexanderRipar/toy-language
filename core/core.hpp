@@ -25,61 +25,56 @@ enum class SourceId : u32;
 
 enum class Builtin : u8;
 
-enum class ForeverValueId : u32;
-
 enum class ClosureId : u32;
 
 enum class OpcodeId : u32;
 
-enum class GlobalCompositeIndex : u16;
+enum class GlobalCompositeId : u32;
 
-union alignas(4) NameBinding
+enum class CoreId : u32;
+
+enum class NameBindingKind : u8
 {
-	u32 unused_ = 0;
+	INVALID = 0,
+	Scoped,
+	Global,
+	Closed,
+};
+
+union alignas(8) NameBinding
+{
+	u64 unused_ = 0;
 
 	#if COMPILER_GCC
 		#pragma GCC diagnostic push
 		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids anonymous strcuts
 	#endif
-	struct
-	{
-		u16 is_global : 1;
-
-		u16 is_scoped : 1;
-	};
+	NameBindingKind kind;
 	#if COMPILER_GCC
 		#pragma GCC diagnostic pop
 	#endif
 
 	struct
 	{
-		u16 is_global_ : 1;
+		NameBindingKind kind_;
 
-		u16 is_scoped_ : 1;
-
-		u16 unused_ : 6;
-
-		u16 out : 8;
+		u8 out;
 
 		u16 rank;
 	} scoped;
 
 	struct
 	{
-		u16 is_global_ : 1;
-
-		u16 file_index_bits : 15;
+		NameBindingKind kind_;
 
 		u16 rank;
+
+		GlobalCompositeId file_id;
 	} global;
 
 	struct
 	{
-		u16 is_global_ : 1;
-
-		u16 is_scoped_ : 1;
-
-		u16 unused_ : 14;
+		NameBindingKind kind_;
 
 		u16 rank_in_closure;
 	} closed;
@@ -185,13 +180,9 @@ const TreeSchemaNode* config_schema() noexcept;
 
 
 
-Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align, bool allow_huge) noexcept;
+Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align) noexcept;
 
-void comp_heap_gc_begin(CoreData* core) noexcept;
 
-bool comp_heap_gc_mark(CoreData* core, MutRange<byte> memory) noexcept;
-
-void comp_heap_gc_end(CoreData* core) noexcept;
 
 u64 comp_heap_arena_mark(CoreData* core) noexcept;
 
@@ -201,9 +192,13 @@ void comp_heap_arena_release(CoreData* core, u64 arena_mark) noexcept;
 
 void* comp_heap_arena_release_and_preserve(CoreData* core, u64 arena_mark, MutRange<byte> preserve) noexcept;
 
-byte* comp_heap_small_allocation_base(CoreData* core) noexcept;
 
-byte* comp_heap_small_allocation_tip(CoreData* core) noexcept;
+
+void comp_heap_gc_begin(CoreData* core) noexcept;
+
+bool comp_heap_gc_mark(CoreData* core, MutRange<byte> memory) noexcept;
+
+void comp_heap_gc_end(CoreData* core) noexcept;
 
 
 
@@ -1105,10 +1100,12 @@ struct alignas(8) AstLitStringData
 
 	// `ForeverValueId` of the global `u8` array representing this string's
 	// value.
-	ForeverValueId string_value_id;
+	void* value_begin;
+
+	u32 value_size;
 
 	// `TypeId` of the `u8` array representing this string's value.
-	TypeId string_type_id;
+	TypeId type_id;
 };
 
 // Attachment of an `AstNode` with tag `AstTag::Definition`.
@@ -1593,7 +1590,7 @@ struct SourceFile
 	// `SourceId` of the first byte in this file.
 	SourceId source_id_base;
 
-	GlobalCompositeIndex file_index;
+	GlobalCompositeId file_id;
 
 	bool has_error;
 };
@@ -1868,9 +1865,9 @@ Maybe<CompileError> compile_error_from_name(Range<char8> name) noexcept;
 
 struct LexicalAnalyser;
 
-bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalCompositeIndex file_index) noexcept;
+bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalCompositeId file_id) noexcept;
 
-bool resolve_names(CoreData* core, AstNode* root, GlobalCompositeIndex file_index) noexcept;
+bool resolve_names(CoreData* core, AstNode* root, GlobalCompositeId file_id) noexcept;
 
 
 
@@ -2058,7 +2055,7 @@ struct MemberInfo
 {
 	TypeId type_id;
 
-	Maybe<ForeverValueId> value_or_default_id;
+	Maybe<CoreId> value_or_default;
 
 	bool is_pub : 1;
 
@@ -2105,8 +2102,8 @@ struct SignatureParameterInit
 		struct
 		{
 			TypeId type_id;
-			
-			Maybe<ForeverValueId> default_id;
+
+			Maybe<CoreId> default_value;
 		} complete;
 
 		struct
@@ -2168,7 +2165,7 @@ struct UserCompositeMemberInit
 
 	TypeId type_id;
 
-	Maybe<ForeverValueId> default_id;
+	Maybe<CoreId> default_value;
 
 	bool is_pub;
 
@@ -2285,7 +2282,7 @@ TypeId type_seal_signature(CoreData* core, TypeId type_id, SignatureSealInfo sea
 
 TypeId type_instantiate_templated_signature(CoreData* core, TypeId type_id) noexcept;
 
-void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<ForeverValueId> default_id) noexcept;
+void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<CoreId> default_value) noexcept;
 
 
 
@@ -2313,7 +2310,7 @@ TypeId type_create_file_composite(CoreData* core, u16 member_count, SourceId def
 
 void type_add_file_composite_member(CoreData* core, TypeId type_id, FileCompositeMemberInit init) noexcept;
 
-void type_complete_file_composite_member(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, ForeverValueId value_id) noexcept;
+void type_complete_file_composite_member(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, CoreId value) noexcept;
 
 
 
@@ -2421,49 +2418,31 @@ struct CTValue
 	TypeId type;
 };
 
-enum class ForeverValueId : u32
+enum class GlobalCompositeId : u32
 {
 	INVALID = 0,
 };
 
-enum class GlobalCompositeIndex : u16
-{
-	INVALID = 0,
-};
-
-enum class GlobalFileValueState : u8
+enum class GlobalCompositeValueState : u8
 {
 	Complete,
 	Uninitialized,
 	Initializing,
 };
 
-struct ForeverCTValue
-{
-	CTValue value;
+GlobalCompositeId global_composite_reserve(CoreData* core, TypeId type_id, u16 definition_count) noexcept;
 
-	ForeverValueId id;
-};
+void global_composite_value_set_initializer(CoreData* core, GlobalCompositeId id, u16 rank, OpcodeId initializer) noexcept;
 
-GlobalCompositeIndex global_composite_reserve(CoreData* core, TypeId type_id, u16 definition_count) noexcept;
+GlobalCompositeValueState global_composite_value_get(CoreData* core, GlobalCompositeId id, u16 rank, CTValue* out_value, OpcodeId* out_code) noexcept;
 
-void global_composite_value_set_initializer(CoreData* core, GlobalCompositeIndex index, u16 rank, OpcodeId initializer) noexcept;
+void global_composite_value_alloc_prepare(CoreData* core, GlobalCompositeId id, u16 rank, bool is_mut) noexcept;
 
-GlobalFileValueState global_composite_value_get(CoreData* core, GlobalCompositeIndex index, u16 rank, ForeverCTValue* out_value, OpcodeId* out_code) noexcept;
+CTValue global_composite_value_alloc_initialized(CoreData* core, GlobalCompositeId id, u16 rank, CTValue initializer, TypeId* out_file_type) noexcept;
 
-void global_composite_value_alloc_prepare(CoreData* core, GlobalCompositeIndex index, u16 rank, bool is_mut) noexcept;
+CTValue global_composite_value_alloc_uninitialized(CoreData* core, GlobalCompositeId id, u16 rank, TypeId type, TypeMetrics metrics, TypeId* out_file_type) noexcept;
 
-ForeverValueId global_composite_value_alloc_initialized(CoreData* core, GlobalCompositeIndex index, u16 rank, CTValue initializer, TypeId* out_file_type) noexcept;
-
-ForeverCTValue global_composite_value_alloc_uninitialized(CoreData* core, GlobalCompositeIndex index, u16 rank, TypeId type, TypeMetrics metrics, TypeId* out_file_type) noexcept;
-
-void global_composite_value_alloc_initialized_complete(CoreData* core, GlobalCompositeIndex index, u16 rank) noexcept;
-
-ForeverValueId forever_value_alloc_initialized(CoreData* core, bool is_mut, CTValue initializer) noexcept;
-
-ForeverCTValue forever_value_alloc_uninitialized(CoreData* core, bool is_mut, TypeId type, TypeMetrics metrics) noexcept;
-
-CTValue forever_value_get(CoreData* core, ForeverValueId id) noexcept;
+void global_composite_value_alloc_uninitialized_complete(CoreData* core, GlobalCompositeId id, u16 rank) noexcept;
 
 
 
@@ -2647,7 +2626,7 @@ enum class OpcodeId : u32
 	INVALID = 0,
 };
 
-const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, GlobalCompositeIndex file_index, u16 rank) noexcept;
+const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, GlobalCompositeId file_id, u16 rank) noexcept;
 
 OpcodeId opcode_id_from_builtin(CoreData* core, Builtin builtin) noexcept;
 
@@ -2782,10 +2761,19 @@ const char8* tag_name(Builtin builtin) noexcept;
 
 struct CoreData;
 
+enum class CoreId : u32
+{
+	INVALID = 0,
+};
+
 CoreData* create_core_data(const Config* config) noexcept;
 
 void release_core_data(CoreData* core) noexcept;
 
 bool run_compilation(CoreData* core, bool main_is_std) noexcept;
+
+void* address_from_core_id(CoreData* core, CoreId id) noexcept;
+
+CoreId core_id_from_address(CoreData* core, const void* memory) noexcept;
 
 #endif // CORE_INCLUDE_GUARD

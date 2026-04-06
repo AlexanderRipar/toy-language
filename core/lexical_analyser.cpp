@@ -610,12 +610,12 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 					// The global's file index can be either the prelude index
 					// (in case `i` is 0) or the file index of the file that is
 					// currently being analysed.
-					const u16 file_index_bits = i == 0
-						? static_cast<u16>(core->lex.prelude_file_index)
-						: static_cast<u16>(core->lex.active_file_index);
+					const GlobalCompositeId file_id = i == 0
+						? core->lex.prelude_file_id
+						: core->lex.active_file_id;
 
-					binding->global.is_global_ = true;
-					binding->global.file_index_bits = file_index_bits;
+					binding->global.kind_ = NameBindingKind::Global;
+					binding->global.file_id = file_id;
 					binding->global.rank = scope_entry.rank;
 				}
 				else if (is_closed_over)
@@ -626,17 +626,13 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 					// innermost closure.
 					const u16 rank_in_closure = add_name_to_closures(core, name, scope_entry.rank, i, close_in_innermost);
 
-					binding->closed.is_global_ = false;
-					binding->closed.is_scoped_ = false;
-					binding->closed.unused_ = 0;
+					binding->closed.kind_ = NameBindingKind::Closed;
 					binding->closed.rank_in_closure = rank_in_closure;
 				}
 				else
 				{
-					binding->scoped.is_global_ = false;
-					binding->scoped.is_scoped_ = true;
-					binding->scoped.unused_ = 0;
-					binding->scoped.out = static_cast<u16>(core->lex.scopes_top - i);
+					binding->scoped.kind_ = NameBindingKind::Scoped;
+					binding->scoped.out = static_cast<u8>(core->lex.scopes_top - i);
 					binding->scoped.rank = scope_entry.rank;
 				}
 
@@ -860,9 +856,9 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 	}
 }
 
-static void resolve_names_root(CoreData* core, AstNode* root, GlobalCompositeIndex file_index) noexcept
+static void resolve_names_root(CoreData* core, AstNode* root, GlobalCompositeId file_id) noexcept
 {
-	core->lex.active_file_index = file_index;
+	core->lex.active_file_id = file_id;
 
 	ScopeMap* scope = scope_map_alloc(core, ScopeMapKind::Global);
 
@@ -949,15 +945,15 @@ void lexical_analyser_init(CoreData* core, [[maybe_unused]] MemoryAllocation all
 
 
 
-bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalCompositeIndex file_index) noexcept
+bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalCompositeId file_id) noexcept
 {
 	ASSERT_OR_IGNORE(prelude->tag == AstTag::File && core->lex.scopes_top == -1);
 
 	const u64 arena_mark = comp_heap_arena_mark(core);
 
-	core->lex.prelude_file_index = file_index;
+	core->lex.prelude_file_id = file_id;
 
-	resolve_names_root(core, prelude, file_index);
+	resolve_names_root(core, prelude, file_id);
 
 	ASSERT_OR_IGNORE(core->lex.scopes_top == 0);
 
@@ -974,13 +970,13 @@ bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalCompositeIndex fi
 	return !core->lex.has_error;
 }
 
-bool resolve_names(CoreData* core, AstNode* root, GlobalCompositeIndex file_index) noexcept
+bool resolve_names(CoreData* core, AstNode* root, GlobalCompositeId file_id) noexcept
 {
 	ASSERT_OR_IGNORE(root->tag == AstTag::File && core->lex.scopes_top == 0);
 
 	const u64 arena_mark = comp_heap_arena_mark(core);
 
-	resolve_names_root(core, root, file_index);
+	resolve_names_root(core, root, file_id);
 
 	pop_scope(core);
 

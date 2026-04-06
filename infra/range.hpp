@@ -105,22 +105,12 @@ public:
 		return m_begin[i];
 	}
 
-	const T* begin() const noexcept
+	T* begin() const noexcept
 	{
 		return m_begin;
 	}
 
-	const T* end() const noexcept
-	{
-		return m_end;
-	}
-
-	T* begin() noexcept
-	{
-		return m_begin;
-	}
-
-	T* end() noexcept
+	T* end() const noexcept
 	{
 		return m_end;
 	}
