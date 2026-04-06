@@ -1654,7 +1654,6 @@ static const Opcode* handle_scope_begin(CoreData* core, const Opcode* code, [[ma
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
 	u16 member_count;
-
 	code = code_attach(code, &member_count);
 
 	Scope* const scope = core->interp.scopes.reserve();
@@ -1712,7 +1711,6 @@ static const Opcode* handle_scope_alloc_typed(CoreData* core, const Opcode* code
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
 	bool is_mut;
-
 	code = code_attach(code, &is_mut);
 
 	CTValue* const top = core->interp.values.end() -1;
@@ -1740,7 +1738,6 @@ static const Opcode* handle_scope_alloc_untyped(CoreData* core, const Opcode* co
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
 	bool is_mut;
-
 	code = code_attach(code, &is_mut);
 
 	ScopeMember* const member = core->interp.scope_members.reserve();
@@ -1772,15 +1769,12 @@ static const Opcode* handle_file_global_alloc_prepare(CoreData* core, const Opco
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
 	bool is_mut;
-
 	code = code_attach(code, &is_mut);
 
 	GlobalCompositeId file_id;
-
 	code = code_attach(code, &file_id);
 
 	u16 rank;
-
 	code = code_attach(code, &rank);
 
 	global_composite_value_alloc_prepare(core, file_id, rank, is_mut);
@@ -1888,11 +1882,9 @@ static const Opcode* handle_load_scope(CoreData* core, const Opcode* code, CTVal
 	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
 	u8 out;
-
 	code = code_attach(code, &out);
 
 	u16 rank;
-
 	code = code_attach(code, &rank);
 
 	ASSERT_OR_IGNORE(out < core->interp.scopes.used());
@@ -1917,11 +1909,9 @@ static const Opcode* handle_load_global(CoreData* core, const Opcode* code, CTVa
 	const Opcode* const code_activation = code;
 
 	GlobalCompositeId file_id;
-
 	code = code_attach(code, &file_id);
 
 	u16 rank;
-
 	code = code_attach(code, &rank);
 
 	CTValue global_value;
@@ -1962,7 +1952,6 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 	const Opcode* const code_activation = code;
 
 	IdentifierId name;
-
 	code = code_attach(code, &name);
 
 	CTValue* const top = core->interp.values.end() - 1;
@@ -2075,7 +2064,6 @@ static const Opcode* handle_load_closure(CoreData* core, const Opcode* code, CTV
 	ASSERT_OR_IGNORE(core->interp.active_closures.used() != 0);
 
 	u16 rank;
-
 	code = code_attach(code, &rank);
 
 	const ClosureId closure = core->interp.active_closures.end()[-1];
@@ -2096,7 +2084,6 @@ static const Opcode* handle_load_closure(CoreData* core, const Opcode* code, CTV
 static const Opcode* handle_load_builtin(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	u8 ordinal;
-
 	code = code_attach(code, &ordinal);
 
 	ASSERT_OR_IGNORE(ordinal != 0 && static_cast<u64>(ordinal - 1) < array_count(core->interp.builtin_infos));
@@ -2162,7 +2149,6 @@ static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, CTV
 	static_assert(HANDLERS[static_cast<u8>(Builtin::DefinitionTypeof)]  == &builtin_definition_typeof);
 
 	u8 ordinal;
-
 	code = code_attach(code, &ordinal);
 
 	ASSERT_OR_IGNORE(ordinal != 0 && ordinal < array_count(HANDLERS));
@@ -2173,17 +2159,14 @@ static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, CTV
 static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	OpcodeSignatureFlags signature_flags;
-
 	code = code_attach(code, &signature_flags);
 
 	ASSERT_OR_IGNORE(!signature_flags.has_templated_parameter_list && !signature_flags.has_templated_return_type);
 
 	u8 parameter_count;
-
 	code = code_attach(code, &parameter_count);
 
 	u8 value_count;
-
 	code = code_attach(code, &value_count);
 
 	ASSERT_OR_IGNORE(value_count >= 1 && core->interp.values.used() >= value_count);
@@ -2195,11 +2178,9 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 	for (u32 i = 0; i != parameter_count; ++i)
 	{
 		IdentifierId parameter_name;
-
 		code = code_attach(code, &parameter_name);
 
 		OpcodeSignaturePerParameterFlags parameter_flags;
-
 		code = code_attach(code, &parameter_flags);
 
 		TypeId parameter_type;
@@ -2300,19 +2281,15 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	OpcodeSignatureFlags signature_flags;
-
 	code = code_attach(code, &signature_flags);
 
 	u8 parameter_count;
-
 	code = code_attach(code, &parameter_count);
 
 	u8 value_count;
-
 	code = code_attach(code, &value_count);
 
 	u16 closed_over_value_count;
-
 	code = code_attach(code, &closed_over_value_count);
 
 	Maybe<OpcodeId> return_completion;
@@ -2331,11 +2308,9 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 	for (u32 i = 0; i != parameter_count; ++i)
 	{
 		IdentifierId name;
-
 		code = code_attach(code, &name);
 
 		OpcodeSignaturePerParameterFlags parameter_flags;
-
 		code = code_attach(code, &parameter_flags);
 
 		SignatureParameterInit init{};
@@ -2347,7 +2322,6 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 		if (parameter_flags.is_templated)
 		{
 			OpcodeId parameter_completion;
-
 			code = code_attach(code, &parameter_completion);
 
 			init.templated.completion_id = parameter_completion;
@@ -2455,7 +2429,6 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	OpcodeId body_id;
-
 	code = code_attach(code, &body_id);
 
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
@@ -2486,7 +2459,6 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
 	u8 argument_count;
-
 	code = code_attach(code, &argument_count);
 
 	const IdentifierId* const argument_names = reinterpret_cast<const IdentifierId*>(code);
@@ -2829,7 +2801,6 @@ static const Opcode* handle_complete_param_typed_no_default(CoreData* core, cons
 	ASSERT_OR_IGNORE(core->interp.argument_packs.used() >= 1);
 
 	u8 rank;
-
 	code = code_attach(code, &rank);
 
 	CTValue* top = core->interp.values.end() - 1;
@@ -2861,7 +2832,6 @@ static const Opcode* handle_complete_param_typed_with_default(CoreData* core, co
 	ASSERT_OR_IGNORE(core->interp.argument_packs.used() >= 1);
 
 	u8 rank;
-
 	code = code_attach(code, &rank);
 
 	CTValue* const type_value = core->interp.values.end() - 2;
@@ -2913,7 +2883,6 @@ static const Opcode* handle_complete_param_untyped(CoreData* core, const Opcode*
 	ASSERT_OR_IGNORE(core->interp.argument_packs.used() >= 1);
 
 	u8 rank;
-
 	code = code_attach(code, &rank);
 
 	CTValue* const default_value = core->interp.values.end() - 1;
@@ -2941,13 +2910,11 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, CT
 	ASSERT_OR_IGNORE(write_ctx != nullptr);
 
 	u16 index_count;
-
 	code = code_attach(code, &index_count);
 
 	ASSERT_OR_IGNORE(core->interp.values.used() >= index_count);
 
 	u16 leading_element_count;
-
 	code = code_attach(code, &leading_element_count);
 
 	const TypeId dst_type = write_ctx->type;
@@ -2998,7 +2965,6 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, CT
 	for (u16 i = 0; i != index_count; ++i)
 	{
 		u16 following_element_count;
-
 		code = code_attach(code, &following_element_count);
 
 		u64 index;
@@ -3041,15 +3007,12 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
 	u16 total_element_count;
-
 	code = code_attach(code, &total_element_count);
 
 	u16 index_count;
-
 	code = code_attach(code, &index_count);
 
 	u16 leading_element_count;
-
 	code = code_attach(code, &leading_element_count);
 
 	if (total_element_count == 0)
@@ -3108,7 +3071,6 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 			ASSERT_OR_IGNORE(index_rst == U64FromValueRst::Ok);
 
 		u16 following_element_count;
-
 		code = code_attach(code, &following_element_count);
 
 		if (index + following_element_count > max_element_index)
@@ -3163,7 +3125,6 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 			ASSERT_OR_IGNORE(base_index_rst == U64FromValueRst::Ok);
 
 		u16 following_element_count;
-
 		code = code_attach(code, &following_element_count);
 
 		ASSERT_OR_IGNORE(base_index + following_element_count <= max_element_index);
@@ -3203,7 +3164,6 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 	const TypeTag type_tag = type_tag_from_id(core, dst_type);
 
 	u16 names_count;
-
 	code = code_attach(code, &names_count);
 
 	if (type_tag != TypeTag::CompositeLiteral && type_tag != TypeTag::Composite)
@@ -3212,7 +3172,6 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 	const u32 member_count = type_member_count(core, dst_type);
 
 	u16 leading_member_count;
-
 	code = code_attach(code, &leading_member_count);
 
 	if (member_count < leading_member_count)
@@ -3270,11 +3229,9 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 	for (u16 i = 0; i != names_count; ++i)
 	{
 		IdentifierId name;
-
 		code = code_attach(code, &name);
 
 		u16 following_member_count;
-
 		code = code_attach(code, &following_member_count);
 
 		MemberInfo named_member_info;
@@ -3355,7 +3312,6 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
 	u16 total_member_count;
-
 	code = code_attach(code, &total_member_count);
 
 	ASSERT_OR_IGNORE(core->interp.values.used() >= total_member_count);
@@ -3371,7 +3327,6 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 	for (u16 i = 0; i != total_member_count; ++i)
 	{
 		IdentifierId name;
-
 		code = code_attach(code, &name);
 
 		const TypeId member_type = values[i].type;
@@ -3436,7 +3391,6 @@ static const Opcode* handle_if(CoreData* core, const Opcode* code, [[maybe_unuse
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
 	OpcodeId consequent;
-
 	code = code_attach(code, &consequent);
 
 	CTValue* const top = core->interp.values.end() - 1;
@@ -3471,11 +3425,9 @@ static const Opcode* handle_if_else(CoreData* core, const Opcode* code, CTValue*
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	OpcodeId consequent;
-
 	code = code_attach(code, &consequent);
 
 	OpcodeId alternative;
-
 	code = code_attach(code, &alternative);
 
 	if (write_ctx != nullptr)
@@ -3508,11 +3460,9 @@ static const Opcode* handle_loop(CoreData* core, const Opcode* code, [[maybe_unu
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	OpcodeId condition_id;
-
 	code = code_attach(code, &condition_id);
 
 	OpcodeId body_id;
-
 	code = code_attach(code, &body_id);
 
 	CTValue* const top = core->interp.values.end() - 1;
@@ -3543,15 +3493,12 @@ static const Opcode* handle_loop_finally(CoreData* core, const Opcode* code, CTV
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	OpcodeId condition_id;
-
 	code = code_attach(code, &condition_id);
 
 	OpcodeId body_id;
-
 	code = code_attach(code, &body_id);
 
 	OpcodeId finally_id;
-
 	code = code_attach(code, &finally_id);
 
 	if (write_ctx != nullptr)
@@ -3646,7 +3593,6 @@ static const Opcode* handle_dereference(CoreData* core, const Opcode* code, CTVa
 static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	OpcodeSliceKind kind;
-
 	code = code_attach(code, &kind);
 
 	const u8 argument_count = kind == OpcodeSliceKind::NoBounds ? 1 : kind == OpcodeSliceKind::BothBounds ? 3 : 2;
@@ -3934,7 +3880,6 @@ static const Opcode* handle_binary_arithmetic_op(CoreData* core, const Opcode* c
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
 	OpcodeBinaryArithmeticOpKind kind;
-
 	code = code_attach(code, &kind);
 
 	CTValue* const lhs = core->interp.values.end() - 2;
@@ -4260,7 +4205,6 @@ static const Opcode* handle_shift(CoreData* core, const Opcode* code, CTValue* w
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
 	OpcodeShiftKind kind;
-
 	code = code_attach(code, &kind);
 
 	CTValue* const lhs = core->interp.values.end() - 2;
@@ -4344,7 +4288,6 @@ static const Opcode* handle_binary_bitwise_op(CoreData* core, const Opcode* code
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
 	OpcodeBinaryBitwiseOpKind kind;
-
 	code = code_attach(code, &kind);
 
 	CTValue* const lhs = core->interp.values.end() - 2;
@@ -4624,7 +4567,6 @@ static const Opcode* handle_compare(CoreData* core, const Opcode* code, CTValue*
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
 	OpcodeCompareKind kind;
-
 	code = code_attach(code, &kind);
 
 	CTValue* const lhs = core->interp.values.end() - 2;
@@ -4842,7 +4784,6 @@ static const Opcode* handle_reference_type(CoreData* core, const Opcode* code, C
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	OpcodeReferenceTypeFlags flags;
-
 	code = code_attach(code, &flags);
 
 	CTValue* const referenced_type_value = core->interp.values.end() - 1;
@@ -4893,7 +4834,6 @@ static const Opcode* handle_unreachable([[maybe_unused]] CoreData* core, [[maybe
 static const Opcode* handle_value_integer(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	CompIntegerValue value;
-
 	code = code_attach(code, &value);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
@@ -4906,7 +4846,6 @@ static const Opcode* handle_value_integer(CoreData* core, const Opcode* code, CT
 static const Opcode* handle_value_float(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
 	CompFloatValue value;
-
 	code = code_attach(code, &value);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
