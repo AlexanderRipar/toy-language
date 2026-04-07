@@ -24,12 +24,24 @@ static constexpr u8 ctz_shim_(T n) noexcept
 
 		return static_cast<u8>(index);
 	#elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
-		if constexpr (sizeof(T) > 8)
-			static_assert(false, "Trailing zero count only supported for up to 64-bit numbers.");
-		else if constexpr (sizeof(T) == 8)
-			return static_cast<u8>(__builtin_ctzl(static_cast<u64>(n)));
+		static_assert(sizeof(T) <= 8, "Trailing zero count only supported for up to 64-bit numbers.");
+
+		if constexpr (sizeof(T) == 8)
+		{
+			// This is necessary to cope with clang-cl defining long as 4
+			// bytes, meaning that all *l builtins -- which operate on unsigned
+			// long -- operate on 4 byte values.
+			static_assert(sizeof(unsigned long) == 8 || sizeof(unsigned long long) == 8, "Need an 8-byte sized data type for operating on 64-bit numbers.");
+
+			if constexpr (sizeof(unsigned long) == 8)
+				return static_cast<u8>(__builtin_ctzl(static_cast<u64>(n)));
+			else
+				return static_cast<u8>(__builtin_ctzll(static_cast<u64>(n)));
+		}
 		else
+		{
 			return static_cast<u8>(__builtin_ctz(static_cast<u32>(n)));
+		}
 	#else
 		#error("Unsupported compiler")
 	#endif
@@ -60,10 +72,23 @@ static constexpr u8 clz_shim_(T n) noexcept
 		return leading_zeros_t;
 	#elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 		static_assert(sizeof(T) <= 8, "Leading zero count only supported for up to 64-bit numbers.");
+
 		if constexpr (sizeof(T) == 8)
-			return static_cast<u8>(__builtin_clzl(static_cast<u64>(n)));
+		{
+			// This is necessary to cope with clang-cl defining long as 4
+			// bytes, meaning that all *l builtins -- which operate on unsigned
+			// long -- operate on 4 byte values.
+			static_assert(sizeof(unsigned long) == 8 || sizeof(unsigned long long) == 8, "Need an 8-byte sized data type for operating on 64-bit numbers.");
+
+			if constexpr (sizeof(unsigned long) == 8)
+				return static_cast<u8>(__builtin_clzl(static_cast<u64>(n)));
+			else
+				return static_cast<u8>(__builtin_clzll(static_cast<u64>(n)));
+		}
 		else
+		{
 			return static_cast<u8>(__builtin_clz(static_cast<u32>(n)));
+		}
 	#else
 		#error("Unsupported compiler")
 	#endif
