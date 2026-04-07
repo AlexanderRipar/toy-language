@@ -1858,26 +1858,29 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		if (!core->opcodes.flags.allow_return)
 			return false; // TODO: Error message.
 
-		const s32 closures_diff = core->opcodes.state.closures_diff != 0 || core->opcodes.return_adjust.closures_diff != 0;
+		const s32 closures_diff = core->opcodes.state.closures_diff + core->opcodes.return_adjust.closures_diff;
 
 		ASSERT_OR_IGNORE(closures_diff == 0 || closures_diff == 1);
 
 		if (closures_diff != 0)
 			emit_opcode(core, Opcode::PopClosure, false, node);
 
-		const s32 values_diff = core->opcodes.state.values_diff + core->opcodes.return_adjust.values_diff;
-		const s32 scopes_diff = core->opcodes.state.scopes_diff + core->opcodes.return_adjust.scopes_diff;
-		const s32 write_ctxs_diff = core->opcodes.state.write_ctxs_diff + core->opcodes.return_adjust.write_ctxs_diff;
-
-		if (values_diff != 0 || scopes_diff != 0 || write_ctxs_diff != 0)
-			TODO("Discard extra elements");
-
 		AstNode* const operand = first_child_of(node);
 
 		if (!opcodes_from_expression(core, operand, true))
 			return false;
 
-		emit_opcode(core, Opcode::Return, false, node);
+		ASSERT_OR_IGNORE(core->opcodes.state.values_diff == 0 && core->opcodes.return_adjust.values_diff == 0);
+
+		ASSERT_OR_IGNORE(core->opcodes.state.write_ctxs_diff == 0 && core->opcodes.return_adjust.write_ctxs_diff == 0);
+
+		ASSERT_OR_IGNORE(core->opcodes.state.scopes_diff >= 0 && core->opcodes.return_adjust.scopes_diff >= 0);
+		
+		ASSERT_OR_IGNORE(core->opcodes.state.scopes_diff + core->opcodes.return_adjust.scopes_diff <= UINT16_MAX);
+
+		const u16 popped_scopes_count = static_cast<u16>(core->opcodes.state.scopes_diff + core->opcodes.return_adjust.scopes_diff);
+
+		emit_opcode(core, Opcode::Return, false, node, popped_scopes_count);
 
 		return true;
 	}
@@ -2309,7 +2312,9 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 		if (fixup.function_body_has_closure)
 			emit_opcode(core, Opcode::PopClosure, false, node);
 
-		emit_opcode(core, Opcode::Return, false, node);
+		const u16 popped_scopes_count = 1;
+
+		emit_opcode(core, Opcode::Return, false, node, popped_scopes_count);
 
 		return true;
 	}
@@ -2719,7 +2724,9 @@ OpcodeId opcode_id_from_builtin(CoreData* core, Builtin builtin) noexcept
 
 	emit_opcode(core, Opcode::ExecBuiltin, true, nullptr, builtin);
 
-	emit_opcode(core, Opcode::Return, false, nullptr);
+	const u16 popped_scopes_count = 1;
+
+	emit_opcode(core, Opcode::Return, false, nullptr, popped_scopes_count);
 
 	ASSERT_OR_IGNORE(
 		core->opcodes.state.values_diff == 0

@@ -2798,6 +2798,14 @@ static const Opcode* handle_return(CoreData* core, [[maybe_unused]] const Opcode
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
+	u16 popped_scopes_count;
+	code = code_attach(code, &popped_scopes_count);
+
+	ASSERT_OR_IGNORE(popped_scopes_count >= 1 && popped_scopes_count <= core->interp.scopes.used());
+
+	if (popped_scopes_count > 1)
+		core->interp.scopes.pop_by(popped_scopes_count - 1);
+
 	scope_pop(core);
 
 	const u32 callee_activation = core->interp.call_activation_indices.end()[-1];

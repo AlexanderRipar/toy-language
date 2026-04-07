@@ -570,7 +570,6 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	{
 	case Opcode::INVALID:
 	case Opcode::EndCode:
-	case Opcode::Return:
 	case Opcode::FileGlobalAllocComplete:
 	case Opcode::FileGlobalAllocUntyped:
 	case Opcode::ImplMemberAllocComplete:
@@ -942,6 +941,20 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 		}
 
 		return PrintResult{ code, header_written + total_written };
+	}
+
+	case Opcode::Return:
+	{
+		u16 popped_scope_count;
+
+		code = code_attach(code, &popped_scope_count);
+
+		const s64 written = print(sink, " popped_scopes=%", popped_scope_count);
+
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ nullptr, header_written + written };
 	}
 
 	case Opcode::CompleteParamTypedNoDefault:
