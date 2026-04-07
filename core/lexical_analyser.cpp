@@ -106,6 +106,11 @@ struct ScopeMapInfo
 };
 
 
+
+static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool close_in_innermost) noexcept;
+
+
+
 ScopeMapInfo scope_map_info(ScopeMap* scope) noexcept
 {
 	IdentifierId* const names = reinterpret_cast<IdentifierId*>(scope->occupied_bits + (scope->capacity + 63) / 64);
@@ -609,6 +614,65 @@ static bool check_parameter_is_templated(CoreData* core, AstNode* node) noexcept
 	return check_expression_is_templated(core, second_child, true);
 }
 
+static bool push_scope_for_node(CoreData* core, AstNode* node, bool close_in_innermost) noexcept
+{
+	const AstTag tag = node->tag;
+
+	AstNode* where;
+
+	if (tag == AstTag::Block)
+	{
+		ScopeMap* const scope = scope_map_alloc(core, ScopeMapKind::Local);
+		push_scope(core, scope);
+
+		return true;
+	}
+	else if (tag == AstTag::If && has_flag(node, AstFlag::If_HasWhere))
+	{
+		const IfInfo info = get_if_info(node);
+
+		where = get(info.where);
+	}
+	else if (tag == AstTag::For && has_flag(node, AstFlag::For_HasWhere))
+	{
+		const ForInfo info = get_for_info(node);
+
+		where = get(info.where);
+	}
+	else if (tag == AstTag::ForEach && has_flag(node, AstFlag::ForEach_HasWhere))
+	{
+		const ForEachInfo info = get_foreach_info(node);
+
+		where = get(info.where);
+	}
+	else if (tag == AstTag::Switch && has_flag(node, AstFlag::Switch_HasWhere))
+	{
+		const SwitchInfo info = get_switch_info(node);
+
+		where = get(info.where);
+	}
+	else
+	{
+		return false;
+	}
+
+	ScopeMap* const scope = scope_map_alloc(core, ScopeMapKind::Local);
+	push_scope(core, scope);
+
+	AstDirectChildIterator it = direct_children_of(where);
+
+	while (has_next(&it))
+	{
+		AstNode* const where_child = next(&it);
+
+		ASSERT_OR_IGNORE(where_child->tag == AstTag::Definition);
+
+		resolve_names_rec(core, where_child, true, close_in_innermost);
+	}
+
+	return true;
+}
+
 
 
 static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool close_in_innermost) noexcept
@@ -618,6 +682,8 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 	const AstTag tag = node->tag;
 
 	ASSERT_OR_IGNORE(do_pop || tag == AstTag::Signature);
+
+	ASSERT_OR_IGNORE(tag != AstTag::Where);
 
 	if (tag == AstTag::Identifier)
 	{
@@ -861,6 +927,8 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 	}
 	else
 	{
+		const bool has_scope = push_scope_for_node(core, node, close_in_innermost);
+
 		if (tag == AstTag::Definition || tag == AstTag::Parameter)
 		{
 			ASSERT_OR_IGNORE(core->lex.scopes_top >= 0);
@@ -881,15 +949,6 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 			core->lex.scopes[core->lex.scopes_top] = get(new_scope);
 		}
-		else if (tag == AstTag::Block)
-		{
-			// Push a new scope, later popping it if `do_pop` is `true` and
-			// leaving it on the stack to be popped externally otherwise.
-
-			ScopeMap* const scope = scope_map_alloc(core, ScopeMapKind::Local);
-
-			push_scope(core, scope);
-		}
 
 		// Traverse node's children recursively.
 
@@ -899,10 +958,13 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 		{
 			AstNode* const child = next(&it);
 
+			if (child->tag == AstTag::Where)
+				continue;
+
 			resolve_names_rec(core, child, true, close_in_innermost);
 		}
 
-		if (tag == AstTag::Block)
+		if (has_scope)
 			pop_scope(core);
 	}
 }
@@ -998,7 +1060,9 @@ void lexical_analyser_init(CoreData* core, [[maybe_unused]] MemoryAllocation all
 
 bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalCompositeId file_id) noexcept
 {
-	ASSERT_OR_IGNORE(prelude->tag == AstTag::File && core->lex.scopes_top == -1);
+	ASSERT_OR_IGNORE(core->lex.scopes_top == -1);
+
+	ASSERT_OR_IGNORE(prelude->tag == AstTag::File);
 
 	const u64 arena_mark = comp_heap_arena_mark(core);
 
@@ -1023,7 +1087,9 @@ bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalCompositeId file_
 
 bool resolve_names(CoreData* core, AstNode* root, GlobalCompositeId file_id) noexcept
 {
-	ASSERT_OR_IGNORE(root->tag == AstTag::File && core->lex.scopes_top == 0);
+	ASSERT_OR_IGNORE(core->lex.scopes_top == 0);
+
+	ASSERT_OR_IGNORE(root->tag == AstTag::File);
 
 	const u64 arena_mark = comp_heap_arena_mark(core);
 
