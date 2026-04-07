@@ -35,7 +35,14 @@ struct alignas(8) GlobalFile
 	
 	u64 unused_[2];
 
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
+	#endif
 	ForeverValue members[];
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
 };
 
 static_assert(sizeof(ForeverValue) == 24);
