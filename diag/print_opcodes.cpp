@@ -193,8 +193,9 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::BindBody:
 	{
 		OpcodeId body;
-
 		code = code_attach(code, &body);
+
+		code += sizeof(u16);
 
 		const Opcode* const body_code = opcode_from_id(core, body);
 
@@ -885,10 +886,12 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	case Opcode::BindBody:
 	{
 		OpcodeId body_id;
-
 		code = code_attach(code, &body_id);
 
-		const s64 written = print(sink, " body=OpcodeId<%>", static_cast<u32>(body_id));
+		u16 closed_over_value_count;
+		code = code_attach(code, &closed_over_value_count);
+
+		const s64 written = print(sink, " body=OpcodeId<%> closed_count=%", static_cast<u32>(body_id), closed_over_value_count);
 
 		if (written < 0)
 			return PrintResult{ nullptr, -1 };

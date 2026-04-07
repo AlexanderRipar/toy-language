@@ -100,6 +100,8 @@ struct alignas(16) ArgumentPack
 
 	bool has_templated_return_type : 1;
 
+	bool has_closure : 1;
+
 	bool has_just_completed_template_parameter;
 };
 
@@ -2428,8 +2430,18 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	OpcodeId body_id;
-	code = code_attach(code, &body_id);
+	OpcodeId body;
+	code = code_attach(code, &body);
+
+	u16 closed_over_value_count;
+	code = code_attach(code, &closed_over_value_count);
+
+	Maybe<ClosureId> closure;
+
+	if (closed_over_value_count != 0)
+		closure = some(create_closure(core, closed_over_value_count));
+	else
+		closure = none<ClosureId>();
 
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -2441,11 +2453,9 @@ static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CTValu
 
 	ASSERT_OR_IGNORE(type_tag_from_id(core, signature_type) == TypeTag::Signature);
 
-	const SignatureTypeInfo info = type_signature_info_from_id(core, signature_type);
-
 	Callable callable{};
-	callable.body_id = body_id;
-	callable.closure_id = info.closure_id;
+	callable.body_id = body;
+	callable.closure_id = closure;
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&callable);
 
@@ -2557,6 +2567,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 	argument_pack->count = info.parameter_count;
 	argument_pack->has_templated_parameter_list = info.templated_parameter_count != 0;
 	argument_pack->has_templated_return_type = info.has_templated_return_type;
+	argument_pack->has_closure = is_some(info.closure_id);
 	argument_pack->has_just_completed_template_parameter = false;
 
 	if (info.templated_parameter_count != 0 || info.has_templated_return_type)
@@ -2745,6 +2756,9 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 		// proceeding to the actual call.
 		core->interp.argument_callbacks.pop_by(argument_pack->count);
 
+		if (argument_pack->has_closure)
+			core->interp.active_closures.pop_by(1);
+
 		core->interp.argument_packs.pop_by(1);
 
 		return code;
@@ -2767,6 +2781,9 @@ static const Opcode* handle_call(CoreData* core, const Opcode* code, CTValue* wr
 	// the caller's return type.
 	if (write_ctx != nullptr)
 		core->interp.write_ctxs.append(*write_ctx);
+
+	if (is_some(callable.closure_id))
+		core->interp.active_closures.append(get(callable.closure_id));
 
 	core->interp.call_activation_indices.append(core->interp.activations.used());
 

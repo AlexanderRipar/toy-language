@@ -1,0 +1,11 @@
+// success
+
+let f = func() -> u32 => {
+	let x: u32 = 42
+
+	let g = func() -> u32 => x
+
+	g()
+}
+
+let x = f()

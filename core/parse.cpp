@@ -2131,7 +2131,7 @@ static AstBuilderToken parse_func(CoreData* core) noexcept
 
 	parse_expr(core, true);
 
-	return push_node(core, signature_token, func_source_id, flags, AstTag::Func);
+	return push_node(core, signature_token, func_source_id, flags, AstFuncData{ none<ClosureListId>() });
 }
 
 static AstBuilderToken parse_trait(CoreData* core) noexcept

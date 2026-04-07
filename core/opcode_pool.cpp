@@ -329,7 +329,6 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	}
 
 	case Opcode::LoadMember:
-	case Opcode::BindBody:
 	case Opcode::Call:
 	case Opcode::IfElse:
 	case Opcode::AddressOf:
@@ -345,6 +344,16 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 			rst.values_diff = -1;
 			rst.write_ctxs_diff = -1;
 		}
+
+		return rst;
+	}
+
+	case Opcode::BindBody:
+	{
+		u16 closed_value_count;
+		memcpy(&closed_value_count, code + 1 + sizeof(OpcodeId), sizeof(closed_value_count));
+
+		rst.values_diff = - static_cast<s32>(closed_value_count);
 
 		return rst;
 	}
@@ -734,7 +743,7 @@ static void emit_fixup_for_impl_member(CoreData* core, Opcode* fixup_dst, AstNod
 
 
 
-static void emit_signature_closure_values(CoreData* core, AstNode* node, const ClosureList* closure_list) noexcept
+static void emit_closure_values(CoreData* core, AstNode* node, const ClosureList* closure_list) noexcept
 {
 	for (u16 i = 0; i != closure_list->count; ++i)
 	{
@@ -844,7 +853,7 @@ static bool opcodes_from_parameter(CoreData* core, AstNode* node, u8 rank, Ident
 	return true;
 }
 
-static bool opcodes_from_signature(CoreData* core, AstNode* node, bool expects_write_ctx, u16* out_closed_over_value_count) noexcept
+static bool opcodes_from_signature(CoreData* core, AstNode* node, bool expects_write_ctx) noexcept
 {
 	SignatureInfo info = get_signature_info(node);
 
@@ -956,8 +965,6 @@ static bool opcodes_from_signature(CoreData* core, AstNode* node, bool expects_w
 			memcpy(attach, parameter_flags + i, sizeof(OpcodeSignaturePerParameterFlags));
 			attach += sizeof(OpcodeSignaturePerParameterFlags);
 		}
-
-		*out_closed_over_value_count = 0;
 	}
 	else
 	{
@@ -971,14 +978,12 @@ static bool opcodes_from_signature(CoreData* core, AstNode* node, bool expects_w
 
 			closed_over_value_count = closure_list->count;
 
-			emit_signature_closure_values(core, node, closure_list);
+			emit_closure_values(core, node, closure_list);
 		}
 		else
 		{
 			closed_over_value_count = 0;
 		}
-
-		*out_closed_over_value_count = closed_over_value_count;
 
 		// Since we use `emit_opcode_raw` and not `emit_opcode`, we need to
 		// manually adjust and check the current state.
@@ -1521,16 +1526,31 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	{
 		AstNode* const signature = first_child_of(node);
 
+		if (!opcodes_from_signature(core, signature, false))
+			return false;
+
+		const Maybe<ClosureListId> body_closure_list = attachment_of<AstFuncData>(node)->closure_list_id;
+
 		u16 closed_over_value_count;
 
-		if (!opcodes_from_signature(core, signature, false, &closed_over_value_count))
-			return false;
+		if (is_some(body_closure_list))
+		{
+			const ClosureList* const closure_list = closure_list_from_id(core, get(body_closure_list));
+
+			closed_over_value_count = closure_list->count;
+
+			emit_closure_values(core, node, closure_list);
+		}
+		else
+		{
+			closed_over_value_count = 0;
+		}
 
 		AstNode* const body = next_sibling_of(signature);
 
 		Opcode* const body_fixup_dst = core->opcodes.codes.end() + 1;
 
-		emit_opcode(core, Opcode::BindBody, expects_write_ctx, node, OpcodeId::INVALID);
+		emit_opcode(core, Opcode::BindBody, expects_write_ctx, node, OpcodeId::INVALID, closed_over_value_count);
 
 		emit_fixup_for_function_body(core, body_fixup_dst, body, closed_over_value_count != 0);
 
@@ -1539,9 +1559,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 	case AstTag::Signature:
 	{
-		u16 unused_closed_over_value_count;
-
-		return opcodes_from_signature(core, node, expects_write_ctx, &unused_closed_over_value_count);
+		return opcodes_from_signature(core, node, expects_write_ctx);
 	}
 
 	case AstTag::Trait:
