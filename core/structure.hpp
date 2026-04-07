@@ -217,6 +217,10 @@ struct Lexeme
 			TypeId type_id;
 		} string;
 	};
+
+	Lexeme() noexcept = default;
+
+	Lexeme(Token token) noexcept : token{ token } {}
 };
 
 #ifdef COMPILER_MSVC
