@@ -28,15 +28,24 @@ struct Scope
 
 struct alignas(16) ScopeMember
 {
-	u32 begin;
+	u32 offset;
 
 	u32 size;
 
-	u32 align : 30;
+	u32 align : 31;
 
 	u32 is_mut : 1;
 
-	u32 is_closure_member : 1;
+	TypeId type;
+};
+
+struct alignas(16) ClosureMember
+{
+	u32 offset;
+
+	u32 size;
+
+	u32 align;
 
 	TypeId type;
 };
@@ -165,9 +174,6 @@ static constexpr u32 WRITE_CTXS_COMMIT_INCREMENT_COUNT = 512;
 
 static constexpr u32 ACTIVE_CLOSURES_RESERVE_SIZE = sizeof(ClosureId) << 15;
 static constexpr u32 ACTIVE_CLOSURES_COMMIT_INCREMENT_COUNT = 1024;
-
-static constexpr u32 CLOSURE_MEMBERS_RESERVE_SIZE = sizeof(ScopeMember) << 22;
-static constexpr u32 CLOSURE_MEMBERS_COMMIT_INCREMENT_COUNT = 8192;
 
 static constexpr u32 ARGUMENT_CALLBACKS_RESERVE_SIZE = sizeof(OpcodeId) << 20;
 static constexpr u32 ARGUMENT_CALLBACKS_COMMIT_INCREMENT_COUNT = 2048;
@@ -494,34 +500,61 @@ static ClosureId create_closure(CoreData* core, u32 value_count) noexcept
 
 	CTValue* const values = core->interp.values.end() - value_count;
 
-	ScopeMember* const closure_members = core->interp.closure_members.reserve(value_count);
+	u64 align = alignof(ClosureMember);
+
+	u64 size = sizeof(ClosureMember) * value_count;
+
+	for (u32 i = 0; i != value_count; ++i)
+	{
+		CTValue* const value = values + i;
+
+		const u32 value_align = value->align;
+
+		const u64 value_size = value->bytes.count();
+
+		if (align < value_align)
+			align = value_align;
+
+		const u64 align_mask = value_align - 1;
+
+		size = ((size + align_mask) & ~align_mask) + value_size;
+	}
+
+	if (size > UINT32_MAX)
+		TODO("Handle or disallow huge closures.");
+
+	const Maybe<void*> allocation = comp_heap_alloc(core, size, align);
+
+	if (is_none(allocation))
+		TODO("Implement GC traversal.");
+
+	ClosureMember* const members = static_cast<ClosureMember*>(get(allocation));
+
+	byte* member_data = reinterpret_cast<byte*>(members) + sizeof(ClosureMember) * value_count;
 
 	for (u32 i = 0; i != value_count; ++i)
 	{
 		const CTValue src = values[i];
 
-		const Maybe<void*> allocation = comp_heap_alloc(core, src.bytes.count(), src.align);
+		ClosureMember* const dst = members + i;
 
-		if (is_none(allocation))
-			TODO("Implement GC traversal.");
+		const u64 align_mask = src.align - 1;
 
-		ScopeMember* const dst = closure_members + i;
+		member_data = reinterpret_cast<byte*>((reinterpret_cast<u64>(member_data) + align_mask) & ~align_mask);
 
-		const CoreId allocation_id = core_id_from_address(core, get(allocation));
-
-		dst->begin = static_cast<u32>(allocation_id);
+		dst->offset = static_cast<u32>(member_data - reinterpret_cast<byte*>(dst));
 		dst->size = static_cast<u32>(src.bytes.count());
 		dst->align = src.align;
-		dst->is_mut = false;
-		dst->is_closure_member = true;
 		dst->type = src.type;
 
-		memcpy(get(allocation), src.bytes.begin(), src.bytes.count());
+		memcpy(member_data, src.bytes.begin(), src.bytes.count());
+
+		member_data += src.bytes.count();
 	}
 
 	core->interp.values.pop_by(value_count);
 
-	return static_cast<ClosureId>(closure_members - core->interp.closure_members.begin());
+	return static_cast<ClosureId>(core_id_from_address(core, members));
 }
 
 static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcode* code, CTValue src, CTValue dst) noexcept
@@ -1131,11 +1164,10 @@ static const Opcode* scope_alloc_typed_member(CoreData* core, const Opcode* code
 	byte* const member_value = core->interp.scope_data.reserve(static_cast<u32>(member_metrics.size));
 
 	ScopeMember* const member = core->interp.scope_members.reserve();
-	member->begin = member_begin;
+	member->offset = member_begin;
 	member->size = static_cast<u32>(member_metrics.size);
 	member->align = member_metrics.align;
 	member->is_mut = is_mut;
-	member->is_closure_member = false;
 	member->type = type;
 
 	const MutRange<byte> bytes = MutRange<byte>{ member_value, member_metrics.size };
@@ -1159,9 +1191,7 @@ static void scope_pop(CoreData* core) noexcept
 
 		ScopeMember* first_member = core->interp.scope_members.begin() + scope.first_member_index;
 
-		ASSERT_OR_IGNORE(!first_member->is_closure_member);
-
-		const u32 scope_data_begin = first_member->begin;
+		const u32 scope_data_begin = first_member->offset;
 
 		core->interp.scope_members.pop_to(scope.first_member_index);
 
@@ -1239,9 +1269,7 @@ static CTValue get_builtin_param_raw(CoreData* core, u8 rank) noexcept
 
 	ScopeMember* const member = core->interp.scope_members.begin() + scope->first_member_index + rank;
 
-	ASSERT_OR_IGNORE(!member->is_closure_member);
-
-	const MutRange<byte> bytes{ core->interp.scope_data.begin() + member->begin, member->size };
+	const MutRange<byte> bytes{ core->interp.scope_data.begin() + member->offset, member->size };
 
 	return CTValue{ bytes, member->align, member->is_mut, member->type };
 }
@@ -1752,11 +1780,10 @@ static const Opcode* handle_scope_alloc_untyped(CoreData* core, const Opcode* co
 
 	byte* const member_value = core->interp.scope_data.reserve(static_cast<u32>(top->bytes.count()));
 
-	member->begin = begin;
+	member->offset = begin;
 	member->size = static_cast<u32>(top->bytes.count());
 	member->align = top->align;
 	member->is_mut = is_mut;
-	member->is_closure_member = false;
 	member->type = top->type;
 
 	memcpy(member_value, top->bytes.begin(), top->bytes.count());
@@ -1897,9 +1924,7 @@ static const Opcode* handle_load_scope(CoreData* core, const Opcode* code, CTVal
 
 	ScopeMember* const member = core->interp.scope_members.begin() + scope->first_member_index + rank;
 
-	ASSERT_OR_IGNORE(!member->is_closure_member);
-
-	byte* const begin = core->interp.scope_data.begin() + member->begin;
+	byte* const begin = core->interp.scope_data.begin() + member->offset;
 
 	CTValue loaded_value{MutRange<byte>{ begin, member->size }, member->align, member->is_mut, member->type };
 
@@ -2070,15 +2095,15 @@ static const Opcode* handle_load_closure(CoreData* core, const Opcode* code, CTV
 
 	const ClosureId closure = core->interp.active_closures.end()[-1];
 
-	const ScopeMember* const member = core->interp.closure_members.begin() + static_cast<u32>(closure) + rank;
+	ClosureMember* const members = static_cast<ClosureMember*>(address_from_core_id(core, static_cast<CoreId>(closure)));
 
-	ASSERT_OR_IGNORE(member->is_closure_member);
+	ClosureMember* const member = members + rank;
 
-	byte* const begin = static_cast<byte*>(address_from_core_id(core, static_cast<CoreId>(member->begin)));
+	byte* const begin = reinterpret_cast<byte*>(member) + member->offset;
 
 	const MutRange<byte> bytes{ begin, member->size };
 
-	const CTValue closure_value{ bytes, member->align, member->is_mut, member->type };
+	const CTValue closure_value{ bytes, member->align, false, member->type };
 
 	return push_location_value(core, code, write_ctx, closure_value);
 }
@@ -5691,7 +5716,6 @@ MemoryRequirements interpreter_memory_requirements([[maybe_unused]] const Config
 	                     + LOOP_STACK_RESERVE_SIZE
 	                     + WRITE_CTXS_RESERVE_SIZE
 	                     + ACTIVE_CLOSURES_RESERVE_SIZE
-	                     + CLOSURE_MEMBERS_RESERVE_SIZE
 	                     + ARGUMENT_CALLBACKS_RESERVE_SIZE
 	                     + ARGUMENT_PACKS_RESERVE_SIZE
 	                     + GLOBAL_INITIALIZATIONS_RESERVE_SIZE;
@@ -5740,9 +5764,6 @@ void interpreter_init(CoreData* core, MemoryAllocation allocation) noexcept
 	interp->active_closures.init(allocation.private_data.mut_subrange(offset, ACTIVE_CLOSURES_RESERVE_SIZE), ACTIVE_CLOSURES_COMMIT_INCREMENT_COUNT);
 	offset += ACTIVE_CLOSURES_RESERVE_SIZE;
 
-	interp->closure_members.init(allocation.private_data.mut_subrange(offset, CLOSURE_MEMBERS_RESERVE_SIZE), CLOSURE_MEMBERS_COMMIT_INCREMENT_COUNT);
-	offset += CLOSURE_MEMBERS_RESERVE_SIZE;
-
 	interp->argument_callbacks.init(allocation.private_data.mut_subrange(offset, ARGUMENT_CALLBACKS_RESERVE_SIZE), ARGUMENT_CALLBACKS_COMMIT_INCREMENT_COUNT);
 	offset += ARGUMENT_CALLBACKS_RESERVE_SIZE;
 
@@ -5753,9 +5774,6 @@ void interpreter_init(CoreData* core, MemoryAllocation allocation) noexcept
 	offset += GLOBAL_INITIALIZATIONS_RESERVE_SIZE;
 
 	ASSERT_OR_IGNORE(allocation.private_data.count() == offset);
-
-	// Reserve `ClosureId::INVALID`.
-	interp->closure_members.reserve();
 
 	init_builtin_infos(core);
 }

@@ -100,8 +100,6 @@ struct Interpreter
 
 	ReservedVec<ClosureId> active_closures;
 
-	ReservedVec<ScopeMember> closure_members;
-
 	ReservedVec<Maybe<OpcodeId>> argument_callbacks;
 
 	ReservedVec<ArgumentPack> argument_packs;
