@@ -1,0 +1,5 @@
+// success
+
+let x = f()
+
+let f = func() -> u32 => { { { return 65539 } } }
