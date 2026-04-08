@@ -1679,6 +1679,22 @@ static const Opcode* handle_set_write_ctx(CoreData* core, const Opcode* code, [[
 	return code;
 }
 
+static const Opcode* handle_duplicate_to_write_ctx(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
+
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
+	CTValue* const top = core->interp.values.end() - 1;
+
+	if (!top->is_mut)
+		return record_interpreter_error(core, code, CompileError::SetLhsNotMutable);
+
+	core->interp.write_ctxs.append(*top);
+
+	return code;
+}
+
 static const Opcode* handle_scope_begin(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
@@ -5218,6 +5234,7 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 		nullptr,                                   // INVALID
 		&handle_end_code,                          // EndCode
 		&handle_set_write_ctx,                     // SetWriteCtx
+		&handle_duplicate_to_write_ctx,            // DuplicateToWriteCtx
 		&handle_scope_begin,                       // ScopeBegin
 		&handle_scope_end,                         // ScopeEnd
 		&handle_scope_end_preserve_top,            // ScopeEndPreserveTop
@@ -5290,6 +5307,7 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 
 	static_assert(HANDLERS[static_cast<u8>(Opcode::EndCode)]                       == &handle_end_code);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::SetWriteCtx)]                   == &handle_set_write_ctx);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::DuplicateToWriteCtx)]           == &handle_duplicate_to_write_ctx);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeBegin)]                    == &handle_scope_begin);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeEnd)]                      == &handle_scope_end);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeEndPreserveTop)]           == &handle_scope_end_preserve_top);

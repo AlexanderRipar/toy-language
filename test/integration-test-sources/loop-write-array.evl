@@ -1,0 +1,13 @@
+// success
+
+let x = {
+	mut xs: [419]u16 = undefined
+
+	for i != 419, i += 1 where mut i = 0 do
+		xs[i] = i
+
+	std.assert(xs[0] == 0)
+	std.assert(xs[418] == 418)
+
+	xs
+}

@@ -48,6 +48,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	}
 
 	case Opcode::SetWriteCtx:
+	case Opcode::DuplicateToWriteCtx:
 	case Opcode::ScopeEnd:
 	case Opcode::ScopeEndPreserveTop:
 	case Opcode::FileGlobalAllocTyped:
@@ -328,51 +329,29 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 
 	case Opcode::Loop:
 	{
-		OpcodeId condition;
-
-		code = code_attach(code, &condition);
-
 		OpcodeId body;
 
-		code = code_attach(code, &body);
-
-		const Opcode* const condition_code = opcode_from_id(core, condition);
-
-		const s64 condition_written = print_opcodes_impl(sink, core, condition_code, true);
-
-		if (condition_written < 0)
-			return PrintResult{ nullptr, -1 };
+		code = code_attach(code + sizeof(OpcodeId), &body);
 
 		const Opcode* const body_code = opcode_from_id(core, body);
 
-		const s64 body_written = print_opcodes_impl(sink, core, body_code, true);
+		const s64 written = print_opcodes_impl(sink, core, body_code, true);
 
-		if (body_written < 0)
+		if (written < 0)
 			return PrintResult{ nullptr, -1 };
 
-		return PrintResult{ code, condition_written + body_written };
+		return PrintResult{ code, written };
 	}
 
 	case Opcode::LoopFinally:
 	{
-		OpcodeId condition;
-
-		code = code_attach(code, &condition);
-
 		OpcodeId body;
 
-		code = code_attach(code, &body);
+		code = code_attach(code + sizeof(OpcodeId), &body);
 
 		OpcodeId finally;
 
 		code = code_attach(code, &finally);
-
-		const Opcode* const condition_code = opcode_from_id(core, condition);
-
-		const s64 condition_written = print_opcodes_impl(sink, core, condition_code, true);
-
-		if (condition_written < 0)
-			return PrintResult{ nullptr, -1 };
 
 		const Opcode* const body_code = opcode_from_id(core, body);
 
@@ -388,7 +367,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 		if (finally_written < 0)
 			return PrintResult{ nullptr, -1 };
 
-		return PrintResult{ code, condition_written + body_written + finally_written };
+		return PrintResult{ code, body_written + finally_written };
 	}
 
 	case Opcode::Slice:
@@ -578,6 +557,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	}
 
 	case Opcode::SetWriteCtx:
+	case Opcode::DuplicateToWriteCtx:
 	case Opcode::ScopeEnd:
 	case Opcode::ScopeEndPreserveTop:
 	case Opcode::FileGlobalAllocTyped:

@@ -207,6 +207,14 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 		return rst;
 	}
 
+	case Opcode::DuplicateToWriteCtx:
+	case Opcode::ImplMemberAllocImplicitType:
+	{
+		rst.write_ctxs_diff = 1;
+
+		return rst;
+	}
+
 	case Opcode::ScopeBegin:
 	{
 		ASSERT_OR_IGNORE(!expects_write_ctx);
@@ -495,15 +503,8 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 		return rst;
 	}
 
-	case Opcode::ImplMemberAllocImplicitType:
-	{
-		rst.write_ctxs_diff = 1;
-
-		return rst;
-	}
-
 	case Opcode::Switch:
-		TODO("Implement");
+		TODO("Implement `opcode_effects(%)`.", tag_name(op));
 
 	case Opcode::INVALID:
 		; // Fallthrough to unreachable
@@ -787,19 +788,25 @@ static bool opcodes_from_scope_definition(CoreData* core, AstNode* node) noexcep
 	return true;
 }
 
-static bool opcodes_from_where(CoreData* core, AstNode* node) noexcept
+static u16 opcodes_from_where(CoreData* core, AstNode* node) noexcept
 {
 	AstDirectChildIterator it = direct_children_of(node);
+
+	u16 scope_member_count = 0;
 
 	while (has_next(&it))
 	{
 		AstNode* const definition = next(&it);
 
 		if (!opcodes_from_scope_definition(core, definition))
-			return false;
+			return 0;
+
+		scope_member_count += 1;
 	}
 
-	return true;
+	ASSERT_OR_IGNORE(scope_member_count != 0);
+
+	return scope_member_count;
 }
 
 static bool opcodes_from_parameter(CoreData* core, AstNode* node, u8 rank, IdentifierId* out_name, OpcodeSignaturePerParameterFlags* out_flags, u32* out_fixup_index) noexcept
@@ -1148,7 +1155,9 @@ static bool opcodes_from_call(CoreData* core, AstNode* node, bool expects_write_
 
 static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_write_ctx) noexcept
 {
-	switch (node->tag)
+	const AstTag tag = node->tag;
+
+	switch (tag)
 	{
 	case AstTag::Builtin:
 	{
@@ -1417,10 +1426,21 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 			{
 				const s32 values_depth_before_expr = core->opcodes.state.values_diff;
 
+				const s32 write_ctxs_depth_before_expr = core->opcodes.state.write_ctxs_diff;
+
 				const bool is_last = !has_next_sibling(child);
 
 				opcodes_from_expression(core, child, is_last && expects_write_ctx);
 
+				// If we have arrived at the last expression in the block, and
+				// the expression has no value (e.g., if it is a
+				// `Opcode::Set`), then push a void value for the block.
+				if (is_last && core->opcodes.state.values_diff == values_depth_before_expr && core->opcodes.state.write_ctxs_diff == write_ctxs_depth_before_expr)
+					emit_opcode(core, Opcode::ValueVoid, expects_write_ctx, node);
+
+				// If we have *not* arrived at the last expression in the
+				// block, and we the expression generated a value, discard it,
+				// making sure it is of type `void`.
 				if (!is_last && core->opcodes.state.values_diff == values_depth_before_expr + 1)
 					emit_opcode(core, Opcode::DiscardVoid, false, child);
 
@@ -1445,10 +1465,16 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 		if (is_some(info.where))
 		{
-			emit_opcode(core, Opcode::ScopeBegin, false, get(info.where));
+			Opcode* const scope_member_count_dst = core->opcodes.codes.end() + 1;
 
-			if (!opcodes_from_where(core, get(info.where)))
+			emit_opcode(core, Opcode::ScopeBegin, false, get(info.where), static_cast<u16>(0));
+
+			const u16 scope_member_count = opcodes_from_where(core, get(info.where));
+
+			if (scope_member_count == 0)
 				return false;
+
+			memcpy(scope_member_count_dst, &scope_member_count, sizeof(u16));
 		}
 
 		if (!opcodes_from_expression(core, info.condition, false))
@@ -1490,9 +1516,16 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 		if (is_some(info.where))
 		{
-			emit_opcode(core, Opcode::ScopeBegin, false, get(info.where));
+			Opcode* const scope_member_count_dst = core->opcodes.codes.end() + 1;
 
-			opcodes_from_where(core, get(info.where));
+			emit_opcode(core, Opcode::ScopeBegin, false, get(info.where), static_cast<u16>(0));
+
+			const u16 scope_member_count = opcodes_from_where(core, get(info.where));
+
+			if (scope_member_count == 0)
+				return false;
+
+			memcpy(scope_member_count_dst, &scope_member_count, sizeof(u16));
 		}
 
 		const OpcodeId condition_id = static_cast<OpcodeId>(core->opcodes.codes.used());
@@ -2074,7 +2107,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		if (!opcodes_from_expression(core, rhs, false))
 			return false;
 
-		const OpcodeBinaryArithmeticOpKind kind = static_cast<OpcodeBinaryArithmeticOpKind>(static_cast<u8>(node->tag) - static_cast<u8>(AstTag::OpAdd));
+		const OpcodeBinaryArithmeticOpKind kind = static_cast<OpcodeBinaryArithmeticOpKind>(static_cast<u8>(tag) - static_cast<u8>(AstTag::OpAdd));
 
 		emit_opcode(core, Opcode::BinaryArithmeticOp, expects_write_ctx, node, kind);
 
@@ -2095,7 +2128,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		if (!opcodes_from_expression(core, rhs, false))
 			return false;
 
-		const OpcodeBinaryBitwiseOpKind kind = static_cast<OpcodeBinaryBitwiseOpKind>(static_cast<u8>(node->tag) - static_cast<u8>(AstTag::OpBitAnd));
+		const OpcodeBinaryBitwiseOpKind kind = static_cast<OpcodeBinaryBitwiseOpKind>(static_cast<u8>(tag) - static_cast<u8>(AstTag::OpBitAnd));
 
 		emit_opcode(core, Opcode::BinaryBitwiseOp, expects_write_ctx, node, kind);
 
@@ -2115,7 +2148,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		if (!opcodes_from_expression(core, rhs, false))
 			return false;
 
-		const OpcodeShiftKind kind = static_cast<OpcodeShiftKind>(static_cast<u8>(node->tag) - static_cast<u8>(AstTag::OpShiftL));
+		const OpcodeShiftKind kind = static_cast<OpcodeShiftKind>(static_cast<u8>(tag) - static_cast<u8>(AstTag::OpShiftL));
 
 		emit_opcode(core, Opcode::Shift, expects_write_ctx, node, kind);
 
@@ -2187,7 +2220,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		if (!opcodes_from_expression(core, rhs, false))
 			return false;
 
-		const OpcodeCompareKind kind = static_cast<OpcodeCompareKind>(static_cast<u8>(node->tag) - static_cast<u8>(AstTag::OpCmpLT));
+		const OpcodeCompareKind kind = static_cast<OpcodeCompareKind>(static_cast<u8>(tag) - static_cast<u8>(AstTag::OpCmpLT));
 
 		emit_opcode(core, Opcode::Compare, expects_write_ctx, node, kind);
 
@@ -2209,6 +2242,67 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 		if (!opcodes_from_expression(core, rhs, true))
 			return false;
+
+		return true;
+	}
+
+	case AstTag::OpSetAdd:
+	case AstTag::OpSetSub:
+	case AstTag::OpSetMul:
+	case AstTag::OpSetDiv:
+	case AstTag::OpSetAddTC:
+	case AstTag::OpSetSubTC:
+	case AstTag::OpSetMulTC:
+	case AstTag::OpSetMod:
+	case AstTag::OpSetBitAnd:
+	case AstTag::OpSetBitOr:
+	case AstTag::OpSetBitXor:
+	case AstTag::OpSetShiftL:
+	case AstTag::OpSetShiftR:
+	{
+		ASSERT_OR_IGNORE(!expects_write_ctx);
+
+		AstNode* const lhs = first_child_of(node);
+
+		AstNode* const rhs = next_sibling_of(lhs);
+
+		if (!opcodes_from_expression(core, lhs, false))
+			return false;
+
+		emit_opcode(core, Opcode::DuplicateToWriteCtx, false, node);
+
+		if (!opcodes_from_expression(core, rhs, false))
+			return false;
+
+		if (tag == AstTag::OpSetBitAnd || tag == AstTag::OpSetBitOr || tag == AstTag::OpSetBitXor)
+		{
+			const OpcodeBinaryBitwiseOpKind kind = static_cast<OpcodeBinaryBitwiseOpKind>(static_cast<u8>(tag) - static_cast<u8>(AstTag::OpSetBitAnd));
+
+			emit_opcode(core, Opcode::BinaryBitwiseOp, true, node, kind);
+		}
+		else if (tag == AstTag::OpSetShiftL || tag == AstTag::OpSetShiftR)
+		{
+			const OpcodeShiftKind kind = static_cast<OpcodeShiftKind>(static_cast<u8>(tag) - static_cast<u8>(AstTag::OpSetShiftL));
+
+			emit_opcode(core, Opcode::Shift, true, node, kind);
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(
+				tag == AstTag::OpSetAdd
+			 || tag == AstTag::OpSetSub
+			 || tag == AstTag::OpSetMul
+			 || tag == AstTag::OpSetDiv
+			 || tag == AstTag::OpSetAddTC
+			 || tag == AstTag::OpSetSubTC
+			 || tag == AstTag::OpSetMulTC
+			 || tag == AstTag::OpSetMod
+			);
+
+			const OpcodeBinaryArithmeticOpKind kind = static_cast<OpcodeBinaryArithmeticOpKind>(static_cast<u8>(tag) - static_cast<u8>(AstTag::OpSetAdd));
+
+			emit_opcode(core, Opcode::BinaryArithmeticOp, true, node, kind);
+		}
 
 		return true;
 	}
@@ -2262,21 +2356,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	case AstTag::UOpDefer:
 	case AstTag::UOpDistinct:
 	case AstTag::UOpTypeVarArgs:
-
-	case AstTag::OpSetAdd:
-	case AstTag::OpSetSub:
-	case AstTag::OpSetMul:
-	case AstTag::OpSetDiv:
-	case AstTag::OpSetAddTC:
-	case AstTag::OpSetSubTC:
-	case AstTag::OpSetMulTC:
-	case AstTag::OpSetMod:
-	case AstTag::OpSetBitAnd:
-	case AstTag::OpSetBitOr:
-	case AstTag::OpSetBitXor:
-	case AstTag::OpSetShiftL:
-	case AstTag::OpSetShiftR:
-		TODO("Implement `opcodes_from_expression(%)`", tag_name(node->tag));
+		TODO("Implement `opcodes_from_expression(%)`", tag_name(tag));
 
 	case AstTag::INVALID:
 	case AstTag::File:
@@ -2440,6 +2520,14 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 	{
 		core->opcodes.state.write_ctxs_diff = fixup.expects_write_ctx ? 1 : 0;
 
+		AstNode* const node = ast_node_from_id(core, fixup.node_id);
+
+		if (!opcodes_from_expression(core, node, fixup.expects_write_ctx))
+			return false;
+
+		if (core->opcodes.state.values_diff == 1)
+			emit_opcode(core, Opcode::DiscardVoid, false, node);
+
 		if (is_some(fixup.second_node_id))
 		{
 			AstNode* const second_node = ast_node_from_id(core, get(fixup.second_node_id));
@@ -2457,13 +2545,6 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 			 && core->opcodes.state.closures_diff == 0
 			);
 		}
-
-		AstNode* const node = ast_node_from_id(core, fixup.node_id);
-
-		if (!opcodes_from_expression(core, node, fixup.expects_write_ctx))
-			return false;
-
-		emit_opcode(core, Opcode::DiscardVoid, false, node);
 
 		emit_opcode(core, Opcode::EndCode, false, node);
 
@@ -2803,6 +2884,7 @@ const char8* tag_name(Opcode op) noexcept
 		"INVALID",
 		"EndCode",
 		"SetWriteCtx",
+		"DuplicateToWriteCtx",
 		"ScopeBegin",
 		"ScopeEnd",
 		"ScopeEndPreserveTop",

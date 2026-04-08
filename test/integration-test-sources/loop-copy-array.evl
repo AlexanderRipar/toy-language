@@ -1,0 +1,15 @@
+// success
+
+let xs = .[10, 20, 30, 40, 50]
+
+let ys = {
+	let tmp: [5]u32 = undefined
+
+	for i != 5, i += 1 where mut i = 0 do
+		tmp[i] = xs[i]
+
+	for i != 5, i += 1 where mut i = 0 do
+		std.assert(tmp[i] == xs[i])
+
+	tmp 
+}

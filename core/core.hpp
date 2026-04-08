@@ -2479,6 +2479,7 @@ enum class Opcode : u8
 	INVALID = 0,
 	EndCode,
 	SetWriteCtx,
+	DuplicateToWriteCtx,
 	ScopeBegin,
 	ScopeEnd,
 	ScopeEndPreserveTop,
