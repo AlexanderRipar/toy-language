@@ -1787,6 +1787,7 @@ enum class CompileError
 	ParseDefinitionMultipleMut,
 	ParseDefinitionMissingName,
 	ParseDefinitionMissingEquals,
+	ParseDefinitionMissingColon,
 	ParseForeachExpectThinArrowLeft,
 	ParseCaseMissingThinArrowRight,
 	ParseSwitchMissingCase,

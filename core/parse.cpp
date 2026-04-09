@@ -1663,7 +1663,7 @@ static AstBuilderToken parse_definition(CoreData* core, bool is_optional_type, b
 	}
 	else if (!is_optional_type)
 	{
-		parse_error_continuable(core, lexeme.source_id, CompileError::INVALID); // TODO: Error message
+		parse_error_continuable(core, lexeme.source_id, CompileError::ParseDefinitionMissingColon);
 	}
 
 	if (lexeme.token == Token::OpSet)

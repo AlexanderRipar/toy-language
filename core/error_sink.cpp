@@ -110,6 +110,7 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Definition modifier `mut` encountered more than once.\n",                                                                                      // ParseDefinitionMultipleMut
 		"Expected definition name.\n",                                                                                                                  // ParseDefinitionMissingName
 		"Expected `=` after Definition identifier and type.\n",                                                                                         // ParseDefinitionMissingEquals
+		"Expected `:` after Definition identifier.\n",                                                                                                  // ParseDefinitionMissingColon
 		"Expected `<-` after for-each loop variables.\n",                                                                                               // ParseForeachExpectThinArrowLeft
 		"Expected `->` after case label expression.\n",                                                                                                 // ParseCaseMissingThinArrowRight
 		"Expected at least one case after switch expression.\n",                                                                                        // ParseSwitchMissingCase
