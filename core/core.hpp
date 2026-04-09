@@ -1982,8 +1982,6 @@ enum class TypeTag : u8
 	TailArray,
 
 	// Tag of composite literal types.
-	// TODO: This is not used yet, and thus does not currently have an
-	//       associated structure. However, it will likely need one.
 	CompositeLiteral,
 
 	// Tag of array literal types. Its structure is represented by an
@@ -1995,8 +1993,6 @@ enum class TypeTag : u8
 	Variadic,
 
 	// Tag of trait types.
-	// TODO: This is not used yet, and thus does not currently have an
-	//       associated structure. However, it will likely need one.
 	Trait,
 };
 

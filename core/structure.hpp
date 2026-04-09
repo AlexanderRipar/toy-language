@@ -44,7 +44,6 @@ struct ErrorSink
 
 struct GlobalFile;
 
-// TODO: This has to be reworked to `CompHeap`
 struct GlobalValuePool
 {
 	ReservedVec<GlobalFile> files;
