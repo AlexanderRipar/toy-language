@@ -495,7 +495,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	}
 
 	case Opcode::Switch:
-		TODO("Implement");
+		TODO("Implement `follow_ref_impl(%)`.", tag_name(op));
 	}
 
 	ASSERT_UNREACHABLE;
@@ -1577,7 +1577,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	}
 
 	case Opcode::Switch:
-		TODO("Implement");
+		TODO("Implement `print_opcode_impl(%)`.", tag_name(op));
 	}
 
 	ASSERT_UNREACHABLE;

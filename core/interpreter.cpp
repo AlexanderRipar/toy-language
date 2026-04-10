@@ -1494,7 +1494,7 @@ static const Opcode* builtin_offsetof(CoreData* core, const Opcode* code, CTValu
 
 	(void) write_ctx;
 
-	TODO("Implement");
+	TODO("Implement `builtin_offsetof()`.");
 }
 
 static const Opcode* builtin_nameof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
@@ -1505,7 +1505,7 @@ static const Opcode* builtin_nameof(CoreData* core, const Opcode* code, CTValue*
 
 	(void) write_ctx;
 
-	TODO("Implement");
+	TODO("Implement `builtin_nameof()`.");
 }
 
 static const Opcode* builtin_import(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
@@ -1569,7 +1569,7 @@ static const Opcode* builtin_add_type_member(CoreData* core, const Opcode* code,
 
 	(void) write_ctx;
 
-	TODO("Implement");
+	TODO("Implement `builtin_add_type_member()`.");
 }
 
 static const Opcode* builtin_complete_type(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
@@ -1636,7 +1636,7 @@ static const Opcode* builtin_caller_source_id(CoreData* core, const Opcode* code
 
 	(void) write_ctx;
 
-	TODO("Implement");
+	TODO("Implement `builtin_caller_source_id()`.");
 }
 
 static const Opcode* builtin_definition_typeof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
@@ -1647,7 +1647,7 @@ static const Opcode* builtin_definition_typeof(CoreData* core, const Opcode* cod
 
 	(void) write_ctx;
 
-	TODO("Implement");
+	TODO("Implement `builtin_definition_typeof()`.");
 }
 
 

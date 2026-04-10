@@ -964,21 +964,21 @@ bool comp_float_from_comp_integer(CompIntegerValue value, CompFloatValue* out) n
 
 	(void) out;
 
-	TODO("");
+	TODO("Implement `comp_float_from_comp_integer()`.");
 }
 
 f64 f64_from_comp_float(CompFloatValue value) noexcept
 {
 	(void) value;
 
-	TODO("");
+	TODO("Implement `f64_from_comp_float()`.");
 }
 
 f32 f32_from_comp_float(CompFloatValue value) noexcept
 {
 	(void) value;
 
-	TODO("");
+	TODO("Implement `f32_from_comp_float()`.");
 }
 
 CompFloatValue comp_float_add(CompFloatValue lhs, CompFloatValue rhs) noexcept
@@ -992,7 +992,7 @@ CompFloatValue comp_float_sub(CompFloatValue lhs, CompFloatValue rhs) noexcept
 
 	(void) rhs;
 
-	TODO("");
+	TODO("Implement `comp_float_sub()`.");
 }
 
 CompFloatValue comp_float_mul(CompFloatValue lhs, CompFloatValue rhs) noexcept
@@ -1001,7 +1001,7 @@ CompFloatValue comp_float_mul(CompFloatValue lhs, CompFloatValue rhs) noexcept
 
 	(void) rhs;
 
-	TODO("");
+	TODO("Implement `comp_float_mul()`.");
 }
 
 CompFloatValue comp_float_div(CompFloatValue lhs, CompFloatValue rhs) noexcept
@@ -1010,14 +1010,14 @@ CompFloatValue comp_float_div(CompFloatValue lhs, CompFloatValue rhs) noexcept
 
 	(void) rhs;
 
-	TODO("");
+	TODO("Implement `comp_float_div()`.");
 }
 
 CompFloatValue comp_float_neg(CompFloatValue value) noexcept
 {
 	(void) value;
 
-	TODO("");
+	TODO("Implement `comp_float_neg()`.");
 }
 
 WeakCompareOrdering comp_float_compare(CompFloatValue lhs, CompFloatValue rhs) noexcept

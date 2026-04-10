@@ -778,7 +778,7 @@ static u32 hash_composite_type_extra_data(CoreData* core, u32 hash, SeenSet* see
 
 	case CompositeKind::Impl:
 	{
-		TODO("Implement");
+		TODO("Implement `hash_composite_type_extra_data(CompositeKind::Impl)`.");
 	}
 
 	case CompositeKind::Signature:
@@ -929,7 +929,7 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 
 	case TypeTag::Variadic:
 	case TypeTag::Definition:
-		TODO("Implement `type_hash` for Variadic, Definition and Trait");
+		TODO("Implement `hash_type_structure_preseen(%)`.", tag_name(tag));
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
@@ -1524,7 +1524,7 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 	}
 
 	case TypeTag::Variadic:
-		TODO("Implement `type_is_equal_noloop` for Variadic.");
+		TODO("Implement `type_is_equal_noloop(%)`.", tag_name(tag));
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
@@ -1845,7 +1845,7 @@ TypeId type_create_impl(CoreData* core, Range<TypeId> arguments, TypeId trait_ty
 
 	(void) trait_type_id;
 
-	TODO("Implement");
+	TODO("Implement `type_create_impl()`.");
 }
 
 bool type_add_impl_member(CoreData* core, TypeId type_id, ImplMemberInit init) noexcept
@@ -2308,7 +2308,7 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 
 	case TypeTag::Definition:
 	case TypeTag::TailArray:
-		TODO("Implement `type_metrics_from_id` for Definition and TailArray.");
+		TODO("Implement `type_metrics_from_id(%)`.", tag_name(structure->tag));
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
