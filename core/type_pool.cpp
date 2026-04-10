@@ -1397,7 +1397,7 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 
 			const CompositeMember b_member = b_info.member_types[rank];
 
-			if (a_member.is_pending != b_member.is_pending)
+			if (a_member.is_pending || b_member.is_pending)
 				TODO("Handle pending composite member types in `type_is_equal_noloop`");
 
 			if (a_member.is_pub != b_member.is_pub
