@@ -93,6 +93,14 @@ struct MemberSortResult
 	u32 codes_mark;
 };
 
+static bool record_opcode_emission_error(CoreData* core, AstNode* source_node, CompileError error) noexcept
+{
+	record_error(core, source_node, error);
+
+	return false;
+}
+
+
 
 
 static MemberSortResult sort_members(CoreData* core, AstNode* before_first_member, u16 member_count) noexcept
@@ -1227,8 +1235,8 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 				{
 					AstNode* const implied_member = first_child_of(member);
 
-					if (member->tag != AstTag::ImpliedMember)
-						return false; // TODO: Error message.
+					if (implied_member->tag != AstTag::ImpliedMember)
+						return record_opcode_emission_error(core, implied_member, CompileError::AssignmentInCompositeInitializer);
 
 					value = next_sibling_of(implied_member);
 
@@ -1272,7 +1280,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 					AstNode* const implied_member = first_child_of(member);
 
 					if (member->tag != AstTag::ImpliedMember)
-						return false; // TODO: Error message.
+						return record_opcode_emission_error(core, implied_member, CompileError::AssignmentInCompositeInitializer);
 
 					value = next_sibling_of(implied_member);
 				}
@@ -1512,7 +1520,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		ForInfo info = get_for_info(node);
 
 		if (is_none(info.finally) && expects_write_ctx)
-			return false; // TODO: Error messge.
+			return record_opcode_emission_error(core, node, CompileError::ForLoopNeedsFinally);
 
 		if (is_some(info.where))
 		{
@@ -1612,7 +1620,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 			ASSERT_OR_IGNORE(member->tag == AstTag::Definition);
 
 			if (member_count == UINT16_MAX)
-				return false; // TODO: Error message
+				return record_opcode_emission_error(core, member, CompileError::TraitTooManyMembers);
 
 			member_count += 1;
 		}
@@ -1737,8 +1745,8 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 			ASSERT_OR_IGNORE(member->tag == AstTag::Definition);
 
-			// TODO: Establish this in `LexicalAnalyser`.
-			ASSERT_OR_IGNORE(member_count != UINT16_MAX);
+			if (member_count == UINT16_MAX)
+				return record_opcode_emission_error(core, member, CompileError::ImplTooManyMembers);
 
 			member_count += 1;
 		}
@@ -1785,7 +1793,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	case AstTag::Self:
 	{
 		if (!core->opcodes.flags.allow_self)
-			return false; // TODO: Error message.
+			return record_opcode_emission_error(core, node, CompileError::UnexpectedSelf);
 
 		emit_opcode(core, Opcode::GetSelf, expects_write_ctx, node);
 
@@ -1889,7 +1897,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	case AstTag::Return:
 	{
 		if (!core->opcodes.flags.allow_return)
-			return false; // TODO: Error message.
+			return record_opcode_emission_error(core, node, CompileError::UnexpectedReturn);
 
 		const s32 closures_diff = core->opcodes.state.closures_diff + core->opcodes.return_adjust.closures_diff;
 

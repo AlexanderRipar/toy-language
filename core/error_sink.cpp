@@ -71,6 +71,12 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Function type passed to _returntypeof must not have a templated return type.\n",                                                               // ReturntypeofTemplatedReturnType
 		"Initializer of global variable cannot reference its own value.\n",                                                                             // CyclicGlobalInitializerDependency
 		"Total size of values in a single closure exceeds supported maximum.\n",                                                                        // ClosureTooLarge
+		"Assignments are in composite initializers must have an implicit member as their left-hand-side (`.name = value`).\n",                          // AssignmentInCompositeInitializer
+		"Missing `finally` clause on for-loop in value-position.\n",                                                                                    // ForLoopNeedsFinally
+		"Maximum number of trait members exceeded.\n",                                                                                                  // TraitTooManyMembers
+		"Maximum number of impl members exceeded.\n",                                                                                                   // ImplTooManyMembers
+		"`Self` is not allowed outside an `impl`.\n",                                                                                                   // UnexpectedSelf
+		"`return` is not allowed here.\n",                                                                                                              // UnexpectedReturn
 		"Reached `unreachable`.\n",                                                                                                                     // UnreachableReached
 		"File does not contain a global definition with the given name.\n",                                                                             // GlobalNameNotDefined
 		"Exceeded maximum number of definitions in a single scope.\n",                                                                                  // ScopeTooManyDefinitions
@@ -330,6 +336,12 @@ static constexpr const char8* COMPILE_ERROR_NAMES[] = {
 	"ReturntypeofTemplatedReturnType",
 	"CyclicGlobalInitializerDependency",
 	"ClosureTooLarge",
+	"AssignmentInCompositeInitializer",
+	"ForLoopNeedsFinally",
+	"TraitTooManyMembers",
+	"ImplTooManyMembers",
+	"UnexpectedSelf",
+	"UnexpectedReturn",
 	"UnreachableReached",
 	"GlobalNameNotDefined",
 	"ScopeTooManyDefinitions",
