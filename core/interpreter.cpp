@@ -494,7 +494,7 @@ static T* value_as(CTValue* value) noexcept
 
 
 
-static ClosureId create_closure(CoreData* core, u32 value_count) noexcept
+static Maybe<ClosureId> create_closure(CoreData* core, u32 value_count) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= value_count);
 
@@ -520,8 +520,8 @@ static ClosureId create_closure(CoreData* core, u32 value_count) noexcept
 		size = ((size + align_mask) & ~align_mask) + value_size;
 	}
 
-	if (size > UINT32_MAX)
-		TODO("Handle or disallow huge closures.");
+	if (size > COMP_HEAP_MAX_ALLOCATION_SIZE)
+		return none<ClosureId>();
 
 	const Maybe<void*> allocation = comp_heap_alloc(core, size, align);
 
@@ -554,7 +554,7 @@ static ClosureId create_closure(CoreData* core, u32 value_count) noexcept
 
 	core->interp.values.pop_by(value_count);
 
-	return static_cast<ClosureId>(core_id_from_address(core, members));
+	return some(static_cast<ClosureId>(core_id_from_address(core, members)));
 }
 
 static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcode* code, CTValue src, CTValue dst) noexcept
@@ -2342,7 +2342,10 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 	else
 		return_completion = none<OpcodeId>();
 
-	const ClosureId closure = create_closure(core, closed_over_value_count);
+	const Maybe<ClosureId> closure = create_closure(core, closed_over_value_count);
+
+	if (is_none(closure))
+		return record_interpreter_error(core, code, CompileError::ClosureTooLarge);
 
 	CTValue* value = core->interp.values.end() - value_count;
 
@@ -2443,7 +2446,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 	}
 
 	SignatureSealInfo seal{};
-	seal.closure_id = some(closure);
+	seal.closure_id = closure;
 	seal.has_templated_return_type = signature_flags.has_templated_return_type;
 
 	if (signature_flags.has_templated_return_type)
@@ -2477,12 +2480,15 @@ static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CTValu
 	u16 closed_over_value_count;
 	code = code_attach(code, &closed_over_value_count);
 
-	Maybe<ClosureId> closure;
+	Maybe<ClosureId> closure = none<ClosureId>();
 
 	if (closed_over_value_count != 0)
-		closure = some(create_closure(core, closed_over_value_count));
-	else
-		closure = none<ClosureId>();
+	{	
+		closure = create_closure(core, closed_over_value_count);
+
+		if (is_none(closure))
+			return record_interpreter_error(core, code, CompileError::ClosureTooLarge);
+	}
 
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
