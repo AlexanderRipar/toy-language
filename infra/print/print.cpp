@@ -639,10 +639,8 @@ static u64 print_sink_write_minos_filehandle(void* raw_attach, Range<char8> data
 {
 	MinosFileHandleSinkAttach* const attach = static_cast<MinosFileHandleSinkAttach*>(raw_attach);
 
-	if (!minos::file_write(attach->filehandle, data.as_byte_range(), attach->offset))
+	if (!minos::file_write_append(attach->filehandle, data.as_byte_range()))
 		return 0;
-
-	attach->offset += data.count();
 
 	return data.count();
 }

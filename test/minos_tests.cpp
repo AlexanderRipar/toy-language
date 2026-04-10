@@ -1190,7 +1190,7 @@ static void file_write_on_empty_file_appends_to_that_file() noexcept
 
 	Range<byte> to_append = range::from_literal_string("test data to append").as_byte_range();
 
-	TEST_EQUAL(minos::file_write(file, to_append, 0), true);
+	TEST_EQUAL(minos::file_write_at(file, to_append, 0), true);
 
 	minos::FileInfo fileinfo;
 
@@ -1224,7 +1224,7 @@ static void file_write_on_existing_file_part_overwrites_it() noexcept
 
 	memset(buf, 1, sizeof(buf));
 
-	TEST_EQUAL(minos::file_write(file, Range{ buf }, 0), true);
+	TEST_EQUAL(minos::file_write_at(file, Range{ buf }, 0), true);
 
 	minos::FileInfo fileinfo;
 
@@ -1234,7 +1234,7 @@ static void file_write_on_existing_file_part_overwrites_it() noexcept
 
 	memset(buf + sizeof(buf) / 4, 2, sizeof(buf) / 2);
 
-	TEST_EQUAL(minos::file_write(file, Range{ buf + sizeof(buf) / 4, sizeof(buf) / 2 }, sizeof(buf) / 4), true);
+	TEST_EQUAL(minos::file_write_at(file, Range{ buf + sizeof(buf) / 4, sizeof(buf) / 2 }, sizeof(buf) / 4), true);
 
 	byte read_buf[sizeof(buf)];
 
@@ -1284,7 +1284,7 @@ static void file_write_unbuffered_file_with_page_alignment_on_existing_file_part
 
 	memset(buf, 42, buf_bytes);
 
-	TEST_EQUAL(minos::file_write(file, Range{ buf, buf_bytes }, page_bytes), true);
+	TEST_EQUAL(minos::file_write_at(file, Range{ buf, buf_bytes }, page_bytes), true);
 
 	memset(buf, 0, buf_bytes);
 
@@ -1338,7 +1338,7 @@ static void file_write_unbuffered_file_with_page_alignment_on_unaligned_file_end
 
 	memset(buf, 42, buf_bytes);
 
-	TEST_EQUAL(minos::file_write(file, Range{ buf, buf_bytes }, page_bytes), true);
+	TEST_EQUAL(minos::file_write_at(file, Range{ buf, buf_bytes }, page_bytes), true);
 
 	memset(buf, 0, buf_bytes);
 

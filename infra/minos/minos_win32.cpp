@@ -528,7 +528,7 @@ bool minos::file_read_async(FileHandle handle, MutRange<byte> buffer, Overlapped
 	return GetLastError() == ERROR_IO_PENDING;
 }
 
-bool minos::file_write(FileHandle handle, Range<byte> buffer, u64 offset) noexcept
+bool minos::file_write_at(FileHandle handle, Range<byte> buffer, u64 offset) noexcept
 {
 	if (buffer.count() > UINT32_MAX)
 	{
@@ -558,6 +558,24 @@ bool minos::file_write_async(FileHandle handle, Range<byte> buffer, Overlapped* 
 		return true;
 
 	return GetLastError() == ERROR_IO_PENDING;
+}
+
+bool minos::file_write_append(FileHandle handle, Range<byte> buffer) noexcept
+{
+	if (buffer.count() > UINT32_MAX)
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+
+		return false;
+	}
+
+	OVERLAPPED overlapped{};
+	overlapped.Offset = ~static_cast<u32>(0);
+	overlapped.OffsetHigh = ~static_cast<u32>(0);
+
+	DWORD bytes_written;
+
+	return WriteFile(as_native_handle(handle), buffer.begin(), static_cast<u32>(buffer.count()), &bytes_written, &overlapped) && bytes_written == buffer.count();
 }
 
 bool minos::file_get_info(FileHandle handle, FileInfo* out) noexcept

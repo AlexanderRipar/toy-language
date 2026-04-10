@@ -1204,7 +1204,7 @@ bool minos::file_read_async(FileHandle handle, MutRange<byte> buffer, Overlapped
 	return m_io_uring_read(handle, overlapped, bytes_to_read, buffer.begin());
 }
 
-bool minos::file_write(FileHandle handle, Range<byte> buffer, u64 offset) noexcept
+bool minos::file_write_at(FileHandle handle, Range<byte> buffer, u64 offset) noexcept
 {
 	ASSERT_OR_IGNORE((static_cast<u64>(handle) >> 32) == 0);
 
@@ -1215,24 +1215,7 @@ bool minos::file_write(FileHandle handle, Range<byte> buffer, u64 offset) noexce
 		return false;
 	}
 
-	if (offset == FILE_WRITE_APPEND)
-	{
-		const s64 end_offset = lseek(static_cast<s32>(static_cast<u64>(handle)), 0, SEEK_END);
-
-		ASSERT_OR_IGNORE(end_offset >= -1);
-
-		// If we are dealing with a pipe, socket or FIFO, lseek will fail with
-		// ESPIPE, but as the device is append-only in this case we can just
-		// ignore the error.
-		if (end_offset == -1 && errno != ESPIPE)
-			panic("lseek failed (0x%[|X] - %)\n", errno, strerror(errno));
-
-		return write(static_cast<s32>(static_cast<u64>(handle)), buffer.begin(), buffer.count()) == static_cast<s64>(buffer.count());
-	}
-	else
-	{
-		return pwrite(static_cast<s32>(static_cast<u64>(handle)), buffer.begin(), buffer.count(), offset) == static_cast<s64>(buffer.count());
-	}
+	return pwrite(static_cast<s32>(static_cast<u64>(handle)), buffer.begin(), buffer.count(), offset) == static_cast<s64>(buffer.count());
 }
 
 bool minos::file_write_async(FileHandle handle, Range<byte> buffer, Overlapped* overlapped) noexcept
@@ -1247,6 +1230,27 @@ bool minos::file_write_async(FileHandle handle, Range<byte> buffer, Overlapped* 
 	}
 
 	return m_io_uring_write(handle, overlapped, buffer.count(), buffer.begin());
+}
+
+bool minos::file_write_append(FileHandle handle, Range<byte> buffer) noexcept
+{
+	ASSERT_OR_IGNORE((static_cast<u64>(handle) >> 32) == 0);
+
+	if (buffer.count() > UINT32_MAX)
+	{
+		errno = EINVAL;
+
+		return false;
+	}
+
+	// If we are dealing with a pipe, socket, or FIFO (e.g. a terminal),
+	// `lseek` will fail with `ESPIPE`. Since the `write` call will have the
+	// desired append semantics for these file types anyways, we can safely
+	// ignore the error.
+	if (lseek(static_cast<s32>(static_cast<u64>(handle)), 0, SEEK_END) < 0 && errno != ESPIPE)
+		return false;
+
+	return write(static_cast<s32>(static_cast<u64>(handle)), buffer.begin(), buffer.count()) == static_cast<s64>(buffer.count());
 }
 
 bool minos::file_get_info(FileHandle handle, FileInfo* out) noexcept

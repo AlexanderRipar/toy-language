@@ -18,8 +18,6 @@ namespace minos
 
 	static constexpr u32 MAX_PATH_CHARS = 32767;
 
-	static constexpr u64 FILE_WRITE_APPEND = static_cast<u64>(static_cast<s64>(-1));
-
 	namespace timeout
 	{
 		static constexpr u32 INFINITE = 0xFFFF'FFFF;
@@ -403,9 +401,11 @@ namespace minos
 
 	[[nodiscard]] bool file_read_async(FileHandle handle, MutRange<byte> buffer, Overlapped* overlapped) noexcept;
 
-	[[nodiscard]] bool file_write(FileHandle handle, Range<byte> buffer, u64 offset) noexcept;
+	[[nodiscard]] bool file_write_at(FileHandle handle, Range<byte> buffer, u64 offset) noexcept;
 
 	[[nodiscard]] bool file_write_async(FileHandle handle, Range<byte> buffer, Overlapped* overlapped) noexcept;
+
+	[[nodiscard]] bool file_write_append(FileHandle handle, Range<byte> buffer) noexcept;
 
 	[[nodiscard]] bool file_get_info(FileHandle handle, FileInfo* out) noexcept;
 
