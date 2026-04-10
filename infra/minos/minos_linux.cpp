@@ -906,13 +906,39 @@ u32 minos::logical_processor_count() noexcept
 {
 	cpu_set_t set;
 
-	// TODO / FIXME: This can fail with EINVAL in case of more than 1024 cpus present
-	// on the system
-	// See https://linux.die.net/man/2/sched_getaffinity
-	if (sched_getaffinity(0, sizeof(set), &set) != 0)
-		panic("sched_getaffinity(0) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
+	if (sched_getaffinity(0, sizeof(set), &set) == 0)
+		return CPU_COUNT(&set);
 
-	return CPU_COUNT(&set);
+	// If there is an obscene number of CPUs on the system, `sched_getaffinity`
+	// may return `EINVAL` since there may be more CPUs than bits in
+	// `cpu_set_t`. In that situation, we can dynamically allocate larger sets
+	// and try again. As far as I can tell, this situation is the only one in
+	// which `EINVAL` will be returned. However, to be safe, we still stop
+	// trying after querying for 65536 CPUs in case we are hung up on some
+	// other issue.
+	// See https://linux.die.net/man/2/sched_getaffinity
+
+	int set_count = 1024;
+
+	while (errno == EINVAL && set_count <= 65536)
+	{
+		cpu_set_t* large_set = CPU_ALLOC(set_count);
+
+		if (sched_getaffinity(0, CPU_ALLOC_SIZE(set_count), large_set) == 0)
+		{
+			const u32 count = CPU_COUNT(large_set);
+
+			CPU_FREE(large_set);
+
+			return count;
+		}
+
+		CPU_FREE(large_set);
+
+		set_count *= 2;
+	}
+
+	panic("sched_getaffinity(0) failed (0x%[|X] - %)\n", last_error(), strerror(last_error()));
 }
 
 struct TrampolineThreadData
