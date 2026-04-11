@@ -193,7 +193,6 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	case Opcode::Return:
 	case Opcode::CheckTopVoid:
 	case Opcode::CheckWriteCtxVoid:
-	case Opcode::ImplSetSelf:
 	case Opcode::ImplTraitCall:
 	case Opcode::ImplMemberAllocPrepare:
 	case Opcode::ImplMemberAllocComplete:
@@ -246,6 +245,7 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	case Opcode::FileGlobalAllocUntyped:
 	case Opcode::CompleteParamUntyped:
 	case Opcode::CompleteParamTypedNoDefault:
+	case Opcode::ImplSetSelf:
 	{
 		ASSERT_OR_IGNORE(!expects_write_ctx);
 
@@ -1730,6 +1730,8 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 		// TODO: Establish that `trait` is actually an `AstTag::Call` node in
 		// `LexicalAnalyser`.
+		ASSERT_OR_IGNORE(trait->tag == AstTag::Call);
+
 		if (!opcodes_from_call(core, trait, false, Opcode::ImplTraitCall))
 			return false;
 
@@ -1751,10 +1753,25 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 			member_count += 1;
 		}
 
+		// Since we use `emit_opcode_raw` and not `emit_opcode`, we need to
+		// manually adjust and check the current state.
+		if (expects_write_ctx)
+		{
+			ASSERT_OR_IGNORE(core->opcodes.state.write_ctxs_diff != 0);
+
+			core->opcodes.state.values_diff -= 1;
+			core->opcodes.state.write_ctxs_diff -= 1;
+
+			ASSERT_OR_IGNORE(
+				core->opcodes.state.values_diff >= 0
+			 && core->opcodes.state.write_ctxs_diff >= 0
+			);
+		}
+
 		const u32 attach_size = sizeof(u16) // member_count
 		                      + member_count * (sizeof(IdentifierId) + sizeof(bool) + sizeof(OpcodeId)); // members
 
-		byte* attach = emit_opcode_raw(core, Opcode::ImplBody, false, node, attach_size);
+		byte* attach = emit_opcode_raw(core, Opcode::ImplBody, expects_write_ctx, node, attach_size);
 
 		memcpy(attach, &member_count, sizeof(u16));
 		attach += sizeof(u16);
