@@ -1798,7 +1798,7 @@ void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id,
 
 TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names) noexcept
 {
-	ASSERT_OR_IGNORE(parameter_names.count() <= 64);
+	ASSERT_OR_IGNORE(parameter_names.count() >= 1 && parameter_names.count() <= 64);
 
 	TypeStructure* const structure = composite_alloc(core, TypeTag::Trait, CompositeKind::Signature, CompositeFlags::EMPTY, static_cast<u32>(parameter_names.count()), false);
 
