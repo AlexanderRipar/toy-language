@@ -29,9 +29,9 @@ enum class ClosureId : u32;
 
 enum class OpcodeId : u32;
 
-enum class GlobalCompositeId : u32;
-
 enum class CoreId : u32;
+
+enum class SourceFileId : u32;
 
 enum class NameBindingKind : u8
 {
@@ -69,7 +69,7 @@ union alignas(8) NameBinding
 
 		u16 rank;
 
-		GlobalCompositeId file_id;
+		SourceFileId file_id;
 	} global;
 
 	struct
@@ -151,8 +151,6 @@ struct Config
 		bool ast_pool = true;
 
 		bool error_sink = true;
-
-		bool global_value_pool = true;
 
 		bool identifier_pool = true;
 
@@ -1559,6 +1557,11 @@ const char8* tag_name(AstTag tag) noexcept;
 // with ASTs, and mapping `SourceId`s to files and concrete `SourceLocations`.
 struct SourceReader;
 
+enum class SourceFileId : u32
+{
+	INVALID = 0,
+};
+
 // Id of a position in the program's source code. There is a one-to-one mapping
 // between `SourceId`s and bytes across all source files read by a given
 // `SourceReader`.
@@ -1598,8 +1601,6 @@ struct SourceFile
 
 	// `SourceId` of the first byte in this file.
 	SourceId source_id_base;
-
-	GlobalCompositeId file_id;
 
 	bool has_error;
 };
@@ -1681,6 +1682,11 @@ SourceLocation source_location_from_source_id(CoreData* core, SourceId source_id
 // `source_id` must not be `SourceId::INVALID`.
 Range<char8> source_file_path_from_source_id(CoreData* core, SourceId source_id) noexcept;
 
+
+
+SourceFileId id_from_source_file(CoreData* core, SourceFile* file) noexcept;
+
+SourceFile* source_file_from_id(CoreData* core, SourceFileId file_id) noexcept;
 
 
 
@@ -1882,9 +1888,9 @@ Maybe<CompileError> compile_error_from_name(Range<char8> name) noexcept;
 
 struct LexicalAnalyser;
 
-bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalCompositeId file_id) noexcept;
+bool set_prelude_scope(CoreData* core, AstNode* prelude, SourceFileId file_id) noexcept;
 
-bool resolve_names(CoreData* core, AstNode* root, GlobalCompositeId file_id) noexcept;
+bool resolve_names(CoreData* core, AstNode* root, SourceFileId file_id) noexcept;
 
 
 
@@ -2323,8 +2329,13 @@ TypeId type_create_file_composite(CoreData* core, u16 member_count, SourceId def
 
 void type_add_file_composite_member(CoreData* core, TypeId type_id, FileCompositeMemberInit init) noexcept;
 
-void type_complete_file_composite_member(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, CoreId value) noexcept;
 
+
+bool type_member_begin_initialization(CoreData* core, TypeId type_id, u16 rank) noexcept;
+
+void type_member_complete(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, CoreId value_id, bool end_initialization) noexcept;
+
+void type_member_end_initialization(CoreData* core, TypeId type_id, u16 rank) noexcept;
 
 
 TypeRelation type_relation(CoreData* core, TypeId first_type_id, TypeId second_type_id) noexcept;
@@ -2430,32 +2441,6 @@ struct CTValue
 
 	TypeId type;
 };
-
-enum class GlobalCompositeId : u32
-{
-	INVALID = 0,
-};
-
-enum class GlobalCompositeValueState : u8
-{
-	Complete,
-	Uninitialized,
-	Initializing,
-};
-
-GlobalCompositeId global_composite_reserve(CoreData* core, TypeId type_id, u16 definition_count) noexcept;
-
-void global_composite_value_set_initializer(CoreData* core, GlobalCompositeId id, u16 rank, OpcodeId initializer) noexcept;
-
-GlobalCompositeValueState global_composite_value_get(CoreData* core, GlobalCompositeId id, u16 rank, CTValue* out_value, OpcodeId* out_code) noexcept;
-
-void global_composite_value_alloc_prepare(CoreData* core, GlobalCompositeId id, u16 rank, bool is_mut) noexcept;
-
-CTValue global_composite_value_alloc_initialized(CoreData* core, GlobalCompositeId id, u16 rank, CTValue initializer, TypeId* out_file_type) noexcept;
-
-CTValue global_composite_value_alloc_uninitialized(CoreData* core, GlobalCompositeId id, u16 rank, TypeId type, TypeMetrics metrics, TypeId* out_file_type) noexcept;
-
-void global_composite_value_alloc_uninitialized_complete(CoreData* core, GlobalCompositeId id, u16 rank) noexcept;
 
 
 
@@ -2640,7 +2625,7 @@ enum class OpcodeId : u32
 	INVALID = 0,
 };
 
-const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, GlobalCompositeId file_id, u16 rank) noexcept;
+const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, SourceFileId file_id, u16 rank) noexcept;
 
 OpcodeId opcode_id_from_builtin(CoreData* core, Builtin builtin) noexcept;
 

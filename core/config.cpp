@@ -116,7 +116,6 @@ static constexpr TreeSchemaNode CONFIG_ENABLE[] = {
 	make_boolean_info(offsetof(Config, enable.heap), "ast_pool", "Whether to initialize the managed heap. Shared storage for all kinds of stuff with interesting lifetimes"),
 	make_boolean_info(offsetof(Config, enable.ast_pool), "ast_pool", "Whether to initialize the ast pool. Responsible for storing parsed ASTs"),
 	make_boolean_info(offsetof(Config, enable.error_sink), "error_sink", "Whether to initialize the error sink. Responsible for reporting compilation errors"),
-	make_boolean_info(offsetof(Config, enable.global_value_pool), "global_value_pool", "Whether to initialize the global value pool. Responsible for storing global values and values with global lifetime during compilation"),
 	make_boolean_info(offsetof(Config, enable.identifier_pool), "identifier_pool", "Whether to initialize the identifier pool. Responsible for interning identifiers in the compiled source code"),
 	make_boolean_info(offsetof(Config, enable.interpreter), "interpreter", "Whether to initialize the interpreter. Responsible for running source code during compilation"),
 	make_boolean_info(offsetof(Config, enable.lexical_analyser), "lexical_analyser", "Whether to initialize the lexical analyser. Responsible for enriching parsed ASTs with statically inferrable information"),

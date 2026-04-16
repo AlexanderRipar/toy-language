@@ -22,8 +22,6 @@ bool ast_pool_validate_config(const Config* config, PrintSink sink) noexcept;
 
 bool error_sink_validate_config(const Config* config, PrintSink sink) noexcept;
 
-bool global_value_pool_validate_config(const Config* config, PrintSink sink) noexcept;
-
 bool identifier_pool_validate_config(const Config* config, PrintSink sink) noexcept;
 
 bool interpreter_validate_config(const Config* config, PrintSink sink) noexcept;
@@ -46,8 +44,6 @@ MemoryRequirements ast_pool_memory_requirements(const Config* config) noexcept;
 
 MemoryRequirements error_sink_memory_requirements(const Config* config) noexcept;
 
-MemoryRequirements global_value_pool_memory_requirements(const Config* config) noexcept;
-
 MemoryRequirements identifier_pool_memory_requirements(const Config* config) noexcept;
 
 MemoryRequirements interpreter_memory_requirements(const Config* config) noexcept;
@@ -69,8 +65,6 @@ void comp_heap_init(CoreData* core, MemoryAllocation allocation) noexcept;
 void ast_pool_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
 void error_sink_init(CoreData* core, MemoryAllocation allocation) noexcept;
-
-void global_value_pool_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
 void identifier_pool_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
@@ -121,7 +115,6 @@ CoreData* create_core_data(const Config* config) noexcept
 		&comp_heap_validate_config,
 		&ast_pool_validate_config,
 		&error_sink_validate_config,
-		&global_value_pool_validate_config,
 		&identifier_pool_validate_config,
 		&lexical_analyser_validate_config,
 		&opcode_pool_validate_config,
@@ -135,7 +128,6 @@ CoreData* create_core_data(const Config* config) noexcept
 		&comp_heap_memory_requirements,
 		&ast_pool_memory_requirements,
 		&error_sink_memory_requirements,
-		&global_value_pool_memory_requirements,
 		&identifier_pool_memory_requirements,
 		&lexical_analyser_memory_requirements,
 		&opcode_pool_memory_requirements,
@@ -149,7 +141,6 @@ CoreData* create_core_data(const Config* config) noexcept
 		&comp_heap_init,
 		&ast_pool_init,
 		&error_sink_init,
-		&global_value_pool_init,
 		&identifier_pool_init,
 		&lexical_analyser_init,
 		&opcode_pool_init,
@@ -163,7 +154,6 @@ CoreData* create_core_data(const Config* config) noexcept
 		config->enable.heap,
 		config->enable.ast_pool,
 		config->enable.error_sink,
-		config->enable.global_value_pool,
 		config->enable.identifier_pool,
 		config->enable.lexical_analyser,
 		config->enable.opcode_pool,

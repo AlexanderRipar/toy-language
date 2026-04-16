@@ -42,15 +42,6 @@ struct ErrorSink
 
 
 
-struct GlobalFile;
-
-struct GlobalValuePool
-{
-	ReservedVec<GlobalFile> files;
-};
-
-
-
 struct IdentifierEntry;
 
 struct IdentifierPool
@@ -126,11 +117,11 @@ struct LexicalAnalyser
 {
 	s32 scopes_top;
 
-	GlobalCompositeId active_file_id;
+	SourceFileId active_file_id;
 
 	bool has_error;
 
-	GlobalCompositeId prelude_file_id;
+	SourceFileId prelude_file_id;
 
 	ScopeMap* scopes[MAX_AST_DEPTH];
 
@@ -330,8 +321,6 @@ struct CoreData
 	AstPool asts;
 
 	ErrorSink errors;
-
-	GlobalValuePool globals;
 
 	IdentifierPool identifiers;
 

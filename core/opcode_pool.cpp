@@ -2756,7 +2756,7 @@ void opcode_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 
 
-const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, GlobalCompositeId file_id, u16 rank) noexcept
+const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, SourceFileId file_id, u16 rank) noexcept
 {
 	core->opcodes.state.values_diff = 0;
 	core->opcodes.state.scopes_diff = 0;

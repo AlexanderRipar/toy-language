@@ -723,7 +723,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 					// The global's file index can be either the prelude index
 					// (in case `i` is 0) or the file index of the file that is
 					// currently being analysed.
-					const GlobalCompositeId file_id = i == 0
+					const SourceFileId file_id = i == 0
 						? core->lex.prelude_file_id
 						: core->lex.active_file_id;
 
@@ -969,7 +969,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 	}
 }
 
-static void resolve_names_root(CoreData* core, AstNode* root, GlobalCompositeId file_id) noexcept
+static void resolve_names_root(CoreData* core, AstNode* root, SourceFileId file_id) noexcept
 {
 	core->lex.active_file_id = file_id;
 
@@ -1058,7 +1058,7 @@ void lexical_analyser_init(CoreData* core, [[maybe_unused]] MemoryAllocation all
 
 
 
-bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalCompositeId file_id) noexcept
+bool set_prelude_scope(CoreData* core, AstNode* prelude, SourceFileId file_id) noexcept
 {
 	ASSERT_OR_IGNORE(core->lex.scopes_top == -1);
 
@@ -1085,7 +1085,7 @@ bool set_prelude_scope(CoreData* core, AstNode* prelude, GlobalCompositeId file_
 	return !core->lex.has_error;
 }
 
-bool resolve_names(CoreData* core, AstNode* root, GlobalCompositeId file_id) noexcept
+bool resolve_names(CoreData* core, AstNode* root, SourceFileId file_id) noexcept
 {
 	ASSERT_OR_IGNORE(core->lex.scopes_top == 0);
 

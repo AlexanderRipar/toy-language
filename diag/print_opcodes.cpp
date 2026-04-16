@@ -93,7 +93,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 
 	case Opcode::FileGlobalAllocPrepare:
 	{
-		return PrintResult{ code + sizeof(bool) + sizeof(GlobalCompositeId) + sizeof(u16), 0 };
+		return PrintResult{ code + sizeof(bool) + sizeof(SourceFileId) + sizeof(u16), 0 };
 	}
 
 	case Opcode::LoadScope:
@@ -103,7 +103,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 
 	case Opcode::LoadGlobal:
 	{
-		return PrintResult{ code + sizeof(GlobalCompositeId) + sizeof(u16), 0 };
+		return PrintResult{ code + sizeof(SourceFileId) + sizeof(u16), 0 };
 	}
 
 	case Opcode::LoadMember:
@@ -624,7 +624,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 		code = code_attach(code, &is_mut);
 
-		GlobalCompositeId file_id;
+		SourceFileId file_id;
 
 		code = code_attach(code, &file_id);
 
@@ -660,7 +660,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 	case Opcode::LoadGlobal:
 	{
-		GlobalCompositeId file_id;
+		SourceFileId file_id;
 
 		code = code_attach(code, &file_id);
 

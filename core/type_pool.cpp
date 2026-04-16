@@ -143,6 +143,8 @@ struct alignas(8) CompositeMember
 
 	bool is_eval : 1;
 
+	bool is_initializing : 1;
+
 	union
 	{
 		Maybe<CoreId> value_or_default;
@@ -1691,6 +1693,7 @@ void type_add_signature_parameter(CoreData* core, TypeId type_id, SignatureParam
 	info.member_names[info.member_count] = init.name;
 
 	info.member_types[info.member_count].is_pending = init.is_templated;
+	info.member_types[info.member_count].is_initializing = false;
 	info.member_types[info.member_count].is_pub = false;
 	info.member_types[info.member_count].is_mut = init.is_mut;
 	info.member_types[info.member_count].is_eval = init.is_eval;
@@ -1821,6 +1824,7 @@ TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names) no
 
 		info.member_types[i].type_id = type_type_id;
 		info.member_types[i].is_pending = false;
+		info.member_types[i].is_initializing = false;
 		info.member_types[i].is_pub = false;
 		info.member_types[i].is_mut = false;
 		info.member_types[i].is_eval = true;
@@ -1890,6 +1894,7 @@ bool type_add_impl_member(CoreData* core, TypeId type_id, ImplMemberInit init) n
 
 	info.member_types[rank].type_id = TypeId::INVALID;
 	info.member_types[rank].is_pending = true;
+	info.member_types[rank].is_initializing = false;
 	info.member_types[rank].is_pub = true;
 	info.member_types[rank].is_mut = init.is_mut;
 	info.member_types[rank].is_eval = false;
@@ -1981,6 +1986,7 @@ bool type_add_user_composite_member(CoreData* core, TypeId type_id, UserComposit
 
 	info.member_types[info.member_count].type_id = init.type_id;
 	info.member_types[info.member_count].is_pending = false;
+	info.member_types[info.member_count].is_initializing = false;
 	info.member_types[info.member_count].is_pub = init.is_pub;
 	info.member_types[info.member_count].is_mut = init.is_mut;
 	info.member_types[info.member_count].is_eval = false;
@@ -2057,6 +2063,7 @@ void type_add_file_composite_member(CoreData* core, TypeId type_id, FileComposit
 
 	info.member_types[info.member_count].type_id = TypeId::INVALID;
 	info.member_types[info.member_count].is_pending = true;
+	info.member_types[info.member_count].is_initializing = false;
 	info.member_types[info.member_count].is_pub = init.is_pub;
 	info.member_types[info.member_count].is_mut = init.is_mut;
 	info.member_types[info.member_count].is_eval = false;
@@ -2065,7 +2072,9 @@ void type_add_file_composite_member(CoreData* core, TypeId type_id, FileComposit
 	composite->member_used += 1;
 }
 
-void type_complete_file_composite_member(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, CoreId value) noexcept
+
+
+bool type_member_begin_initialization(CoreData* core, TypeId type_id, u16 rank) noexcept
 {
 	TypeStructure* const structure = structure_from_id(core, type_id);
 
@@ -2073,7 +2082,7 @@ void type_complete_file_composite_member(CoreData* core, TypeId type_id, u16 ran
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
 
-	ASSERT_OR_IGNORE(composite->kind == CompositeKind::File);
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::File || composite->kind == CompositeKind::Impl);
 
 	ASSERT_OR_IGNORE(rank < composite->member_used);
 
@@ -2081,9 +2090,58 @@ void type_complete_file_composite_member(CoreData* core, TypeId type_id, u16 ran
 
 	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
 
+	if (info.member_types[rank].is_initializing)
+		return false;
+
+	info.member_types[rank].is_initializing = true;
+
+	return true;
+}
+
+void type_member_complete(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, CoreId value_id, bool end_initialization) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
+
+	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
+
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::File || composite->kind == CompositeKind::Impl);
+
+	ASSERT_OR_IGNORE(rank < composite->member_used);
+
+	CompositeInfo info = composite_info(composite);
+
+	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
+
+	ASSERT_OR_IGNORE(info.member_types[rank].is_initializing);
+
 	info.member_types[rank].type_id = member_type_id;
+	info.member_types[rank].is_pending = !end_initialization;
+	info.member_types[rank].is_initializing = !end_initialization;
+	info.member_types[rank].value_or_default = some(value_id);
+}
+
+void type_member_end_initialization(CoreData* core, TypeId type_id, u16 rank) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
+
+	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
+
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::File || composite->kind == CompositeKind::Impl);
+
+	ASSERT_OR_IGNORE(rank < composite->member_used);
+
+	CompositeInfo info = composite_info(composite);
+
+	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
+
+	ASSERT_OR_IGNORE(info.member_types[rank].is_initializing);
+
 	info.member_types[rank].is_pending = false;
-	info.member_types[rank].value_or_default = some(value);
+	info.member_types[rank].is_initializing = false;
 }
 
 

@@ -116,7 +116,7 @@ struct alignas(16) ArgumentPack
 
 struct alignas(8) GlobalInitialization
 {
-	GlobalCompositeId file_id;
+	TypeId type;
 
 	u16 rank;
 };
@@ -1816,16 +1816,22 @@ static const Opcode* handle_file_global_alloc_prepare(CoreData* core, const Opco
 	bool is_mut;
 	code = code_attach(code, &is_mut);
 
-	GlobalCompositeId file_id;
+	SourceFileId file_id;
 	code = code_attach(code, &file_id);
 
 	u16 rank;
 	code = code_attach(code, &rank);
 
-	global_composite_value_alloc_prepare(core, file_id, rank, is_mut);
+
+	const SourceFile* const source_file = source_file_from_id(core, file_id);
+
+	const TypeId file_type = source_file->type;
+
+	if (!type_member_begin_initialization(core, file_type, rank))
+		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
 
 	GlobalInitialization* const init = core->interp.global_initializations.reserve();
-	init->file_id = file_id;
+	init->type = file_type;
 	init->rank = rank;
 
 	return code;
@@ -1839,7 +1845,7 @@ static const Opcode* handle_global_alloc_complete(CoreData* core, const Opcode* 
 
 	const GlobalInitialization init = core->interp.global_initializations.end()[-1];
 
-	global_composite_value_alloc_uninitialized_complete(core, init.file_id, init.rank);
+	type_member_end_initialization(core, init.type, init.rank);
 
 	core->interp.global_initializations.pop_by(1);
 
@@ -1869,17 +1875,20 @@ static const Opcode* handle_global_alloc_typed(CoreData* core, const Opcode* cod
 
 	const TypeMetrics member_metrics = type_metrics_from_id(core, member_type);
 
-	TypeId file_type;
+	const Maybe<void*> alloc = comp_heap_alloc(core, member_metrics.size, member_metrics.align);
 
-	const CTValue value = global_composite_value_alloc_uninitialized(core, init.file_id, init.rank, member_type, member_metrics, &file_type);
+	if (is_none(alloc))
+		TODO("Implement GC traversal");
 
-	const CoreId value_id = core_id_from_address(core, value.bytes.begin());
+	const CoreId value_id = core_id_from_address(core, get(alloc));
 
-	type_complete_file_composite_member(core, file_type, init.rank, member_type, value_id);
+	type_member_complete(core, init.type, init.rank, member_type, value_id, false);
 
 	core->interp.values.pop_by(1);
 
-	core->interp.write_ctxs.append(value);
+	const MutRange<byte> bytes{ static_cast<byte*>(get(alloc)), member_metrics.size };
+
+	core->interp.write_ctxs.append(CTValue{ bytes, member_metrics.align, true, member_type });
 
 	return code;
 }
@@ -1896,13 +1905,16 @@ static const Opcode* handle_global_alloc_untyped(CoreData* core, const Opcode* c
 
 	CTValue* const top = core->interp.values.end() - 1;
 
-	TypeId file_type;
+	const Maybe<void*> alloc = comp_heap_alloc(core, top->bytes.count(), top->align);
 
-	const CTValue value = global_composite_value_alloc_initialized(core, init.file_id, init.rank, *top, &file_type);
+	if (is_none(alloc))
+		TODO("Implement GC traversal.");
 
-	const CoreId value_id = core_id_from_address(core, value.bytes.begin());
+	memcpy(get(alloc), top->bytes.begin(), top->bytes.count());
 
-	type_complete_file_composite_member(core, file_type, init.rank, top->type, value_id);
+	const CoreId value_id = core_id_from_address(core, static_cast<byte*>(get(alloc)));
+
+	type_member_complete(core, init.type, init.rank, top->type, value_id, true);
 
 	core->interp.global_initializations.pop_by(1);
 
@@ -1951,23 +1963,31 @@ static const Opcode* handle_load_global(CoreData* core, const Opcode* code, CTVa
 {
 	const Opcode* const code_activation = code;
 
-	GlobalCompositeId file_id;
+	SourceFileId file_id;
 	code = code_attach(code, &file_id);
 
 	u16 rank;
 	code = code_attach(code, &rank);
 
-	CTValue global_value;
+	const SourceFile* file = source_file_from_id(core, file_id);
 
-	OpcodeId global_code;
+	const TypeId file_type = file->type;
 
-	const GlobalCompositeValueState state = global_composite_value_get(core, file_id, rank, &global_value, &global_code);
+	MemberInfo info;
 
-	if (state == GlobalCompositeValueState::Complete)
+	OpcodeId initializer;
+
+	if (type_member_info_by_rank(core, file_type, rank, &info, &initializer))
 	{
-		return push_location_value(core, code, write_ctx, global_value);
+		const TypeMetrics metrics = type_metrics_from_id(core, info.type_id);
+
+		byte* const bytes_begin = static_cast<byte*>(address_from_core_id(core, get(info.value_or_default)));
+
+		const MutRange<byte> bytes{ bytes_begin, metrics.size };
+
+		return push_location_value(core, code, write_ctx, CTValue{ bytes, metrics.align, info.is_mut, info.type_id });
 	}
-	else if (state == GlobalCompositeValueState::Uninitialized)
+	else
 	{
 		// Push back the write_ctx if we have one, so it's still there on the
 		// next go around.
@@ -1978,13 +1998,7 @@ static const Opcode* handle_load_global(CoreData* core, const Opcode* code, CTVa
 		// initializer. Push this instruction as an activation.
 		push_activation(core, code_activation - 1);
 
-		return opcode_from_id(core, global_code);
-	}
-	else
-	{
-		ASSERT_OR_IGNORE(state == GlobalCompositeValueState::Initializing);
-
-		return record_interpreter_error(core, code, CompileError::CyclicGlobalInitializerDependency);
+		return opcode_from_id(core, initializer);
 	}
 }
 
@@ -5110,7 +5124,7 @@ static const Opcode* handle_impl_member_alloc_complete(CoreData* core, const Opc
 
 
 
-static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, GlobalCompositeId file_id) noexcept
+static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, SourceFileId file_id) noexcept
 {
 	AstDirectChildIterator it = direct_children_of(ast);
 
@@ -5121,9 +5135,6 @@ static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, Global
 	while (has_next(&it))
 	{
 		AstNode* const node = next(&it);
-
-		if (node->tag == AstTag::Impl)
-			TODO("Handle impls");
 
 		ASSERT_OR_IGNORE(node->tag == AstTag::Definition);
 
@@ -5154,8 +5165,6 @@ static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, Global
 		init.is_mut = is_mut;
 
 		type_add_file_composite_member(core, file_type, init);
-
-		global_composite_value_set_initializer(core, file_id, rank, initializer_id);
 
 		rank += 1;
 	}
@@ -5194,11 +5203,10 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 
 	const TypeId type = type_create_file_composite(core, static_cast<u16>(root_data->member_count), root_source_id);
 
-	const GlobalCompositeId file_id = global_composite_reserve(core, type, static_cast<u16>(root_data->member_count));
+	const SourceFileId file_id = id_from_source_file(core, read.source_file);
 
 	read.source_file->ast = id_from_ast_node(core, ast);
 	read.source_file->type = type;
-	read.source_file->file_id = file_id;
 
 	if (is_prelude)
 	{

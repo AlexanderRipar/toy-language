@@ -377,7 +377,6 @@ SourceFileRead read_source_file(CoreData* core, Range<char8> filepath) noexcept
 	id_entry->data.ast = AstNodeId::INVALID;
 	id_entry->data.type = TypeId::INVALID;
 	id_entry->data.source_id_base = SourceId{ core->reader.curr_source_id_base };
-	id_entry->data.file_id = GlobalCompositeId::INVALID;
 	id_entry->data.has_error = false;
 
 	if (fileinfo.bytes + core->reader.curr_source_id_base > UINT32_MAX)
@@ -437,4 +436,18 @@ Range<char8> source_file_path_from_source_id(CoreData* core, SourceId source_id)
 	SourceFileByPathEntry* const path_entry = core->reader.known_files_by_path.value_from(id_entry->path_entry_index);
 
 	return Range{ path_entry->path, path_entry->path_bytes };
+}
+
+
+
+SourceFileId id_from_source_file(CoreData* core, SourceFile* file) noexcept
+{
+	const SourceFileByIdEntry* const key = reinterpret_cast<const SourceFileByIdEntry*>(reinterpret_cast<byte*>(file) - offsetof(SourceFileByIdEntry, data));
+
+	return static_cast<SourceFileId>(core->reader.known_files_by_identity.index_from(key));
+}
+
+SourceFile* source_file_from_id(CoreData* core, SourceFileId file_id) noexcept
+{
+	return &core->reader.known_files_by_identity.value_from(static_cast<u32>(file_id))->data;
 }
