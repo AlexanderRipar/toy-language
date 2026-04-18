@@ -2424,6 +2424,32 @@ bool type_composite_is_impl_body(CoreData* core, TypeId type_id) noexcept
 	return composite->kind == CompositeKind::Impl;
 }
 
+bool type_implements_trait(CoreData* core, TypeId type_id, OpcodeId trait_body_opcode_id, Range<TypeId> argument_types) noexcept
+{
+	const TypeStructure* const structure = structure_from_id(core, type_id);
+
+	if (structure->tag != TypeTag::Self)
+		return false;
+
+	const SelfType* const attach = reinterpret_cast<const SelfType*>(structure + 1);
+
+	ASSERT_OR_IGNORE(attach->argument_count == argument_types.count());
+
+	if (!attach->has_arguments)
+		return false;
+
+	if (attach->trait_body_opcode_id != trait_body_opcode_id)
+		return false;
+
+	for (u8 i = 0; i != attach->argument_count; ++i)
+	{
+		if (!type_is_equal(core, argument_types[i], attach->argument_type_ids[i]))
+			return false;
+	}
+
+	return true;
+}
+
 SignatureTypeInfo type_signature_info_from_id(CoreData* core, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);

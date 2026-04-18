@@ -2887,27 +2887,69 @@ static const Opcode* handle_call(CoreData* core, const Opcode* code, CTValue* wr
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	ASSERT_OR_IGNORE(type_tag_from_id(core, core->interp.values.end()[-1].type) == TypeTag::Signature);
+	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
-	const Callable callable = *value_as<Callable>(core->interp.values.end() - 1);
+	const TypeId callee_type = core->interp.values.end()[-1].type;
 
-	core->interp.values.pop_by(1);
+	const TypeTag callee_type_tag = type_tag_from_id(core, callee_type);
 
-	// If we were called with a write context, re-push it for the callee's use.
-	// Note that if we were called without a write context, `handle_exec_args`
-	// has already taken care of pushing an artificial write context based on
-	// the caller's return type.
-	if (write_ctx != nullptr)
-		core->interp.write_ctxs.append(*write_ctx);
+	if (callee_type_tag == TypeTag::Signature)
+	{
+		const Callable callable = *value_as<Callable>(core->interp.values.end() - 1);
 
-	if (is_some(callable.closure_id))
-		core->interp.active_closures.append(get(callable.closure_id));
+		core->interp.values.pop_by(1);
 
-	core->interp.call_activation_indices.append(core->interp.activations.used());
+		// If we were called with a write context, re-push it for the callee's use.
+		// Note that if we were called without a write context, `handle_exec_args`
+		// has already taken care of pushing an artificial write context based on
+		// the caller's return type.
+		if (write_ctx != nullptr)
+			core->interp.write_ctxs.append(*write_ctx);
 
-	push_activation(core, code);
+		if (is_some(callable.closure_id))
+			core->interp.active_closures.append(get(callable.closure_id));
 
-	return opcode_from_id(core, callable.body_id);
+		core->interp.call_activation_indices.append(core->interp.activations.used());
+
+		push_activation(core, code);
+
+		return opcode_from_id(core, callable.body_id);
+	}
+	else
+	{
+		ASSERT_OR_IGNORE(callee_type_tag == TypeTag::Trait);
+
+		const TraitValue trait = *value_as<TraitValue>(core->interp.values.end() - 1);
+
+		const SignatureTypeInfo info = type_signature_info_from_id(core, callee_type);
+
+		Scope* const argument_scope = core->interp.scopes.end() - 1;
+
+		ScopeMember* const first_argument = core->interp.scope_members.begin() + argument_scope->first_member_index;
+
+		const Range<TypeId> argument_types{ reinterpret_cast<TypeId*>(core->interp.scope_data.begin() + first_argument->offset), info.parameter_count };
+
+		for (u8 i = 0; i != info.parameter_count; ++i)
+		{
+			if (!type_implements_trait(core, argument_types[i], trait.member_completions, argument_types))
+				continue;
+
+			const TypeId self = argument_types[i];
+
+			const SelfType* const self_attach = type_attachment_from_id<SelfType>(core, self);
+
+			// TODO: Handle incomplete selfs without a body.
+			TypeId impl_body = get(self_attach->body_type_id);
+
+			const MutRange<byte> bytes = range::from_object_bytes_mut(&impl_body);
+
+			const TypeId type_type = type_create_simple(core, TypeTag::Type);
+
+			return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+		}
+
+		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+	}
 }
 
 static const Opcode* handle_return(CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept

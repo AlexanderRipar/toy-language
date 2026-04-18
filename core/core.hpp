@@ -2442,6 +2442,8 @@ u32 type_member_count(CoreData* core, TypeId type_id) noexcept;
 
 bool type_composite_is_impl_body(CoreData* core, TypeId type_id) noexcept;
 
+bool type_implements_trait(CoreData* core, TypeId type_id, OpcodeId trait_body_opcode_id, Range<TypeId> argument_types) noexcept;
+
 SignatureTypeInfo type_signature_info_from_id(CoreData* core, TypeId type_id) noexcept;
 
 bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberInfo* out_info, OpcodeId* out_initializer) noexcept;
