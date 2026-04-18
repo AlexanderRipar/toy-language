@@ -2379,7 +2379,7 @@ void type_add_impl_body_member(CoreData* core, TypeId type_id, ImplMemberInit in
 
 OpcodeId type_impl_body_member_type_initializer(CoreData* core, TypeId type_id, u16 rank) noexcept;
 
-TypeId type_seal_impl_body(CoreData* core, TypeId type_id) noexcept;
+void type_seal_impl_body(CoreData* core, TypeId type_id) noexcept;
 
 
 

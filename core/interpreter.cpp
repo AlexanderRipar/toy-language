@@ -5419,6 +5419,8 @@ static const Opcode* handle_complete_impl_body(CoreData* core, const Opcode* cod
 		i += 1;
 	}
 
+	type_seal_impl_body(core, get(self_attach->body_type_id));
+
 	core->interp.selfs.pop_by(2);
 
 	return code;

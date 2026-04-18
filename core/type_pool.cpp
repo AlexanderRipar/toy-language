@@ -794,7 +794,9 @@ static u32 hash_composite_type_extra_data(CoreData* core, u32 hash, SeenSet* see
 
 	case CompositeKind::Impl:
 	{
-		TODO("Implement `hash_composite_type_extra_data(CompositeKind::Impl)`.");
+		const CompositeImplExtraData* impl = reinterpret_cast<const CompositeImplExtraData*>(attach + 1);
+
+		return hash_type_id(core, hash, seen, impl->self_type_id);
 	}
 
 	case CompositeKind::Signature:
@@ -2064,7 +2066,7 @@ OpcodeId type_impl_body_member_type_initializer(CoreData* core, TypeId type_id, 
 	return static_cast<OpcodeId>(info.member_types[rank].type_id);
 }
 
-TypeId type_seal_impl_body(CoreData* core, TypeId type_id) noexcept
+void type_seal_impl_body(CoreData* core, TypeId type_id) noexcept
 {
 	TypeStructure* const structure = structure_from_id(core, type_id);
 
@@ -2082,7 +2084,7 @@ TypeId type_seal_impl_body(CoreData* core, TypeId type_id) noexcept
 	if (!init_structure_hash(core, structure))
 		ASSERT_UNREACHABLE;
 
-	return holotype_id_from_interned_type_structure(core, structure);
+	(void) holotype_id_from_interned_type_structure(core, structure);
 }
 
 
