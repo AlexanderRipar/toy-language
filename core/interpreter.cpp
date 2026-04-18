@@ -338,6 +338,16 @@ static const Opcode* poppush_temporary_value(CoreData* core, const Opcode* code,
 	}
 }
 
+static void argument_pack_pop(CoreData* core, ArgumentPack* argument_pack) noexcept
+{
+	core->interp.argument_callbacks.pop_by(argument_pack->count);
+
+	if (argument_pack->has_closure)
+		core->interp.active_closures.pop_by(1);
+
+	core->interp.argument_packs.pop_by(1);
+}
+
 
 
 struct SeenSet
@@ -2822,41 +2832,59 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 	}
 	else
 	{
-		// Look ahead to the following opcode, which must always be an
-		// `Opcode::Call` or `Opcode::Trait`.
-		// If it is `Opcode::Call` and does not expects a write context,
-		// we need to push one based on the callee's return type, since
-		// function bodies always expect to be called with a write context on
-		// the stack.
-		// Note that we need to slip the return value onto the value stack
-		// as well, but we must do so underneath the current top value,
-		// which is the callee and is required on top by `handle_call`.
-		// Note also that if the call expects its own write context, then
-		// `handle_call` takes care of re-pushing for the callee.
+		return code;
+	}
+}
 
-		const Opcode* const call = code;
+static const Opcode* handle_call(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-		const u8 raw_call_opcode = static_cast<u8>(*call);
+	ASSERT_OR_IGNORE(core->interp.argument_packs.used() >= 1);
 
-		const Opcode call_opcode = static_cast<Opcode>(raw_call_opcode & 0x7F);
+	CTValue* const top = core->interp.values.end() - 1;
 
-		ASSERT_OR_IGNORE(call_opcode == Opcode::Call || call_opcode == Opcode::ImplBody);
+	const TypeId callee_type = top->type;
 
-		const bool call_expects_write_ctx = (raw_call_opcode & 0x80) != 0;
+	const TypeTag callee_type_tag = type_tag_from_id(core, callee_type);
 
-		if (call_opcode == Opcode::Call && !call_expects_write_ctx)
+	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
+
+	if (callee_type_tag == TypeTag::Signature)
+	{
+		const Callable callee = *value_as<Callable>(top);
+
+		const TypeId return_type = argument_pack->return_type.type;
+
+		// If we were called without a write context, create one based on the
+		// callee's return type and push it for the callee's use.
+		// If we were called with a write context, check it satisfies the
+		// return type and re-push it instead.
+		if (write_ctx == nullptr)
 		{
-			const TypeMetrics return_type_metrics = type_metrics_from_id(core, argument_pack->return_type.type);
+			const TypeMetrics metrics = type_metrics_from_id(core, return_type);
 
-			const CTValue return_value = alloc_temporary_value_uninit(core, return_type_metrics.size, return_type_metrics.align, argument_pack->return_type.type);
-
-			CTValue* const old_top = core->interp.values.end() - 1;
-
-			core->interp.values.append(*old_top);
-
-			*old_top = return_value;
+			const CTValue return_value = alloc_temporary_value_uninit(core, metrics.size, metrics.align, return_type);
 
 			core->interp.write_ctxs.append(return_value);
+
+			// We need to slip the return value onto the value stack as well,
+			// since that's where the caller expects it to be once the call
+			// returns. We reuse the callee value stack slot for that.
+			*top = return_value;
+		}
+		else
+		{
+			const TypeRelation relation = type_relation(core, return_type, write_ctx->type);
+
+			if (relation != TypeRelation::Equal && relation != TypeRelation::FirstConvertsToSecond)
+				return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
+
+			core->interp.write_ctxs.append(*write_ctx);
+
+			// Since we aren't reusing the callee value stack slot for the
+			// return value, we need to pop it.
+			core->interp.values.pop_by(1);
 		}
 
 		// This time the signature scope will actually be popped by a
@@ -2870,50 +2898,20 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 		signature_scope->first_member_index = argument_pack->scope_first_member_index;
 		signature_scope->temporary_data_used = core->interp.temporary_data.used();
 
-		// Finally, we get to pop the argument pack and callbacks before
-		// proceeding to the actual call.
-		core->interp.argument_callbacks.pop_by(argument_pack->count);
+		// Pop the argument pack set up by `handle_prepare_args`, along
+		// with all of its associated data.
+		argument_pack_pop(core, argument_pack);
 
-		if (argument_pack->has_closure)
-			core->interp.active_closures.pop_by(1);
-
-		core->interp.argument_packs.pop_by(1);
-
-		return code;
-	}
-}
-
-static const Opcode* handle_call(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
-{
-	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
-
-	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
-
-	const TypeId callee_type = core->interp.values.end()[-1].type;
-
-	const TypeTag callee_type_tag = type_tag_from_id(core, callee_type);
-
-	if (callee_type_tag == TypeTag::Signature)
-	{
-		const Callable callable = *value_as<Callable>(core->interp.values.end() - 1);
-
-		core->interp.values.pop_by(1);
-
-		// If we were called with a write context, re-push it for the callee's use.
-		// Note that if we were called without a write context, `handle_exec_args`
-		// has already taken care of pushing an artificial write context based on
-		// the caller's return type.
-		if (write_ctx != nullptr)
-			core->interp.write_ctxs.append(*write_ctx);
-
-		if (is_some(callable.closure_id))
-			core->interp.active_closures.append(get(callable.closure_id));
+		// Finalize the callee's environment by pushing closure, call index and
+		// activation before jumping to the callee's body.
+		if (is_some(callee.closure_id))
+			core->interp.active_closures.append(get(callee.closure_id));
 
 		core->interp.call_activation_indices.append(core->interp.activations.used());
 
 		push_activation(core, code);
 
-		return opcode_from_id(core, callable.body_id);
+		return opcode_from_id(core, callee.body_id);
 	}
 	else
 	{
@@ -2921,20 +2919,23 @@ static const Opcode* handle_call(CoreData* core, const Opcode* code, CTValue* wr
 
 		const TraitValue trait = *value_as<TraitValue>(core->interp.values.end() - 1);
 
-		const SignatureTypeInfo info = type_signature_info_from_id(core, callee_type);
+		ScopeMember* const first_argument = core->interp.scope_members.begin() + argument_pack->scope_first_member_index;
 
-		Scope* const argument_scope = core->interp.scopes.end() - 1;
+		const Range<TypeId> argument_types{ reinterpret_cast<TypeId*>(core->interp.scope_data.begin() + first_argument->offset), argument_pack->count };
 
-		ScopeMember* const first_argument = core->interp.scope_members.begin() + argument_scope->first_member_index;
-
-		const Range<TypeId> argument_types{ reinterpret_cast<TypeId*>(core->interp.scope_data.begin() + first_argument->offset), info.parameter_count };
-
-		for (u8 i = 0; i != info.parameter_count; ++i)
+		for (u8 i = 0; i != argument_pack->count; ++i)
 		{
 			if (!type_implements_trait(core, argument_types[i], trait.member_completions, argument_types))
 				continue;
 
 			const TypeId self = argument_types[i];
+
+			// Pop the argument pack set up by `handle_prepare_args`, along
+			// with all of its associated data. It is no longer needed.
+			argument_pack_pop(core, argument_pack);
+
+			// Push the body type of the self type onto the value stack or into
+			// the write context.
 
 			const SelfType* const self_attach = type_attachment_from_id<SelfType>(core, self);
 
@@ -5199,7 +5200,7 @@ static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CTValu
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
+	ASSERT_OR_IGNORE(core->interp.argument_packs.used() >= 1);
 
 	ASSERT_OR_IGNORE(core->interp.selfs.used() >= 1);
 
@@ -5209,9 +5210,9 @@ static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CTValu
 	// Pop trait callee.
 	core->interp.values.pop_by(1);
 
-	Scope* const argument_scope = core->interp.scopes.end() - 1;
+	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
 
-	ScopeMember* const first_argument = core->interp.scope_members.begin() + argument_scope->first_member_index;
+	ScopeMember* const first_argument = core->interp.scope_members.begin() + argument_pack->scope_first_member_index;
 
 	const TypeId* const argument_types = reinterpret_cast<TypeId*>(core->interp.scope_data.begin() + first_argument->offset);
 
@@ -5221,7 +5222,7 @@ static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CTValu
 
 	const TypeId complete_self = type_set_self_trait_arguments(core, partial_self, argument_types);
 
-	scope_pop(core);
+	argument_pack_pop(core, argument_pack);
 
 	if (partial_self != complete_self)
 	{
@@ -5496,6 +5497,8 @@ static const Opcode* handle_check_types_equal(CoreData* core, const Opcode* code
 
 	if (!type_is_equal(core, trait_member_type, impl_member_type))
 		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+
+	core->interp.values.pop_by(1);
 
 	return code;
 }
@@ -6340,8 +6343,6 @@ bool evaluate_all_file_definitions(CoreData* core, TypeId file_type) noexcept
 {
 	MemberIterator it = members_of(core, file_type);
 
-	bool is_ok = true;
-
 	while (has_next(&it))
 	{
 		MemberInfo unused_member_info;
@@ -6354,10 +6355,10 @@ bool evaluate_all_file_definitions(CoreData* core, TypeId file_type) noexcept
 		const Opcode* const initializer_code = opcode_from_id(core, member_initializer);
 
 		if (!interpret_opcodes(core, initializer_code))
-			is_ok = false;
+			return false;
 	}
 
-	return is_ok;
+	return true;
 }
 
 bool closure_equal(CoreData* core, ClosureId a, ClosureId b) noexcept

@@ -1,0 +1,9 @@
+// success
+
+let Tr = trait(A) {
+	let x: u32 = 1
+}
+
+let Im = Type impl Tr(self) {}
+
+let unused = std.assert(Tr(Im).x == 1)

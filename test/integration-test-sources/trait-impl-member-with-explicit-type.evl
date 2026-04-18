@@ -1,0 +1,11 @@
+// success
+
+let Tr = trait(A) {
+	let x: s16 = 5
+}
+
+let Im = Bool impl Tr(self) {
+	let x = 10
+}
+
+let unused = std.assert(Tr(Im).x == 10)
