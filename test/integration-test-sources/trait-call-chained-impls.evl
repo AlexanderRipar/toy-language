@@ -1,0 +1,17 @@
+// success
+
+let Tr = trait(A) {
+	let x: u32
+}
+
+let Im1 = Bool impl Tr(self) {
+	let x = 1
+}
+
+let Im2 = Im1 impl Tr(self) {
+	let x = 2
+}
+
+let unused_1 = std.assert(Tr(Im1).x == 1)
+
+let unused_2 = std.assert(Tr(Im2).x == 2)
