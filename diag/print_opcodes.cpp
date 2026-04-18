@@ -40,9 +40,8 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::INVALID:
 	case Opcode::EndCode:
 	case Opcode::Return:
-	case Opcode::FileGlobalAllocComplete:
-	case Opcode::FileGlobalAllocUntyped:
-	case Opcode::ImplMemberAllocComplete:
+	case Opcode::FileMemberAllocComplete:
+	case Opcode::FileMemberAllocUntyped:
 	{
 		return PrintResult{ nullptr, 0 };
 	}
@@ -51,7 +50,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::DuplicateToWriteCtx:
 	case Opcode::ScopeEnd:
 	case Opcode::ScopeEndPreserveTop:
-	case Opcode::FileGlobalAllocTyped:
+	case Opcode::FileMemberAllocTyped:
 	case Opcode::PopClosure:
 	case Opcode::ExecArgs:
 	case Opcode::Call:
@@ -71,11 +70,11 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::DiscardVoid:
 	case Opcode::CheckTopVoid:
 	case Opcode::CheckWriteCtxVoid:
-	case Opcode::ImplSetSelf:
-	case Opcode::ImplTraitCall:
-	case Opcode::ImplMemberAllocExplicitType:
-	case Opcode::ImplMemberAllocImplicitType:
-	case Opcode::GetSelf:
+	case Opcode::CompleteImplBody:
+	case Opcode::CheckTypesEqual:
+	case Opcode::LoadSelf:
+	case Opcode::PopSelf:
+	case Opcode::EndTraitMemberType:
 	{
 		return PrintResult{ code, 0 };
 	}
@@ -87,13 +86,14 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 
 	case Opcode::ScopeAllocTyped:
 	case Opcode::ScopeAllocUntyped:
+	case Opcode::ImplMemberAllocComplete:
 	{
 		return PrintResult{ code + sizeof(bool), 0 };
 	}
 
-	case Opcode::FileGlobalAllocPrepare:
+	case Opcode::FileMemberAllocPrepare:
 	{
-		return PrintResult{ code + sizeof(bool) + sizeof(SourceFileId) + sizeof(u16), 0 };
+		return PrintResult{ code + sizeof(SourceFileId) + sizeof(u16), 0 };
 	}
 
 	case Opcode::LoadScope:
@@ -196,7 +196,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 		OpcodeId body;
 		code = code_attach(code, &body);
 
-		code += sizeof(u16);
+		code += sizeof(u16) + sizeof(bool);
 
 		const Opcode* const body_code = opcode_from_id(core, body);
 
@@ -242,6 +242,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::CompleteParamTypedNoDefault:
 	case Opcode::CompleteParamTypedWithDefault:
 	case Opcode::CompleteParamUntyped:
+	case Opcode::LoadTraitArgument:
 	{
 		return PrintResult{ code + sizeof(u8), 0 };
 	}
@@ -462,6 +463,11 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 		return PrintResult{ code, total_written };
 	}
 
+	case Opcode::ImplMakeSelf:
+	{
+		return { code + sizeof(u8) + sizeof(u16), 0 };
+	}
+
 	case Opcode::ImplBody:
 	{
 		u16 member_count;
@@ -491,7 +497,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 
 	case Opcode::ImplMemberAllocPrepare:
 	{
-		return PrintResult{ code + sizeof(bool) + sizeof(IdentifierId), 0 };
+		return PrintResult{ code + sizeof(IdentifierId) + sizeof(bool), 0 };
 	}
 
 	case Opcode::Switch:
@@ -549,9 +555,8 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	{
 	case Opcode::INVALID:
 	case Opcode::EndCode:
-	case Opcode::FileGlobalAllocComplete:
-	case Opcode::FileGlobalAllocUntyped:
-	case Opcode::ImplMemberAllocComplete:
+	case Opcode::FileMemberAllocComplete:
+	case Opcode::FileMemberAllocUntyped:
 	{
 		return PrintResult{ nullptr, header_written };
 	}
@@ -560,7 +565,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	case Opcode::DuplicateToWriteCtx:
 	case Opcode::ScopeEnd:
 	case Opcode::ScopeEndPreserveTop:
-	case Opcode::FileGlobalAllocTyped:
+	case Opcode::FileMemberAllocTyped:
 	case Opcode::PopClosure:
 	case Opcode::ExecArgs:
 	case Opcode::Call:
@@ -580,11 +585,11 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	case Opcode::DiscardVoid:
 	case Opcode::CheckTopVoid:
 	case Opcode::CheckWriteCtxVoid:
-	case Opcode::ImplSetSelf:
-	case Opcode::ImplTraitCall:
-	case Opcode::ImplMemberAllocExplicitType:
-	case Opcode::ImplMemberAllocImplicitType:
-	case Opcode::GetSelf:
+	case Opcode::CompleteImplBody:
+	case Opcode::CheckTypesEqual:
+	case Opcode::LoadSelf:
+	case Opcode::PopSelf:
+	case Opcode::EndTraitMemberType:
 	{
 		return PrintResult{ code, header_written };
 	}
@@ -618,12 +623,8 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 		return PrintResult{ code, header_written + written };
 	}
 
-	case Opcode::FileGlobalAllocPrepare:
+	case Opcode::FileMemberAllocPrepare:
 	{
-		bool is_mut;
-
-		code = code_attach(code, &is_mut);
-
 		SourceFileId file_id;
 
 		code = code_attach(code, &file_id);
@@ -632,7 +633,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 		code = code_attach(code, &rank);
 
-		const s64 written = print(sink, " is_mut=% file_id=% rank=%", is_mut, static_cast<u16>(file_id), rank);
+		const s64 written = print(sink, " file_id=% rank=%", static_cast<u16>(file_id), rank);
 
 		if (written < 0)
 			return PrintResult{ nullptr, -1 };
@@ -870,7 +871,10 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 		u16 closed_over_value_count;
 		code = code_attach(code, &closed_over_value_count);
 
-		const s64 written = print(sink, " body=OpcodeId<%> closed_count=%", static_cast<u32>(body_id), closed_over_value_count);
+		bool binds_self;
+		code = code_attach(code, &binds_self);
+
+		const s64 written = print(sink, " body=OpcodeId<%> closed_count=% binds_self=%", static_cast<u32>(body_id), closed_over_value_count, binds_self);
 
 		if (written < 0)
 			return PrintResult{ nullptr, -1 };
@@ -1515,6 +1519,22 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 		return PrintResult{ code, header_written + written };
 	}
 
+	case Opcode::ImplMakeSelf:
+	{
+		u8 argument_count;
+		code = code_attach(code, &argument_count);
+
+		u16 closed_value_count;
+		code = code_attach(code, &closed_value_count);
+
+		const s64 written = print(sink, " arg_count=% closed_count=%", argument_count, closed_value_count);
+
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
+	}
+
 	case Opcode::ImplBody:
 	{
 		u16 member_count;
@@ -1559,17 +1579,47 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 		IdentifierId name_id;
 		code = code_attach(code, &name_id);
 
-		bool is_mut;
-		code = code_attach(code, &is_mut);
+		bool is_trait_default;
+		code = code_attach(code, &is_trait_default);
 
 		const Range<char8> name_str = identifier_name_from_id(core, name_id);
 
-		const s64 written = print(sink, " is_mut=% name=IdentifierId<%> (%)",
-			is_mut,
+		const s64 written = print(sink, " default=% name=IdentifierId<%> (%)",
+			is_trait_default,
 			static_cast<u32>(name_id),
 			name_str
 		);
-		
+
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
+	}
+
+	case Opcode::LoadTraitArgument:
+	{
+		u8 rank;
+		code = code_attach(code, &rank);
+
+		const s64 written = print(sink, " rank=%",
+			rank
+		);
+
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
+	}
+
+	case Opcode::ImplMemberAllocComplete:
+	{
+		bool is_trait_default;
+		code = code_attach(code, &is_trait_default);
+
+		const s64 written = print(sink, " default=%",
+			is_trait_default
+		);
+
 		if (written < 0)
 			return PrintResult{ nullptr, -1 };
 

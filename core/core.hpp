@@ -39,6 +39,7 @@ enum class NameBindingKind : u8
 	Scoped,
 	Global,
 	Closed,
+	TraitArgument,
 };
 
 union alignas(8) NameBinding
@@ -78,6 +79,14 @@ union alignas(8) NameBinding
 
 		u16 rank_in_closure;
 	} closed;
+
+	struct
+	{
+		NameBindingKind kind_;
+
+		u8 rank;
+	} trait_argument;
+	
 };
 
 struct CoreData;
@@ -1161,6 +1170,15 @@ struct alignas(8) AstFuncData
 	u32 unused_ = 0;
 };
 
+struct alignas(8) AstImplData
+{
+	static constexpr AstTag TAG = AstTag::Impl;
+
+	Maybe<ClosureListId> closure_list_id;
+
+	u32 unused_ = 0;
+};
+
 // Neatly structured summary of the child structure of an `AstNode` with tag
 // `AstTag::Func`. To obtain this for a given node, call `get_func_info`.
 struct SignatureInfo
@@ -2008,6 +2026,8 @@ enum class TypeTag : u8
 
 	// Tag of trait types.
 	Trait,
+
+	Self,
 };
 
 enum class TypeRelation : u8
@@ -2083,6 +2103,8 @@ struct MemberInfo
 	bool is_eval : 1;
 
 	bool is_global : 1;
+
+	bool is_impl_member_from_trait_default : 1;
 
 	u16 rank;
 
@@ -2173,9 +2195,13 @@ struct ImplMemberInit
 {
 	IdentifierId name;
 
-	OpcodeId completion_id;
+	OpcodeId type_completion_id;
+
+	OpcodeId value_completion_id;
 
 	bool is_mut;
+
+	bool is_from_trait_default;
 };
 
 struct UserCompositeMemberInit
@@ -2216,7 +2242,7 @@ struct FileCompositeMemberInit
 
 
 // Structural data for `Ptr`, `Slice` and `TailArray` types.
-struct ReferenceType
+struct alignas(8) ReferenceType
 {
 	// `TypeId` of the referenced (or, in the case of `TailArray`, arguably
 	// element) type.
@@ -2240,7 +2266,7 @@ struct ReferenceType
 };
 
 // Structural data for `Integer` and `Float` types.
-struct NumericType
+struct alignas(8) NumericType
 {
 	// Number of bits in the type. Currently, this must be `8`, `16`, `32` or
 	// `64` for `Integer` types, and `32` or `64` for `Float` types.
@@ -2252,11 +2278,11 @@ struct NumericType
 
 	// Explicit padding to allow consistent hashing without incurring undefined
 	// behaviour by accessing structure padding.
-	u8 unused_ = 0;
+	u8 unused_[5]{};
 };
 
 // Structural data for `Array` types.
-struct ArrayType
+struct alignas(8) ArrayType
 {
 	// Number of elements in the array type.
 	u64 element_count;
@@ -2267,6 +2293,36 @@ struct ArrayType
 	// Explicit padding to allow consistent hashing without incurring undefined
 	// behaviour by accessing structure padding.
 	u32 unused_ = 0;
+};
+
+struct alignas(8) SelfType
+{
+	TypeId base_type_id;
+
+	TypeId trait_type_id;
+
+	Maybe<TypeId> body_type_id;
+
+	SourceId definition_source_id;
+
+	OpcodeId trait_body_opcode_id;
+
+	Maybe<ClosureId> impl_closure_id;
+
+	Maybe<ClosureId> trait_closure_id;
+
+	u8 argument_count;
+
+	bool has_arguments;
+
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
+	#endif
+	TypeId argument_type_ids[];
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
 };
 
 
@@ -2309,11 +2365,21 @@ TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names) no
 
 
 
-TypeId type_create_impl(CoreData* core, Range<TypeId> arguments, TypeId trait_type_id) noexcept;
+TypeId type_create_self(CoreData* core, TypeId base_type_id, TypeId trait_type_id, u8 trait_argument_count, OpcodeId trait_body_opcode_id, SourceId definition_source_id, Maybe<ClosureId> impl_closure_id, Maybe<ClosureId> trait_closure_id) noexcept;
 
-bool type_add_impl_member(CoreData* core, TypeId type_id, ImplMemberInit init) noexcept;
+TypeId type_set_self_trait_arguments(CoreData* core, TypeId type_id, const TypeId* arguments) noexcept;
 
-TypeId type_seal_impl(CoreData* core, TypeId type_id) noexcept;
+void type_set_self_impl_body(CoreData* core, TypeId type_id, TypeId impl_body_type_id) noexcept;
+
+
+
+TypeId type_create_impl_body(CoreData* core, TypeId self_type_id, u16 trait_member_count) noexcept;
+
+void type_add_impl_body_member(CoreData* core, TypeId type_id, ImplMemberInit init) noexcept;
+
+OpcodeId type_impl_body_member_type_initializer(CoreData* core, TypeId type_id, u16 rank) noexcept;
+
+TypeId type_seal_impl_body(CoreData* core, TypeId type_id) noexcept;
 
 
 
@@ -2331,11 +2397,14 @@ void type_add_file_composite_member(CoreData* core, TypeId type_id, FileComposit
 
 
 
-bool type_member_begin_initialization(CoreData* core, TypeId type_id, u16 rank) noexcept;
+bool type_member_begin_initialization_by_rank(CoreData* core, TypeId type_id, u16 rank) noexcept;
+
+bool type_member_begin_initialization_by_name(CoreData* core, TypeId type_id, IdentifierId name, u16* out_rank) noexcept;
 
 void type_member_complete(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, CoreId value_id, bool end_initialization) noexcept;
 
 void type_member_end_initialization(CoreData* core, TypeId type_id, u16 rank) noexcept;
+
 
 
 TypeRelation type_relation(CoreData* core, TypeId first_type_id, TypeId second_type_id) noexcept;
@@ -2371,6 +2440,8 @@ TypeTag type_tag_from_id(CoreData* core, TypeId type_id) noexcept;
 // must reference a sealed composite type.
 u32 type_member_count(CoreData* core, TypeId type_id) noexcept;
 
+bool type_composite_is_impl_body(CoreData* core, TypeId type_id) noexcept;
+
 SignatureTypeInfo type_signature_info_from_id(CoreData* core, TypeId type_id) noexcept;
 
 bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberInfo* out_info, OpcodeId* out_initializer) noexcept;
@@ -2398,6 +2469,8 @@ const T* type_attachment_from_id(CoreData* core, TypeId type_id) noexcept
 			ASSERT_OR_IGNORE(tag == TypeTag::Integer || tag == TypeTag::Float);
 		else if constexpr (is_same_cpp_type<T, ArrayType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Array || tag == TypeTag::ArrayLiteral);
+		else if constexpr (is_same_cpp_type<T, SelfType>)
+			ASSERT_OR_IGNORE(tag == TypeTag::Self);
 		else
 			static_assert(false, "Unexpected attachment passed to type_attachment_from_id");
 	#endif // !NDEBUG
@@ -2474,10 +2547,10 @@ enum class Opcode : u8
 	ScopeEndPreserveTop,
 	ScopeAllocTyped,
 	ScopeAllocUntyped,
-	FileGlobalAllocPrepare,
-	FileGlobalAllocComplete,
-	FileGlobalAllocTyped,
-	FileGlobalAllocUntyped,
+	FileMemberAllocPrepare,
+	FileMemberAllocComplete,
+	FileMemberAllocTyped,
+	FileMemberAllocUntyped,
 	PopClosure,
 	LoadScope,
 	LoadGlobal,
@@ -2530,14 +2603,16 @@ enum class Opcode : u8
 	CheckTopVoid,
 	CheckWriteCtxVoid,
 	Trait,
-	ImplSetSelf,
-	ImplTraitCall,
+	ImplMakeSelf,
 	ImplBody,
+	CompleteImplBody,
 	ImplMemberAllocPrepare,
-	ImplMemberAllocExplicitType,
-	ImplMemberAllocImplicitType,
+	CheckTypesEqual,
+	LoadSelf,
+	LoadTraitArgument,
 	ImplMemberAllocComplete,
-	GetSelf,
+	PopSelf,
+	EndTraitMemberType,
 };
 
 enum class OpcodeSliceKind : u8
@@ -2751,6 +2826,8 @@ Maybe<TypeId> import_file(CoreData* core, Range<char8> path, bool is_std) noexce
 bool evaluate_file_definition_by_name(CoreData* core, TypeId file_type, IdentifierId name) noexcept;
 
 bool evaluate_all_file_definitions(CoreData* core, TypeId file_type) noexcept;
+
+bool closure_equal(CoreData* core, ClosureId a, ClosureId b) noexcept;
 
 const char8* tag_name(Builtin builtin) noexcept;
 

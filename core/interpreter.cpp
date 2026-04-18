@@ -55,6 +55,10 @@ struct alignas(8) Callable
 	OpcodeId body_id;
 
 	Maybe<ClosureId> closure_id;
+
+	Maybe<TypeId> self_id;
+
+	u32 unused_ = 0;
 };
 
 enum class CompareTag : u8
@@ -183,6 +187,9 @@ static constexpr u32 ARGUMENT_PACKS_COMMIT_INCREMENT_COUNT = 512;
 
 static constexpr u32 GLOBAL_INITIALIZATIONS_RESERVE_SIZE = sizeof(GlobalInitialization) << 16;
 static constexpr u32 GLOBAL_INITIALIZATIONS_COMMIT_INCREMENT_COUNT = 4096 / sizeof(GlobalInitialization);
+
+static constexpr u32 SELFS_RESERVE_SIZE = sizeof(TypeId) << 12;
+static constexpr u32 SELFS_COMMIT_INCREMENT_COUNT = 4096 / sizeof(TypeId);
 
 using OpcodeHandlerFunc = const Opcode* (*) (CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept;
 
@@ -502,7 +509,7 @@ static Maybe<ClosureId> create_closure(CoreData* core, u32 value_count) noexcept
 
 	u64 align = alignof(ClosureMember);
 
-	u64 size = sizeof(ClosureMember) * value_count;
+	u64 size = sizeof(ClosureMember) * (value_count + 1);
 
 	for (u32 i = 0; i != value_count; ++i)
 	{
@@ -528,7 +535,10 @@ static Maybe<ClosureId> create_closure(CoreData* core, u32 value_count) noexcept
 	if (is_none(allocation))
 		TODO("Implement GC traversal.");
 
-	ClosureMember* const members = static_cast<ClosureMember*>(get(allocation));
+	u64* const member_count = static_cast<u64*>(get(allocation));
+	*member_count = value_count;
+
+	ClosureMember* const members = static_cast<ClosureMember*>(get(allocation)) + 1;
 
 	byte* member_data = reinterpret_cast<byte*>(members) + sizeof(ClosureMember) * value_count;
 
@@ -554,7 +564,7 @@ static Maybe<ClosureId> create_closure(CoreData* core, u32 value_count) noexcept
 
 	core->interp.values.pop_by(value_count);
 
-	return some(static_cast<ClosureId>(core_id_from_address(core, members)));
+	return some(static_cast<ClosureId>(core_id_from_address(core, get(allocation))));
 }
 
 static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcode* code, CTValue src, CTValue dst) noexcept
@@ -781,6 +791,18 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 		return code;
 	}
 
+	case TypeTag::Self:
+	{
+		[[maybe_unused]] const SelfType* const attach = type_attachment_from_id<SelfType>(core, src.type);
+
+		ASSERT_OR_IGNORE(type_is_equal(core, attach->base_type_id, dst.type));
+
+		// Essentially a no-op, we are just adjusting the data's type.
+		range::mem_copy(dst.bytes, src.bytes.immut());
+
+		return code;
+	}
+
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
 	case TypeTag::Void:
@@ -868,7 +890,7 @@ static Maybe<TypeId> unify(CoreData* core, const Opcode* code, CTValue* inout_lh
 	}
 }
 
-static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Range<byte> lhs, Range<byte> rhs) noexcept
+static CompareResult compare(CoreData* core, TypeId type, Range<byte> lhs, Range<byte> rhs) noexcept
 {
 	const TypeTag type_tag = type_tag_from_id(core, type);
 
@@ -1087,7 +1109,7 @@ static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Ra
 
 			const Range<byte> rhs_elem{ rhs.begin() + i * metrics.stride, metrics.size };
 
-			const CompareResult result = compare(core, code, element_type, lhs_elem, rhs_elem);
+			const CompareResult result = compare(core, element_type, lhs_elem, rhs_elem);
 
 			if (result.tag == CompareTag::INVALID)
 				return result;
@@ -1117,7 +1139,7 @@ static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Ra
 
 			const Range<byte> rhs_member{ rhs.begin() + member.offset, metrics.size };
 
-			const CompareResult result = compare(core, code, member.type_id, lhs_member, rhs_member);
+			const CompareResult result = compare(core, member.type_id, lhs_member, rhs_member);
 
 			if (result.tag == CompareTag::INVALID)
 				return CompareResult{};
@@ -1126,6 +1148,13 @@ static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Ra
 		}
 
 		return CompareResult{ CompareEquality::Equal };
+	}
+
+	case TypeTag::Self:
+	{
+		const SelfType* const attach = type_attachment_from_id<SelfType>(core, type);
+
+		return compare(core, attach->base_type_id, lhs, rhs);
 	}
 
 	case TypeTag::Definition:
@@ -1137,8 +1166,6 @@ static CompareResult compare(CoreData* core, const Opcode* code, TypeId type, Ra
 	case TypeTag::Divergent:
 	case TypeTag::Trait:
 	{
-		(void) record_interpreter_error(core, code, CompileError::TypesCannotConvert);
-
 		return CompareResult{};
 	}
 
@@ -1809,12 +1836,9 @@ static const Opcode* handle_scope_alloc_untyped(CoreData* core, const Opcode* co
 	return code;
 }
 
-static const Opcode* handle_file_global_alloc_prepare(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_member_alloc_prepare(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
-
-	bool is_mut;
-	code = code_attach(code, &is_mut);
 
 	SourceFileId file_id;
 	code = code_attach(code, &file_id);
@@ -1827,7 +1851,7 @@ static const Opcode* handle_file_global_alloc_prepare(CoreData* core, const Opco
 
 	const TypeId file_type = source_file->type;
 
-	if (!type_member_begin_initialization(core, file_type, rank))
+	if (!type_member_begin_initialization_by_rank(core, file_type, rank))
 		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
 
 	GlobalInitialization* const init = core->interp.global_initializations.reserve();
@@ -1837,7 +1861,7 @@ static const Opcode* handle_file_global_alloc_prepare(CoreData* core, const Opco
 	return code;
 }
 
-static const Opcode* handle_global_alloc_complete(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_member_alloc_complete(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.global_initializations.used() >= 1);
 
@@ -1852,7 +1876,7 @@ static const Opcode* handle_global_alloc_complete(CoreData* core, const Opcode* 
 	return code;
 }
 
-static const Opcode* handle_global_alloc_typed(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_member_alloc_typed(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -1893,7 +1917,7 @@ static const Opcode* handle_global_alloc_typed(CoreData* core, const Opcode* cod
 	return code;
 }
 
-static const Opcode* handle_global_alloc_untyped(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_member_alloc_untyped(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -2036,6 +2060,9 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 			if (write_ctx != nullptr)
 				core->interp.write_ctxs.append(*write_ctx);
 
+			if (type_composite_is_impl_body(core, type))
+				core->interp.selfs.append(type);
+
 			// We'll try again after having evaluated the global value's
 			// initializer. Push this instruction as an activation.
 			push_activation(core, code_activation - 1);
@@ -2125,7 +2152,11 @@ static const Opcode* handle_load_closure(CoreData* core, const Opcode* code, CTV
 
 	const ClosureId closure = core->interp.active_closures.end()[-1];
 
-	ClosureMember* const members = static_cast<ClosureMember*>(address_from_core_id(core, static_cast<CoreId>(closure)));
+	void* const closure_address = address_from_core_id(core, static_cast<CoreId>(closure));
+
+	ASSERT_OR_IGNORE(rank < *static_cast<const u64*>(closure_address));
+
+	ClosureMember* const members = static_cast<ClosureMember*>(closure_address) + 1;
 
 	ClosureMember* const member = members + rank;
 
@@ -2154,6 +2185,8 @@ static const Opcode* handle_load_builtin(CoreData* core, const Opcode* code, CTV
 	Callable body;
 	body.body_id = info.body;
 	body.closure_id = none<ClosureId>();
+	body.self_id = none<TypeId>();
+	body.unused_ = 0;
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&body);
 
@@ -2356,10 +2389,15 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 	else
 		return_completion = none<OpcodeId>();
 
-	const Maybe<ClosureId> closure = create_closure(core, closed_over_value_count);
+	Maybe<ClosureId> closure = none<ClosureId>();
+	
+	if (closed_over_value_count != 0)
+	{
+		closure = create_closure(core, closed_over_value_count);
 
-	if (is_none(closure))
-		return record_interpreter_error(core, code, CompileError::ClosureTooLarge);
+		if (is_none(closure))
+			return record_interpreter_error(core, code, CompileError::ClosureTooLarge);
+	}
 
 	CTValue* value = core->interp.values.end() - value_count;
 
@@ -2494,6 +2532,9 @@ static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CTValu
 	u16 closed_over_value_count;
 	code = code_attach(code, &closed_over_value_count);
 
+	bool binds_self;
+	code = code_attach(code, &binds_self);
+
 	Maybe<ClosureId> closure = none<ClosureId>();
 
 	if (closed_over_value_count != 0)
@@ -2502,6 +2543,15 @@ static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CTValu
 
 		if (is_none(closure))
 			return record_interpreter_error(core, code, CompileError::ClosureTooLarge);
+	}
+
+	Maybe<TypeId> self = none<TypeId>();
+
+	if (binds_self)
+	{
+		ASSERT_OR_IGNORE(core->interp.selfs.used() >= 1);
+
+		self = some(core->interp.selfs.end()[-1]);
 	}
 
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
@@ -2517,6 +2567,8 @@ static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CTValu
 	Callable callable{};
 	callable.body_id = body;
 	callable.closure_id = closure;
+	callable.self_id = self;
+	callable.unused_ = 0;
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&callable);
 
@@ -2546,7 +2598,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 	const TypeTag top_type_tag = type_tag_from_id(core, signature_type);
 
-	if (top_type_tag != TypeTag::Signature)
+	if (top_type_tag != TypeTag::Signature && top_type_tag != TypeTag::Trait)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const SignatureTypeInfo info = type_signature_info_from_id(core, signature_type);
@@ -2771,10 +2823,11 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 	else
 	{
 		// Look ahead to the following opcode, which must always be an
-		// `Opcode::Call`. If it does not expects a write context, we need
-		// to push one based on the callee's return type, since function
-		// bodies always expect to be called with a write context on the
-		// stack.
+		// `Opcode::Call` or `Opcode::Trait`.
+		// If it is `Opcode::Call` and does not expects a write context,
+		// we need to push one based on the callee's return type, since
+		// function bodies always expect to be called with a write context on
+		// the stack.
 		// Note that we need to slip the return value onto the value stack
 		// as well, but we must do so underneath the current top value,
 		// which is the callee and is required on top by `handle_call`.
@@ -2783,11 +2836,15 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 
 		const Opcode* const call = code;
 
-		ASSERT_OR_IGNORE(static_cast<Opcode>(static_cast<u8>(*call) & 0x7F) == Opcode::Call);
+		const u8 raw_call_opcode = static_cast<u8>(*call);
 
-		const bool call_expects_write_ctx = (static_cast<u8>(*call) & 0x80) != 0;
+		const Opcode call_opcode = static_cast<Opcode>(raw_call_opcode & 0x7F);
 
-		if (!call_expects_write_ctx)
+		ASSERT_OR_IGNORE(call_opcode == Opcode::Call || call_opcode == Opcode::ImplBody);
+
+		const bool call_expects_write_ctx = (raw_call_opcode & 0x80) != 0;
+
+		if (call_opcode == Opcode::Call && !call_expects_write_ctx)
 		{
 			const TypeMetrics return_type_metrics = type_metrics_from_id(core, argument_pack->return_type.type);
 
@@ -4670,12 +4727,12 @@ static const Opcode* handle_compare(CoreData* core, const Opcode* code, CTValue*
 
 	const Range<byte> rhs_bytes = rhs->bytes.immut();
 
-	const CompareResult compare_result = compare(core, code, type, lhs_bytes, rhs_bytes);
+	const CompareResult compare_result = compare(core, type, lhs_bytes, rhs_bytes);
 
 	core->interp.values.pop_by(1);
 
-	if (compare_result.tag == CompareTag::INVALID)
-		return nullptr;
+	if (compare_result.tag == CompareTag::INVALID)		
+		return record_interpreter_error(core, code, CompileError::CompareIncomparableType);
 
 	bool result;
 
@@ -5045,83 +5102,452 @@ static const Opcode* handle_trait(CoreData* core, const Opcode* code, CTValue* w
 	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TraitValue), true, trait_type });
 }
 
-static const Opcode* handle_impl_set_self(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_impl_make_self(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	(void) core;
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	(void) code;
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
-	(void) write_ctx;
+	u8 argument_count;
+	code = code_attach(code, &argument_count);
 
-	TODO("Implement");
-}
+	u16 closed_value_count;
+	code = code_attach(code, &closed_value_count);
 
-static const Opcode* handle_impl_trait_call(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
-{
-	(void) core;
+	Maybe<ClosureId> closure = none<ClosureId>();
+	
+	if (closed_value_count != 0)
+	{
+		closure = create_closure(core, closed_value_count);
 
-	(void) code;
+		if (is_none(closure))
+			return record_interpreter_error(core, code, CompileError::ClosureTooLarge);
+	}
 
-	(void) write_ctx;
+	CTValue* const trait_callee = core->interp.values.end() - 1;
 
-	TODO("Implement");
+	CTValue* const base = trait_callee - 1;
+
+	const TypeId trait_callee_type = trait_callee->type;
+
+	if (type_tag_from_id(core, trait_callee_type) != TypeTag::Trait)
+		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+
+	if (type_tag_from_id(core, base->type) != TypeTag::Type)
+		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+
+	const TraitValue* const trait = value_as<TraitValue>(trait_callee);
+
+	const TypeId base_type = *value_as<TypeId>(base);
+
+	const SourceId definition_source = source_id_of_opcode(core, code);
+
+	const TypeId self_type = type_create_self(core, base_type, trait_callee_type, argument_count, trait->member_completions, definition_source, closure, trait->closure);
+
+	core->interp.selfs.append(self_type);
+
+	*base = *trait_callee;
+
+	core->interp.values.pop_by(1);
+
+	return code;
 }
 
 static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	(void) core;
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	(void) code;
+	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
-	(void) write_ctx;
+	ASSERT_OR_IGNORE(core->interp.selfs.used() >= 1);
 
-	TODO("Implement");
+	u16 impl_member_count;
+	code = code_attach(code, &impl_member_count);
+
+	// Pop trait callee.
+	core->interp.values.pop_by(1);
+
+	Scope* const argument_scope = core->interp.scopes.end() - 1;
+
+	ScopeMember* const first_argument = core->interp.scope_members.begin() + argument_scope->first_member_index;
+
+	const TypeId* const argument_types = reinterpret_cast<TypeId*>(core->interp.scope_data.begin() + first_argument->offset);
+
+	TypeId* const self_on_stack = core->interp.selfs.end() - 1;
+
+	const TypeId partial_self = *self_on_stack;
+
+	const TypeId complete_self = type_set_self_trait_arguments(core, partial_self, argument_types);
+
+	scope_pop(core);
+
+	if (partial_self != complete_self)
+	{
+		// Since we skip over the subsequent `Opcode::CompleteImplBody`, we
+		// need to do its cleanup work here.
+		core->interp.selfs.pop_by(1);
+
+		TypeId self = complete_self;
+
+		const MutRange<byte> bytes = range::from_object_bytes_mut(&self);
+
+		const TypeId type_type = type_create_simple(core, TypeTag::Type);
+
+		// Skip member attachments and subsequent `Opcode::CompleteImplBody`.
+		code += impl_member_count * (sizeof(IdentifierId) + sizeof(bool) + sizeof(OpcodeId)) + sizeof(Opcode);
+
+		return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	}
+
+	*self_on_stack = complete_self;
+	
+	const SelfType* const self_attach = type_attachment_from_id<SelfType>(core, complete_self);
+
+	ASSERT_OR_IGNORE(is_none(self_attach->body_type_id));
+
+	const Opcode* trait_code = opcode_from_id(core, self_attach->trait_body_opcode_id);
+
+	u16 trait_member_count;
+	trait_code = code_attach(trait_code, &trait_member_count);
+
+	const TypeId impl_body = type_create_impl_body(core, complete_self, trait_member_count);
+
+	type_set_self_impl_body(core, complete_self, impl_body);
+
+	u16 trait_index = 0;
+
+	u16 impl_index = 0;
+
+	while (impl_index != impl_member_count)
+	{
+		if (trait_index == trait_member_count)
+			return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+
+		IdentifierId impl_member_name;
+		code = code_attach(code, &impl_member_name);
+
+		IdentifierId trait_member_name;
+		trait_code = code_attach(trait_code, &trait_member_name);
+
+		while (trait_member_name != impl_member_name)
+		{
+			bool is_mut;
+			trait_code = code_attach(trait_code, &is_mut);
+
+			OpcodeId type_init;
+			trait_code = code_attach(trait_code, &type_init);
+
+			Maybe<OpcodeId> default_init;
+			trait_code = code_attach(trait_code, &default_init);
+
+			if (is_none(default_init))
+				return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+
+			ImplMemberInit member{};
+			member.name = trait_member_name;
+			member.type_completion_id = type_init;
+			member.value_completion_id = get(default_init);
+			member.is_mut = is_mut;
+			member.is_from_trait_default = true;
+
+			type_add_impl_body_member(core, impl_body, member);
+
+			trait_code = code_attach(trait_code, &trait_member_name);
+
+			trait_index += 1;
+			
+			if (trait_index == trait_member_count)
+				return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+		}
+
+		bool trait_is_mut;
+		trait_code = code_attach(trait_code, &trait_is_mut);
+
+		OpcodeId type_init;
+		trait_code = code_attach(trait_code, &type_init);
+
+		Maybe<OpcodeId> unused_default_init;
+		trait_code = code_attach(trait_code, &unused_default_init);
+
+		bool impl_is_mut;
+		code = code_attach(code, &impl_is_mut);
+
+		OpcodeId value_init;
+		code = code_attach(code, &value_init);
+
+		if (trait_is_mut != impl_is_mut)
+			return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message (mutability mismatch).
+
+		ImplMemberInit member{};
+		member.name = trait_member_name;
+		member.type_completion_id = type_init;
+		member.value_completion_id = value_init;
+		member.is_mut = impl_is_mut;
+		member.is_from_trait_default = false;
+
+		type_add_impl_body_member(core, impl_body, member);
+
+		impl_index += 1;
+
+		trait_index += 1;
+	}
+
+	while (trait_index != trait_member_count)
+	{
+		IdentifierId member_name;
+		trait_code = code_attach(trait_code, &member_name);
+
+		bool is_mut;
+		trait_code = code_attach(trait_code, &is_mut);
+
+		OpcodeId type_init;
+		trait_code = code_attach(trait_code, &type_init);
+
+		Maybe<OpcodeId> default_init;
+		trait_code = code_attach(trait_code, &default_init);
+
+		if (is_none(default_init))
+			return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+
+		ImplMemberInit member{};
+		member.name = member_name;
+		member.type_completion_id = type_init;
+		member.value_completion_id = get(default_init);
+		member.is_mut = is_mut;
+		member.is_from_trait_default = true;
+
+		type_add_impl_body_member(core, impl_body, member);
+
+		trait_index += 1;
+	}
+
+	// Stash the number of members that need to be completed on the self stack,
+	// just below the real self for use by the subsequent
+	// `Opcode::CompleteImplBody`.
+	core->interp.selfs.end()[-1] = static_cast<TypeId>(trait_member_count);
+
+	core->interp.selfs.append(complete_self);
+
+	TypeId self = complete_self;
+
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&self);
+
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
+
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_impl_member_alloc_prepare(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_complete_impl_body(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	(void) core;
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	(void) code;
+	ASSERT_OR_IGNORE(core->interp.selfs.used() >= 2);
 
-	(void) write_ctx;
+	const Opcode* const code_activation = code;
 
-	TODO("Implement");
+	const TypeId self = core->interp.selfs.end()[-1];
+
+	const u32 counts = static_cast<u32>(core->interp.selfs.end()[-2]);
+
+	const u16 total_count = static_cast<u16>(counts);
+
+	const u16 complete_count = static_cast<u16>(counts >> 16);
+
+	const SelfType* const self_attach = type_attachment_from_id<SelfType>(core, self);
+
+	u16 i = complete_count;
+
+	while (i != total_count)
+	{
+		MemberInfo unused_info;
+
+		OpcodeId initializer;
+
+		if (!type_member_info_by_rank(core, get(self_attach->body_type_id), i, &unused_info, &initializer))
+		{
+			core->interp.activations.append(id_from_opcode(core, code_activation - 1));
+
+			core->interp.selfs.end()[-2] = static_cast<TypeId>(static_cast<u32>(total_count) | (static_cast<u32>(i + 1) << 16));
+
+			core->interp.selfs.append(self);
+
+			return opcode_from_id(core, initializer);
+		}
+
+		i += 1;
+	}
+
+	core->interp.selfs.pop_by(2);
+
+	return code;
 }
 
-static const Opcode* handle_impl_member_alloc_explicit_type(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_impl_member_alloc_prepare(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	(void) core;
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	(void) code;
+	ASSERT_OR_IGNORE(core->interp.selfs.used() >= 1);
 
-	(void) write_ctx;
+	IdentifierId name;
+	code = code_attach(code, &name);
 
-	TODO("Implement");
+	bool is_trait_default;
+	code = code_attach(code, &is_trait_default);
+
+	const TypeId self = core->interp.selfs.end()[-1];
+
+	const SelfType* const self_attach = type_attachment_from_id<SelfType>(core, self);
+
+	const Maybe<ClosureId> closure = is_trait_default
+		? self_attach->trait_closure_id
+		: self_attach->impl_closure_id;
+
+	if (is_some(closure))
+		core->interp.active_closures.append(get(closure));
+
+	// If we are in an impl member initializer, and the trait body has a
+	// closure, push it *on top* of the impl body closure (if there is one) so
+	// that it is accessible for the trait type initializer. This gets popped
+	// again by the subsequent `EndTraitMemberType` opcode.
+	if (!is_trait_default && is_some(self_attach->trait_closure_id))
+		core->interp.active_closures.append(get(self_attach->trait_closure_id));
+
+	const TypeId body_type = get(self_attach->body_type_id);
+
+	u16 rank;
+
+	if (!type_member_begin_initialization_by_name(core, body_type, name, &rank))
+		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+
+	GlobalInitialization* const init = core->interp.global_initializations.reserve();
+	init->type = body_type;
+	init->rank = rank;
+
+	const OpcodeId type_initializer = type_impl_body_member_type_initializer(core, body_type, rank);
+
+	core->interp.activations.append(id_from_opcode(core, code));
+
+	return opcode_from_id(core, type_initializer);
 }
 
-static const Opcode* handle_impl_member_alloc_implicit_type(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_check_types_equal(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
 {
-	(void) core;
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	(void) code;
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
-	(void) write_ctx;
+	CTValue* const trait_member_type_value = core->interp.values.end() - 1;
 
-	TODO("Implement");
+	CTValue* const impl_member_type_value = trait_member_type_value - 1;
+
+	if (type_tag_from_id(core, trait_member_type_value->type) != TypeTag::Type
+	 || type_tag_from_id(core, impl_member_type_value->type) != TypeTag::Type
+	) {
+		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+	}
+
+	const TypeId trait_member_type = *value_as<TypeId>(trait_member_type_value);
+
+	const TypeId impl_member_type = *value_as<TypeId>(impl_member_type_value);
+
+	if (!type_is_equal(core, trait_member_type, impl_member_type))
+		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+
+	return code;
 }
 
-static const Opcode* handle_impl_member_alloc_complete(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_self(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
 {
-	(void) core;
+	ASSERT_OR_IGNORE(core->interp.selfs.used() >= 1);
 
-	(void) code;
+	TypeId self = core->interp.selfs.end()[-1];
 
-	(void) write_ctx;
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&self);
 
-	TODO("Implement");
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
+
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
 }
 
+static const Opcode* handle_load_trait_argument(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(core->interp.selfs.used() >= 1);
+
+	u8 rank;
+	code = code_attach(code, &rank);
+
+	const TypeId self = core->interp.selfs.end()[-1];
+
+	const SelfType* const self_attach = type_attachment_from_id<SelfType>(core, self);
+
+	ASSERT_OR_IGNORE(rank < self_attach->argument_count);
+
+	TypeId argument = self_attach->argument_type_ids[rank];
+
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&argument);
+
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
+
+	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+}
+
+static const Opcode* handle_impl_member_alloc_complete(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
+	ASSERT_OR_IGNORE(core->interp.selfs.used() >= 1);
+
+	bool is_trait_default;
+	code = code_attach(code, &is_trait_default);
+
+	const TypeId self = core->interp.selfs.end()[-1];
+
+	const SelfType* const self_attach = type_attachment_from_id<SelfType>(core, self);
+
+	const Maybe<ClosureId> closure = is_trait_default
+		? self_attach->trait_closure_id
+		: self_attach->impl_closure_id;
+
+	if (is_some(closure))
+		core->interp.active_closures.pop_by(1);
+
+	core->interp.selfs.pop_by(1);
+
+	const GlobalInitialization init = core->interp.global_initializations.end()[-1];
+
+	type_member_end_initialization(core, init.type, init.rank);
+
+	core->interp.global_initializations.pop_by(1);
+
+	return code;
+}
+
+static const Opcode* handle_pop_self(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
+	ASSERT_OR_IGNORE(core->interp.selfs.used() >= 1);
+
+	core->interp.selfs.pop_by(1);
+
+	return code;
+}
+
+static const Opcode* handle_end_trait_member_type(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
+	ASSERT_OR_IGNORE(core->interp.selfs.used() >= 1);
+
+	const TypeId self = core->interp.selfs.end()[-1];
+
+	const SelfType* const self_attach = type_attachment_from_id<SelfType>(core, self);
+
+	if (is_some(self_attach->trait_closure_id))
+		core->interp.active_closures.pop_by(1);
+
+	return code;
+}
 
 
 static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, SourceFileId file_id) noexcept
@@ -5254,10 +5680,10 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 		&handle_scope_end_preserve_top,            // ScopeEndPreserveTop
 		&handle_scope_alloc_typed,                 // ScopeAllocTyped
 		&handle_scope_alloc_untyped,               // ScopeAllocUntyped
-		&handle_file_global_alloc_prepare,         // FileGlobalAllocPrepare
-		&handle_global_alloc_complete,             // FileGlobalAllocComplete
-		&handle_global_alloc_typed,                // FileGlobalAllocTyped
-		&handle_global_alloc_untyped,              // FileGlobalAllocUntyped
+		&handle_file_member_alloc_prepare,         // FileMemberAllocPrepare
+		&handle_file_member_alloc_complete,        // FileMemberAllocComplete
+		&handle_file_member_alloc_typed,           // FileMemberAllocTyped
+		&handle_file_member_alloc_untyped,         // FileMemberAllocUntyped
 		&handle_pop_closure,                       // PopClosure
 		&handle_load_scope,                        // LoadScope
 		&handle_load_global,                       // LoadGlobal
@@ -5267,7 +5693,7 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 		&handle_exec_builtin,                      // ExecBuiltin
 		&handle_signature,                         // Signature
 		&handle_dyn_signature,                     // DynSignature
-		&handle_bind_body,                         // BindBody,
+		&handle_bind_body,                         // BindBody
 		&handle_prepare_args,                      // PrepareArgs
 		&handle_exec_args,                         // ExecArgs
 		&handle_call,                              // Call
@@ -5310,13 +5736,16 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 		&handle_check_top_void,                    // CheckTopVoid
 		&handle_check_write_ctx_void,              // CheckWriteCtxVoid
 		&handle_trait,                             // Trait
-		&handle_impl_set_self,                     // ImplSetSelf
-		&handle_impl_trait_call,                   // ImplTraitCall
+		&handle_impl_make_self,                    // ImplMakeSelf
 		&handle_impl_body,                         // ImplBody
+		&handle_complete_impl_body,                // CompleteImplBody
 		&handle_impl_member_alloc_prepare,         // ImplMemberAllocPrepare
-		&handle_impl_member_alloc_explicit_type,   // ImplMemberAllocExplicitType
-		&handle_impl_member_alloc_implicit_type,   // ImplMemberAllocImplicitType
+		&handle_check_types_equal,                 // CheckTypesEqual
+		&handle_load_self,                         // LoadSelf
+		&handle_load_trait_argument,               // LoadTraitArgument
 		&handle_impl_member_alloc_complete,        // ImplMemberAllocComplete
+		&handle_pop_self,                          // PopSelf
+		&handle_end_trait_member_type,             // EndTraitMemberType
 	};
 
 	static_assert(HANDLERS[static_cast<u8>(Opcode::EndCode)]                       == &handle_end_code);
@@ -5327,10 +5756,10 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeEndPreserveTop)]           == &handle_scope_end_preserve_top);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeAllocTyped)]               == &handle_scope_alloc_typed);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ScopeAllocUntyped)]             == &handle_scope_alloc_untyped);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocPrepare)]        == &handle_file_global_alloc_prepare);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocComplete)]       == &handle_global_alloc_complete);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocTyped)]          == &handle_global_alloc_typed);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::FileGlobalAllocUntyped)]        == &handle_global_alloc_untyped);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::FileMemberAllocPrepare)]        == &handle_file_member_alloc_prepare);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::FileMemberAllocComplete)]       == &handle_file_member_alloc_complete);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::FileMemberAllocTyped)]          == &handle_file_member_alloc_typed);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::FileMemberAllocUntyped)]        == &handle_file_member_alloc_untyped);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::PopClosure)]                    == &handle_pop_closure);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::LoadScope)]                     == &handle_load_scope);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::LoadGlobal)]                    == &handle_load_global);
@@ -5383,13 +5812,16 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CheckTopVoid)]                  == &handle_check_top_void);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CheckWriteCtxVoid)]             == &handle_check_write_ctx_void);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::Trait)]                         == &handle_trait);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplSetSelf)]                   == &handle_impl_set_self);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplTraitCall)]                 == &handle_impl_trait_call);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplMakeSelf)]                  == &handle_impl_make_self);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplBody)]                      == &handle_impl_body);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::CompleteImplBody)]              == &handle_complete_impl_body);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplMemberAllocPrepare)]        == &handle_impl_member_alloc_prepare);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplMemberAllocExplicitType)]   == &handle_impl_member_alloc_explicit_type);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplMemberAllocImplicitType)]   == &handle_impl_member_alloc_implicit_type);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::CheckTypesEqual)]               == &handle_check_types_equal);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::LoadSelf)]                      == &handle_load_self);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::LoadTraitArgument)]             == &handle_load_trait_argument);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplMemberAllocComplete)]       == &handle_impl_member_alloc_complete);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::PopSelf)]                       == &handle_pop_self);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::EndTraitMemberType)]            == &handle_end_trait_member_type);
 
 	core->interp.is_ok = true;
 
@@ -5750,7 +6182,8 @@ MemoryRequirements interpreter_memory_requirements([[maybe_unused]] const Config
 	                     + ACTIVE_CLOSURES_RESERVE_SIZE
 	                     + ARGUMENT_CALLBACKS_RESERVE_SIZE
 	                     + ARGUMENT_PACKS_RESERVE_SIZE
-	                     + GLOBAL_INITIALIZATIONS_RESERVE_SIZE;
+	                     + GLOBAL_INITIALIZATIONS_RESERVE_SIZE
+	                     + SELFS_RESERVE_SIZE;
 	reqs.id_requirements_count = 0;
 
 	return reqs;
@@ -5804,6 +6237,9 @@ void interpreter_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	interp->global_initializations.init(allocation.private_data.mut_subrange(offset, GLOBAL_INITIALIZATIONS_RESERVE_SIZE), GLOBAL_INITIALIZATIONS_COMMIT_INCREMENT_COUNT);
 	offset += GLOBAL_INITIALIZATIONS_RESERVE_SIZE;
+
+	interp->selfs.init(allocation.private_data.mut_subrange(offset, SELFS_RESERVE_SIZE), SELFS_COMMIT_INCREMENT_COUNT);
+	offset += SELFS_RESERVE_SIZE;
 
 	ASSERT_OR_IGNORE(allocation.private_data.count() == offset);
 
@@ -5878,6 +6314,54 @@ bool evaluate_all_file_definitions(CoreData* core, TypeId file_type) noexcept
 	}
 
 	return is_ok;
+}
+
+bool closure_equal(CoreData* core, ClosureId a, ClosureId b) noexcept
+{
+	if (a == b)
+		return true;
+
+	void* const a_address = address_from_core_id(core, static_cast<CoreId>(a));
+
+	void* const b_address = address_from_core_id(core, static_cast<CoreId>(b));
+
+	const u64 a_count = *static_cast<u64*>(a_address);
+
+	const u64 b_count = *static_cast<u64*>(b_address);
+
+	if (a_count != b_count)
+		return false;
+
+	const ClosureMember* a_members = static_cast<ClosureMember*>(a_address) + 1;
+
+	const ClosureMember* b_members = static_cast<ClosureMember*>(b_address) + 1;
+
+	for (u64 i = 0; i != a_count; ++i)
+	{
+		const ClosureMember a_member = a_members[i];
+
+		const ClosureMember b_member = b_members[i];
+
+		if (!type_is_equal(core, a_member.type, b_member.type))
+			return false;
+
+		ASSERT_OR_IGNORE(a_member.size == b_member.size);
+
+		const byte* const a_begin = reinterpret_cast<const byte*>(a_members + i) + a_member.offset;
+
+		const byte* const b_begin = reinterpret_cast<const byte*>(b_members + i) + b_member.offset;
+
+		const Range<byte> a_data{ a_begin, a_member.size };
+
+		const Range<byte> b_data{ b_begin, a_member.size };
+
+		const CompareResult rst = compare(core, a_member.type, a_data, b_data);
+
+		if (rst.tag == CompareTag::INVALID || rst.equality != CompareEquality::Equal)
+			return false;
+	}
+
+	return true;
 }
 
 const char8* tag_name(Builtin builtin) noexcept

@@ -253,6 +253,23 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 		return indent_written + total_written;
 	}
 
+	case TypeTag::Self:
+	{
+		const SelfType* const self = type_attachment_from_id<SelfType>(core, type_id);
+
+		const s64 written = print(sink, "Self ");
+
+		if (written < 0)
+			return -1;
+
+		const s64 referenced_written = print_type_impl(sink, core, self->base_type_id, indent + 1, true);
+
+		if (referenced_written < 0)
+			return -1;
+
+		return indent_written + written + referenced_written;
+	}
+
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
 		; // fallthrough to unreachable.

@@ -96,6 +96,8 @@ struct Interpreter
 
 	ReservedVec<GlobalInitialization> global_initializations;
 
+	ReservedVec<TypeId> selfs;
+
 	bool is_ok;
 
 	BuiltinInfo builtin_infos[static_cast<u8>(Builtin::MAX) - 1];

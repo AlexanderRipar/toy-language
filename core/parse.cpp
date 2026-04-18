@@ -2752,7 +2752,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 					parse_definition(core, true, false, false);
 				}
 
-				const AstBuilderToken impl_token = push_node(core, stack.operand_tokens[stack.operand_count - 1], source_id, flags, AstTag::Impl);
+				const AstBuilderToken impl_token = push_node(core, stack.operand_tokens[stack.operand_count - 1], source_id, flags, AstImplData{ none<ClosureListId>() });
 
 				stack.operand_tokens[stack.operand_count - 1] = impl_token;
 			}

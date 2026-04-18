@@ -20,6 +20,7 @@ enum class ScopeMapKind : u8
 	Global,
 	Closure,
 	Signature,
+	TraitSignature,
 };
 
 struct alignas(8) ScopeMap
@@ -378,11 +379,11 @@ static void set_closure(CoreData* core, ScopeMap* closure) noexcept
 
 
 
-static void set_signature_closure_list(CoreData* core, AstNode* node, ScopeMap* closure) noexcept
+static void set_closure_list(CoreData* core, ScopeMap* closure, Maybe<ClosureListId>* out) noexcept
 {
 	if (closure->used == 0)
 	{
-		attachment_of<AstSignatureData>(node)->closure_list_id = none<ClosureListId>();
+		*out = none<ClosureListId>();
 
 		return;
 	}
@@ -417,47 +418,7 @@ static void set_signature_closure_list(CoreData* core, AstNode* node, ScopeMap* 
 
 	const ClosureListId list_id = id_from_closure_list(core, list);
 
-	attachment_of<AstSignatureData>(node)->closure_list_id = some(list_id);
-}
-
-static void set_body_closure_list(CoreData* core, AstNode* node, ScopeMap* closure) noexcept
-{
-	if (closure->used == 0)
-	{
-		attachment_of<AstFuncData>(node)->closure_list_id = none<ClosureListId>();
-
-		return;
-	}
-
-	ClosureList* const list = alloc_closure_list(core, closure->used);
-
-	ScopeMapInfo info = scope_map_info(closure);
-
-	const u64* occupied_bits = closure->occupied_bits;
-
-	for (u16 i = 0; i != closure->capacity; ++i)
-	{
-		const u64 mask = static_cast<u64>(1) << (i & 63);
-
-		if ((occupied_bits[i / 64] & mask) == 0)
-			continue;
-
-		const ScopeEntry src = info.entries[i];
-
-		// Since body closures reference values across the function signature
-		// scope, we need to adjust their source `out`, as the code setting the
-		// closure values will live outside the signature and body.
-		ASSERT_OR_IGNORE(src.closure_source_out >= 1);
-
-		ClosureListEntry* const dst = list->entries + src.rank;
-		dst->source_rank = src.closure_source_rank;
-		dst->source_out = src.closure_source_out - 1;
-		dst->source_is_closure = src.closure_source_is_closure;
-	}
-
-	const ClosureListId list_id = id_from_closure_list(core, list);
-
-	attachment_of<AstFuncData>(node)->closure_list_id = some(list_id);
+	*out = some(list_id);	
 }
 
 static u16 add_name_to_closures(CoreData* core, IdentifierId name, u16 closed_over_rank, s32 scope_index, bool close_in_innermost) noexcept
@@ -742,6 +703,11 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 					binding->closed.kind_ = NameBindingKind::Closed;
 					binding->closed.rank_in_closure = rank_in_closure;
 				}
+				else if (scope->kind == ScopeMapKind::TraitSignature)
+				{
+					binding->trait_argument.kind_ = NameBindingKind::TraitArgument;
+					binding->trait_argument.rank = static_cast<u8>(scope_entry.rank);
+				}
 				else
 				{
 					binding->scoped.kind_ = NameBindingKind::Scoped;
@@ -784,7 +750,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 		resolve_names_rec(core, body, true, close_in_innermost);
 
-		set_body_closure_list(core, node, core->lex.closures[core->lex.scopes_top]);
+		set_closure_list(core, core->lex.closures[core->lex.scopes_top], &attachment_of<AstFuncData>(node)->closure_list_id);
 
 		// Pop the signature's scope.
 		pop_scope(core);
@@ -837,7 +803,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 		resolve_names_rec(core, info.return_type, true, return_type_is_templated);
 
-		set_signature_closure_list(core, node, core->lex.closures[core->lex.scopes_top]);
+		set_closure_list(core, core->lex.closures[core->lex.scopes_top], &attachment_of<AstSignatureData>(node)->closure_list_id);
 
 		if (do_pop)
 			pop_scope(core);
@@ -847,7 +813,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 		if (has_flag(node, AstFlag::Trait_HasExpects))
 			TODO("Handle trait-level `expects` in `resolve_names_rec`");
 
-		ScopeMap* const parameter_list_scope = scope_map_alloc(core, ScopeMapKind::Signature);
+		ScopeMap* const parameter_list_scope = scope_map_alloc(core, ScopeMapKind::TraitSignature);
 		push_scope(core, parameter_list_scope);
 
 		ScopeMap* const parameter_list_closure = scope_map_alloc(core, ScopeMapKind::Closure);
@@ -922,6 +888,8 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 			resolve_names_rec(core, curr, true, close_in_innermost);
 		}
+
+		set_closure_list(core, core->lex.closures[core->lex.scopes_top], &attachment_of<AstImplData>(node)->closure_list_id);
 
 		pop_scope(core);
 	}

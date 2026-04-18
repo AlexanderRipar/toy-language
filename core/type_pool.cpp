@@ -95,9 +95,9 @@ struct alignas(8) CompositeFileExtraData
 
 struct alignas(8) CompositeImplExtraData
 {
-	TypeId trait_id;
+	TypeId self_type_id;
 
-	u32 impl_index;
+	u32 unused_ = 0;
 };
 
 struct alignas(8) CompositeSignatureExtraData
@@ -144,6 +144,8 @@ struct alignas(8) CompositeMember
 	bool is_eval : 1;
 
 	bool is_initializing : 1;
+
+	bool is_impl_member_from_trait_default : 1;
 
 	union
 	{
@@ -216,6 +218,17 @@ struct CompositeInfo
 struct alignas(8) IndirectionType
 {
 	TypeId indirection_type_id;
+
+	u32 unused_ = 0;
+};
+
+struct alignas(8) ImplKeyType
+{
+	TypeId base_type_id;
+
+	TypeId trait_type_id;
+
+	Maybe<TypeId> impl_type_id;
 
 	u32 unused_ = 0;
 };
@@ -541,6 +554,7 @@ static bool fill_member_info(CompositeInfo info, u16 rank, MemberInfo* out_info,
 		out_info->is_mut = type.is_mut;
 		out_info->is_eval = type.is_eval;
 		out_info->is_global = info.kind != CompositeKind::User && info.kind != CompositeKind::Signature;
+		out_info->is_impl_member_from_trait_default = type.is_impl_member_from_trait_default;
 
 		return false;
 	}
@@ -862,6 +876,27 @@ static u32 hash_composite_type(CoreData* core, u32 hash, SeenSet* seen, const Co
 	return hash;
 }
 
+static u32 hash_self_type(CoreData* core, u32 hash, SeenSet* seen, const SelfType* attach) noexcept
+{
+	if (!attach->has_arguments)
+		return 0;
+
+	for (u32 i = 0; i != attach->argument_count; ++i)
+	{
+		hash = hash_type_id(core, hash, seen, attach->argument_type_ids[i]);
+
+		if (hash == 0)
+			return 0;
+	}
+
+	hash = hash_type_id(core, hash, seen, attach->base_type_id);
+
+	if (hash == 0)
+		return 0;
+
+	return fnv1a_step(hash, range::from_object_bytes(&attach->trait_body_opcode_id)) | 1;
+}
+
 static u32 hash_numeric_type([[maybe_unused]] CoreData* core, u32 hash, const NumericType* attach) noexcept
 {
 	return fnv1a_step(fnv1a_step(hash, static_cast<byte>(attach->is_signed)), range::from_object_bytes(&attach->bits)) | 1;
@@ -933,6 +968,9 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 	case TypeTag::Definition:
 		TODO("Implement `hash_type_structure_preseen(%)`.", tag_name(tag));
 
+	case TypeTag::Self:
+		return hash_self_type(core, hash, seen, reinterpret_cast<const SelfType*>(structure->attach));
+
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
 		; // Fallthrough to unreachable.
@@ -993,9 +1031,9 @@ static bool init_structure_hash(CoreData* core, TypeStructure* structure) noexce
 
 static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, TypeId from_type_id, TypeId to_type_id) noexcept
 {
-	const TypeStructure* const from = structure_from_id(core, from_type_id);
+	const TypeStructure* const from = follow_indirection(core, structure_from_id(core, from_type_id));
 
-	const TypeStructure* const to = structure_from_id(core, to_type_id);
+	const TypeStructure* const to = follow_indirection(core, structure_from_id(core, to_type_id));
 
 	const TypeTag to_tag = to->tag;
 
@@ -1181,6 +1219,14 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 		    || type_can_implicitly_convert_from_to_assume_unequal(core, get(from_attach->element_type), get(to_attach->element_type));
 	}
 
+	case TypeTag::Self:
+	{
+		const SelfType* const attach = reinterpret_cast<const SelfType*>(from + 1);
+
+		return type_is_equal(core, attach->base_type_id, to_type_id)
+		    || type_can_implicitly_convert_from_to_assume_unequal(core, attach->base_type_id, to_type_id);
+	}
+
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
 		break; // Fallthrough to unreachable.
@@ -1314,20 +1360,15 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 		{
 		case CompositeKind::Impl:
 		{
-			const CompositeImplExtraData* const a_impl = reinterpret_cast<const CompositeImplExtraData*>(a_attach + 1);
+			// `impl` bodies are only equal if their `TypeId`s are equal.
+			// If they were equal, we would have returned `true` already, so we
+			// can safely return `false` instead.
 
-			const CompositeImplExtraData* const b_impl = reinterpret_cast<const CompositeImplExtraData*>(b_attach + 1);
+			seen_set_pop(a_seen);
 
-			if (a_impl->impl_index != b_impl->impl_index)
-			{
-				seen_set_pop(a_seen);
+			seen_set_pop(b_seen);
 
-				seen_set_pop(b_seen);
-
-				return false;
-			}
-
-			break;
+			return false;
 		}
 
 		case CompositeKind::Signature:
@@ -1523,6 +1564,75 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 		seen_set_pop(b_seen);
 
 		return element_result;
+	}
+
+	case TypeTag::Self:
+	{
+		const SelfType* const a_attach = reinterpret_cast<SelfType*>(a->attach);
+
+		const SelfType* const b_attach = reinterpret_cast<SelfType*>(b->attach);
+
+		ASSERT_OR_IGNORE(a_attach->has_arguments && b_attach->has_arguments);
+
+		if (a_attach->argument_count != b_attach->argument_count
+		 || a_attach->definition_source_id != b_attach->definition_source_id
+		 || a_attach->trait_body_opcode_id != b_attach->trait_body_opcode_id
+		 || !type_is_equal_noloop(core, a_attach->trait_type_id, b_attach->trait_type_id, a_seen, b_seen)
+		) {
+			seen_set_pop(a_seen);
+
+			seen_set_pop(b_seen);
+
+			return false;
+		}
+
+		for (u8 i = 0; i != a_attach->argument_count; ++i)
+		{
+			if (!type_is_equal_noloop(core, a_attach->argument_type_ids[i], b_attach->argument_type_ids[i], a_seen, b_seen))
+			{
+				seen_set_pop(a_seen);
+
+				seen_set_pop(b_seen);
+
+				return false;
+			}
+		}
+
+		if (is_some(a_attach->trait_closure_id) != is_some(b_attach->trait_closure_id)
+		 || is_some(a_attach->impl_closure_id) != is_some(b_attach->impl_closure_id)
+		) {
+			seen_set_pop(a_seen);
+
+			seen_set_pop(b_seen);
+
+			return false;
+		}
+
+		if (is_some(a_attach->trait_closure_id)
+		 && !closure_equal(core, get(a_attach->trait_closure_id), get(b_attach->trait_closure_id))
+		) {
+			seen_set_pop(a_seen);
+
+			seen_set_pop(b_seen);
+
+			return false;
+		}
+
+		if (is_some(a_attach->impl_closure_id)
+		 && !closure_equal(core, get(a_attach->impl_closure_id), get(b_attach->impl_closure_id))
+		) {
+			seen_set_pop(a_seen);
+
+			seen_set_pop(b_seen);
+
+			return false;
+		}
+
+		seen_set_pop(a_seen);
+
+		seen_set_pop(b_seen);
+
+		return true;
 	}
 
 	case TypeTag::Variadic:
@@ -1809,6 +1919,8 @@ TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names) no
 
 	const TypeId type_type_id = type_create_simple(core, TypeTag::Type);
 
+	composite->member_used = static_cast<u16>(parameter_names.count());
+
 	CompositeSignatureExtraData* const signature = reinterpret_cast<CompositeSignatureExtraData*>(composite + 1);
 	signature->return_type.type_id = type_type_id;
 	signature->closure_id = none<ClosureId>();
@@ -1839,20 +1951,71 @@ TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names) no
 
 
 
-
-
-TypeId type_create_impl(CoreData* core, Range<TypeId> arguments, TypeId trait_type_id) noexcept
+TypeId type_create_self(CoreData* core, TypeId base_type_id, TypeId trait_type_id, u8 trait_argument_count, OpcodeId trait_body_opcode_id, SourceId definition_source_id, Maybe<ClosureId> impl_closure_id, Maybe<ClosureId> trait_closure_id) noexcept
 {
-	(void) core;
+	byte attach_buffer[sizeof(SelfType)];
 
-	(void) arguments;
+	SelfType* const attach = reinterpret_cast<SelfType*>(attach_buffer);
+	attach->base_type_id = base_type_id;
+	attach->trait_type_id = trait_type_id;
+	attach->body_type_id = none<TypeId>();
+	attach->definition_source_id = definition_source_id;
+	attach->trait_body_opcode_id = trait_body_opcode_id;
+	attach->impl_closure_id = impl_closure_id;
+	attach->trait_closure_id = trait_closure_id;
+	attach->argument_count = trait_argument_count;
+	attach->has_arguments = false;
 
-	(void) trait_type_id;
+	TypeStructure* const structure = make_structure_nohash(core, TypeTag::Self, range::from_object_bytes(attach), sizeof(SelfType) + trait_argument_count * sizeof(TypeId));
 
-	TODO("Implement `type_create_impl()`.");
+	return id_from_structure(core, structure);
 }
 
-bool type_add_impl_member(CoreData* core, TypeId type_id, ImplMemberInit init) noexcept
+TypeId type_set_self_trait_arguments(CoreData* core, TypeId type_id, const TypeId* arguments) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Self);
+
+	SelfType* const self = reinterpret_cast<SelfType*>(structure + 1);
+
+	self->has_arguments = true;
+
+	memcpy(self->argument_type_ids, arguments, self->argument_count * sizeof(TypeId));
+
+	if (!init_structure_hash(core, structure))
+		ASSERT_UNREACHABLE;
+
+	return holotype_id_from_interned_type_structure(core, structure);
+}
+
+void type_set_self_impl_body(CoreData* core, TypeId type_id, TypeId impl_body_type_id) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Self);
+
+	SelfType* const self = reinterpret_cast<SelfType*>(structure + 1);
+
+	self->body_type_id = some(impl_body_type_id);
+}
+
+
+
+TypeId type_create_impl_body(CoreData* core, TypeId self_type_id, u16 trait_member_count) noexcept
+{
+	TypeStructure* const structure = composite_alloc(core, TypeTag::Composite, CompositeKind::Impl, CompositeFlags::EMPTY, trait_member_count, false);
+
+	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
+
+	CompositeImplExtraData* const impl = reinterpret_cast<CompositeImplExtraData*>(composite + 1);
+	impl->self_type_id = self_type_id;
+	impl->unused_ = 0;
+
+	return id_from_structure(core, structure);
+}
+
+void type_add_impl_body_member(CoreData* core, TypeId type_id, ImplMemberInit init) noexcept
 {
 	TypeStructure* const structure = structure_from_id(core, type_id);
 
@@ -1860,50 +2023,48 @@ bool type_add_impl_member(CoreData* core, TypeId type_id, ImplMemberInit init) n
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
 
+	ASSERT_OR_IGNORE(composite->member_used < composite->member_capacity);
+
+	const u16 rank = composite->member_used;
+
 	ASSERT_OR_IGNORE(composite->kind == CompositeKind::Impl);
-
-	CompositeImplExtraData* const impl = reinterpret_cast<CompositeImplExtraData*>(composite + 1);
-
-	const TypeStructure* const trait_structure = structure_from_id(core, impl->trait_id);
-
-	ASSERT_OR_IGNORE(trait_structure->tag == TypeTag::Trait);
-
-	const CompositeType* const trait_composite = reinterpret_cast<const CompositeType*>(trait_structure + 1);
-
-	ASSERT_OR_IGNORE(composite->member_capacity == trait_composite->member_capacity);
-
-	const CompositeInfo trait_info = composite_info(trait_composite);
-
-	u16 rank;
-
-	if (!find_member_by_name(trait_info, init.name, &rank))
-		return false;
-
-	ASSERT_OR_IGNORE(rank < composite->member_capacity);
-
-	const CompositeMember trait_member = trait_info.member_types[rank];
 
 	CompositeInfo info = composite_info(composite);
 
-	ASSERT_OR_IGNORE(info.member_names[rank] == IdentifierId::INVALID);
-
-	if (static_cast<bool>(trait_member.is_mut) != init.is_mut)
-		TODO("Handle mismatch between trait and impl members' mutability.");
-
 	info.member_names[rank] = init.name;
 
-	info.member_types[rank].type_id = TypeId::INVALID;
+	info.member_types[rank].type_id = static_cast<TypeId>(init.type_completion_id);
 	info.member_types[rank].is_pending = true;
 	info.member_types[rank].is_initializing = false;
 	info.member_types[rank].is_pub = true;
 	info.member_types[rank].is_mut = init.is_mut;
 	info.member_types[rank].is_eval = false;
-	info.member_types[rank].completion_id = init.completion_id;
+	info.member_types[rank].is_impl_member_from_trait_default = init.is_from_trait_default;
+	info.member_types[rank].completion_id = init.value_completion_id;
 
-	return true;
+	composite->member_used += 1;
 }
 
-TypeId type_seal_impl(CoreData* core, TypeId type_id) noexcept
+OpcodeId type_impl_body_member_type_initializer(CoreData* core, TypeId type_id, u16 rank) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
+
+	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
+
+	ASSERT_OR_IGNORE(rank < composite->member_used);
+
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::Impl);
+
+	CompositeInfo info = composite_info(composite);
+
+	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
+
+	return static_cast<OpcodeId>(info.member_types[rank].type_id);
+}
+
+TypeId type_seal_impl_body(CoreData* core, TypeId type_id) noexcept
 {
 	TypeStructure* const structure = structure_from_id(core, type_id);
 
@@ -2074,7 +2235,7 @@ void type_add_file_composite_member(CoreData* core, TypeId type_id, FileComposit
 
 
 
-bool type_member_begin_initialization(CoreData* core, TypeId type_id, u16 rank) noexcept
+bool type_member_begin_initialization_by_rank(CoreData* core, TypeId type_id, u16 rank) noexcept
 {
 	TypeStructure* const structure = structure_from_id(core, type_id);
 
@@ -2094,6 +2255,35 @@ bool type_member_begin_initialization(CoreData* core, TypeId type_id, u16 rank) 
 		return false;
 
 	info.member_types[rank].is_initializing = true;
+
+	return true;
+}
+
+bool type_member_begin_initialization_by_name(CoreData* core, TypeId type_id, IdentifierId name, u16* out_rank) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
+
+	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
+
+	ASSERT_OR_IGNORE(composite->kind == CompositeKind::File || composite->kind == CompositeKind::Impl);
+
+	CompositeInfo info = composite_info(composite);
+
+	u16 rank;
+
+	if (!find_member_by_name(info, name, &rank))
+		ASSERT_UNREACHABLE;
+
+	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
+
+	if (info.member_types[rank].is_initializing)
+		return false;
+
+	info.member_types[rank].is_initializing = true;
+
+	*out_rank = rank;
 
 	return true;
 }
@@ -2223,13 +2413,24 @@ u32 type_member_count(CoreData* core, TypeId type_id) noexcept
 	return composite->member_used;
 }
 
+bool type_composite_is_impl_body(CoreData* core, TypeId type_id) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
+
+	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
+
+	return composite->kind == CompositeKind::Impl;
+}
+
 SignatureTypeInfo type_signature_info_from_id(CoreData* core, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
 	const TypeStructure* const structure = structure_from_id(core, type_id);
 
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Signature);
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Signature || structure->tag == TypeTag::Trait);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure + 1);
 
@@ -2243,7 +2444,7 @@ SignatureTypeInfo type_signature_info_from_id(CoreData* core, TypeId type_id) no
 	info.is_func = signature->is_func;
 	info.has_templated_return_type = signature->has_templated_return_type;
 	info.closure_id = signature->closure_id;
-	
+
 	if (signature->has_templated_return_type)
 		info.return_type.templated.completion_id = signature->return_type.completion_id;
 	else
@@ -2325,12 +2526,12 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 
 	case TypeTag::Slice:
 	case TypeTag::Variadic:
+	case TypeTag::Signature:
 	{
 		return { 16, 16, 8 };
 	}
 
 	case TypeTag::Ptr:
-	case TypeTag::Signature:
 	case TypeTag::Trait:
 	{
 		return { 8, 8, 8 };
@@ -2362,6 +2563,13 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 		const CompositeUserExtraData* const user = reinterpret_cast<const CompositeUserExtraData*>(composite + 1);
 
 		return TypeMetrics{ user->size, user->stride, user->align };
+	}
+
+	case TypeTag::Self:
+	{
+		const SelfType* const attach = reinterpret_cast<const SelfType*>(structure + 1);
+
+		return type_metrics_from_id(core, attach->base_type_id);
 	}
 
 	case TypeTag::Definition:
@@ -2398,6 +2606,7 @@ bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberIn
 		structure->tag == TypeTag::Composite
 	 || structure->tag == TypeTag::CompositeLiteral
 	 || structure->tag == TypeTag::Signature
+	 || structure->tag == TypeTag::Trait
 	);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure + 1);

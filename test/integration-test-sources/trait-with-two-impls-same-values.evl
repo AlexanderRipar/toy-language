@@ -1,0 +1,15 @@
+// success
+
+let Tr = trait(A) {
+	let x: Bool
+}
+
+let Im1 = Bool impl Tr(self) {
+	let x = true
+}
+
+let Im2 = Bool impl Tr(self) {
+	let x = true
+}
+
+let unused = std.assert(Im1 != Im2)

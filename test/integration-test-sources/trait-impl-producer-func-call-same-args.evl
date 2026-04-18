@@ -1,0 +1,15 @@
+// success
+
+let Tr = trait(A) {
+	let x: Bool
+}
+
+let MakeImpl = func(T: Type, val: Bool) -> Type => T impl Tr(self) {
+	let x = val
+}
+
+let Im1 = MakeImpl(u32, true)
+
+let Im2 = MakeImpl(u32, true)
+
+let unused = std.assert(Im1 == Im2)
