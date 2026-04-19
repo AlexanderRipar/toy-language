@@ -285,37 +285,37 @@ bool source_reader_validate_config([[maybe_unused]] const Config* config, [[mayb
 MemoryRequirements source_reader_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;
-
-	reqs.private_reserve = KNOWN_FILES_BY_PATH_LOOKUP_RESERVE
-	                     + KNOWN_FILES_BY_PATH_VALUES_RESERVE
-	                     + KNOWN_FILES_BY_IDENTITY_LOOKUP_RESERVE;
-	reqs.id_requirements_count = 1;
-	reqs.id_requirements[0].reserve = KNOWN_FILES_BY_IDENTITY_VALUES_RESERVE;
-	reqs.id_requirements[0].alignment = alignof(SourceFileByIdEntry);
+	reqs.count = 1;
+	reqs.ranges[0].size = KNOWN_FILES_BY_PATH_LOOKUP_RESERVE
+	                    + KNOWN_FILES_BY_PATH_VALUES_RESERVE
+	                    + KNOWN_FILES_BY_IDENTITY_LOOKUP_RESERVE
+	                    + KNOWN_FILES_BY_IDENTITY_VALUES_RESERVE;
+	reqs.ranges[0].max_offset = UINT64_MAX;
 
 	return reqs;
 }
 
 void source_reader_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
-	ASSERT_OR_IGNORE(allocation.ids[0].count() == KNOWN_FILES_BY_IDENTITY_VALUES_RESERVE);
+	ASSERT_OR_IGNORE(allocation.ranges[0].count() == KNOWN_FILES_BY_PATH_LOOKUP_RESERVE + KNOWN_FILES_BY_PATH_VALUES_RESERVE + KNOWN_FILES_BY_IDENTITY_LOOKUP_RESERVE + KNOWN_FILES_BY_IDENTITY_VALUES_RESERVE);
 
 	SourceReader* const reader = &core->reader;
 
 	u64 offset = 0;
 
-	const MutRange<byte> by_path_lookup_memory = allocation.private_data.mut_subrange(offset, KNOWN_FILES_BY_PATH_LOOKUP_RESERVE);
+	const MutRange<byte> by_path_lookup_memory = allocation.ranges[0].mut_subrange(offset, KNOWN_FILES_BY_PATH_LOOKUP_RESERVE);
 	offset += KNOWN_FILES_BY_PATH_LOOKUP_RESERVE;
 
-	const MutRange<byte> by_path_values_memory = allocation.private_data.mut_subrange(offset, KNOWN_FILES_BY_PATH_VALUES_RESERVE);
+	const MutRange<byte> by_path_values_memory = allocation.ranges[0].mut_subrange(offset, KNOWN_FILES_BY_PATH_VALUES_RESERVE);
 	offset += KNOWN_FILES_BY_PATH_VALUES_RESERVE;
 
-	const MutRange<byte> by_identity_lookup_memory = allocation.private_data.mut_subrange(offset, KNOWN_FILES_BY_IDENTITY_LOOKUP_RESERVE);
+	const MutRange<byte> by_identity_lookup_memory = allocation.ranges[0].mut_subrange(offset, KNOWN_FILES_BY_IDENTITY_LOOKUP_RESERVE);
 	offset += KNOWN_FILES_BY_IDENTITY_LOOKUP_RESERVE;
 
-	ASSERT_OR_IGNORE(allocation.private_data.count() == offset);
+	const MutRange<byte> by_identity_values_memory = allocation.ranges[0].mut_subrange(offset, KNOWN_FILES_BY_IDENTITY_VALUES_RESERVE);
+	offset += KNOWN_FILES_BY_IDENTITY_VALUES_RESERVE;
 
-	const MutRange<byte> by_identity_values_memory = allocation.ids[0];
+	ASSERT_OR_IGNORE(allocation.ranges[0].count() == offset);
 
 	reader->known_files_by_path.init(
 		by_path_lookup_memory, KNOWN_FILES_BY_PATH_LOOKUP_INITIAL_COMMIT_COUNT,

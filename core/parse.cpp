@@ -2843,8 +2843,7 @@ bool parser_validate_config([[maybe_unused]] const Config* config, [[maybe_unuse
 MemoryRequirements parser_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;
-	reqs.private_reserve = 0;
-	reqs.id_requirements_count = 0; 
+	reqs.count = 0;
 
 	return reqs;
 }

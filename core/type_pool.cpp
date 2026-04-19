@@ -1690,8 +1690,9 @@ bool type_pool_validate_config([[maybe_unused]] const Config* config, [[maybe_un
 MemoryRequirements type_pool_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;
-	reqs.private_reserve = HOLOTYPES_LOOKUPS_RESERVE + HOLOTYPES_VALUES_RESERVE;
-	reqs.id_requirements_count = 0;
+	reqs.count = 1;
+	reqs.ranges[0].size = HOLOTYPES_LOOKUPS_RESERVE + HOLOTYPES_VALUES_RESERVE;
+	reqs.ranges[0].max_offset = UINT64_MAX;
 
 	return reqs;
 }
@@ -1702,10 +1703,10 @@ void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	u64 offset = 0;
 
-	const MutRange<byte> dedup_lookups_memory = allocation.private_data.mut_subrange(offset, HOLOTYPES_LOOKUPS_RESERVE);
+	const MutRange<byte> dedup_lookups_memory = allocation.ranges[0].mut_subrange(offset, HOLOTYPES_LOOKUPS_RESERVE);
 	offset += HOLOTYPES_LOOKUPS_RESERVE;
 
-	const MutRange<byte> dedup_values_memory = allocation.private_data.mut_subrange(offset, HOLOTYPES_VALUES_RESERVE);
+	const MutRange<byte> dedup_values_memory = allocation.ranges[0].mut_subrange(offset, HOLOTYPES_VALUES_RESERVE);
 	offset += HOLOTYPES_VALUES_RESERVE;
 
 	types->holotypes.init(

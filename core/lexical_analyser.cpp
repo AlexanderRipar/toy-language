@@ -1011,8 +1011,7 @@ bool lexical_analyser_validate_config([[maybe_unused]] const Config* config, [[m
 MemoryRequirements lexical_analyser_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;
-	reqs.private_reserve = 0;
-	reqs.id_requirements_count = 0;
+	reqs.count = 0;
 
 	return reqs;
 }

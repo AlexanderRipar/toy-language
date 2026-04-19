@@ -124,11 +124,12 @@ MemoryRequirements comp_heap_memory_requirements(const Config* config) noexcept
 
 	const u64 gc_bitmap_size = (heap_size / (8 * COMP_HEAP_MIN_ALLOCATION_SIZE) + page_mask) & ~page_mask;
 
-	const u64 total_size = heap_size + gc_bitmap_size;
-
 	MemoryRequirements reqs{};
-	reqs.private_reserve = total_size;
-	reqs.id_requirements_count = 0;
+	reqs.count = 2;
+	reqs.ranges[0].size = heap_size;
+	reqs.ranges[0].max_offset = static_cast<u64>(UINT32_MAX) * COMP_HEAP_MIN_ALLOCATION_SIZE;
+	reqs.ranges[1].size = gc_bitmap_size;
+	reqs.ranges[1].max_offset = UINT64_MAX;
 
 	return reqs;
 }
@@ -143,17 +144,17 @@ void comp_heap_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	const u64 heap_size = (core->config->heap.reserve + commit_increment - 1) & ~(commit_increment - 1);
 
-	if (!minos::mem_commit(allocation.private_data.begin(), commit_increment))
+	if (!minos::mem_commit(allocation.ranges[0].begin(), commit_increment))
 		panic("Could not commit % bytes of memory for compile-time heap header and initial commit (0x%[|X]).\n", commit_increment, minos::last_error());
 
-	core->heap.memory = allocation.private_data.begin();
+	core->heap.memory = allocation.ranges[0].begin();
 	core->heap.used = COMP_HEAP_MIN_ALLOCATION_SIZE; // Reserve the slot as a pseudo-null value for indices.
 	core->heap.commit = commit_increment;
 	core->heap.reserve = heap_size;
 	core->heap.commit_increment = commit_increment;
 	core->heap.arena_count = 0;
 	core->heap.arena_begin = 0;
-	core->heap.gc_bitmap = reinterpret_cast<u8*>(allocation.private_data.begin()) + heap_size;
+	core->heap.gc_bitmap = reinterpret_cast<u8*>(allocation.ranges[1].begin()) + heap_size;
 
 	memset(core->heap.freelists, 0, sizeof(core->heap.freelists));
 }

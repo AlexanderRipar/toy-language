@@ -179,15 +179,16 @@ bool error_sink_validate_config([[maybe_unused]] const Config* config, [[maybe_u
 MemoryRequirements error_sink_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;
-	reqs.private_reserve = sizeof(ErrorRecord) * MAX_ERROR_RECORD_COUNT;
-	reqs.id_requirements_count = 0;
+	reqs.count = 1;
+	reqs.ranges[0].size = sizeof(ErrorRecord) * MAX_ERROR_RECORD_COUNT;
+	reqs.ranges[0].max_offset = UINT64_MAX;
 
 	return reqs;
 }
 
 void error_sink_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
-	ASSERT_OR_IGNORE(allocation.private_data.count() == MAX_ERROR_RECORD_COUNT * sizeof(ErrorRecord));
+	ASSERT_OR_IGNORE(allocation.ranges[0].count() == MAX_ERROR_RECORD_COUNT * sizeof(ErrorRecord));
 
 	ErrorSink* const errors = &core->errors;
 
@@ -195,7 +196,7 @@ void error_sink_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	errors->source_tab_size = static_cast<u8>(core->config->logging.diagnostics.source_tab_size);
 
-	errors->records.init(allocation.private_data, 1024);
+	errors->records.init(allocation.ranges[0], 1024);
 
 	errors->log_file = config_open_log_file(core->config->logging.diagnostics.file, some(minos::StdFileName::StdErr));
 }

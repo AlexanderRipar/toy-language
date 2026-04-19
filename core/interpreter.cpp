@@ -6217,21 +6217,22 @@ bool interpreter_validate_config([[maybe_unused]] const Config* config, [[maybe_
 MemoryRequirements interpreter_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;
-	reqs.private_reserve = static_cast<u64>(SCOPES_RESERVE_SIZE)
-	                     + SCOPE_MEMBERS_RESERVE_SIZE
-	                     + SCOPE_DATA_RESERVE_SIZE
-	                     + VALUES_RESERVE_SIZE
-	                     + TEMPORARY_DATA_RESERVE_SIZE
-	                     + ACTIVATIONS_RESERVE_SIZE
-	                     + CALL_ACTIVATION_INDICES_RESERVE_SIZE
-	                     + LOOP_STACK_RESERVE_SIZE
-	                     + WRITE_CTXS_RESERVE_SIZE
-	                     + ACTIVE_CLOSURES_RESERVE_SIZE
-	                     + ARGUMENT_CALLBACKS_RESERVE_SIZE
-	                     + ARGUMENT_PACKS_RESERVE_SIZE
-	                     + GLOBAL_INITIALIZATIONS_RESERVE_SIZE
-	                     + SELFS_RESERVE_SIZE;
-	reqs.id_requirements_count = 0;
+	reqs.count = 1;
+	reqs.ranges[0].size = static_cast<u64>(SCOPES_RESERVE_SIZE)
+	                    + SCOPE_MEMBERS_RESERVE_SIZE
+	                    + SCOPE_DATA_RESERVE_SIZE
+	                    + VALUES_RESERVE_SIZE
+	                    + TEMPORARY_DATA_RESERVE_SIZE
+	                    + ACTIVATIONS_RESERVE_SIZE
+	                    + CALL_ACTIVATION_INDICES_RESERVE_SIZE
+	                    + LOOP_STACK_RESERVE_SIZE
+	                    + WRITE_CTXS_RESERVE_SIZE
+	                    + ACTIVE_CLOSURES_RESERVE_SIZE
+	                    + ARGUMENT_CALLBACKS_RESERVE_SIZE
+	                    + ARGUMENT_PACKS_RESERVE_SIZE
+	                    + GLOBAL_INITIALIZATIONS_RESERVE_SIZE
+	                    + SELFS_RESERVE_SIZE;
+	reqs.ranges[0].max_offset = UINT64_MAX;
 
 	return reqs;
 }
@@ -6246,49 +6247,49 @@ void interpreter_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	u64 offset = 0;
 
-	interp->scopes.init(allocation.private_data.mut_subrange(offset, SCOPES_RESERVE_SIZE), SCOPES_COMMIT_INCREMENT_COUNT);
+	interp->scopes.init(allocation.ranges[0].mut_subrange(offset, SCOPES_RESERVE_SIZE), SCOPES_COMMIT_INCREMENT_COUNT);
 	offset += SCOPES_RESERVE_SIZE;
 
-	interp->scope_members.init(allocation.private_data.mut_subrange(offset, SCOPE_MEMBERS_RESERVE_SIZE), SCOPE_MEMBERS_COMMIT_INCREMENT_COUNT);
+	interp->scope_members.init(allocation.ranges[0].mut_subrange(offset, SCOPE_MEMBERS_RESERVE_SIZE), SCOPE_MEMBERS_COMMIT_INCREMENT_COUNT);
 	offset += SCOPE_MEMBERS_RESERVE_SIZE;
 
-	interp->scope_data.init(allocation.private_data.mut_subrange(offset, SCOPE_DATA_RESERVE_SIZE), SCOPE_DATA_COMMIT_INCREMENT_COUNT);
+	interp->scope_data.init(allocation.ranges[0].mut_subrange(offset, SCOPE_DATA_RESERVE_SIZE), SCOPE_DATA_COMMIT_INCREMENT_COUNT);
 	offset += SCOPE_DATA_RESERVE_SIZE;
 
-	interp->values.init(allocation.private_data.mut_subrange(offset, VALUES_RESERVE_SIZE), VALUES_COMMIT_INCREMENT_COUNT);
+	interp->values.init(allocation.ranges[0].mut_subrange(offset, VALUES_RESERVE_SIZE), VALUES_COMMIT_INCREMENT_COUNT);
 	offset += VALUES_RESERVE_SIZE;
 
-	interp->temporary_data.init(allocation.private_data.mut_subrange(offset, TEMPORARY_DATA_RESERVE_SIZE), TEMPORARY_DATA_COMMIT_INCREMENT_COUNT);
+	interp->temporary_data.init(allocation.ranges[0].mut_subrange(offset, TEMPORARY_DATA_RESERVE_SIZE), TEMPORARY_DATA_COMMIT_INCREMENT_COUNT);
 	offset += TEMPORARY_DATA_RESERVE_SIZE;
 
-	interp->activations.init(allocation.private_data.mut_subrange(offset, ACTIVATIONS_RESERVE_SIZE), ACTIVATIONS_COMMIT_INCREMENT_COUNT);
+	interp->activations.init(allocation.ranges[0].mut_subrange(offset, ACTIVATIONS_RESERVE_SIZE), ACTIVATIONS_COMMIT_INCREMENT_COUNT);
 	offset += ACTIVATIONS_RESERVE_SIZE;
 
-	interp->call_activation_indices.init(allocation.private_data.mut_subrange(offset, CALL_ACTIVATION_INDICES_RESERVE_SIZE), CALL_ACTIVATION_INDICES_COMMIT_INCREMENT_COUNT);
+	interp->call_activation_indices.init(allocation.ranges[0].mut_subrange(offset, CALL_ACTIVATION_INDICES_RESERVE_SIZE), CALL_ACTIVATION_INDICES_COMMIT_INCREMENT_COUNT);
 	offset += CALL_ACTIVATION_INDICES_RESERVE_SIZE;
 
-	interp->loop_stack.init(allocation.private_data.mut_subrange(offset, LOOP_STACK_RESERVE_SIZE), LOOP_STACK_COMMIT_INCREMENT_COUNT);
+	interp->loop_stack.init(allocation.ranges[0].mut_subrange(offset, LOOP_STACK_RESERVE_SIZE), LOOP_STACK_COMMIT_INCREMENT_COUNT);
 	offset += LOOP_STACK_RESERVE_SIZE;
 
-	interp->write_ctxs.init(allocation.private_data.mut_subrange(offset, WRITE_CTXS_RESERVE_SIZE), WRITE_CTXS_COMMIT_INCREMENT_COUNT);
+	interp->write_ctxs.init(allocation.ranges[0].mut_subrange(offset, WRITE_CTXS_RESERVE_SIZE), WRITE_CTXS_COMMIT_INCREMENT_COUNT);
 	offset += WRITE_CTXS_RESERVE_SIZE;
 
-	interp->active_closures.init(allocation.private_data.mut_subrange(offset, ACTIVE_CLOSURES_RESERVE_SIZE), ACTIVE_CLOSURES_COMMIT_INCREMENT_COUNT);
+	interp->active_closures.init(allocation.ranges[0].mut_subrange(offset, ACTIVE_CLOSURES_RESERVE_SIZE), ACTIVE_CLOSURES_COMMIT_INCREMENT_COUNT);
 	offset += ACTIVE_CLOSURES_RESERVE_SIZE;
 
-	interp->argument_callbacks.init(allocation.private_data.mut_subrange(offset, ARGUMENT_CALLBACKS_RESERVE_SIZE), ARGUMENT_CALLBACKS_COMMIT_INCREMENT_COUNT);
+	interp->argument_callbacks.init(allocation.ranges[0].mut_subrange(offset, ARGUMENT_CALLBACKS_RESERVE_SIZE), ARGUMENT_CALLBACKS_COMMIT_INCREMENT_COUNT);
 	offset += ARGUMENT_CALLBACKS_RESERVE_SIZE;
 
-	interp->argument_packs.init(allocation.private_data.mut_subrange(offset, ARGUMENT_PACKS_RESERVE_SIZE), ARGUMENT_PACKS_COMMIT_INCREMENT_COUNT);
+	interp->argument_packs.init(allocation.ranges[0].mut_subrange(offset, ARGUMENT_PACKS_RESERVE_SIZE), ARGUMENT_PACKS_COMMIT_INCREMENT_COUNT);
 	offset += ARGUMENT_PACKS_RESERVE_SIZE;
 
-	interp->global_initializations.init(allocation.private_data.mut_subrange(offset, GLOBAL_INITIALIZATIONS_RESERVE_SIZE), GLOBAL_INITIALIZATIONS_COMMIT_INCREMENT_COUNT);
+	interp->global_initializations.init(allocation.ranges[0].mut_subrange(offset, GLOBAL_INITIALIZATIONS_RESERVE_SIZE), GLOBAL_INITIALIZATIONS_COMMIT_INCREMENT_COUNT);
 	offset += GLOBAL_INITIALIZATIONS_RESERVE_SIZE;
 
-	interp->selfs.init(allocation.private_data.mut_subrange(offset, SELFS_RESERVE_SIZE), SELFS_COMMIT_INCREMENT_COUNT);
+	interp->selfs.init(allocation.ranges[0].mut_subrange(offset, SELFS_RESERVE_SIZE), SELFS_COMMIT_INCREMENT_COUNT);
 	offset += SELFS_RESERVE_SIZE;
 
-	ASSERT_OR_IGNORE(allocation.private_data.count() == offset);
+	ASSERT_OR_IGNORE(allocation.ranges[0].count() == offset);
 
 	init_builtin_infos(core);
 }

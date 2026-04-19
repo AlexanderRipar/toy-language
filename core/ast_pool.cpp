@@ -268,40 +268,43 @@ bool ast_pool_validate_config([[maybe_unused]] const Config* config, [[maybe_unu
 MemoryRequirements ast_pool_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;
-	reqs.private_reserve = SOURCES_RESERVE_SIZE + NODE_BUILDER_RESERVE_SIZE + SOURCE_BUILDER_RESERVE_SIZE;
-	reqs.id_requirements_count = 2;
-	reqs.id_requirements[0].reserve = NODES_RESERVE_SIZE;
-	reqs.id_requirements[0].alignment = alignof(AstNode);
-	reqs.id_requirements[1].reserve = CLOSURE_LISTS_RESERVE_SIZE;
-	reqs.id_requirements[1].alignment = alignof(ClosureListEntry);
+	reqs.count = 3;
+	reqs.ranges[0].size = NODES_RESERVE_SIZE;
+	reqs.ranges[0].max_offset = static_cast<u64>(UINT32_MAX) * alignof(AstNode);
+	reqs.ranges[1].size = CLOSURE_LISTS_RESERVE_SIZE;
+	reqs.ranges[1].max_offset = static_cast<u64>(UINT32_MAX) * alignof(ClosureListEntry);
+	reqs.ranges[2].size = SOURCES_RESERVE_SIZE + NODE_BUILDER_RESERVE_SIZE + SOURCE_BUILDER_RESERVE_SIZE;
+	reqs.ranges[2].max_offset = UINT64_MAX;
 
 	return reqs;
 }
 
 void ast_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
-	ASSERT_OR_IGNORE(allocation.ids[0].count() == NODES_RESERVE_SIZE);
+	ASSERT_OR_IGNORE(allocation.ranges[0].count() == NODES_RESERVE_SIZE);
 	
-	ASSERT_OR_IGNORE(allocation.ids[1].count() == CLOSURE_LISTS_RESERVE_SIZE);
+	ASSERT_OR_IGNORE(allocation.ranges[1].count() == CLOSURE_LISTS_RESERVE_SIZE);
+
+	ASSERT_OR_IGNORE(allocation.ranges[2].count() == SOURCES_RESERVE_SIZE + NODE_BUILDER_RESERVE_SIZE + SOURCE_BUILDER_RESERVE_SIZE);
 
 	AstPool* const asts = &core->asts;
 
-	asts->nodes.init(allocation.ids[0], static_cast<u32>(1) << 18);
+	asts->nodes.init(allocation.ranges[0], static_cast<u32>(1) << 18);
 
-	asts->closure_lists.init(allocation.ids[1], static_cast<u32>(1) << 12);
+	asts->closure_lists.init(allocation.ranges[1], static_cast<u32>(1) << 12);
 
-	u64 private_data_offset = 0;
+	u64 offset = 0;
 
-	asts->sources.init(allocation.private_data.mut_subrange(private_data_offset, SOURCES_RESERVE_SIZE), static_cast<u32>(1) << 18);
-	private_data_offset += SOURCES_RESERVE_SIZE;
+	asts->sources.init(allocation.ranges[2].mut_subrange(offset, SOURCES_RESERVE_SIZE), static_cast<u32>(1) << 18);
+	offset += SOURCES_RESERVE_SIZE;
 
-	asts->node_builder.init(allocation.private_data.mut_subrange(private_data_offset, NODE_BUILDER_RESERVE_SIZE), static_cast<u32>(1) << 16);
-	private_data_offset += NODE_BUILDER_RESERVE_SIZE;
+	asts->node_builder.init(allocation.ranges[2].mut_subrange(offset, NODE_BUILDER_RESERVE_SIZE), static_cast<u32>(1) << 16);
+	offset += NODE_BUILDER_RESERVE_SIZE;
 
-	asts->source_builder.init(allocation.private_data.mut_subrange(private_data_offset, SOURCE_BUILDER_RESERVE_SIZE), static_cast<u32>(1) << 16);
-	private_data_offset += SOURCE_BUILDER_RESERVE_SIZE;
+	asts->source_builder.init(allocation.ranges[2].mut_subrange(offset, SOURCE_BUILDER_RESERVE_SIZE), static_cast<u32>(1) << 16);
+	offset += SOURCE_BUILDER_RESERVE_SIZE;
 
-	ASSERT_OR_IGNORE(allocation.private_data.count() == private_data_offset);
+	ASSERT_OR_IGNORE(allocation.ranges[2].count() == offset);
 
 	(void) asts->nodes.reserve();
 

@@ -7,7 +7,7 @@
 #include "../infra/inplace_sort.hpp"
 #include "../diag/diag.hpp"
 
-struct IdAllocation
+struct RangeAllocation
 {
 	u64 begin;
 
@@ -90,21 +90,26 @@ using init_func = void (*) (CoreData* core, MemoryAllocation allocation) noexcep
 
 
 
-struct MemoryIdRequirementsAlignmentComparator
+struct MemoryRangeRequirementOffsetComparator
 {
-	static s32 compare(const MemoryIdRequirements* a, const MemoryIdRequirements* b) noexcept
+	static s32 compare(const MemoryRangeRequirement* a, const MemoryRangeRequirement* b) noexcept
 	{
-		return a->alignment - b->alignment;
+		if (a->max_offset < b->max_offset)
+			return -1;
+		else if (a->max_offset > b->max_offset)
+			return 1;
+		else
+			return 0;
 	}
 };
 
-static u32 id_requirements_index_from_ptr(const MemoryIdRequirements* ptr, const MemoryRequirements* memory_requirements) noexcept
+static u32 id_requirements_index_from_ptr(const MemoryRangeRequirement* ptr, const MemoryRequirements* memory_requirements) noexcept
 {
 	const u32 memory_requirements_index = static_cast<u32>((reinterpret_cast<const byte*>(ptr) - reinterpret_cast<const byte*>(memory_requirements))) / sizeof(MemoryRequirements);
 
-	const u32 id_index = static_cast<u32>(ptr - memory_requirements[memory_requirements_index].id_requirements);
+	const u32 id_index = static_cast<u32>(ptr - memory_requirements[memory_requirements_index].ranges);
 
-	return memory_requirements_index * MAX_MEMORY_ID_REQUIREMENTS_COUNT + id_index;
+	return memory_requirements_index * MAX_MEMORY_RANGE_REQUIREMENTS_COUNT + id_index;
 }
 
 
@@ -205,54 +210,44 @@ CoreData* create_core_data(const Config* config) noexcept
 			memory_requirements[i] = MemoryRequirements{};
 	}
 
-	MemoryIdRequirements* id_requirements_buf[MAX_MEMORY_ID_REQUIREMENTS_COUNT * MEMBER_COUNT];
+	MemoryRangeRequirement* range_requirements_buf[MAX_MEMORY_RANGE_REQUIREMENTS_COUNT * MEMBER_COUNT];
 
-	u64 id_requirements_count = 0;
+	u64 range_requirements_count = 0;
 
 	for (MemoryRequirements& req : memory_requirements)
 	{
-		for (u64 i = 0; i != req.id_requirements_count; ++i)
+		for (u64 i = 0; i != req.count; ++i)
 		{
-			ASSERT_OR_IGNORE(id_requirements_count + req.id_requirements_count < array_count(id_requirements_buf));
+			ASSERT_OR_IGNORE(range_requirements_count + req.count < array_count(range_requirements_buf));
 
-			id_requirements_buf[id_requirements_count + i] = &req.id_requirements[i];
+			range_requirements_buf[range_requirements_count + i] = &req.ranges[i];
 		}
 
-		id_requirements_count += req.id_requirements_count;
+		range_requirements_count += req.count;
 	}
 
-	const MutRange<MemoryIdRequirements*> id_requirements{ id_requirements_buf, id_requirements_count };
+	const MutRange<MemoryRangeRequirement*> id_requirements{ range_requirements_buf, range_requirements_count };
 
-	inplace_sort<MemoryIdRequirements*, MemoryIdRequirementsAlignmentComparator>(id_requirements);
+	inplace_sort<MemoryRangeRequirement*, MemoryRangeRequirementOffsetComparator>(id_requirements);
 
 	const u64 page_mask = minos::page_bytes() - 1;
 
 	u64 total_allocation_size = sizeof(CoreData);
 
-	IdAllocation id_allocations[MEMBER_COUNT * MAX_MEMORY_ID_REQUIREMENTS_COUNT];
+	RangeAllocation range_allocations[MEMBER_COUNT * MAX_MEMORY_RANGE_REQUIREMENTS_COUNT];
 
-	for (const MemoryIdRequirements* req : id_requirements)
+	for (const MemoryRangeRequirement* req : id_requirements)
 	{
-		ASSERT_OR_IGNORE(is_pow2(req->alignment) && req->alignment <= 4096);
-
 		total_allocation_size = (total_allocation_size + page_mask) & ~page_mask;
 
 		const u32 reverse_index = id_requirements_index_from_ptr(req, memory_requirements);
 
-		id_allocations[reverse_index] = IdAllocation{ total_allocation_size, req->reserve };
+		range_allocations[reverse_index] = RangeAllocation{ total_allocation_size, req->size };
 
-		total_allocation_size += req->reserve;
+		total_allocation_size += req->size;
 
-		if (total_allocation_size > UINT32_MAX * req->alignment)
-			panic("Ids with element size % could not be allocated so that they could be indexed by an unsigned 32-bit integer in a unified address space.\n", req->alignment);
-	}
-
-	const u64 private_member_data_offset = total_allocation_size;
-
-	for (const MemoryRequirements& req : memory_requirements)
-	{
-		if (!add_checked_u64(total_allocation_size, req.private_reserve, &total_allocation_size))
-			panic("Size of core data exceeds size of address space.\n");
+		if (total_allocation_size > req->max_offset)
+			panic("Could not allocate memory ranges within maximum offset constraints.\n");
 	}
 
 	void* const memory = minos::mem_reserve(total_allocation_size);
@@ -267,23 +262,18 @@ CoreData* create_core_data(const Config* config) noexcept
 	core->config = config;
 	core->allocation_size = total_allocation_size;
 
-	u64 private_allocation_begin = private_member_data_offset;
-
 	for (u64 i = 0; i != MEMBER_COUNT; ++i)
 	{
 		if (!enable_flags[i])
 			continue;
 
 		MemoryAllocation allocation;
-		allocation.private_data = MutRange{ static_cast<byte*>(memory) + private_allocation_begin, memory_requirements[i].private_reserve };
 
-		private_allocation_begin += memory_requirements[i].private_reserve;
-
-		for (u64 j = 0; j != memory_requirements[i].id_requirements_count; ++j)
+		for (u64 j = 0; j != memory_requirements[i].count; ++j)
 		{
-			const IdAllocation id_allocation = id_allocations[i * MAX_MEMORY_ID_REQUIREMENTS_COUNT + j];
+			const RangeAllocation range_allocation = range_allocations[i * MAX_MEMORY_RANGE_REQUIREMENTS_COUNT + j];
 
-			allocation.ids[j] = MutRange{ static_cast<byte*>(memory) + id_allocation.begin, id_allocation.size };
+			allocation.ranges[j] = MutRange{ static_cast<byte*>(memory) + range_allocation.begin, range_allocation.size };
 		}
 
 		INIT_FUNCS[i](core, allocation);

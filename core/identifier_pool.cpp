@@ -83,26 +83,26 @@ bool identifier_pool_validate_config([[maybe_unused]] const Config* config, [[ma
 MemoryRequirements identifier_pool_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;
-
-	reqs.private_reserve = IDENTIFIER_LOOKUP_RESERVE;
-	reqs.id_requirements_count = 1;
-	reqs.id_requirements[0].reserve = IDENTIFIER_ENTRY_RESERVE;
-	reqs.id_requirements[0].alignment = alignof(IdentifierEntry);
+	reqs.count = 1;
+	reqs.ranges[0].size = IDENTIFIER_LOOKUP_RESERVE + IDENTIFIER_ENTRY_RESERVE;
+	reqs.ranges[0].max_offset = UINT64_MAX;
 
 	return reqs;
 }
 
 void identifier_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
-	ASSERT_OR_IGNORE(allocation.private_data.count() == IDENTIFIER_LOOKUP_RESERVE);
-
-	ASSERT_OR_IGNORE(allocation.ids[0].count() == IDENTIFIER_ENTRY_RESERVE);
+	ASSERT_OR_IGNORE(allocation.ranges[0].count() == IDENTIFIER_LOOKUP_RESERVE + IDENTIFIER_ENTRY_RESERVE);
 
 	IdentifierPool* const identifiers = &core->identifiers;
 
+	const MutRange<byte> lookups_memory = allocation.ranges[0].mut_subrange(0, IDENTIFIER_LOOKUP_RESERVE);
+
+	const MutRange<byte> entries_memory = allocation.ranges[0].mut_subrange(IDENTIFIER_LOOKUP_RESERVE, IDENTIFIER_ENTRY_RESERVE);
+
 	identifiers->map.init(
-		allocation.private_data, IDENTIFIER_LOOKUP_INITIAL_COMMIT_COUNT,
-		allocation.ids[0], IDENTIFIER_ENTRY_COMMIT_INCREMENT_COUNT);
+		lookups_memory, IDENTIFIER_LOOKUP_INITIAL_COMMIT_COUNT,
+		entries_memory, IDENTIFIER_ENTRY_COMMIT_INCREMENT_COUNT);
 }
 
 

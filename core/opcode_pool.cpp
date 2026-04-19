@@ -2770,27 +2770,28 @@ bool opcode_pool_validate_config([[maybe_unused]] const Config* config, [[maybe_
 MemoryRequirements opcode_pool_memory_requirements([[maybe_unused]] const Config* config) noexcept
 {
 	MemoryRequirements reqs;
-	reqs.private_reserve = SOURCES_RESERVE_SIZE + FIXUPS_RESERVE_SIZE;
-	reqs.id_requirements_count = 1;
-	reqs.id_requirements[0].reserve = OPCODES_RESERVE_SIZE;
-	reqs.id_requirements[0].alignment = alignof(Opcode);
+	reqs.count = 2;
+	reqs.ranges[0].size = OPCODES_RESERVE_SIZE;
+	reqs.ranges[0].max_offset = UINT32_MAX;
+	reqs.ranges[1].size = SOURCES_RESERVE_SIZE + FIXUPS_RESERVE_SIZE;
+	reqs.ranges[1].max_offset = UINT64_MAX;
 
 	return reqs;
 }
 
 void opcode_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
-	ASSERT_OR_IGNORE(allocation.ids[0].count() == OPCODES_RESERVE_SIZE);
+	ASSERT_OR_IGNORE(allocation.ranges[0].count() == OPCODES_RESERVE_SIZE);
 
-	ASSERT_OR_IGNORE(allocation.private_data.count() == SOURCES_RESERVE_SIZE + FIXUPS_RESERVE_SIZE);
+	ASSERT_OR_IGNORE(allocation.ranges[1].count() == SOURCES_RESERVE_SIZE + FIXUPS_RESERVE_SIZE);
 
 	OpcodePool* const opcodes = &core->opcodes;
 
-	opcodes->codes.init(allocation.ids[0], OPCODES_COMMIT_INCREMENT_COUNT);
+	opcodes->codes.init(allocation.ranges[0], OPCODES_COMMIT_INCREMENT_COUNT);
 
-	opcodes->sources.init(allocation.private_data.mut_subrange(0, SOURCES_RESERVE_SIZE), SOURCES_COMMIT_INCREMENT_COUNT);
+	opcodes->sources.init(allocation.ranges[1].mut_subrange(0, SOURCES_RESERVE_SIZE), SOURCES_COMMIT_INCREMENT_COUNT);
 
-	opcodes->fixups.init(allocation.private_data.mut_subrange(SOURCES_RESERVE_SIZE, FIXUPS_RESERVE_SIZE), FIXUPS_COMMIT_INCREMENT_COUNT);
+	opcodes->fixups.init(allocation.ranges[1].mut_subrange(SOURCES_RESERVE_SIZE, FIXUPS_RESERVE_SIZE), FIXUPS_COMMIT_INCREMENT_COUNT);
 
 	// Reserve `OpcodeId::INVALID`.
 	(void) opcodes->codes.reserve();

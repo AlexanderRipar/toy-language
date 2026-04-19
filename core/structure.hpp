@@ -341,29 +341,25 @@ struct CoreData
 
 
 
-static constexpr u64 MAX_MEMORY_ID_REQUIREMENTS_COUNT = 3;
+static constexpr u64 MAX_MEMORY_RANGE_REQUIREMENTS_COUNT = 3;
 
-struct MemoryIdRequirements
+struct MemoryRangeRequirement
 {
-	u32 reserve;
+	u64 size;
 
-	u32 alignment;
+	u64 max_offset;
 };
 
 struct MemoryRequirements
 {
-	u64 private_reserve;
+	u32 count;
 
-	u64 id_requirements_count;
-
-	MemoryIdRequirements id_requirements[MAX_MEMORY_ID_REQUIREMENTS_COUNT];
+	MemoryRangeRequirement ranges[MAX_MEMORY_RANGE_REQUIREMENTS_COUNT];
 };
 
 struct MemoryAllocation
 {
-	MutRange<byte> private_data;
-
-	MutRange<byte> ids[MAX_MEMORY_ID_REQUIREMENTS_COUNT];
+	MutRange<byte> ranges[MAX_MEMORY_RANGE_REQUIREMENTS_COUNT];
 };
 
 #endif // CORE_STRUCTURE_INCLUDE_GUARD
