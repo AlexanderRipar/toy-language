@@ -76,7 +76,7 @@ struct Interpreter
 
 	ReservedVec<byte> scope_data;
 
-	ReservedVec<CTValue> values;
+	ReservedVec<CompValue> values;
 
 	ReservedVec<byte> temporary_data;
 
@@ -86,7 +86,7 @@ struct Interpreter
 
 	ReservedVec<LoopInfo> loop_stack;
 
-	ReservedVec<CTValue> write_ctxs;
+	ReservedVec<CompValue> write_ctxs;
 
 	ReservedVec<ClosureId> active_closures;
 

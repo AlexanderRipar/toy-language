@@ -2504,21 +2504,6 @@ bool has_next(const MemberIterator* it) noexcept;
 
 
 
-struct CTValue
-{
-	MutRange<byte> bytes;
-
-	u32 align : 31;
-
-	u32 is_mut : 1;
-
-	TypeId type;
-};
-
-
-
-
-
 // Parser, structuring source code into an Abstract Syntax Tree for further
 // processing.
 struct Parser;
@@ -2817,6 +2802,17 @@ enum class Builtin : u8
 	// Number of `Builtin`s, used for sizing arrays. Should not be used
 	// otherwise.
 	MAX,
+};
+
+struct CompValue
+{
+	MutRange<byte> bytes;
+
+	u32 align : 31;
+
+	u32 is_mut : 1;
+
+	TypeId type;
 };
 
 bool import_prelude(CoreData* core, Range<char8> path) noexcept;

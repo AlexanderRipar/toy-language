@@ -158,7 +158,7 @@ static constexpr u32 SCOPE_MEMBERS_COMMIT_INCREMENT_COUNT = 8192 / sizeof(ScopeM
 static constexpr u32 SCOPE_DATA_RESERVE_SIZE = 1 << 28;
 static constexpr u32 SCOPE_DATA_COMMIT_INCREMENT_COUNT = 65536;
 
-static constexpr u32 VALUES_RESERVE_SIZE = sizeof(CTValue) << 20;
+static constexpr u32 VALUES_RESERVE_SIZE = sizeof(CompValue) << 20;
 static constexpr u32 VALUES_COMMIT_INCREMENT_COUNT = 1024;
 
 static constexpr u32 TEMPORARY_DATA_RESERVE_SIZE = 1 << 28;
@@ -173,7 +173,7 @@ static constexpr u32 CALL_ACTIVATION_INDICES_COMMIT_INCREMENT_COUNT = 1024;
 static constexpr u32 LOOP_STACK_RESERVE_SIZE = sizeof(LoopInfo) << 18;
 static constexpr u32 LOOP_STACK_COMMIT_INCREMENT_COUNT = 1024;
 
-static constexpr u32 WRITE_CTXS_RESERVE_SIZE = sizeof(CTValue) << 17;
+static constexpr u32 WRITE_CTXS_RESERVE_SIZE = sizeof(CompValue) << 17;
 static constexpr u32 WRITE_CTXS_COMMIT_INCREMENT_COUNT = 512;
 
 static constexpr u32 ACTIVE_CLOSURES_RESERVE_SIZE = sizeof(ClosureId) << 15;
@@ -191,7 +191,7 @@ static constexpr u32 GLOBAL_INITIALIZATIONS_COMMIT_INCREMENT_COUNT = 4096 / size
 static constexpr u32 SELFS_RESERVE_SIZE = sizeof(TypeId) << 12;
 static constexpr u32 SELFS_COMMIT_INCREMENT_COUNT = 4096 / sizeof(TypeId);
 
-using OpcodeHandlerFunc = const Opcode* (*) (CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept;
+using OpcodeHandlerFunc = const Opcode* (*) (CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept;
 
 
 
@@ -243,9 +243,9 @@ static const Opcode* record_interpreter_error(CoreData* core, const Opcode* code
 
 
 
-static const Opcode* convert_into(CoreData* core, const Opcode* code, CTValue src, CTValue dst) noexcept;
+static const Opcode* convert_into(CoreData* core, const Opcode* code, CompValue src, CompValue dst) noexcept;
 
-static CTValue alloc_temporary_value_uninit(CoreData* core, u64 size, u32 align, TypeId type) noexcept
+static CompValue alloc_temporary_value_uninit(CoreData* core, u64 size, u32 align, TypeId type) noexcept
 {
 	if (size >= UINT32_MAX)
 		panic("Maximum size of temporary value exceeded.\n");
@@ -254,19 +254,19 @@ static CTValue alloc_temporary_value_uninit(CoreData* core, u64 size, u32 align,
 
 	byte* const bytes = core->interp.temporary_data.reserve(static_cast<u32>(size));
 
-	return CTValue{ MutRange<byte>{ bytes, size }, align, true, type };
+	return CompValue{ MutRange<byte>{ bytes, size }, align, true, type };
 }
 
-static CTValue alloc_temporary_value(CoreData* core, CTValue value) noexcept
+static CompValue alloc_temporary_value(CoreData* core, CompValue value) noexcept
 {
-	CTValue temporary_value = alloc_temporary_value_uninit(core, value.bytes.count(), value.align, value.type);
+	CompValue temporary_value = alloc_temporary_value_uninit(core, value.bytes.count(), value.align, value.type);
 
 	range::mem_copy(temporary_value.bytes, value.bytes.immut());
 
 	return temporary_value;
 }
 
-static const Opcode* push_location_value(CoreData* core, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
+static const Opcode* push_location_value(CoreData* core, const Opcode* code, CompValue* write_ctx, CompValue value) noexcept
 {
 	if (write_ctx != nullptr)
 	{
@@ -280,7 +280,7 @@ static const Opcode* push_location_value(CoreData* core, const Opcode* code, CTV
 	}
 }
 
-static const Opcode* push_temporary_value(CoreData* core, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
+static const Opcode* push_temporary_value(CoreData* core, const Opcode* code, CompValue* write_ctx, CompValue value) noexcept
 {
 	if (write_ctx != nullptr)
 	{
@@ -288,7 +288,7 @@ static const Opcode* push_temporary_value(CoreData* core, const Opcode* code, CT
 	}
 	else
 	{
-		CTValue temporary_value = alloc_temporary_value(core, value);
+		CompValue temporary_value = alloc_temporary_value(core, value);
 
 		core->interp.values.append(temporary_value);
 
@@ -296,7 +296,7 @@ static const Opcode* push_temporary_value(CoreData* core, const Opcode* code, CT
 	}
 }
 
-static const Opcode* poppush_location_value(CoreData* core, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
+static const Opcode* poppush_location_value(CoreData* core, const Opcode* code, CompValue* write_ctx, CompValue value) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -308,7 +308,7 @@ static const Opcode* poppush_location_value(CoreData* core, const Opcode* code, 
 	}
 	else
 	{
-		CTValue* const top = core->interp.values.end() - 1;
+		CompValue* const top = core->interp.values.end() - 1;
 
 		*top = value;
 
@@ -316,7 +316,7 @@ static const Opcode* poppush_location_value(CoreData* core, const Opcode* code, 
 	}
 }
 
-static const Opcode* poppush_temporary_value(CoreData* core, const Opcode* code, CTValue* write_ctx, CTValue value) noexcept
+static const Opcode* poppush_temporary_value(CoreData* core, const Opcode* code, CompValue* write_ctx, CompValue value) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -328,9 +328,9 @@ static const Opcode* poppush_temporary_value(CoreData* core, const Opcode* code,
 	}
 	else
 	{
-		CTValue temporary_value = alloc_temporary_value(core, value);
+		CompValue temporary_value = alloc_temporary_value(core, value);
 
-		CTValue* const top = core->interp.values.end() - 1;
+		CompValue* const top = core->interp.values.end() - 1;
 
 		*top = temporary_value;
 
@@ -502,7 +502,7 @@ static void push_activation(CoreData* core, const Opcode* code) noexcept
 
 
 template<typename T>
-static T* value_as(CTValue* value) noexcept
+static T* value_as(CompValue* value) noexcept
 {
 	ASSERT_OR_IGNORE(value->bytes.count() == sizeof(T) && value->align == alignof(T));
 
@@ -515,7 +515,7 @@ static Maybe<ClosureId> create_closure(CoreData* core, u32 value_count) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= value_count);
 
-	CTValue* const values = core->interp.values.end() - value_count;
+	CompValue* const values = core->interp.values.end() - value_count;
 
 	u64 align = alignof(ClosureMember);
 
@@ -523,7 +523,7 @@ static Maybe<ClosureId> create_closure(CoreData* core, u32 value_count) noexcept
 
 	for (u32 i = 0; i != value_count; ++i)
 	{
-		CTValue* const value = values + i;
+		CompValue* const value = values + i;
 
 		const u32 value_align = value->align;
 
@@ -554,7 +554,7 @@ static Maybe<ClosureId> create_closure(CoreData* core, u32 value_count) noexcept
 
 	for (u32 i = 0; i != value_count; ++i)
 	{
-		const CTValue src = values[i];
+		const CompValue src = values[i];
 
 		ClosureMember* const dst = members + i;
 
@@ -577,7 +577,7 @@ static Maybe<ClosureId> create_closure(CoreData* core, u32 value_count) noexcept
 	return some(static_cast<ClosureId>(core_id_from_address(core, get(allocation))));
 }
 
-static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcode* code, CTValue src, CTValue dst) noexcept
+static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcode* code, CompValue src, CompValue dst) noexcept
 {
 	const TypeTag src_type_tag = type_tag_from_id(core, src.type);
 
@@ -652,7 +652,7 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 		const u32 seen_members_size = ((dst_member_count + 7) / 8 + sizeof(u64) - 1) & ~(sizeof(u64) - 1);
 
-		CTValue seen_members_value = alloc_temporary_value_uninit(core, seen_members_size, alignof(u64), TypeId::INVALID);
+		CompValue seen_members_value = alloc_temporary_value_uninit(core, seen_members_size, alignof(u64), TypeId::INVALID);
 
 		u64* const seen_members = reinterpret_cast<u64*>(seen_members_value.bytes.begin());
 
@@ -710,9 +710,9 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 			const TypeMetrics src_metrics = type_metrics_from_id(core, src_member_info.type_id);
 
-			const CTValue dst_member_value{ dst.bytes.mut_subrange(dst_member.offset, dst_metrics.size), dst_metrics.align, true, dst_member.type_id };
+			const CompValue dst_member_value{ dst.bytes.mut_subrange(dst_member.offset, dst_metrics.size), dst_metrics.align, true, dst_member.type_id };
 
-			const CTValue src_member_value{ src.bytes.mut_subrange(src_member_info.offset, src_metrics.size), src_metrics.align, false, src_member_info.type_id };
+			const CompValue src_member_value{ src.bytes.mut_subrange(src_member_info.offset, src_metrics.size), src_metrics.align, false, src_member_info.type_id };
 
 			if (convert_into(core, code, src_member_value, dst_member_value) == nullptr)
 				return nullptr;
@@ -789,9 +789,9 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 				MutRange<byte> src_elem_bytes = src.bytes.mut_subrange(src_elem_metrics.stride * i, src_elem_metrics.size);
 
-				const CTValue dst_elem_value{ dst_elem_bytes, dst_elem_metrics.align, true, dst_elem_type };
+				const CompValue dst_elem_value{ dst_elem_bytes, dst_elem_metrics.align, true, dst_elem_type };
 
-				const CTValue src_elem_value{ src_elem_bytes, src_elem_metrics.align, false, src_elem_type };
+				const CompValue src_elem_value{ src_elem_bytes, src_elem_metrics.align, false, src_elem_type };
 
 				if (convert_into_assume_convertible(core, code, src_elem_value, dst_elem_value) == nullptr)
 					return nullptr;
@@ -836,7 +836,7 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 	ASSERT_UNREACHABLE;
 }
 
-static const Opcode* convert_into(CoreData* core, const Opcode* code, CTValue src, CTValue dst) noexcept
+static const Opcode* convert_into(CoreData* core, const Opcode* code, CompValue src, CompValue dst) noexcept
 {
 	const TypeRelation relation = type_relation(core, src.type, dst.type);
 
@@ -860,7 +860,7 @@ static const Opcode* convert_into(CoreData* core, const Opcode* code, CTValue sr
 	}
 }
 
-static Maybe<TypeId> unify(CoreData* core, const Opcode* code, CTValue* inout_lhs, CTValue* inout_rhs) noexcept
+static Maybe<TypeId> unify(CoreData* core, const Opcode* code, CompValue* inout_lhs, CompValue* inout_rhs) noexcept
 {
 	const TypeRelation relation = type_relation(core, inout_lhs->type, inout_rhs->type);
 
@@ -870,7 +870,7 @@ static Maybe<TypeId> unify(CoreData* core, const Opcode* code, CTValue* inout_lh
 	}
 	else if (relation == TypeRelation::FirstConvertsToSecond)
 	{
-		const CTValue tmp_value = alloc_temporary_value_uninit(core, inout_rhs->bytes.count(), inout_rhs->align, inout_rhs->type);
+		const CompValue tmp_value = alloc_temporary_value_uninit(core, inout_rhs->bytes.count(), inout_rhs->align, inout_rhs->type);
 
 		if (convert_into_assume_convertible(core, code, *inout_lhs, tmp_value) == nullptr)
 			return none<TypeId>();
@@ -881,7 +881,7 @@ static Maybe<TypeId> unify(CoreData* core, const Opcode* code, CTValue* inout_lh
 	}
 	else if (relation == TypeRelation::SecondConvertsToFirst)
 	{
-		const CTValue tmp_value = alloc_temporary_value_uninit(core, inout_lhs->bytes.count(), inout_lhs->align, inout_lhs->type);
+		const CompValue tmp_value = alloc_temporary_value_uninit(core, inout_lhs->bytes.count(), inout_lhs->align, inout_lhs->type);
 
 		if (convert_into_assume_convertible(core, code, *inout_rhs, tmp_value) == nullptr)
 			return none<TypeId>();
@@ -1209,7 +1209,7 @@ static const Opcode* scope_alloc_typed_member(CoreData* core, const Opcode* code
 
 	const MutRange<byte> bytes = MutRange<byte>{ member_value, member_metrics.size };
 
-	core->interp.write_ctxs.append(CTValue{ bytes, member_metrics.align, is_mut, type });
+	core->interp.write_ctxs.append(CompValue{ bytes, member_metrics.align, is_mut, type });
 
 	return code;
 }
@@ -1238,7 +1238,7 @@ static void scope_pop(CoreData* core) noexcept
 
 
 
-static U64FromValueRst u64_from_value(CoreData* core, CTValue value, u64* out) noexcept
+static U64FromValueRst u64_from_value(CoreData* core, CompValue value, u64* out) noexcept
 {
 	const TypeTag type_tag = type_tag_from_id(core, value.type);
 
@@ -1296,7 +1296,7 @@ static const Opcode* code_attach(const Opcode* code, T* out) noexcept
 	return code + sizeof(T);
 }
 
-static CTValue get_builtin_param_raw(CoreData* core, u8 rank) noexcept
+static CompValue get_builtin_param_raw(CoreData* core, u8 rank) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
@@ -1308,13 +1308,13 @@ static CTValue get_builtin_param_raw(CoreData* core, u8 rank) noexcept
 
 	const MutRange<byte> bytes{ core->interp.scope_data.begin() + member->offset, member->size };
 
-	return CTValue{ bytes, member->align, member->is_mut, member->type };
+	return CompValue{ bytes, member->align, member->is_mut, member->type };
 }
 
 template<typename T>
 static T get_builtin_param(CoreData* core, u8 rank) noexcept
 {
-	CTValue value = get_builtin_param_raw(core, rank);
+	CompValue value = get_builtin_param_raw(core, rank);
 
 	ASSERT_OR_IGNORE(value.bytes.count() == sizeof(T) && value.align == alignof(T));
 
@@ -1323,7 +1323,7 @@ static T get_builtin_param(CoreData* core, u8 rank) noexcept
 
 
 
-static const Opcode* builtin_integer(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_integer(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	const u8 bits = get_builtin_param<u8>(core, 0);
 
@@ -1335,10 +1335,10 @@ static const Opcode* builtin_integer(CoreData* core, const Opcode* code, CTValue
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&integer_type);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_float(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_float(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	const u8 bits = get_builtin_param<u8>(core, 0);
 
@@ -1348,19 +1348,19 @@ static const Opcode* builtin_float(CoreData* core, const Opcode* code, CTValue* 
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&float_type);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_type(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_type(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	TypeId type_type = type_create_simple(core, TypeTag::Type);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&type_type);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_definition(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_definition(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
@@ -1368,10 +1368,10 @@ static const Opcode* builtin_definition(CoreData* core, const Opcode* code, CTVa
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&definition_type);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_typeinfo(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_typeinfo(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
@@ -1379,19 +1379,19 @@ static const Opcode* builtin_typeinfo(CoreData* core, const Opcode* code, CTValu
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&typeinfo_type);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_typeof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_typeof(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
-	CTValue arg = get_builtin_param_raw(core, 0);
+	CompValue arg = get_builtin_param_raw(core, 0);
 
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ arg.bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ arg.bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_returntypeof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_returntypeof(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	const TypeId signature_type = get_builtin_param<TypeId>(core, 0);
 
@@ -1409,12 +1409,12 @@ static const Opcode* builtin_returntypeof(CoreData* core, const Opcode* code, CT
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&info.return_type.complete.type_id);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_sizeof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_sizeof(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
-	CTValue arg = get_builtin_param_raw(core, 0);
+	CompValue arg = get_builtin_param_raw(core, 0);
 
 	const TypeTag type_tag = type_tag_from_id(core, arg.type);
 
@@ -1446,12 +1446,12 @@ static const Opcode* builtin_sizeof(CoreData* core, const Opcode* code, CTValue*
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&size_value);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
 }
 
-static const Opcode* builtin_alignof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_alignof(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
-	CTValue arg = get_builtin_param_raw(core, 0);
+	CompValue arg = get_builtin_param_raw(core, 0);
 
 	const TypeTag type_tag = type_tag_from_id(core, arg.type);
 
@@ -1483,12 +1483,12 @@ static const Opcode* builtin_alignof(CoreData* core, const Opcode* code, CTValue
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&align_value);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
 }
 
-static const Opcode* builtin_strideof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_strideof(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
-	CTValue arg = get_builtin_param_raw(core, 0);
+	CompValue arg = get_builtin_param_raw(core, 0);
 
 	const TypeTag type_tag = type_tag_from_id(core, arg.type);
 
@@ -1520,10 +1520,10 @@ static const Opcode* builtin_strideof(CoreData* core, const Opcode* code, CTValu
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&stride_value);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
 }
 
-static const Opcode* builtin_offsetof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_offsetof(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	(void) core;
 
@@ -1534,7 +1534,7 @@ static const Opcode* builtin_offsetof(CoreData* core, const Opcode* code, CTValu
 	TODO("Implement `builtin_offsetof()`.");
 }
 
-static const Opcode* builtin_nameof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_nameof(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	(void) core;
 
@@ -1545,7 +1545,7 @@ static const Opcode* builtin_nameof(CoreData* core, const Opcode* code, CTValue*
 	TODO("Implement `builtin_nameof()`.");
 }
 
-static const Opcode* builtin_import(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_import(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	const Range<char8> path = get_builtin_param<Range<char8>>(core, 0);
 
@@ -1582,10 +1582,10 @@ static const Opcode* builtin_import(CoreData* core, const Opcode* code, CTValue*
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&file_type);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_create_type_builder(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_create_type_builder(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	const SourceId source_id = get_builtin_param<SourceId>(core, 0);
 
@@ -1595,10 +1595,10 @@ static const Opcode* builtin_create_type_builder(CoreData* core, const Opcode* c
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&builder);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_builder_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_builder_type });
 }
 
-static const Opcode* builtin_add_type_member(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_add_type_member(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	(void) core;
 
@@ -1609,7 +1609,7 @@ static const Opcode* builtin_add_type_member(CoreData* core, const Opcode* code,
 	TODO("Implement `builtin_add_type_member()`.");
 }
 
-static const Opcode* builtin_complete_type(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_complete_type(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	const TypeId builder = get_builtin_param<TypeId>(core, 0);
 
@@ -1639,10 +1639,10 @@ static const Opcode* builtin_complete_type(CoreData* core, const Opcode* code, C
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&type);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_source_id(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_source_id(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.call_activation_indices.used() >= 1);
 
@@ -1662,10 +1662,10 @@ static const Opcode* builtin_source_id(CoreData* core, const Opcode* code, CTVal
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&source_id);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(SourceId), true, source_id_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(SourceId), true, source_id_type });
 }
 
-static const Opcode* builtin_caller_source_id(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_caller_source_id(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	(void) core;
 
@@ -1676,7 +1676,7 @@ static const Opcode* builtin_caller_source_id(CoreData* core, const Opcode* code
 	TODO("Implement `builtin_caller_source_id()`.");
 }
 
-static const Opcode* builtin_definition_typeof(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* builtin_definition_typeof(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	(void) core;
 
@@ -1689,7 +1689,7 @@ static const Opcode* builtin_definition_typeof(CoreData* core, const Opcode* cod
 
 
 
-static const Opcode* handle_end_code([[maybe_unused]] CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_end_code([[maybe_unused]] CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -1698,13 +1698,13 @@ static const Opcode* handle_end_code([[maybe_unused]] CoreData* core, [[maybe_un
 	return nullptr;
 }
 
-static const Opcode* handle_set_write_ctx(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_set_write_ctx(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	if (!top->is_mut)
 		return record_interpreter_error(core, code, CompileError::SetLhsNotMutable);
@@ -1716,13 +1716,13 @@ static const Opcode* handle_set_write_ctx(CoreData* core, const Opcode* code, [[
 	return code;
 }
 
-static const Opcode* handle_duplicate_to_write_ctx(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_duplicate_to_write_ctx(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	if (!top->is_mut)
 		return record_interpreter_error(core, code, CompileError::SetLhsNotMutable);
@@ -1732,7 +1732,7 @@ static const Opcode* handle_duplicate_to_write_ctx(CoreData* core, const Opcode*
 	return code;
 }
 
-static const Opcode* handle_scope_begin(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_scope_begin(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -1746,7 +1746,7 @@ static const Opcode* handle_scope_begin(CoreData* core, const Opcode* code, [[ma
 	return code;
 }
 
-static const Opcode* handle_scope_end(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_scope_end(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
@@ -1757,7 +1757,7 @@ static const Opcode* handle_scope_end(CoreData* core, const Opcode* code, [[mayb
 	return code;
 }
 
-static const Opcode* handle_scope_end_preserve_top(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_scope_end_preserve_top(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -1767,7 +1767,7 @@ static const Opcode* handle_scope_end_preserve_top(CoreData* core, const Opcode*
 
 	Scope* const scope = core->interp.scopes.end() - 1;
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	byte* const scope_temporary_data_begin = core->interp.temporary_data.begin() + scope->temporary_data_used;
 
@@ -1785,7 +1785,7 @@ static const Opcode* handle_scope_end_preserve_top(CoreData* core, const Opcode*
 	return code;
 }
 
-static const Opcode* handle_scope_alloc_typed(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_scope_alloc_typed(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
@@ -1796,7 +1796,7 @@ static const Opcode* handle_scope_alloc_typed(CoreData* core, const Opcode* code
 	bool is_mut;
 	code = code_attach(code, &is_mut);
 
-	CTValue* const top = core->interp.values.end() -1;
+	CompValue* const top = core->interp.values.end() -1;
 
 	const TypeId type = top->type;
 
@@ -1812,7 +1812,7 @@ static const Opcode* handle_scope_alloc_typed(CoreData* core, const Opcode* code
 	return scope_alloc_typed_member(core, code, is_mut, member_type);
 }
 
-static const Opcode* handle_scope_alloc_untyped(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_scope_alloc_untyped(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
@@ -1825,7 +1825,7 @@ static const Opcode* handle_scope_alloc_untyped(CoreData* core, const Opcode* co
 
 	ScopeMember* const member = core->interp.scope_members.reserve();
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	core->interp.scope_data.pad_to_alignment(top->align);
 
@@ -1846,7 +1846,7 @@ static const Opcode* handle_scope_alloc_untyped(CoreData* core, const Opcode* co
 	return code;
 }
 
-static const Opcode* handle_file_member_alloc_prepare(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_member_alloc_prepare(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -1871,7 +1871,7 @@ static const Opcode* handle_file_member_alloc_prepare(CoreData* core, const Opco
 	return code;
 }
 
-static const Opcode* handle_file_member_alloc_complete(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_member_alloc_complete(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.global_initializations.used() >= 1);
 
@@ -1886,7 +1886,7 @@ static const Opcode* handle_file_member_alloc_complete(CoreData* core, const Opc
 	return code;
 }
 
-static const Opcode* handle_file_member_alloc_typed(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_member_alloc_typed(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -1896,7 +1896,7 @@ static const Opcode* handle_file_member_alloc_typed(CoreData* core, const Opcode
 
 	const GlobalInitialization init = core->interp.global_initializations.end()[-1];
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
@@ -1922,12 +1922,12 @@ static const Opcode* handle_file_member_alloc_typed(CoreData* core, const Opcode
 
 	const MutRange<byte> bytes{ static_cast<byte*>(get(alloc)), member_metrics.size };
 
-	core->interp.write_ctxs.append(CTValue{ bytes, member_metrics.align, true, member_type });
+	core->interp.write_ctxs.append(CompValue{ bytes, member_metrics.align, true, member_type });
 
 	return code;
 }
 
-static const Opcode* handle_file_member_alloc_untyped(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_file_member_alloc_untyped(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -1937,7 +1937,7 @@ static const Opcode* handle_file_member_alloc_untyped(CoreData* core, const Opco
 
 	const GlobalInitialization init = core->interp.global_initializations.end()[-1];
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const Maybe<void*> alloc = comp_heap_alloc(core, top->bytes.count(), top->align);
 
@@ -1957,7 +1957,7 @@ static const Opcode* handle_file_member_alloc_untyped(CoreData* core, const Opco
 	return code;
 }
 
-static const Opcode* handle_pop_closure(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_pop_closure(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.active_closures.used() >= 1);
 
@@ -1968,7 +1968,7 @@ static const Opcode* handle_pop_closure(CoreData* core, const Opcode* code, [[ma
 	return code;
 }
 
-static const Opcode* handle_load_scope(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_scope(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
 
@@ -1988,12 +1988,12 @@ static const Opcode* handle_load_scope(CoreData* core, const Opcode* code, CTVal
 
 	byte* const begin = core->interp.scope_data.begin() + member->offset;
 
-	CTValue loaded_value{MutRange<byte>{ begin, member->size }, member->align, member->is_mut, member->type };
+	CompValue loaded_value{MutRange<byte>{ begin, member->size }, member->align, member->is_mut, member->type };
 
 	return push_location_value(core, code, write_ctx, loaded_value);
 }
 
-static const Opcode* handle_load_global(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_global(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	const Opcode* const code_activation = code;
 
@@ -2019,7 +2019,7 @@ static const Opcode* handle_load_global(CoreData* core, const Opcode* code, CTVa
 
 		const MutRange<byte> bytes{ bytes_begin, metrics.size };
 
-		return push_location_value(core, code, write_ctx, CTValue{ bytes, metrics.align, info.is_mut, info.type_id });
+		return push_location_value(core, code, write_ctx, CompValue{ bytes, metrics.align, info.is_mut, info.type_id });
 	}
 	else
 	{
@@ -2036,7 +2036,7 @@ static const Opcode* handle_load_global(CoreData* core, const Opcode* code, CTVa
 	}
 }
 
-static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -2045,7 +2045,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 	IdentifierId name;
 	code = code_attach(code, &name);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
@@ -2089,7 +2089,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 
 			const MutRange<byte> bytes{ begin, metrics.size };
 
-			const CTValue value{ bytes, metrics.align, info.is_mut, info.type_id };
+			const CompValue value{ bytes, metrics.align, info.is_mut, info.type_id };
 
 			return poppush_location_value(core, code, write_ctx, value);
 		}
@@ -2101,7 +2101,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 
 			const MutRange<byte> bytes = top->bytes.mut_subrange(info.offset, metrics.size);
 
-			const CTValue value{ bytes, metrics.align, info.is_mut, info.type_id };
+			const CompValue value{ bytes, metrics.align, info.is_mut, info.type_id };
 
 			return poppush_location_value(core, code, write_ctx, value);
 		}
@@ -2136,7 +2136,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 
 			const MutRange<byte> bytes{ begin, metrics.size };
 
-			const CTValue value{ bytes, metrics.align, info.is_mut, info.type_id };
+			const CompValue value{ bytes, metrics.align, info.is_mut, info.type_id };
 
 			return poppush_location_value(core, code, write_ctx, value);
 		}
@@ -2153,7 +2153,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, CTVa
 	}
 }
 
-static const Opcode* handle_load_closure(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_closure(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.active_closures.used() != 0);
 
@@ -2174,12 +2174,12 @@ static const Opcode* handle_load_closure(CoreData* core, const Opcode* code, CTV
 
 	const MutRange<byte> bytes{ begin, member->size };
 
-	const CTValue closure_value{ bytes, member->align, false, member->type };
+	const CompValue closure_value{ bytes, member->align, false, member->type };
 
 	return push_location_value(core, code, write_ctx, closure_value);
 }
 
-static const Opcode* handle_load_builtin(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_builtin(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	u8 ordinal;
 	code = code_attach(code, &ordinal);
@@ -2200,10 +2200,10 @@ static const Opcode* handle_load_builtin(CoreData* core, const Opcode* code, CTV
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&body);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(Callable), true, info.signature_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(Callable), true, info.signature_type });
 }
 
-static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	static constexpr OpcodeHandlerFunc HANDLERS[] = {
 		nullptr,
@@ -2256,7 +2256,7 @@ static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, CTV
 	return HANDLERS[ordinal](core, code, write_ctx);
 }
 
-static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_signature(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	OpcodeSignatureFlags signature_flags;
 	code = code_attach(code, &signature_flags);
@@ -2271,7 +2271,7 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 	ASSERT_OR_IGNORE(value_count >= 1 && core->interp.values.used() >= value_count);
 
-	CTValue* value = core->interp.values.end() - value_count;
+	CompValue* value = core->interp.values.end() - value_count;
 
 	TypeId signature_type = type_create_signature(core, signature_flags.is_func, parameter_count);
 
@@ -2289,9 +2289,9 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 		if (parameter_flags.has_type && parameter_flags.has_default)
 		{
-			CTValue* const type_value = value;
+			CompValue* const type_value = value;
 
-			CTValue* const default_value = value + 1;
+			CompValue* const default_value = value + 1;
 
 			value += 2;
 
@@ -2313,7 +2313,7 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 		}
 		else if (parameter_flags.has_type)
 		{
-			CTValue* const type_value = value;
+			CompValue* const type_value = value;
 
 			value += 1;
 
@@ -2328,7 +2328,7 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 		{
 			ASSERT_OR_IGNORE(parameter_flags.has_default);
 
-			CTValue* const default_value = value;
+			CompValue* const default_value = value;
 
 			value += 1;
 
@@ -2375,10 +2375,10 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CTValu
 
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	OpcodeSignatureFlags signature_flags;
 	code = code_attach(code, &signature_flags);
@@ -2409,7 +2409,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 			return record_interpreter_error(core, code, CompileError::ClosureTooLarge);
 	}
 
-	CTValue* value = core->interp.values.end() - value_count;
+	CompValue* value = core->interp.values.end() - value_count;
 
 	TypeId signature_type = type_create_signature(core, signature_flags.is_func, parameter_count);
 
@@ -2442,9 +2442,9 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 			if (parameter_flags.has_type && parameter_flags.has_default)
 			{
-				CTValue* const type_value = value;
+				CompValue* const type_value = value;
 
-				CTValue* const default_value = value + 1;
+				CompValue* const default_value = value + 1;
 
 				value += 2;
 
@@ -2460,7 +2460,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 				if (is_none(allocation))
 					TODO("Implement GC traversal.");
 
-				const CTValue default_dst{ MutRange<byte>{ static_cast<byte*>(get(allocation)), parameter_metrics.size }, parameter_metrics.align, true, parameter_type };
+				const CompValue default_dst{ MutRange<byte>{ static_cast<byte*>(get(allocation)), parameter_metrics.size }, parameter_metrics.align, true, parameter_type };
 
 				if (convert_into(core, code, *default_value, default_dst) == nullptr)
 					return nullptr;
@@ -2469,7 +2469,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 			}
 			else if (parameter_flags.has_type)
 			{
-				CTValue* const type_value = value;
+				CompValue* const type_value = value;
 
 				value += 1;
 
@@ -2484,7 +2484,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 			{
 				ASSERT_OR_IGNORE(parameter_flags.has_default);
 
-				CTValue* const default_value = value;
+				CompValue* const default_value = value;
 
 				value += 1;
 
@@ -2531,10 +2531,10 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, CT
 
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	OpcodeId body;
 	code = code_attach(code, &body);
@@ -2566,7 +2566,7 @@ static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CTValu
 
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	ASSERT_OR_IGNORE(type_tag_from_id(core, top->type) == TypeTag::Type);
 
@@ -2582,10 +2582,10 @@ static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CTValu
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&callable);
 
-	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(Callable), true, signature_type });
+	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(Callable), true, signature_type });
 }
 
-static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -2602,7 +2602,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 	code += sizeof(OpcodeId) * argument_count;
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeId signature_type = top->type;
 
@@ -2706,7 +2706,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 	return code;
 }
 
-static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -2793,7 +2793,7 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 
 			const MutRange<byte> bytes{ begin, parameter_metrics.size };
 
-			const CTValue default_value{ bytes, parameter_metrics.align, false, parameter_info.type_id };
+			const CompValue default_value{ bytes, parameter_metrics.align, false, parameter_info.type_id };
 
 			if (convert_into(core, code, default_value, core->interp.write_ctxs.end()[-1]) == nullptr)
 				ASSERT_UNREACHABLE;
@@ -2824,7 +2824,7 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&argument_pack->return_type.type);
 
-		core->interp.write_ctxs.append(CTValue{ bytes, alignof(TypeId), true, type_type });
+		core->interp.write_ctxs.append(CompValue{ bytes, alignof(TypeId), true, type_type });
 
 		push_activation(core, code_activation - 1);
 
@@ -2836,13 +2836,13 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 	}
 }
 
-static const Opcode* handle_call(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_call(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	ASSERT_OR_IGNORE(core->interp.argument_packs.used() >= 1);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeId callee_type = top->type;
 
@@ -2864,7 +2864,7 @@ static const Opcode* handle_call(CoreData* core, const Opcode* code, CTValue* wr
 		{
 			const TypeMetrics metrics = type_metrics_from_id(core, return_type);
 
-			const CTValue return_value = alloc_temporary_value_uninit(core, metrics.size, metrics.align, return_type);
+			const CompValue return_value = alloc_temporary_value_uninit(core, metrics.size, metrics.align, return_type);
 
 			core->interp.write_ctxs.append(return_value);
 
@@ -2946,14 +2946,14 @@ static const Opcode* handle_call(CoreData* core, const Opcode* code, CTValue* wr
 
 			const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-			return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+			return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 		}
 
 		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
 	}
 }
 
-static const Opcode* handle_return(CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_return(CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.call_activation_indices.used() >= 1);
 
@@ -2978,7 +2978,7 @@ static const Opcode* handle_return(CoreData* core, [[maybe_unused]] const Opcode
 	return nullptr;
 }
 
-static const Opcode* handle_complete_param_typed_no_default(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_complete_param_typed_no_default(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -2989,7 +2989,7 @@ static const Opcode* handle_complete_param_typed_no_default(CoreData* core, cons
 	u8 rank;
 	code = code_attach(code, &rank);
 
-	CTValue* top = core->interp.values.end() - 1;
+	CompValue* top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
@@ -3009,7 +3009,7 @@ static const Opcode* handle_complete_param_typed_no_default(CoreData* core, cons
 	return code;
 }
 
-static const Opcode* handle_complete_param_typed_with_default(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_complete_param_typed_with_default(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
@@ -3020,9 +3020,9 @@ static const Opcode* handle_complete_param_typed_with_default(CoreData* core, co
 	u8 rank;
 	code = code_attach(code, &rank);
 
-	CTValue* const type_value = core->interp.values.end() - 2;
+	CompValue* const type_value = core->interp.values.end() - 2;
 
-	CTValue* const default_value = core->interp.values.end() - 1;
+	CompValue* const default_value = core->interp.values.end() - 1;
 
 	const TypeId type = type_value->type;
 
@@ -3044,7 +3044,7 @@ static const Opcode* handle_complete_param_typed_with_default(CoreData* core, co
 
 	const MutRange<byte> bytes{ static_cast<byte*>(get(allocation)), parameter_metrics.size };
 
-	const CTValue default_dst{ bytes, parameter_metrics.align, true, parameter_type };
+	const CompValue default_dst{ bytes, parameter_metrics.align, true, parameter_type };
 
 	if (convert_into(core, code, *default_value, default_dst) == nullptr)
 		return nullptr;
@@ -3060,7 +3060,7 @@ static const Opcode* handle_complete_param_typed_with_default(CoreData* core, co
 	return code;
 }
 
-static const Opcode* handle_complete_param_untyped(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_complete_param_untyped(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -3071,7 +3071,7 @@ static const Opcode* handle_complete_param_untyped(CoreData* core, const Opcode*
 	u8 rank;
 	code = code_attach(code, &rank);
 
-	CTValue* const default_value = core->interp.values.end() - 1;
+	CompValue* const default_value = core->interp.values.end() - 1;
 
 	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
 
@@ -3091,7 +3091,7 @@ static const Opcode* handle_complete_param_untyped(CoreData* core, const Opcode*
 	return code;
 }
 
-static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx != nullptr);
 
@@ -3124,7 +3124,7 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, CT
 
 	const TypeMetrics dst_elem_metrics = type_metrics_from_id(core, dst_elem_type);
 
-	CTValue* const indices = core->interp.values.end() - index_count;
+	CompValue* const indices = core->interp.values.end() - index_count;
 
 	const u64 dst_element_count = array_type->element_count;
 
@@ -3138,7 +3138,7 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, CT
 	{
 		const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(i * dst_elem_metrics.stride, dst_elem_metrics.size);
 
-		core->interp.write_ctxs.append(CTValue{ bytes, dst_elem_metrics.align, true, dst_elem_type });
+		core->interp.write_ctxs.append(CompValue{ bytes, dst_elem_metrics.align, true, dst_elem_type });
 	}
 
 	if (index_count == 0)
@@ -3176,7 +3176,7 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, CT
 		{
 			const MutRange<byte> bytes = write_ctx->bytes.mut_subrange((index + j) * dst_elem_metrics.stride, dst_elem_metrics.size);
 
-			core->interp.write_ctxs.append(CTValue{ bytes, dst_elem_metrics.align, true, dst_elem_type });
+			core->interp.write_ctxs.append(CompValue{ bytes, dst_elem_metrics.align, true, dst_elem_type });
 		}
 	}
 
@@ -3188,7 +3188,7 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, CT
 	return code;
 }
 
-static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -3207,16 +3207,16 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 
 		const TypeId array_type = type_create_array(core, TypeTag::ArrayLiteral, ArrayType{ 0, none<TypeId>() });
 
-		CTValue rst = alloc_temporary_value_uninit(core, 0, 1, array_type);
+		CompValue rst = alloc_temporary_value_uninit(core, 0, 1, array_type);
 
 		return push_location_value(core, code, write_ctx, rst);
 	}
 
 	ASSERT_OR_IGNORE(static_cast<u32>(total_element_count) + index_count <= core->interp.values.used());
 
-	CTValue* const indices = core->interp.values.end() - total_element_count - index_count;
+	CompValue* const indices = core->interp.values.end() - total_element_count - index_count;
 
-	CTValue* const element_values = core->interp.values.end() - total_element_count;
+	CompValue* const element_values = core->interp.values.end() - total_element_count;
 
 	// First, find the common type of all elements, or fail if there is none.
 
@@ -3272,7 +3272,7 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 
 	const TypeId array_type = type_create_array(core, TypeTag::ArrayLiteral, ArrayType{ max_element_index, some(element_type) });
 
-	CTValue rst = alloc_temporary_value_uninit(core, element_metrics.stride * (max_element_index - 1) + element_metrics.size, element_metrics.align, array_type);
+	CompValue rst = alloc_temporary_value_uninit(core, element_metrics.stride * (max_element_index - 1) + element_metrics.size, element_metrics.align, array_type);
 
 	for (u16 i = 0; i != leading_element_count; ++i)
 	{
@@ -3280,7 +3280,7 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 
 		if (type_is_equal(core, element_type, element_values[i].type))
 			range::mem_copy(bytes, element_values[i].bytes.immut());
-		else if (convert_into_assume_convertible(core, code, element_values[i], CTValue{ bytes, element_metrics.align, true, element_type }) == nullptr)
+		else if (convert_into_assume_convertible(core, code, element_values[i], CompValue{ bytes, element_metrics.align, true, element_type }) == nullptr)
 			return nullptr;
 	}
 
@@ -3322,7 +3322,7 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 		{
 			const MutRange<byte> bytes = rst.bytes.mut_subrange((base_index + j) * element_metrics.stride, element_metrics.size);
 
-			if (convert_into_assume_convertible(core, code, element_values[value_index + j], CTValue{ bytes, element_metrics.align, true, element_type }) == nullptr)
+			if (convert_into_assume_convertible(core, code, element_values[value_index + j], CompValue{ bytes, element_metrics.align, true, element_type }) == nullptr)
 				return nullptr;
 		}
 
@@ -3341,7 +3341,7 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 	return push_location_value(core, code, write_ctx, rst);
 }
 
-static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx != nullptr);
 
@@ -3378,7 +3378,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 		const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(member_info.offset, member_metrics.size);
 
-		core->interp.write_ctxs.append(CTValue{ bytes, member_metrics.align, write_ctx->is_mut, member_info.type_id });
+		core->interp.write_ctxs.append(CompValue{ bytes, member_metrics.align, write_ctx->is_mut, member_info.type_id });
 	}
 
 	if (names_count == 0)
@@ -3443,7 +3443,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 		const MutRange<byte> named_bytes = write_ctx->bytes.mut_subrange(named_member_info.offset, named_member_metrics.size);
 
-		core->interp.write_ctxs.append(CTValue{ named_bytes, named_member_metrics.align, write_ctx->is_mut, named_member_info.type_id });
+		core->interp.write_ctxs.append(CompValue{ named_bytes, named_member_metrics.align, write_ctx->is_mut, named_member_info.type_id });
 
 		for (u16 j = 0; j != following_member_count; ++j)
 		{
@@ -3460,7 +3460,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 			const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(following_member_info.offset, following_member_metrics.size);
 
-			core->interp.write_ctxs.append(CTValue{ bytes, following_member_metrics.align, write_ctx->is_mut, following_member_info.type_id });
+			core->interp.write_ctxs.append(CompValue{ bytes, following_member_metrics.align, write_ctx->is_mut, following_member_info.type_id });
 		}
 	}
 
@@ -3493,7 +3493,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 	return code;
 }
 
-static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -3502,7 +3502,7 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 
 	ASSERT_OR_IGNORE(core->interp.values.used() >= total_member_count);
 
-	CTValue* const values = core->interp.values.end() - total_member_count;
+	CompValue* const values = core->interp.values.end() - total_member_count;
 
 	TypeId initializer_type = type_create_user_composite(core, TypeTag::CompositeLiteral, source_id_of_opcode(core, code));
 
@@ -3548,7 +3548,7 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 
 	MemberIterator it = members_of(core, initializer_type);
 
-	CTValue initializer = alloc_temporary_value_uninit(core, metrics.size, metrics.align, initializer_type);
+	CompValue initializer = alloc_temporary_value_uninit(core, metrics.size, metrics.align, initializer_type);
 
 	for (u16 i = 0; i != total_member_count; ++i)
 	{
@@ -3562,7 +3562,7 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 		if (!next(&it, &member_info, &unused_initializer))
 			TODO("Figure out what to do when post-initializing incomplete types and if it can even reasonably happen");
 
-		CTValue value = values[i];
+		CompValue value = values[i];
 
 		range::mem_copy(initializer.bytes.mut_subrange(member_info.offset, value.bytes.count()), value.bytes.immut());
 	}
@@ -3570,7 +3570,7 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 	return push_location_value(core, code, write_ctx, initializer);
 }
 
-static const Opcode* handle_if(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_if(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -3579,7 +3579,7 @@ static const Opcode* handle_if(CoreData* core, const Opcode* code, [[maybe_unuse
 	OpcodeId consequent;
 	code = code_attach(code, &consequent);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
@@ -3606,7 +3606,7 @@ static const Opcode* handle_if(CoreData* core, const Opcode* code, [[maybe_unuse
 	}
 }
 
-static const Opcode* handle_if_else(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_if_else(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -3619,7 +3619,7 @@ static const Opcode* handle_if_else(CoreData* core, const Opcode* code, CTValue*
 	if (write_ctx != nullptr)
 		core->interp.write_ctxs.append(*write_ctx);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
@@ -3639,7 +3639,7 @@ static const Opcode* handle_if_else(CoreData* core, const Opcode* code, CTValue*
 	return next;
 }
 
-static const Opcode* handle_loop(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_loop(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -3651,7 +3651,7 @@ static const Opcode* handle_loop(CoreData* core, const Opcode* code, [[maybe_unu
 	OpcodeId body_id;
 	code = code_attach(code, &body_id);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
@@ -3674,7 +3674,7 @@ static const Opcode* handle_loop(CoreData* core, const Opcode* code, [[maybe_unu
 	}
 }
 
-static const Opcode* handle_loop_finally(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_loop_finally(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -3690,7 +3690,7 @@ static const Opcode* handle_loop_finally(CoreData* core, const Opcode* code, CTV
 	if (write_ctx != nullptr)
 		core->interp.write_ctxs.append(*write_ctx);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
@@ -3715,7 +3715,7 @@ static const Opcode* handle_loop_finally(CoreData* core, const Opcode* code, CTV
 	}
 }
 
-static const Opcode* handle_switch(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_switch(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	(void) core;
 
@@ -3726,11 +3726,11 @@ static const Opcode* handle_switch(CoreData* core, const Opcode* code, CTValue* 
 	TODO("Implement");
 }
 
-static const Opcode* handle_address_of(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_address_of(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
@@ -3746,14 +3746,14 @@ static const Opcode* handle_address_of(CoreData* core, const Opcode* code, CTVal
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&ptr);
 
-	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(byte*), true, result_type });
+	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(byte*), true, result_type });
 }
 
-static const Opcode* handle_dereference(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_dereference(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
@@ -3773,10 +3773,10 @@ static const Opcode* handle_dereference(CoreData* core, const Opcode* code, CTVa
 
 	const MutRange<byte> bytes{ top_value, metrics.size };
 
-	return poppush_location_value(core, code, write_ctx, CTValue{ bytes, metrics.align, ptr_type.is_mut, ptr_type.referenced_type_id });
+	return poppush_location_value(core, code, write_ctx, CompValue{ bytes, metrics.align, ptr_type.is_mut, ptr_type.referenced_type_id });
 }
 
-static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_slice(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	OpcodeSliceKind kind;
 	code = code_attach(code, &kind);
@@ -3785,7 +3785,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 
 	ASSERT_OR_IGNORE(core->interp.values.used() >= argument_count);
 
-	CTValue* const lhs = core->interp.values.end() - argument_count;
+	CompValue* const lhs = core->interp.values.end() - argument_count;
 
 	const TypeId type = lhs->type;
 
@@ -3807,7 +3807,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 	}
 	else if (kind == OpcodeSliceKind::BeginBound)
 	{
-		CTValue* const begin = lhs + 1;
+		CompValue* const begin = lhs + 1;
 
 		const U64FromValueRst begin_index_rst = u64_from_value(core, *begin, &begin_index);
 
@@ -3826,7 +3826,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 	}
 	else if (kind == OpcodeSliceKind::EndBound)
 	{
-		CTValue* const end = lhs + 1;
+		CompValue* const end = lhs + 1;
 
 		begin_index = 0;
 
@@ -3847,9 +3847,9 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 	{
 		ASSERT_OR_IGNORE(kind == OpcodeSliceKind::BothBounds);
 
-		CTValue* const begin = lhs + 1;
+		CompValue* const begin = lhs + 1;
 
-		CTValue* const end = lhs + 2;
+		CompValue* const end = lhs + 2;
 
 		const U64FromValueRst begin_index_rst = u64_from_value(core, *begin, &begin_index);
 
@@ -3913,7 +3913,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 
 		core->interp.values.pop_by(argument_count - 1);
 
-		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(MutRange<byte>), true, result_type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(MutRange<byte>), true, result_type });
 	}
 	else if (type_tag == TypeTag::Slice)
 	{
@@ -3938,7 +3938,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 
 		core->interp.values.pop_by(argument_count - 1);
 
-		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(MutRange<byte>), true, type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(MutRange<byte>), true, type });
 	}
 	else if (type_tag == TypeTag::Ptr)
 	{
@@ -3968,7 +3968,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 
 		core->interp.values.pop_by(argument_count - 1);
 
-		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(MutRange<byte>), true, result_type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(MutRange<byte>), true, result_type });
 	}
 	else
 	{
@@ -3976,11 +3976,11 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CTValue* w
 	}
 }
 
-static const Opcode* handle_index(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_index(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
-	CTValue* const lhs = core->interp.values.end() - 2;
+	CompValue* const lhs = core->interp.values.end() - 2;
 
 	u64 index;
 
@@ -4017,7 +4017,7 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CTValue* w
 
 		const MutRange<byte> bytes = lhs->bytes.mut_subrange(index * element_metrics.stride, element_metrics.size);
 
-		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, element_metrics.align, true, element_type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, element_metrics.align, true, element_type });
 	}
 	else if (type_tag == TypeTag::Slice)
 	{
@@ -4036,7 +4036,7 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CTValue* w
 
 		const MutRange<byte> bytes = lhs->bytes.mut_subrange(index * element_metrics.stride, element_metrics.size);
 
-		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, element_metrics.align, true, element_type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, element_metrics.align, true, element_type });
 	}
 	else if (type_tag == TypeTag::Ptr)
 	{
@@ -4053,7 +4053,7 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CTValue* w
 
 		MutRange<byte> bytes{ ptr + index * element_metrics.stride, element_metrics.size };
 
-		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, element_metrics.align, true, element_type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, element_metrics.align, true, element_type });
 	}
 	else
 	{
@@ -4061,16 +4061,16 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CTValue* w
 	}
 }
 
-static const Opcode* handle_binary_arithmetic_op(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_binary_arithmetic_op(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
 	OpcodeBinaryArithmeticOpKind kind;
 	code = code_attach(code, &kind);
 
-	CTValue* const lhs = core->interp.values.end() - 2;
+	CompValue* const lhs = core->interp.values.end() - 2;
 
-	CTValue* const rhs = lhs + 1;
+	CompValue* const rhs = lhs + 1;
 
 	const Maybe<TypeId> unified_type = unify(core, code, lhs, rhs);
 
@@ -4196,11 +4196,11 @@ static const Opcode* handle_binary_arithmetic_op(CoreData* core, const Opcode* c
 
 			core->interp.values.pop_by(1);
 
-			return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, rhs->align, true, type });
+			return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, rhs->align, true, type });
 		}
 		else
 		{
-			CTValue result = alloc_temporary_value_uninit(core, (integer_type.bits + 7 / 8), (integer_type.bits + 7 / 8), type);
+			CompValue result = alloc_temporary_value_uninit(core, (integer_type.bits + 7 / 8), (integer_type.bits + 7 / 8), type);
 
 			if (kind == OpcodeBinaryArithmeticOpKind::Add)
 			{
@@ -4267,7 +4267,7 @@ static const Opcode* handle_binary_arithmetic_op(CoreData* core, const Opcode* c
 
 			core->interp.values.pop_by(1);
 
-			return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(f32), true, type });
+			return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(f32), true, type });
 		}
 		else
 		{
@@ -4299,7 +4299,7 @@ static const Opcode* handle_binary_arithmetic_op(CoreData* core, const Opcode* c
 
 			core->interp.values.pop_by(1);
 
-			return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(f64), true, type });
+			return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(f64), true, type });
 		}
 	}
 	else if (type_tag == TypeTag::CompInteger)
@@ -4339,7 +4339,7 @@ static const Opcode* handle_binary_arithmetic_op(CoreData* core, const Opcode* c
 
 		core->interp.values.pop_by(1);
 
-		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(CompIntegerValue), true, type });
 	}
 	else if (type_tag == TypeTag::CompFloat)
 	{
@@ -4369,7 +4369,7 @@ static const Opcode* handle_binary_arithmetic_op(CoreData* core, const Opcode* c
 
 		core->interp.values.pop_by(1);
 
-		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompFloatValue), true, type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(CompFloatValue), true, type });
 	}
 	else
 	{
@@ -4386,16 +4386,16 @@ static const Opcode* handle_binary_arithmetic_op(CoreData* core, const Opcode* c
 	}
 }
 
-static const Opcode* handle_shift(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_shift(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
 	OpcodeShiftKind kind;
 	code = code_attach(code, &kind);
 
-	CTValue* const lhs = core->interp.values.end() - 2;
+	CompValue* const lhs = core->interp.values.end() - 2;
 
-	CTValue* const rhs = lhs + 1;
+	CompValue* const rhs = lhs + 1;
 
 	const TypeId type = lhs->type;
 
@@ -4421,7 +4421,7 @@ static const Opcode* handle_shift(CoreData* core, const Opcode* code, CTValue* w
 		if (shift_amount >= integer_type.bits)
 			return record_interpreter_error(core, code, CompileError::ShiftRHSTooLarge);
 
-		CTValue result = alloc_temporary_value_uninit(core, (integer_type.bits + 7) / 8, (integer_type.bits + 7) / 8, type);
+		CompValue result = alloc_temporary_value_uninit(core, (integer_type.bits + 7) / 8, (integer_type.bits + 7) / 8, type);
 
 		if (kind == OpcodeShiftKind::Left)
 			bitwise_shift_left(integer_type.bits, result.bytes, lhs->bytes.immut(), shift_amount);
@@ -4461,7 +4461,7 @@ static const Opcode* handle_shift(CoreData* core, const Opcode* code, CTValue* w
 
 		core->interp.values.pop_by(1);
 
-		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(CompIntegerValue), true, type });
 	}
 	else
 	{
@@ -4469,16 +4469,16 @@ static const Opcode* handle_shift(CoreData* core, const Opcode* code, CTValue* w
 	}
 }
 
-static const Opcode* handle_binary_bitwise_op(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_binary_bitwise_op(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
 	OpcodeBinaryBitwiseOpKind kind;
 	code = code_attach(code, &kind);
 
-	CTValue* const lhs = core->interp.values.end() - 2;
+	CompValue* const lhs = core->interp.values.end() - 2;
 
-	CTValue* const rhs = lhs + 1;
+	CompValue* const rhs = lhs + 1;
 
 	const Maybe<TypeId> unified_type = unify(core, code, lhs, rhs);
 
@@ -4522,7 +4522,7 @@ static const Opcode* handle_binary_bitwise_op(CoreData* core, const Opcode* code
 
 			core->interp.values.pop_by(1);
 
-			return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(u16), true, type });
+			return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(u16), true, type });
 		}
 		else
 		{
@@ -4561,7 +4561,7 @@ static const Opcode* handle_binary_bitwise_op(CoreData* core, const Opcode* code
 
 		core->interp.values.pop_by(1);
 
-		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(CompIntegerValue), true, type });
 	}
 	else if (type_tag == TypeTag::Boolean)
 	{
@@ -4584,7 +4584,7 @@ static const Opcode* handle_binary_bitwise_op(CoreData* core, const Opcode* code
 
 		core->interp.values.pop_by(1);
 
-		return poppush_location_value(core, code, write_ctx, CTValue{ bytes, alignof(bool), true, type });
+		return poppush_location_value(core, code, write_ctx, CompValue{ bytes, alignof(bool), true, type });
 	}
 	else
 	{
@@ -4592,11 +4592,11 @@ static const Opcode* handle_binary_bitwise_op(CoreData* core, const Opcode* code
 	}
 }
 
-static const Opcode* handle_bit_not(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_bit_not(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
@@ -4614,7 +4614,7 @@ static const Opcode* handle_bit_not(CoreData* core, const Opcode* code, CTValue*
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, top->align, true, type });
 			}
 			else if (integer_type->bits == 16)
 			{
@@ -4622,7 +4622,7 @@ static const Opcode* handle_bit_not(CoreData* core, const Opcode* code, CTValue*
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, top->align, true, type });
 			}
 			else if (integer_type->bits == 32)
 			{
@@ -4630,7 +4630,7 @@ static const Opcode* handle_bit_not(CoreData* core, const Opcode* code, CTValue*
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, top->align, true, type });
 			}
 			else
 			{
@@ -4640,7 +4640,7 @@ static const Opcode* handle_bit_not(CoreData* core, const Opcode* code, CTValue*
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, top->align, true, type });
 			}
 		}
 		else
@@ -4654,7 +4654,7 @@ static const Opcode* handle_bit_not(CoreData* core, const Opcode* code, CTValue*
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, top->align, true, type });
 	}
 	else
 	{
@@ -4662,13 +4662,13 @@ static const Opcode* handle_bit_not(CoreData* core, const Opcode* code, CTValue*
 	}
 }
 
-static const Opcode* handle_logical_and(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_logical_and(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
-	CTValue* const lhs = core->interp.values.end() - 2;
+	CompValue* const lhs = core->interp.values.end() - 2;
 
-	CTValue* const rhs = lhs + 1;
+	CompValue* const rhs = lhs + 1;
 
 	const TypeId lhs_type = lhs->type;
 
@@ -4691,18 +4691,18 @@ static const Opcode* handle_logical_and(CoreData* core, const Opcode* code, CTVa
 
 	core->interp.values.pop_by(1);
 
-	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, lhs->align, true, lhs_type });
+	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, lhs->align, true, lhs_type });
 }
 
-static const Opcode* handle_logical_or(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_logical_or(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
-	CTValue* const lhs = core->interp.values.end() - 2;
+	CompValue* const lhs = core->interp.values.end() - 2;
 
-	CTValue* const rhs = lhs + 1;
+	CompValue* const rhs = lhs + 1;
 
 	const TypeId lhs_type = lhs->type;
 
@@ -4725,14 +4725,14 @@ static const Opcode* handle_logical_or(CoreData* core, const Opcode* code, CTVal
 
 	core->interp.values.pop_by(1);
 
-	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, lhs->align, true, lhs_type });
+	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, lhs->align, true, lhs_type });
 }
 
-static const Opcode* handle_logical_not(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_logical_not(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
@@ -4745,19 +4745,19 @@ static const Opcode* handle_logical_not(CoreData* core, const Opcode* code, CTVa
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(bool), true, type });
+	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(bool), true, type });
 }
 
-static const Opcode* handle_compare(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_compare(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
 	OpcodeCompareKind kind;
 	code = code_attach(code, &kind);
 
-	CTValue* const lhs = core->interp.values.end() - 2;
+	CompValue* const lhs = core->interp.values.end() - 2;
 
-	CTValue* const rhs = lhs + 1;
+	CompValue* const rhs = lhs + 1;
 
 	const Maybe<TypeId> unified_type = unify(core, code, lhs, rhs);
 
@@ -4808,14 +4808,14 @@ static const Opcode* handle_compare(CoreData* core, const Opcode* code, CTValue*
 
 	const TypeId bool_type = type_create_simple(core, TypeTag::Boolean);
 
-	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(bool), true, bool_type });
+	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(bool), true, bool_type });
 }
 
-static const Opcode* handle_negate(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_negate(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
@@ -4836,7 +4836,7 @@ static const Opcode* handle_negate(CoreData* core, const Opcode* code, CTValue* 
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, top->align, true, type });
 			}
 			else if (integer_type->bits == 16)
 			{
@@ -4844,7 +4844,7 @@ static const Opcode* handle_negate(CoreData* core, const Opcode* code, CTValue* 
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, top->align, true, type });
 			}
 			else if (integer_type->bits == 32)
 			{
@@ -4852,7 +4852,7 @@ static const Opcode* handle_negate(CoreData* core, const Opcode* code, CTValue* 
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, top->align, true, type });
 			}
 			else
 			{
@@ -4862,7 +4862,7 @@ static const Opcode* handle_negate(CoreData* core, const Opcode* code, CTValue* 
 
 				const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-				return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
+				return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, top->align, true, type });
 			}
 		}
 		else
@@ -4880,7 +4880,7 @@ static const Opcode* handle_negate(CoreData* core, const Opcode* code, CTValue* 
 
 			const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-			return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
+			return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, top->align, true, type });
 		}
 		else
 		{
@@ -4890,7 +4890,7 @@ static const Opcode* handle_negate(CoreData* core, const Opcode* code, CTValue* 
 
 			const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-			return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
+			return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, top->align, true, type });
 		}
 	}
 	else if (type_tag == TypeTag::CompInteger)
@@ -4899,7 +4899,7 @@ static const Opcode* handle_negate(CoreData* core, const Opcode* code, CTValue* 
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, top->align, true, type });
 	}
 	else if (type_tag == TypeTag::CompFloat)
 	{
@@ -4907,7 +4907,7 @@ static const Opcode* handle_negate(CoreData* core, const Opcode* code, CTValue* 
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&value);
 
-		return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, top->align, true, type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, top->align, true, type });
 	}
 	else
 	{
@@ -4915,11 +4915,11 @@ static const Opcode* handle_negate(CoreData* core, const Opcode* code, CTValue* 
 	}
 }
 
-static const Opcode* handle_unary_plus(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_unary_plus(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	const CTValue* const top = core->interp.values.end() - 1;
+	const CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeId type = top->type;
 
@@ -4931,13 +4931,13 @@ static const Opcode* handle_unary_plus(CoreData* core, const Opcode* code, CTVal
 	return poppush_temporary_value(core, code, write_ctx, *top);
 }
 
-static const Opcode* handle_array_type(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_array_type(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
-	CTValue* const element_type_value = core->interp.values.end() - 1;
+	CompValue* const element_type_value = core->interp.values.end() - 1;
 
-	CTValue* const element_count_value = element_type_value - 1;
+	CompValue* const element_count_value = element_type_value - 1;
 
 	u64 element_count;
 
@@ -4962,17 +4962,17 @@ static const Opcode* handle_array_type(CoreData* core, const Opcode* code, CTVal
 
 	core->interp.values.pop_by(1);
 
-	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_reference_type(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_reference_type(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
 	OpcodeReferenceTypeFlags flags;
 	code = code_attach(code, &flags);
 
-	CTValue* const referenced_type_value = core->interp.values.end() - 1;
+	CompValue* const referenced_type_value = core->interp.values.end() - 1;
 
 	ASSERT_OR_IGNORE(type_tag_from_id(core, referenced_type_value->type) == TypeTag::Type);
 
@@ -4990,16 +4990,16 @@ static const Opcode* handle_reference_type(CoreData* core, const Opcode* code, C
 
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	return poppush_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_undefined(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_undefined(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	if (write_ctx == nullptr)
 	{
 		const TypeId undefined_type = type_create_simple(core, TypeTag::Undefined);
 
-		return push_temporary_value(core, code, write_ctx, CTValue{ {}, 1, true, undefined_type });
+		return push_temporary_value(core, code, write_ctx, CompValue{ {}, 1, true, undefined_type });
 	}
 	else
 	{
@@ -5010,14 +5010,14 @@ static const Opcode* handle_undefined(CoreData* core, const Opcode* code, CTValu
 	}
 }
 
-static const Opcode* handle_unreachable([[maybe_unused]] CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_unreachable([[maybe_unused]] CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	DEBUGBREAK;
 
 	return record_interpreter_error(core, code, CompileError::UnreachableReached);
 }
 
-static const Opcode* handle_value_integer(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_value_integer(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	CompIntegerValue value;
 	code = code_attach(code, &value);
@@ -5026,10 +5026,10 @@ static const Opcode* handle_value_integer(CoreData* core, const Opcode* code, CT
 
 	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
 }
 
-static const Opcode* handle_value_float(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_value_float(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	CompFloatValue value;
 	code = code_attach(code, &value);
@@ -5038,10 +5038,10 @@ static const Opcode* handle_value_float(CoreData* core, const Opcode* code, CTVa
 
 	const TypeId comp_float_type = type_create_simple(core, TypeTag::CompFloat);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(CompFloatValue), true, comp_float_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(CompFloatValue), true, comp_float_type });
 }
 
-static const Opcode* handle_value_string(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_value_string(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	byte* value_begin;
 	code = code_attach(code, &value_begin);
@@ -5054,27 +5054,27 @@ static const Opcode* handle_value_string(CoreData* core, const Opcode* code, CTV
 
 	const MutRange<byte> bytes{ value_begin, value_size };
 
-	const CTValue value{ bytes, 1, false, type };
+	const CompValue value{ bytes, 1, false, type };
 
 	return push_temporary_value(core, code, write_ctx, value);
 }
 
-static const Opcode* handle_value_void(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_value_void(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	const TypeId void_type = type_create_simple(core, TypeTag::Void);
 
 	const MutRange<byte> bytes{core->interp.temporary_data.end(), static_cast<u64>(0) };
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, 1, true, void_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, 1, true, void_type });
 }
 
-static const Opcode* handle_discard_void(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_discard_void(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeTag type_tag = type_tag_from_id(core, top->type);
 
@@ -5086,13 +5086,13 @@ static const Opcode* handle_discard_void(CoreData* core, const Opcode* code, [[m
 	return code;
 }
 
-static const Opcode* handle_check_top_void(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_check_top_void(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
-	CTValue* const top = core->interp.values.end() - 1;
+	CompValue* const top = core->interp.values.end() - 1;
 
 	const TypeTag type_tag = type_tag_from_id(core, top->type);
 
@@ -5102,13 +5102,13 @@ static const Opcode* handle_check_top_void(CoreData* core, const Opcode* code, [
 	return code;
 }
 
-static const Opcode* handle_check_write_ctx_void(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_check_write_ctx_void(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
 	ASSERT_OR_IGNORE(core->interp.write_ctxs.used() >= 1);
 
-	CTValue* const top_write_ctx = core->interp.write_ctxs.end() - 1;
+	CompValue* const top_write_ctx = core->interp.write_ctxs.end() - 1;
 
 	const TypeTag type_tag = type_tag_from_id(core, top_write_ctx->type);
 
@@ -5118,7 +5118,7 @@ static const Opcode* handle_check_write_ctx_void(CoreData* core, const Opcode* c
 	return code;
 }
 
-static const Opcode* handle_trait(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_trait(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	u8 parameter_count;
 	code = code_attach(code, &parameter_count);
@@ -5142,10 +5142,10 @@ static const Opcode* handle_trait(CoreData* core, const Opcode* code, CTValue* w
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&trait);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TraitValue), true, trait_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TraitValue), true, trait_type });
 }
 
-static const Opcode* handle_impl_make_self(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_impl_make_self(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -5167,9 +5167,9 @@ static const Opcode* handle_impl_make_self(CoreData* core, const Opcode* code, [
 			return record_interpreter_error(core, code, CompileError::ClosureTooLarge);
 	}
 
-	CTValue* const trait_callee = core->interp.values.end() - 1;
+	CompValue* const trait_callee = core->interp.values.end() - 1;
 
-	CTValue* const base = trait_callee - 1;
+	CompValue* const base = trait_callee - 1;
 
 	const TypeId trait_callee_type = trait_callee->type;
 
@@ -5196,7 +5196,7 @@ static const Opcode* handle_impl_make_self(CoreData* core, const Opcode* code, [
 	return code;
 }
 
-static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
 
@@ -5239,7 +5239,7 @@ static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CTValu
 		// Skip member attachments and subsequent `Opcode::CompleteImplBody`.
 		code += impl_member_count * (sizeof(IdentifierId) + sizeof(bool) + sizeof(OpcodeId)) + sizeof(Opcode);
 
-		return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+		return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 	}
 
 	*self_on_stack = complete_self;
@@ -5377,10 +5377,10 @@ static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CTValu
 
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_complete_impl_body(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_complete_impl_body(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -5427,7 +5427,7 @@ static const Opcode* handle_complete_impl_body(CoreData* core, const Opcode* cod
 	return code;
 }
 
-static const Opcode* handle_impl_member_alloc_prepare(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_impl_member_alloc_prepare(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -5475,15 +5475,15 @@ static const Opcode* handle_impl_member_alloc_prepare(CoreData* core, const Opco
 	return opcode_from_id(core, type_initializer);
 }
 
-static const Opcode* handle_check_types_equal(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_check_types_equal(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
 	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
 
-	CTValue* const trait_member_type_value = core->interp.values.end() - 1;
+	CompValue* const trait_member_type_value = core->interp.values.end() - 1;
 
-	CTValue* const impl_member_type_value = trait_member_type_value - 1;
+	CompValue* const impl_member_type_value = trait_member_type_value - 1;
 
 	if (type_tag_from_id(core, trait_member_type_value->type) != TypeTag::Type
 	 || type_tag_from_id(core, impl_member_type_value->type) != TypeTag::Type
@@ -5503,7 +5503,7 @@ static const Opcode* handle_check_types_equal(CoreData* core, const Opcode* code
 	return code;
 }
 
-static const Opcode* handle_load_self(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_self(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.selfs.used() >= 1);
 
@@ -5513,10 +5513,10 @@ static const Opcode* handle_load_self(CoreData* core, const Opcode* code, CTValu
 
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_load_trait_argument(CoreData* core, const Opcode* code, CTValue* write_ctx) noexcept
+static const Opcode* handle_load_trait_argument(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(core->interp.selfs.used() >= 1);
 
@@ -5535,10 +5535,10 @@ static const Opcode* handle_load_trait_argument(CoreData* core, const Opcode* co
 
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	return push_temporary_value(core, code, write_ctx, CTValue{ bytes, alignof(TypeId), true, type_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_impl_member_alloc_complete(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_impl_member_alloc_complete(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -5569,7 +5569,7 @@ static const Opcode* handle_impl_member_alloc_complete(CoreData* core, const Opc
 	return code;
 }
 
-static const Opcode* handle_pop_self(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_pop_self(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -5580,7 +5580,7 @@ static const Opcode* handle_pop_self(CoreData* core, const Opcode* code, [[maybe
 	return code;
 }
 
-static const Opcode* handle_end_trait_member_type(CoreData* core, const Opcode* code, [[maybe_unused]] CTValue* write_ctx) noexcept
+static const Opcode* handle_end_trait_member_type(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
@@ -5878,9 +5878,9 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 
 		const bool consumes_write_ctx = (bits & 0x80) != 0;
 
-		CTValue write_ctx_value;
+		CompValue write_ctx_value;
 
-		CTValue* write_ctx;
+		CompValue* write_ctx;
 
 		if (consumes_write_ctx)
 		{
