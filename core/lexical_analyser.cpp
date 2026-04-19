@@ -7,7 +7,6 @@
 #include "../infra/math.hpp"
 #include "../infra/range.hpp"
 #include "../infra/hash.hpp"
-#include "../infra/container/reserved_heap.hpp"
 #include "../infra/container/reserved_vec.hpp"
 
 #include <cstring>
