@@ -2504,8 +2504,6 @@ bool has_next(const MemberIterator* it) noexcept;
 
 
 
-struct GlobalValuePool;
-
 struct CTValue
 {
 	MutRange<byte> bytes;
