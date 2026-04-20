@@ -691,6 +691,11 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 					binding->global.file_id = file_id;
 					binding->global.rank = scope_entry.rank;
 				}
+				else if (scope->kind == ScopeMapKind::TraitSignature)
+				{
+					binding->trait_argument.kind_ = NameBindingKind::TraitArgument;
+					binding->trait_argument.rank = static_cast<u8>(scope_entry.rank);
+				}
 				else if (is_closed_over)
 				{
 					// Make sure that `name` is closed-over in all closures
@@ -701,11 +706,6 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 					binding->closed.kind_ = NameBindingKind::Closed;
 					binding->closed.rank_in_closure = rank_in_closure;
-				}
-				else if (scope->kind == ScopeMapKind::TraitSignature)
-				{
-					binding->trait_argument.kind_ = NameBindingKind::TraitArgument;
-					binding->trait_argument.rank = static_cast<u8>(scope_entry.rank);
 				}
 				else
 				{

@@ -373,7 +373,15 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 		u16 closed_value_count;
 		memcpy(&closed_value_count, code + 1 + sizeof(OpcodeId), sizeof(closed_value_count));
 
-		rst.values_diff = -static_cast<s32>(closed_value_count);
+		if (expects_write_ctx)
+		{
+			rst.values_diff = -static_cast<s32>(closed_value_count) - 1;
+			rst.write_ctxs_diff = -1;
+		}
+		else
+		{
+			rst.values_diff = -static_cast<s32>(closed_value_count);
+		}
 
 		return rst;
 	}

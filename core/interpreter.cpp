@@ -2155,7 +2155,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, Comp
 
 static const Opcode* handle_load_closure(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(core->interp.active_closures.used() != 0);
+	ASSERT_OR_IGNORE(core->interp.active_closures.used() >= 1);
 
 	u16 rank;
 	code = code_attach(code, &rank);
@@ -2608,8 +2608,17 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 	const TypeTag top_type_tag = type_tag_from_id(core, signature_type);
 
-	if (top_type_tag != TypeTag::Signature && top_type_tag != TypeTag::Trait)
+	if (top_type_tag == TypeTag::Signature)
+	{
+		const Callable callee = *value_as<Callable>(top);
+
+		if (is_some(callee.self_id))
+			core->interp.selfs.append(get(callee.self_id));
+	}
+	else if (top_type_tag != TypeTag::Trait)
+	{
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
+	}
 
 	const SignatureTypeInfo info = type_signature_info_from_id(core, signature_type);
 

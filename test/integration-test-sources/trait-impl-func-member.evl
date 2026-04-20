@@ -1,0 +1,11 @@
+// success
+
+let Tr = trait(A) {
+	let f: func(x: u32) -> u32
+}
+
+let Im = Bool impl Tr(self) {
+	let f = func(x: u32) -> u32 => x + 1
+}
+
+let unused = std.assert(Tr(Im).f(100) == 101)
