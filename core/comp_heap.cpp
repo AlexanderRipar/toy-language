@@ -6,6 +6,15 @@
 #include "../infra/math.hpp"
 #include "../infra/inplace_sort.hpp"
 
+static constexpr u64 BYTES_PER_BITMAP_BYTE = 8 * COMP_HEAP_MIN_ALLOCATION_SIZE;
+
+struct alignas(8) GlobalMemberMetadata
+{
+	TypeId type_id;
+
+	u64 size;
+};
+
 
 
 static void comp_heap_add_to_freelist(CoreData* core, MutRange<byte> memory) noexcept
@@ -30,9 +39,9 @@ static void comp_heap_add_to_freelist(CoreData* core, MutRange<byte> memory) noe
 	{
 		if ((size & mask) != 0)
 		{
-			*reinterpret_cast<byte**>(curr) = core->heap.freelists[index];
+			*reinterpret_cast<u32*>(curr) = core->heap.freelists[index];
 
-			core->heap.freelists[index] = curr;
+			core->heap.freelists[index] = static_cast<u32>((curr - core->heap.memory) / COMP_HEAP_MIN_ALLOCATION_SIZE);
 
 			curr += mask;
 
@@ -46,15 +55,15 @@ static void comp_heap_add_to_freelist(CoreData* core, MutRange<byte> memory) noe
 
 	while (size != 0)
 	{
-		ASSERT_OR_IGNORE(size >= COMP_HEAP_MAX_ALLOCATION_SIZE);
+		ASSERT_OR_IGNORE(size >= COMP_HEAP_MAX_FREELIST_SIZE);
 
-		*reinterpret_cast<byte**>(curr) = core->heap.freelists[array_count(core->heap.freelists) - 1]; 
+		*reinterpret_cast<u32*>(curr) = core->heap.freelists[array_count(core->heap.freelists) - 1]; 
 		
-		core->heap.freelists[array_count(core->heap.freelists) - 1] = curr;
+		core->heap.freelists[array_count(core->heap.freelists) - 1] = static_cast<u32>((curr - core->heap.memory) / COMP_HEAP_MIN_ALLOCATION_SIZE);
 
-		size -= COMP_HEAP_MAX_ALLOCATION_SIZE;
+		size -= COMP_HEAP_MAX_FREELIST_SIZE;
 
-		curr += COMP_HEAP_MAX_ALLOCATION_SIZE;
+		curr += COMP_HEAP_MAX_FREELIST_SIZE;
 	}
 }
 
@@ -66,12 +75,30 @@ static bool comp_heap_ensure_commit(CoreData* core, u64 required) noexcept
 	if (required > core->heap.reserve)
 		return false;
 
-	u64 new_commit = (required + core->heap.commit_increment - 1) & ~(core->heap.commit_increment - 1);
+	const u64 old_commit = core->heap.commit;
 
-	if (new_commit > core->heap.reserve)
-		new_commit = core->heap.reserve;
+	const u64 new_commit = (required + core->heap.commit_increment - 1) & ~(core->heap.commit_increment - 1);
 
-	if (!minos::mem_commit(core->heap.memory + core->heap.commit, new_commit - core->heap.commit))
+	ASSERT_OR_IGNORE(new_commit <= core->heap.reserve);
+
+	const u64 commit_difference = new_commit - old_commit;
+
+	if (!minos::mem_commit(core->heap.memory + old_commit, commit_difference))
+		return false;
+
+	const u64 old_bitmap_commit = old_commit / BYTES_PER_BITMAP_BYTE;
+
+	const u64 new_bitmap_commit = new_commit / BYTES_PER_BITMAP_BYTE;
+
+	ASSERT_OR_IGNORE(new_bitmap_commit != old_bitmap_commit);
+
+	if (!minos::mem_commit(reinterpret_cast<byte*>(core->heap.leak_bitmap) + old_bitmap_commit, new_bitmap_commit - old_bitmap_commit))
+		return false;
+
+	if (!minos::mem_commit(reinterpret_cast<byte*>(core->heap.begin_bitmap) + old_bitmap_commit, new_bitmap_commit - old_bitmap_commit))
+		return false;
+
+	if (!minos::mem_commit(reinterpret_cast<byte*>(core->heap.header_bitmap) + old_bitmap_commit, new_bitmap_commit - old_bitmap_commit))
 		return false;
 
 	core->heap.commit = new_commit;
@@ -79,124 +106,67 @@ static bool comp_heap_ensure_commit(CoreData* core, u64 required) noexcept
 	return true;
 }
 
-static bool comp_heap_gc_mark_small_unchecked(CoreData* core, MutRange<byte> memory) noexcept
+static void comp_heap_mark_bitmap_bits(CoreData* core, u64* bitmap, MutRange<byte> memory) noexcept
 {
-	const u64 begin_index = (memory.begin() - core->heap.memory) >> COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2;
+	const u64 begin = (memory.begin() - core->heap.memory) / COMP_HEAP_MIN_ALLOCATION_SIZE;
 
-	const u64 end_index = (memory.end() + COMP_HEAP_ZERO_ADDRESS_MASK - core->heap.memory) >> COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2;
+	const u64 end = (memory.end() + COMP_HEAP_ZERO_ADDRESS_MASK - core->heap.memory) / COMP_HEAP_MIN_ALLOCATION_SIZE;
 
-	u8* const gc_bitmap = core->heap.gc_bitmap;
-
-	if ((gc_bitmap[begin_index / 8] & static_cast<u8>(1 << (begin_index % 8))) != 0)
-		return false;
-
-	for (u64 i = begin_index; i != end_index; ++i)
-		gc_bitmap[i >> 3] |= static_cast<u8>(1 << (i & 7));
-
-	return true;
+	for (u64 i = begin; i != end; ++i)
+		bitmap[i >> 6] |= static_cast<u64>(1) << (i & 63);
 }
 
-
-
-bool comp_heap_validate_config(const Config* config, PrintSink sink) noexcept
+static void comp_heap_mark_bitmap_bit(CoreData* core, u64* bitmap, byte* memory) noexcept
 {
-	ASSERT_OR_IGNORE(config->heap.reserve <= (static_cast<u64>(1) << 32) * COMP_HEAP_MIN_ALLOCATION_SIZE);
+	const u64 byte_offset = memory - core->heap.memory;
 
-	if (config->heap.reserve >= config->heap.commit_increment)
-		return true;
+	const u64 slot_offset = byte_offset / COMP_HEAP_MIN_ALLOCATION_SIZE;
 
-	print(sink, "Configuration parameter `heap.reserve` (%) must be greater than or equal to `heap.commit_increment` (%).\n", config->heap.reserve, config->heap.commit_increment);
+	ASSERT_OR_IGNORE((bitmap[slot_offset >> 6] & (static_cast<u64>(1) << (slot_offset & 63))) == 0);
 
-	return false;
+	bitmap[slot_offset >> 6] |= static_cast<u64>(1) << (slot_offset & 63);
 }
 
-MemoryRequirements comp_heap_memory_requirements(const Config* config) noexcept
-{
-	const u64 page_size = minos::page_bytes();
-
-	const u64 page_mask = page_size - 1;
-
-	const u64 commit_increment = config->heap.commit_increment < page_size
-		? page_size
-		: next_pow2(config->heap.commit_increment);
-
-	const u64 heap_size = (config->heap.reserve + commit_increment - 1) & ~(commit_increment - 1);
-
-	const u64 gc_bitmap_size = (heap_size / (8 * COMP_HEAP_MIN_ALLOCATION_SIZE) + page_mask) & ~page_mask;
-
-	MemoryRequirements reqs{};
-	reqs.count = 2;
-	reqs.ranges[0].size = heap_size;
-	reqs.ranges[0].max_offset = static_cast<u64>(UINT32_MAX) * COMP_HEAP_MIN_ALLOCATION_SIZE;
-	reqs.ranges[1].size = gc_bitmap_size;
-	reqs.ranges[1].max_offset = UINT64_MAX;
-
-	return reqs;
-}
-
-void comp_heap_init(CoreData* core, MemoryAllocation allocation) noexcept
-{
-	const u64 page_size = minos::page_bytes();
-
-	const u64 commit_increment = core->config->heap.commit_increment < page_size
-		? page_size
-		: next_pow2(core->config->heap.commit_increment);
-
-	const u64 heap_size = (core->config->heap.reserve + commit_increment - 1) & ~(commit_increment - 1);
-
-	if (!minos::mem_commit(allocation.ranges[0].begin(), commit_increment))
-		panic("Could not commit % bytes of memory for compile-time heap header and initial commit (0x%[|X]).\n", commit_increment, minos::last_error());
-
-	core->heap.memory = allocation.ranges[0].begin();
-	core->heap.used = COMP_HEAP_MIN_ALLOCATION_SIZE; // Reserve the slot as a pseudo-null value for indices.
-	core->heap.commit = commit_increment;
-	core->heap.reserve = heap_size;
-	core->heap.commit_increment = commit_increment;
-	core->heap.arena_count = 0;
-	core->heap.arena_begin = 0;
-	core->heap.gc_bitmap = reinterpret_cast<u8*>(allocation.ranges[1].begin()) + heap_size;
-
-	memset(core->heap.freelists, 0, sizeof(core->heap.freelists));
-}
-
-
-
-Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align) noexcept
+static Maybe<void*> comp_heap_alloc_internal(CoreData* core, u64 size, u64 align, bool needs_header) noexcept
 {
 	ASSERT_OR_IGNORE(core->heap.arena_count == 0);
 
 	ASSERT_OR_IGNORE(is_pow2(align));
 
-	if (size > COMP_HEAP_MAX_ALLOCATION_SIZE)
-		return none<void*>();
+	const u64 header_size = needs_header ? COMP_HEAP_MIN_ALLOCATION_SIZE : 0;
 
-	// Try satisfying allocations with an alignment of at most
-	// `COMP_HEAP_MIN_ALLOCATION_SIZE` from the relevant freelist if they are
-	// small enough (at most `COMP_HEAP_MAX_ALLOCATION_SIZE`).
-	if (align <= COMP_HEAP_MIN_ALLOCATION_SIZE && size <= COMP_HEAP_MIN_ALLOCATION_SIZE)
+	// Try satisfying allocations with a suitable alignment and size from the
+	// relevant freelist.
+	if (align <= COMP_HEAP_MIN_ALLOCATION_SIZE && size + header_size <= COMP_HEAP_MAX_FREELIST_SIZE_LOG2)
 	{
-		const u8 size_log2_ceil = log2_ceil(size);
+		const u64 allocation_size = size + header_size;
+
+		const u8 size_log2_ceil = log2_ceil(allocation_size);
 
 		const u8 index = size_log2_ceil < COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2
 			? 0
 			: size_log2_ceil - COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2;
 
-		byte* const head = core->heap.freelists[index];
+		u32 const head = core->heap.freelists[index];
 
 		if (head != 0)
 		{
-			core->heap.freelists[index] = *reinterpret_cast<byte**>(head);
+			byte* const entry_begin = core->heap.memory + head * COMP_HEAP_MIN_ALLOCATION_SIZE;
+
+			core->heap.freelists[index] = *reinterpret_cast<u32*>(entry_begin);
 
 			const u64 entry_size = static_cast<u64>(1) << size_log2_ceil;
 
-			if (entry_size - size >= COMP_HEAP_MIN_ALLOCATION_SIZE)
-				comp_heap_add_to_freelist(core, MutRange<byte>{ head + size, entry_size - size });
+			if (entry_size - allocation_size >= COMP_HEAP_MIN_ALLOCATION_SIZE)
+				comp_heap_add_to_freelist(core, MutRange<byte>{ entry_begin + allocation_size, entry_begin + entry_size });
 
-			return some<void*>(head);
+			comp_heap_mark_bitmap_bit(core, core->heap.begin_bitmap, entry_begin);
+
+			return some<void*>(entry_begin + header_size);
 		}
 	}
 
-	const u64 unaligned_begin = core->heap.used;
+	const u64 unaligned_begin = core->heap.used + header_size;
 
 	const u64 aligned_begin = (unaligned_begin + align - 1) & ~(align - 1);
 
@@ -214,7 +184,225 @@ Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align) noexcept
 
 	byte* const begin = core->heap.memory + aligned_begin;
 
+	comp_heap_mark_bitmap_bit(core, core->heap.begin_bitmap, begin - header_size);
+
 	return some<void*>(begin);
+}
+
+static Maybe<void*> comp_heap_find_header(CoreData* core, byte* address) noexcept
+{
+	ASSERT_OR_IGNORE(address > core->heap.memory);
+
+	ASSERT_OR_IGNORE(address < core->heap.memory + core->heap.used);
+
+	const u64 slot_offset = (address - core->heap.memory) / COMP_HEAP_MIN_ALLOCATION_SIZE;
+
+	const u64* const begin_bitmap = core->heap.begin_bitmap;
+
+	const u64 lower_slots_mask = (~static_cast<u64>(0)) >> (slot_offset & 63);
+
+	u64 i = slot_offset >> 6;
+
+	u64 curr = begin_bitmap[i] & lower_slots_mask;
+
+	while (curr == 0)
+	{
+		ASSERT_OR_IGNORE(i != 0);
+
+		i -= 1;
+
+		curr = begin_bitmap[i];
+	}
+
+	const u8 offset_in_qword = count_trailing_zeros_assume_one(curr);
+
+	if ((core->heap.header_bitmap[i] & (static_cast<u64>(1) << offset_in_qword)) == 0)
+		return none<void*>();
+
+	const u64 begin_byte_offset = i * BYTES_PER_BITMAP_BYTE * sizeof(u64) + offset_in_qword * COMP_HEAP_MIN_ALLOCATION_SIZE;
+
+	return some<void*>(core->heap.memory + begin_byte_offset);
+}
+
+
+
+static u64 calc_commit_increment(const Config* config, u64 page_size) noexcept
+{
+	const u64 min_size = page_size * BYTES_PER_BITMAP_BYTE;
+
+	return config->heap.commit_increment < min_size
+		? min_size
+		: next_pow2(config->heap.commit_increment);
+}
+
+static u64 calc_bitmap_reserve(u64 page_size, u64 heap_size) noexcept
+{
+	const u64 page_mask = page_size - 1;
+
+	return (heap_size / BYTES_PER_BITMAP_BYTE + page_mask) & ~page_mask;
+}
+
+static u64 calc_memory_reserve(const Config* config, u64 commit_increment) noexcept
+{
+	const u64 commit_increment_mask = commit_increment - 1;
+
+	return (config->heap.reserve + commit_increment_mask) & ~commit_increment_mask;
+}
+
+
+
+bool comp_heap_validate_config(const Config* config, PrintSink sink) noexcept
+{
+	if (config->heap.reserve < config->heap.commit_increment)
+	{
+		print(sink, "Configuration parameter `heap.reserve` (%) must be greater than or equal to `heap.commit_increment` (%).\n", config->heap.reserve, config->heap.commit_increment);
+
+		return false;
+	}
+
+	return true;
+}
+
+MemoryRequirements comp_heap_memory_requirements(const Config* config) noexcept
+{
+	const u64 page_size = minos::page_bytes();
+
+	const u64 commit_increment = calc_commit_increment(config, page_size);
+
+	const u64 heap_size = calc_memory_reserve(config, commit_increment);
+
+	const u64 bitmap_size = calc_bitmap_reserve(page_size, heap_size);
+
+	MemoryRequirements reqs{};
+	reqs.count = 2;
+	reqs.ranges[0].size = heap_size;
+	reqs.ranges[0].max_offset = static_cast<u64>(UINT32_MAX) * COMP_HEAP_MIN_ALLOCATION_SIZE;
+	reqs.ranges[1].size = 4 * bitmap_size + page_size; // Overallocate a page for gc bitmap end sentinels.
+	reqs.ranges[1].max_offset = UINT64_MAX;
+
+	return reqs;
+}
+
+void comp_heap_init(CoreData* core, MemoryAllocation allocation) noexcept
+{
+	const u64 page_size = minos::page_bytes();
+
+	const u64 commit_increment = calc_commit_increment(core->config, page_size);
+
+	const u64 heap_size = calc_memory_reserve(core->config, commit_increment);
+
+	ASSERT_OR_IGNORE(allocation.ranges[0].count() == heap_size);
+
+	const u64 bitmap_size = calc_bitmap_reserve(page_size, heap_size);
+
+	ASSERT_OR_IGNORE(allocation.ranges[1].count() == 4 * bitmap_size + page_size);
+
+	const u64 bitmap_commit = commit_increment / BYTES_PER_BITMAP_BYTE;
+
+	if (!minos::mem_commit(allocation.ranges[0].begin(), commit_increment))
+		panic("Could not commit % bytes of memory for compile-time heap (0x%[|X]).\n", commit_increment, minos::last_error());
+
+	if (!minos::mem_commit(allocation.ranges[1].begin(), bitmap_commit))
+		panic("Could not commit % bytes of memory for compile-time heap leak bitmap (0x%[|X]).\n", bitmap_commit, minos::last_error());
+
+	if (!minos::mem_commit(allocation.ranges[1].begin() + bitmap_size, bitmap_commit))
+		panic("Could not commit % bytes of memory for compile-time heap allocation begin bitmap (0x%[|X]).\n", bitmap_commit, minos::last_error());
+
+	if (!minos::mem_commit(allocation.ranges[1].begin() + 2 * bitmap_size, bitmap_commit))
+		panic("Could not commit % bytes of memory for compile-time heap header bitmap (0x%[|X]).\n", bitmap_commit, minos::last_error());
+
+	core->heap.memory = allocation.ranges[0].begin();
+	core->heap.used = COMP_HEAP_MIN_ALLOCATION_SIZE; // Reserve the slot as a pseudo-null value for indices.
+	core->heap.commit = commit_increment;
+	core->heap.reserve = heap_size;
+	core->heap.commit_increment = commit_increment;
+	core->heap.arena_count = 0;
+	core->heap.arena_begin = 0;
+	core->heap.leak_bitmap = reinterpret_cast<u64*>(allocation.ranges[1].begin());
+	core->heap.begin_bitmap = reinterpret_cast<u64*>(allocation.ranges[1].begin() + bitmap_size);
+	core->heap.header_bitmap = reinterpret_cast<u64*>(allocation.ranges[1].begin() + 2 * bitmap_size);
+	core->heap.gc_bitmap = reinterpret_cast<u64*>(allocation.ranges[1].begin() + 3 * bitmap_size);
+
+	memset(core->heap.freelists, 0, sizeof(core->heap.freelists));
+}
+
+
+
+Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align) noexcept
+{
+	return comp_heap_alloc_internal(core, size, align, false);
+}
+
+Maybe<void*> comp_heap_alloc_global_member(CoreData* core, u64 size, u64 align, TypeId type_id) noexcept
+{
+	static_assert(sizeof(GlobalMemberMetadata) <= COMP_HEAP_MIN_ALLOCATION_SIZE);
+
+	const Maybe<void*> allocation = comp_heap_alloc_internal(core, size, align, true);
+
+	if (is_none(allocation))
+		return none<void*>();
+
+	GlobalMemberMetadata* const header = reinterpret_cast<GlobalMemberMetadata*>(static_cast<byte*>(get(allocation)) - COMP_HEAP_MIN_ALLOCATION_SIZE);
+	header->type_id = type_id;
+	header->size = size;
+
+	comp_heap_mark_bitmap_bit(core, core->heap.header_bitmap, static_cast<byte*>(get(allocation)) - COMP_HEAP_MIN_ALLOCATION_SIZE);
+
+	return allocation;
+}
+
+TypeId comp_heap_global_member_type(CoreData* core, byte* address) noexcept
+{
+	const Maybe<void*> header = comp_heap_find_header(core, address);
+
+	if (is_none(header))
+		ASSERT_UNREACHABLE;
+
+	const GlobalMemberMetadata* const metadata = static_cast<const GlobalMemberMetadata*>(get(header));
+
+	return metadata->type_id;
+}
+
+bool comp_heap_leak(CoreData* core, MutRange<byte> memory) noexcept
+{
+	// If the address is outside the heap, there is nothing to leak for us.
+	if (memory.end() <= core->heap.memory || memory.begin() >= core->heap.memory + core->heap.used)
+		return true;
+
+	ASSERT_OR_IGNORE(memory.begin() > core->heap.memory);
+	
+	ASSERT_OR_IGNORE(memory.end() < core->heap.memory + core->heap.used);
+
+	const u64 slot = (memory.begin() - core->heap.memory) / COMP_HEAP_MIN_ALLOCATION_SIZE;
+
+	// If the address is already leaked, there is nothing more to do.
+	if ((core->heap.leak_bitmap[slot >> 6] & (static_cast<u64>(1) << (slot & 63))) != 0)
+		return true;
+
+	static_assert(sizeof(GlobalMemberMetadata) <= COMP_HEAP_MIN_ALLOCATION_SIZE);
+
+	Maybe<void*> const header = comp_heap_find_header(core, memory.begin());
+
+	// If there is no header for the given allocation, there is nothing to
+	// leak.
+	if (is_none(header))
+		return true;
+
+	const GlobalMemberMetadata* const metadata = static_cast<const GlobalMemberMetadata*>(get(header));
+
+	byte* const allocation_begin = static_cast<byte*>(get(header)) + COMP_HEAP_MIN_ALLOCATION_SIZE;
+
+	// If either the given memory is not entirely contained within the found
+	// header, it is out-of-bounds from the guest's perspective, indicating
+	// that there is an error and we should terminate with a diagnostic.
+	if (allocation_begin + metadata->size <= memory.begin() || allocation_begin + metadata->size > memory.end())
+		return false;
+
+	const MutRange<byte> allocation{ allocation_begin, metadata->size };
+
+	comp_heap_mark_bitmap_bits(core, core->heap.leak_bitmap, allocation);
+
+	return true;
 }
 
 
@@ -291,9 +479,9 @@ void comp_heap_gc_begin(CoreData* core) noexcept
 {
 	const u64 page_mask = minos::page_bytes() - 1;
 
-	// Allocate one extra byte so that we can fit an trailing `0` bit to ease
+	// Allocate one extra byte so that we can fit a trailing `0` bit to ease
 	// scanning of the bitmap.
-	const u64 gc_bitmap_commit = ((core->heap.used + 8 * COMP_HEAP_MIN_ALLOCATION_SIZE - 1) / (8 * COMP_HEAP_MIN_ALLOCATION_SIZE) + 1 + page_mask) & ~page_mask;
+	const u64 gc_bitmap_commit = ((core->heap.used + BYTES_PER_BITMAP_BYTE - 1) / BYTES_PER_BITMAP_BYTE + 1 + page_mask) & ~page_mask;
 
 	if (!minos::mem_commit(core->heap.gc_bitmap, gc_bitmap_commit))
 		panic("Could not allocate % bytes for compile-time heap GC bitmap (0x%[|X]).\n", gc_bitmap_commit, minos::last_error());
@@ -304,10 +492,10 @@ void comp_heap_gc_begin(CoreData* core) noexcept
 	// Since this is effectively just past the used small heap memory, we need
 	// to explicitly mark it via the small heap marking function, as it would
 	// otherwise not be recognized as part of the normal heap.
-	(void) comp_heap_gc_mark_small_unchecked(core, MutRange<byte>{ core->heap.memory + core->heap.used, 1 });
+	comp_heap_mark_bitmap_bits(core, core->heap.gc_bitmap, MutRange<byte>{ core->heap.memory + core->heap.used, 1 });
 
 	// Preserve the first slot, since it acts as a `null` for ids.
-	(void) comp_heap_gc_mark_small_unchecked(core, MutRange<byte>{ core->heap.memory, 1 });
+	comp_heap_mark_bitmap_bits(core, core->heap.gc_bitmap, MutRange<byte>{ core->heap.memory, 1 });
 
 	// Forget our old freelists. Their contents will be collected and coalesced
 	// by the GC.
@@ -322,16 +510,41 @@ bool comp_heap_gc_mark(CoreData* core, MutRange<byte> memory) noexcept
 	
 	ASSERT_OR_IGNORE(memory.end() <= core->heap.memory + core->heap.used);
 
-	return comp_heap_gc_mark_small_unchecked(core, memory);
+	const u64 begin = (memory.begin() - core->heap.memory) / COMP_HEAP_MIN_ALLOCATION_SIZE;
+
+	if ((core->heap.gc_bitmap[begin >> 6] & (static_cast<u64>(1) << (begin & 63))) != 0)
+		return false;
+
+	if ((core->heap.begin_bitmap[begin >> 6] & (static_cast<u64>(1) << (begin & 63))) == 0)
+	{
+		memory = MutRange<byte>{ memory.begin() - COMP_HEAP_MIN_ALLOCATION_SIZE, memory.end() };
+
+		ASSERT_OR_IGNORE((core->heap.begin_bitmap[(begin - 1) >> 6] & (static_cast<u64>(1) << ((begin - 1) & 63))) != 0);
+
+		ASSERT_OR_IGNORE((core->heap.header_bitmap[(begin - 1) >> 6] & (static_cast<u64>(1) << ((begin - 1) & 63))) != 0);
+	}
+
+	comp_heap_mark_bitmap_bits(core, core->heap.gc_bitmap, memory);
+
+	return true;
 }
 
 void comp_heap_gc_end(CoreData* core) noexcept
 {
 	const u64 page_mask = minos::page_bytes() - 1;
 
-	const u64 gc_bitmap_commit = (core->heap.used / (8 * COMP_HEAP_MIN_ALLOCATION_SIZE) + page_mask) & ~page_mask;
+	const u64 gc_bitmap_commit = (core->heap.used / BYTES_PER_BITMAP_BYTE + page_mask) & ~page_mask;
 
-	u8* const gc_bitmap = core->heap.gc_bitmap;
+	u64* const gc_bitmap = core->heap.gc_bitmap;
+
+	// Remove allocation begin bitmap entries that have been collected.
+
+	u64* const begin_bitmap = core->heap.begin_bitmap;
+
+	for (u64 i = 0; i != gc_bitmap_commit / sizeof(u64); ++i)
+		begin_bitmap[i] &= gc_bitmap[i];
+
+	// Collect free runs into freelists.
 
 	const u64 end_index = core->heap.used / COMP_HEAP_MIN_ALLOCATION_SIZE;
 
@@ -344,7 +557,7 @@ void comp_heap_gc_end(CoreData* core) noexcept
 		// Skip alive segment.
 		// No need to check for overrun here thanks to the `0` sentinel bit
 		// just after the bitmap's end.
-		while ((gc_bitmap[bit_index >> 3] & (static_cast<u8>(1 << (bit_index & 7)))) != 0)
+		while ((gc_bitmap[bit_index >> 6] & (static_cast<u64>(1) << (bit_index & 63))) != 0)
 			bit_index += 1;
 
 		last_alive_index = bit_index * COMP_HEAP_MIN_ALLOCATION_SIZE;
@@ -360,7 +573,7 @@ void comp_heap_gc_end(CoreData* core) noexcept
 		// We still process the last free segment though. On the next time
 		// through the loop, we break upon encountering the following `0`
 		// sentinel bit.
-		while ((gc_bitmap[bit_index >> 3] & static_cast<u8>(1 << (bit_index & 8))) == 0)
+		while ((gc_bitmap[bit_index >> 6] & (static_cast<u64>(1) << (bit_index & 63))) == 0)
 			bit_index += 1;
 
 		const u64 free_end = bit_index * COMP_HEAP_MIN_ALLOCATION_SIZE;
@@ -370,13 +583,68 @@ void comp_heap_gc_end(CoreData* core) noexcept
 		comp_heap_add_to_freelist(core, free);
 	}
 
+	// Shrink commit to fit last marked address.
+
 	const u64 new_commit = (core->heap.commit + core->heap.commit_increment - 1) & ~(core->heap.commit_increment - 1);
 
 	if (new_commit != core->heap.commit)
-		minos::mem_decommit(core->heap.memory + new_commit, core->heap.commit - new_commit);
+	{
+		const u64 commit_difference = core->heap.commit - new_commit;
+
+		minos::mem_decommit(core->heap.memory + new_commit, commit_difference);
+
+		minos::mem_decommit(core->heap.leak_bitmap + new_commit / BYTES_PER_BITMAP_BYTE, commit_difference / BYTES_PER_BITMAP_BYTE);
+
+		minos::mem_decommit(core->heap.begin_bitmap + new_commit / BYTES_PER_BITMAP_BYTE, commit_difference / BYTES_PER_BITMAP_BYTE);
+	}
 
 	core->heap.commit = new_commit;
 	core->heap.used = last_alive_index;
 
 	minos::mem_decommit(core->heap.gc_bitmap, gc_bitmap_commit);
+}
+
+bool comp_heap_next_leak(CoreData* core, Maybe<byte*> prev, MutRange<byte>* out_memory, TypeId* out_type_id) noexcept
+{
+	const byte* const address = is_some(prev) ? get(prev) : core->heap.memory;
+
+	ASSERT_OR_IGNORE(address >= core->heap.memory && address < core->heap.memory + core->heap.used);
+
+	const u64* const begin_bitmap = core->heap.begin_bitmap;
+
+	const u64* const leak_bitmap = core->heap.leak_bitmap;
+
+	const u64 end = (core->heap.used / COMP_HEAP_MIN_ALLOCATION_SIZE) >> 6;
+
+	const u64 prev_slot_offset = (address - core->heap.memory) / COMP_HEAP_MIN_ALLOCATION_SIZE;
+
+	const u64 higher_slots_mask = (~static_cast<u64>(0)) << (prev_slot_offset & 63);
+
+	u64 i = prev_slot_offset >> 6;
+
+	u64 curr = begin_bitmap[i] & leak_bitmap[i] & higher_slots_mask;
+
+	while (curr == 0)
+	{
+		if (i == end)
+			return false;
+
+		i += 1;
+
+		curr = begin_bitmap[i] & leak_bitmap[i];
+	}
+
+	const u8 offset_in_qword = count_trailing_zeros_assume_one(curr);
+
+	ASSERT_OR_IGNORE((core->heap.header_bitmap[i] & (static_cast<u64>(1) << offset_in_qword)) != 0);
+
+	byte* const leak_begin = core->heap.memory + i * BYTES_PER_BITMAP_BYTE * sizeof(u64) + offset_in_qword * COMP_HEAP_MIN_ALLOCATION_SIZE;
+
+	const GlobalMemberMetadata* const metadata = reinterpret_cast<const GlobalMemberMetadata*>(leak_begin);
+
+	*out_memory = MutRange<byte>{ leak_begin + COMP_HEAP_MIN_ALLOCATION_SIZE, metadata->size };
+
+	*out_type_id = metadata->type_id;
+
+	return true;
 }

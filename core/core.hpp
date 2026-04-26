@@ -189,6 +189,12 @@ const TreeSchemaNode* config_schema() noexcept;
 
 Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align) noexcept;
 
+Maybe<void*> comp_heap_alloc_global_member(CoreData* core, u64 size, u64 align, TypeId type_id) noexcept;
+
+TypeId comp_heap_global_member_type(CoreData* core, byte* address) noexcept;
+
+bool comp_heap_leak(CoreData* core, MutRange<byte> memory) noexcept;
+
 
 
 u64 comp_heap_arena_mark(CoreData* core) noexcept;
@@ -206,6 +212,8 @@ void comp_heap_gc_begin(CoreData* core) noexcept;
 bool comp_heap_gc_mark(CoreData* core, MutRange<byte> memory) noexcept;
 
 void comp_heap_gc_end(CoreData* core) noexcept;
+
+bool comp_heap_next_leak(CoreData* core, Maybe<byte*> prev, MutRange<byte>* out_memory, TypeId* out_type_id) noexcept;
 
 
 

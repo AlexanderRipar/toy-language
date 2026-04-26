@@ -280,11 +280,11 @@ struct TypePool
 
 static constexpr u8 COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2 = 4;
 
-static constexpr u8 COMP_HEAP_MAX_ALLOCATION_SIZE_LOG2 = 18;
+static constexpr u8 COMP_HEAP_MAX_FREELIST_SIZE_LOG2 = 18;
 
 static constexpr u64 COMP_HEAP_MIN_ALLOCATION_SIZE = 1 << COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2;
 
-static constexpr u64 COMP_HEAP_MAX_ALLOCATION_SIZE = 1 << COMP_HEAP_MAX_ALLOCATION_SIZE_LOG2;
+static constexpr u64 COMP_HEAP_MAX_FREELIST_SIZE = 1 << COMP_HEAP_MAX_FREELIST_SIZE_LOG2;
 
 static constexpr u64 COMP_HEAP_ZERO_ADDRESS_MASK = COMP_HEAP_MIN_ALLOCATION_SIZE - 1;
 
@@ -304,9 +304,15 @@ struct CompHeap
 
 	u64 arena_begin;
 
-	byte* gc_bitmap;
+	u64* leak_bitmap;
 
-	byte* freelists[COMP_HEAP_MAX_ALLOCATION_SIZE_LOG2 - COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2];
+	u64* begin_bitmap;
+
+	u64* header_bitmap;
+
+	u64* gc_bitmap;
+
+	u32 freelists[COMP_HEAP_MAX_FREELIST_SIZE_LOG2 - COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2];
 };
 
 

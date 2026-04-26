@@ -537,9 +537,6 @@ static Maybe<ClosureId> create_closure(CoreData* core, u32 value_count) noexcept
 		size = ((size + align_mask) & ~align_mask) + value_size;
 	}
 
-	if (size > COMP_HEAP_MAX_ALLOCATION_SIZE)
-		return none<ClosureId>();
-
 	const Maybe<void*> allocation = comp_heap_alloc(core, size, align);
 
 	if (is_none(allocation))
@@ -1909,7 +1906,7 @@ static const Opcode* handle_file_member_alloc_typed(CoreData* core, const Opcode
 
 	const TypeMetrics member_metrics = type_metrics_from_id(core, member_type);
 
-	const Maybe<void*> alloc = comp_heap_alloc(core, member_metrics.size, member_metrics.align);
+	const Maybe<void*> alloc = comp_heap_alloc_global_member(core, member_metrics.size, member_metrics.align, member_type);
 
 	if (is_none(alloc))
 		TODO("Implement GC traversal");
@@ -1939,7 +1936,7 @@ static const Opcode* handle_file_member_alloc_untyped(CoreData* core, const Opco
 
 	CompValue* const top = core->interp.values.end() - 1;
 
-	const Maybe<void*> alloc = comp_heap_alloc(core, top->bytes.count(), top->align);
+	const Maybe<void*> alloc = comp_heap_alloc_global_member(core, top->bytes.count(), top->align, top->type);
 
 	if (is_none(alloc))
 		TODO("Implement GC traversal.");
@@ -3745,6 +3742,9 @@ static const Opcode* handle_address_of(CoreData* core, const Opcode* code, CompV
 
 	byte* ptr = top->bytes.begin();
 
+	if (!comp_heap_leak(core, top->bytes))
+		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+
 	ReferenceType ptr_type{};
 	ptr_type.referenced_type_id = type;
 	ptr_type.is_opt = false;
@@ -3910,6 +3910,9 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CompValue*
 
 		MutRange<byte> slice{ begin_ptr, end_ptr };
 
+		if (!comp_heap_leak(core, slice))
+			return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+
 		ReferenceType slice_type{};
 		slice_type.referenced_type_id = elem_type;
 		slice_type.is_opt = false;
@@ -3943,6 +3946,9 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CompValue*
 
 		MutRange<byte> slice{ begin_ptr, end_ptr };
 
+		if (!comp_heap_leak(core, slice))
+			return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&slice);
 
 		core->interp.values.pop_by(argument_count - 1);
@@ -3963,7 +3969,14 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CompValue*
 
 		byte* const lhs_value = *value_as<byte*>(lhs);
 
-		MutRange<byte> slice{ lhs_value + begin_index * elem_metrics.stride, lhs_value + end_index * elem_metrics.stride };
+		byte* const begin_ptr = lhs_value + begin_index * elem_metrics.stride;
+
+		byte* const end_ptr = lhs_value + end_index * elem_metrics.stride;
+
+		MutRange<byte> slice{ begin_ptr, end_ptr };
+
+		if (!comp_heap_leak(core, slice))
+			return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
 
 		ReferenceType slice_type{};
 		slice_type.referenced_type_id = ptr_type.referenced_type_id;
