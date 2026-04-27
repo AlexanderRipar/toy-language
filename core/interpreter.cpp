@@ -123,6 +123,10 @@ struct alignas(8) GlobalInitialization
 	TypeId type;
 
 	u16 rank;
+
+	u32 temporary_data_used;
+
+	u32 unused_ = 0;
 };
 
 struct LoopInfo
@@ -1864,6 +1868,7 @@ static const Opcode* handle_file_member_alloc_prepare(CoreData* core, const Opco
 	GlobalInitialization* const init = core->interp.global_initializations.reserve();
 	init->type = file_type;
 	init->rank = rank;
+	init->temporary_data_used = core->interp.temporary_data.used();
 
 	return code;
 }
@@ -1878,6 +1883,7 @@ static const Opcode* handle_file_member_alloc_complete(CoreData* core, const Opc
 
 	type_member_end_initialization(core, init.type, init.rank);
 
+	core->interp.temporary_data.pop_to(init.temporary_data_used);
 	core->interp.global_initializations.pop_by(1);
 
 	return code;
@@ -5489,6 +5495,7 @@ static const Opcode* handle_impl_member_alloc_prepare(CoreData* core, const Opco
 	GlobalInitialization* const init = core->interp.global_initializations.reserve();
 	init->type = body_type;
 	init->rank = rank;
+	init->temporary_data_used = core->interp.temporary_data.used();
 
 	const OpcodeId type_initializer = type_impl_body_member_type_initializer(core, body_type, rank);
 
@@ -5586,6 +5593,7 @@ static const Opcode* handle_impl_member_alloc_complete(CoreData* core, const Opc
 
 	type_member_end_initialization(core, init.type, init.rank);
 
+	core->interp.temporary_data.pop_to(init.temporary_data_used);
 	core->interp.global_initializations.pop_by(1);
 
 	return code;
