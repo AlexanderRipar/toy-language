@@ -50,8 +50,17 @@ namespace inplace_sort_impl
 	template<typename T, typename Comparator>
 	static inline void make_heap(u64 count, T* begin) noexcept
 	{
-		for (u64 curr = heap_parent(count - 1); curr != 0; curr -= 1)
-			heap_sift<T, Comparator>(count, begin, curr);
+		u64 curr = heap_parent(count - 1);
+
+		while (true)
+		{	
+			heap_sift<T, Comparator>(curr, begin, count);
+
+			if (curr == 0)
+				break;
+
+			curr -= 1;
+		}
 	}
 
 	template<typename T, typename Comparator>
@@ -90,7 +99,7 @@ static inline void inplace_sort(MutRange<T> elems) noexcept
 	{
 		inplace_sort_impl::make_heap<T, Comparator>(count, begin);
 
-		for (u64 i = count - 1; i > 1; i -= 1)
+		for (u64 i = count - 1; i >= 1; i -= 1)
 		{
 			const T tmp = begin[i];
 
@@ -98,7 +107,7 @@ static inline void inplace_sort(MutRange<T> elems) noexcept
 
 			begin[0] = tmp;
 
-			inplace_sort_impl::heap_sift<T, Comparator>(count, begin, i);
+			inplace_sort_impl::heap_sift<T, Comparator>(i, begin, 0);
 		}
 	}
 }
