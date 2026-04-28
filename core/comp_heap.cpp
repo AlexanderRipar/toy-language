@@ -8,7 +8,7 @@
 
 static constexpr u64 BYTES_PER_BITMAP_BYTE = 8 * COMP_HEAP_MIN_ALLOCATION_SIZE;
 
-struct alignas(8) GlobalMemberMetadata
+struct alignas(8) CompHeapAllocationHeader
 {
 	TypeId type_id;
 
@@ -189,7 +189,7 @@ static Maybe<void*> comp_heap_alloc_internal(CoreData* core, u64 size, u64 align
 	return some<void*>(begin);
 }
 
-static Maybe<void*> comp_heap_find_header(CoreData* core, byte* address) noexcept
+static Maybe<CompHeapAllocationHeader*> comp_heap_find_header(CoreData* core, byte* address) noexcept
 {
 	ASSERT_OR_IGNORE(address > core->heap.memory);
 
@@ -217,11 +217,11 @@ static Maybe<void*> comp_heap_find_header(CoreData* core, byte* address) noexcep
 	const u8 offset_in_qword = count_trailing_zeros_assume_one(curr);
 
 	if ((core->heap.header_bitmap[i] & (static_cast<u64>(1) << offset_in_qword)) == 0)
-		return none<void*>();
+		return none<CompHeapAllocationHeader*>();
 
 	const u64 begin_byte_offset = i * BYTES_PER_BITMAP_BYTE * sizeof(u64) + offset_in_qword * COMP_HEAP_MIN_ALLOCATION_SIZE;
 
-	return some<void*>(core->heap.memory + begin_byte_offset);
+	return some<>(reinterpret_cast<CompHeapAllocationHeader*>(core->heap.memory + begin_byte_offset));
 }
 
 
@@ -335,14 +335,14 @@ Maybe<void*> comp_heap_alloc(CoreData* core, u64 size, u64 align) noexcept
 
 Maybe<void*> comp_heap_alloc_global_member(CoreData* core, u64 size, u64 align, TypeId type_id) noexcept
 {
-	static_assert(sizeof(GlobalMemberMetadata) <= COMP_HEAP_MIN_ALLOCATION_SIZE);
+	static_assert(sizeof(CompHeapAllocationHeader) <= COMP_HEAP_MIN_ALLOCATION_SIZE);
 
 	const Maybe<void*> allocation = comp_heap_alloc_internal(core, size, align, true);
 
 	if (is_none(allocation))
 		return none<void*>();
 
-	GlobalMemberMetadata* const header = reinterpret_cast<GlobalMemberMetadata*>(static_cast<byte*>(get(allocation)) - COMP_HEAP_MIN_ALLOCATION_SIZE);
+	CompHeapAllocationHeader* const header = reinterpret_cast<CompHeapAllocationHeader*>(static_cast<byte*>(get(allocation)) - COMP_HEAP_MIN_ALLOCATION_SIZE);
 	header->type_id = type_id;
 	header->size = size;
 
@@ -353,14 +353,12 @@ Maybe<void*> comp_heap_alloc_global_member(CoreData* core, u64 size, u64 align, 
 
 TypeId comp_heap_global_member_type(CoreData* core, byte* address) noexcept
 {
-	const Maybe<void*> header = comp_heap_find_header(core, address);
+	const Maybe<CompHeapAllocationHeader*> header = comp_heap_find_header(core, address);
 
 	if (is_none(header))
 		ASSERT_UNREACHABLE;
 
-	const GlobalMemberMetadata* const metadata = static_cast<const GlobalMemberMetadata*>(get(header));
-
-	return metadata->type_id;
+	return get(header)->type_id;
 }
 
 bool comp_heap_leak(CoreData* core, MutRange<byte> memory) noexcept
@@ -379,26 +377,24 @@ bool comp_heap_leak(CoreData* core, MutRange<byte> memory) noexcept
 	if ((core->heap.leak_bitmap[slot >> 6] & (static_cast<u64>(1) << (slot & 63))) != 0)
 		return true;
 
-	static_assert(sizeof(GlobalMemberMetadata) <= COMP_HEAP_MIN_ALLOCATION_SIZE);
+	static_assert(sizeof(CompHeapAllocationHeader) <= COMP_HEAP_MIN_ALLOCATION_SIZE);
 
-	Maybe<void*> const header = comp_heap_find_header(core, memory.begin());
+	Maybe<CompHeapAllocationHeader*> const header = comp_heap_find_header(core, memory.begin());
 
 	// If there is no header for the given allocation, there is nothing to
 	// leak.
 	if (is_none(header))
 		return true;
 
-	const GlobalMemberMetadata* const metadata = static_cast<const GlobalMemberMetadata*>(get(header));
-
-	byte* const allocation_begin = static_cast<byte*>(get(header)) + COMP_HEAP_MIN_ALLOCATION_SIZE;
+	byte* const allocation_begin = reinterpret_cast<byte*>(get(header)) + COMP_HEAP_MIN_ALLOCATION_SIZE;
 
 	// If either the given memory is not entirely contained within the found
 	// header, it is out-of-bounds from the guest's perspective, indicating
 	// that there is an error and we should terminate with a diagnostic.
-	if (allocation_begin + metadata->size <= memory.begin() || allocation_begin + metadata->size > memory.end())
+	if (allocation_begin + get(header)->size <= memory.begin() || allocation_begin + get(header)->size > memory.end())
 		return false;
 
-	const MutRange<byte> allocation{ allocation_begin, metadata->size };
+	const MutRange<byte> allocation{ allocation_begin, get(header)->size };
 
 	comp_heap_mark_bitmap_bits(core, core->heap.leak_bitmap, allocation);
 
@@ -640,11 +636,11 @@ bool comp_heap_next_leak(CoreData* core, Maybe<byte*> prev, MutRange<byte>* out_
 
 	byte* const leak_begin = core->heap.memory + i * BYTES_PER_BITMAP_BYTE * sizeof(u64) + offset_in_qword * COMP_HEAP_MIN_ALLOCATION_SIZE;
 
-	const GlobalMemberMetadata* const metadata = reinterpret_cast<const GlobalMemberMetadata*>(leak_begin);
+	const CompHeapAllocationHeader* const header = reinterpret_cast<const CompHeapAllocationHeader*>(leak_begin);
 
-	*out_memory = MutRange<byte>{ leak_begin + COMP_HEAP_MIN_ALLOCATION_SIZE, metadata->size };
+	*out_memory = MutRange<byte>{ leak_begin + COMP_HEAP_MIN_ALLOCATION_SIZE, header->size };
 
-	*out_type_id = metadata->type_id;
+	*out_type_id = header->type_id;
 
 	return true;
 }
