@@ -43,9 +43,41 @@ struct ErrorSink
 
 struct IdentifierEntry;
 
+struct IdentifierIterator
+{
+	CoreData* core;
+
+	u32 curr;
+
+	u32 end;
+
+	bool has_next() const noexcept;
+
+	IdentifierEntry* next() noexcept;
+};
+
+struct IdentifierAlloc
+{
+	CoreData* core;
+
+	IdentifierEntry* value_from_id(u32 id) noexcept;
+
+	const IdentifierEntry* value_from_id(u32 id) const noexcept;
+
+	u32 id_from_value(const IdentifierEntry* value) const noexcept;
+
+	IdentifierIterator values() noexcept;
+
+	IdentifierEntry* alloc(Range<char8> key, u32 key_hash) noexcept;
+
+	void dealloc(u32 id) noexcept;
+};
+
 struct IdentifierPool
 {
-	IndexMap<Range<char8>, IdentifierEntry> map;
+	IdMap<Range<char8>, IdentifierEntry, IdentifierAlloc> map;
+
+	ReservedVec<byte> entries;
 };
 
 

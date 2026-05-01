@@ -28,40 +28,14 @@ struct alignas(8) IdentifierEntry
 		#pragma GCC diagnostic pop
 	#endif
 
-	static constexpr u32 stride() noexcept
-	{
-		return 8;
-	}
-
-	static u32 required_strides(Range<char8> key) noexcept
-	{
-		return static_cast<u32>((offsetof(IdentifierEntry, m_chars) + key.count() + stride() - 1) / stride());
-	}
-
-	u32 used_strides() const noexcept
-	{
-		return static_cast<u32>((offsetof(IdentifierEntry, m_chars) + m_length + stride() - 1) / stride());
-	}
-
 	u32 hash() const noexcept
 	{
 		return m_hash;
 	}
 
-	bool equal_to_key(Range<char8> key, u32 key_hash) const noexcept
+	bool is_equal_to_key(Range<char8> key, u32 key_hash) const noexcept
 	{
 		return m_hash == key_hash && key.count() == m_length && memcmp(key.begin(), m_chars, m_length) == 0;
-	}
-
-	void init(Range<char8> key, u32 key_hash) noexcept
-	{
-		m_hash = key_hash;
-
-		m_length = static_cast<u16>(key.count());
-
-		m_attachment = 0;
-
-		memcpy(m_chars, key.begin(), key.count());
 	}
 };
 
@@ -69,9 +43,90 @@ static constexpr u64 IDENTIFIER_LOOKUP_RESERVE = decltype(IdentifierPool::map)::
 
 static constexpr u32 IDENTIFIER_LOOKUP_INITIAL_COMMIT_COUNT = static_cast<u32>(1) << 15;
 
-static constexpr u64 IDENTIFIER_ENTRY_RESERVE = (static_cast<u64>(1) << 22) * IdentifierEntry::stride();
+static constexpr u64 IDENTIFIER_ENTRY_RESERVE = (static_cast<u64>(1) << 22) * alignof(IdentifierEntry);
 
-static constexpr u32 IDENTIFIER_ENTRY_COMMIT_INCREMENT_COUNT = static_cast<u32>(1) << 18;
+static constexpr u32 IDENTIFIER_ENTRY_COMMIT_INCREMENT_COUNT = (static_cast<u32>(1) << 18) * alignof(IdentifierEntry);
+
+
+
+bool IdentifierIterator::has_next() const noexcept
+{
+	ASSERT_OR_IGNORE(curr <= end);
+
+	return curr != end;
+}
+
+IdentifierEntry* IdentifierIterator::next() noexcept
+{
+	ASSERT_OR_IGNORE(curr < end);
+
+	IdentifierEntry* const result = reinterpret_cast<IdentifierEntry*>(reinterpret_cast<byte*>(core->identifiers.entries.begin()) + curr * alignof(IdentifierEntry));
+
+	const u64 size = (offsetof(IdentifierEntry, m_chars) + result->m_length + alignof(IdentifierEntry) - 1) & ~(alignof(IdentifierEntry) - 1);
+
+	curr += static_cast<u32>(size / alignof(IdentifierEntry));
+
+	return result;
+}
+
+
+
+IdentifierEntry* IdentifierAlloc::value_from_id(u32 id) noexcept
+{
+	ASSERT_OR_IGNORE(id != 0);
+
+	ASSERT_OR_IGNORE(id * alignof(IdentifierEntry) < core->identifiers.entries.used());
+
+	return reinterpret_cast<IdentifierEntry*>(reinterpret_cast<byte*>(core->identifiers.entries.begin()) + id * alignof(IdentifierEntry));
+}
+
+const IdentifierEntry* IdentifierAlloc::value_from_id(u32 id) const noexcept
+{
+	ASSERT_OR_IGNORE(id != 0);
+
+	ASSERT_OR_IGNORE(id * alignof(IdentifierEntry) < core->identifiers.entries.used());
+
+	return reinterpret_cast<IdentifierEntry*>(reinterpret_cast<byte*>(core->identifiers.entries.begin()) + id * alignof(IdentifierEntry));
+}
+
+u32 IdentifierAlloc::id_from_value(const IdentifierEntry* value) const noexcept
+{
+	ASSERT_OR_IGNORE(reinterpret_cast<const byte*>(value) > core->identifiers.entries.begin());
+
+	ASSERT_OR_IGNORE(reinterpret_cast<const byte*>(value) < core->identifiers.entries.end());
+
+	return static_cast<u32>((reinterpret_cast<const byte*>(value) - core->identifiers.entries.begin()) / alignof(IdentifierEntry));
+}
+
+IdentifierIterator IdentifierAlloc::values() noexcept
+{
+	IdentifierIterator it;
+	it.core = core;
+	it.curr = 1;
+	it.end = core->identifiers.entries.used() / alignof(IdentifierEntry);
+
+	return it;
+}
+
+IdentifierEntry* IdentifierAlloc::alloc(Range<char8> key, u32 key_hash) noexcept
+{
+	const u32 raw_size = static_cast<u32>(offsetof(IdentifierEntry, m_chars) + key.count());
+
+	const u32 size = (raw_size + alignof(IdentifierEntry) - 1) & ~(alignof(IdentifierEntry) - 1);
+
+	IdentifierEntry* const result = reinterpret_cast<IdentifierEntry*>(core->identifiers.entries.reserve(size));
+	result->m_hash = key_hash;
+	result->m_length = static_cast<u16>(key.count());
+	result->m_attachment = 0;
+	memcpy(result->m_chars, key.begin(), key.count());
+
+	return result;
+}
+
+void IdentifierAlloc::dealloc([[maybe_unused]] u32 id) noexcept
+{
+	ASSERT_UNREACHABLE;
+}
 
 
 
@@ -94,22 +149,22 @@ void identifier_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
 	ASSERT_OR_IGNORE(allocation.ranges[0].count() == IDENTIFIER_LOOKUP_RESERVE + IDENTIFIER_ENTRY_RESERVE);
 
-	IdentifierPool* const identifiers = &core->identifiers;
-
 	const MutRange<byte> lookups_memory = allocation.ranges[0].mut_subrange(0, IDENTIFIER_LOOKUP_RESERVE);
 
 	const MutRange<byte> entries_memory = allocation.ranges[0].mut_subrange(IDENTIFIER_LOOKUP_RESERVE, IDENTIFIER_ENTRY_RESERVE);
 
-	identifiers->map.init(
-		lookups_memory, IDENTIFIER_LOOKUP_INITIAL_COMMIT_COUNT,
-		entries_memory, IDENTIFIER_ENTRY_COMMIT_INCREMENT_COUNT);
+	core->identifiers.map.init(lookups_memory, IDENTIFIER_LOOKUP_INITIAL_COMMIT_COUNT, IdentifierAlloc{ core });
+
+	core->identifiers.entries.init(entries_memory, IDENTIFIER_ENTRY_COMMIT_INCREMENT_COUNT);
+
+	(void) core->identifiers.entries.reserve(sizeof(IdentifierEntry));
 }
 
 
 
 IdentifierId id_from_identifier(CoreData* core, Range<char8> identifier) noexcept
 {
-	return static_cast<IdentifierId>(core->identifiers.map.index_from(identifier, fnv1a(identifier.as_byte_range())) + static_cast<u32>(IdentifierId::FirstNatural));
+	return static_cast<IdentifierId>(core->identifiers.map.id_from(identifier, fnv1a(identifier.as_byte_range())) + static_cast<u32>(IdentifierId::FirstNatural));
 }
 
 IdentifierId id_and_attachment_from_identifier(CoreData* core, Range<char8> identifier, u8* out_token) noexcept
@@ -118,7 +173,7 @@ IdentifierId id_and_attachment_from_identifier(CoreData* core, Range<char8> iden
 
 	*out_token = entry->m_attachment;
 
-	return static_cast<IdentifierId>(core->identifiers.map.index_from(entry) + static_cast<u32>(IdentifierId::FirstNatural));
+	return static_cast<IdentifierId>(core->identifiers.map.id_from(entry) + static_cast<u32>(IdentifierId::FirstNatural));
 }
 
 void identifier_set_attachment(CoreData* core, Range<char8> identifier, u8 attachment) noexcept
