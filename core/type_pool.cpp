@@ -210,7 +210,14 @@ struct alignas(8) ShadowType
 
 	u32 size;
 
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
+	#endif
 	ShadowMember members[];
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
 };
 
 
