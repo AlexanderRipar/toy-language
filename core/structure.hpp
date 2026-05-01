@@ -171,7 +171,6 @@ struct OpcodePool
 
 	ReservedVec<SourceMapping> sources;
 
-	// TODO: This might be replaceable with `comp_heap_arena_*`
 	ReservedVec<Fixup> fixups;
 };
 
@@ -269,9 +268,41 @@ struct ImplInit;
 
 struct ImplEntry;
 
+struct HolotypeIterator
+{
+	CoreData* core;
+
+	u32 curr;
+
+	u32 end;
+
+	bool has_next() const noexcept;
+
+	Holotype* next() noexcept;
+};
+
+struct HolotypeAlloc
+{
+	CoreData* core;
+
+	Holotype* value_from_id(u32 id) noexcept;
+
+	const Holotype* value_from_id(u32 id) const noexcept;
+
+	u32 id_from_value(const Holotype* value) const noexcept;
+
+	HolotypeIterator values() noexcept;
+
+	Holotype* alloc(HolotypeInit key, u32 key_hash) noexcept;
+
+	void dealloc(u32 id) noexcept;
+};
+
 struct TypePool
 {
-	IndexMap<HolotypeInit, Holotype> holotypes;
+	IdMap<HolotypeInit, Holotype, HolotypeAlloc> holotypes;
+
+	ReservedVec<Holotype> holotype_entries;
 
 	CoreId simple_type_base_id;
 };
@@ -300,10 +331,6 @@ struct CompHeap
 
 	u64 commit_increment;
 
-	u64 arena_count;
-
-	u64 arena_begin;
-
 	u64* leak_bitmap;
 
 	u64* begin_bitmap;
@@ -317,6 +344,58 @@ struct CompHeap
 
 
 
+struct TempStack
+{
+	ReservedVec<byte> memory;
+};
+
+
+
+struct ShadowStoreKey;
+
+struct ShadowStoreEntry;
+
+struct ShadowStoreIterator
+{
+	CoreData* core;
+
+	u32 curr;
+
+	u32 end;
+
+	bool has_next() const noexcept;
+
+	ShadowStoreEntry* next() noexcept;
+};
+
+struct ShadowStoreAlloc
+{
+	CoreData* core;
+
+	ShadowStoreEntry* value_from_id(u32 id) noexcept;
+
+	const ShadowStoreEntry* value_from_id(u32 id) const noexcept;
+
+	u32 id_from_value(const ShadowStoreEntry* value) const noexcept;
+
+	ShadowStoreIterator values() noexcept;
+
+	ShadowStoreEntry* alloc(ShadowStoreKey key, u32 key_hash) noexcept;
+
+	void dealloc(u32 id) noexcept;
+};
+
+struct ShadowStore
+{
+	IdMap<ShadowStoreKey, ShadowStoreEntry, ShadowStoreAlloc> address_map;
+
+	Maybe<ShadowStoreEntry*> freelist_head;
+
+	ReservedVec<ShadowStoreEntry> entries;
+};
+
+
+
 struct CoreData
 {
 	u64 allocation_size;
@@ -324,6 +403,8 @@ struct CoreData
 	const Config* config;
 
 	CompHeap heap;
+
+	TempStack temp;
 
 	AstPool asts;
 
@@ -340,6 +421,8 @@ struct CoreData
 	SourceReader reader;
 
 	TypePool types;
+
+	ShadowStore shadow;
 
 	LexicalAnalyser lex;
 };

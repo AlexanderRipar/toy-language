@@ -128,9 +128,14 @@ struct Config
 		u64 reserve = 1 << 30;
 
 		u64 commit_increment = 1 << 18;
-
-		u64 max_huge_alloc_count = 1 << 16;
 	} heap;
+
+	struct
+	{
+		u64 reserve = 1 << 24;
+
+		u64 commit_increment = 1 << 12;
+	} shadow_store;
 
 	struct
 	{
@@ -147,7 +152,7 @@ struct Config
 
 		struct
 		{
-			ConfigLogFileRef file;
+			ConfigLogFileRef file{ false, {} };
 
 			s64 source_tab_size = 4;
 		} diagnostics;
@@ -174,6 +179,10 @@ struct Config
 		bool source_reader = true;
 
 		bool type_pool = true;
+
+		bool shadow_store = true;
+
+		bool temp_stack = true;
 	} enable;
 
 	bool compile_all = false;
@@ -195,15 +204,7 @@ TypeId comp_heap_global_member_type(CoreData* core, byte* address) noexcept;
 
 bool comp_heap_leak(CoreData* core, MutRange<byte> memory) noexcept;
 
-
-
-u64 comp_heap_arena_mark(CoreData* core) noexcept;
-
-void* comp_heap_arena_alloc(CoreData* core, u64 size, u64 align) noexcept;
-
-void comp_heap_arena_release(CoreData* core, u64 arena_mark) noexcept;
-
-void* comp_heap_arena_release_and_preserve(CoreData* core, u64 arena_mark, MutRange<byte> preserve) noexcept;
+void comp_heap_dealloc_last(CoreData* core, void* begin) noexcept;
 
 
 
@@ -214,6 +215,16 @@ bool comp_heap_gc_mark(CoreData* core, MutRange<byte> memory) noexcept;
 void comp_heap_gc_end(CoreData* core) noexcept;
 
 bool comp_heap_next_leak(CoreData* core, Maybe<byte*> prev, MutRange<byte>* out_memory, TypeId* out_type_id) noexcept;
+
+
+
+
+
+u64 temp_stack_mark(CoreData* core) noexcept;
+
+void* temp_stack_alloc(CoreData* core, u64 size, u64 align) noexcept;
+
+void temp_stack_release(CoreData* core, u64 mark) noexcept;
 
 
 
@@ -2036,6 +2047,8 @@ enum class TypeTag : u8
 	Trait,
 
 	Self,
+
+	Shadow,
 };
 
 enum class TypeRelation : u8
@@ -2115,6 +2128,10 @@ struct MemberInfo
 	bool is_impl_member_from_trait_default : 1;
 
 	u16 rank;
+
+	u16 shadow_rank;
+
+	Maybe<TypeId> shadow_type_id;
 
 	s64 offset;
 };
@@ -2460,6 +2477,8 @@ MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, Identif
 
 IdentifierId type_member_name_by_rank(CoreData* core, TypeId type_id, u16 rank) noexcept;
 
+u32 type_shadow_member_offset(CoreData* core, TypeId shadow_type_id, u16 shadow_rank) noexcept;
+
 // Do not call this function directly. Use `type_attachment_from_id` instead.
 const void* type_attachment_from_id_raw(CoreData* core, TypeId type_id) noexcept;
 
@@ -2487,6 +2506,7 @@ const T* type_attachment_from_id(CoreData* core, TypeId type_id) noexcept
 
 	return reinterpret_cast<const T*>(type_attachment_from_id_raw(core, type_id));
 }
+
 
 
 // Retrieves a string representing the given `tag`.

@@ -131,7 +131,7 @@ static ScopeMap* scope_map_alloc_sized(CoreData* core, ScopeMapKind kind, u32 ca
 {
 	ASSERT_OR_IGNORE(is_pow2(capacity));
 
-	ScopeMap* const scope = static_cast<ScopeMap*>(comp_heap_arena_alloc(core, scope_map_size(capacity), alignof(ScopeMap)));
+	ScopeMap* const scope = static_cast<ScopeMap*>(temp_stack_alloc(core, scope_map_size(capacity), alignof(ScopeMap)));
 	scope->capacity = capacity;
 	scope->used = 0;
 	scope->kind = kind;
@@ -1030,7 +1030,7 @@ bool set_prelude_scope(CoreData* core, AstNode* prelude, SourceFileId file_id) n
 
 	ASSERT_OR_IGNORE(prelude->tag == AstTag::File);
 
-	const u64 arena_mark = comp_heap_arena_mark(core);
+	const u64 mark = temp_stack_mark(core);
 
 	core->lex.prelude_file_id = file_id;
 
@@ -1042,11 +1042,16 @@ bool set_prelude_scope(CoreData* core, AstNode* prelude, SourceFileId file_id) n
 
 	const u64 prelude_scope_size = scope_map_size(prelude_scope->capacity);
 
-	const MutRange<byte> prelude_scope_memory{ reinterpret_cast<byte*>(prelude_scope), prelude_scope_size };
+	const Maybe<void*> allocation = comp_heap_alloc(core, prelude_scope_size, alignof(ScopeMap));
 
-	ScopeMap* const preserved_prelude_scope = static_cast<ScopeMap*>(comp_heap_arena_release_and_preserve(core, arena_mark, prelude_scope_memory));
+	if (is_none(allocation))
+		panic("Failed to allocate % bytes of compile-time heap memory for prelude scope.\n", prelude_scope_size);
 
-	core->lex.scopes[0] = preserved_prelude_scope;
+	memcpy(get(allocation), prelude_scope, prelude_scope_size);
+
+	core->lex.scopes[0] = static_cast<ScopeMap*>(get(allocation));
+
+	temp_stack_release(core, mark);
 
 	return !core->lex.has_error;
 }
@@ -1057,7 +1062,7 @@ bool resolve_names(CoreData* core, AstNode* root, SourceFileId file_id) noexcept
 
 	ASSERT_OR_IGNORE(root->tag == AstTag::File);
 
-	const u64 arena_mark = comp_heap_arena_mark(core);
+	const u64 mark = temp_stack_mark(core);
 
 	resolve_names_root(core, root, file_id);
 
@@ -1065,7 +1070,7 @@ bool resolve_names(CoreData* core, AstNode* root, SourceFileId file_id) noexcept
 
 	ASSERT_OR_IGNORE(core->lex.scopes_top == 0);
 
-	comp_heap_arena_release(core, arena_mark);
+	temp_stack_release(core, mark);
 
 	return !core->lex.has_error;
 }

@@ -7,6 +7,7 @@
 #include "../infra/math.hpp"
 #include "../infra/range.hpp"
 #include "../infra/hash.hpp"
+#include "../infra/inplace_sort.hpp"
 #include "../infra/container/index_map.hpp"
 #include "../infra/container/reserved_vec.hpp"
 
@@ -134,6 +135,13 @@ struct alignas(8) CompositeMember
 {
 	TypeId type_id;
 
+	union
+	{
+		Maybe<CoreId> value_or_default;
+
+		OpcodeId completion_id;
+	};
+
 	bool is_pending : 1;
 
 	bool is_pub : 1;
@@ -146,14 +154,11 @@ struct alignas(8) CompositeMember
 
 	bool is_impl_member_from_trait_default : 1;
 
-	union
-	{
-		Maybe<CoreId> value_or_default;
+	bool is_shadow_member : 1;
 
-		OpcodeId completion_id;
-	};
+	u16 shadow_rank;
 
-	u32 unused_;
+	TypeId shadow_type_id;
 };
 
 struct alignas(8) CompositeType
@@ -186,6 +191,26 @@ struct alignas(8) CompositeType
 	// Depending on `kind`:
 	// File, Trait, Impl, Signature => Nothing
 	// User => @sizeas(s64[member_capacity]) s64 member_offsets[member_count];
+};
+
+
+
+struct alignas(8) ShadowMember
+{
+	TypeId type_id;
+
+	u32 offset;
+};
+
+struct alignas(8) ShadowType
+{
+	u16 member_count;
+
+	u8 align_log2;
+
+	u32 size;
+
+	ShadowMember members[];
 };
 
 
@@ -269,27 +294,12 @@ struct alignas(8) Holotype
 
 	u32 m_hash;
 
-	static constexpr u32 stride() noexcept
-	{
-		return sizeof(Holotype);
-	}
-
-	static u32 required_strides([[maybe_unused]] HolotypeInit key) noexcept
-	{
-		return 1;
-	}
-
-	u32 used_strides() const noexcept
-	{
-		return 1;
-	}
-
 	u32 hash() const noexcept
 	{
 		return m_hash;
 	}
 
-	bool equal_to_key(HolotypeInit key, u32 key_hash) const noexcept
+	bool is_equal_to_key(HolotypeInit key, u32 key_hash) const noexcept
 	{
 		ASSERT_OR_IGNORE(key_hash != 0);
 
@@ -302,16 +312,17 @@ struct alignas(8) Holotype
 
 		return type_is_equal(key.core, m_holotype_id, key_type_id);
 	}
+};
 
-	void init([[maybe_unused]] HolotypeInit key, u32 key_hash) noexcept
-	{
-		ASSERT_OR_IGNORE(key.structure->hash == key_hash);
 
-		ASSERT_OR_IGNORE(key_hash != 0);
 
-		m_holotype_id = TypeId::INVALID;
-		m_hash = key_hash;
-	}
+struct alignas(8) ShadowMemberInitializer
+{
+	s64 offset;
+
+	TypeId type_id;
+
+	u16 rank;
 };
 
 
@@ -320,7 +331,7 @@ static constexpr u64 HOLOTYPES_LOOKUPS_RESERVE = decltype(TypePool::holotypes)::
 
 static constexpr u32 HOLOTYPES_LOOKUPS_INITIAL_COMMIT_COUNT = static_cast<u32>(1) << 10;
 
-static constexpr u32 HOLOTYPES_VALUES_RESERVE = (static_cast<u32>(1) << 20) * Holotype::stride();
+static constexpr u32 HOLOTYPES_VALUES_RESERVE = (static_cast<u32>(1) << 20) * sizeof(Holotype);
 
 static constexpr u32 HOLOTYPES_VALUES_COMMIT_INCREMENT_COUNT = static_cast<u32>(1) << 12;
 
@@ -491,6 +502,8 @@ static bool fill_member_info(CompositeInfo info, u16 rank, MemberInfo* out_info,
 		out_info->is_eval = type.is_eval;
 		out_info->is_global = info.kind != CompositeKind::User && info.kind != CompositeKind::Signature;
 		out_info->rank = rank;
+		out_info->shadow_rank = type.shadow_rank;
+		out_info->shadow_type_id = type.is_shadow_member ? some(type.shadow_type_id) : none<TypeId>();
 		out_info->offset = is_some(info.member_offsets) ? get(info.member_offsets)[rank] : 0;
 
 		return true;
@@ -527,7 +540,7 @@ static TypeStructure* follow_indirection(CoreData* core, TypeStructure* indirect
 
 
 
-static TypeId holotype_id_from_interned_type_structure(CoreData* core, TypeStructure* structure) noexcept
+static TypeId holotype_id_from_interned_type_structure(CoreData* core, TypeStructure* structure, bool delete_duplicate) noexcept
 {
 	ASSERT_OR_IGNORE(structure->holotype_id == TypeId::INVALID);
 
@@ -539,20 +552,16 @@ static TypeId holotype_id_from_interned_type_structure(CoreData* core, TypeStruc
 
 	Holotype* const holotype = core->types.holotypes.value_from(init, structure->hash);
 
-	if (holotype->m_holotype_id != TypeId::INVALID)
-	{
-		structure->holotype_id = holotype->m_holotype_id;
+	const TypeId structure_id = id_from_structure(core, structure);
 
-		return holotype->m_holotype_id;
-	}
+	const TypeId holotype_id = holotype->m_holotype_id;
 
-	const TypeId type_id = id_from_structure(core, structure);
+	structure->holotype_id = holotype_id;
 
-	structure->holotype_id = type_id;
+	if (holotype_id != structure_id && delete_duplicate)
+		comp_heap_dealloc_last(core, structure);
 
-	holotype->m_holotype_id = type_id;
-
-	return type_id;
+	return holotype_id;
 }
 
 static TypeId holotype_id_from_attachment(CoreData* core, TypeTag tag, Range<byte> attach) noexcept
@@ -570,16 +579,16 @@ static TypeId holotype_id_from_attachment(CoreData* core, TypeTag tag, Range<byt
 
 	Holotype* const holotype = core->types.holotypes.value_from(init, structure->hash);
 
-	if (holotype->m_holotype_id != TypeId::INVALID)
-		return holotype->m_holotype_id;
+	const TypeId structure_id = id_from_structure(core, structure);
 
-	const TypeId id = id_from_structure(core, structure);
+	const TypeId holotype_id = holotype->m_holotype_id;
 
-	holotype->m_holotype_id = id;
+	if (holotype_id == structure_id)
+		structure->holotype_id = holotype_id;
+	else
+		comp_heap_dealloc_last(core, structure);
 
-	structure->holotype_id = id;
-
-	return id;
+	return holotype_id;
 }
 
 
@@ -588,7 +597,7 @@ static SeenSet seen_set_create_with_capacity(CoreData* core, u32 capacity) noexc
 {
 	ASSERT_OR_IGNORE(capacity != 0 && is_pow2(capacity));
 
-	void* memory = comp_heap_arena_alloc(core, capacity * 2 * sizeof(SeenSetEntry), alignof(SeenSetEntry));
+	void* memory = temp_stack_alloc(core, capacity * 2 * sizeof(SeenSetEntry), alignof(SeenSetEntry));
 
 	memset(memory, 0, capacity * sizeof(SeenSetEntry));
 
@@ -697,6 +706,100 @@ static void seen_set_pop(SeenSet* set) noexcept
 	set->memory[table_index].id = static_cast<TypeId>(1);
 	
 	set->stack_top -= 1;
+}
+
+
+
+static TypeId type_create_shadow_composite(CoreData* core, Range<ShadowMemberInitializer> initializers) noexcept
+{
+	const u64 composite_size = sizeof(ShadowType) + initializers.count() * sizeof(ShadowMember);
+
+	TypeStructure* const structure = make_structure_nohash(core, TypeTag::Shadow, {}, composite_size);
+
+	ShadowType* const composite = reinterpret_cast<ShadowType*>(structure + 1);
+	composite->member_count = static_cast<u16>(initializers.count());
+
+	u32 offset = 0;
+
+	for (u16 i = 0; i != initializers.count(); ++i)
+	{
+		composite->members[i].type_id = initializers[i].type_id;
+		composite->members[i].offset = offset;
+	}
+
+	return holotype_id_from_interned_type_structure(core, structure, true);
+}
+
+static void init_user_composite_shadow_data(CoreData* core, CompositeType* composite) noexcept
+{
+	struct OffsetComparator
+	{
+		static s64 compare(const ShadowMemberInitializer& a, const ShadowMemberInitializer& b) noexcept
+		{
+			if (a.offset < b.offset)
+				return -1;
+			else if (a.offset > b.offset)
+				return 1;
+			else if (a.rank < b.rank)
+				return -1;
+			else if (a.rank > b.rank)
+				return 1;
+			else
+				return 0;
+		}
+	};
+
+	const CompositeInfo info = composite_info(composite);
+
+	ASSERT_OR_IGNORE(info.kind == CompositeKind::User);
+
+	const u64 mark = temp_stack_mark(core);
+
+	ShadowMemberInitializer* const by_offset = static_cast<ShadowMemberInitializer*>(temp_stack_alloc(core, info.member_count * sizeof(ShadowMemberInitializer), alignof(ShadowMemberInitializer)));
+
+	u16 shadow_member_count = 0;
+
+	for (u16 i = 0; i != info.member_count; ++i)
+	{
+		if (!info.member_types[i].is_shadow_member)
+			continue;
+
+		by_offset[shadow_member_count].offset = get(info.member_offsets)[i];
+		by_offset[shadow_member_count].type_id = info.member_types[i].type_id;
+		by_offset[shadow_member_count].rank = i;
+
+		shadow_member_count += 1;
+	}
+
+	inplace_sort<ShadowMemberInitializer, OffsetComparator>(MutRange{ by_offset, shadow_member_count });
+
+	u16 i = 0;
+
+	while (i != shadow_member_count)
+	{
+		const s64 offset = by_offset[i].offset;
+
+		const u16 begin = i;
+
+		i += 1;
+
+		while (i != shadow_member_count && by_offset[i].offset == offset)
+			i += 1;
+
+		const u16 end = i;
+
+		const TypeId shadow_type_id = type_create_shadow_composite(core, Range{ by_offset + begin, by_offset + end });
+
+		for (u16 j = 0; j != end - begin; ++j)
+		{
+			const u16 rank = by_offset[begin + j].rank;
+
+			info.member_types[rank].shadow_type_id = shadow_type_id;
+			info.member_types[rank].shadow_rank = j;
+		}
+	}
+
+	temp_stack_release(core, mark);
 }
 
 
@@ -821,6 +924,22 @@ static u32 hash_self_type(CoreData* core, u32 hash, SeenSet* seen, const SelfTyp
 	return fnv1a_step(hash, range::from_object_bytes(&attach->trait_body_opcode_id)) | 1;
 }
 
+static u32 hash_shadow_type(CoreData* core, u32 hash, SeenSet* seen, const ShadowType* attach) noexcept
+{
+	const u16 member_count = attach->member_count;
+
+	hash = fnv1a_step(hash, range::from_object_bytes(&attach->member_count)) | 1;
+
+	for (u16 i = 0; i != member_count; ++i)
+	{
+		hash = hash_type_id(core, hash, seen, attach->members[i].type_id);
+
+		ASSERT_OR_IGNORE(hash != 0);
+	}
+
+	return hash;
+}
+
 static u32 hash_numeric_type([[maybe_unused]] CoreData* core, u32 hash, const NumericType* attach) noexcept
 {
 	return fnv1a_step(fnv1a_step(hash, static_cast<byte>(attach->is_signed)), range::from_object_bytes(&attach->bits)) | 1;
@@ -888,12 +1007,15 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 	case TypeTag::Trait:
 		return hash_composite_type(core, hash, seen, reinterpret_cast<const CompositeType*>(structure->attach));
 
+	case TypeTag::Self:
+		return hash_self_type(core, hash, seen, reinterpret_cast<const SelfType*>(structure->attach));
+
+	case TypeTag::Shadow:
+		return hash_shadow_type(core, hash, seen, reinterpret_cast<const ShadowType*>(structure->attach));
+
 	case TypeTag::Variadic:
 	case TypeTag::Definition:
 		TODO("Implement `hash_type_structure_preseen(%)`.", tag_name(tag));
-
-	case TypeTag::Self:
-		return hash_self_type(core, hash, seen, reinterpret_cast<const SelfType*>(structure->attach));
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
@@ -935,18 +1057,26 @@ static bool init_structure_hash(CoreData* core, TypeStructure* structure) noexce
 {
 	ASSERT_OR_IGNORE(structure->hash == 0);
 
-	const u64 arena_mark = comp_heap_arena_mark(core);
+	const u64 mark = temp_stack_mark(core);
 
 	SeenSet seen = seen_set_create(core);
 
 	const u32 hash = hash_type_structure(core, FNV1A_SEED, &seen, structure);
 
-	comp_heap_arena_release(core, arena_mark);
+	temp_stack_release(core, mark);
 
 	if (hash == 0)
 		return false;
 
 	structure->hash = hash;
+
+	if (structure->tag != TypeTag::Composite)
+		return true;
+
+	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
+
+	if (composite->kind == CompositeKind::User)
+		init_user_composite_shadow_data(core, composite);
 
 	return true;
 }
@@ -1048,9 +1178,9 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 
 		const u32 required_seen_qwords = to_attach->member_used / 64 + 63;
 
-		const u64 arena_mark = comp_heap_arena_mark(core);
+		const u64 mark = temp_stack_mark(core);
 
-		u64* seen_member_bits = static_cast<u64*>(comp_heap_arena_alloc(core, required_seen_qwords, sizeof(u64)));
+		u64* seen_member_bits = static_cast<u64*>(temp_stack_alloc(core, required_seen_qwords, sizeof(u64)));
 
 		memset(seen_member_bits, 0, required_seen_qwords * sizeof(u64));
 
@@ -1074,7 +1204,7 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 
 				if (!find_member_by_name(to_info, from_name, &found_rank))
 				{
-					comp_heap_arena_release(core, arena_mark);
+					temp_stack_release(core, mark);
 
 					return false;
 				}
@@ -1090,7 +1220,7 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 			if (!type_is_equal(core, from_member.type_id, to_member.type_id)
 			 && !type_can_implicitly_convert_from_to_assume_unequal(core, from_member.type_id, to_member.type_id)
 			) {
-				comp_heap_arena_release(core, arena_mark);
+				temp_stack_release(core, mark);
 
 				return false;
 			}
@@ -1111,13 +1241,13 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 
 			if (is_none(to_member.value_or_default))
 			{
-				comp_heap_arena_release(core, arena_mark);
+				temp_stack_release(core, mark);
 
 				return false;
 			}
 		}
 
-		comp_heap_arena_release(core, arena_mark);
+		temp_stack_release(core, mark);
 
 		return true;
 	}
@@ -1151,6 +1281,7 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 		    || type_can_implicitly_convert_from_to_assume_unequal(core, attach->base_type_id, to_type_id);
 	}
 
+	case TypeTag::Shadow:
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
 		break; // Fallthrough to unreachable.
@@ -1174,10 +1305,10 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 		return true;
 
 	if (a->hash == 0 && init_structure_hash(core, a))
-		(void) holotype_id_from_interned_type_structure(core, a);
+		(void) holotype_id_from_interned_type_structure(core, a, false);
 
 	if (b->hash == 0 && init_structure_hash(core, b))
-		(void) holotype_id_from_interned_type_structure(core, b);
+		(void) holotype_id_from_interned_type_structure(core, b, false);
 
 	// This is assumed to be the common case, so we check for it as early as
 	// possible.
@@ -1559,6 +1690,40 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 		return true;
 	}
 
+	case TypeTag::Shadow:
+	{
+		const ShadowType* const a_attach = reinterpret_cast<ShadowType*>(a->attach);
+
+		const ShadowType* const b_attach = reinterpret_cast<ShadowType*>(b->attach);
+
+		if (a_attach->member_count != b_attach->member_count)
+		{
+			seen_set_pop(a_seen);
+
+			seen_set_pop(b_seen);
+
+			return false;
+		}
+
+		for (u16 i = 0; i != a_attach->member_count; ++i)
+		{
+			if (!type_is_equal_noloop(core, a_attach->members[i].type_id, b_attach->members[i].type_id, a_seen, b_seen))
+			{
+				seen_set_pop(a_seen);
+
+				seen_set_pop(b_seen);
+
+				return false;
+			}
+		}
+
+		seen_set_pop(a_seen);
+
+		seen_set_pop(b_seen);
+
+		return true;
+	}
+
 	case TypeTag::Variadic:
 		TODO("Implement `type_is_equal_noloop(%)`.", tag_name(tag));
 
@@ -1631,10 +1796,9 @@ void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 	const MutRange<byte> dedup_values_memory = allocation.ranges[0].mut_subrange(offset, HOLOTYPES_VALUES_RESERVE);
 	offset += HOLOTYPES_VALUES_RESERVE;
 
-	types->holotypes.init(
-		dedup_lookups_memory, HOLOTYPES_LOOKUPS_INITIAL_COMMIT_COUNT,
-		dedup_values_memory, HOLOTYPES_VALUES_COMMIT_INCREMENT_COUNT
-	);
+	types->holotypes.init(dedup_lookups_memory, HOLOTYPES_LOOKUPS_INITIAL_COMMIT_COUNT, HolotypeAlloc{ core });
+
+	types->holotype_entries.init(dedup_values_memory, HOLOTYPES_VALUES_COMMIT_INCREMENT_COUNT);
 
 	// Reserve simple types for use with `type_create_simple`.
 	
@@ -1649,7 +1813,7 @@ void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 		TypeStructure* const simple_structure = make_structure_nohash(core, static_cast<TypeTag>(ordinal), {}, 0);
 		simple_structure->hash = ordinal;
 
-		(void) holotype_id_from_interned_type_structure(core, simple_structure);
+		(void) holotype_id_from_interned_type_structure(core, simple_structure, false);
 	}
 }
 
@@ -1777,7 +1941,7 @@ TypeId type_seal_signature(CoreData* core, TypeId type_id, SignatureSealInfo sea
 	if (!init_structure_hash(core, structure))
 		ASSERT_UNREACHABLE;
 
-	return holotype_id_from_interned_type_structure(core, structure);
+	return holotype_id_from_interned_type_structure(core, structure, false);
 }
 
 TypeId type_instantiate_templated_signature(CoreData* core, TypeId type_id) noexcept
@@ -1871,7 +2035,7 @@ TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names) no
 	if (!init_structure_hash(core, structure))
 		ASSERT_UNREACHABLE;
 
-	return holotype_id_from_interned_type_structure(core, structure);
+	return holotype_id_from_interned_type_structure(core, structure, true);
 }
 
 
@@ -1911,7 +2075,7 @@ TypeId type_set_self_trait_arguments(CoreData* core, TypeId type_id, const TypeI
 	if (!init_structure_hash(core, structure))
 		ASSERT_UNREACHABLE;
 
-	return holotype_id_from_interned_type_structure(core, structure);
+	return holotype_id_from_interned_type_structure(core, structure, false);
 }
 
 void type_set_self_impl_body(CoreData* core, TypeId type_id, TypeId impl_body_type_id) noexcept
@@ -2007,7 +2171,7 @@ void type_seal_impl_body(CoreData* core, TypeId type_id) noexcept
 	if (!init_structure_hash(core, structure))
 		ASSERT_UNREACHABLE;
 
-	(void) holotype_id_from_interned_type_structure(core, structure);
+	(void) holotype_id_from_interned_type_structure(core, structure, false);
 }
 
 
@@ -2111,7 +2275,7 @@ TypeId type_seal_user_composite(CoreData* core, TypeId type_id, UserCompositeSea
 	if (!init_structure_hash(core, structure))
 		return type_id;
 
-	return holotype_id_from_interned_type_structure(core, structure);
+	return holotype_id_from_interned_type_structure(core, structure, false);
 }
 
 
@@ -2295,7 +2459,7 @@ bool type_is_equal(CoreData* core, TypeId type_id_a, TypeId type_id_b) noexcept
 	if (a->holotype_id != TypeId::INVALID && b->holotype_id != TypeId::INVALID)
 		return a->holotype_id == b->holotype_id;
 
-	const u64 arena_mark = comp_heap_arena_mark(core);
+	const u64 mark = temp_stack_mark(core);
 
 	SeenSet a_seen = seen_set_create(core);
 
@@ -2303,7 +2467,7 @@ bool type_is_equal(CoreData* core, TypeId type_id_a, TypeId type_id_b) noexcept
 
 	const bool result = type_is_equal_noloop(core, type_id_a, type_id_b, &a_seen, &b_seen);
 
-	comp_heap_arena_release(core, arena_mark);
+	temp_stack_release(core, mark);
 
 	return result;
 }
@@ -2523,6 +2687,19 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 		return type_metrics_from_id(core, attach->base_type_id);
 	}
 
+	case TypeTag::Shadow:
+	{
+		const ShadowType* const shadow = reinterpret_cast<const ShadowType*>(structure + 1);
+
+		const u64 size = shadow->size;
+
+		const u32 align = static_cast<u32>(1) << shadow->align_log2;
+
+		const u64 stride = (size + align - 1) & ~static_cast<u64>(align - 1);
+
+		return TypeMetrics{ size, stride, align };
+	}
+
 	case TypeTag::Definition:
 	case TypeTag::TailArray:
 		TODO("Implement `type_metrics_from_id(%)`.", tag_name(structure->tag));
@@ -2610,6 +2787,19 @@ IdentifierId type_member_name_by_rank(CoreData* core, TypeId type_id, u16 rank) 
 	const CompositeInfo info = composite_info(composite);
 
 	return info.member_names[rank];
+}
+
+u32 type_shadow_member_offset(CoreData* core, TypeId shadow_type_id, u16 shadow_rank) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, shadow_type_id);
+
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Shadow);
+
+	ShadowType* const shadow = reinterpret_cast<ShadowType*>(structure + 1);
+
+	ASSERT_OR_IGNORE(shadow_rank < shadow->member_count);
+
+	return shadow->members[shadow_rank].offset;
 }
 
 const void* type_attachment_from_id_raw(CoreData* core, TypeId type_id) noexcept
@@ -2712,4 +2902,73 @@ bool has_next(const MemberIterator* it) noexcept
 	ASSERT_OR_IGNORE(it->rank <= it->count);
 
 	return it->rank != it->count;
+}
+
+
+
+bool HolotypeIterator::has_next() const noexcept
+{
+	ASSERT_OR_IGNORE(curr <= end);
+
+	return curr != end;
+}
+
+Holotype* HolotypeIterator::next() noexcept
+{
+	ASSERT_OR_IGNORE(has_next());
+
+	Holotype* const entry = core->types.holotype_entries.begin() + curr;
+
+	curr += 1;
+
+	return entry;
+}
+
+
+
+Holotype* HolotypeAlloc::value_from_id(u32 id) noexcept
+{
+	ASSERT_OR_IGNORE(id < core->types.holotype_entries.used());
+
+	return core->types.holotype_entries.begin() + id;
+}
+
+const Holotype* HolotypeAlloc::value_from_id(u32 id) const noexcept
+{
+	ASSERT_OR_IGNORE(id < core->types.holotype_entries.used());
+
+	return core->types.holotype_entries.begin() + id;
+}
+
+u32 HolotypeAlloc::id_from_value(const Holotype* value) const noexcept
+{
+	ASSERT_OR_IGNORE(value >= core->types.holotype_entries.begin());
+
+	ASSERT_OR_IGNORE(value < core->types.holotype_entries.end());
+
+	return static_cast<u32>(value - core->types.holotype_entries.begin());
+}
+
+HolotypeIterator HolotypeAlloc::values() noexcept
+{
+	HolotypeIterator it;
+	it.core = core;
+	it.curr = 0;
+	it.end = core->types.holotype_entries.used();
+
+	return it;
+}
+
+Holotype* HolotypeAlloc::alloc(HolotypeInit key, u32 key_hash) noexcept
+{
+	Holotype* const holotype = core->types.holotype_entries.reserve();
+	holotype->m_hash = key_hash;
+	holotype->m_holotype_id = id_from_structure(core, key.structure);
+
+	return holotype;
+}
+
+void HolotypeAlloc::dealloc([[maybe_unused]] u32 id) noexcept
+{
+	ASSERT_UNREACHABLE;
 }

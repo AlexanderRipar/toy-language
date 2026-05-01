@@ -129,8 +129,6 @@ static void comp_heap_mark_bitmap_bit(CoreData* core, u64* bitmap, byte* memory)
 
 static Maybe<void*> comp_heap_alloc_internal(CoreData* core, u64 size, u64 align, bool needs_header) noexcept
 {
-	ASSERT_OR_IGNORE(core->heap.arena_count == 0);
-
 	ASSERT_OR_IGNORE(is_pow2(align));
 
 	const u64 header_size = needs_header ? COMP_HEAP_MIN_ALLOCATION_SIZE : 0;
@@ -316,8 +314,6 @@ void comp_heap_init(CoreData* core, MemoryAllocation allocation) noexcept
 	core->heap.commit = commit_increment;
 	core->heap.reserve = heap_size;
 	core->heap.commit_increment = commit_increment;
-	core->heap.arena_count = 0;
-	core->heap.arena_begin = 0;
 	core->heap.leak_bitmap = reinterpret_cast<u64*>(allocation.ranges[1].begin());
 	core->heap.begin_bitmap = reinterpret_cast<u64*>(allocation.ranges[1].begin() + bitmap_size);
 	core->heap.header_bitmap = reinterpret_cast<u64*>(allocation.ranges[1].begin() + 2 * bitmap_size);
@@ -401,72 +397,19 @@ bool comp_heap_leak(CoreData* core, MutRange<byte> memory) noexcept
 	return true;
 }
 
-
-
-u64 comp_heap_arena_mark(CoreData* core) noexcept
+void comp_heap_dealloc_last(CoreData* core, void* begin) noexcept
 {
-	ASSERT_OR_IGNORE(core->heap.arena_count == 0 || core->heap.arena_begin <= core->heap.used);
+	ASSERT_OR_IGNORE(static_cast<byte*>(begin) > core->heap.memory);
 
-	if (core->heap.arena_count == 0)
-		core->heap.arena_begin = core->heap.used;
+	ASSERT_OR_IGNORE(static_cast<byte*>(begin) < core->heap.memory + core->heap.used);
 
-	core->heap.arena_count += 1;
+	const u64 slot = (static_cast<byte*>(begin) - core->heap.memory) / COMP_HEAP_MIN_ALLOCATION_SIZE;
 
-	return core->heap.used;
-}
+	ASSERT_OR_IGNORE((core->heap.begin_bitmap[slot >> 6] & (static_cast<u64>(1) << (slot & 63))) != 0);
 
-void* comp_heap_arena_alloc(CoreData* core, u64 size, u64 align) noexcept
-{
-	ASSERT_OR_IGNORE(core->heap.arena_count != 0);
+	core->heap.begin_bitmap[slot >> 6] &= ~(static_cast<u64>(1) << (slot & 63));
 
-	ASSERT_OR_IGNORE(is_pow2(align));
-
-	const u64 aligned_begin = (core->heap.used + align - 1) & ~(align - 1);
-
-	const u64 new_used = aligned_begin + size;
-
-	// Arena allocations are not padded to slot boundaries, to allow
-	// consecutive allocations to use contiguous addresses.
-	core->heap.used = new_used;
-
-	if (!comp_heap_ensure_commit(core, new_used))
-		panic("Failed to allocate % bytes in global arena.\n", size);
-
-	return core->heap.memory + aligned_begin;
-}
-
-void comp_heap_arena_release(CoreData* core, u64 arena_mark) noexcept
-{
-	ASSERT_OR_IGNORE(core->heap.arena_count != 0);
-
-	ASSERT_OR_IGNORE(core->heap.arena_begin <= arena_mark);
-
-	ASSERT_OR_IGNORE(core->heap.arena_count != 1 || core->heap.arena_begin == arena_mark);
-
-	core->heap.arena_count -= 1;
-
-	core->heap.used = arena_mark;
-}
-
-void* comp_heap_arena_release_and_preserve(CoreData* core, u64 arena_mark, MutRange<byte> preserve) noexcept
-{
-	ASSERT_OR_IGNORE(core->heap.arena_count == 1);
-
-	ASSERT_OR_IGNORE(core->heap.arena_begin == arena_mark);
-
-	ASSERT_OR_IGNORE(preserve.begin() >= core->heap.memory + core->heap.arena_begin);
-
-	ASSERT_OR_IGNORE(preserve.end() <= core->heap.memory + core->heap.used);
-
-	core->heap.arena_count -= 1;
-
-	byte* const preserved_begin = core->heap.memory + arena_mark;
-
-	memmove(preserved_begin, preserve.begin(), preserve.count());
-
-	core->heap.used = arena_mark + preserve.count();
-
-	return preserved_begin;
+	core->heap.used = static_cast<byte*>(begin) - core->heap.memory;
 }
 
 

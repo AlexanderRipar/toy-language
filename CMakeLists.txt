@@ -40,7 +40,9 @@ set(CORE_SOURCES
 	core/lexical_analyser.cpp
 	core/opcode_pool.cpp
 	core/parse.cpp
+	core/shadow_store.cpp
 	core/source_reader.cpp
+	core/temp_stack.cpp
 	core/type_pool.cpp
 )
 

@@ -272,8 +272,6 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 		TEST_EQUAL(next(&it, &member_info, &member_initializer), true);
 
 
-		static_assert(sizeof(member_info) == sizeof(member_init));
-
 		TEST_EQUAL(member_info.is_eval, false);
 
 		TEST_EQUAL(member_info.is_mut, member_init.is_mut);

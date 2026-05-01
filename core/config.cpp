@@ -70,8 +70,12 @@ static constexpr TreeSchemaNode CONFIG_STD[] = {
 
 static constexpr TreeSchemaNode CONFIG_HEAP[] = {
 	make_integer_info(offsetof(Config, heap.reserve), 0, (static_cast<s64>(1) << 32) * 16, "reserve", "Size the managed heap's small allocation section can grow to, in bytes"),
-	make_integer_info(offsetof(Config, heap.commit_increment), 0, INT64_MAX, "commit-increment", "Number of bytes the managed heap's small allocation section is resized in"),
-	make_integer_info(offsetof(Config, heap.max_huge_alloc_count), 0, INT64_MAX, "max-huge-allocation-count", "Maximum number of huge allocations that may be alive at the same time in the managed heap"),
+	make_integer_info(offsetof(Config, heap.commit_increment), 0, INT64_MAX, "commit-increment", "Number of bytes the managed heap is grown by at a time"),
+};
+
+static constexpr TreeSchemaNode CONFIG_SHADOW_STORE[] = {
+	make_integer_info(offsetof(Config, shadow_store.reserve), 0, static_cast<s64>(1) << 31, "reserve", "Number of entries allowed in the shadow store"),
+	make_integer_info(offsetof(Config, shadow_store.commit_increment), 0, static_cast<s64>(1) << 31, "commit-increment", "Number of entries added to the shadow store's committed memory upon requiring additional commit"),
 };
 
 static constexpr TreeSchemaNode CONFIG_LOGGING_IMPORTS_ASTS[] = {
@@ -123,12 +127,15 @@ static constexpr TreeSchemaNode CONFIG_ENABLE[] = {
 	make_boolean_info(offsetof(Config, enable.parser), "parser", "Whether to initialize the parser. Responsible for parsing source code into ASTs"),
 	make_boolean_info(offsetof(Config, enable.source_reader), "source_reader", "Whether to initialize the source reader. Responsible for reading source files and making sure no source file is processed more than once by keeping track of seen files"),
 	make_boolean_info(offsetof(Config, enable.type_pool), "type_pool", "Whether to initialize the type pool. Responsible for storing types"),
+	make_boolean_info(offsetof(Config, enable.shadow_store), "shadow_store", "Whether to initialize the shadow store. Responsible for managing zero-sized values"),
+	make_boolean_info(offsetof(Config, enable.temp_stack), "temp_stack", "Whether to initialize the temporary stack. Holds large values with stack-like lifetime"),
 };
 
 static constexpr TreeSchemaNode CONFIG_ROOTS[] = {
 	make_container_info(Range<TreeSchemaNode>{ CONFIG_ENTRYPOINT }, "entrypoint", "Entrypoint configuration"),
 	make_container_info(Range<TreeSchemaNode>{ CONFIG_STD }, "std", "Standard library configuration"),
 	make_container_info(Range<TreeSchemaNode>{ CONFIG_HEAP }, "heap", "Managed heap configuration"),
+	make_container_info(Range<TreeSchemaNode>{ CONFIG_SHADOW_STORE }, "shadow-store", "Shadow store configuration for holding zero-sized values"),
 	make_container_info(Range<TreeSchemaNode>{ CONFIG_LOGGING }, "logging", "Debug log configuration"),
 	make_container_info(Range<TreeSchemaNode>{ CONFIG_ENABLE }, "enable", "Allows only initializing certain submodules. Mainly intended for testing, when not all modules are exercised"),
 	make_boolean_info(offsetof(Config, compile_all), "compile-all", "Whether to compile all top-level definitions"),

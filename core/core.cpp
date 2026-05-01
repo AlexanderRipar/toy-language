@@ -36,6 +36,10 @@ bool source_reader_validate_config(const Config* config, PrintSink sink) noexcep
 
 bool type_pool_validate_config(const Config* config, PrintSink sink) noexcept;
 
+bool shadow_store_validate_config(const Config* config, PrintSink sink) noexcept;
+
+bool temp_stack_validate_config(const Config* config, PrintSink sink) noexcept;
+
 
 
 MemoryRequirements comp_heap_memory_requirements(const Config* config) noexcept;
@@ -58,6 +62,10 @@ MemoryRequirements source_reader_memory_requirements(const Config* config) noexc
 
 MemoryRequirements type_pool_memory_requirements(const Config* config) noexcept;
 
+MemoryRequirements shadow_store_memory_requirements(const Config* config) noexcept;
+
+MemoryRequirements temp_stack_memory_requirements(const Config* config) noexcept;
+
 
 
 void comp_heap_init(CoreData* core, MemoryAllocation allocation) noexcept;
@@ -79,6 +87,10 @@ void parser_init(CoreData* core, MemoryAllocation allocation) noexcept;
 void source_reader_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
 void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept;
+
+void shadow_store_init(CoreData* core, MemoryAllocation allocation) noexcept;
+
+void temp_stack_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
 
 
@@ -118,6 +130,7 @@ CoreData* create_core_data(const Config* config) noexcept
 {
 	static constexpr validate_config_func VALIDATE_CONFIG_FUNCS[] = {
 		&comp_heap_validate_config,
+		&temp_stack_validate_config,
 		&ast_pool_validate_config,
 		&error_sink_validate_config,
 		&identifier_pool_validate_config,
@@ -127,10 +140,12 @@ CoreData* create_core_data(const Config* config) noexcept
 		&parser_validate_config,
 		&source_reader_validate_config,
 		&interpreter_validate_config,
+		&shadow_store_validate_config,
 	};
 
 	static constexpr memory_requirements_func MEMORY_REQUIREMENTS_FUNCS[] = {
 		&comp_heap_memory_requirements,
+		&temp_stack_memory_requirements,
 		&ast_pool_memory_requirements,
 		&error_sink_memory_requirements,
 		&identifier_pool_memory_requirements,
@@ -140,10 +155,12 @@ CoreData* create_core_data(const Config* config) noexcept
 		&parser_memory_requirements,
 		&source_reader_memory_requirements,
 		&interpreter_memory_requirements,
+		&shadow_store_memory_requirements,
 	};
 
 	static constexpr init_func INIT_FUNCS[] = {
 		&comp_heap_init,
+		&temp_stack_init,
 		&ast_pool_init,
 		&error_sink_init,
 		&identifier_pool_init,
@@ -153,10 +170,12 @@ CoreData* create_core_data(const Config* config) noexcept
 		&parser_init,
 		&source_reader_init,
 		&interpreter_init,
+		&shadow_store_init,
 	};
 
 	const bool enable_flags[] = {
 		config->enable.heap,
+		config->enable.temp_stack,
 		config->enable.ast_pool,
 		config->enable.error_sink,
 		config->enable.identifier_pool,
@@ -166,6 +185,7 @@ CoreData* create_core_data(const Config* config) noexcept
 		config->enable.parser,
 		config->enable.source_reader,
 		config->enable.interpreter,
+		config->enable.shadow_store,
 	};
 
 	static_assert(array_count(VALIDATE_CONFIG_FUNCS) == array_count(MEMORY_REQUIREMENTS_FUNCS));
