@@ -272,6 +272,7 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
+	case TypeTag::Shadow:
 		; // fallthrough to unreachable.
 	}
 

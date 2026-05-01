@@ -831,6 +831,7 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 	case TypeTag::TailArray:
 	case TypeTag::Variadic:
 	case TypeTag::Trait:
+	case TypeTag::Shadow:
 		; // Fallthrough to unreachable.
 	}
 
@@ -1182,6 +1183,7 @@ static CompareResult compare(CoreData* core, TypeId type, Range<byte> lhs, Range
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
+	case TypeTag::Shadow:
 		; // Fallthrough to unreachable.
 	}
 
