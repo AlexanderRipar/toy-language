@@ -277,13 +277,77 @@ struct Parser
 
 struct SourceFileByPathEntry;
 
+struct SourceFileByPathIterator
+{
+	CoreData* core;
+
+	u32 curr;
+
+	u32 end;
+
+	bool has_next() const noexcept;
+
+	SourceFileByPathEntry* next() noexcept;
+};
+
+struct SourceFileByPathAlloc
+{
+	CoreData* core;
+
+	SourceFileByPathEntry* value_from_id(u32 id) noexcept;
+
+	const SourceFileByPathEntry* value_from_id(u32 id) const noexcept;
+
+	u32 id_from_value(const SourceFileByPathEntry* value) const noexcept;
+
+	SourceFileByPathIterator values() noexcept;
+
+	SourceFileByPathEntry* alloc(Range<char8> key, u32 key_hash) noexcept;
+
+	void dealloc(u32 id) noexcept;
+};
+
 struct SourceFileByIdEntry;
+
+struct SourceFileByIdIterator
+{
+	CoreData* core;
+
+	u32 curr;
+
+	u32 end;
+
+	bool has_next() const noexcept;
+
+	SourceFileByIdEntry* next() noexcept;
+};
+
+struct SourceFileByIdAlloc
+{
+	CoreData* core;
+
+	SourceFileByIdEntry* value_from_id(u32 id) noexcept;
+
+	const SourceFileByIdEntry* value_from_id(u32 id) const noexcept;
+
+	u32 id_from_value(const SourceFileByIdEntry* value) const noexcept;
+
+	SourceFileByIdIterator values() noexcept;
+
+	SourceFileByIdEntry* alloc(minos::FileIdentity key, u32 key_hash) noexcept;
+
+	void dealloc(u32 id) noexcept;
+};
 
 struct SourceReader
 {
-	IndexMap<Range<char8>, SourceFileByPathEntry> known_files_by_path;
+	IdMap<Range<char8>, SourceFileByPathEntry, SourceFileByPathAlloc> known_files_by_path;
 
-	IndexMap<minos::FileIdentity, SourceFileByIdEntry> known_files_by_identity;
+	IdMap<minos::FileIdentity, SourceFileByIdEntry, SourceFileByIdAlloc> known_files_by_identity;
+
+	ReservedVec<byte> path_entries;
+
+	ReservedVec<SourceFileByIdEntry> id_entries;
 
 	u32 curr_source_id_base;
 

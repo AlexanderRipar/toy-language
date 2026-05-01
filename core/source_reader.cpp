@@ -18,7 +18,11 @@ static u32 hash_file_identity(u64 file_id, u32 device_id) noexcept
 	return fnv1a_step(fnv1a(range::from_object_bytes(&file_id)), range::from_object_bytes(&device_id));
 }
 
-struct SourceFileByPathEntry
+#ifdef COMPILER_MSVC
+	#pragma warning(push)
+	#pragma warning(disable : 4324) // structure was padded due to alignment specifier
+#endif
+struct alignas(8) SourceFileByPathEntry
 {
 	u32 m_hash;
 
@@ -35,46 +39,21 @@ struct SourceFileByPathEntry
 		#pragma GCC diagnostic pop
 	#endif
 
-	static constexpr u32 stride() noexcept
-	{
-		return 8;
-	}
-
-	static u32 required_strides(Range<char8> key) noexcept
-	{
-		return static_cast<u32>((offsetof(SourceFileByPathEntry, path) + key.count() + stride() - 1) / stride());
-	}
-
-	u32 used_strides() const noexcept
-	{
-		return (offsetof(SourceFileByPathEntry, path) + path_bytes + stride() - 1) / stride();
-	}
-
 	u32 hash() const noexcept
 	{
 		return m_hash;
 	}
 
-	bool equal_to_key(Range<char8> key, u32 key_hash) noexcept
+	bool is_equal_to_key(Range<char8> key, u32 key_hash) const noexcept
 	{
 		return m_hash == key_hash && key.count() == path_bytes && memcmp(key.begin(), path, key.count()) == 0;
 	}
-
-	void init(Range<char8> key, u32 key_hash) noexcept
-	{
-		ASSERT_OR_IGNORE(key.count() < UINT32_MAX);
-
-		m_hash = key_hash;
-
-		path_bytes = static_cast<u32>(key.count());
-
-		id_entry_index = 0;
-
-		memcpy(path, key.begin(), key.count());
-	}
 };
+#ifdef COMPILER_MSVC
+	#pragma warning(pop)
+#endif
 
-struct SourceFileByIdEntry
+struct alignas(8) SourceFileByIdEntry
 {
 	u64 file_id;
 
@@ -84,36 +63,14 @@ struct SourceFileByIdEntry
 
 	SourceFile data;
 
-	static constexpr u32 stride() noexcept
-	{
-		return sizeof(SourceFileByIdEntry);
-	}
-
-	static u32 required_strides([[maybe_unused]] minos::FileIdentity key) noexcept
-	{
-		return 1;
-	}
-
-	u32 used_strides() const noexcept
-	{
-		return sizeof(SourceFileByIdEntry);
-	}
-
 	u32 hash() const noexcept
 	{
 		return hash_file_identity(file_id, device_id);
 	}
 
-	bool equal_to_key(minos::FileIdentity key, [[maybe_unused]] u32 key_hash) noexcept
+	bool is_equal_to_key(minos::FileIdentity key, [[maybe_unused]] u32 key_hash) const noexcept
 	{
 		return device_id == key.volume_serial && file_id == key.index;
-	}
-
-	void init(minos::FileIdentity key, [[maybe_unused]] u32 key_hash) noexcept
-	{
-		device_id = key.volume_serial;
-
-		file_id = key.index;
 	}
 };
 
@@ -121,17 +78,174 @@ static constexpr u64 KNOWN_FILES_BY_PATH_LOOKUP_RESERVE = decltype(SourceReader:
 
 static constexpr u32 KNOWN_FILES_BY_PATH_LOOKUP_INITIAL_COMMIT_COUNT = static_cast<u32>(1) << 10;
 
-static constexpr u32 KNOWN_FILES_BY_PATH_VALUES_RESERVE = (static_cast<u32>(1) << 19) * SourceFileByPathEntry::stride();
+static constexpr u32 KNOWN_FILES_BY_PATH_VALUES_RESERVE = (static_cast<u32>(1) << 19) * alignof(SourceFileByPathEntry);
 
-static constexpr u32 KNOWN_FILES_BY_PATH_VALUES_COMMIT_INCREMENT_COUNT = static_cast<u32>(1) << 11;
+static constexpr u32 KNOWN_FILES_BY_PATH_VALUES_COMMIT_INCREMENT_COUNT = (static_cast<u32>(1) << 11) * alignof(SourceFileByPathEntry);
 
-static constexpr u64 KNOWN_FILES_BY_IDENTITY_LOOKUP_RESERVE = decltype(SourceReader::known_files_by_path)::lookups_memory_size(1 << 19);
+static constexpr u64 KNOWN_FILES_BY_IDENTITY_LOOKUP_RESERVE = decltype(SourceReader::known_files_by_identity)::lookups_memory_size(1 << 19);
 
 static constexpr u32 KNOWN_FILES_BY_IDENTITY_LOOKUP_INITIAL_COMMIT_COUNT = static_cast<u32>(1) << 10;
 
-static constexpr u32 KNOWN_FILES_BY_IDENTITY_VALUES_RESERVE = (static_cast<u32>(1) << 18) * SourceFileByIdEntry::stride();
+static constexpr u32 KNOWN_FILES_BY_IDENTITY_VALUES_RESERVE = (static_cast<u32>(1) << 18) * sizeof(SourceFileByIdEntry);
 
 static constexpr u32 KNOWN_FILES_BY_IDENTITY_VALUES_COMMIT_INCREMENT_COUNT = static_cast<u32>(1) << 11;
+
+
+bool SourceFileByPathIterator::has_next() const noexcept
+{
+	ASSERT_OR_IGNORE(curr <= end);
+
+	return curr != end;
+}
+
+SourceFileByPathEntry* SourceFileByPathIterator::next() noexcept
+{
+	ASSERT_OR_IGNORE(curr < end);
+
+	SourceFileByPathEntry* const result = reinterpret_cast<SourceFileByPathEntry*>(core->reader.path_entries.begin() + curr * alignof(SourceFileByPathEntry));
+
+	const u32 raw_size = static_cast<u32>(offsetof(SourceFileByPathEntry, path) + result->path_bytes);
+
+	const u32 size = (raw_size + alignof(SourceFileByPathEntry) - 1) & ~(alignof(SourceFileByPathEntry) - 1);
+
+	curr += size / alignof(SourceFileByPathEntry);
+
+	return result;
+}
+
+
+
+SourceFileByPathEntry* SourceFileByPathAlloc::value_from_id(u32 id) noexcept
+{
+	ASSERT_OR_IGNORE(id != 0);
+
+	ASSERT_OR_IGNORE(id * alignof(SourceFileByPathEntry) < core->reader.path_entries.used());
+
+	return reinterpret_cast<SourceFileByPathEntry*>(core->reader.path_entries.begin() + id * alignof(SourceFileByPathEntry));
+}
+
+const SourceFileByPathEntry* SourceFileByPathAlloc::value_from_id(u32 id) const noexcept
+{
+	ASSERT_OR_IGNORE(id != 0);
+
+	ASSERT_OR_IGNORE(id * alignof(SourceFileByPathEntry) < core->reader.path_entries.used());
+
+	return reinterpret_cast<SourceFileByPathEntry*>(core->reader.path_entries.begin() + id * alignof(SourceFileByPathEntry));
+}
+
+u32 SourceFileByPathAlloc::id_from_value(const SourceFileByPathEntry* value) const noexcept
+{
+	ASSERT_OR_IGNORE(reinterpret_cast<const byte*>(value) > core->reader.path_entries.begin());
+
+	ASSERT_OR_IGNORE(reinterpret_cast<const byte*>(value) < core->reader.path_entries.end());
+
+	return static_cast<u32>((reinterpret_cast<const byte*>(value) - core->reader.path_entries.begin()) / alignof(SourceFileByPathEntry));
+}
+
+SourceFileByPathIterator SourceFileByPathAlloc::values() noexcept
+{
+	SourceFileByPathIterator it;
+	it.core = core;
+	it.curr = 1;
+	it.end = core->reader.path_entries.used() / alignof(SourceFileByPathEntry);
+
+	return it;
+}
+
+SourceFileByPathEntry* SourceFileByPathAlloc::alloc(Range<char8> key, u32 key_hash) noexcept
+{
+	ASSERT_OR_IGNORE(key.count() < UINT32_MAX);
+
+	const u32 raw_size = static_cast<u32>(offsetof(SourceFileByPathEntry, path) + key.count());
+
+	const u32 size = (raw_size + alignof(SourceFileByPathEntry) - 1) & ~(alignof(SourceFileByPathEntry) - 1);
+
+	SourceFileByPathEntry* const result = reinterpret_cast<SourceFileByPathEntry*>(core->reader.path_entries.reserve(size));
+	result->m_hash = key_hash;
+	result->path_bytes = static_cast<u32>(key.count());
+	result->id_entry_index = 0;
+	memcpy(result->path, key.begin(), key.count());
+
+	return result;
+}
+
+void SourceFileByPathAlloc::dealloc([[maybe_unused]] u32 id) noexcept
+{
+	ASSERT_UNREACHABLE;
+}
+
+
+
+bool SourceFileByIdIterator::has_next() const noexcept
+{
+	ASSERT_OR_IGNORE(curr <= end);
+
+	return curr != end;
+}
+
+SourceFileByIdEntry* SourceFileByIdIterator::next() noexcept
+{
+	ASSERT_OR_IGNORE(curr < end);
+
+	SourceFileByIdEntry* const result = core->reader.id_entries.begin() + curr;
+
+	curr += 1;
+
+	return result;
+}
+
+
+
+SourceFileByIdEntry* SourceFileByIdAlloc::value_from_id(u32 id) noexcept
+{
+	ASSERT_OR_IGNORE(id != 0);
+
+	ASSERT_OR_IGNORE(id < core->reader.id_entries.used());
+
+	return core->reader.id_entries.begin() + id;
+}
+
+const SourceFileByIdEntry* SourceFileByIdAlloc::value_from_id(u32 id) const noexcept
+{
+	ASSERT_OR_IGNORE(id != 0);
+
+	ASSERT_OR_IGNORE(id < core->reader.id_entries.used());
+
+	return core->reader.id_entries.begin() + id;
+}
+
+u32 SourceFileByIdAlloc::id_from_value(const SourceFileByIdEntry* value) const noexcept
+{
+	ASSERT_OR_IGNORE(value > core->reader.id_entries.begin());
+
+	ASSERT_OR_IGNORE(value < core->reader.id_entries.end());
+
+	return static_cast<u32>(value - core->reader.id_entries.begin());
+}
+
+SourceFileByIdIterator SourceFileByIdAlloc::values() noexcept
+{
+	SourceFileByIdIterator it;
+	it.core = core;
+	it.curr = 1;
+	it.end = core->reader.id_entries.used();
+
+	return it;
+}
+
+SourceFileByIdEntry* SourceFileByIdAlloc::alloc(minos::FileIdentity key, [[maybe_unused]] u32 key_hash) noexcept
+{
+	SourceFileByIdEntry* const result = core->reader.id_entries.reserve();
+	result->device_id = key.volume_serial;
+	result->file_id = key.index;
+
+	return result;
+}
+
+void SourceFileByIdAlloc::dealloc([[maybe_unused]] u32 id) noexcept
+{
+	ASSERT_UNREACHABLE;
+}
 
 
 
@@ -143,7 +257,7 @@ static SourceFile* source_file_from_source_id(CoreData* core, SourceId source_id
 
 	ASSERT_OR_IGNORE(static_cast<u32>(source_id) < core->reader.curr_source_id_base);
 
-	SourceFileByIdEntry* const entries = core->reader.known_files_by_identity.value_from(0);;
+	SourceFileByIdEntry* const entries = core->reader.id_entries.begin() + 1;
 
 	// By handling the last entry as a special case, we can always index into
 	// `mid + 1`. This is necessary since `SourceFileByIdEntry` only stores the
@@ -317,19 +431,15 @@ void source_reader_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	ASSERT_OR_IGNORE(allocation.ranges[0].count() == offset);
 
-	reader->known_files_by_path.init(
-		by_path_lookup_memory, KNOWN_FILES_BY_PATH_LOOKUP_INITIAL_COMMIT_COUNT,
-		by_path_values_memory, KNOWN_FILES_BY_PATH_VALUES_COMMIT_INCREMENT_COUNT
-	);
-
-	reader->known_files_by_identity.init(
-		by_identity_lookup_memory, KNOWN_FILES_BY_IDENTITY_LOOKUP_INITIAL_COMMIT_COUNT,
-		by_identity_values_memory, KNOWN_FILES_BY_IDENTITY_VALUES_COMMIT_INCREMENT_COUNT
-	);
-
+	reader->known_files_by_path.init(by_path_lookup_memory, KNOWN_FILES_BY_PATH_LOOKUP_INITIAL_COMMIT_COUNT, SourceFileByPathAlloc{ core });
+	reader->known_files_by_identity.init(by_identity_lookup_memory, KNOWN_FILES_BY_IDENTITY_LOOKUP_INITIAL_COMMIT_COUNT, SourceFileByIdAlloc{ core });
+	reader->path_entries.init(by_path_values_memory, KNOWN_FILES_BY_PATH_VALUES_COMMIT_INCREMENT_COUNT);
+	reader->id_entries.init(by_identity_values_memory, KNOWN_FILES_BY_IDENTITY_VALUES_COMMIT_INCREMENT_COUNT);
 	reader->curr_source_id_base = 1;
-
 	reader->source_file_count = 0;
+
+	(void) reader->path_entries.reserve(alignof(SourceFileByPathEntry));
+	(void) reader->id_entries.reserve();
 }
 
 
@@ -365,14 +475,14 @@ SourceFileRead read_source_file(CoreData* core, Range<char8> filepath) noexcept
 
 	SourceFileByIdEntry* const id_entry = core->reader.known_files_by_identity.value_from(fileinfo.identity, hash_file_identity(fileinfo.identity.index, fileinfo.identity.volume_serial));
 
-	path_entry->id_entry_index = core->reader.known_files_by_identity.index_from(id_entry);
+	path_entry->id_entry_index = core->reader.known_files_by_identity.id_from(id_entry);
 
 	if (is_some(id_entry->data.file))
 		return SourceFileRead{ &id_entry->data, {} };
 
 	// File has not been read in yet. Do so.
 
-	id_entry->path_entry_index = core->reader.known_files_by_path.index_from(path_entry);
+	id_entry->path_entry_index = core->reader.known_files_by_path.id_from(path_entry);
 	id_entry->data.file = some(file);
 	id_entry->data.ast = AstNodeId::INVALID;
 	id_entry->data.type = TypeId::INVALID;
@@ -444,7 +554,7 @@ SourceFileId id_from_source_file(CoreData* core, SourceFile* file) noexcept
 {
 	const SourceFileByIdEntry* const key = reinterpret_cast<const SourceFileByIdEntry*>(reinterpret_cast<byte*>(file) - offsetof(SourceFileByIdEntry, data));
 
-	return static_cast<SourceFileId>(core->reader.known_files_by_identity.index_from(key));
+	return static_cast<SourceFileId>(core->reader.known_files_by_identity.id_from(key));
 }
 
 SourceFile* source_file_from_id(CoreData* core, SourceFileId file_id) noexcept
