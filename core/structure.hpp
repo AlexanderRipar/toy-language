@@ -6,7 +6,7 @@
 #include "../infra/types.hpp"
 #include "../infra/range.hpp"
 #include "../infra/hash.hpp"
-#include "../infra/container/index_map.hpp"
+#include "../infra/container/id_map.hpp"
 #include "../infra/container/reserved_vec.hpp"
 #include "../infra/minos/minos.hpp"
 

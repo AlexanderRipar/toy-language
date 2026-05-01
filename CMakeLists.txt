@@ -5,7 +5,7 @@ project(compil0r)
 
 
 set(INFRA_SOURCES
-	infra/container/index_map.hpp
+	infra/container/id_map.hpp
 	infra/container/reserved_vec.hpp
 	infra/minos/minos.hpp
 	infra/minos/minos_win32.cpp

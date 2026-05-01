@@ -1,5 +1,5 @@
-#ifndef INDEX_MAP_INCLUDE_GUARD
-#define INDEX_MAP_INCLUDE_GUARD
+#ifndef ID_MAP_INCLUDE_GUARD
+#define ID_MAP_INCLUDE_GUARD
 
 #include "../types.hpp"
 #include "../assert.hpp"
@@ -447,4 +447,4 @@ public:
 	}
 };
 
-#endif // INDEX_MAP_INCLUDE_GUARD
+#endif // ID_MAP_INCLUDE_GUARD

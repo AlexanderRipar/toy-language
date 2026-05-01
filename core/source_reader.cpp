@@ -6,7 +6,7 @@
 #include "../infra/panic.hpp"
 #include "../infra/range.hpp"
 #include "../infra/hash.hpp"
-#include "../infra/container/index_map.hpp"
+#include "../infra/container/id_map.hpp"
 #include "../infra/minos/minos.hpp"
 
 #include <cstdlib>
