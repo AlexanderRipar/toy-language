@@ -481,13 +481,51 @@ struct ShadowStoreAlloc
 	void dealloc(u32 id) noexcept;
 };
 
+struct ShadowLayoutKey;
+
+struct ShadowLayoutEntry;
+
+struct ShadowLayoutIterator
+{
+	CoreData* core;
+
+	u32 curr;
+
+	u32 end;
+
+	bool has_next() const noexcept;
+
+	ShadowLayoutEntry* next() noexcept;
+};
+
+struct ShadowLayoutAlloc
+{
+	CoreData* core;
+
+	ShadowLayoutEntry* value_from_id(u32 id) noexcept;
+
+	const ShadowLayoutEntry* value_from_id(u32 id) const noexcept;
+
+	u32 id_from_value(const ShadowLayoutEntry* value) const noexcept;
+
+	ShadowLayoutIterator values() noexcept;
+
+	ShadowLayoutEntry* alloc(ShadowLayoutKey key, u32 key_hash) noexcept;
+
+	void dealloc(u32 id) noexcept;
+};
+
 struct ShadowStore
 {
 	IdMap<ShadowStoreKey, ShadowStoreEntry, ShadowStoreAlloc> address_map;
 
-	Maybe<ShadowStoreEntry*> freelist_head;
+	IdMap<ShadowLayoutKey, ShadowLayoutEntry, ShadowLayoutAlloc> layouts;
+
+	Maybe<ShadowStoreEntry*> entries_freelist_head;
 
 	ReservedVec<ShadowStoreEntry> entries;
+
+	ReservedVec<CoreId> layout_ids;
 };
 
 

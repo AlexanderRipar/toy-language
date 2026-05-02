@@ -831,7 +831,6 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 	case TypeTag::TailArray:
 	case TypeTag::Variadic:
 	case TypeTag::Trait:
-	case TypeTag::Shadow:
 		; // Fallthrough to unreachable.
 	}
 
@@ -1183,7 +1182,6 @@ static CompareResult compare(CoreData* core, TypeId type, Range<byte> lhs, Range
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
-	case TypeTag::Shadow:
 		; // Fallthrough to unreachable.
 	}
 
@@ -2088,6 +2086,8 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, Comp
 		{
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
+			ASSERT_OR_IGNORE(is_none(info.shadow_id));
+
 			const TypeMetrics metrics = type_metrics_from_id(core, info.type_id);
 
 			byte* const begin = static_cast<byte*>(address_from_core_id(core, get(info.value_or_default)));
@@ -2104,7 +2104,21 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, Comp
 
 			const TypeMetrics metrics = type_metrics_from_id(core, info.type_id);
 
-			const MutRange<byte> bytes = top->bytes.mut_subrange(info.offset, metrics.size);
+			MutRange<byte> bytes;
+
+			if (is_some(info.shadow_id))
+			{
+				const Maybe<byte*> shadow_begin = shadow_get(core, top->bytes.begin() + info.offset, get(info.shadow_id), info.shadow_rank);
+
+				if (is_none(shadow_begin))
+					return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+
+				bytes = MutRange<byte>{ get(shadow_begin), metrics.size };
+			}
+			else
+			{
+				bytes = top->bytes.mut_subrange(info.offset, metrics.size);
+			}
 
 			const CompValue value{ bytes, metrics.align, info.is_mut, info.type_id };
 
@@ -2134,6 +2148,8 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, Comp
 		else if (info.is_global)
 		{
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
+
+			ASSERT_OR_IGNORE(is_none(info.shadow_id));
 
 			const TypeMetrics metrics = type_metrics_from_id(core, info.type_id);
 

@@ -67,6 +67,8 @@ enum class CompositeFlags : u8
 	Signature_IsFunc                 = 0x01,
 
 	User_IsOpen                      = 0x01,
+
+	Any_IsShadow                     = 0x02,
 };
 
 static constexpr CompositeFlags operator&(CompositeFlags lhs, CompositeFlags rhs) noexcept
@@ -154,11 +156,9 @@ struct alignas(8) CompositeMember
 
 	bool is_impl_member_from_trait_default : 1;
 
-	bool is_shadow_member : 1;
-
 	u16 shadow_rank;
 
-	TypeId shadow_type_id;
+	Maybe<ShadowLayoutId> shadow_id;
 };
 
 struct alignas(8) CompositeType
@@ -191,33 +191,6 @@ struct alignas(8) CompositeType
 	// Depending on `kind`:
 	// File, Trait, Impl, Signature => Nothing
 	// User => @sizeas(s64[member_capacity]) s64 member_offsets[member_count];
-};
-
-
-
-struct alignas(8) ShadowMember
-{
-	TypeId type_id;
-
-	u32 offset;
-};
-
-struct alignas(8) ShadowType
-{
-	u16 member_count;
-
-	u8 align_log2;
-
-	u32 size;
-
-	#if COMPILER_GCC
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
-	#endif
-	ShadowMember members[];
-	#if COMPILER_GCC
-		#pragma GCC diagnostic pop
-	#endif
 };
 
 
@@ -319,17 +292,6 @@ struct alignas(8) Holotype
 
 		return type_is_equal(key.core, m_holotype_id, key_type_id);
 	}
-};
-
-
-
-struct alignas(8) ShadowMemberInitializer
-{
-	s64 offset;
-
-	TypeId type_id;
-
-	u16 rank;
 };
 
 
@@ -510,7 +472,7 @@ static bool fill_member_info(CompositeInfo info, u16 rank, MemberInfo* out_info,
 		out_info->is_global = info.kind != CompositeKind::User && info.kind != CompositeKind::Signature;
 		out_info->rank = rank;
 		out_info->shadow_rank = type.shadow_rank;
-		out_info->shadow_type_id = type.is_shadow_member ? some(type.shadow_type_id) : none<TypeId>();
+		out_info->shadow_id = type.shadow_id;
 		out_info->offset = is_some(info.member_offsets) ? get(info.member_offsets)[rank] : 0;
 
 		return true;
@@ -717,39 +679,19 @@ static void seen_set_pop(SeenSet* set) noexcept
 
 
 
-static TypeId type_create_shadow_composite(CoreData* core, Range<ShadowMemberInitializer> initializers) noexcept
-{
-	const u64 composite_size = sizeof(ShadowType) + initializers.count() * sizeof(ShadowMember);
-
-	TypeStructure* const structure = make_structure_nohash(core, TypeTag::Shadow, {}, composite_size);
-
-	ShadowType* const composite = reinterpret_cast<ShadowType*>(structure + 1);
-	composite->member_count = static_cast<u16>(initializers.count());
-
-	u32 offset = 0;
-
-	for (u16 i = 0; i != initializers.count(); ++i)
-	{
-		composite->members[i].type_id = initializers[i].type_id;
-		composite->members[i].offset = offset;
-	}
-
-	return holotype_id_from_interned_type_structure(core, structure, true);
-}
-
 static void init_user_composite_shadow_data(CoreData* core, CompositeType* composite) noexcept
 {
 	struct OffsetComparator
 	{
-		static s64 compare(const ShadowMemberInitializer& a, const ShadowMemberInitializer& b) noexcept
+		static s64 compare(const ShadowLayoutMemberInitializer& a, const ShadowLayoutMemberInitializer& b) noexcept
 		{
-			if (a.offset < b.offset)
+			if (a.offset_in_type < b.offset_in_type)
 				return -1;
-			else if (a.offset > b.offset)
+			else if (a.offset_in_type > b.offset_in_type)
 				return 1;
-			else if (a.rank < b.rank)
+			else if (a.rank_in_type < b.rank_in_type)
 				return -1;
-			else if (a.rank > b.rank)
+			else if (a.rank_in_type > b.rank_in_type)
 				return 1;
 			else
 				return 0;
@@ -762,46 +704,48 @@ static void init_user_composite_shadow_data(CoreData* core, CompositeType* compo
 
 	const u64 mark = temp_stack_mark(core);
 
-	ShadowMemberInitializer* const by_offset = static_cast<ShadowMemberInitializer*>(temp_stack_alloc(core, info.member_count * sizeof(ShadowMemberInitializer), alignof(ShadowMemberInitializer)));
+	ShadowLayoutMemberInitializer* const by_offset = static_cast<ShadowLayoutMemberInitializer*>(temp_stack_alloc(core, info.member_count * sizeof(ShadowLayoutMemberInitializer), alignof(ShadowLayoutMemberInitializer)));
 
 	u16 shadow_member_count = 0;
 
 	for (u16 i = 0; i != info.member_count; ++i)
 	{
-		if (!info.member_types[i].is_shadow_member)
+		const TypeMetrics metrics = type_metrics_from_id(core, info.member_types[i].type_id);
+
+		if (!metrics.is_shadow)
 			continue;
 
-		by_offset[shadow_member_count].offset = get(info.member_offsets)[i];
+		by_offset[shadow_member_count].offset_in_type = get(info.member_offsets)[i];
 		by_offset[shadow_member_count].type_id = info.member_types[i].type_id;
-		by_offset[shadow_member_count].rank = i;
+		by_offset[shadow_member_count].rank_in_type = i;
 
 		shadow_member_count += 1;
 	}
 
-	inplace_sort<ShadowMemberInitializer, OffsetComparator>(MutRange{ by_offset, shadow_member_count });
+	inplace_sort<ShadowLayoutMemberInitializer, OffsetComparator>(MutRange{ by_offset, shadow_member_count });
 
 	u16 i = 0;
 
 	while (i != shadow_member_count)
 	{
-		const s64 offset = by_offset[i].offset;
+		const s64 offset = by_offset[i].offset_in_type;
 
 		const u16 begin = i;
 
 		i += 1;
 
-		while (i != shadow_member_count && by_offset[i].offset == offset)
+		while (i != shadow_member_count && by_offset[i].offset_in_type == offset)
 			i += 1;
 
 		const u16 end = i;
 
-		const TypeId shadow_type_id = type_create_shadow_composite(core, Range{ by_offset + begin, by_offset + end });
+		const ShadowLayoutId shadow_id = shadow_create_layout(core, Range{ by_offset + begin, by_offset + end });
 
 		for (u16 j = 0; j != end - begin; ++j)
 		{
-			const u16 rank = by_offset[begin + j].rank;
+			const u16 rank = by_offset[begin + j].rank_in_type;
 
-			info.member_types[rank].shadow_type_id = shadow_type_id;
+			info.member_types[rank].shadow_id = some(shadow_id);
 			info.member_types[rank].shadow_rank = j;
 		}
 	}
@@ -931,22 +875,6 @@ static u32 hash_self_type(CoreData* core, u32 hash, SeenSet* seen, const SelfTyp
 	return fnv1a_step(hash, range::from_object_bytes(&attach->trait_body_opcode_id)) | 1;
 }
 
-static u32 hash_shadow_type(CoreData* core, u32 hash, SeenSet* seen, const ShadowType* attach) noexcept
-{
-	const u16 member_count = attach->member_count;
-
-	hash = fnv1a_step(hash, range::from_object_bytes(&attach->member_count)) | 1;
-
-	for (u16 i = 0; i != member_count; ++i)
-	{
-		hash = hash_type_id(core, hash, seen, attach->members[i].type_id);
-
-		ASSERT_OR_IGNORE(hash != 0);
-	}
-
-	return hash;
-}
-
 static u32 hash_numeric_type([[maybe_unused]] CoreData* core, u32 hash, const NumericType* attach) noexcept
 {
 	return fnv1a_step(fnv1a_step(hash, static_cast<byte>(attach->is_signed)), range::from_object_bytes(&attach->bits)) | 1;
@@ -1016,9 +944,6 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 
 	case TypeTag::Self:
 		return hash_self_type(core, hash, seen, reinterpret_cast<const SelfType*>(structure->attach));
-
-	case TypeTag::Shadow:
-		return hash_shadow_type(core, hash, seen, reinterpret_cast<const ShadowType*>(structure->attach));
 
 	case TypeTag::Variadic:
 	case TypeTag::Definition:
@@ -1288,7 +1213,6 @@ static bool type_can_implicitly_convert_from_to_assume_unequal(CoreData* core, T
 		    || type_can_implicitly_convert_from_to_assume_unequal(core, attach->base_type_id, to_type_id);
 	}
 
-	case TypeTag::Shadow:
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
 		break; // Fallthrough to unreachable.
@@ -1688,40 +1612,6 @@ static bool type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeId type_i
 			seen_set_pop(b_seen);
 
 			return false;
-		}
-
-		seen_set_pop(a_seen);
-
-		seen_set_pop(b_seen);
-
-		return true;
-	}
-
-	case TypeTag::Shadow:
-	{
-		const ShadowType* const a_attach = reinterpret_cast<ShadowType*>(a->attach);
-
-		const ShadowType* const b_attach = reinterpret_cast<ShadowType*>(b->attach);
-
-		if (a_attach->member_count != b_attach->member_count)
-		{
-			seen_set_pop(a_seen);
-
-			seen_set_pop(b_seen);
-
-			return false;
-		}
-
-		for (u16 i = 0; i != a_attach->member_count; ++i)
-		{
-			if (!type_is_equal_noloop(core, a_attach->members[i].type_id, b_attach->members[i].type_id, a_seen, b_seen))
-			{
-				seen_set_pop(a_seen);
-
-				seen_set_pop(b_seen);
-
-				return false;
-			}
 		}
 
 		seen_set_pop(a_seen);
@@ -2243,11 +2133,14 @@ bool type_add_user_composite_member(CoreData* core, TypeId type_id, UserComposit
 
 	info.member_types[info.member_count].type_id = init.type_id;
 	info.member_types[info.member_count].is_pending = false;
-	info.member_types[info.member_count].is_initializing = false;
 	info.member_types[info.member_count].is_pub = init.is_pub;
 	info.member_types[info.member_count].is_mut = init.is_mut;
 	info.member_types[info.member_count].is_eval = false;
+	info.member_types[info.member_count].is_initializing = false;
+	info.member_types[info.member_count].is_impl_member_from_trait_default = false;
 	info.member_types[info.member_count].value_or_default = init.default_value;
+	info.member_types[info.member_count].shadow_id = none<ShadowLayoutId>();
+	info.member_types[info.member_count].shadow_rank = 0;
 
 	get(info.member_offsets)[info.member_count] = init.offset;
 
@@ -2546,6 +2439,18 @@ bool type_implements_trait(CoreData* core, TypeId type_id, OpcodeId trait_body_o
 	return true;
 }
 
+bool type_get_holotype(CoreData* core, TypeId type_id, TypeId* out_holotype_id) noexcept
+{
+	TypeStructure* const structure = structure_from_id(core, type_id);
+
+	if (structure->holotype_id == TypeId::INVALID)
+		(void) holotype_id_from_interned_type_structure(core, structure, false);
+
+	*out_holotype_id = structure->holotype_id;
+
+	return structure->holotype_id != TypeId::INVALID;
+}
+
 SignatureTypeInfo type_signature_info_from_id(CoreData* core, TypeId type_id) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
@@ -2598,40 +2503,32 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 	switch (structure->tag)
 	{
 	case TypeTag::Void:
+	case TypeTag::Divergent:
+	case TypeTag::Undefined:
 	{
-		return { 0, 0, 1 };
+		return { 0, 0, 1, false };
 	}
 
 	case TypeTag::Type:
 	case TypeTag::TypeInfo:
 	case TypeTag::TypeBuilder:
 	{
-		return { 4, 4, 4 };
+		return { 4, 4, 4, true };
 	}
 
 	case TypeTag::CompInteger:
 	{
-		return { sizeof(CompIntegerValue), sizeof(CompIntegerValue), alignof(CompIntegerValue) };
+		return { sizeof(CompIntegerValue), sizeof(CompIntegerValue), alignof(CompIntegerValue), true };
 	}
 
 	case TypeTag::CompFloat:
 	{
-		return { sizeof(CompFloatValue), sizeof(CompFloatValue), alignof(CompFloatValue) };
+		return { sizeof(CompFloatValue), sizeof(CompFloatValue), alignof(CompFloatValue), true };
 	}
 
 	case TypeTag::Boolean:
 	{
-		return { 1, 1, 1 };
-	}
-
-	case TypeTag::Divergent:
-	{
-		return { 0, 0, 1 };
-	}
-
-	case TypeTag::Undefined:
-	{
-		return { 0, 0, 1 };
+		return { 1, 1, 1, false };
 	}
 
 	case TypeTag::Integer:
@@ -2643,20 +2540,23 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 
 		const u32 pow2_bytes = next_pow2(bytes);
 
-		return { pow2_bytes, pow2_bytes, pow2_bytes };
+		return { pow2_bytes, pow2_bytes, pow2_bytes, false };
 	}
 
 	case TypeTag::Slice:
+	{
+		return { 16, 16, 8, false };
+	}
+
 	case TypeTag::Variadic:
 	case TypeTag::Signature:
 	{
-		return { 16, 16, 8 };
+		return { 16, 16, 8, true };
 	}
 
 	case TypeTag::Ptr:
-	case TypeTag::Trait:
 	{
-		return { 8, 8, 8 };
+		return { 8, 8, 8, false };
 	}
 
 	case TypeTag::Array:
@@ -2664,12 +2564,12 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 	{
 		const ArrayType* const array = reinterpret_cast<const ArrayType*>(structure->attach);
 
-		if (array->element_count == 0)
-			return { 0, 0, 1 };
+		if (is_none(array->element_type))
+			return { 0, 0, 1, false };
 
 		const TypeMetrics element_metrics = type_metrics_from_id(core, get(array->element_type));
 
-		return { element_metrics.stride * (array->element_count - 1) + element_metrics.size, (element_metrics.stride * array->element_count), element_metrics.align };
+		return { element_metrics.stride * (array->element_count - 1) + element_metrics.size, (element_metrics.stride * array->element_count), element_metrics.align, element_metrics.is_shadow };
 	}
 
 	case TypeTag::Composite:
@@ -2677,14 +2577,21 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 	{
 		const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
+		const bool is_shadow = (composite->flags & CompositeFlags::Any_IsShadow) == CompositeFlags::Any_IsShadow;
+
 		if (composite->kind != CompositeKind::User)
-			return { 0, 0, 1 };
+			return { 0, 0, 1, is_shadow };
 
 		ASSERT_OR_IGNORE((composite->flags & CompositeFlags::User_IsOpen) == CompositeFlags::EMPTY);
 
 		const CompositeUserExtraData* const user = reinterpret_cast<const CompositeUserExtraData*>(composite + 1);
 
-		return TypeMetrics{ user->size, user->stride, user->align };
+		return TypeMetrics{ user->size, user->stride, user->align, is_shadow };
+	}
+
+	case TypeTag::Trait:
+	{
+		return { 8, 8, 8, true };
 	}
 
 	case TypeTag::Self:
@@ -2692,19 +2599,6 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 		const SelfType* const attach = reinterpret_cast<const SelfType*>(structure + 1);
 
 		return type_metrics_from_id(core, attach->base_type_id);
-	}
-
-	case TypeTag::Shadow:
-	{
-		const ShadowType* const shadow = reinterpret_cast<const ShadowType*>(structure + 1);
-
-		const u64 size = shadow->size;
-
-		const u32 align = static_cast<u32>(1) << shadow->align_log2;
-
-		const u64 stride = (size + align - 1) & ~static_cast<u64>(align - 1);
-
-		return TypeMetrics{ size, stride, align };
 	}
 
 	case TypeTag::Definition:
@@ -2794,19 +2688,6 @@ IdentifierId type_member_name_by_rank(CoreData* core, TypeId type_id, u16 rank) 
 	const CompositeInfo info = composite_info(composite);
 
 	return info.member_names[rank];
-}
-
-u32 type_shadow_member_offset(CoreData* core, TypeId shadow_type_id, u16 shadow_rank) noexcept
-{
-	TypeStructure* const structure = structure_from_id(core, shadow_type_id);
-
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Shadow);
-
-	ShadowType* const shadow = reinterpret_cast<ShadowType*>(structure + 1);
-
-	ASSERT_OR_IGNORE(shadow_rank < shadow->member_count);
-
-	return shadow->members[shadow_rank].offset;
 }
 
 const void* type_attachment_from_id_raw(CoreData* core, TypeId type_id) noexcept

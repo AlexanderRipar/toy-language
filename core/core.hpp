@@ -1949,6 +1949,11 @@ enum class TypeId : u32
 	INVALID = 0,
 };
 
+enum class ShadowLayoutId : u32
+{
+	INVALID = 0,
+};
+
 // Tag for discriminating between different kinds of types.
 // The layout of the structural information stored for a type depends on its
 // tag. For all tags other than `TypeTag::Composite`, this data can accessed by
@@ -2047,8 +2052,6 @@ enum class TypeTag : u8
 	Trait,
 
 	Self,
-
-	Shadow,
 };
 
 enum class TypeRelation : u8
@@ -2083,6 +2086,8 @@ struct TypeMetrics
 	// the type must only be allocated at addresses that are multiples of this
 	// alignment (i.e., have the low `log2(align)` bits set to zero).
 	u32 align;
+
+	bool is_shadow;
 };
 
 struct SignatureTypeInfo
@@ -2131,7 +2136,7 @@ struct MemberInfo
 
 	u16 shadow_rank;
 
-	Maybe<TypeId> shadow_type_id;
+	Maybe<ShadowLayoutId> shadow_id;
 
 	s64 offset;
 };
@@ -2469,6 +2474,8 @@ bool type_composite_is_impl_body(CoreData* core, TypeId type_id) noexcept;
 
 bool type_implements_trait(CoreData* core, TypeId type_id, OpcodeId trait_body_opcode_id, Range<TypeId> argument_types) noexcept;
 
+bool type_get_holotype(CoreData* core, TypeId type_id, TypeId* out_holotype_id) noexcept;
+
 SignatureTypeInfo type_signature_info_from_id(CoreData* core, TypeId type_id) noexcept;
 
 bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberInfo* out_info, OpcodeId* out_initializer) noexcept;
@@ -2476,8 +2483,6 @@ bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberIn
 MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, IdentifierId name, MemberInfo* out_info, OpcodeId* out_initializer) noexcept;
 
 IdentifierId type_member_name_by_rank(CoreData* core, TypeId type_id, u16 rank) noexcept;
-
-u32 type_shadow_member_offset(CoreData* core, TypeId shadow_type_id, u16 shadow_rank) noexcept;
 
 // Do not call this function directly. Use `type_attachment_from_id` instead.
 const void* type_attachment_from_id_raw(CoreData* core, TypeId type_id) noexcept;
@@ -2854,6 +2859,29 @@ bool evaluate_all_file_definitions(CoreData* core, TypeId file_type) noexcept;
 bool closure_equal(CoreData* core, ClosureId a, ClosureId b) noexcept;
 
 const char8* tag_name(Builtin builtin) noexcept;
+
+
+
+
+
+struct alignas(8) ShadowLayoutMemberInitializer
+{
+	s64 offset_in_type;
+
+	u16 rank_in_type;
+
+	TypeId type_id;
+};
+
+ShadowLayoutId shadow_create_layout(CoreData* core, Range<ShadowLayoutMemberInitializer> initializers) noexcept;
+
+u32 shadow_layout_offset(CoreData* core, ShadowLayoutId layout_id, u16 rank) noexcept;
+
+Maybe<byte*> shadow_get(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 rank) noexcept;
+
+void shadow_set(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 rank, Range<byte> value) noexcept;
+
+void shadow_clear(CoreData* core, byte* address) noexcept;
 
 
 
