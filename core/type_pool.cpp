@@ -507,6 +507,94 @@ static TypeStructure* follow_indirection(CoreData* core, TypeStructure* indirect
 	return dir;
 }
 
+static u32 structure_size(TypeStructure* structure) noexcept
+{
+	switch (structure->tag)
+	{
+	case TypeTag::INDIRECTION:
+	{
+		return sizeof(TypeStructure) + sizeof(IndirectionType);
+	}
+
+	case TypeTag::Void:
+	case TypeTag::Type:
+	case TypeTag::CompInteger:
+	case TypeTag::CompFloat:
+	case TypeTag::Boolean:
+	case TypeTag::TypeInfo:
+	case TypeTag::TypeBuilder:
+	case TypeTag::Divergent:
+	case TypeTag::Undefined:
+	{
+		return sizeof(TypeStructure);
+	}
+
+	case TypeTag::Integer:
+	case TypeTag::Float:
+	{
+		return sizeof(TypeStructure) + sizeof(NumericType);
+	}
+
+	case TypeTag::Slice:
+	case TypeTag::Ptr:
+	case TypeTag::TailArray:
+	{
+		return sizeof(TypeStructure) + sizeof(ReferenceType);
+	}
+
+	case TypeTag::Array:
+	case TypeTag::ArrayLiteral:
+	{
+		return sizeof(TypeStructure) + sizeof(ArrayType);
+	}
+
+	case TypeTag::Signature:
+	{
+		const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure + 1);
+
+		ASSERT_OR_IGNORE((composite->member_capacity & 1) == 0);
+
+		return sizeof(TypeStructure)
+		     + sizeof(CompositeType)
+		     + sizeof(CompositeSignatureExtraData)
+		     + composite->member_capacity * (sizeof(IdentifierId) + sizeof(CompositeMember));
+	}
+
+	case TypeTag::Composite:
+	case TypeTag::CompositeLiteral:
+	case TypeTag::Trait:
+	{
+		const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure + 1);
+
+		ASSERT_OR_IGNORE((composite->member_capacity & 1) == 0);
+
+		const u32 offsets_size = composite->kind == CompositeKind::User
+			? composite->member_capacity * sizeof(s64)
+			: 0;
+
+		return sizeof(TypeStructure)
+		     + sizeof(CompositeType)
+		     + sizeof(CompositeSignatureExtraData)
+		     + composite->member_capacity * (sizeof(IdentifierId) + sizeof(CompositeMember))
+		     + offsets_size;
+	}
+
+	case TypeTag::Self:
+	{
+		return sizeof(TypeStructure) + sizeof(SelfType);
+	}
+	
+	case TypeTag::Definition:
+	case TypeTag::Variadic:
+		TODO("Implement `structure_size(%)`.", tag_name(structure->tag));
+
+	case TypeTag::INVALID:
+		; // Fallthrough to unreachable.
+	}
+
+	ASSERT_UNREACHABLE;
+}
+
 
 
 static TypeId holotype_id_from_interned_type_structure(CoreData* core, TypeStructure* structure, bool delete_duplicate) noexcept
