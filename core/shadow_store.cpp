@@ -325,7 +325,11 @@ static ShadowLayoutId intern_shadow_layout(CoreData* core, ShadowLayout* layout)
 	const ShadowLayoutEntry* const interned = core->shadow.layouts.value_from(key, layout->header.hash);
 	
 	if (interned != reinterpret_cast<ShadowLayoutEntry*>(layout))
-		comp_heap_dealloc_last(core, layout);
+	{
+		const u64 size = sizeof(ShadowLayout) + layout->header.member_count * sizeof(ShadowLayoutMember);
+
+		comp_heap_dealloc(core, MutRange<byte>{ reinterpret_cast<byte*>(layout), size });
+	}
 
 	return static_cast<ShadowLayoutId>(core_id_from_address(core, interned));
 }

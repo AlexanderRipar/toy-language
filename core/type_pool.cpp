@@ -616,7 +616,11 @@ static TypeId holotype_id_from_interned_type_structure(CoreData* core, TypeStruc
 	structure->holotype_id = holotype_id;
 
 	if (holotype_id != structure_id && delete_duplicate)
-		comp_heap_dealloc_last(core, structure);
+	{
+		const u32 size = structure_size(structure);
+
+		comp_heap_dealloc(core, MutRange<byte>{ reinterpret_cast<byte*>(structure), size });
+	}
 
 	return holotype_id;
 }
@@ -641,9 +645,15 @@ static TypeId holotype_id_from_attachment(CoreData* core, TypeTag tag, Range<byt
 	const TypeId holotype_id = holotype->m_holotype_id;
 
 	if (holotype_id == structure_id)
+	{
 		structure->holotype_id = holotype_id;
+	}
 	else
-		comp_heap_dealloc_last(core, structure);
+	{
+		const u32 size = sizeof(TypeStructure) + static_cast<u32>(attach.count());
+
+		comp_heap_dealloc(core, MutRange<byte>{ reinterpret_cast<byte*>(structure), size });
+	}
 
 	return holotype_id;
 }

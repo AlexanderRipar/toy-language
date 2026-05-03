@@ -397,19 +397,28 @@ bool comp_heap_leak(CoreData* core, MutRange<byte> memory) noexcept
 	return true;
 }
 
-void comp_heap_dealloc_last(CoreData* core, void* begin) noexcept
+void comp_heap_dealloc(CoreData* core, MutRange<byte> memory) noexcept
 {
-	ASSERT_OR_IGNORE(static_cast<byte*>(begin) > core->heap.memory);
+	ASSERT_OR_IGNORE(memory.begin() > core->heap.memory);
 
-	ASSERT_OR_IGNORE(static_cast<byte*>(begin) < core->heap.memory + core->heap.used);
+	ASSERT_OR_IGNORE(memory.end() <= core->heap.memory + core->heap.used);
 
-	const u64 slot = (static_cast<byte*>(begin) - core->heap.memory) / COMP_HEAP_MIN_ALLOCATION_SIZE;
+	const u64 begin_slot = (memory.begin() - core->heap.memory) / COMP_HEAP_MIN_ALLOCATION_SIZE;
 
-	ASSERT_OR_IGNORE((core->heap.begin_bitmap[slot >> 6] & (static_cast<u64>(1) << (slot & 63))) != 0);
+	ASSERT_OR_IGNORE((core->heap.begin_bitmap[begin_slot >> 6] & (static_cast<u64>(1) << (begin_slot & 63))) != 0);
 
-	core->heap.begin_bitmap[slot >> 6] &= ~(static_cast<u64>(1) << (slot & 63));
+	ASSERT_OR_IGNORE((core->heap.header_bitmap[begin_slot >> 6] & (static_cast<u64>(1) << (begin_slot & 63))) == 0);
 
-	core->heap.used = static_cast<byte*>(begin) - core->heap.memory;
+	ASSERT_OR_IGNORE((core->heap.leak_bitmap[begin_slot >> 6] & (static_cast<u64>(1) << (begin_slot & 63))) == 0);
+
+	core->heap.begin_bitmap[begin_slot >> 6] &= ~(static_cast<u64>(1) << (begin_slot & 63));
+
+	const u64 end_index = memory.end() - core->heap.memory;
+
+	if (core->heap.used - end_index < COMP_HEAP_MIN_ALLOCATION_SIZE)
+		core->heap.used = memory.begin() - core->heap.memory;
+	else
+		comp_heap_add_to_freelist(core, memory);
 }
 
 

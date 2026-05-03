@@ -204,7 +204,7 @@ TypeId comp_heap_global_member_type(CoreData* core, byte* address) noexcept;
 
 bool comp_heap_leak(CoreData* core, MutRange<byte> memory) noexcept;
 
-void comp_heap_dealloc_last(CoreData* core, void* begin) noexcept;
+void comp_heap_dealloc(CoreData* core, MutRange<byte> memory) noexcept;
 
 
 
