@@ -2848,6 +2848,25 @@ struct CompValue
 	TypeId type;
 };
 
+struct alignas(8) Callable
+{
+	OpcodeId body_id;
+
+	Maybe<ClosureId> closure_id;
+
+	Maybe<TypeId> self_id;
+
+	u32 unused_ = 0;
+};
+
+struct alignas(8) TraitValue
+{
+	Maybe<ClosureId> closure;
+
+	// This simply points into the opcode stream.
+	OpcodeId member_completions;
+};
+
 bool import_prelude(CoreData* core, Range<char8> path) noexcept;
 
 Maybe<TypeId> import_file(CoreData* core, Range<char8> path, bool is_std) noexcept;

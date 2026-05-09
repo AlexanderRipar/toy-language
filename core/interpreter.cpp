@@ -50,17 +50,6 @@ struct alignas(16) ClosureMember
 	TypeId type;
 };
 
-struct alignas(8) Callable
-{
-	OpcodeId body_id;
-
-	Maybe<ClosureId> closure_id;
-
-	Maybe<TypeId> self_id;
-
-	u32 unused_ = 0;
-};
-
 enum class CompareTag : u8
 {
 	INVALID = 0,
@@ -143,14 +132,6 @@ struct BuiltinParamInfo
 	TypeId type;
 
 	bool is_comptime_known;
-};
-
-struct alignas(8) TraitValue
-{
-	Maybe<ClosureId> closure;
-
-	// This simply points into the opcode stream.
-	OpcodeId member_completions;
 };
 
 static constexpr u32 SCOPES_RESERVE_SIZE = sizeof(Scope) << 18;
