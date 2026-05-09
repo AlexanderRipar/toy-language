@@ -1716,17 +1716,22 @@ static AstBuilderToken parse_yield(CoreData* core) noexcept
 	return push_node(core, value_token, source_id, AstFlag::EMPTY, AstTag::Yield);
 }
 
-static AstBuilderToken parse_top_level_expr(CoreData* core, bool allow_reduced_definitions, bool* out_is_definition) noexcept
+static AstBuilderToken parse_argument(CoreData* core) noexcept
 {
 	const Lexeme lexeme = peek(core);
 
-	bool is_definition = is_definition_start(lexeme.token)
-	                  || (allow_reduced_definitions && lexeme.token == Token::Ident && peek_n(core, 1).token == Token::Colon);
+	if (is_definition_start(lexeme.token) || (lexeme.token == Token::Ident && peek_n(core, 1).token == Token::Colon))
+		return parse_definition(core, true, true, false);
+	else
+		return parse_expr(core, true);
+}
 
-	*out_is_definition = is_definition;
+static AstBuilderToken parse_statement(CoreData* core) noexcept
+{
+	const Lexeme lexeme = peek(core);
 
-	if (is_definition)
-		return parse_definition(core, true, allow_reduced_definitions, false);
+	if (is_definition_start(lexeme.token))
+		return parse_definition(core, true, false, false);
 	else if (lexeme.token == Token::KwdReturn)
 		return parse_return(core);
 	else if (lexeme.token == Token::KwdLeave)
@@ -2373,9 +2378,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 
 				while (lexeme.token != Token::CurlyR)
 				{
-					bool is_definition;
-
-					const AstBuilderToken curr_token = parse_top_level_expr(core, false, &is_definition);
+					const AstBuilderToken curr_token = parse_statement(core);
 
 					if (first_child_token == AstBuilderToken::NO_CHILDREN)
 						first_child_token = curr_token;
@@ -2562,9 +2565,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 
 					arg_count += 1;
 
-					bool unused;
-
-					parse_top_level_expr(core, true, &unused);
+					parse_argument(core);
 
 					lexeme = peek(core);
 
