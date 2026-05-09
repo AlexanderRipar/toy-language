@@ -2194,7 +2194,7 @@ static const Opcode* handle_load_builtin(CoreData* core, const Opcode* code, Com
 
 	ASSERT_OR_IGNORE(info.signature_type != TypeId::INVALID);
 
-	Callable body;
+	CallableValue body;
 	body.body_id = info.body;
 	body.closure_id = none<ClosureId>();
 	body.self_id = none<TypeId>();
@@ -2202,7 +2202,7 @@ static const Opcode* handle_load_builtin(CoreData* core, const Opcode* code, Com
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&body);
 
-	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(Callable), true, info.signature_type });
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(CallableValue), true, info.signature_type });
 }
 
 static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
@@ -2576,7 +2576,7 @@ static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CompVa
 
 	ASSERT_OR_IGNORE(type_tag_from_id(core, signature_type) == TypeTag::Signature);
 
-	Callable callable{};
+	CallableValue callable{};
 	callable.body_id = body;
 	callable.closure_id = closure;
 	callable.self_id = self;
@@ -2584,7 +2584,7 @@ static const Opcode* handle_bind_body(CoreData* core, const Opcode* code, CompVa
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&callable);
 
-	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(Callable), true, signature_type });
+	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(CallableValue), true, signature_type });
 }
 
 static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
@@ -2612,7 +2612,7 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 	if (top_type_tag == TypeTag::Signature)
 	{
-		const Callable callee = *value_as<Callable>(top);
+		const CallableValue callee = *value_as<CallableValue>(top);
 
 		if (is_some(callee.self_id))
 			core->interp.selfs.append(get(callee.self_id));
@@ -2863,7 +2863,7 @@ static const Opcode* handle_call(CoreData* core, const Opcode* code, CompValue* 
 
 	if (callee_type_tag == TypeTag::Signature)
 	{
-		const Callable callee = *value_as<Callable>(top);
+		const CallableValue callee = *value_as<CallableValue>(top);
 
 		const TypeId return_type = argument_pack->return_type.type;
 

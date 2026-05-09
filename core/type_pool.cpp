@@ -2648,7 +2648,7 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 
 	case TypeTag::Signature:
 	{
-		return { sizeof(Callable), sizeof(Callable), alignof(Callable), true };
+		return { sizeof(CallableValue), sizeof(CallableValue), alignof(CallableValue), true };
 	}
 
 	case TypeTag::Ptr:

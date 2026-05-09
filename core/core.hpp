@@ -2848,7 +2848,7 @@ struct CompValue
 	TypeId type;
 };
 
-struct alignas(8) Callable
+struct alignas(8) CallableValue
 {
 	OpcodeId body_id;
 
