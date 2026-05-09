@@ -1662,13 +1662,23 @@ static const Opcode* builtin_source_id(CoreData* core, const Opcode* code, CompV
 
 static const Opcode* builtin_caller_source_id(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
-	(void) core;
+	ASSERT_OR_IGNORE(core->interp.call_activation_indices.used() >= 1);
 
-	(void) code;
+	const TypeId source_id_type = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, false });
 
-	(void) write_ctx;
+	const u32 call_activation_index = core->interp.call_activation_indices.end()[-1];
 
-	TODO("Implement `builtin_caller_source_id()`.");
+	ASSERT_OR_IGNORE(call_activation_index != 0 && call_activation_index < core->interp.activations.used());
+
+	const OpcodeId activation = core->interp.activations.begin()[call_activation_index - 1];
+
+	const Opcode* const activation_code = opcode_from_id(core, activation);
+
+	SourceId caller_source_id = source_id_of_opcode(core, activation_code);
+
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&caller_source_id);
+
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(SourceId), true, source_id_type });
 }
 
 static const Opcode* builtin_definition_typeof(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
