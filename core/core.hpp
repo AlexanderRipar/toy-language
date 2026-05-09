@@ -152,7 +152,7 @@ struct Config
 
 		struct
 		{
-			ConfigLogFileRef file{ false, {} };
+			ConfigLogFileRef file{ true, {} };
 
 			s64 source_tab_size = 4;
 		} diagnostics;
