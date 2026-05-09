@@ -3444,10 +3444,10 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 		ASSERT_OR_IGNORE(!named_member_info.is_global);
 
-		if (member_count < static_cast<u32>(named_member_info.rank) + 1 + following_member_count)
+		if (member_count < static_cast<u32>(named_member_info.rank) + following_member_count)
 			return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
 
-		if (!seen_set_set(seen, named_member_info.rank, following_member_count + 1))
+		if (!seen_set_set(seen, named_member_info.rank, following_member_count))
 			return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetMemberMappedTwice);
 
 		const TypeMetrics named_member_metrics = type_metrics_from_id(core, named_member_info.type_id);
@@ -3456,13 +3456,13 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 		core->interp.write_ctxs.append(CompValue{ named_bytes, named_member_metrics.align, write_ctx->is_mut, named_member_info.type_id });
 
-		for (u16 j = 0; j != following_member_count; ++j)
+		for (u16 j = 1; j != following_member_count; ++j)
 		{
 			MemberInfo following_member_info;
 
 			OpcodeId unused_following_initializer;
 
-			if (!type_member_info_by_rank(core, dst_type, named_member_info.rank + 1 + j, &following_member_info, &unused_following_initializer))
+			if (!type_member_info_by_rank(core, dst_type, named_member_info.rank + j, &following_member_info, &unused_following_initializer))
 				ASSERT_UNREACHABLE;
 
 			ASSERT_OR_IGNORE(!following_member_info.is_global);
