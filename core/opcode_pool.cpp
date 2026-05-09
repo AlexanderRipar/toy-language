@@ -1220,7 +1220,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		{
 			u16 named_member_count = 0;
 
-			s32 write_ctxs_diff = -1;
+			s32 write_ctxs_diff = 0;
 
 			AstDirectChildIterator it = direct_children_of(node);
 
@@ -1239,7 +1239,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 			{
 				ASSERT_OR_IGNORE(core->opcodes.state.write_ctxs_diff != 0);
 
-				core->opcodes.state.write_ctxs_diff = write_ctxs_diff;
+				core->opcodes.state.write_ctxs_diff += write_ctxs_diff - 1;
 			}
 
 			const u32 attach_size = 2 * sizeof(u16) + named_member_count * (sizeof(IdentifierId) + sizeof(u16));
@@ -1273,7 +1273,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 					attach += sizeof(u16);
 
-					memcpy(attach, &attachment_of<AstImpliedMemberData>(member)->identifier_id, sizeof(IdentifierId));
+					memcpy(attach, &attachment_of<AstImpliedMemberData>(implied_member)->identifier_id, sizeof(IdentifierId));
 
 					attach += sizeof(IdentifierId);
 
