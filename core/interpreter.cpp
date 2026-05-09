@@ -6071,9 +6071,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const TypeId bool_type = type_create_simple(core, TypeTag::Boolean);
 
-	// TODO: This is currently unused and replaced by dummies, since
-	//       `type_metrics_from_id` does not yet support `TypeTag::Definition`.
-	// const TypeId definition_type = type_create_simple(core, TypeTag::Definition);
+	const TypeId definition_type = type_create_simple(core, TypeTag::Definition);
 
 	const TypeId type_builder_type = type_create_simple(core, TypeTag::TypeBuilder);
 
@@ -6236,13 +6234,9 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId add_type_member_body = opcode_id_from_builtin(core, Builtin::AddTypeMember);
 
-	// TODO: "definition" should be of type `definition_type`, not `type_type`.
-	//       The current behaviour is due to `TypeTag::Definition` not being
-	//       supported by `type_metrics_from_id` yet, as its actual layout is
-	//       not defined yet.
 	const TypeId add_type_member_signature = make_func_type(core, void_type,
 		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("builder")), type_builder_type, true },
-		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("definition")), type_type, true },
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("definition")), definition_type, true },
 		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("offset")), s64_type, true }
 	);
 
@@ -6281,12 +6275,8 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId definition_typeof_body = opcode_id_from_builtin(core, Builtin::DefinitionTypeof);
 
-	// TODO: "definition" should be of type `definition_type`, not `type_type`.
-	//       The current behaviour is due to `TypeTag::Definition` not being
-	//       supported by `type_metrics_from_id` yet, as its actual layout is
-	//       not defined yet.
 	const TypeId definition_typeof_signature = make_func_type(core, type_type,
-		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("definition")), type_type, true }
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("definition")), definition_type, true }
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::DefinitionTypeof) - 1] = BuiltinInfo{ definition_typeof_body, definition_typeof_signature };
