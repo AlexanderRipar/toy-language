@@ -1716,16 +1716,17 @@ static AstBuilderToken parse_yield(CoreData* core) noexcept
 	return push_node(core, value_token, source_id, AstFlag::EMPTY, AstTag::Yield);
 }
 
-static AstBuilderToken parse_top_level_expr(CoreData* core, bool is_definition_optional_value, bool* out_is_definition) noexcept
+static AstBuilderToken parse_top_level_expr(CoreData* core, bool allow_reduced_definitions, bool* out_is_definition) noexcept
 {
 	const Lexeme lexeme = peek(core);
 
-	bool is_definition = is_definition_start(lexeme.token);
+	bool is_definition = is_definition_start(lexeme.token)
+	                  || (allow_reduced_definitions && lexeme.token == Token::Ident && peek_n(core, 1).token == Token::Colon);
 
 	*out_is_definition = is_definition;
 
 	if (is_definition)
-		return parse_definition(core, true, is_definition_optional_value, false);
+		return parse_definition(core, true, allow_reduced_definitions, false);
 	else if (lexeme.token == Token::KwdReturn)
 		return parse_return(core);
 	else if (lexeme.token == Token::KwdLeave)
