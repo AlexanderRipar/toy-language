@@ -1683,13 +1683,15 @@ static const Opcode* builtin_caller_source_id(CoreData* core, const Opcode* code
 
 static const Opcode* builtin_definition_typeof(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
-	(void) core;
+	const DefinitionValue definition = get_builtin_param<DefinitionValue>(core, 0);
 
-	(void) code;
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	(void) write_ctx;
+	TypeId type = definition.type;
 
-	TODO("Implement `builtin_definition_typeof()`.");
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&type);
+
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
 
