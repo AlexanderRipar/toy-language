@@ -1582,13 +1582,26 @@ static const Opcode* builtin_create_type_builder(CoreData* core, const Opcode* c
 
 static const Opcode* builtin_add_type_member(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
-	(void) core;
+	const TypeId builder = get_builtin_param<TypeId>(core, 0);
 
-	(void) code;
+	const DefinitionValue definition = get_builtin_param<DefinitionValue>(core, 1);
 
-	(void) write_ctx;
+	const s64 offset = get_builtin_param<s64>(core, 2);
 
-	TODO("Implement `builtin_add_type_member()`.");
+	UserCompositeMemberInit init{};
+	init.name = definition.name;
+	init.type_id = definition.type;
+	init.default_value = definition.value.begin() == nullptr ? none<CoreId>() : some(core_id_from_address(core, definition.value.begin()));
+	init.is_pub = definition.is_pub;
+	init.is_mut = definition.is_mut;
+	init.offset = offset;
+
+	if (!type_add_user_composite_member(core, builder, init))
+		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+
+	const TypeId void_type = type_create_simple(core, TypeTag::Void);
+
+	return push_temporary_value(core, code, write_ctx, CompValue{ {}, 1, true, void_type });
 }
 
 static const Opcode* builtin_complete_type(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
