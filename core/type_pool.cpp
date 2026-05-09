@@ -2614,6 +2614,11 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 		return { 4, 4, 4, true };
 	}
 
+	case TypeTag::Definition:
+	{
+		return { sizeof(DefinitionValue), sizeof(DefinitionValue), alignof(DefinitionValue), true };
+	}
+
 	case TypeTag::CompInteger:
 	{
 		return { sizeof(CompIntegerValue), sizeof(CompIntegerValue), alignof(CompIntegerValue), true };
@@ -2698,7 +2703,6 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 		return type_metrics_from_id(core, attach->base_type_id);
 	}
 
-	case TypeTag::Definition:
 	case TypeTag::Variadic:
 	case TypeTag::TailArray:
 		TODO("Implement `type_metrics_from_id(%)`.", tag_name(structure->tag));

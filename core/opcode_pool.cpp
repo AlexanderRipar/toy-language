@@ -532,6 +532,23 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 		return rst;
 	}
 
+	case Opcode::Definition:
+	{
+		OpcodeDefinitionFlags flags;
+		memcpy(&flags, code + 1 + sizeof(IdentifierId), sizeof(flags));
+
+		ASSERT_OR_IGNORE(flags.has_type || flags.has_value);
+
+		rst.values_diff = -static_cast<s32>(flags.has_type && flags.has_value);
+
+		if (expects_write_ctx)
+		{
+			rst.values_diff -= 1; 
+			rst.write_ctxs_diff = -1;
+		}
+
+		return rst;
+	}
 	case Opcode::Switch:
 		TODO("Implement `opcode_effects(%)`.", tag_name(op));
 
@@ -1413,6 +1430,38 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 			emit_opcode(core, Opcode::ArrayPostInit, false, node, total_element_count, index_count, element_count);
 		}
+
+		return true;
+	}
+
+	case AstTag::Definition:
+	{
+		DefinitionInfo info = get_definition_info(node);
+
+		ASSERT_OR_IGNORE(is_some(info.type) || is_some(info.value));
+
+		if (is_some(info.type))
+		{
+			if (!opcodes_from_expression(core, get(info.type), false))
+				return false;
+		}
+
+		if (is_some(info.value))
+		{
+			if (!opcodes_from_expression(core, get(info.value), false))
+				return false;
+		}
+
+		const IdentifierId name = attachment_of<AstDefinitionData>(node)->identifier_id;
+
+		OpcodeDefinitionFlags flags{};
+		flags.is_pub = has_flag(node, AstFlag::Definition_IsPub);
+		flags.is_mut = has_flag(node, AstFlag::Definition_IsMut);
+		flags.has_type = is_some(info.type);
+		flags.has_value = is_some(info.value);
+		flags.unused_ = 0;
+
+		emit_opcode(core, Opcode::Definition, expects_write_ctx, node, name, flags);
 
 		return true;
 	}
@@ -2422,7 +2471,6 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	case AstTag::Wildcard:
 	case AstTag::Expects:
 	case AstTag::Ensures:
-	case AstTag::Definition:
 	case AstTag::ForEach:
 	case AstTag::Switch:
 	case AstTag::Catch:
@@ -3029,7 +3077,8 @@ const char8* tag_name(Opcode op) noexcept
 		"LoadTraitArgument",
 		"ImplMemberAllocComplete",
 		"PopSelf",
-		"EndTraitMemberType"
+		"EndTraitMemberType",
+		"Definition",
 	};
 
 	u8 ordinal = static_cast<u8>(op);

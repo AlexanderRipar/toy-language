@@ -2631,6 +2631,7 @@ enum class Opcode : u8
 	ImplMemberAllocComplete,
 	PopSelf,
 	EndTraitMemberType,
+	Definition,
 };
 
 enum class OpcodeSliceKind : u8
@@ -2711,6 +2712,19 @@ struct OpcodeSignaturePerParameterFlags
 	u8 is_templated : 1;
 
 	u8 unused_ : 3;
+};
+
+struct OpcodeDefinitionFlags
+{
+	u8 is_pub : 1;
+
+	u8 is_mut : 1;
+
+	u8 has_type : 1;
+
+	u8 has_value : 1;
+
+	u8 unused_ : 4;
 };
 
 enum class OpcodeId : u32
@@ -2865,6 +2879,19 @@ struct alignas(8) TraitValue
 
 	// This simply points into the opcode stream.
 	OpcodeId member_completions;
+};
+
+struct alignas(8) DefinitionValue
+{
+	IdentifierId name;
+
+	bool is_mut : 1;
+
+	bool is_pub : 1;
+
+	TypeId type;
+
+	MutRange<byte> value;
 };
 
 bool import_prelude(CoreData* core, Range<char8> path) noexcept;

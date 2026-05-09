@@ -1,0 +1,5 @@
+// success
+
+let make_def = func(def: Definition) -> Definition => def
+
+let def = make_def(x: f64)

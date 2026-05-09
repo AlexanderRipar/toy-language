@@ -5625,6 +5625,70 @@ static const Opcode* handle_end_trait_member_type(CoreData* core, const Opcode* 
 	return code;
 }
 
+static const Opcode* handle_definition(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+{
+	IdentifierId name;
+	code = code_attach(code, &name);
+
+	OpcodeDefinitionFlags flags;
+	code = code_attach(code, &flags);
+
+	ASSERT_OR_IGNORE(core->interp.values.used() >= static_cast<u32>(flags.has_type) + static_cast<u32>(flags.has_value));
+
+	DefinitionValue definition{};
+	definition.name = name;
+	definition.is_mut = flags.is_mut;
+	definition.is_pub = flags.is_pub;
+
+	CompValue* const top = core->interp.values.end() - 1;
+
+	if (flags.has_type)
+	{
+		CompValue* const type_value = top - static_cast<u32>(flags.has_value);
+
+		ASSERT_OR_IGNORE(type_tag_from_id(core, type_value->type) == TypeTag::Type);
+
+		definition.type = *value_as<TypeId>(type_value);
+	}
+	else
+	{
+		definition.type = top->type;
+	}
+
+	if (flags.has_value)
+	{
+		const TypeMetrics metrics = type_metrics_from_id(core, definition.type);
+
+		const Maybe<void*> allocation = comp_heap_alloc(core, metrics.size, metrics.align);
+
+		if (is_none(allocation))
+			TODO("Implement GC traversal.");
+
+		const MutRange<byte> value_bytes{ static_cast<byte*>(get(allocation)), metrics.size };
+
+		const CompValue dst{ value_bytes, metrics.align, true, definition.type };
+
+		if (convert_into(core, code, *top, dst) == nullptr)
+			return nullptr;
+
+		definition.value = value_bytes;
+	}
+	else
+	{
+		definition.value = MutRange<byte>{};
+	}
+
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&definition);
+
+	const TypeId definition_type = type_create_simple(core, TypeTag::Definition);
+
+	if (flags.has_type && flags.has_value)
+		core->interp.values.pop_by(1);
+
+	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(DefinitionValue), true, definition_type });
+}
+
+
 
 static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, SourceFileId file_id) noexcept
 {
@@ -5822,6 +5886,7 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 		&handle_impl_member_alloc_complete,        // ImplMemberAllocComplete
 		&handle_pop_self,                          // PopSelf
 		&handle_end_trait_member_type,             // EndTraitMemberType
+		&handle_definition,                        // Definition
 	};
 
 	static_assert(HANDLERS[static_cast<u8>(Opcode::EndCode)]                       == &handle_end_code);
@@ -5898,6 +5963,7 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplMemberAllocComplete)]       == &handle_impl_member_alloc_complete);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::PopSelf)]                       == &handle_pop_self);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::EndTraitMemberType)]            == &handle_end_trait_member_type);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::Definition)]                    == &handle_definition);
 
 	core->interp.is_ok = true;
 

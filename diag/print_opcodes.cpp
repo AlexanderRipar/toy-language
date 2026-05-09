@@ -500,6 +500,11 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 		return PrintResult{ code + sizeof(IdentifierId) + sizeof(bool), 0 };
 	}
 
+	case Opcode::Definition:
+	{
+		return PrintResult{ code + sizeof(IdentifierId) + sizeof(OpcodeDefinitionFlags), 0 };
+	}
+
 	case Opcode::Switch:
 		TODO("Implement `follow_ref_impl(%)`.", tag_name(op));
 	}
@@ -1624,6 +1629,11 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 			return PrintResult{ nullptr, -1 };
 
 		return PrintResult{ code, header_written + written };
+	}
+
+	case Opcode::Definition:
+	{
+		return PrintResult{ code + sizeof(IdentifierId) + sizeof(OpcodeDefinitionFlags), header_written };
 	}
 
 	case Opcode::Switch:
