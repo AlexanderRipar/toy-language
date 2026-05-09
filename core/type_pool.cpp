@@ -2648,7 +2648,7 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 
 	case TypeTag::Signature:
 	{
-		return { 16, 16, 8, true };
+		return { sizeof(Callable), sizeof(Callable), alignof(Callable), true };
 	}
 
 	case TypeTag::Ptr:
@@ -2688,7 +2688,7 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 
 	case TypeTag::Trait:
 	{
-		return { 8, 8, 8, true };
+		return { sizeof(TraitValue), sizeof(TraitValue), alignof(TraitValue), true };
 	}
 
 	case TypeTag::Self:
