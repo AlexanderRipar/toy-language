@@ -2646,7 +2646,6 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 		return { 16, 16, 8, false };
 	}
 
-	case TypeTag::Variadic:
 	case TypeTag::Signature:
 	{
 		return { 16, 16, 8, true };
@@ -2700,6 +2699,7 @@ TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept
 	}
 
 	case TypeTag::Definition:
+	case TypeTag::Variadic:
 	case TypeTag::TailArray:
 		TODO("Implement `type_metrics_from_id(%)`.", tag_name(structure->tag));
 
