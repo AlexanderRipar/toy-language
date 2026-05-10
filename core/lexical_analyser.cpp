@@ -97,7 +97,7 @@ struct alignas(8) ScopeEntry
 
 	u8 unused_ = 0;
 
-	AstNode* definition;
+	Maybe<AstNode*> definition;
 };
 
 struct ScopeMapInfo
@@ -422,7 +422,7 @@ static void set_closure_list(CoreData* core, ScopeMap* closure, Maybe<ClosureLis
 	*out = some(list_id);	
 }
 
-static u16 add_name_to_closures(CoreData* core, IdentifierId name, u16 closed_over_rank, AstNode* definition, s32 scope_index, bool close_in_innermost) noexcept
+static u16 add_name_to_closures(CoreData* core, IdentifierId name, u16 closed_over_rank, s32 scope_index, bool close_in_innermost) noexcept
 {
 	bool closure_source_is_closure = false;
 
@@ -448,7 +448,7 @@ static u16 add_name_to_closures(CoreData* core, IdentifierId name, u16 closed_ov
 			closure_entry.closure_source_rank = closed_over_rank;
 			closure_entry.closure_source_is_closure = closure_source_is_closure;
 			closure_entry.closure_source_out = static_cast<u8>(i - source_index);
-			closure_entry.definition = definition;
+			closure_entry.definition = none<AstNode*>();
 
 			// This addition can never fail, as we just checked whether the
 			// name is already present. As such, we pass a dummy `nullptr` as
@@ -679,10 +679,11 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 			if (scope_map_get(scope, name, &scope_entry))
 			{
-				if (is_descendant_of(scope_entry.definition, node))
+				if (is_some(scope_entry.definition) && is_descendant_of(get(scope_entry.definition), node))
 				{
-					if (has_flag(scope_entry.definition, AstFlag::Definition_HasType) && is_descendant_of(first_child_of(scope_entry.definition), node))
-					{
+					if (has_flag(get(scope_entry.definition), AstFlag::Definition_HasType)
+					 && is_descendant_of(first_child_of(get(scope_entry.definition)), node)
+					) {
 						// A definition must not be referenced from within its
 						// explicit type expression. If this is the case, emit
 						// an error.
@@ -692,7 +693,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 						core->lex.has_error = true;
 					}
 
-					scope_entry.definition->flags |= AstFlag::Definition_HasSelfReference;
+					get(scope_entry.definition)->flags |= AstFlag::Definition_HasSelfReference;
 				}
 
 				if (scope->kind == ScopeMapKind::Global)
@@ -722,7 +723,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 					// between its definition and its use.
 					// If `close_in_innermost` is `false`, we skip the
 					// innermost closure.
-					const u16 rank_in_closure = add_name_to_closures(core, name, scope_entry.rank, scope_entry.definition, i, close_in_innermost);
+					const u16 rank_in_closure = add_name_to_closures(core, name, scope_entry.rank, i, close_in_innermost);
 
 					binding->closed.kind_ = NameBindingKind::Closed;
 					binding->closed.rank_in_closure = rank_in_closure;
@@ -856,7 +857,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 			ScopeEntry entry{};
 			entry.rank = scope->used;
-			entry.definition = parameter;
+			entry.definition = none<AstNode*>();
 
 			const Maybe<ScopeMap*> new_scope = scope_map_add(core, scope, name, entry, node);
 
@@ -929,7 +930,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 			ScopeEntry entry{};
 			entry.rank = scope->used;
-			entry.definition = node;
+			entry.definition = some(node);
 
 			const Maybe<ScopeMap*> new_scope = scope_map_add(core, scope, name, entry, node);
 
@@ -981,7 +982,7 @@ static void resolve_names_root(CoreData* core, AstNode* root, SourceFileId file_
 
 		ScopeEntry entry{};
 		entry.rank = rank;
-		entry.definition = node;
+		entry.definition = some(node);
 
 		const Maybe<ScopeMap*> new_scope = scope_map_add(core, scope, attach->identifier_id, entry, node);
 
