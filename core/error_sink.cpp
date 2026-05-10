@@ -95,6 +95,7 @@ static const char8* error_message_of(CompileError error) noexcept
 		"More than one definition with the same name in the same scope.\n",                                                                             // ScopeDuplicateName
 		"Name not defined.\n",                                                                                                                          // ScopeNameNotDefined
 		"Explicit type expressions references the definition it is a part of.\n",                                                                       // CyclicDefinitionType
+		"Parameter type or value expression references the definition it is a part of.\n",                                                              // CyclicParameterReference
 		"Unexpected character in source file.\n",                                                                                                       // LexUnexpectedCharacter
 		"Null character in source file.\n",                                                                                                             // LexNullCharacter
 		"`/*` without matching `*/`.\n",                                                                                                                // LexCommentMismatchedBegin
@@ -377,6 +378,7 @@ static constexpr const char8* COMPILE_ERROR_NAMES[] = {
 	"ScopeDuplicateName",
 	"ScopeNameNotDefined",
 	"CyclicDefinitionType",
+	"CyclicParameterReference",
 	"LexUnexpectedCharacter",
 	"LexNullCharacter",
 	"LexCommentMismatchedBegin",

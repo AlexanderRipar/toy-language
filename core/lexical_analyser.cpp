@@ -681,7 +681,15 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 			{
 				if (is_some(scope_entry.definition) && is_descendant_of(get(scope_entry.definition), node))
 				{
-					if (has_flag(get(scope_entry.definition), AstFlag::Definition_HasType)
+					if (get(scope_entry.definition)->tag == AstTag::Parameter)
+					{
+						// A parameter must not reference itself at all.
+
+						record_error(core, node, CompileError::CyclicParameterReference);
+
+						core->lex.has_error = true;
+					}
+					else if (has_flag(get(scope_entry.definition), AstFlag::Definition_HasType)
 					 && is_descendant_of(first_child_of(get(scope_entry.definition)), node)
 					) {
 						// A definition must not be referenced from within its

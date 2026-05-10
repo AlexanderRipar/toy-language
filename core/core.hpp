@@ -1816,6 +1816,7 @@ enum class CompileError
 	ScopeDuplicateName,
 	ScopeNameNotDefined,
 	CyclicDefinitionType,
+	CyclicParameterReference,
 	LexUnexpectedCharacter,
 	LexNullCharacter,
 	LexCommentMismatchedBegin,
