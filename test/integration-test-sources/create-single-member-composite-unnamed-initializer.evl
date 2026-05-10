@@ -1,0 +1,28 @@
+// success
+
+let SingleMemberStruct = func(member: Definition) -> Type => {
+	let builder = std.create_type_builder()
+
+	std.add_type_member(builder, member, 0)
+
+	let member_type = std.definition_typeof(member)
+
+	std.complete_type(
+		.builder = builder,
+		.size    = sizeof(member_type),
+		.stride  = strideof(member_type),
+		.align   = alignof(member_type)
+	)
+}
+
+let WrappedU32 = SingleMemberStruct(x: u32)
+
+let WrappedU8 = SingleMemberStruct(y: u8)
+
+let wrapped_u32: WrappedU32 = .{ 404 }
+
+let wrapped_u8: WrappedU8 = .{ 55 }
+
+let unused_32 = std.assert(wrapped_u32.x == 404)
+
+let unused_8 = std.assert(wrapped_u8.y == 55)

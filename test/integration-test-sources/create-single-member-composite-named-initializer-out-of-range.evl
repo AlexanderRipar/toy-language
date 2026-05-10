@@ -1,0 +1,20 @@
+// CompIntegerValueTooLarge
+
+let SingleMemberStruct = func(member: Definition) -> Type => {
+	let builder = std.create_type_builder()
+
+	std.add_type_member(builder, member, 0)
+
+	let member_type = std.definition_typeof(member)
+
+	std.complete_type(
+		.builder = builder,
+		.size    = sizeof(member_type),
+		.stride  = strideof(member_type),
+		.align   = alignof(member_type)
+	)
+}
+
+let WrappedU8 = SingleMemberStruct(y: u8)
+
+let wrapped_u8: WrappedU8 = .{ .y = -1 }
