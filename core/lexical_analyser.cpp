@@ -687,7 +687,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 						// explicit type expression. If this is the case, emit
 						// an error.
 
-						record_error(core, node, CompileError::INVALID); // TODO: Error message.
+						record_error(core, node, CompileError::CyclicDefinitionType);
 
 						core->lex.has_error = true;
 					}

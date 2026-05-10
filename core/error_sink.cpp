@@ -69,7 +69,7 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Alignment passed to `_complete_type` must not be zero.\n",                                                                                     // BuiltinCompleteTypeAlignZero
 		"Alignment passed to `_complete_type` must be a power of two.\n",                                                                               // BuiltinCompleteTypeAlignNotPowTwo
 		"Function type passed to _returntypeof must not have a templated return type.\n",                                                               // ReturntypeofTemplatedReturnType
-		"Initializer of global variable cannot reference its own value.\n",                                                                             // CyclicGlobalInitializerDependency
+		"Initializer of global definition cannot reference its own value.\n",                                                                           // CyclicGlobalInitializerDependency
 		"Total size of values in a single closure exceeds supported maximum.\n",                                                                        // ClosureTooLarge
 		"Assignments are in composite initializers must have an implicit member as their left-hand-side (`.name = value`).\n",                          // AssignmentInCompositeInitializer
 		"Missing `finally` clause on for-loop in value-position.\n",                                                                                    // ForLoopNeedsFinally
@@ -78,10 +78,23 @@ static const char8* error_message_of(CompileError error) noexcept
 		"`Self` is not allowed outside an `impl`.\n",                                                                                                   // UnexpectedSelf
 		"`return` is not allowed here.\n",                                                                                                              // UnexpectedReturn
 		"Reached `unreachable`.\n",                                                                                                                     // UnreachableReached
+		"The given type builder already contains a definition with the same name.\n",                                                                   // UserDefinedTypeDuplicateMemberName
+		"Circular dependency of global definition onto itself detected.\n",                                                                             // CircularGlobalInitialization
+		"Access of uninitialized shadow data.\n",                                                                                                       // UninitializedShadowAccess
+		"No impl matching the supplied argument types for the given trait found.\n",                                                                    // TraitCallMissingImpl
+		"Encountered an invalid pointer into the compile-time heap.\n",                                                                                 // BadHeapPointer
+		"The callee expression on the right-hand-side of `impl` must be a trait.\n",                                                                    // ImplInvalidTraitCallee
+		"The expression on the left-hand-side of `impl` must be of type `Type`.\n",                                                                     // ImplInvalidBase
+		"impl member does not appear in implemented trait.\n",                                                                                          // ImplMemberUnexpected
+		"impl is missing a member that is defined in the implemented trait without a default value.\n",                                                 // ImplMemberMissing
+		"impl member mutability does not match that of the corresponding trait member.\n",                                                              // ImplMemberMutabilityMismatch
+		"impl member type does not match that of the corresponding trait member.\n",                                                                    // ImplMemberTypeMismatch
+		"Initializer of impl member cannot reference its own value.\n",                                                                                 // CyclicImplMemberInitializerDependency
 		"File does not contain a global definition with the given name.\n",                                                                             // GlobalNameNotDefined
 		"Exceeded maximum number of definitions in a single scope.\n",                                                                                  // ScopeTooManyDefinitions
 		"More than one definition with the same name in the same scope.\n",                                                                             // ScopeDuplicateName
-		"Name not defined\n",                                                                                                                           // ScopeNameNotDefined
+		"Name not defined.\n",                                                                                                                          // ScopeNameNotDefined
+		"Explicit type expressions references the definition it is a part of.\n",                                                                       // CyclicDefinitionType
 		"Unexpected character in source file.\n",                                                                                                       // LexUnexpectedCharacter
 		"Null character in source file.\n",                                                                                                             // LexNullCharacter
 		"`/*` without matching `*/`.\n",                                                                                                                // LexCommentMismatchedBegin
@@ -141,6 +154,9 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Expected `]` after array index expression.\n",                                                                                                 // ParseArrayIndexUnexpectedToken
 		"Expected `->` after inbound definition in catch.\n",                                                                                           // ParseCatchMissingThinArrowRightAfterDefinition
 		"Expected identifier after infix `.` operator.\n",                                                                                              // ParseMemberUnexpectedToken
+		"Expected identifier as trait parameter name.\n",                                                                                               // ParseTraitParameterMissingName
+		"Expected `{` after trait signature.\n",                                                                                                        // ParseTraitExpectOpeningCurly
+		"Expected `{` after impl trait call.\n",                                                                                                        // ParseImplExpectedOpeningCurly
 		"Key nesting limit exceeded.\n",                                                                                                                // ParseConfigKeyNestingLimitExceeded
 		"Tried assigning to key that does not expect subkeys.\n",                                                                                       // ParseConfigKeyNotExpectingSubkeys
 		"Key does not exist.\n",                                                                                                                        // ParseConfigKeyDoesNotExist
@@ -344,10 +360,23 @@ static constexpr const char8* COMPILE_ERROR_NAMES[] = {
 	"UnexpectedSelf",
 	"UnexpectedReturn",
 	"UnreachableReached",
+	"UserDefinedTypeDuplicateMemberName",
+	"CircularGlobalInitialization",
+	"UninitializedShadowAccess",
+	"TraitCallMissingImpl",
+	"BadHeapPointer",
+	"ImplInvalidTraitCallee",
+	"ImplInvalidBase",
+	"ImplMemberUnexpected",
+	"ImplMemberMissing",
+	"ImplMemberMutabilityMismatch",
+	"ImplMemberTypeMismatch",
+	"CyclicImplMemberInitializerDependency",
 	"GlobalNameNotDefined",
 	"ScopeTooManyDefinitions",
 	"ScopeDuplicateName",
 	"ScopeNameNotDefined",
+	"CyclicDefinitionType",
 	"LexUnexpectedCharacter",
 	"LexNullCharacter",
 	"LexCommentMismatchedBegin",
@@ -406,6 +435,9 @@ static constexpr const char8* COMPILE_ERROR_NAMES[] = {
 	"ParseArrayIndexUnexpectedToken",
 	"ParseCatchMissingThinArrowRightAfterDefinition",
 	"ParseMemberUnexpectedToken",
+	"ParseTraitParameterMissingName",
+	"ParseTraitExpectOpeningCurly",
+	"ParseImplExpectedOpeningCurly",
 	"ParseConfigKeyNestingLimitExceeded",
 	"ParseConfigKeyNotExpectingSubkeys",
 	"ParseConfigKeyDoesNotExist",

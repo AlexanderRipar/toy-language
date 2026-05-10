@@ -2166,7 +2166,7 @@ static AstBuilderToken parse_trait(CoreData* core) noexcept
 		parameter_count += 1;
 
 		if (lexeme.token != Token::Ident)
-			parse_error_fatal(core, lexeme.source_id, CompileError::INVALID);
+			parse_error_fatal(core, lexeme.source_id, CompileError::ParseTraitParameterMissingName);
 
 		const AstBuilderToken parameter_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstIdentifierData{ lexeme.identifier_id, NameBinding{} });
 
@@ -2178,7 +2178,7 @@ static AstBuilderToken parse_trait(CoreData* core) noexcept
 		if (lexeme.token == Token::Comma)
 			lexeme = next(core);
 		else if (lexeme.token != Token::ParenR)
-			parse_error_fatal(core, lexeme.source_id, CompileError::INVALID);
+			parse_error_fatal(core, lexeme.source_id, CompileError::ParseSignatureMissingParenthesisAfterTrait);
 	}
 
 	const AstBuilderToken first_child_token = push_node(core, first_parameter_token, parameter_list_source_id, AstFlag::EMPTY, AstTraitParameterListData{ parameter_count });
@@ -2193,7 +2193,7 @@ static AstBuilderToken parse_trait(CoreData* core) noexcept
 	}
 
 	if (lexeme.token != Token::CurlyL)
-		parse_error_fatal(core, lexeme.source_id, CompileError::INVALID);
+		parse_error_fatal(core, lexeme.source_id, CompileError::ParseTraitExpectOpeningCurly);
 
 	while (true)
 	{
@@ -2742,7 +2742,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 				lexeme = next(core);
 
 				if (lexeme.token != Token::CurlyL)
-					parse_error_fatal(core, lexeme.source_id, CompileError::INVALID); // TODO
+					parse_error_fatal(core, lexeme.source_id, CompileError::ParseImplExpectOpeningCurly);
 
 				while (true)
 				{

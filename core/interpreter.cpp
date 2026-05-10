@@ -1597,7 +1597,7 @@ static const Opcode* builtin_add_type_member(CoreData* core, const Opcode* code,
 	init.offset = offset;
 
 	if (!type_add_user_composite_member(core, builder, init))
-		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+		return record_interpreter_error(core, code, CompileError::UserDefinedTypeDuplicateMemberName);
 
 	const TypeId void_type = type_create_simple(core, TypeTag::Void);
 
@@ -1863,13 +1863,12 @@ static const Opcode* handle_file_member_alloc_prepare(CoreData* core, const Opco
 	u16 rank;
 	code = code_attach(code, &rank);
 
-
 	const SourceFile* const source_file = source_file_from_id(core, file_id);
 
 	const TypeId file_type = source_file->type;
 
 	if (!type_member_begin_initialization_by_rank(core, file_type, rank))
-		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+		return record_interpreter_error(core, code, CompileError::CircularGlobalInitialization);
 
 	GlobalInitialization* const init = core->interp.global_initializations.reserve();
 	init->type = file_type;
@@ -2117,7 +2116,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, Comp
 				const Maybe<byte*> shadow_begin = shadow_get(core, top->bytes.begin() + info.offset, get(info.shadow_id), info.shadow_rank);
 
 				if (is_none(shadow_begin))
-					return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+					return record_interpreter_error(core, code, CompileError::UninitializedShadowAccess);
 
 				bytes = MutRange<byte>{ get(shadow_begin), metrics.size };
 			}
@@ -2985,7 +2984,7 @@ static const Opcode* handle_call(CoreData* core, const Opcode* code, CompValue* 
 			return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 		}
 
-		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+		return record_interpreter_error(core, code, CompileError::TraitCallMissingImpl);
 	}
 }
 
@@ -3773,7 +3772,7 @@ static const Opcode* handle_address_of(CoreData* core, const Opcode* code, CompV
 	byte* ptr = top->bytes.begin();
 
 	if (!comp_heap_leak(core, top->bytes))
-		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+		return record_interpreter_error(core, code, CompileError::BadHeapPointer);
 
 	ReferenceType ptr_type{};
 	ptr_type.referenced_type_id = type;
@@ -3941,7 +3940,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CompValue*
 		MutRange<byte> slice{ begin_ptr, end_ptr };
 
 		if (!comp_heap_leak(core, slice))
-			return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+			return record_interpreter_error(core, code, CompileError::BadHeapPointer);
 
 		ReferenceType slice_type{};
 		slice_type.referenced_type_id = elem_type;
@@ -3977,7 +3976,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CompValue*
 		MutRange<byte> slice{ begin_ptr, end_ptr };
 
 		if (!comp_heap_leak(core, slice))
-			return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+			return record_interpreter_error(core, code, CompileError::BadHeapPointer);
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&slice);
 
@@ -4006,7 +4005,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CompValue*
 		MutRange<byte> slice{ begin_ptr, end_ptr };
 
 		if (!comp_heap_leak(core, slice))
-			return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+			return record_interpreter_error(core, code, CompileError::BadHeapPointer);
 
 		ReferenceType slice_type{};
 		slice_type.referenced_type_id = ptr_type.referenced_type_id;
@@ -5226,10 +5225,10 @@ static const Opcode* handle_impl_make_self(CoreData* core, const Opcode* code, [
 	const TypeId trait_callee_type = trait_callee->type;
 
 	if (type_tag_from_id(core, trait_callee_type) != TypeTag::Trait)
-		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+		return record_interpreter_error(core, code, CompileError::ImplInvalidTraitCallee);
 
 	if (type_tag_from_id(core, base->type) != TypeTag::Type)
-		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+		return record_interpreter_error(core, code, CompileError::ImplInvalidBase);
 
 	const TraitValue* const trait = value_as<TraitValue>(trait_callee);
 
@@ -5316,7 +5315,7 @@ static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CompVa
 	while (impl_index != impl_member_count)
 	{
 		if (trait_index == trait_member_count)
-			return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+			return record_interpreter_error(core, code, CompileError::ImplMemberUnexpected);
 
 		IdentifierId impl_member_name;
 		code = code_attach(code, &impl_member_name);
@@ -5336,7 +5335,7 @@ static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CompVa
 			trait_code = code_attach(trait_code, &default_init);
 
 			if (is_none(default_init))
-				return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+				return record_interpreter_error(core, code, CompileError::ImplMemberMissing);
 
 			ImplMemberInit member{};
 			member.name = trait_member_name;
@@ -5352,7 +5351,7 @@ static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CompVa
 			trait_index += 1;
 			
 			if (trait_index == trait_member_count)
-				return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+				return record_interpreter_error(core, code, CompileError::ImplMemberUnexpected);
 		}
 
 		bool trait_is_mut;
@@ -5371,7 +5370,7 @@ static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CompVa
 		code = code_attach(code, &value_init);
 
 		if (trait_is_mut != impl_is_mut)
-			return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message (mutability mismatch).
+			return record_interpreter_error(core, code, CompileError::ImplMemberMutabilityMismatch);
 
 		ImplMemberInit member{};
 		member.name = trait_member_name;
@@ -5402,7 +5401,7 @@ static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CompVa
 		trait_code = code_attach(trait_code, &default_init);
 
 		if (is_none(default_init))
-			return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+			return record_interpreter_error(core, code, CompileError::ImplMemberMissing);
 
 		ImplMemberInit member{};
 		member.name = member_name;
@@ -5514,7 +5513,7 @@ static const Opcode* handle_impl_member_alloc_prepare(CoreData* core, const Opco
 	u16 rank;
 
 	if (!type_member_begin_initialization_by_name(core, body_type, name, &rank))
-		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+		return record_interpreter_error(core, code, CompileError::CyclicImplMemberInitializerDependency);
 
 	GlobalInitialization* const init = core->interp.global_initializations.reserve();
 	init->type = body_type;
@@ -5541,7 +5540,7 @@ static const Opcode* handle_check_types_equal(CoreData* core, const Opcode* code
 	if (type_tag_from_id(core, trait_member_type_value->type) != TypeTag::Type
 	 || type_tag_from_id(core, impl_member_type_value->type) != TypeTag::Type
 	) {
-		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 	}
 
 	const TypeId trait_member_type = *value_as<TypeId>(trait_member_type_value);
@@ -5549,7 +5548,7 @@ static const Opcode* handle_check_types_equal(CoreData* core, const Opcode* code
 	const TypeId impl_member_type = *value_as<TypeId>(impl_member_type_value);
 
 	if (!type_is_equal(core, trait_member_type, impl_member_type))
-		return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error message.
+		return record_interpreter_error(core, code, CompileError::ImplMemberTypeMismatch);
 
 	core->interp.values.pop_by(1);
 
