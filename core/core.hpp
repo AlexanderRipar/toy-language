@@ -813,13 +813,14 @@ enum class AstTag : u8
 // Flags specifying tag-specific information for an `AstNode`.
 enum class AstFlag : u8
 {
-	EMPTY                = 0,
+	EMPTY                            = 0,
 
 	Definition_IsPub                 = 0x01,
 	Definition_IsMut                 = 0x02,
 	Definition_HasType               = 0x04,
 	Definition_IsEval                = 0x08,
 	Definition_IsTemplatedParam      = 0x10,
+	Definition_HasSelfReference      = 0x20,
 
 	If_HasWhere                      = 0x01,
 	If_HasElse                       = 0x02,
