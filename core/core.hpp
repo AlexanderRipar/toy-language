@@ -2397,6 +2397,12 @@ TypeId type_create_array(CoreData* core, TypeTag tag, ArrayType attach) noexcept
 
 
 
+TypeId type_create_indirection(CoreData* core) noexcept;
+
+void type_set_indirection_target(CoreData* core, TypeId indirection_type_id, TypeId target_type_id) noexcept;
+
+
+
 TypeId type_create_signature(CoreData* core, bool is_func, u8 parameter_count) noexcept;
 
 void type_add_signature_parameter(CoreData* core, TypeId type_id, SignatureParameterInit init) noexcept;
@@ -2650,6 +2656,8 @@ enum class Opcode : u8
 	PopSelf,
 	EndTraitMemberType,
 	Definition,
+	PushTypeType,
+	CompleteCircularDefinition,
 };
 
 enum class OpcodeSliceKind : u8
@@ -2743,6 +2751,24 @@ struct OpcodeDefinitionFlags
 	u8 has_value : 1;
 
 	u8 unused_ : 4;
+};
+
+struct OpcodeScopeAllocTypedFlags
+{
+	u8 is_mut : 1;
+
+	u8 is_circular : 1;
+
+	u8 unused_ : 6;
+};
+
+struct OpcodeImplMemberAllocCompleteFlags
+{
+	u8 is_trait_default : 1;
+
+	u8 is_circular : 1;
+
+	u8 unused_ : 6;
 };
 
 enum class OpcodeId : u32

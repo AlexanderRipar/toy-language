@@ -1852,6 +1852,26 @@ TypeId type_create_array(CoreData* core, TypeTag tag, ArrayType attach) noexcept
 
 
 
+TypeId type_create_indirection(CoreData* core) noexcept
+{
+	(void) core;
+
+	TODO("Implement.");
+}
+
+void type_set_indirection_target(CoreData* core, TypeId indirection_type_id, TypeId target_type_id) noexcept
+{
+	(void) core;
+
+	(void) indirection_type_id;
+
+	(void) target_type_id;
+
+	TODO("Implement.");
+}
+
+
+
 TypeId type_create_signature(CoreData* core, bool is_func, u8 parameter_count) noexcept
 {
 	ASSERT_OR_IGNORE(parameter_count <= 64);
@@ -2413,9 +2433,8 @@ void type_member_end_initialization(CoreData* core, TypeId type_id, u16 rank) no
 
 	CompositeInfo info = composite_info(composite);
 
-	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
-
-	ASSERT_OR_IGNORE(info.member_types[rank].is_initializing);
+	// Note that `is_initializing` and `is_pending` may already be `false` from
+	// a previous call to `type_member_relax_initialization`.
 
 	info.member_types[rank].is_pending = false;
 	info.member_types[rank].is_initializing = false;

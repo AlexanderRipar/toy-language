@@ -197,6 +197,7 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	case Opcode::ImplMemberAllocComplete:
 	case Opcode::PopSelf:
 	case Opcode::EndTraitMemberType:
+	case Opcode::CompleteCircularDefinition:
 	{
 		ASSERT_OR_IGNORE(!expects_write_ctx);
 
@@ -289,11 +290,12 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	case Opcode::Trait:
 	case Opcode::LoadSelf:
 	case Opcode::LoadTraitArgument:
+	case Opcode::PushTypeType:
 	{
 		if (expects_write_ctx)
 			rst.write_ctxs_diff = -1;
 		else
-			rst.values_diff += 1;
+			rst.values_diff = 1;
 
 		return rst;
 	}
@@ -813,22 +815,38 @@ static bool opcodes_from_scope_definition(CoreData* core, AstNode* node) noexcep
 
 	ASSERT_OR_IGNORE(is_some(info.value));
 
-	const bool has_type = is_some(info.type);
+	const bool has_type = has_flag(node, AstFlag::Definition_HasType);
+
+	const bool has_self_reference = has_flag(node, AstFlag::Definition_HasSelfReference);
 
 	const bool is_mut = has_flag(node, AstFlag::Definition_IsMut);
 
-	if (has_type)
+	if (has_type || has_self_reference)
 	{
-		if (!opcodes_from_expression(core, get(info.type), false))
-			return false;
+		if (has_type)
+		{
+			if (!opcodes_from_expression(core, get(info.type), false))
+				return false;
+		}
+		else
+		{
+			emit_opcode(core, Opcode::PushTypeType, false, node);
+		}
 
-		emit_opcode(core, Opcode::ScopeAllocTyped, false, node, is_mut);
+		OpcodeScopeAllocTypedFlags flags{};
+		flags.is_mut = is_mut;
+		flags.is_circular = has_self_reference;
+
+		emit_opcode(core, Opcode::ScopeAllocTyped, false, node, flags);
 	}
 
-	if (!opcodes_from_expression(core, get(info.value), has_type))
+	if (!opcodes_from_expression(core, get(info.value), has_type || has_self_reference))
 		return false;
 
-	if (!has_type)
+	if (has_self_reference)
+		emit_opcode(core, Opcode::CompleteCircularDefinition, false, node);
+
+	if (!has_type && !has_self_reference)
 		emit_opcode(core, Opcode::ScopeAllocUntyped, false, node, is_mut);
 
 	return true;
@@ -2726,16 +2744,25 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 
 		DefinitionInfo info = get_definition_info(node);
 
+		const bool has_self_reference = has_flag(node, AstFlag::Definition_HasSelfReference);
+
 		ASSERT_OR_IGNORE(is_some(info.type) && is_some(info.value));
 
 		emit_opcode(core, Opcode::ImplMemberAllocPrepare, false, node, name_id, true);
 
-		emit_opcode(core, Opcode::FileMemberAllocTyped, false, node);
+		emit_opcode(core, Opcode::FileMemberAllocTyped, false, node, has_self_reference);
 
 		if (!opcodes_from_expression(core, get(info.value), true))
 			return false;
 
-		emit_opcode(core, Opcode::ImplMemberAllocComplete, false, node, true);
+		if (has_self_reference)
+			emit_opcode(core, Opcode::CompleteCircularDefinition, false, node);
+
+		OpcodeImplMemberAllocCompleteFlags flags{};
+		flags.is_trait_default = true;
+		flags.is_circular = has_self_reference;
+
+		emit_opcode(core, Opcode::ImplMemberAllocComplete, false, node, flags);
 
 		emit_opcode(core, Opcode::EndCode, false, node);
 
@@ -2752,6 +2779,8 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 
 		DefinitionInfo info = get_definition_info(node);
 
+		const bool has_self_reference = has_flag(node, AstFlag::Definition_HasSelfReference);
+
 		ASSERT_OR_IGNORE(is_some(info.value));
 
 		emit_opcode(core, Opcode::ImplMemberAllocPrepare, false, node, name_id, false);
@@ -2766,12 +2795,16 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 			emit_opcode(core, Opcode::CheckTypesEqual, false, node);
 		}
 
-		emit_opcode(core, Opcode::FileMemberAllocTyped, false, node);
+		emit_opcode(core, Opcode::FileMemberAllocTyped, false, node, has_self_reference);
 
 		if (!opcodes_from_expression(core, get(info.value), true))
 			return false;
 
-		emit_opcode(core, Opcode::ImplMemberAllocComplete, false, node, false);
+		OpcodeImplMemberAllocCompleteFlags flags{};
+		flags.is_trait_default = false;
+		flags.is_circular = has_self_reference;
+
+		emit_opcode(core, Opcode::ImplMemberAllocComplete, false, node, flags);
 
 		emit_opcode(core, Opcode::EndCode, false, node);
 
@@ -2873,26 +2906,35 @@ const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node,
 
 	DefinitionInfo info = get_definition_info(node);
 
-	const bool has_type = is_some(info.type);
+	const bool has_type = has_flag(node, AstFlag::Definition_HasType);
 
-	const bool has_value = is_some(info.value);
+	const bool has_self_reference = has_flag(node, AstFlag::Definition_HasSelfReference);
 
-	if (has_type)
+	ASSERT_OR_IGNORE(is_some(info.value));
+
+	if (has_type || has_self_reference)
 	{
-		if (!opcodes_from_expression(core, get(info.type), false))
-			return none<Opcode*>();
+		if (has_type)
+		{
+			if (!opcodes_from_expression(core, get(info.type), false))
+				return none<Opcode*>();
+		}
+		else
+		{
+			emit_opcode(core, Opcode::PushTypeType, false, node);
+		}
 
-		emit_opcode(core, Opcode::FileMemberAllocTyped, false, node);
+		emit_opcode(core, Opcode::FileMemberAllocTyped, false, node, has_self_reference);
 	}
 
-	if (has_value)
-	{
-		if (!opcodes_from_expression(core, get(info.value), has_type))
-			return none<Opcode*>();
-	}
+	if (!opcodes_from_expression(core, get(info.value), has_type || has_self_reference))
+		return none<Opcode*>();
 
-	if (has_type)
-		emit_opcode(core, Opcode::FileMemberAllocComplete, false, node);
+	if (has_self_reference)
+		emit_opcode(core, Opcode::CompleteCircularDefinition, false, node);
+
+	if (has_type || has_self_reference)
+		emit_opcode(core, Opcode::FileMemberAllocComplete, false, node, has_self_reference);
 	else
 		emit_opcode(core, Opcode::FileMemberAllocUntyped, false, node);
 
@@ -3079,6 +3121,8 @@ const char8* tag_name(Opcode op) noexcept
 		"PopSelf",
 		"EndTraitMemberType",
 		"Definition",
+		"PushTypeType",
+		"CompleteCircularDefinition",
 	};
 
 	u8 ordinal = static_cast<u8>(op);

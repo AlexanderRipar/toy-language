@@ -50,7 +50,6 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::DuplicateToWriteCtx:
 	case Opcode::ScopeEnd:
 	case Opcode::ScopeEndPreserveTop:
-	case Opcode::FileMemberAllocTyped:
 	case Opcode::PopClosure:
 	case Opcode::ExecArgs:
 	case Opcode::Call:
@@ -75,6 +74,8 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::LoadSelf:
 	case Opcode::PopSelf:
 	case Opcode::EndTraitMemberType:
+	case Opcode::PushTypeType:
+	case Opcode::CompleteCircularDefinition:
 	{
 		return PrintResult{ code, 0 };
 	}
@@ -85,8 +86,11 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	}
 
 	case Opcode::ScopeAllocTyped:
+	{
+		return PrintResult{ code + sizeof(OpcodeScopeAllocTypedFlags), 0 };
+	}
+
 	case Opcode::ScopeAllocUntyped:
-	case Opcode::ImplMemberAllocComplete:
 	{
 		return PrintResult{ code + sizeof(bool), 0 };
 	}
@@ -94,6 +98,11 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::FileMemberAllocPrepare:
 	{
 		return PrintResult{ code + sizeof(SourceFileId) + sizeof(u16), 0 };
+	}
+
+	case Opcode::FileMemberAllocTyped:
+	{
+		return PrintResult{ code + sizeof(bool), 0 };
 	}
 
 	case Opcode::LoadScope:
@@ -500,6 +509,11 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 		return PrintResult{ code + sizeof(IdentifierId) + sizeof(bool), 0 };
 	}
 
+	case Opcode::ImplMemberAllocComplete:
+	{
+		return PrintResult{ code + sizeof(OpcodeImplMemberAllocCompleteFlags), 0 };
+	}
+
 	case Opcode::Definition:
 	{
 		return PrintResult{ code + sizeof(IdentifierId) + sizeof(OpcodeDefinitionFlags), 0 };
@@ -570,7 +584,6 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	case Opcode::DuplicateToWriteCtx:
 	case Opcode::ScopeEnd:
 	case Opcode::ScopeEndPreserveTop:
-	case Opcode::FileMemberAllocTyped:
 	case Opcode::PopClosure:
 	case Opcode::ExecArgs:
 	case Opcode::Call:
@@ -595,6 +608,8 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	case Opcode::LoadSelf:
 	case Opcode::PopSelf:
 	case Opcode::EndTraitMemberType:
+	case Opcode::PushTypeType:
+	case Opcode::CompleteCircularDefinition:
 	{
 		return PrintResult{ code, header_written };
 	}
@@ -614,6 +629,19 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	}
 
 	case Opcode::ScopeAllocTyped:
+	{
+		OpcodeScopeAllocTypedFlags flags;
+
+		code = code_attach(code, &flags);
+
+		const s64 written = print(sink, " is_mut=% is_circular=%", flags.is_mut, flags.is_circular);
+
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
+	}
+
 	case Opcode::ScopeAllocUntyped:
 	{
 		bool is_mut;
@@ -639,6 +667,20 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 		code = code_attach(code, &rank);
 
 		const s64 written = print(sink, " file_id=% rank=%", static_cast<u16>(file_id), rank);
+
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written + written };
+	}
+
+	case Opcode::FileMemberAllocTyped:
+	{
+		bool is_circular;
+
+		code = code_attach(code, &is_circular);
+
+		const s64 written = print(sink, " is_circular=%", is_circular);
 
 		if (written < 0)
 			return PrintResult{ nullptr, -1 };
@@ -1618,11 +1660,12 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 	case Opcode::ImplMemberAllocComplete:
 	{
-		bool is_trait_default;
-		code = code_attach(code, &is_trait_default);
+		OpcodeImplMemberAllocCompleteFlags flags;
+		code = code_attach(code, &flags);
 
-		const s64 written = print(sink, " default=%",
-			is_trait_default
+		const s64 written = print(sink, " default=% is_circular=%",
+			flags.is_trait_default,
+			flags.is_circular
 		);
 
 		if (written < 0)

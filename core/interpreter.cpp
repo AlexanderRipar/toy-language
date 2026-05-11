@@ -494,7 +494,46 @@ static T* value_as(CompValue* value) noexcept
 	return reinterpret_cast<T*>(value->bytes.begin());
 }
 
+static TypeId prepare_circular_definition_type_indirection(CoreData* core) noexcept
+{
+	ASSERT_OR_IGNORE(core->interp.write_ctxs.used() >= 1);
 
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
+
+	TypeId indirection_type = type_create_indirection(core);
+
+	const CompValue indirection = alloc_temporary_value(core, CompValue{ range::from_object_bytes_mut(&indirection_type), alignof(TypeId), true, type_type });
+
+	core->interp.values.append(indirection);
+
+	CompValue* const top_write_ctx = core->interp.write_ctxs.end() - 1;
+
+	ASSERT_OR_IGNORE(type_tag_from_id(core, top_write_ctx->type) == TypeTag::Type && top_write_ctx->bytes.count() == sizeof(TypeId));
+
+	core->interp.values.append(*top_write_ctx);
+
+	memcpy(top_write_ctx->bytes.begin(), &indirection, sizeof(TypeId));
+
+	return indirection_type;
+}
+
+static void prepare_circular_definition_type_indirection_global(CoreData* core, TypeId file_type, u16 rank) noexcept
+{
+	ASSERT_OR_IGNORE(core->interp.global_initializations.used() >= 1);
+
+	const TypeId indirection_type = prepare_circular_definition_type_indirection(core);
+
+	const Maybe<void*> allocation = comp_heap_alloc(core, sizeof(TypeId), alignof(TypeId));
+
+	if (is_none(allocation))
+		TODO("Implement GC traversal.");
+
+	memcpy(get(allocation), &indirection_type, sizeof(TypeId));
+
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
+
+	type_member_complete(core, file_type, rank, type_type, core_id_from_address(core, get(allocation)), true);
+}
 
 static Maybe<ClosureId> create_closure(CoreData* core, u32 value_count) noexcept
 {
@@ -1800,8 +1839,8 @@ static const Opcode* handle_scope_alloc_typed(CoreData* core, const Opcode* code
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
-	bool is_mut;
-	code = code_attach(code, &is_mut);
+	OpcodeScopeAllocTypedFlags flags;
+	code = code_attach(code, &flags);
 
 	CompValue* const top = core->interp.values.end() -1;
 
@@ -1816,7 +1855,10 @@ static const Opcode* handle_scope_alloc_typed(CoreData* core, const Opcode* code
 
 	core->interp.values.pop_by(1);
 
-	return scope_alloc_typed_member(core, code, is_mut, member_type);
+	if (flags.is_circular)
+		(void) prepare_circular_definition_type_indirection(core);
+
+	return scope_alloc_typed_member(core, code, flags.is_mut, member_type);
 }
 
 static const Opcode* handle_scope_alloc_untyped(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
@@ -1884,9 +1926,13 @@ static const Opcode* handle_file_member_alloc_complete(CoreData* core, const Opc
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
 
+	bool is_circular;
+	code = code_attach(code, &is_circular);
+
 	const GlobalInitialization init = core->interp.global_initializations.end()[-1];
 
-	type_member_end_initialization(core, init.type, init.rank);
+	if (!is_circular)
+		type_member_end_initialization(core, init.type, init.rank);
 
 	core->interp.temporary_data.pop_to(init.temporary_data_used);
 	core->interp.global_initializations.pop_by(1);
@@ -1901,6 +1947,9 @@ static const Opcode* handle_file_member_alloc_typed(CoreData* core, const Opcode
 	ASSERT_OR_IGNORE(core->interp.global_initializations.used() >= 1);
 
 	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
+	bool is_circular;
+	code = code_attach(code, &is_circular);
 
 	const GlobalInitialization init = core->interp.global_initializations.end()[-1];
 
@@ -1931,6 +1980,9 @@ static const Opcode* handle_file_member_alloc_typed(CoreData* core, const Opcode
 	const MutRange<byte> bytes{ static_cast<byte*>(get(alloc)), member_metrics.size };
 
 	core->interp.write_ctxs.append(CompValue{ bytes, member_metrics.align, true, member_type });
+
+	if (is_circular)
+		prepare_circular_definition_type_indirection_global(core, init.type, init.rank);
 
 	return code;
 }
@@ -5596,14 +5648,15 @@ static const Opcode* handle_impl_member_alloc_complete(CoreData* core, const Opc
 
 	ASSERT_OR_IGNORE(core->interp.selfs.used() >= 1);
 
-	bool is_trait_default;
-	code = code_attach(code, &is_trait_default);
+	
+	OpcodeImplMemberAllocCompleteFlags flags;
+	code = code_attach(code, &flags);
 
 	const TypeId self = core->interp.selfs.end()[-1];
 
 	const SelfType* const self_attach = type_attachment_from_id<SelfType>(core, self);
 
-	const Maybe<ClosureId> closure = is_trait_default
+	const Maybe<ClosureId> closure = flags.is_trait_default
 		? self_attach->trait_closure_id
 		: self_attach->impl_closure_id;
 
@@ -5614,7 +5667,8 @@ static const Opcode* handle_impl_member_alloc_complete(CoreData* core, const Opc
 
 	const GlobalInitialization init = core->interp.global_initializations.end()[-1];
 
-	type_member_end_initialization(core, init.type, init.rank);
+	if (!flags.is_circular)
+		type_member_end_initialization(core, init.type, init.rank);
 
 	core->interp.temporary_data.pop_to(init.temporary_data_used);
 	core->interp.global_initializations.pop_by(1);
@@ -5710,6 +5764,38 @@ static const Opcode* handle_definition(CoreData* core, const Opcode* code, CompV
 		core->interp.values.pop_by(1);
 
 	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(DefinitionValue), true, definition_type });
+}
+
+static const Opcode* handle_push_type_type(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+{
+	TypeId type_type = type_create_simple(core, TypeTag::Type);
+
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&type_type);
+
+	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
+}
+
+static const Opcode* handle_complete_circular_definition(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 2);
+
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
+	CompValue* const target = core->interp.values.end() - 1;
+
+	CompValue* const indirection = target - 1;
+
+	ASSERT_OR_IGNORE(type_tag_from_id(core, target->type) == TypeTag::Type);
+
+	ASSERT_OR_IGNORE(type_tag_from_id(core, indirection->type) == TypeTag::Type);
+
+	const TypeId target_type = *value_as<TypeId>(target);
+
+	const TypeId indirection_type = *value_as<TypeId>(indirection);
+
+	type_set_indirection_target(core, indirection_type, target_type);
+
+	return code;
 }
 
 
@@ -5911,6 +5997,8 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 		&handle_pop_self,                          // PopSelf
 		&handle_end_trait_member_type,             // EndTraitMemberType
 		&handle_definition,                        // Definition
+		&handle_push_type_type,                    // PushTypeType
+		&handle_complete_circular_definition,      // CompleteCircularDefinition
 	};
 
 	static_assert(HANDLERS[static_cast<u8>(Opcode::EndCode)]                       == &handle_end_code);
@@ -5988,6 +6076,8 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::PopSelf)]                       == &handle_pop_self);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::EndTraitMemberType)]            == &handle_end_trait_member_type);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::Definition)]                    == &handle_definition);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::PushTypeType)]                  == &handle_push_type_type);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::CompleteCircularDefinition)]    == &handle_complete_circular_definition);
 
 	core->interp.is_ok = true;
 
