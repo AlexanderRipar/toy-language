@@ -1626,7 +1626,7 @@ static const Opcode* builtin_add_type_member(CoreData* core, const Opcode* code,
 	UserCompositeMemberInit init{};
 	init.name = definition.name;
 	init.type_id = definition.type;
-	init.default_value = definition.value.begin() == nullptr ? none<CoreId>() : some(core_id_from_address(core, definition.value.begin()));
+	init.default_value = definition.value;
 	init.is_pub = definition.is_pub;
 	init.is_mut = definition.is_mut;
 	init.offset = offset;
@@ -5836,11 +5836,11 @@ static const Opcode* handle_definition(CoreData* core, const Opcode* code, CompV
 		if (convert_into(core, code, *top, dst) == nullptr)
 			return nullptr;
 
-		definition.value = value_bytes;
+		definition.value = some(core_id_from_address(core, get(allocation)));
 	}
 	else
 	{
-		definition.value = MutRange<byte>{};
+		definition.value = none<CoreId>();
 	}
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&definition);

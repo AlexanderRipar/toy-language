@@ -2945,7 +2945,7 @@ struct alignas(8) DefinitionValue
 
 	TypeId type;
 
-	MutRange<byte> value;
+	Maybe<CoreId> value;
 };
 
 bool import_prelude(CoreData* core, Range<char8> path) noexcept;
