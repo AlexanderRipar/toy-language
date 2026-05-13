@@ -2778,6 +2778,7 @@ MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, Identif
 		structure->tag == TypeTag::Composite
 	 || structure->tag == TypeTag::CompositeLiteral
 	 || structure->tag == TypeTag::Signature
+	 || structure->tag == TypeTag::Trait
 	);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
