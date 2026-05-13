@@ -290,7 +290,7 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	case Opcode::Trait:
 	case Opcode::LoadSelf:
 	case Opcode::LoadTraitArgument:
-	case Opcode::PushTypeType:
+	case Opcode::TypeType:
 	{
 		if (expects_write_ctx)
 			rst.write_ctxs_diff = -1;
@@ -830,7 +830,7 @@ static bool opcodes_from_scope_definition(CoreData* core, AstNode* node) noexcep
 		}
 		else
 		{
-			emit_opcode(core, Opcode::PushTypeType, false, node);
+			emit_opcode(core, Opcode::TypeType, false, node);
 		}
 
 		OpcodeScopeAllocTypedFlags flags{};
@@ -2921,7 +2921,7 @@ const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node,
 		}
 		else
 		{
-			emit_opcode(core, Opcode::PushTypeType, false, node);
+			emit_opcode(core, Opcode::TypeType, false, node);
 		}
 
 		emit_opcode(core, Opcode::FileMemberAllocTyped, false, node, has_self_reference);
@@ -3121,7 +3121,7 @@ const char8* tag_name(Opcode op) noexcept
 		"PopSelf",
 		"EndTraitMemberType",
 		"Definition",
-		"PushTypeType",
+		"TypeType",
 		"CompleteCircularDefinition",
 	};
 

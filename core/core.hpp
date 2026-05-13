@@ -2666,7 +2666,7 @@ enum class Opcode : u8
 	PopSelf,
 	EndTraitMemberType,
 	Definition,
-	PushTypeType,
+	TypeType,
 	CompleteCircularDefinition,
 };
 

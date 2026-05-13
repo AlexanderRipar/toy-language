@@ -5853,7 +5853,7 @@ static const Opcode* handle_definition(CoreData* core, const Opcode* code, CompV
 	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(DefinitionValue), true, definition_type });
 }
 
-static const Opcode* handle_push_type_type(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+static const Opcode* handle_type_type(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	TypeId type_type = type_create_simple(core, TypeTag::Type);
 
@@ -6084,7 +6084,7 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 		&handle_pop_self,                          // PopSelf
 		&handle_end_trait_member_type,             // EndTraitMemberType
 		&handle_definition,                        // Definition
-		&handle_push_type_type,                    // PushTypeType
+		&handle_type_type,                         // TypeType
 		&handle_complete_circular_definition,      // CompleteCircularDefinition
 	};
 
@@ -6163,7 +6163,7 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::PopSelf)]                       == &handle_pop_self);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::EndTraitMemberType)]            == &handle_end_trait_member_type);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::Definition)]                    == &handle_definition);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::PushTypeType)]                  == &handle_push_type_type);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::TypeType)]                      == &handle_type_type);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CompleteCircularDefinition)]    == &handle_complete_circular_definition);
 
 	core->interp.is_ok = true;

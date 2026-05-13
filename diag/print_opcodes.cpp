@@ -74,7 +74,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::LoadSelf:
 	case Opcode::PopSelf:
 	case Opcode::EndTraitMemberType:
-	case Opcode::PushTypeType:
+	case Opcode::TypeType:
 	case Opcode::CompleteCircularDefinition:
 	{
 		return PrintResult{ code, 0 };
@@ -608,7 +608,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	case Opcode::LoadSelf:
 	case Opcode::PopSelf:
 	case Opcode::EndTraitMemberType:
-	case Opcode::PushTypeType:
+	case Opcode::TypeType:
 	case Opcode::CompleteCircularDefinition:
 	{
 		return PrintResult{ code, header_written };
