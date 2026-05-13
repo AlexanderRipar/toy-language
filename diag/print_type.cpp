@@ -118,13 +118,22 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 
 		if (type_has_metrics(core, type_id))
 		{
-		const TypeMetrics metrics = type_metrics_from_id(core, type_id);
+			TypeMetrics metrics;
 
-			const s64 written = print(sink, " (size=% align=% stride=%) {",
-				metrics.size,
-				metrics.align,
-				metrics.stride
-			);
+			s64 written;
+
+			if (type_metrics_from_id(core, type_id, &metrics))
+			{
+				written = print(sink, " (size=% align=% stride=%) {",
+					metrics.size,
+					metrics.align,
+					metrics.stride
+				);
+			}
+			else
+			{
+				written = print(sink, " (size=? align=? stride=?) {");
+			}
 
 			if (written < 0)
 				return -1;

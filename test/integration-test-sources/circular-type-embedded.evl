@@ -1,0 +1,18 @@
+// IncompleteType:18
+
+let SingleMemberStruct = func(member: Definition) -> Type => {
+	let builder = std.create_type_builder()
+
+	std.add_type_member(builder, member, 0)
+
+	let member_type = std.definition_typeof(member)
+
+	std.complete_type(
+		.builder = builder,
+		.size    = sizeof(member_type),
+		.stride  = strideof(member_type),
+		.align   = alignof(member_type)
+	)
+}
+
+let SillyList = SingleMemberStruct(mut next: SillyList = undefined)

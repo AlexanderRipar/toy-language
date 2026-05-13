@@ -310,9 +310,9 @@ static void empty_composites_are_equal() noexcept
 
 	const TypeId b = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
 
-	const bool equal = type_is_equal(core, a, b);
+	const TypeEquality equal = type_is_equal(core, a, b);
 
-	TEST_EQUAL(equal, true);
+	TEST_EQUAL(equal, TypeEquality::Equal);
 
 	release_core_data(core);
 
@@ -350,9 +350,9 @@ static void composites_with_empty_composite_member_are_equal() noexcept
 	member.type_id = y;
 	TEST_EQUAL(type_add_user_composite_member(core, b, member), true);
 
-	const bool equal = type_is_equal(core, a, b);
+	const TypeEquality equal = type_is_equal(core, a, b);
 
-	TEST_EQUAL(equal, true);
+	TEST_EQUAL(equal, TypeEquality::Equal);
 
 	release_core_data(core);
 
@@ -384,9 +384,9 @@ static void pointers_to_same_composite_are_equal() noexcept
 
 	const TypeId pointer_2 = type_create_reference(core, TypeTag::Ptr, reference);
 
-	const bool equal = type_is_equal(core, pointer_1, pointer_2);
+	const TypeEquality equal = type_is_equal(core, pointer_1, pointer_2);
 
-	TEST_EQUAL(equal, true);
+	TEST_EQUAL(equal, TypeEquality::Equal);
 
 	release_core_data(core);
 
@@ -424,9 +424,9 @@ static void pointers_to_equal_composites_are_equal() noexcept
 
 	const TypeId pointer_2 = type_create_reference(core, TypeTag::Ptr, reference);
 
-	const bool equal = type_is_equal(core, pointer_1, pointer_2);
+	const TypeEquality equal = type_is_equal(core, pointer_1, pointer_2);
 
-	TEST_EQUAL(equal, true);
+	TEST_EQUAL(equal, TypeEquality::Equal);
 
 	release_core_data(core);
 
@@ -477,9 +477,9 @@ static void composites_with_same_distinct_source_and_pointers_to_self_are_equal(
 
 	type_seal_user_composite(core, b, seal);
 
-	const bool equal = type_is_equal(core, a, b);
+	const TypeEquality equal = type_is_equal(core, a, b);
 
-	TEST_EQUAL(equal, true);
+	TEST_EQUAL(equal, TypeEquality::Equal);
 
 	release_core_data(core);
 
@@ -530,9 +530,9 @@ static void composites_with_same_distinct_source_and_pointers_to_each_other_are_
 
 	type_seal_user_composite(core, b, seal);
 
-	const bool equal = type_is_equal(core, a, b);
+	const TypeEquality equal = type_is_equal(core, a, b);
 
-	TEST_EQUAL(equal, true);
+	TEST_EQUAL(equal, TypeEquality::Equal);
 
 	release_core_data(core);
 
@@ -593,9 +593,9 @@ static void composites_with_same_distinct_source_and_pointers_to_self_and_differ
 
 	type_seal_user_composite(core, b, seal);
 
-	const bool equal = type_is_equal(core, a, b);
+	const TypeEquality equal = type_is_equal(core, a, b);
 
-	TEST_EQUAL(equal, false);
+	TEST_EQUAL(equal, TypeEquality::Unequal);
 
 	release_core_data(core);
 
@@ -679,13 +679,13 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 
 	type_seal_user_composite(core, b2, seal);
 
-	const bool a1_b1_equal = type_is_equal(core, a1, b1);
+	const TypeEquality a1_b1_equal = type_is_equal(core, a1, b1);
 
-	TEST_EQUAL(a1_b1_equal, true);
+	TEST_EQUAL(a1_b1_equal, TypeEquality::Equal);
 
-	const bool a2_b2_equal = type_is_equal(core, a2, b2);
+	const TypeEquality a2_b2_equal = type_is_equal(core, a2, b2);
 
-	TEST_EQUAL(a2_b2_equal, true);
+	TEST_EQUAL(a2_b2_equal, TypeEquality::Equal);
 
 	release_core_data(core);
 
@@ -769,21 +769,21 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 
 	type_seal_user_composite(core, b2, seal);
 
-	const bool a1_a2_equal = type_is_equal(core, a1, a2);
+	const TypeEquality a1_a2_equal = type_is_equal(core, a1, a2);
 
-	TEST_EQUAL(a1_a2_equal, false);
+	TEST_EQUAL(a1_a2_equal, TypeEquality::Unequal);
 
-	const bool b1_b2_equal = type_is_equal(core, b1, b2);
+	const TypeEquality b1_b2_equal = type_is_equal(core, b1, b2);
 
-	TEST_EQUAL(b1_b2_equal, false);
+	TEST_EQUAL(b1_b2_equal, TypeEquality::Unequal);
 
-	const bool a1_b2_equal = type_is_equal(core, a1, b2);
+	const TypeEquality a1_b2_equal = type_is_equal(core, a1, b2);
 
-	TEST_EQUAL(a1_b2_equal, false);
+	TEST_EQUAL(a1_b2_equal, TypeEquality::Unequal);
 
-	const bool a2_b1_equal = type_is_equal(core, a2, b1);
+	const TypeEquality a2_b1_equal = type_is_equal(core, a2, b1);
 
-	TEST_EQUAL(a2_b1_equal, false);
+	TEST_EQUAL(a2_b1_equal, TypeEquality::Unequal);
 
 	release_core_data(core);
 
@@ -826,9 +826,9 @@ static void pair_types_with_same_element_types_are_considered_equal() noexcept
 
 	type_seal_user_composite(core, b, seal);
 
-	const bool equal = type_is_equal(core, a, b);
+	const TypeEquality equal = type_is_equal(core, a, b);
 
-	TEST_EQUAL(equal, true);
+	TEST_EQUAL(equal, TypeEquality::Equal);
 
 	release_core_data(core);
 

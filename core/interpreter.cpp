@@ -669,7 +669,10 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 	{
 		ASSERT_OR_IGNORE(type_tag_from_id(core, dst.type) == TypeTag::Composite);
 
-		const u32 dst_member_count = type_member_count(core, dst.type);
+		u32 dst_member_count;
+
+		if (!type_member_count(core, dst.type, &dst_member_count))
+			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		const u32 seen_members_size = ((dst_member_count + 7) / 8 + sizeof(u64) - 1) & ~(sizeof(u64) - 1);
 
@@ -727,9 +730,15 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 			*seen_members_elem |= member_bit;
 
-			const TypeMetrics dst_metrics = type_metrics_from_id(core, dst_member.type_id);
+			TypeMetrics dst_metrics;
+			
+			if (!type_metrics_from_id(core, dst_member.type_id, &dst_metrics))
+				ASSERT_UNREACHABLE;
 
-			const TypeMetrics src_metrics = type_metrics_from_id(core, src_member_info.type_id);
+			TypeMetrics src_metrics;
+			
+			if (!type_metrics_from_id(core, src_member_info.type_id, &src_metrics))
+				ASSERT_UNREACHABLE;
 
 			const CompValue dst_member_value{ dst.bytes.mut_subrange(dst_member.offset, dst_metrics.size), dst_metrics.align, true, dst_member.type_id };
 
@@ -760,7 +769,10 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 			if (is_none(member.value_or_default))
 				return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
-			const TypeMetrics member_metrics = type_metrics_from_id(core, member.type_id);
+			TypeMetrics member_metrics;
+			
+			if (!type_metrics_from_id(core, member.type_id, &member_metrics))
+				ASSERT_UNREACHABLE;
 
 			byte* const default_dst = dst.bytes.begin() + member.offset;
 
@@ -791,18 +803,27 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 		const TypeId src_elem_type = get(src_attach->element_type);
 
-		if (type_is_equal(core, dst_elem_type, src_elem_type))
+		const TypeEquality elem_equality = type_is_equal(core, dst_elem_type, src_elem_type);
+
+		ASSERT_OR_IGNORE(elem_equality != TypeEquality::Incomplete);
+
+		if (elem_equality == TypeEquality::Equal)
 		{
 			range::mem_copy(dst.bytes, src.bytes.immut());
 		}
 		else
 		{
-			ASSERT_OR_IGNORE(type_relation(core, src_elem_type, dst_elem_type) == TypeRelation::Equal
-			              || type_relation(core, src_elem_type, dst_elem_type) == TypeRelation::FirstConvertsToSecond);
+			ASSERT_OR_IGNORE(type_relation(core, src_elem_type, dst_elem_type) == TypeRelation::FirstConvertsToSecond);
 
-			const TypeMetrics dst_elem_metrics = type_metrics_from_id(core, dst_elem_type);
+			TypeMetrics dst_elem_metrics;
+			
+			if (!type_metrics_from_id(core, dst_elem_type, &dst_elem_metrics))
+				ASSERT_UNREACHABLE;
 
-			const TypeMetrics src_elem_metrics = type_metrics_from_id(core, src_elem_type);
+			TypeMetrics src_elem_metrics;
+
+			if (!type_metrics_from_id(core, src_elem_type, &src_elem_metrics))
+				ASSERT_UNREACHABLE;
 
 			for (u64 i = 0; i != dst_attach->element_count; ++i)
 			{
@@ -826,7 +847,7 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 	{
 		[[maybe_unused]] const SelfType* const attach = type_attachment_from_id<SelfType>(core, src.type);
 
-		ASSERT_OR_IGNORE(type_is_equal(core, attach->base_type_id, dst.type));
+		ASSERT_OR_IGNORE(type_is_equal(core, attach->base_type_id, dst.type) == TypeEquality::Equal);
 
 		// Essentially a no-op, we are just adjusting the data's type.
 		range::mem_copy(dst.bytes, src.bytes.immut());
@@ -871,13 +892,15 @@ static const Opcode* convert_into(CoreData* core, const Opcode* code, CompValue 
 	{
 		return convert_into_assume_convertible(core, code, src, dst);
 	}
+	else if (relation == TypeRelation::Incomplete)
+	{
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
+	}
 	else
 	{
 		ASSERT_OR_IGNORE(relation == TypeRelation::Unrelated || relation == TypeRelation::SecondConvertsToFirst);
 
-		(void) record_interpreter_error(core, code, CompileError::TypesCannotConvert);
-
-		return nullptr;
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 	}
 }
 
@@ -940,9 +963,9 @@ static CompareResult compare(CoreData* core, TypeId type, Range<byte> lhs, Range
 
 		const TypeId rhs_value = *range::access_as<TypeId>(rhs);
 
-		const bool is_equal = type_is_equal(core, lhs_value, rhs_value);
+		const TypeEquality is_equal = type_is_equal(core, lhs_value, rhs_value);
 
-		return CompareResult{ is_equal ? CompareEquality::Equal : CompareEquality::Unequal };
+		return CompareResult{ is_equal == TypeEquality::Equal ? CompareEquality::Equal : CompareEquality::Unequal };
 	}
 
 	case TypeTag::CompInteger:
@@ -1132,7 +1155,10 @@ static CompareResult compare(CoreData* core, TypeId type, Range<byte> lhs, Range
 
 		const TypeId element_type = get(array_type.element_type);
 
-		const TypeMetrics metrics = type_metrics_from_id(core, element_type);
+		TypeMetrics metrics;
+		
+		if (!type_metrics_from_id(core, element_type, &metrics))
+			ASSERT_UNREACHABLE;
 
 		for (u64 i = 0; i != array_type.element_count; ++i)
 		{
@@ -1164,7 +1190,10 @@ static CompareResult compare(CoreData* core, TypeId type, Range<byte> lhs, Range
 			if (!next(&it, &member, &unused_initializer))
 				TODO("Figure out what to do when comparing incomplete types and if it can even reasonably happen");
 
-			const TypeMetrics metrics = type_metrics_from_id(core, member.type_id);
+			TypeMetrics metrics;
+			
+			if (!type_metrics_from_id(core, member.type_id, &metrics))
+				ASSERT_UNREACHABLE;
 
 			const Range<byte> lhs_member{ lhs.begin() + member.offset, metrics.size };
 
@@ -1210,7 +1239,10 @@ static CompareResult compare(CoreData* core, TypeId type, Range<byte> lhs, Range
 
 static const Opcode* scope_alloc_typed_member(CoreData* core, const Opcode* code, bool is_mut, TypeId type) noexcept
 {
-	const TypeMetrics member_metrics = type_metrics_from_id(core, type);
+	TypeMetrics member_metrics;
+	
+	if (!type_metrics_from_id(core, type, &member_metrics))
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 	if (member_metrics.size >= UINT32_MAX)
 		panic("Exceeded maximum size of stack variable.\n");
@@ -1437,33 +1469,21 @@ static const Opcode* builtin_sizeof(CoreData* core, const Opcode* code, CompValu
 {
 	CompValue arg = get_builtin_param_raw(core, 0);
 
-	const TypeTag type_tag = type_tag_from_id(core, arg.type);
+	TypeId type = arg.type;
 
-	u64 size;
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag == TypeTag::Type)
-	{
-		const TypeId indirect_type = *value_as<TypeId>(&arg);
+		type = *value_as<TypeId>(&arg);
 
-		const TypeTag indirect_type_tag = type_tag_from_id(core, indirect_type);
+	TypeMetrics metrics;
 
-		if (indirect_type_tag == TypeTag::Type)
-		{
-			size = 0;
-		}
-		else
-		{
-			size = type_metrics_from_id(core, indirect_type).size;
-		}
-	}
-	else
-	{
-		size = type_metrics_from_id(core, arg.type).size;
-	}
+	if (!type_metrics_from_id(core, type, &metrics))
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
 
-	CompIntegerValue size_value = comp_integer_from_u64(size);
+	CompIntegerValue size_value = comp_integer_from_u64(metrics.size);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&size_value);
 
@@ -1474,33 +1494,21 @@ static const Opcode* builtin_alignof(CoreData* core, const Opcode* code, CompVal
 {
 	CompValue arg = get_builtin_param_raw(core, 0);
 
-	const TypeTag type_tag = type_tag_from_id(core, arg.type);
+	TypeId type = arg.type;
 
-	u32 align;
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag == TypeTag::Type)
-	{
-		const TypeId indirect_type = *value_as<TypeId>(&arg);
+		type = *value_as<TypeId>(&arg);
 
-		const TypeTag indirect_type_tag = type_tag_from_id(core, indirect_type);
+	TypeMetrics metrics;
 
-		if (indirect_type_tag == TypeTag::Type)
-		{
-			align = 1;
-		}
-		else
-		{
-			align = type_metrics_from_id(core, indirect_type).align;
-		}
-	}
-	else
-	{
-		align = type_metrics_from_id(core, arg.type).align;
-	}
+	if (!type_metrics_from_id(core, type, &metrics))
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
 
-	CompIntegerValue align_value = comp_integer_from_u64(align);
+	CompIntegerValue align_value = comp_integer_from_u64(metrics.align);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&align_value);
 
@@ -1511,33 +1519,21 @@ static const Opcode* builtin_strideof(CoreData* core, const Opcode* code, CompVa
 {
 	CompValue arg = get_builtin_param_raw(core, 0);
 
-	const TypeTag type_tag = type_tag_from_id(core, arg.type);
+	TypeId type = arg.type;
 
-	u64 stride;
+	const TypeTag type_tag = type_tag_from_id(core, type);
 
 	if (type_tag == TypeTag::Type)
-	{
-		const TypeId indirect_type = *value_as<TypeId>(&arg);
+		type = *value_as<TypeId>(&arg);
 
-		const TypeTag indirect_type_tag = type_tag_from_id(core, indirect_type);
+	TypeMetrics metrics;
 
-		if (indirect_type_tag == TypeTag::Type)
-		{
-			stride = 0;
-		}
-		else
-		{
-			stride = type_metrics_from_id(core, indirect_type).stride;
-		}
-	}
-	else
-	{
-		stride = type_metrics_from_id(core, arg.type).stride;
-	}
+	if (!type_metrics_from_id(core, type, &metrics))
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
 
-	CompIntegerValue stride_value = comp_integer_from_u64(stride);
+	CompIntegerValue stride_value = comp_integer_from_u64(metrics.stride);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&stride_value);
 
@@ -1964,7 +1960,10 @@ static const Opcode* handle_file_member_alloc_typed(CoreData* core, const Opcode
 
 	const TypeId member_type = *value_as<TypeId>(top);
 
-	const TypeMetrics member_metrics = type_metrics_from_id(core, member_type);
+	TypeMetrics member_metrics;
+	
+	if (!type_metrics_from_id(core, member_type, &member_metrics))
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 	const Maybe<void*> alloc = comp_heap_alloc_global_member(core, member_metrics.size, member_metrics.align, member_type);
 
@@ -2073,7 +2072,10 @@ static const Opcode* handle_load_global(CoreData* core, const Opcode* code, Comp
 
 	if (type_member_info_by_rank(core, file_type, rank, &info, &initializer))
 	{
-		const TypeMetrics metrics = type_metrics_from_id(core, info.type_id);
+		TypeMetrics metrics;
+		
+		if (!type_metrics_from_id(core, info.type_id, &metrics))
+			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		byte* const bytes_begin = static_cast<byte*>(address_from_core_id(core, get(info.value_or_default)));
 
@@ -2145,7 +2147,10 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, Comp
 
 			ASSERT_OR_IGNORE(is_none(info.shadow_id));
 
-			const TypeMetrics metrics = type_metrics_from_id(core, info.type_id);
+			TypeMetrics metrics;
+			
+			if (!type_metrics_from_id(core, info.type_id, &metrics))
+				return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 			byte* const begin = static_cast<byte*>(address_from_core_id(core, get(info.value_or_default)));
 
@@ -2159,7 +2164,10 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, Comp
 		{
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
-			const TypeMetrics metrics = type_metrics_from_id(core, info.type_id);
+			TypeMetrics metrics;
+			
+			if (!type_metrics_from_id(core, info.type_id, &metrics))
+				return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 			MutRange<byte> bytes;
 
@@ -2208,7 +2216,10 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, Comp
 
 			ASSERT_OR_IGNORE(is_none(info.shadow_id));
 
-			const TypeMetrics metrics = type_metrics_from_id(core, info.type_id);
+			TypeMetrics metrics;
+			
+			if (!type_metrics_from_id(core, info.type_id, &metrics))
+				return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 			byte* const begin = static_cast<byte*>(address_from_core_id(core, get(info.value_or_default)));
 
@@ -2378,7 +2389,7 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CompVa
 
 			parameter_type = *value_as<TypeId>(type_value);
 
-			ASSERT_OR_IGNORE(type_is_equal(core, parameter_type, default_value->type));
+			ASSERT_OR_IGNORE(type_is_equal(core, parameter_type, default_value->type) == TypeEquality::Equal);
 
 			const Maybe<void*> allocation = comp_heap_alloc(core, default_value->bytes.count(), default_value->align);
 
@@ -2531,7 +2542,10 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, Co
 
 				parameter_type = *value_as<TypeId>(type_value);
 
-				const TypeMetrics parameter_metrics = type_metrics_from_id(core, parameter_type);
+				TypeMetrics parameter_metrics;
+				
+				if (!type_metrics_from_id(core, parameter_type, &parameter_metrics))
+					return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 				const Maybe<void*> allocation = comp_heap_alloc(core, parameter_metrics.size, parameter_metrics.align);
 
@@ -2874,7 +2888,10 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 			// callee-local slot, and then proceed to the next parameter by
 			// transferring control to ourselves.
 
-			const TypeMetrics parameter_metrics = type_metrics_from_id(core, parameter_info.type_id);
+			TypeMetrics parameter_metrics;
+			
+			if (!type_metrics_from_id(core, parameter_info.type_id, &parameter_metrics))
+				return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 			byte* const begin = static_cast<byte*>(address_from_core_id(core, get(parameter_info.value_or_default)));
 
@@ -2949,7 +2966,10 @@ static const Opcode* handle_call(CoreData* core, const Opcode* code, CompValue* 
 		// return type and re-push it instead.
 		if (write_ctx == nullptr)
 		{
-			const TypeMetrics metrics = type_metrics_from_id(core, return_type);
+			TypeMetrics metrics;
+			
+			if (!type_metrics_from_id(core, return_type, &metrics))
+				return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 			const CompValue return_value = alloc_temporary_value_uninit(core, metrics.size, metrics.align, return_type);
 
@@ -3120,7 +3140,10 @@ static const Opcode* handle_complete_param_typed_with_default(CoreData* core, co
 
 	const TypeId parameter_type = *value_as<TypeId>(type_value);
 
-	const TypeMetrics parameter_metrics = type_metrics_from_id(core, parameter_type);
+	TypeMetrics parameter_metrics;
+
+	if (!type_metrics_from_id(core, parameter_type, &parameter_metrics))
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 	ArgumentPack* const argument_pack = core->interp.argument_packs.end() - 1;
 
@@ -3209,7 +3232,10 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, Co
 
 	const TypeId dst_elem_type = get(array_type->element_type);
 
-	const TypeMetrics dst_elem_metrics = type_metrics_from_id(core, dst_elem_type);
+	TypeMetrics dst_elem_metrics;
+	
+	if (!type_metrics_from_id(core, dst_elem_type, &dst_elem_metrics))
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 	CompValue* const indices = core->interp.values.end() - index_count;
 
@@ -3319,7 +3345,10 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 			element_type = element_values[i].type;
 	}
 
-	const TypeMetrics element_metrics = type_metrics_from_id(core, element_type);
+	TypeMetrics element_metrics;
+	
+	if (!type_metrics_from_id(core, element_type, &element_metrics))
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 
 	// Next, work out how large the array needs to be.
@@ -3365,8 +3394,12 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 	{
 		const MutRange<byte> bytes = rst.bytes.mut_subrange(element_metrics.stride * i, element_metrics.size);
 
-		if (type_is_equal(core, element_type, element_values[i].type))
+		const TypeEquality equality = type_is_equal(core, element_type, element_values[i].type);
+
+		if (equality == TypeEquality::Equal)
 			range::mem_copy(bytes, element_values[i].bytes.immut());
+		else if (equality == TypeEquality::Incomplete)
+			return record_interpreter_error(core, code, CompileError::IncompleteType);
 		else if (convert_into_assume_convertible(core, code, element_values[i], CompValue{ bytes, element_metrics.align, true, element_type }) == nullptr)
 			return nullptr;
 	}
@@ -3442,7 +3475,10 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 	if (type_tag != TypeTag::CompositeLiteral && type_tag != TypeTag::Composite)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-	const u32 member_count = type_member_count(core, dst_type);
+	u32 member_count;
+	
+	if (!type_member_count(core, dst_type, &member_count))
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 	u16 leading_member_count;
 	code = code_attach(code, &leading_member_count);
@@ -3461,7 +3497,10 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 		ASSERT_OR_IGNORE(!member_info.is_global);
 
-		const TypeMetrics member_metrics = type_metrics_from_id(core, member_info.type_id);
+		TypeMetrics member_metrics;
+		
+		if (!type_metrics_from_id(core, member_info.type_id, &member_metrics))
+			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(member_info.offset, member_metrics.size);
 
@@ -3485,7 +3524,10 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 			if (is_none(defaulted_member_info.value_or_default))
 				return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
-			const TypeMetrics defaulted_member_metrics = type_metrics_from_id(core, defaulted_member_info.type_id);
+			TypeMetrics defaulted_member_metrics;
+			
+			if (!type_metrics_from_id(core, defaulted_member_info.type_id, &defaulted_member_metrics))
+				return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 			void* const default_dst = write_ctx->bytes.begin() + defaulted_member_info.offset;
 
@@ -3526,7 +3568,10 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 		if (!seen_set_set(seen, named_member_info.rank, following_member_count))
 			return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetMemberMappedTwice);
 
-		const TypeMetrics named_member_metrics = type_metrics_from_id(core, named_member_info.type_id);
+		TypeMetrics named_member_metrics;
+		
+		if (!type_metrics_from_id(core, named_member_info.type_id, &named_member_metrics))
+			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		const MutRange<byte> named_bytes = write_ctx->bytes.mut_subrange(named_member_info.offset, named_member_metrics.size);
 
@@ -3543,7 +3588,10 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 			ASSERT_OR_IGNORE(!following_member_info.is_global);
 
-			const TypeMetrics following_member_metrics = type_metrics_from_id(core, following_member_info.type_id);
+			TypeMetrics following_member_metrics;
+			
+			if (!type_metrics_from_id(core, following_member_info.type_id, &following_member_metrics))
+				return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 			const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(following_member_info.offset, following_member_metrics.size);
 
@@ -3568,7 +3616,10 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 		if (is_none(defaulted_member_info.value_or_default))
 			return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
-		const TypeMetrics defaulted_member_metrics = type_metrics_from_id(core, defaulted_member_info.type_id);
+		TypeMetrics defaulted_member_metrics;
+		
+		if (!type_metrics_from_id(core, defaulted_member_info.type_id, &defaulted_member_metrics))
+			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		void* const default_dst = write_ctx->bytes.begin() + defaulted_member_info.offset;
 
@@ -3604,7 +3655,10 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 
 		const TypeId member_type = values[i].type;
 
-		const TypeMetrics member_metrics = type_metrics_from_id(core, member_type);
+		TypeMetrics member_metrics;
+		
+		if (!type_metrics_from_id(core, member_type, &member_metrics))
+			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		size = next_multiple(size, static_cast<u64>(member_metrics.align));
 
@@ -3631,7 +3685,10 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 
 	initializer_type = type_seal_user_composite(core, initializer_type, seal);
 
-	const TypeMetrics metrics = type_metrics_from_id(core, initializer_type);
+	TypeMetrics metrics;
+	
+	if (!type_metrics_from_id(core, initializer_type, &metrics))
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 	MemberIterator it = members_of(core, initializer_type);
 
@@ -3859,7 +3916,10 @@ static const Opcode* handle_dereference(CoreData* core, const Opcode* code, Comp
 	if (ptr_type.is_opt)
 		return record_interpreter_error(core, code, CompileError::DerefInvalidOperandType);
 
-	const TypeMetrics metrics = type_metrics_from_id(core, ptr_type.referenced_type_id);
+	TypeMetrics metrics;
+	
+	if (!type_metrics_from_id(core, ptr_type.referenced_type_id, &metrics))
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 	const MutRange<byte> bytes{ top_value, metrics.size };
 
@@ -3983,7 +4043,10 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CompValue*
 
 		const TypeId elem_type = get(array_type.element_type);
 
-		const TypeMetrics elem_metrics = type_metrics_from_id(core, elem_type);
+		TypeMetrics elem_metrics;
+		
+		if (!type_metrics_from_id(core, elem_type, &elem_metrics))
+			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		byte* const begin_ptr = lhs->bytes.begin() + begin_index * elem_metrics.stride;
 
@@ -4012,7 +4075,10 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CompValue*
 	{
 		const ReferenceType slice_type = *type_attachment_from_id<ReferenceType>(core, type);
 
-		const TypeMetrics elem_metrics = type_metrics_from_id(core, slice_type.referenced_type_id);
+		TypeMetrics elem_metrics;
+		
+		if (!type_metrics_from_id(core, slice_type.referenced_type_id, &elem_metrics))
+			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		MutRange<byte> lhs_value = *value_as<MutRange<byte>>(lhs);
 
@@ -4046,7 +4112,10 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CompValue*
 		if (!has_end_index)
 			return record_interpreter_error(core, code, CompileError::SliceOperatorMultiPtrElidedEndIndex);
 
-		const TypeMetrics elem_metrics = type_metrics_from_id(core, ptr_type.referenced_type_id);
+		TypeMetrics elem_metrics;
+		
+		if (!type_metrics_from_id(core, ptr_type.referenced_type_id, &elem_metrics))
+			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		byte* const lhs_value = *value_as<byte*>(lhs);
 
@@ -4112,34 +4181,40 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CompValue*
 		if (array_type.element_count <= index)
 			return record_interpreter_error(core, code, CompileError::ArrayIndexOutOfBounds);
 
-		const TypeId element_type = get(array_type.element_type);
+		const TypeId elem_type = get(array_type.element_type);
 
-		const TypeMetrics element_metrics = type_metrics_from_id(core, element_type);
+		TypeMetrics elem_metrics;
+		
+		if (!type_metrics_from_id(core, elem_type, &elem_metrics))
+			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		core->interp.values.pop_by(1);
 
-		const MutRange<byte> bytes = lhs->bytes.mut_subrange(index * element_metrics.stride, element_metrics.size);
+		const MutRange<byte> bytes = lhs->bytes.mut_subrange(index * elem_metrics.stride, elem_metrics.size);
 
-		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, element_metrics.align, true, element_type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, elem_metrics.align, true, elem_type });
 	}
 	else if (type_tag == TypeTag::Slice)
 	{
 		const ReferenceType slice_type = *type_attachment_from_id<ReferenceType>(core, type);
 
-		const TypeId element_type = slice_type.referenced_type_id;
+		const TypeId elem_type = slice_type.referenced_type_id;
 
-		const TypeMetrics element_metrics = type_metrics_from_id(core, element_type);
+		TypeMetrics elem_metrics;
+		
+		if (!type_metrics_from_id(core, elem_type, &elem_metrics))
+			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		const MutRange<byte> slice = *value_as<MutRange<byte>>(lhs);
 
-		if (index * element_metrics.stride > slice.count())
+		if (index * elem_metrics.stride > slice.count())
 			return record_interpreter_error(core, code, CompileError::ArrayIndexOutOfBounds);
 
 		core->interp.values.pop_by(1);
 
-		const MutRange<byte> bytes = lhs->bytes.mut_subrange(index * element_metrics.stride, element_metrics.size);
+		const MutRange<byte> bytes = lhs->bytes.mut_subrange(index * elem_metrics.stride, elem_metrics.size);
 
-		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, element_metrics.align, true, element_type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, elem_metrics.align, true, elem_type });
 	}
 	else if (type_tag == TypeTag::Ptr)
 	{
@@ -4148,15 +4223,18 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CompValue*
 		if (!ptr_type.is_multi)
 			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-		const TypeId element_type = ptr_type.referenced_type_id;
+		const TypeId elem_type = ptr_type.referenced_type_id;
 
-		const TypeMetrics element_metrics = type_metrics_from_id(core, element_type);
+		TypeMetrics elem_metrics;
+		
+		if (!type_metrics_from_id(core, elem_type, &elem_metrics))
+			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		byte* const ptr = *value_as<byte*>(lhs);
 
-		MutRange<byte> bytes{ ptr + index * element_metrics.stride, element_metrics.size };
+		MutRange<byte> bytes{ ptr + index * elem_metrics.stride, elem_metrics.size };
 
-		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, element_metrics.align, true, element_type });
+		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, elem_metrics.align, true, elem_type });
 	}
 	else
 	{
@@ -5599,8 +5677,14 @@ static const Opcode* handle_check_types_equal(CoreData* core, const Opcode* code
 
 	const TypeId impl_member_type = *value_as<TypeId>(impl_member_type_value);
 
-	if (!type_is_equal(core, trait_member_type, impl_member_type))
+	const TypeEquality member_equal = type_is_equal(core, trait_member_type, impl_member_type);
+
+	if (member_equal == TypeEquality::Incomplete)
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
+	else if (member_equal == TypeEquality::Unequal)
 		return record_interpreter_error(core, code, CompileError::ImplMemberTypeMismatch);
+
+	ASSERT_OR_IGNORE(member_equal == TypeEquality::Equal);
 
 	core->interp.values.pop_by(1);
 
@@ -5735,7 +5819,10 @@ static const Opcode* handle_definition(CoreData* core, const Opcode* code, CompV
 
 	if (flags.has_value)
 	{
-		const TypeMetrics metrics = type_metrics_from_id(core, definition.type);
+		TypeMetrics metrics;
+		
+		if (!type_metrics_from_id(core, definition.type, &metrics))
+			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		const Maybe<void*> allocation = comp_heap_alloc(core, metrics.size, metrics.align);
 
@@ -6587,7 +6674,7 @@ bool closure_equal(CoreData* core, ClosureId a, ClosureId b) noexcept
 
 		const ClosureMember b_member = b_members[i];
 
-		if (!type_is_equal(core, a_member.type, b_member.type))
+		if (type_is_equal(core, a_member.type, b_member.type) != TypeEquality::Equal)
 			return false;
 
 		ASSERT_OR_IGNORE(a_member.size == b_member.size);

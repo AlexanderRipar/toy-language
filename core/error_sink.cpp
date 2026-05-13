@@ -90,6 +90,8 @@ static const char8* error_message_of(CompileError error) noexcept
 		"impl member mutability does not match that of the corresponding trait member.\n",                                                              // ImplMemberMutabilityMismatch
 		"impl member type does not match that of the corresponding trait member.\n",                                                                    // ImplMemberTypeMismatch
 		"Initializer of impl member cannot reference its own value.\n",                                                                                 // CyclicImplMemberInitializerDependency
+		"Type is incomplete.\n",                                                                                                                        // IncompleteType
+		"Type has no metrics.\n",                                                                                                                       // TypeHasNoMetrics
 		"File does not contain a global definition with the given name.\n",                                                                             // GlobalNameNotDefined
 		"Exceeded maximum number of definitions in a single scope.\n",                                                                                  // ScopeTooManyDefinitions
 		"More than one definition with the same name in the same scope.\n",                                                                             // ScopeDuplicateName
@@ -373,6 +375,8 @@ static constexpr const char8* COMPILE_ERROR_NAMES[] = {
 	"ImplMemberMutabilityMismatch",
 	"ImplMemberTypeMismatch",
 	"CyclicImplMemberInitializerDependency",
+	"IncompleteType",
+	"TypeHasNoMetrics",
 	"GlobalNameNotDefined",
 	"ScopeTooManyDefinitions",
 	"ScopeDuplicateName",

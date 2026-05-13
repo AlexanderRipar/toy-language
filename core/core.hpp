@@ -1811,6 +1811,8 @@ enum class CompileError
 	ImplMemberMutabilityMismatch,
 	ImplMemberTypeMismatch,
 	CyclicImplMemberInitializerDependency,
+	IncompleteType,
+	TypeHasNoMetrics,
 	GlobalNameNotDefined,
 	ScopeTooManyDefinitions,
 	ScopeDuplicateName,
@@ -2072,12 +2074,20 @@ enum class TypeTag : u8
 	Self,
 };
 
+enum class TypeEquality : u8
+{
+	Incomplete,
+	Equal,
+	Unequal,
+};
+
 enum class TypeRelation : u8
 {
+	Incomplete,
 	Equal,
+	Unrelated,
 	FirstConvertsToSecond,
 	SecondConvertsToFirst,
-	Unrelated,
 };
 
 enum class MemberByNameRst : u8
@@ -2465,7 +2475,7 @@ TypeRelation type_relation(CoreData* core, TypeId first_type_id, TypeId second_t
 
 // Checks whether `type_id_a` and `type_id_b` refer to the same type or
 // non-distinct aliases of the same type.
-bool type_is_equal(CoreData* core, TypeId type_id_a, TypeId type_id_b) noexcept;
+TypeEquality type_is_equal(CoreData* core, TypeId type_id_a, TypeId type_id_b) noexcept;
 
 
 
@@ -2480,7 +2490,7 @@ bool type_has_metrics(CoreData* core, TypeId type_id) noexcept;
 // `align` is guaranteed to be non-zero.
 // This function must not be called on a composite type which has not received
 // a previous call to `close_open_type`.
-TypeMetrics type_metrics_from_id(CoreData* core, TypeId type_id) noexcept;
+bool type_metrics_from_id(CoreData* core, TypeId type_id, TypeMetrics* out) noexcept;
 
 // Retrieves the `TypeTag` associated with the given `type_id`.
 // For types created by `simple_type`, this is the value of the `tag`
@@ -2492,7 +2502,7 @@ TypeTag type_tag_from_id(CoreData* core, TypeId type_id) noexcept;
 
 // Retrieves the number of members in the type referenced by `type_id`, which
 // must reference a sealed composite type.
-u32 type_member_count(CoreData* core, TypeId type_id) noexcept;
+bool type_member_count(CoreData* core, TypeId type_id, u32* out) noexcept;
 
 bool type_composite_is_impl_body(CoreData* core, TypeId type_id) noexcept;
 

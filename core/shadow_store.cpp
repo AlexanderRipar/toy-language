@@ -108,7 +108,7 @@ struct ShadowLayoutEntry
 
 		for (u32 i = 0; i != layout.member_count; ++i)
 		{
-			if (!type_is_equal(key.core, members[i].type_id, key.layout->members[i].type_id))
+			if (type_is_equal(key.core, members[i].type_id, key.layout->members[i].type_id) != TypeEquality::Equal)
 				return false;
 		}
 
@@ -425,7 +425,10 @@ ShadowLayoutId shadow_create_layout(CoreData* core, Range<ShadowLayoutMemberInit
 
 		ShadowLayoutMember* const dst = layout->members + i;
 
-		const TypeMetrics metrics = type_metrics_from_id(core, src->type_id);
+		TypeMetrics metrics;
+		
+		if (!type_metrics_from_id(core, src->type_id, &metrics))
+			ASSERT_UNREACHABLE;
 
 		ASSERT_OR_IGNORE(metrics.is_shadow);
 
