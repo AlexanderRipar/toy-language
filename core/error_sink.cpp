@@ -134,6 +134,7 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Expected definition name.\n",                                                                                                                  // ParseDefinitionMissingName
 		"Expected `=` after Definition identifier and type.\n",                                                                                         // ParseDefinitionMissingEquals
 		"Expected `:` after Definition identifier.\n",                                                                                                  // ParseDefinitionMissingColon
+		"`...` is only allowed on the type of the last parameter of a signature.\n",                                                                    // ParseDefinitionUnexpectedVariadic
 		"Expected `<-` after for-each loop variables.\n",                                                                                               // ParseForeachExpectThinArrowLeft
 		"Expected `->` after case label expression.\n",                                                                                                 // ParseCaseMissingThinArrowRight
 		"Expected at least one case after switch expression.\n",                                                                                        // ParseSwitchMissingCase
@@ -418,6 +419,8 @@ static constexpr const char8* COMPILE_ERROR_NAMES[] = {
 	"ParseDefinitionMultipleMut",
 	"ParseDefinitionMissingName",
 	"ParseDefinitionMissingEquals",
+	"ParseDefinitionMissingColon",
+	"ParseDefinitionUnexpectedVariadic",
 	"ParseForeachExpectThinArrowLeft",
 	"ParseCaseMissingThinArrowRight",
 	"ParseSwitchMissingCase",

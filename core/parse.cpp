@@ -1593,7 +1593,7 @@ static bool is_definition_start(Token token) noexcept
 
 static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept;
 
-static AstBuilderToken parse_definition(CoreData* core, bool is_optional_type, bool is_optional_value, bool is_param) noexcept
+static AstBuilderToken parse_definition(CoreData* core, bool is_optional_type, bool is_optional_value, bool is_param, Maybe<SourceId>* out_variadic_source_id) noexcept
 {
 	AstFlag flags = AstFlag::EMPTY;
 
@@ -1657,7 +1657,27 @@ static AstBuilderToken parse_definition(CoreData* core, bool is_optional_type, b
 
 		skip(core);
 
-		first_child_token = parse_expr(core, false);
+		lexeme = peek(core);
+
+		if (is_param && lexeme.token == Token::TypVar)
+		{
+			const SourceId variadic_source_id = lexeme.source_id;
+
+			*out_variadic_source_id = some(variadic_source_id);
+
+			skip(core);
+
+			const AstBuilderToken expr_token = parse_expr(core, false);
+
+			first_child_token = push_node(core, expr_token, variadic_source_id, AstFlag::EMPTY, AstTag::UOpTypeVarArgs);
+		}
+		else
+		{
+			if (is_param)
+				*out_variadic_source_id = none<SourceId>();
+
+			first_child_token = parse_expr(core, false);
+		}
 
 		lexeme = peek(core);
 	}
@@ -1721,7 +1741,7 @@ static AstBuilderToken parse_argument(CoreData* core) noexcept
 	const Lexeme lexeme = peek(core);
 
 	if (is_definition_start(lexeme.token) || (lexeme.token == Token::Ident && peek_n(core, 1).token == Token::Colon))
-		return parse_definition(core, true, true, false);
+		return parse_definition(core, true, true, false, nullptr);
 	else
 		return parse_expr(core, true);
 }
@@ -1731,7 +1751,7 @@ static AstBuilderToken parse_statement(CoreData* core) noexcept
 	const Lexeme lexeme = peek(core);
 
 	if (is_definition_start(lexeme.token))
-		return parse_definition(core, true, false, false);
+		return parse_definition(core, true, false, false, nullptr);
 	else if (lexeme.token == Token::KwdReturn)
 		return parse_return(core);
 	else if (lexeme.token == Token::KwdLeave)
@@ -1748,7 +1768,7 @@ static AstBuilderToken parse_where(CoreData* core) noexcept
 
 	const SourceId source_id = next(core).source_id;
 
-	const AstBuilderToken first_child_token = parse_definition(core, true, false, false);
+	const AstBuilderToken first_child_token = parse_definition(core, true, false, false, nullptr);
 
 	while (true)
 	{
@@ -1757,7 +1777,7 @@ static AstBuilderToken parse_where(CoreData* core) noexcept
 
 		skip(core);
 
-		parse_definition(core, true, false, false);
+		parse_definition(core, true, false, false, nullptr);
 	}
 
 	return push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstTag::Where);
@@ -1828,7 +1848,7 @@ static AstBuilderToken try_parse_foreach(CoreData* core, SourceId source_id) noe
 
 	AstFlag flags = AstFlag::EMPTY;
 
-	const AstBuilderToken first_child_token = parse_definition(core, true, true, false);
+	const AstBuilderToken first_child_token = parse_definition(core, true, true, false, nullptr);
 
 	Lexeme lexeme = peek(core);
 
@@ -1838,7 +1858,7 @@ static AstBuilderToken try_parse_foreach(CoreData* core, SourceId source_id) noe
 
 		skip(core);
 
-		parse_definition(core, true, true, false);
+		parse_definition(core, true, true, false, nullptr);
 
 		lexeme = peek(core);
 	}
@@ -2059,6 +2079,8 @@ static AstBuilderToken parse_signature(CoreData* core) noexcept
 
 	u32 param_count = 0;
 
+	Maybe<SourceId> variadic_source_id = none<SourceId>();
+
 	while (lexeme.token != Token::ParenR)
 	{
 		// Only report this for the first parameter after the maximum by
@@ -2066,9 +2088,15 @@ static AstBuilderToken parse_signature(CoreData* core) noexcept
 		if (param_count == MAX_FUNC_PARAM_COUNT)
 			parse_error_continuable(core, lexeme.source_id, CompileError::ParseSignatureTooManyParameters);
 
+		if (is_some(variadic_source_id))
+			parse_error_continuable(core, get(variadic_source_id), CompileError::ParseDefinitionUnexpectedVariadic);
+
+		// Reset `has_variadic` to avoid duplicate error messages.
+		variadic_source_id = none<SourceId>();
+
 		param_count += 1;
 
-		const AstBuilderToken parameter_token = parse_definition(core, true, true, true);
+		const AstBuilderToken parameter_token = parse_definition(core, true, true, true, &variadic_source_id);
 
 		if (first_parameter_token == AstBuilderToken::NO_CHILDREN)
 			first_parameter_token = parameter_token;
@@ -2202,7 +2230,7 @@ static AstBuilderToken parse_trait(CoreData* core) noexcept
 		if (lexeme.token == Token::CurlyR)
 			break;
 
-		parse_definition(core, false, true, false);
+		parse_definition(core, false, true, false, nullptr);
 	}
 
 	skip(core);
@@ -2504,6 +2532,9 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 			}
 			else // Unary operator
 			{
+				if (lexeme.token == Token::TypVar)
+					parse_error_continuable(core, lexeme.source_id, CompileError::ParseDefinitionUnexpectedVariadic);
+
 				const SourceId source_id = lexeme.source_id;
 
 				const u8 token_ordinal = static_cast<u8>(lexeme.token);
@@ -2692,7 +2723,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 				{
 					flags |= AstFlag::Catch_HasDefinition;
 
-					parse_definition(core, true, true, false);
+					parse_definition(core, true, true, false, nullptr);
 
 					lexeme = next(core);
 
@@ -2751,7 +2782,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 					if (lexeme.token == Token::CurlyR)
 						break;
 
-					parse_definition(core, true, false, false);
+					parse_definition(core, true, false, false, nullptr);
 				}
 
 				const AstBuilderToken impl_token = push_node(core, stack.operand_tokens[stack.operand_count - 1], source_id, flags, AstImplData{ none<ClosureListId>() });
@@ -2800,7 +2831,7 @@ static bool parse_file(CoreData* core) noexcept
 
 		if (is_definition_start(lexeme.token))
 		{
-			const AstBuilderToken curr_token = parse_definition(core, true, false, false);
+			const AstBuilderToken curr_token = parse_definition(core, true, false, false, nullptr);
 
 			if (first_child_token == AstBuilderToken::NO_CHILDREN)
 				first_child_token = curr_token;

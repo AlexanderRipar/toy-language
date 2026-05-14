@@ -1855,6 +1855,7 @@ enum class CompileError
 	ParseDefinitionMissingName,
 	ParseDefinitionMissingEquals,
 	ParseDefinitionMissingColon,
+	ParseDefinitionUnexpectedVariadic,
 	ParseForeachExpectThinArrowLeft,
 	ParseCaseMissingThinArrowRight,
 	ParseSwitchMissingCase,
