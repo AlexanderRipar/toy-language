@@ -879,6 +879,11 @@ static bool opcodes_from_parameter(CoreData* core, AstNode* node, u8 rank, Ident
 
 	DefinitionInfo info = get_definition_info(node);
 
+	const bool is_variadic = is_some(info.type) && get(info.type)->tag == AstTag::UOpTypeVarArgs;
+
+	if (is_variadic)
+		info.type = some(first_child_of(get(info.type)));
+
 	if (is_templated_parameter)
 	{
 		*out_fixup_index = core->opcodes.fixups.used();
@@ -917,6 +922,7 @@ static bool opcodes_from_parameter(CoreData* core, AstNode* node, u8 rank, Ident
 	flags.is_mut = has_flag(node, AstFlag::Definition_IsMut);
 	flags.is_eval = has_flag(node, AstFlag::Definition_IsEval);
 	flags.is_templated = is_templated_parameter;
+	flags.is_variadic = is_variadic;
 	flags.unused_ = 0;
 
 	*out_flags = flags;
@@ -2499,7 +2505,6 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	case AstTag::UOpTry:
 	case AstTag::UOpDefer:
 	case AstTag::UOpDistinct:
-	case AstTag::UOpTypeVarArgs:
 		TODO("Implement `opcodes_from_expression(%)`", tag_name(tag));
 
 	case AstTag::INVALID:
@@ -2509,6 +2514,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	case AstTag::Case:
 	case AstTag::ParameterList:
 	case AstTag::TraitParameterList:
+	case AstTag::UOpTypeVarArgs:
 	case AstTag::ImpliedMember:
 	case AstTag::MAX:
 		; // Fallthrough to unreachable

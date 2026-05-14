@@ -804,12 +804,13 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 			const Range<char8> parameter_name_str = identifier_name_from_id(core, parameter_name);
 
-			const s64 written = print(sink, "\n     -        %[> 2]: mut=% eval=% type=% default=% name=IdentifierId<%> (%)",
+			const s64 written = print(sink, "\n     -        %[> 2]: mut=% eval=% type=% default=% variadic=% name=IdentifierId<%> (%)",
 				i,
 				static_cast<bool>(parameter_flags.is_mut),
 				static_cast<bool>(parameter_flags.is_eval),
 				static_cast<bool>(parameter_flags.has_type),
 				static_cast<bool>(parameter_flags.has_default),
+				static_cast<bool>(parameter_flags.is_variadic),
 				static_cast<u32>(parameter_name),
 				parameter_name_str
 			);

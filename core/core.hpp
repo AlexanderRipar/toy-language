@@ -2748,7 +2748,9 @@ struct OpcodeSignaturePerParameterFlags
 
 	u8 is_templated : 1;
 
-	u8 unused_ : 3;
+	u8 is_variadic : 1;
+
+	u8 unused_ : 2;
 };
 
 struct OpcodeDefinitionFlags
