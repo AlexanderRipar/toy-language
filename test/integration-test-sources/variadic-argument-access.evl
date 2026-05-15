@@ -1,0 +1,5 @@
+// success
+
+let access_at = func(index: u64, elems: ...u32) -> u32 => elems[index]
+
+let unused = std.assert(access_at(2, 100, 200, 300) == 300)

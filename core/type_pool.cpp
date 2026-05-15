@@ -119,7 +119,9 @@ struct alignas(8) CompositeSignatureExtraData
 
 	bool has_templated_return_type;
 
-	byte unused_[5];
+	bool is_variadic;
+
+	u32 unused_ = 0;
 };
 
 struct alignas(8) CompositeUserExtraData
@@ -2020,6 +2022,8 @@ TypeId type_create_signature(CoreData* core, bool is_func, u8 parameter_count) n
 	signature->is_func = is_func;
 	signature->templated_parameter_count = 0;
 	signature->has_templated_return_type = false;
+	signature->is_variadic = false;
+	signature->unused_ = 0;
 
 	return id_from_structure(core, structure);
 }
@@ -2086,6 +2090,7 @@ TypeId type_seal_signature(CoreData* core, TypeId type_id, SignatureSealInfo sea
 	}
 
 	signature->closure_id = seal_info.closure_id;
+	signature->is_variadic = seal_info.is_variadic;
 
 	if (!init_structure_hash(core, structure))
 		ASSERT_UNREACHABLE;
@@ -2165,6 +2170,8 @@ TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names) no
 	signature->is_func = true;
 	signature->templated_parameter_count = 0;
 	signature->has_templated_return_type = false;
+	signature->is_variadic = false;
+	signature->unused_ = 0;
 
 	CompositeInfo info = composite_info(composite);
 
@@ -2746,6 +2753,7 @@ SignatureTypeInfo type_signature_info_from_id(CoreData* core, TypeId type_id) no
 	info.parameter_count = static_cast<u8>(composite->member_used);
 	info.is_func = signature->is_func;
 	info.has_templated_return_type = signature->has_templated_return_type;
+	info.is_variadic = signature->is_variadic;
 	info.closure_id = signature->closure_id;
 
 	if (signature->has_templated_return_type)

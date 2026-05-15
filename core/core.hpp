@@ -2129,6 +2129,8 @@ struct SignatureTypeInfo
 	
 	bool has_templated_return_type;
 
+	bool is_variadic;
+
 	union
 	{
 		struct
@@ -2237,6 +2239,8 @@ struct SignatureSealInfo
 	} return_type;
 
 	bool has_templated_return_type;
+
+	bool is_variadic;
 };
 
 struct TraitMemberInit

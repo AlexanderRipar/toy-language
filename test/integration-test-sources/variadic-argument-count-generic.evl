@@ -1,0 +1,13 @@
+// success
+
+let is_expected_count = func(count: u32, T: Type, elems: ...T) -> Void => std.assert(count == sizeof(typeof(elems)) / sizeof(typeof(elems[0])))
+
+let unused = {
+	is_expected_count(5,  u8, 1, 2, 3, 4, 5)
+
+	is_expected_count(5, u16, 1, 2, 3, 4, 5)
+
+	is_expected_count(5, u32, 1, 2, 3, 4, 5)
+
+	is_expected_count(5, u64, 1, 2, 3, 4, 5)
+}

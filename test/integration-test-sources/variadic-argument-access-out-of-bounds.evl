@@ -1,0 +1,5 @@
+// ArrayIndexOutOfBounds
+
+let access_at = func(index: u64, elems: ...u32) -> u32 => elems[index]
+
+let unused = access_at(3, 100, 200, 300)

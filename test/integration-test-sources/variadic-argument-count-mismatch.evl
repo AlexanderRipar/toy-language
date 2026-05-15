@@ -1,0 +1,5 @@
+// UnreachableReached
+
+let is_expected_count = func(count: u32, elems: ...u8) -> Void => std.assert(count == sizeof(typeof(elems)))
+
+let unused = is_expected_count(5, 1, 2, 3, 4, 5, 6)

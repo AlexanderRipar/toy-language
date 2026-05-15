@@ -94,9 +94,11 @@ struct alignas(16) ArgumentPack
 
 	u32 scope_first_member_index;
 
-	u8 index;
+	u8 argument_index;
 
-	u8 count;
+	u8 parameter_count;
+
+	u8 argument_count;
 
 	bool has_templated_parameter_list : 1;
 
@@ -104,7 +106,9 @@ struct alignas(16) ArgumentPack
 
 	bool has_closure : 1;
 
-	bool has_just_completed_template_parameter;
+	bool has_just_completed_template_parameter : 1;
+
+	bool is_variadic : 1;
 };
 
 struct alignas(8) GlobalInitialization
@@ -325,7 +329,7 @@ static const Opcode* poppush_temporary_value(CoreData* core, const Opcode* code,
 
 static void argument_pack_pop(CoreData* core, ArgumentPack* argument_pack) noexcept
 {
-	core->interp.argument_callbacks.pop_by(argument_pack->count);
+	core->interp.argument_callbacks.pop_by(argument_pack->argument_count);
 
 	if (argument_pack->has_closure)
 		core->interp.active_closures.pop_by(1);
@@ -1237,10 +1241,52 @@ static CompareResult compare(CoreData* core, TypeId type, Range<byte> lhs, Range
 	ASSERT_UNREACHABLE;
 }
 
+static const Opcode* scope_alloc_typed_member_variadic(CoreData* core, const Opcode* code, bool is_mut, TypeId element_type, u64 element_count) noexcept
+{
+	const TypeId type = type_create_array(core, TypeTag::Array, ArrayType{ element_count, some(element_type) });
+
+	TypeMetrics member_metrics;
+
+	if (!type_metrics_from_id(core, type, &member_metrics))
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
+
+	if (member_metrics.size >= UINT32_MAX)
+		panic("Exceeded maximum size of stack variable.\n");
+
+	core->interp.scope_data.pad_to_alignment(member_metrics.align);
+
+	const u32 member_begin = core->interp.scope_data.used();
+
+	byte* const member_value = core->interp.scope_data.reserve(static_cast<u32>(member_metrics.size));
+
+	ScopeMember* const member = core->interp.scope_members.reserve();
+	member->offset = member_begin;
+	member->size = static_cast<u32>(member_metrics.size);
+	member->align = member_metrics.align;
+	member->is_mut = is_mut;
+	member->type = type;
+
+	MutRange<byte> bytes = MutRange<byte>{ member_value, member_metrics.size };
+
+	TypeMetrics element_metrics;
+
+	if (!type_metrics_from_id(core, element_type, &element_metrics))
+		ASSERT_UNREACHABLE;
+
+	for (u64 i = 0; i != element_count; ++i)
+	{
+		const MutRange<byte> element_bytes = bytes.mut_subrange((element_count - i - 1) * element_metrics.stride, element_metrics.size);
+
+		core->interp.write_ctxs.append(CompValue{ element_bytes, member_metrics.align, is_mut, element_type });
+	}
+
+	return code;
+}
+
 static const Opcode* scope_alloc_typed_member(CoreData* core, const Opcode* code, bool is_mut, TypeId type) noexcept
 {
 	TypeMetrics member_metrics;
-	
+
 	if (!type_metrics_from_id(core, type, &member_metrics))
 		return record_interpreter_error(core, code, CompileError::IncompleteType);
 
@@ -2364,6 +2410,8 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CompVa
 
 	TypeId signature_type = type_create_signature(core, signature_flags.is_func, parameter_count);
 
+	bool is_variadic = false;
+
 	for (u32 i = 0; i != parameter_count; ++i)
 	{
 		IdentifierId parameter_name;
@@ -2371,6 +2419,8 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CompVa
 
 		OpcodeSignaturePerParameterFlags parameter_flags;
 		code = code_attach(code, &parameter_flags);
+
+		is_variadic = parameter_flags.is_variadic;
 
 		TypeId parameter_type;
 
@@ -2457,6 +2507,7 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CompVa
 	seal.closure_id = none<ClosureId>();
 	seal.return_type.complete.type_id = return_type;
 	seal.has_templated_return_type = false;
+	seal.is_variadic = is_variadic;
 
 	signature_type = type_seal_signature(core, signature_type, seal);
 
@@ -2502,6 +2553,8 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, Co
 
 	TypeId signature_type = type_create_signature(core, signature_flags.is_func, parameter_count);
 
+	bool is_variadic = false;
+
 	for (u32 i = 0; i != parameter_count; ++i)
 	{
 		IdentifierId name;
@@ -2509,6 +2562,8 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, Co
 
 		OpcodeSignaturePerParameterFlags parameter_flags;
 		code = code_attach(code, &parameter_flags);
+
+		is_variadic = parameter_flags.is_variadic;
 
 		SignatureParameterInit init{};
 		init.name = name;
@@ -2602,6 +2657,7 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, Co
 	SignatureSealInfo seal{};
 	seal.closure_id = closure;
 	seal.has_templated_return_type = signature_flags.has_templated_return_type;
+	seal.is_variadic = is_variadic;
 
 	if (signature_flags.has_templated_return_type)
 	{
@@ -2723,9 +2779,11 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 	u8 parameter_index = 0;
 
-	for (u8 i = 0; i != argument_count; ++i)
+	u8 argument_index = 0;
+
+	while (argument_index != argument_count)
 	{
-		const IdentifierId name = argument_names[i];
+		const IdentifierId name = argument_names[argument_index];
 
 		if (name == IdentifierId::INVALID)
 		{
@@ -2755,9 +2813,21 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 
 		seen_parameters |= parameter_mask;
 
-		ordered_callbacks[parameter_index] = some(argument_callbacks[i]);
+		ordered_callbacks[parameter_index] = some(argument_callbacks[argument_index]);
+
+		argument_index += 1;
 
 		parameter_index += 1;
+
+		if (info.is_variadic && parameter_index == info.parameter_count)
+		{
+			while (argument_index != argument_count && argument_names[argument_index] == IdentifierId::INVALID)
+			{
+				core->interp.argument_callbacks.append(some(argument_callbacks[argument_index]));
+
+				argument_index += 1;
+			}
+		}
 	}
 
 	// Set up defaults for missing arguments.
@@ -2787,12 +2857,14 @@ static const Opcode* handle_prepare_args(CoreData* core, const Opcode* code, [[m
 	ArgumentPack* const argument_pack = core->interp.argument_packs.reserve();
 	argument_pack->signature_type = signature_type;
 	argument_pack->scope_first_member_index = core->interp.scope_members.used();
-	argument_pack->index = 0;
-	argument_pack->count = info.parameter_count;
+	argument_pack->argument_index = 0;
+	argument_pack->parameter_count = info.parameter_count;
+	argument_pack->argument_count = argument_count;
 	argument_pack->has_templated_parameter_list = info.templated_parameter_count != 0;
 	argument_pack->has_templated_return_type = info.has_templated_return_type;
 	argument_pack->has_closure = is_some(info.closure_id);
 	argument_pack->has_just_completed_template_parameter = false;
+	argument_pack->is_variadic = info.is_variadic;
 
 	if (info.templated_parameter_count != 0 || info.has_templated_return_type)
 		argument_pack->signature_type = type_instantiate_templated_signature(core, signature_type);
@@ -2826,7 +2898,7 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 		core->interp.scopes.pop_by(1);
 	}
 
-	if (argument_pack->index < argument_pack->count)
+	if (argument_pack->argument_index < argument_pack->argument_count)
 	{
 		// If there are still arguments that have not been processed, then we
 		// check whether it is templated. If so, we transfer control to the
@@ -2839,7 +2911,11 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 
 		OpcodeId parameter_initializer_id;
 
-		if (!type_member_info_by_rank(core, argument_pack->signature_type, argument_pack->index, &parameter_info, &parameter_initializer_id))
+		const u8 parameter_index = argument_pack->argument_index < argument_pack->parameter_count
+			? argument_pack->argument_index
+			: argument_pack->parameter_count - 1;
+
+		if (!type_member_info_by_rank(core, argument_pack->signature_type, parameter_index, &parameter_info, &parameter_initializer_id))
 		{
 			// The parameter is incomplete it is templated, so we evaluate its
 			// initializer in the callee's scope.
@@ -2862,13 +2938,26 @@ static const Opcode* handle_exec_args(CoreData* core, const Opcode* code, [[mayb
 
 			return opcode_from_id(core, parameter_initializer_id);
 		}
-		
-		if (scope_alloc_typed_member(core, code, parameter_info.is_mut, parameter_info.type_id) == nullptr)
-			return nullptr;
 
-		const Maybe<OpcodeId> callback_id = core->interp.argument_callbacks.end()[-argument_pack->count + argument_pack->index];
+		if (argument_pack->argument_index < argument_pack->parameter_count)
+		{
+			const bool is_variadic = argument_pack->argument_index == argument_pack->parameter_count - 1 && argument_pack->is_variadic;
 
-		argument_pack->index += 1;
+			if (is_variadic)
+			{
+				if (scope_alloc_typed_member_variadic(core, code, parameter_info.is_mut, parameter_info.type_id, static_cast<u64>(1) + argument_pack->argument_count - argument_pack->parameter_count) == nullptr)
+					return nullptr;
+			}
+			else
+			{
+				if (scope_alloc_typed_member(core, code, parameter_info.is_mut, parameter_info.type_id) == nullptr)
+					return nullptr;
+			}
+		}
+
+		const Maybe<OpcodeId> callback_id = core->interp.argument_callbacks.end()[-argument_pack->argument_count + argument_pack->argument_index];
+
+		argument_pack->argument_index += 1;
 
 		if (is_some(callback_id))
 		{
@@ -3028,9 +3117,9 @@ static const Opcode* handle_call(CoreData* core, const Opcode* code, CompValue* 
 
 		ScopeMember* const first_argument = core->interp.scope_members.begin() + argument_pack->scope_first_member_index;
 
-		const Range<TypeId> argument_types{ reinterpret_cast<TypeId*>(core->interp.scope_data.begin() + first_argument->offset), argument_pack->count };
+		const Range<TypeId> argument_types{ reinterpret_cast<TypeId*>(core->interp.scope_data.begin() + first_argument->offset), argument_pack->parameter_count };
 
-		for (u8 i = 0; i != argument_pack->count; ++i)
+		for (u8 i = 0; i != argument_pack->parameter_count; ++i)
 		{
 			if (!type_implements_trait(core, argument_types[i], trait.member_completions, argument_types))
 				continue;
@@ -6241,8 +6330,9 @@ static TypeId make_func_type_from_array(CoreData* core, TypeId return_type, u8 p
 
 	SignatureSealInfo seal{};
 	seal.closure_id = none<ClosureId>();
-	seal.has_templated_return_type = false;
 	seal.return_type.complete.type_id = return_type;
+	seal.has_templated_return_type = false;
+	seal.is_variadic = false;
 
 	
 
