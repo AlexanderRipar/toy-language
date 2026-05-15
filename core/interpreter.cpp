@@ -1079,7 +1079,7 @@ static CompareResult compare(CoreData* core, TypeId type, Range<byte> lhs, Range
 
 			if (lhs_byte < rhs_byte)
 				return CompareResult{ negate_comparison ? WeakCompareOrdering::GreaterThan : WeakCompareOrdering::LessThan };
-			else if (rhs_byte > lhs_byte)
+			else if (lhs_byte > rhs_byte)
 				return CompareResult{ negate_comparison ? WeakCompareOrdering::LessThan : WeakCompareOrdering::GreaterThan };
 		}
 		while (i >= 0);
