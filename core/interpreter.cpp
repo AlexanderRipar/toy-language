@@ -4192,7 +4192,7 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CompValue*
 
 		const MutRange<byte> bytes = lhs->bytes.mut_subrange(index * elem_metrics.stride, elem_metrics.size);
 
-		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, elem_metrics.align, true, elem_type });
+		return poppush_location_value(core, code, write_ctx, CompValue{ bytes, elem_metrics.align, true, elem_type });
 	}
 	else if (type_tag == TypeTag::Slice)
 	{
@@ -4214,7 +4214,7 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CompValue*
 
 		const MutRange<byte> bytes = lhs->bytes.mut_subrange(index * elem_metrics.stride, elem_metrics.size);
 
-		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, elem_metrics.align, true, elem_type });
+		return poppush_location_value(core, code, write_ctx, CompValue{ bytes, elem_metrics.align, true, elem_type });
 	}
 	else if (type_tag == TypeTag::Ptr)
 	{
@@ -4234,7 +4234,7 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CompValue*
 
 		MutRange<byte> bytes{ ptr + index * elem_metrics.stride, elem_metrics.size };
 
-		return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, elem_metrics.align, true, elem_type });
+		return poppush_location_value(core, code, write_ctx, CompValue{ bytes, elem_metrics.align, true, elem_type });
 	}
 	else
 	{
