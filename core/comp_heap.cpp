@@ -129,7 +129,7 @@ static void comp_heap_mark_bitmap_bit(CoreData* core, u64* bitmap, byte* memory)
 
 static Maybe<void*> comp_heap_alloc_internal(CoreData* core, u64 size, u64 align, bool needs_header) noexcept
 {
-	ASSERT_OR_IGNORE(is_pow2(align));
+	ASSERT_OR_IGNORE(align != 0 && is_pow2(align));
 
 	const u64 header_size = needs_header ? COMP_HEAP_MIN_ALLOCATION_SIZE : 0;
 
