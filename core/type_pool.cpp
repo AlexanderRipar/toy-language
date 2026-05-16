@@ -950,7 +950,8 @@ static u32 hash_composite_type_extra_data(CoreData* core, u32 hash, SeenSet* see
 
 		const byte flags = (static_cast<byte>(signature->has_templated_return_type))
 		                 | (static_cast<byte>(signature->is_func) << 1)
-						 | (static_cast<byte>(signature->templated_parameter_count) << 2);
+						 | (static_cast<byte>(signature->templated_parameter_count) << 2)
+						 | (static_cast<byte>(signature->is_variadic) << 3);
 
 		return fnv1a_step(hash, flags) | 1;
 	}
@@ -1577,6 +1578,7 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 			if (a_signature->has_templated_return_type != b_signature->has_templated_return_type
 			 || a_signature->templated_parameter_count != b_signature->templated_parameter_count
 			 || a_signature->is_func != b_signature->is_func
+			 || a_signature->is_variadic != b_signature->is_variadic
 			 || is_some(a_signature->closure_id) != is_some(b_signature->closure_id)
 			) {
 				seen_set_pop(a_seen);
