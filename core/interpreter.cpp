@@ -3566,19 +3566,26 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 	u16 elems_count;
 	code = code_attach(code, &elems_count);
 
+	u16 leading_member_count;
+	code = code_attach(code, &leading_member_count);
+
 	if (type_tag != TypeTag::CompositeLiteral && type_tag != TypeTag::Composite)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	u32 member_count;
 	
+	// Since we are subdividing an existing write context of type `dst_type`,
+	// `dst_type` must already be complete, as it couldn't be allocated
+	// otherwise. Thus, `type_member_count` cannot fail here.
 	if (!type_member_count(core, dst_type, &member_count))
-		return record_interpreter_error(core, code, CompileError::IncompleteType);
+		ASSERT_UNREACHABLE;
 
-	u16 leading_member_count;
-	code = code_attach(code, &leading_member_count);
-
-	if (member_count < leading_member_count)
+	if (member_count < elems_count)
 		return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
+
+	core->interp.write_ctxs.reserve(elems_count);
+
+	CompValue* write_ctx_dst = core->interp.write_ctxs.end() - 1;
 
 	for (u16 i = 0; i != leading_member_count; ++i)
 	{
@@ -3592,13 +3599,15 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 		ASSERT_OR_IGNORE(!member_info.is_global);
 
 		TypeMetrics member_metrics;
-		
+
 		if (!type_metrics_from_id(core, member_info.type_id, &member_metrics))
 			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(member_info.offset, member_metrics.size);
 
-		core->interp.write_ctxs.append(CompValue{ bytes, member_metrics.align, write_ctx->is_mut, member_info.type_id });
+		*write_ctx_dst = CompValue{ bytes, member_metrics.align, write_ctx->is_mut, member_info.type_id };
+
+		write_ctx_dst -= 1;
 	}
 
 	if (names_count == 0)
@@ -3669,7 +3678,9 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 		const MutRange<byte> named_bytes = write_ctx->bytes.mut_subrange(named_member_info.offset, named_member_metrics.size);
 
-		core->interp.write_ctxs.append(CompValue{ named_bytes, named_member_metrics.align, write_ctx->is_mut, named_member_info.type_id });
+		*write_ctx_dst = CompValue{ named_bytes, named_member_metrics.align, write_ctx->is_mut, named_member_info.type_id };
+
+		write_ctx_dst -= 1;
 
 		for (u16 j = 1; j != following_member_count; ++j)
 		{
@@ -3689,7 +3700,9 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 			const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(following_member_info.offset, following_member_metrics.size);
 
-			core->interp.write_ctxs.append(CompValue{ bytes, following_member_metrics.align, write_ctx->is_mut, following_member_info.type_id });
+			*write_ctx_dst = CompValue{ bytes, following_member_metrics.align, write_ctx->is_mut, following_member_info.type_id };
+
+			write_ctx_dst -= 1;
 		}
 	}
 
