@@ -1,0 +1,45 @@
+// CompositeLiteralSourceIsMissingMember
+
+let Struct = func(members: ...Definition) -> Type => {
+
+	let builder = std.create_type_builder()
+
+	mut offset = 0
+
+	mut align = 1
+
+	let count = sizeof(typeof(members)) / sizeof(typeof(members[0]))
+
+	for i < count, i += 1 where mut i = 0
+	{
+		let member = members[i]
+
+		let member_type = std.definition_typeof(member)
+
+		let member_size = sizeof(member_type)
+
+		let member_align = alignof(member_type)
+
+		offset = (offset + member_align - 1) & ~(member_align - 1)
+
+		if align < member_align then
+			align = member_align
+
+		std.add_type_member(builder, member, offset)
+
+		offset += member_size
+	}
+
+	let stride = (offset + align - 1) & ~(align - 1)
+
+	std.complete_type(
+		.builder = builder,
+		.size = offset,
+		.stride = stride,
+		.align = align,
+	)
+}
+
+let Pair = Struct(mut a: u64, mut b: u8)
+
+let a_pair: Pair = .{}
