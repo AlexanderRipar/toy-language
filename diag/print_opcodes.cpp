@@ -282,7 +282,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 
 		code = code_attach(code, &names_count);
 
-		return PrintResult{ code + sizeof(u16) + names_count * (sizeof(IdentifierId) + sizeof(u16)), 0 };
+		return PrintResult{ code + 2 * sizeof(u16) + names_count * (sizeof(IdentifierId) + sizeof(u16)), 0 };
 	}
 
 	case Opcode::CompositePostInit:
@@ -1080,15 +1080,17 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	case Opcode::CompositePreInit:
 	{
 		u16 names_count;
-
 		code = code_attach(code, &names_count);
 
-		u16 leading_initializer_count;
+		u16 elems_count;
+		code = code_attach(code, &elems_count);
 
+		u16 leading_initializer_count;
 		code = code_attach(code, &leading_initializer_count);
 
-		s64 total_written = print(sink, " names_count=% leading_elem_count=%",
+		s64 total_written = print(sink, " names_count=% elems_count=% leading_elem_count=%",
 			names_count,
+			elems_count,
 			leading_initializer_count
 		);
 

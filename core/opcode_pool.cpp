@@ -433,23 +433,10 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	{
 		ASSERT_OR_IGNORE(expects_write_ctx);
 
-		u16 names_count;
-		memcpy(&names_count, code + 1, sizeof(names_count));
+		u16 elems_count;
+		memcpy(&elems_count, code + 3, sizeof(elems_count));
 
-		u16 leading_member_count;
-		memcpy(&leading_member_count, code + 3, sizeof(leading_member_count));
-
-		u32 total_member_count = leading_member_count;
-
-		for (u16 i = 0; i != names_count; ++i)
-		{
-			u16 following_member_count;
-			memcpy(&following_member_count, code + 3 + i * (sizeof(IdentifierId) + sizeof(u16)) + sizeof(IdentifierId), sizeof(following_member_count));
-
-			total_member_count += following_member_count;
-		}
-
-		rst.write_ctxs_diff = static_cast<u32>(total_member_count) - 1;
+		rst.write_ctxs_diff = static_cast<u32>(elems_count) - 1;
 
 		return rst;
 	}
@@ -1244,7 +1231,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		{
 			u16 named_member_count = 0;
 
-			s32 write_ctxs_diff = 0;
+			u16 write_ctxs_diff = 0;
 
 			AstDirectChildIterator it = direct_children_of(node);
 
@@ -1266,12 +1253,14 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 				core->opcodes.state.write_ctxs_diff += write_ctxs_diff - 1;
 			}
 
-			const u32 attach_size = 2 * sizeof(u16) + named_member_count * (sizeof(IdentifierId) + sizeof(u16));
+			const u32 attach_size = 3 * sizeof(u16) + named_member_count * (sizeof(IdentifierId) + sizeof(u16));
 
 			byte* attach = emit_opcode_raw(core, Opcode::CompositePreInit, true, node, attach_size);
 
 			memcpy(attach, &named_member_count, sizeof(u16));
+			attach += sizeof(u16);
 
+			memcpy(attach, &write_ctxs_diff, sizeof(u16));
 			attach += sizeof(u16);
 
 			u16 following_member_count = 0;

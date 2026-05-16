@@ -3563,6 +3563,9 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 	u16 names_count;
 	code = code_attach(code, &names_count);
 
+	u16 elems_count;
+	code = code_attach(code, &elems_count);
+
 	if (type_tag != TypeTag::CompositeLiteral && type_tag != TypeTag::Composite)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
