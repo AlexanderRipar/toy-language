@@ -371,7 +371,7 @@ static SeenSet seen_set_init(CoreData* core, u16 count, u16 leading_1_count) noe
 
 	if (has_partially_set_qword)
 	{
-		bits[i] = static_cast<u64>(1) << (leading_1_count & 63);
+		bits[i] = (static_cast<u64>(1) << (leading_1_count & 63)) - 1;
 
 		i += 1;
 	}
