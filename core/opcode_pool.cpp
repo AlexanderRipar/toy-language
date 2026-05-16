@@ -1549,7 +1549,10 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 		memcpy(attach, &definition_count, sizeof(u16));
 
-		emit_opcode(core, Opcode::ScopeEndPreserveTop, false, node);
+		if (expects_write_ctx)
+			emit_opcode(core, Opcode::ScopeEnd, false, node);
+		else
+			emit_opcode(core, Opcode::ScopeEndPreserveTop, false, node);
 
 		return true;
 	}
@@ -1587,7 +1590,12 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 			emit_opcode(core, Opcode::IfElse, expects_write_ctx, node, OpcodeId::INVALID, OpcodeId::INVALID);
 
 			if (is_some(info.where))
-				emit_opcode(core, Opcode::ScopeEndPreserveTop, false, get(info.where));
+			{
+				if (expects_write_ctx)
+					emit_opcode(core, Opcode::ScopeEnd, false, get(info.where));
+				else
+					emit_opcode(core, Opcode::ScopeEndPreserveTop, false, get(info.where));
+			}
 		}
 		else
 		{
@@ -1637,7 +1645,12 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 			emit_opcode(core, Opcode::LoopFinally, expects_write_ctx, node, condition_id, OpcodeId::INVALID, OpcodeId::INVALID);
 
 			if (is_some(info.where))
-				emit_opcode(core, Opcode::ScopeEndPreserveTop, false, get(info.where));
+			{
+				if (expects_write_ctx)
+					emit_opcode(core, Opcode::ScopeEnd, false, get(info.where));
+				else
+					emit_opcode(core, Opcode::ScopeEndPreserveTop, false, get(info.where));
+			}
 		}
 		else
 		{
