@@ -1511,7 +1511,8 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 				if (!has_next_sibling(child))
 					TODO("Think about what to do in case of a trailing definition in a block. Is it Void? Or Definition? Or coercible to both? Probably the first");
 
-				opcodes_from_scope_definition(core, child);
+				if (!opcodes_from_scope_definition(core, child))
+					return false;
 
 				definition_count += 1;
 			}
@@ -1523,7 +1524,8 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 				const bool is_last = !has_next_sibling(child);
 
-				opcodes_from_expression(core, child, is_last && expects_write_ctx);
+				if (!opcodes_from_expression(core, child, is_last && expects_write_ctx))
+					return false;
 
 				// If we have arrived at the last expression in the block, and
 				// the expression has no value (e.g., if it is a
