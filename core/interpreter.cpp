@@ -5064,7 +5064,7 @@ static const Opcode* handle_compare(CoreData* core, const Opcode* code, CompValu
 
 		if (kind == OpcodeCompareKind::LessThan)
 			result = compare_result.ordering == WeakCompareOrdering::LessThan;
-		if (kind == OpcodeCompareKind::LessThanOrEqual)
+		else if (kind == OpcodeCompareKind::LessThanOrEqual)
 			result = compare_result.ordering == WeakCompareOrdering::LessThan || compare_result.ordering == WeakCompareOrdering::Equal;
 		else if (kind == OpcodeCompareKind::GreaterThan)
 			result = compare_result.ordering == WeakCompareOrdering::GreaterThan;
