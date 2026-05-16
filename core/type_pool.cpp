@@ -2410,6 +2410,8 @@ bool type_add_user_composite_member(CoreData* core, TypeId type_id, UserComposit
 
 TypeId type_seal_user_composite(CoreData* core, TypeId type_id, UserCompositeSealInfo seal_info) noexcept
 {
+	ASSERT_OR_IGNORE(seal_info.align != 0 && is_pow2(seal_info.align));
+
 	TypeStructure* indirection_structure;
 
 	TypeStructure* structure = structure_from_id_follow_with_last_indirection(core, type_id, &indirection_structure);
