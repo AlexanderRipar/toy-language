@@ -2380,8 +2380,6 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 	case AstTag::OpSet:
 	{
-		ASSERT_OR_IGNORE(!expects_write_ctx);
-
 		AstNode* const lhs = first_child_of(node);
 
 		if (!opcodes_from_expression(core, lhs, false))
@@ -2393,6 +2391,9 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 		if (!opcodes_from_expression(core, rhs, true))
 			return false;
+
+		if (expects_write_ctx)
+			emit_opcode(core, Opcode::ValueVoid, true, node);
 
 		return true;
 	}
@@ -2411,8 +2412,6 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	case AstTag::OpSetShiftL:
 	case AstTag::OpSetShiftR:
 	{
-		ASSERT_OR_IGNORE(!expects_write_ctx);
-
 		AstNode* const lhs = first_child_of(node);
 
 		AstNode* const rhs = next_sibling_of(lhs);
@@ -2454,6 +2453,9 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 			emit_opcode(core, Opcode::BinaryArithmeticOp, true, node, kind);
 		}
+
+		if (expects_write_ctx)
+			emit_opcode(core, Opcode::ValueVoid, true, node);
 
 		return true;
 	}
