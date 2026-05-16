@@ -2093,7 +2093,9 @@ static const Opcode* handle_load_scope(CoreData* core, const Opcode* code, CompV
 
 	byte* const begin = core->interp.scope_data.begin() + member->offset;
 
-	CompValue loaded_value{MutRange<byte>{ begin, member->size }, member->align, member->is_mut, member->type };
+	const MutRange<byte> bytes{ begin, member->size };
+
+	const CompValue loaded_value{ bytes, member->align, member->is_mut, member->type };
 
 	return push_location_value(core, code, write_ctx, loaded_value);
 }
