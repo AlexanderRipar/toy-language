@@ -3773,6 +3773,7 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 	UserCompositeSealInfo seal{};
 	seal.size = size;
 	seal.stride = next_multiple(size, static_cast<u64>(align));
+	seal.align = align;
 
 	initializer_type = type_seal_user_composite(core, initializer_type, seal);
 
