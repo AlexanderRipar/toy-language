@@ -2368,6 +2368,8 @@ bool type_add_user_composite_member(CoreData* core, TypeId type_id, UserComposit
 
 	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
 
+	ASSERT_OR_IGNORE(init.name != IdentifierId::INVALID || structure->tag == TypeTag::CompositeLiteral);
+
 	CompositeType* composite = reinterpret_cast<CompositeType*>(structure + 1);
 
 	ASSERT_OR_IGNORE(composite->kind == CompositeKind::User);
@@ -2385,7 +2387,7 @@ bool type_add_user_composite_member(CoreData* core, TypeId type_id, UserComposit
 
 	u16 unused_rank;
 
-	if (find_member_by_name(info, init.name, &unused_rank))
+	if (init.name != IdentifierId::INVALID && find_member_by_name(info, init.name, &unused_rank))
 		return false;
 
 	info.member_names[info.member_count] = init.name;
