@@ -3897,6 +3897,8 @@ static const Opcode* handle_loop(CoreData* core, const Opcode* code, [[maybe_unu
 
 	const bool condition = *value_as<bool>(top);
 
+	core->interp.values.pop_by(1);
+
 	if (condition)
 	{
 		push_activation(core, condition_id);
