@@ -1332,7 +1332,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 				{
 					AstNode* const implied_member = first_child_of(member);
 
-					if (member->tag != AstTag::ImpliedMember)
+					if (implied_member->tag != AstTag::ImpliedMember)
 						return record_opcode_emission_error(core, implied_member, CompileError::AssignmentInCompositeInitializer);
 
 					value = next_sibling_of(implied_member);
