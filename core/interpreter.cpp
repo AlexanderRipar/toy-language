@@ -4810,24 +4810,13 @@ static const Opcode* handle_binary_bitwise_op(CoreData* core, const Opcode* code
 		CompIntegerValue result;
 
 		if (kind == OpcodeBinaryBitwiseOpKind::And)
-		{
-			if (!comp_integer_bit_and(lhs_value, rhs_value, &result))
-				TODO("Fix comp_integer_bit_xor to work with negative values");
-		}
+			result = comp_integer_bit_and(lhs_value, rhs_value);
 		else if (kind == OpcodeBinaryBitwiseOpKind::Or)
-		{
-			if (!comp_integer_bit_or(lhs_value, rhs_value, &result))
-				TODO("Fix comp_integer_bit_xor to work with negative values");
-		}
+			result = comp_integer_bit_or(lhs_value, rhs_value);
 		else if (kind == OpcodeBinaryBitwiseOpKind::Xor)
-		{
-			if (!comp_integer_bit_xor(lhs_value, rhs_value, &result))
-				TODO("Fix comp_integer_bit_xor to work with negative values");
-		}
+			result = comp_integer_bit_xor(lhs_value, rhs_value);
 		else
-		{
 			ASSERT_UNREACHABLE;
-		}
 
 		const MutRange<byte> bytes = range::from_object_bytes_mut(&result);
 

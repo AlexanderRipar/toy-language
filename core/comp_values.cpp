@@ -866,43 +866,28 @@ bool comp_integer_shift_right(CompIntegerValue lhs, CompIntegerValue rhs, CompIn
 	return true;
 }
 
-bool comp_integer_bit_and(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept
+CompIntegerValue comp_integer_bit_and(CompIntegerValue lhs, CompIntegerValue rhs) noexcept
 {
 	if (!is_inlined(lhs) || !is_inlined(rhs))
 		panic("Unexpected non-inlined `CompIntegerValue`.\n");
 
-	if (is_negative(lhs) || is_negative(rhs))
-		return false;
-
-	*out = { lhs.rep & rhs.rep };
-
-	return true;
+	return CompIntegerValue{ lhs.rep & rhs.rep };
 }
 
-bool comp_integer_bit_or(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept
+CompIntegerValue comp_integer_bit_or(CompIntegerValue lhs, CompIntegerValue rhs) noexcept
 {
 	if (!is_inlined(lhs) || !is_inlined(rhs))
 		panic("Unexpected non-inlined `CompIntegerValue`.\n");
 
-	if (is_negative(lhs) || is_negative(rhs))
-		return false;
-
-	*out = { lhs.rep | rhs.rep };
-
-	return true;
+	return CompIntegerValue{ lhs.rep | rhs.rep };
 }
 
-bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept
+CompIntegerValue comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs) noexcept
 {
 	if (!is_inlined(lhs) || !is_inlined(rhs))
 		panic("Unexpected non-inlined `CompIntegerValue`.\n");
 
-	if (is_negative(lhs) || is_negative(rhs))
-		return false;
-
-	*out = { lhs.rep ^ rhs.rep };
-
-	return true;
+	return CompIntegerValue{ lhs.rep ^ rhs.rep };
 }
 
 CompIntegerValue comp_integer_bit_not(CompIntegerValue value) noexcept

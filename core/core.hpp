@@ -385,22 +385,13 @@ bool comp_integer_shift_left(CompIntegerValue lhs, CompIntegerValue rhs, CompInt
 bool comp_integer_shift_right(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
 
 // Takes the bitwise and of `lhs` and `rhs`.
-// If either `lhs` or `rhs` are negative, returns `false` and leaves `*out`
-// uninitialized.
-// Otherwise returns `true` and sets `*out` to the resulting value.
-bool comp_integer_bit_and(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+CompIntegerValue comp_integer_bit_and(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
 
 // Takes the bitwise or of `lhs` and `rhs`.
-// If either `lhs` or `rhs` are negative, returns `false` and leaves `*out`
-// uninitialized.
-// Otherwise returns `true` and sets `*out` to the resulting value.
-bool comp_integer_bit_or(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+CompIntegerValue comp_integer_bit_or(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
 
 // Takes the bitwise exclusive or of `lhs` and `rhs`.
-// If either `lhs` or `rhs` are negative, returns `false` and leaves `*out`
-// uninitialized.
-// Otherwise returns `true` and sets `*out` to the resulting value.
-bool comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs, CompIntegerValue* out) noexcept;
+CompIntegerValue comp_integer_bit_xor(CompIntegerValue lhs, CompIntegerValue rhs) noexcept;
 
 CompIntegerValue comp_integer_bit_not(CompIntegerValue value) noexcept;
 
