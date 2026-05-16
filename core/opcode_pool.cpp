@@ -2661,10 +2661,11 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 
 		AstNode* const node = ast_node_from_id(core, fixup.node_id);
 
-		if (!opcodes_from_expression(core, node, true))
+		if (!opcodes_from_expression(core, node, false))
 			return false;
 
-		emit_opcode(core, Opcode::DiscardVoid, false, node);
+		if (core->opcodes.state.values_diff == 1)
+			emit_opcode(core, Opcode::DiscardVoid, false, node);
 
 		emit_opcode(core, Opcode::EndCode, false, node);
 
