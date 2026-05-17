@@ -26,6 +26,20 @@ target_compile_definitions(test PRIVATE HELPER_PROCESS_PATH="$<TARGET_FILE:test-
 
 
 
-add_custom_target(run-tests COMMAND test --ignore-debugbreaks WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+# Set up targets to run tests
+
+add_custom_target(run-core-tests COMMAND test --core WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_dependencies(run-core-tests test test-process-helper)
+
+
+
+add_custom_target(run-minos-tests COMMAND test --minos WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_dependencies(run-minos-tests test test-process-helper)
+
+
+
+add_custom_target(run-tests COMMAND test WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_dependencies(run-tests test test-process-helper)

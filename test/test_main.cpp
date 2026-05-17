@@ -59,6 +59,10 @@ struct InvocationInfo
 {
 	InvocationType type;
 
+	bool run_minos_tests;
+
+	bool run_core_tests;
+
 	bool has_timeout;
 
 	u32 timeout_milliseconds;
@@ -152,6 +156,32 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 			}
 
 			g_ignore_debugbreaks = true;
+
+			arg_index += 1;
+		}
+		else if (strcmp(argv[arg_index], "--minos") == 0)
+		{
+			if (out->run_minos_tests)
+			{
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% specified more than once\n", argv[arg_index]);
+
+				return false;
+			}
+
+			out->run_minos_tests = true;
+
+			arg_index += 1;
+		}
+		else if (strcmp(argv[arg_index], "--core") == 0)
+		{
+			if (out->run_core_tests)
+			{
+				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% specified more than once\n", argv[arg_index]);
+
+				return false;
+			}
+
+			out->run_core_tests = true;
 
 			arg_index += 1;
 		}
@@ -402,6 +432,13 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 		return false;
 	}
 
+	if (out->type == InvocationType::None && !out->run_minos_tests && !out->run_core_tests)
+	{
+		out->run_minos_tests = true;
+
+		out->run_core_tests = true;
+	}
+
 	return true;
 }
 
@@ -580,13 +617,19 @@ s32 main(s32 argc, const char8** argv) noexcept
 
 	handle_divergent_invocations(&invocation);
 
-	minos_tests();
+	if (invocation.run_minos_tests)
+	{
+		minos_tests();
+	}
 
-	ast_tests();
+	if (invocation.run_core_tests)
+	{
+		ast_tests();
 
-	type_pool_tests();
+		type_pool_tests();
 
-	integration_tests();
+		integration_tests();
+	}
 
 	const u64 duration = minos::exact_timestamp() - start;
 
@@ -606,9 +649,16 @@ s32 main(s32 argc, const char8** argv) noexcept
 		}
 	}
 
+	const Range<char8> test_suite_name = invocation.run_minos_tests && invocation.run_core_tests
+		? range::from_literal_string("all")
+		: invocation.run_minos_tests
+		? range::from_literal_string("minos")
+		: range::from_literal_string("core");
+
 	if (test_failure_count != 0)
 	{
-		print(minos::standard_file_handle(minos::StdFileName::StdErr), "% out of % tests (% asserts in total) failed in %[|.1] %. Rerun under a debugger to trigger the relevant breakpoints.\n",
+		print(minos::standard_file_handle(minos::StdFileName::StdErr), "[%] % out of % tests (% asserts in total) failed in %[|.1] %. Rerun under a debugger to trigger the relevant breakpoints.\n",
+			test_suite_name,
 			test_failure_count,
 			g_test_times.size(),
 			assertion_failure_count,
@@ -617,7 +667,8 @@ s32 main(s32 argc, const char8** argv) noexcept
 	}
 	else
 	{
-		print(minos::standard_file_handle(minos::StdFileName::StdErr), "All % tests passed in %[|.1] %\n",
+		print(minos::standard_file_handle(minos::StdFileName::StdErr), "[%] All % tests passed in %[|.1] %\n",
+			test_suite_name,
 			g_test_times.size(),
 			rd.count, rd.unit
 		);
