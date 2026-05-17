@@ -2233,7 +2233,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, Comp
 				bytes = top->bytes.mut_subrange(info.offset, metrics.size);
 			}
 
-			const CompValue value{ bytes, metrics.align, info.is_mut, info.type_id };
+			const CompValue value{ bytes, metrics.align, top->is_mut && info.is_mut, info.type_id };
 
 			return poppush_location_value(core, code, write_ctx, value);
 		}
