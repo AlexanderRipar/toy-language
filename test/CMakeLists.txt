@@ -6,12 +6,6 @@ project(test)
 
 set(TEST_SOURCES test_helpers.hpp minos_tests.cpp ast_tests.cpp type_pool_tests.cpp integration_tests.cpp)
 
-list(TRANSFORM INFRA_SOURCES PREPEND "../")
-
-list(TRANSFORM CORE_SOURCES PREPEND "../")
-
-list(TRANSFORM DIAG_SOURCES PREPEND "../")
-
 list(TRANSFORM INTERFACE_HEADERS PREPEND "../")
 
 
