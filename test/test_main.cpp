@@ -15,8 +15,6 @@ std::vector<TestResult> g_module_times;
 
 const char8* g_curr_module;
 
-bool g_ignore_debugbreaks;
-
 void minos_tests() noexcept;
 
 void ast_tests() noexcept;
@@ -146,20 +144,7 @@ static bool parse_args(s32 argc, const char8** argv, InvocationInfo* out) noexce
 
 	while (arg_index != argc)
 	{
-		if (strcmp(argv[arg_index], "--ignore-debugbreaks") == 0)
-		{
-			if (g_ignore_debugbreaks)
-			{
-				print(minos::standard_file_handle(minos::StdFileName::StdErr), "% specified more than once\n", argv[arg_index]);
-
-				return false;
-			}
-
-			g_ignore_debugbreaks = true;
-
-			arg_index += 1;
-		}
-		else if (strcmp(argv[arg_index], "--minos") == 0)
+		if (strcmp(argv[arg_index], "--minos") == 0)
 		{
 			if (out->run_minos_tests)
 			{

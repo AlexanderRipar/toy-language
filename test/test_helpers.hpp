@@ -27,8 +27,6 @@ extern std::vector<TestResult> g_test_times;
 
 extern std::vector<TestResult> g_module_times;
 
-extern bool g_ignore_debugbreaks;
-
 #define TEST_BEGIN \
 		const u64 test_start_ = minos::exact_timestamp(); \
 		const Range<char8> test_name_ = {}
@@ -60,8 +58,7 @@ extern bool g_ignore_debugbreaks;
 					__FILE__, __LINE__ \
 				); \
 				g_test_times.back().failure_count += 1; \
-				if (!g_ignore_debugbreaks) \
-					DEBUGBREAK; \
+				DEBUGBREAK; \
 			} \
 		} while (false)
 
@@ -74,8 +71,7 @@ extern bool g_ignore_debugbreaks;
 					__FILE__, __LINE__ \
 				); \
 				g_test_times.back().failure_count += 1; \
-				if (!g_ignore_debugbreaks) \
-					DEBUGBREAK; \
+				DEBUGBREAK; \
 			} \
 		} while (false)
 
