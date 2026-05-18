@@ -2414,9 +2414,7 @@ TypeId type_seal_user_composite(CoreData* core, TypeId type_id, UserCompositeSea
 {
 	ASSERT_OR_IGNORE(seal_info.align != 0 && is_pow2(seal_info.align));
 
-	TypeStructure* indirection_structure;
-
-	TypeStructure* structure = structure_from_id_follow_with_last_indirection(core, type_id, &indirection_structure);
+	TypeStructure* structure = get(structure_from_id_follow(core, type_id));
 
 	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
 
