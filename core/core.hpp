@@ -2799,6 +2799,8 @@ const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node,
 
 OpcodeId opcode_id_from_builtin(CoreData* core, Builtin builtin) noexcept;
 
+OpcodeId opcode_id_from_return_type_completion_from_parameter(CoreData* core, u8 parameter_rank) noexcept;
+
 OpcodeId id_from_opcode(CoreData* core, const Opcode* code);
 
 const Opcode* opcode_from_id(CoreData* core, OpcodeId id) noexcept;
@@ -2910,6 +2912,8 @@ enum class Builtin : u8
 	// `has_pending_type` is set.
 	// `let _definition_typeof = func(definition: Definition) -> Type`
 	DefinitionTypeof,
+
+	ForeignFunction,
 
 	// Number of `Builtin`s, used for sizing arrays. Should not be used
 	// otherwise.

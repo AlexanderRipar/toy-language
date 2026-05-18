@@ -1893,6 +1893,17 @@ static const Opcode* builtin_definition_typeof(CoreData* core, const Opcode* cod
 	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
+static const Opcode* builtin_foreign_function(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+{
+	const TypeId signature_type = get_builtin_param<TypeId>(core, 0);
+
+	const Range<char8> library_path = get_builtin_param<Range<char8>>(core, 1);
+
+	const Range<char8> symbol = get_builtin_param<Range<char8>>(core, 2);
+
+	TODO("Implement.");
+}
+
 
 
 static const Opcode* handle_end_code([[maybe_unused]] CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
@@ -2478,6 +2489,7 @@ static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, Com
 		&builtin_source_id,
 		&builtin_caller_source_id,
 		&builtin_definition_typeof,
+		&builtin_foreign_function,
 	};
 
 	static_assert(HANDLERS[static_cast<u8>(Builtin::Integer)]           == &builtin_integer);
@@ -2500,6 +2512,7 @@ static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, Com
 	static_assert(HANDLERS[static_cast<u8>(Builtin::SourceId)]          == &builtin_source_id);
 	static_assert(HANDLERS[static_cast<u8>(Builtin::CallerSourceId)]    == &builtin_caller_source_id);
 	static_assert(HANDLERS[static_cast<u8>(Builtin::DefinitionTypeof)]  == &builtin_definition_typeof);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::ForeignFunction)]   == &builtin_foreign_function);
 
 	u8 ordinal;
 	code = code_attach(code, &ordinal);
@@ -6424,8 +6437,6 @@ static TypeId make_func_type_from_array(CoreData* core, TypeId return_type, u8 p
 	seal.has_templated_return_type = false;
 	seal.is_variadic = false;
 
-	
-
 	return type_seal_signature(core, signature_type, seal);
 }
 
@@ -6441,6 +6452,46 @@ static TypeId make_func_type(CoreData* core, TypeId return_type, Params... param
 		const BuiltinParamInfo params_array[] = { params... };
 
 		return make_func_type_from_array(core, return_type, sizeof...(params), params_array);
+	}
+}
+
+static TypeId make_func_type_with_templated_return_type_from_array(CoreData* core, OpcodeId completion_id, u8 parameter_count, const BuiltinParamInfo* params) noexcept
+{
+	TypeId signature_type = type_create_signature(core, true, parameter_count);
+
+	for (u8 i = 0; i != parameter_count; ++i)
+	{
+		SignatureParameterInit init{};
+		init.name = params[i].name;
+		init.complete.type_id = params[i].type;
+		init.complete.default_value = none<CoreId>();
+		init.is_mut = false;
+		init.is_eval = params[i].is_comptime_known;
+
+		type_add_signature_parameter(core, signature_type, init);
+	}
+
+	SignatureSealInfo seal{};
+	seal.closure_id = none<ClosureId>();
+	seal.return_type.templated.completion_id = completion_id;
+	seal.has_templated_return_type = true;
+	seal.is_variadic = false;
+
+	return type_seal_signature(core, signature_type, seal);
+}
+
+template<typename... Params>
+static TypeId make_func_type_with_templated_return_type(CoreData* core, OpcodeId completion_id, Params... params) noexcept
+{
+	if constexpr (sizeof...(params) == 0)
+	{
+		return make_func_type_with_templated_return_type_from_array(core, completion_id, 0, nullptr);
+	}
+	else
+	{
+		const BuiltinParamInfo params_array[] = { params... };
+
+		return make_func_type_with_templated_return_type_from_array(core, completion_id, sizeof...(params), params_array);
 	}
 }
 
@@ -6671,6 +6722,22 @@ static void init_builtin_infos(CoreData* core) noexcept
 	);
 
 	core->interp.builtin_infos[static_cast<u8>(Builtin::DefinitionTypeof) - 1] = BuiltinInfo{ definition_typeof_body, definition_typeof_signature };
+
+
+
+	const OpcodeId foreign_function_body = opcode_id_from_builtin(core, Builtin::ForeignFunction);
+
+	const OpcodeId foreign_function_return_type_completion = opcode_id_from_return_type_completion_from_parameter(core, 0);
+
+	const TypeId foreign_function_signature = make_func_type_with_templated_return_type(core, foreign_function_return_type_completion,
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("Signature")), type_type, true },
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("library_path")), slice_of_u8_type, true },
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("symbol")), slice_of_u8_type, true }
+	);
+
+	core->interp.builtin_infos[static_cast<u8>(Builtin::ForeignFunction) - 1] = BuiltinInfo{ foreign_function_body, foreign_function_signature };
+
+
 
 	if (is_some(core->interp.imported_opcodes_log_file))
 	{
@@ -6910,6 +6977,7 @@ const char8* tag_name(Builtin builtin) noexcept
 		"SourceId",
 		"CallerSourceId",
 		"DefinitionTypeof",
+		"ForeignFunction",
 	};
 
 	u8 ordinal = static_cast<u8>(builtin);

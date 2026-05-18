@@ -2996,6 +2996,36 @@ OpcodeId opcode_id_from_builtin(CoreData* core, Builtin builtin) noexcept
 	return first_opcode_id;
 }
 
+OpcodeId opcode_id_from_return_type_completion_from_parameter(CoreData* core, u8 parameter_rank) noexcept
+{
+	core->opcodes.state.values_diff = 0;
+	core->opcodes.state.scopes_diff = 0;
+	core->opcodes.state.write_ctxs_diff = 1;
+	core->opcodes.state.closures_diff = 0;
+
+	core->opcodes.flags.allow_return = false;
+	core->opcodes.flags.allow_self = false;
+	core->opcodes.flags.allow_void_break = false;
+	core->opcodes.flags.allow_valued_break = false;
+
+	const OpcodeId first_opcode_id = static_cast<OpcodeId>(core->opcodes.codes.used());
+
+	const u8 out = 0;
+	const u16 rank = parameter_rank;
+	emit_opcode(core, Opcode::LoadScope, true, nullptr, out, rank);
+
+	emit_opcode(core, Opcode::EndCode, false, nullptr);
+
+	ASSERT_OR_IGNORE(
+		core->opcodes.state.values_diff == 0
+	 && core->opcodes.state.scopes_diff == 0
+	 && core->opcodes.state.write_ctxs_diff == 0
+	 && core->opcodes.state.closures_diff == 0
+	);
+
+	return first_opcode_id;
+}
+
 OpcodeId id_from_opcode(CoreData* core, const Opcode* code)
 {
 	ASSERT_OR_IGNORE(code >= core->opcodes.codes.begin() && code < core->opcodes.codes.end());
