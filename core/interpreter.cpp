@@ -602,6 +602,100 @@ static Maybe<ClosureId> create_closure(CoreData* core, u32 value_count) noexcept
 	return some(static_cast<ClosureId>(core_id_from_address(core, get(allocation))));
 }
 
+static MutRange<byte> member_bytes_by_info(CoreData* core, MutRange<byte> composite, MemberInfo info, u64 size) noexcept
+{
+	if (is_some(info.shadow_id))
+	{
+		byte* const begin = shadow_get(core, composite.begin() + info.offset, get(info.shadow_id), info.shadow_rank);
+
+		return MutRange<byte>{ begin, size };
+	}
+	else
+	{
+		return composite.mut_subrange(info.offset, size);
+	}
+}
+
+static CompValue member_value_by_info(CoreData* core, MutRange<byte> composite_bytes, bool composite_is_mut, MemberInfo info, TypeMetrics metrics) noexcept
+{
+	ASSERT_OR_IGNORE(is_some(info.shadow_id) == metrics.is_shadow);
+
+	const MutRange<byte> bytes = member_bytes_by_info(core, composite_bytes, info, metrics.size);
+
+	return CompValue{ bytes, metrics.align, composite_is_mut && info.is_mut, info.type_id };
+}
+
+static CompValue member_value_by_rank(CoreData* core, CompValue composite, u16 rank) noexcept
+{
+	MemberInfo info;
+
+	OpcodeId unused_initializer;
+	
+	if (!type_member_info_by_rank(core, composite.type, rank, &info, &unused_initializer))
+		ASSERT_UNREACHABLE;
+
+	TypeMetrics metrics;
+
+	if (!type_metrics_from_id(core, info.type_id, &metrics))
+		ASSERT_UNREACHABLE;
+
+	ASSERT_OR_IGNORE(is_some(info.shadow_id) == metrics.is_shadow);
+
+	return member_value_by_info(core, composite.bytes, composite.is_mut, info, metrics);
+}
+
+static bool member_value_by_name_with_info(CoreData* core, CompValue composite, IdentifierId name, CompValue* out_value, MemberInfo* out_info, TypeMetrics* out_metrics) noexcept
+{
+	MemberInfo info;
+
+	OpcodeId unused_initializer;
+
+	const MemberByNameRst rst = type_member_info_by_name(core, composite.type, name, &info, &unused_initializer);
+
+	if (rst == MemberByNameRst::NotFound)
+		return false;
+
+	ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
+
+	TypeMetrics metrics;
+
+	if (!type_metrics_from_id(core, info.type_id, &metrics))
+		ASSERT_UNREACHABLE;
+
+	ASSERT_OR_IGNORE(is_some(info.shadow_id) == metrics.is_shadow);
+
+	*out_value = member_value_by_info(core, composite.bytes, composite.is_mut, info, metrics);
+
+	*out_info = info;
+
+	*out_metrics = metrics;
+
+	return true;
+}
+
+static CompValue member_value_by_rank_with_info(CoreData* core, CompValue composite, u16 rank, MemberInfo* out_info, TypeMetrics* out_metrics) noexcept
+{
+	MemberInfo info;
+
+	OpcodeId unused_initializer;
+	
+	if (!type_member_info_by_rank(core, composite.type, rank, &info, &unused_initializer))
+		ASSERT_UNREACHABLE;
+
+	TypeMetrics metrics;
+
+	if (!type_metrics_from_id(core, info.type_id, &metrics))
+		ASSERT_UNREACHABLE;
+
+	ASSERT_OR_IGNORE(is_some(info.shadow_id) == metrics.is_shadow);
+
+	*out_info = info;
+
+	*out_metrics = metrics;
+
+	return member_value_by_info(core, composite.bytes, composite.is_mut, info, metrics);
+}
+
 static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcode* code, CompValue src, CompValue dst) noexcept
 {
 	const TypeTag src_type_tag = type_tag_from_id(core, src.type);
@@ -692,61 +786,51 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 
 		while (has_next(&it))
 		{
-			MemberInfo src_member_info;
+			MemberInfo src_info;
 
 			OpcodeId unused_src_initializer;
 
-			if (!next(&it, &src_member_info, &unused_src_initializer))
-				TODO("Figure out what to do when converting incomplete types and if this can even reasonably happen");
+			if (!next(&it, &src_info, &unused_src_initializer))
+				ASSERT_UNREACHABLE;
 
-			const IdentifierId src_name = type_member_name_by_rank(core, src.type, src_member_info.rank);
+			TypeMetrics src_metrics;
 
-			MemberInfo dst_member;
+			if (!type_metrics_from_id(core, src_info.type_id, &src_metrics))
+				ASSERT_UNREACHABLE;
 
-			OpcodeId unused_initializer;
+			const CompValue src_member_value = member_value_by_info(core, src.bytes, src.is_mut, src_info, src_metrics);
+
+			const IdentifierId src_name = type_member_name_by_rank(core, src.type, src_info.rank);
+
+			CompValue dst_member_value;
 
 			if (src_name != IdentifierId::INVALID)
 			{
-				const MemberByNameRst rst = type_member_info_by_name(core, dst.type, src_name, &dst_member, &unused_initializer);
+				MemberInfo info;
 
-				if (rst == MemberByNameRst::NotFound)
+				TypeMetrics metrics;
+
+				if (!member_value_by_name_with_info(core, dst, src_name, &dst_member_value, &info, &metrics))
 					return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetIsMissingMember);
 
-				ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
-
-				rank = dst_member.rank;
+				rank = info.rank;
 			}
 			else
 			{
 				if (rank == dst_member_count)
 					return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
 
-				if (!type_member_info_by_rank(core, dst.type, static_cast<u16>(rank), &dst_member, &unused_initializer))
-					ASSERT_UNREACHABLE;
+				dst_member_value = member_value_by_rank(core, dst, static_cast<u16>(rank));
 			}
 
-			u64* const seen_members_elem = seen_members + dst_member.rank / 64;
+			u64* const seen_members_elem = seen_members + rank / 64;
 
-			const u64 member_bit = static_cast<u64>(1) << (dst_member.rank % 64);
+			const u64 member_bit = static_cast<u64>(1) << (rank % 64);
 
 			if ((*seen_members_elem & member_bit) != 0)
 				return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetMemberMappedTwice);
 
 			*seen_members_elem |= member_bit;
-
-			TypeMetrics dst_metrics;
-			
-			if (!type_metrics_from_id(core, dst_member.type_id, &dst_metrics))
-				ASSERT_UNREACHABLE;
-
-			TypeMetrics src_metrics;
-			
-			if (!type_metrics_from_id(core, src_member_info.type_id, &src_metrics))
-				ASSERT_UNREACHABLE;
-
-			const CompValue dst_member_value{ dst.bytes.mut_subrange(dst_member.offset, dst_metrics.size), dst_metrics.align, true, dst_member.type_id };
-
-			const CompValue src_member_value{ src.bytes.mut_subrange(src_member_info.offset, src_metrics.size), src_metrics.align, false, src_member_info.type_id };
 
 			if (convert_into(core, code, src_member_value, dst_member_value) == nullptr)
 				return nullptr;
@@ -763,26 +847,26 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 			if ((seen_members_elem & member_bit) != 0)
 				continue;
 
-			MemberInfo member;
+			MemberInfo member_info;
 
 			OpcodeId unused_initializer;
 
-			if (!type_member_info_by_rank(core, dst.type, static_cast<u16>(i), &member, &unused_initializer))
+			if (!type_member_info_by_rank(core, dst.type, static_cast<u16>(i), &member_info, &unused_initializer))
 				ASSERT_UNREACHABLE;
 
-			if (is_none(member.value_or_default))
+			if (is_none(member_info.value_or_default))
 				return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
 			TypeMetrics member_metrics;
 			
-			if (!type_metrics_from_id(core, member.type_id, &member_metrics))
+			if (!type_metrics_from_id(core, member_info.type_id, &member_metrics))
 				ASSERT_UNREACHABLE;
 
-			byte* const default_dst = dst.bytes.begin() + member.offset;
+			const MutRange<byte> member_bytes = member_bytes_by_info(core, dst.bytes, member_info, member_metrics.size);
 
-			const void* default_src = address_from_core_id(core, get(member.value_or_default));
+			const byte* const default_src = static_cast<byte*>(address_from_core_id(core, get(member_info.value_or_default)));
 
-			memcpy(default_dst, default_src, member_metrics.size);
+			range::mem_copy(member_bytes, Range<byte>{ default_src, member_metrics.size });
 		}
 
 		return code;
@@ -948,7 +1032,7 @@ static Maybe<TypeId> unify(CoreData* core, const Opcode* code, CompValue* inout_
 	}
 }
 
-static CompareResult compare(CoreData* core, TypeId type, Range<byte> lhs, Range<byte> rhs) noexcept
+static CompareResult compare(CoreData* core, TypeId type, MutRange<byte> lhs, MutRange<byte> rhs) noexcept
 {
 	const TypeTag type_tag = type_tag_from_id(core, type);
 
@@ -1166,9 +1250,9 @@ static CompareResult compare(CoreData* core, TypeId type, Range<byte> lhs, Range
 
 		for (u64 i = 0; i != array_type.element_count; ++i)
 		{
-			const Range<byte> lhs_elem{ lhs.begin() + i * metrics.stride, metrics.size };
+			const MutRange<byte> lhs_elem{ lhs.begin() + i * metrics.stride, metrics.size };
 
-			const Range<byte> rhs_elem{ rhs.begin() + i * metrics.stride, metrics.size };
+			const MutRange<byte> rhs_elem{ rhs.begin() + i * metrics.stride, metrics.size };
 
 			const CompareResult result = compare(core, element_type, lhs_elem, rhs_elem);
 
@@ -1187,23 +1271,23 @@ static CompareResult compare(CoreData* core, TypeId type, Range<byte> lhs, Range
 
 		while (has_next(&it))
 		{
-			MemberInfo member;
+			MemberInfo info;
 
 			OpcodeId unused_initializer;
 
-			if (!next(&it, &member, &unused_initializer))
+			if (!next(&it, &info, &unused_initializer))
 				TODO("Figure out what to do when comparing incomplete types and if it can even reasonably happen");
 
 			TypeMetrics metrics;
 			
-			if (!type_metrics_from_id(core, member.type_id, &metrics))
+			if (!type_metrics_from_id(core, info.type_id, &metrics))
 				ASSERT_UNREACHABLE;
 
-			const Range<byte> lhs_member{ lhs.begin() + member.offset, metrics.size };
+			const MutRange<byte> lhs_member = member_bytes_by_info(core, lhs, info, metrics.size);
 
-			const Range<byte> rhs_member{ rhs.begin() + member.offset, metrics.size };
+			const MutRange<byte> rhs_member = member_bytes_by_info(core, rhs, info, metrics.size);
 
-			const CompareResult result = compare(core, member.type_id, lhs_member, rhs_member);
+			const CompareResult result = compare(core, info.type_id, lhs_member, rhs_member);
 
 			if (result.tag == CompareTag::INVALID)
 				return CompareResult{};
@@ -2237,29 +2321,13 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, Comp
 			ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
 
 			TypeMetrics metrics;
-			
+
 			if (!type_metrics_from_id(core, info.type_id, &metrics))
 				return record_interpreter_error(core, code, CompileError::IncompleteType);
 
-			MutRange<byte> bytes;
+			const CompValue member_value = member_value_by_info(core, top->bytes, top->is_mut, info, metrics);
 
-			if (is_some(info.shadow_id))
-			{
-				const Maybe<byte*> shadow_begin = shadow_try_get(core, top->bytes.begin() + info.offset, get(info.shadow_id), info.shadow_rank);
-
-				if (is_none(shadow_begin))
-					return record_interpreter_error(core, code, CompileError::UninitializedShadowAccess);
-
-				bytes = MutRange<byte>{ get(shadow_begin), metrics.size };
-			}
-			else
-			{
-				bytes = top->bytes.mut_subrange(info.offset, metrics.size);
-			}
-
-			const CompValue value{ bytes, metrics.align, top->is_mut && info.is_mut, info.type_id };
-
-			return poppush_location_value(core, code, write_ctx, value);
+			return poppush_location_value(core, code, write_ctx, member_value);
 		}
 	}
 	else if (type_tag == TypeTag::Type)
@@ -3615,36 +3683,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 	for (u16 i = 0; i != leading_member_count; ++i)
 	{
-		MemberInfo member_info;
-
-		OpcodeId unused_initializer;
-
-		if (!type_member_info_by_rank(core, dst_type, i, &member_info, &unused_initializer))
-			ASSERT_UNREACHABLE;
-
-		ASSERT_OR_IGNORE(!member_info.is_global);
-
-		TypeMetrics member_metrics;
-
-		if (!type_metrics_from_id(core, member_info.type_id, &member_metrics))
-			return record_interpreter_error(core, code, CompileError::IncompleteType);
-
-		ASSERT_OR_IGNORE(member_metrics.is_shadow == is_some(member_info.shadow_id));
-
-		MutRange<byte> bytes;
-
-		if (is_some(member_info.shadow_id))
-		{
-			byte* const begin = shadow_get(core, write_ctx->bytes.begin() + member_info.offset, get(member_info.shadow_id), member_info.shadow_rank);
-
-			bytes = MutRange<byte>{ begin, member_metrics.size };
-		}
-		else
-		{
-			bytes = write_ctx->bytes.mut_subrange(member_info.offset, member_metrics.size);
-		}
-
-		*write_ctx_dst = CompValue{ bytes, member_metrics.align, write_ctx->is_mut, member_info.type_id };
+		*write_ctx_dst = member_value_by_rank(core, *write_ctx, i);
 
 		write_ctx_dst -= 1;
 	}
@@ -3653,40 +3692,18 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 	{
 		for (u16 i = leading_member_count; i != member_count; ++i)
 		{
-			MemberInfo defaulted_member_info;
+			MemberInfo dst_info;
 
-			OpcodeId unused_defaulted_member_initializer;
+			TypeMetrics dst_metrics;
 
-			if (!type_member_info_by_rank(core, dst_type, i, &defaulted_member_info, &unused_defaulted_member_initializer))
-				ASSERT_UNREACHABLE;
+			const CompValue dst = member_value_by_rank_with_info(core, *write_ctx, i, &dst_info, &dst_metrics);
 
-			if (defaulted_member_info.is_global)
-				continue;
-
-			if (is_none(defaulted_member_info.value_or_default))
+			if (is_none(dst_info.value_or_default))
 				return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
-			TypeMetrics defaulted_member_metrics;
-			
-			if (!type_metrics_from_id(core, defaulted_member_info.type_id, &defaulted_member_metrics))
-				return record_interpreter_error(core, code, CompileError::IncompleteType);
+			const byte* const default_src = static_cast<byte*>(address_from_core_id(core, get(dst_info.value_or_default)));
 
-			ASSERT_OR_IGNORE(defaulted_member_metrics.is_shadow == is_some(defaulted_member_info.shadow_id));
-
-			void* default_dst;
-
-			if (is_some(defaulted_member_info.shadow_id))
-			{
-				default_dst = shadow_get(core, write_ctx->bytes.begin() + defaulted_member_info.offset, get(defaulted_member_info.shadow_id), defaulted_member_info.shadow_rank);
-			}
-			else
-			{
-				default_dst = write_ctx->bytes.begin() + defaulted_member_info.offset;
-			}
-
-			const void* const default_src = address_from_core_id(core, get(defaulted_member_info.value_or_default));
-
-			memcpy(default_dst, default_src, defaulted_member_metrics.size);
+			range::mem_copy(dst.bytes, Range<byte>{ default_src, dst_metrics.size });
 		}
 
 		return code;
@@ -3702,81 +3719,26 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 		u16 following_member_count;
 		code = code_attach(code, &following_member_count);
 
-		MemberInfo named_member_info;
+		MemberInfo info;
 
-		OpcodeId unused_named_initializer;
+		TypeMetrics unused_metrics;
 
-		const MemberByNameRst rst = type_member_info_by_name(core, dst_type, name, &named_member_info, &unused_named_initializer);
-
-		if (rst == MemberByNameRst::NotFound)
+		if (!member_value_by_name_with_info(core, *write_ctx, name, write_ctx_dst, &info, &unused_metrics))
 			return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetIsMissingMember);
 
-		ASSERT_OR_IGNORE(rst == MemberByNameRst::Ok);
-
-		ASSERT_OR_IGNORE(!named_member_info.is_global);
-
-		if (member_count < static_cast<u32>(named_member_info.rank) + following_member_count)
-			return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
-
-		if (!seen_set_set(seen, named_member_info.rank, following_member_count))
-			return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetMemberMappedTwice);
-
-		TypeMetrics named_member_metrics;
-		
-		if (!type_metrics_from_id(core, named_member_info.type_id, &named_member_metrics))
-			return record_interpreter_error(core, code, CompileError::IncompleteType);
-
-		ASSERT_OR_IGNORE(named_member_metrics.is_shadow == is_some(named_member_info.shadow_id));
-
-		MutRange<byte> named_bytes;
-
-		if (is_some(named_member_info.shadow_id))
-		{
-			byte* const begin = shadow_get(core, write_ctx->bytes.begin() + named_member_info.offset, get(named_member_info.shadow_id), named_member_info.shadow_rank);
-
-			named_bytes = MutRange<byte>{ begin, named_member_metrics.size };
-		}
-		else
-		{
-			named_bytes = write_ctx->bytes.mut_subrange(named_member_info.offset, named_member_metrics.size);
-		}
-
-		*write_ctx_dst = CompValue{ named_bytes, named_member_metrics.align, write_ctx->is_mut, named_member_info.type_id };
+		ASSERT_OR_IGNORE(!info.is_global);
 
 		write_ctx_dst -= 1;
 
+		if (member_count < static_cast<u32>(info.rank) + following_member_count)
+			return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
+
+		if (!seen_set_set(seen, info.rank, following_member_count))
+			return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetMemberMappedTwice);
+
 		for (u16 j = 1; j != following_member_count; ++j)
 		{
-			MemberInfo following_member_info;
-
-			OpcodeId unused_following_initializer;
-
-			if (!type_member_info_by_rank(core, dst_type, named_member_info.rank + j, &following_member_info, &unused_following_initializer))
-				ASSERT_UNREACHABLE;
-
-			ASSERT_OR_IGNORE(!following_member_info.is_global);
-
-			TypeMetrics following_member_metrics;
-			
-			if (!type_metrics_from_id(core, following_member_info.type_id, &following_member_metrics))
-				return record_interpreter_error(core, code, CompileError::IncompleteType);
-
-			ASSERT_OR_IGNORE(following_member_metrics.is_shadow == is_some(following_member_info.shadow_id));
-
-			MutRange<byte> bytes;
-
-			if (is_some(following_member_info.shadow_id))
-			{
-				byte* const begin = shadow_get(core, write_ctx->bytes.begin() + following_member_info.offset, get(following_member_info.shadow_id), following_member_info.shadow_rank);
-
-				bytes = MutRange<byte>{ begin, following_member_metrics.size };
-			}
-			else
-			{
-				bytes = write_ctx->bytes.mut_subrange(following_member_info.offset, following_member_metrics.size);
-			}
-
-			*write_ctx_dst = CompValue{ bytes, following_member_metrics.align, write_ctx->is_mut, following_member_info.type_id };
+			*write_ctx_dst = member_value_by_rank(core, *write_ctx, info.rank + j);
 
 			write_ctx_dst -= 1;
 		}
@@ -3786,40 +3748,21 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 	while (seen_set_next_unseen(seen, unseen_index, &unseen_index))
 	{
-		MemberInfo defaulted_member_info;
+		MemberInfo info;
 
-		OpcodeId unused_defaulted_member_initializer;
+		TypeMetrics metrics;
 
-		if (!type_member_info_by_rank(core, dst_type, unseen_index, &defaulted_member_info, &unused_defaulted_member_initializer))
-			ASSERT_UNREACHABLE;
+		const CompValue dst = member_value_by_rank_with_info(core, *write_ctx, unseen_index, &info, &metrics);
 
-		if (defaulted_member_info.is_global)
+		if (info.is_global)
 			continue;
 
-		if (is_none(defaulted_member_info.value_or_default))
+		if (is_none(info.value_or_default))
 			return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
-		TypeMetrics defaulted_member_metrics;
-		
-		if (!type_metrics_from_id(core, defaulted_member_info.type_id, &defaulted_member_metrics))
-			return record_interpreter_error(core, code, CompileError::IncompleteType);
+		const byte* const default_src = static_cast<byte*>(address_from_core_id(core, get(info.value_or_default)));
 
-		ASSERT_OR_IGNORE(defaulted_member_metrics.is_shadow == is_some(defaulted_member_info.shadow_id));
-
-		void* default_dst;
-
-		if (is_some(defaulted_member_info.shadow_id))
-		{
-			default_dst = shadow_get(core, write_ctx->bytes.begin() + defaulted_member_info.offset, get(defaulted_member_info.shadow_id), defaulted_member_info.shadow_rank);
-		}
-		else
-		{
-			default_dst = write_ctx->bytes.begin() + defaulted_member_info.offset;
-		}
-
-		const void* const default_src = address_from_core_id(core, get(defaulted_member_info.value_or_default));
-
-		memcpy(default_dst, default_src, defaulted_member_metrics.size);
+		range::mem_copy(dst.bytes, Range<byte>{ default_src, metrics.size });
 	}
 
 	return code;
@@ -3894,16 +3837,18 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 		if (!has_next(&it))
 			ASSERT_UNREACHABLE;
 
-		MemberInfo member_info;
+		MemberInfo info;
 
 		OpcodeId unused_initializer;
 
-		if (!next(&it, &member_info, &unused_initializer))
+		if (!next(&it, &info, &unused_initializer))
 			TODO("Figure out what to do when post-initializing incomplete types and if it can even reasonably happen");
 
-		CompValue value = values[i];
+		const Range<byte> src = values[i].bytes.immut();
 
-		range::mem_copy(initializer.bytes.mut_subrange(member_info.offset, value.bytes.count()), value.bytes.immut());
+		const MutRange<byte> dst = member_bytes_by_info(core, initializer.bytes, info, src.count());
+
+		range::mem_copy(dst, src);
 	}
 
 	return push_location_value(core, code, write_ctx, initializer);
@@ -5133,11 +5078,7 @@ static const Opcode* handle_compare(CoreData* core, const Opcode* code, CompValu
 
 	const TypeId type = get(unified_type);
 
-	const Range<byte> lhs_bytes = lhs->bytes.immut();
-
-	const Range<byte> rhs_bytes = rhs->bytes.immut();
-
-	const CompareResult compare_result = compare(core, type, lhs_bytes, rhs_bytes);
+	const CompareResult compare_result = compare(core, type, lhs->bytes, rhs->bytes);
 
 	core->interp.values.pop_by(1);
 
@@ -6861,9 +6802,9 @@ bool closure_equal(CoreData* core, ClosureId a, ClosureId b) noexcept
 	if (a_count != b_count)
 		return false;
 
-	const ClosureMember* a_members = static_cast<ClosureMember*>(a_address) + 1;
+	ClosureMember* a_members = static_cast<ClosureMember*>(a_address) + 1;
 
-	const ClosureMember* b_members = static_cast<ClosureMember*>(b_address) + 1;
+	ClosureMember* b_members = static_cast<ClosureMember*>(b_address) + 1;
 
 	for (u64 i = 0; i != a_count; ++i)
 	{
@@ -6876,13 +6817,13 @@ bool closure_equal(CoreData* core, ClosureId a, ClosureId b) noexcept
 
 		ASSERT_OR_IGNORE(a_member.size == b_member.size);
 
-		const byte* const a_begin = reinterpret_cast<const byte*>(a_members + i) + a_member.offset;
+		byte* const a_begin = reinterpret_cast<byte*>(a_members + i) + a_member.offset;
 
-		const byte* const b_begin = reinterpret_cast<const byte*>(b_members + i) + b_member.offset;
+		byte* const b_begin = reinterpret_cast<byte*>(b_members + i) + b_member.offset;
 
-		const Range<byte> a_data{ a_begin, a_member.size };
+		const MutRange<byte> a_data{ a_begin, a_member.size };
 
-		const Range<byte> b_data{ b_begin, a_member.size };
+		const MutRange<byte> b_data{ b_begin, a_member.size };
 
 		const CompareResult rst = compare(core, a_member.type, a_data, b_data);
 
