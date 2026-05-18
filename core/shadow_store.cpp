@@ -505,9 +505,6 @@ ShadowLayoutId shadow_create_layout(CoreData* core, Range<ShadowLayoutMemberInit
 		dst->offset = offset;
 
 		offset += static_cast<u32>(metrics.size);
-		
-		dst->type_id = src->type_id;
-		dst->offset = offset;
 	}
 
 	layout->header.member_count = static_cast<u16>(initializers.count());
