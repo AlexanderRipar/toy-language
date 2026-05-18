@@ -1810,6 +1810,7 @@ enum class CompileError
 	ScopeNameNotDefined,
 	CyclicDefinitionType,
 	CyclicParameterReference,
+	ArrayTypeRequired,
 	LexUnexpectedCharacter,
 	LexNullCharacter,
 	LexCommentMismatchedBegin,
@@ -2855,6 +2856,8 @@ enum class Builtin : u8
 	// Returns the stride of its argument.
 	// `let _strideof = func(arg: Type) -> CompInteger`
 	Strideof,
+
+	ArrayCountof,
 
 	// TODO: This is not yet specified.
 	Offsetof,

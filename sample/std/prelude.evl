@@ -55,3 +55,5 @@ pub sizeof = func(T: Type) -> CompInteger => _sizeof(T)
 pub alignof = func(T: Type) -> CompInteger => _alignof(T)
 
 pub strideof = func(T: Type) -> CompInteger => _strideof(T)
+
+pub array_countof = func(T: Type) -> CompInteger => _array_countof(T)

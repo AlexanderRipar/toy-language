@@ -1586,6 +1586,30 @@ static const Opcode* builtin_strideof(CoreData* core, const Opcode* code, CompVa
 	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type });
 }
 
+static const Opcode* builtin_array_countof(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+{
+	CompValue arg = get_builtin_param_raw(core, 0);
+
+	ASSERT_OR_IGNORE(type_tag_from_id(core, arg.type) == TypeTag::Type);
+
+	const TypeId type = *value_as<TypeId>(&arg);
+
+	const TypeTag type_tag = type_tag_from_id(core, type);
+
+	if (type_tag != TypeTag::Array && type_tag != TypeTag::ArrayLiteral)
+		return record_interpreter_error(core, code, CompileError::ArrayTypeRequired);
+
+	const ArrayType* const attach = type_attachment_from_id<ArrayType>(core, type);
+
+	CompIntegerValue count = comp_integer_from_u64(attach->element_count);
+
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&count);
+
+	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
+
+	return convert_into(core, code, CompValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type}, *write_ctx);
+}
+
 static const Opcode* builtin_offsetof(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	(void) core;
@@ -2354,6 +2378,7 @@ static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, Com
 		&builtin_sizeof,
 		&builtin_alignof,
 		&builtin_strideof,
+		&builtin_array_countof,
 		&builtin_offsetof,
 		&builtin_nameof,
 		&builtin_import,
@@ -2375,6 +2400,7 @@ static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, Com
 	static_assert(HANDLERS[static_cast<u8>(Builtin::Sizeof)]            == &builtin_sizeof);
 	static_assert(HANDLERS[static_cast<u8>(Builtin::Alignof)]           == &builtin_alignof);
 	static_assert(HANDLERS[static_cast<u8>(Builtin::Strideof)]          == &builtin_strideof);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::ArrayCountof)]      == &builtin_array_countof);
 	static_assert(HANDLERS[static_cast<u8>(Builtin::Offsetof)]          == &builtin_offsetof);
 	static_assert(HANDLERS[static_cast<u8>(Builtin::Nameof)]            == &builtin_nameof);
 	static_assert(HANDLERS[static_cast<u8>(Builtin::Import)]            == &builtin_import);
@@ -6493,6 +6519,16 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
+	const OpcodeId array_countof_body = opcode_id_from_builtin(core, Builtin::ArrayCountof);
+
+	const TypeId array_countof_signature = make_func_type(core, comp_integer_type,
+		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("arg")), type_type, true }
+	);
+
+	core->interp.builtin_infos[static_cast<u8>(Builtin::ArrayCountof) - 1] = BuiltinInfo{ array_countof_body, array_countof_signature };
+
+
+
 	const OpcodeId offsetof_body = opcode_id_from_builtin(core, Builtin::Offsetof);
 
 	const TypeId offsetof_signature = make_func_type(core, comp_integer_type);
@@ -6810,6 +6846,7 @@ const char8* tag_name(Builtin builtin) noexcept
 		"Sizeof",
 		"Alignof",
 		"Strideof",
+		"ArrayCountof",
 		"Offsetof",
 		"Nameof",
 		"Import",

@@ -8,7 +8,7 @@ let Struct = func(members: ...Definition) -> Type => {
 
 	mut align = 1
 
-	let count = sizeof(typeof(members)) / sizeof(typeof(members[0]))
+	let count = array_countof(typeof(members))
 
 	for i < count, i += 1 where mut i = 0
 	{

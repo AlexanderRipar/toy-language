@@ -272,6 +272,7 @@ static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
 	range::from_literal_string("_alignof",             static_cast<u8>(Builtin::Alignof)),
 	range::from_literal_string("_strideof",            static_cast<u8>(Builtin::Strideof)),
 	range::from_literal_string("_offsetof",            static_cast<u8>(Builtin::Offsetof)),
+	range::from_literal_string("_array_countof",       static_cast<u8>(Builtin::ArrayCountof)),
 	range::from_literal_string("_nameof",              static_cast<u8>(Builtin::Nameof)),
 	range::from_literal_string("_import",              static_cast<u8>(Builtin::Import)),
 	range::from_literal_string("_create_type_builder", static_cast<u8>(Builtin::CreateTypeBuilder)),

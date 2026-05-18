@@ -98,6 +98,7 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Name not defined.\n",                                                                                                                          // ScopeNameNotDefined
 		"Explicit type expressions references the definition it is a part of.\n",                                                                       // CyclicDefinitionType
 		"Parameter type or value expression references the definition it is a part of.\n",                                                              // CyclicParameterReference
+		"`_array_countof` requires an array type.\n",                                                                                                   // ArrayTypeRequired
 		"Unexpected character in source file.\n",                                                                                                       // LexUnexpectedCharacter
 		"Null character in source file.\n",                                                                                                             // LexNullCharacter
 		"`/*` without matching `*/`.\n",                                                                                                                // LexCommentMismatchedBegin
@@ -384,6 +385,7 @@ static constexpr const char8* COMPILE_ERROR_NAMES[] = {
 	"ScopeNameNotDefined",
 	"CyclicDefinitionType",
 	"CyclicParameterReference",
+	"ArrayTypeRequired",
 	"LexUnexpectedCharacter",
 	"LexNullCharacter",
 	"LexCommentMismatchedBegin",
