@@ -1529,7 +1529,7 @@ static const Opcode* builtin_sizeof(CoreData* core, const Opcode* code, CompValu
 
 	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
 
-	CompIntegerValue size_value = comp_integer_from_u64(metrics.size);
+	CompIntegerValue size_value = comp_integer_from_u64(metrics.is_shadow ? 0 : metrics.size);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&size_value);
 
@@ -1554,7 +1554,7 @@ static const Opcode* builtin_alignof(CoreData* core, const Opcode* code, CompVal
 
 	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
 
-	CompIntegerValue align_value = comp_integer_from_u64(metrics.align);
+	CompIntegerValue align_value = comp_integer_from_u64(metrics.is_shadow ? 1 : metrics.align);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&align_value);
 
@@ -1579,7 +1579,7 @@ static const Opcode* builtin_strideof(CoreData* core, const Opcode* code, CompVa
 
 	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
 
-	CompIntegerValue stride_value = comp_integer_from_u64(metrics.stride);
+	CompIntegerValue stride_value = comp_integer_from_u64(metrics.is_shadow ? 0 : metrics.stride);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&stride_value);
 
