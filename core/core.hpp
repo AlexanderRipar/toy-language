@@ -2986,11 +2986,9 @@ struct alignas(8) ShadowLayoutMemberInitializer
 
 ShadowLayoutId shadow_create_layout(CoreData* core, Range<ShadowLayoutMemberInitializer> initializers) noexcept;
 
-u32 shadow_layout_offset(CoreData* core, ShadowLayoutId layout_id, u16 rank) noexcept;
+byte* shadow_get(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 rank) noexcept;
 
-Maybe<byte*> shadow_get(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 rank) noexcept;
-
-void shadow_set(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 rank, Range<byte> value) noexcept;
+Maybe<byte*> shadow_try_get(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 rank) noexcept;
 
 void shadow_clear(CoreData* core, byte* address) noexcept;
 

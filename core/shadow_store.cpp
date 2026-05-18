@@ -334,6 +334,17 @@ static ShadowLayoutId intern_shadow_layout(CoreData* core, ShadowLayout* layout)
 	return static_cast<ShadowLayoutId>(core_id_from_address(core, interned));
 }
 
+
+
+static u32 shadow_layout_offset(ShadowLayout* layout, u16 rank) noexcept
+{
+	ASSERT_OR_IGNORE(rank < layout->header.member_count);
+
+	return layout->members[rank].offset;
+}
+
+
+
 static u64 calc_address_lookups_size(const Config* config, u64 page_size) noexcept
 {
 	u64 lookups_count = next_pow2(config->shadow_store.addresses.reserve * 3 / 2);
@@ -507,48 +518,19 @@ ShadowLayoutId shadow_create_layout(CoreData* core, Range<ShadowLayoutMemberInit
 	return intern_shadow_layout(core, layout);
 }
 
-u32 shadow_layout_offset(CoreData* core, ShadowLayoutId layout_id, u16 rank) noexcept
+byte* shadow_get(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 rank) noexcept
 {
 	ShadowLayout* const layout = static_cast<ShadowLayout*>(address_from_core_id(core, static_cast<CoreId>(layout_id)));
 
-	ASSERT_OR_IGNORE(rank < layout->header.member_count);
-
-	return layout->members[rank].offset;
-}
-
-Maybe<byte*> shadow_get(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 rank) noexcept
-{
 	ShadowStoreKey key{};
-	key.address = address;
-
-	const Maybe<ShadowStoreEntry*> maybe_entry = core->shadow.address_map.try_value_from(key, fnv1a(range::from_object_bytes(&address)));
-
-	if (is_none(maybe_entry))
-		return none<byte*>();
-
-	ShadowStoreEntry* const entry = get(maybe_entry);
-
-	if (entry->data.attach_layout_id != layout_id)
-		return none<byte*>();
-
-	const u32 offset = shadow_layout_offset(core, layout_id, rank);
-
-	byte* const shadow_base = static_cast<byte*>(address_from_core_id(core, entry->data.attach_id));
-
-	return some(shadow_base + offset);
-}
-
-void shadow_set(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 rank, Range<byte> value) noexcept
-{
-	ShadowLayout* const layout = static_cast<ShadowLayout*>(address_from_core_id(core, static_cast<CoreId>(layout_id)));
-
-	ShadowStoreKey key;
 	key.address = address;
 	key.attach_size = layout->header.size;
 	key.attach_align = layout->header.align;
 	key.layout_id = layout_id;
 
-	ShadowStoreEntry* entry = core->shadow.address_map.value_from(key, fnv1a(range::from_object_bytes(&address)));
+	ShadowStoreEntry* const entry = core->shadow.address_map.value_from(key, fnv1a(range::from_object_bytes(&address)));
+
+	byte* shadow_base;
 
 	if (entry->data.attach_layout_id != layout_id)
 	{
@@ -557,15 +539,40 @@ void shadow_set(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 ran
 		if (is_none(allocation))
 			TODO("Implement GC traversal.");
 
-		entry->data.attach_id = core_id_from_address(core, get(allocation));
 		entry->data.attach_layout_id = layout_id;
+		entry->data.attach_id = core_id_from_address(core, get(allocation));
+
+		shadow_base = static_cast<byte*>(get(allocation));
+	}
+	else
+	{
+		shadow_base = static_cast<byte*>(address_from_core_id(core, entry->data.attach_id));
 	}
 
-	const u32 offset = shadow_layout_offset(core, layout_id, rank);
+	const u32 offset = shadow_layout_offset(layout, rank);
 
-	byte* const attach = static_cast<byte*>(address_from_core_id(core, entry->data.attach_id));
+	return shadow_base + offset;
+}
 
-	memcpy(attach + offset, value.begin(), value.count());
+Maybe<byte*> shadow_try_get(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 rank) noexcept
+{
+	ShadowStoreKey key{};
+	key.address = address;
+
+	const Maybe<ShadowStoreEntry*> maybe_entry = core->shadow.address_map.try_value_from(key, fnv1a(range::from_object_bytes(&address)));
+
+	if (is_none(maybe_entry) || get(maybe_entry)->data.attach_layout_id != layout_id)
+		return none<byte*>();
+
+	ShadowStoreEntry* const entry = get(maybe_entry);
+
+	ShadowLayout* const layout = static_cast<ShadowLayout*>(address_from_core_id(core, static_cast<CoreId>(layout_id)));
+
+	byte* const shadow_base = static_cast<byte*>(address_from_core_id(core, entry->data.attach_id));
+
+	const u32 offset = shadow_layout_offset(layout, rank);
+
+	return some(shadow_base + offset);
 }
 
 void shadow_clear(CoreData* core, byte* address) noexcept

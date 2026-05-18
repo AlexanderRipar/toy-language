@@ -2245,7 +2245,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, Comp
 
 			if (is_some(info.shadow_id))
 			{
-				const Maybe<byte*> shadow_begin = shadow_get(core, top->bytes.begin() + info.offset, get(info.shadow_id), info.shadow_rank);
+				const Maybe<byte*> shadow_begin = shadow_try_get(core, top->bytes.begin() + info.offset, get(info.shadow_id), info.shadow_rank);
 
 				if (is_none(shadow_begin))
 					return record_interpreter_error(core, code, CompileError::UninitializedShadowAccess);
