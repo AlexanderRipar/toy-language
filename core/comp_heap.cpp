@@ -131,14 +131,17 @@ static Maybe<void*> comp_heap_alloc_internal(CoreData* core, u64 size, u64 align
 {
 	ASSERT_OR_IGNORE(align != 0 && is_pow2(align));
 
+	if (size == 0 && !needs_header)
+		size = 1;
+
 	const u64 header_size = needs_header ? COMP_HEAP_MIN_ALLOCATION_SIZE : 0;
+
+	const u64 allocation_size = size + header_size;
 
 	// Try satisfying allocations with a suitable alignment and size from the
 	// relevant freelist.
 	if (align <= COMP_HEAP_MIN_ALLOCATION_SIZE && size + header_size <= COMP_HEAP_MAX_FREELIST_SIZE_LOG2)
 	{
-		const u64 allocation_size = size + header_size;
-
 		const u8 size_log2_ceil = log2_ceil(allocation_size);
 
 		const u8 index = size_log2_ceil < COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2
@@ -399,6 +402,9 @@ bool comp_heap_leak(CoreData* core, MutRange<byte> memory) noexcept
 
 void comp_heap_dealloc(CoreData* core, MutRange<byte> memory) noexcept
 {
+	if (memory.count() == 0)
+		memory = MutRange<byte>{ memory.begin(), memory.end() + 1 };
+
 	ASSERT_OR_IGNORE(memory.begin() > core->heap.memory);
 
 	ASSERT_OR_IGNORE(memory.end() <= core->heap.memory + core->heap.used);
@@ -465,11 +471,24 @@ bool comp_heap_gc_mark(CoreData* core, MutRange<byte> memory) noexcept
 
 	if ((core->heap.begin_bitmap[begin >> 6] & (static_cast<u64>(1) << (begin & 63))) == 0)
 	{
+		// The beginning of `memory` is not marked as the beginning of an
+		// allocation, so there must be an allocation header directly preceding
+		// the allocation. Adjust `memory` to include that header.
+
 		memory = MutRange<byte>{ memory.begin() - COMP_HEAP_MIN_ALLOCATION_SIZE, memory.end() };
 
 		ASSERT_OR_IGNORE((core->heap.begin_bitmap[(begin - 1) >> 6] & (static_cast<u64>(1) << ((begin - 1) & 63))) != 0);
 
 		ASSERT_OR_IGNORE((core->heap.header_bitmap[(begin - 1) >> 6] & (static_cast<u64>(1) << ((begin - 1) & 63))) != 0);
+	}
+	else if (memory.count() == 0)
+	{
+		// We do not have a header, and our allocation is zero-sized. This
+		// means the allocation size has been padded to 1 byte to allow shadow
+		// data to function properly. Adjust `memory` to reflect the extra
+		// "padding".
+
+		memory = MutRange<byte>{ memory.begin(), memory.end() + 1 };
 	}
 
 	comp_heap_mark_bitmap_bits(core, core->heap.gc_bitmap, memory);
