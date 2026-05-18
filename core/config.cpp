@@ -73,9 +73,19 @@ static constexpr TreeSchemaNode CONFIG_HEAP[] = {
 	make_integer_info(offsetof(Config, heap.commit_increment), 0, INT64_MAX, "commit-increment", "Number of bytes the managed heap is grown by at a time"),
 };
 
+static constexpr TreeSchemaNode CONFIG_SHADOW_STORE_ADDRESSES[] = {
+	make_integer_info(offsetof(Config, shadow_store.addresses.reserve), 0, static_cast<s64>(1) << 31, "reserve", "Number of entries allowed in the shadow store"),
+	make_integer_info(offsetof(Config, shadow_store.addresses.commit_increment), 0, static_cast<s64>(1) << 31, "commit-increment", "Number of entries added to the shadow store's committed memory upon requiring additional commit"),
+};
+
+static constexpr TreeSchemaNode CONFIG_SHADOW_STORE_LAYOUTS[] = {
+	make_integer_info(offsetof(Config, shadow_store.layouts.reserve), 0, static_cast<s64>(1) << 31, "reserve", "Number of entries allowed in the shadow store"),
+	make_integer_info(offsetof(Config, shadow_store.layouts.commit_increment), 0, static_cast<s64>(1) << 31, "commit-increment", "Number of entries added to the shadow store's committed memory upon requiring additional commit"),
+};
+
 static constexpr TreeSchemaNode CONFIG_SHADOW_STORE[] = {
-	make_integer_info(offsetof(Config, shadow_store.reserve), 0, static_cast<s64>(1) << 31, "reserve", "Number of entries allowed in the shadow store"),
-	make_integer_info(offsetof(Config, shadow_store.commit_increment), 0, static_cast<s64>(1) << 31, "commit-increment", "Number of entries added to the shadow store's committed memory upon requiring additional commit"),
+	make_container_info(Range{ CONFIG_SHADOW_STORE_ADDRESSES }, "addresses", "Allocation information for shadow store address map"),
+	make_container_info(Range{ CONFIG_SHADOW_STORE_LAYOUTS }, "layouts", "Allocation information for shadow store layout map"),
 };
 
 static constexpr TreeSchemaNode CONFIG_LOGGING_IMPORTS_ASTS[] = {

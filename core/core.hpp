@@ -132,9 +132,19 @@ struct Config
 
 	struct
 	{
-		u64 reserve = 1 << 24;
+		struct
+		{
+			u64 reserve = 1 << 24;
 
-		u64 commit_increment = 1 << 12;
+			u64 commit_increment = 1 << 12;
+		} addresses;
+
+		struct
+		{
+			u64 reserve = 1 << 24;
+
+			u64 commit_increment = 1 << 12;
+		} layouts;
 	} shadow_store;
 
 	struct

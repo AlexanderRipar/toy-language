@@ -334,9 +334,9 @@ static ShadowLayoutId intern_shadow_layout(CoreData* core, ShadowLayout* layout)
 	return static_cast<ShadowLayoutId>(core_id_from_address(core, interned));
 }
 
-static u64 calc_lookups_size(const Config* config, u64 page_size) noexcept
+static u64 calc_address_lookups_size(const Config* config, u64 page_size) noexcept
 {
-	u64 lookups_count = next_pow2(config->shadow_store.reserve * 3 / 2);
+	u64 lookups_count = next_pow2(config->shadow_store.addresses.reserve * 3 / 2);
 
 	if (lookups_count < 1024)
 		lookups_count = 1024;
@@ -350,20 +350,50 @@ static u64 calc_lookups_size(const Config* config, u64 page_size) noexcept
 		: size;
 }
 
-static u64 calc_entries_size(const Config* config, u64 page_size) noexcept
+static u64 calc_address_entries_size(const Config* config, u64 page_size) noexcept
 {
 	const u64 page_mask = page_size - 1;
 
-	return (config->shadow_store.reserve * sizeof(ShadowStoreEntry) + page_mask) & ~page_mask;
+	return (config->shadow_store.addresses.reserve * sizeof(ShadowStoreEntry) + page_mask) & ~page_mask;
+}
+
+static u64 calc_layout_lookups_size(const Config* config, u64 page_size) noexcept
+{
+	u64 lookups_count = next_pow2(config->shadow_store.layouts.reserve * 3 / 2);
+
+	if (lookups_count < 1024)
+		lookups_count = 1024;
+
+	ASSERT_OR_IGNORE(lookups_count <= UINT32_MAX);
+
+	const u64 size = decltype(ShadowStore::address_map)::lookups_memory_size(static_cast<u32>(lookups_count));
+
+	return size < page_size
+		? page_size
+		: size;
+}
+
+static u64 calc_layout_entries_size(const Config* config, u64 page_size) noexcept
+{
+	const u64 page_mask = page_size - 1;
+
+	return (config->shadow_store.layouts.reserve * sizeof(ShadowStoreEntry) + page_mask) & ~page_mask;
 }
 
 
 
 bool shadow_store_validate_config(const Config* config, PrintSink sink) noexcept
 {
-	if (config->shadow_store.reserve < config->shadow_store.commit_increment)
+	if (config->shadow_store.addresses.reserve < config->shadow_store.addresses.commit_increment)
 	{
-		print(sink, "Configuration parameter `shadow-store.reserve` (%) must be greater than or equal to `shadow-store.commit_increment` (%).\n", config->shadow_store.reserve, config->shadow_store.commit_increment);
+		print(sink, "Configuration parameter `shadow-store.addresses.reserve` (%) must be greater than or equal to `shadow-store.addresses.commit_increment` (%).\n", config->shadow_store.addresses.reserve, config->shadow_store.addresses.commit_increment);
+
+		return false;
+	}
+
+	if (config->shadow_store.layouts.reserve < config->shadow_store.layouts.commit_increment)
+	{
+		print(sink, "Configuration parameter `shadow-store.layouts.reserve` (%) must be greater than or equal to `shadow-store.layouts.commit_increment` (%).\n", config->shadow_store.layouts.reserve, config->shadow_store.layouts.commit_increment);
 
 		return false;
 	}
@@ -377,7 +407,11 @@ MemoryRequirements shadow_store_memory_requirements(const Config* config) noexce
 
 	MemoryRequirements reqs;
 	reqs.count = 1;
-	reqs.ranges[0].size = calc_lookups_size(config, page_size) + calc_entries_size(config, page_size);
+	reqs.ranges[0].size = calc_address_lookups_size(config, page_size)
+	                    + calc_address_entries_size(config, page_size)
+	                    + calc_layout_lookups_size(config, page_size)
+	                    + calc_layout_entries_size(config, page_size);
+
 	reqs.ranges[0].max_offset = UINT64_MAX;
 
 	return reqs;
@@ -389,15 +423,34 @@ void shadow_store_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	const u64 page_mask = page_size - 1;
 
-	const u64 lookups_size = calc_lookups_size(core->config, page_size);
+	const u64 address_lookups_size = calc_address_lookups_size(core->config, page_size);
 
-	ASSERT_OR_IGNORE(allocation.ranges[0].count() == lookups_size + calc_entries_size(core->config, page_size));
+	const u64 address_entries_size = calc_address_entries_size(core->config, page_size);
 
-	const u32 entries_commit_increment = static_cast<u32>((core->config->shadow_store.commit_increment + page_mask) & ~page_mask);
+	const u64 layout_lookups_size = calc_layout_lookups_size(core->config, page_size);
 
-	core->shadow.address_map.init(allocation.ranges[0].mut_subrange(0, lookups_size), 512, ShadowStoreAlloc{ core });
+	const u64 layout_entries_size = calc_layout_entries_size(core->config, page_size);
 
-	core->shadow.entries.init(allocation.ranges[0].mut_subrange(lookups_size), entries_commit_increment);
+	ASSERT_OR_IGNORE(allocation.ranges[0].count() == address_lookups_size + address_entries_size + layout_lookups_size + layout_entries_size);
+
+	const u32 address_entries_commit_increment = static_cast<u32>((core->config->shadow_store.addresses.commit_increment + page_mask) & ~page_mask);
+
+	const u32 layout_ids_commit_increment = static_cast<u32>((core->config->shadow_store.layouts.commit_increment + page_mask) & ~page_mask);
+	u64 offset = 0;
+
+	core->shadow.address_map.init(allocation.ranges[0].mut_subrange(offset, address_lookups_size), 512, ShadowStoreAlloc{ core });
+	offset += address_lookups_size;
+
+	core->shadow.entries.init(allocation.ranges[0].mut_subrange(offset, address_entries_size), address_entries_commit_increment);
+	offset += address_entries_size;
+
+	core->shadow.layouts.init(allocation.ranges[0].mut_subrange(offset, layout_lookups_size), 512, ShadowLayoutAlloc{ core });
+	offset += layout_lookups_size;
+
+	core->shadow.layout_ids.init(allocation.ranges[0].mut_subrange(offset, layout_entries_size), layout_ids_commit_increment);
+	offset += layout_entries_size;
+
+	ASSERT_OR_IGNORE(allocation.ranges[0].count() == offset);
 
 	core->shadow.entries_freelist_head = none<ShadowStoreEntry*>();
 }
