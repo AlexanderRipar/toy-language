@@ -1141,7 +1141,9 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 			code = code_attach(code, &name);
 
-			const Range<char8> name_str = identifier_name_from_id(core, name);
+			const Range<char8> name_str = name == IdentifierId::INVALID
+				? range::from_literal_string("<INVALID>")
+				: identifier_name_from_id(core, name);
 
 			const s64 written = print(sink, "\n     -        name=IdentifierId<%> (%)",
 				static_cast<u32>(name),
