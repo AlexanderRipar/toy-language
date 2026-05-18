@@ -181,9 +181,9 @@ ShadowLayoutEntry* ShadowLayoutIterator::next() noexcept
 
 ShadowStoreEntry* ShadowStoreAlloc::value_from_id(u32 id) noexcept
 {
-	ASSERT_OR_IGNORE(id < core->shadow.entries.used());
+	ASSERT_OR_IGNORE(id < core->shadow.address_entries.used());
 
-	ShadowStoreEntry* const value = core->shadow.entries.begin() + id;
+	ShadowStoreEntry* const value = core->shadow.address_entries.begin() + id;
 
 	ASSERT_OR_IGNORE(value->freelist.null_padding_ != nullptr);
 
@@ -192,9 +192,9 @@ ShadowStoreEntry* ShadowStoreAlloc::value_from_id(u32 id) noexcept
 
 const ShadowStoreEntry* ShadowStoreAlloc::value_from_id(u32 id) const noexcept
 {
-	ASSERT_OR_IGNORE(id < core->shadow.entries.used());
+	ASSERT_OR_IGNORE(id < core->shadow.address_entries.used());
 
-	ShadowStoreEntry* const value = core->shadow.entries.begin() + id;
+	ShadowStoreEntry* const value = core->shadow.address_entries.begin() + id;
 
 	ASSERT_OR_IGNORE(value->freelist.null_padding_ != nullptr);
 
@@ -203,18 +203,18 @@ const ShadowStoreEntry* ShadowStoreAlloc::value_from_id(u32 id) const noexcept
 
 u32 ShadowStoreAlloc::id_from_value(const ShadowStoreEntry* value) const noexcept
 {
-	ASSERT_OR_IGNORE(value >= core->shadow.entries.begin() && value < core->shadow.entries.end());
+	ASSERT_OR_IGNORE(value >= core->shadow.address_entries.begin() && value < core->shadow.address_entries.end());
 
 	ASSERT_OR_IGNORE(value->freelist.null_padding_ != nullptr);
 
-	return static_cast<u32>(value - core->shadow.entries.begin());
+	return static_cast<u32>(value - core->shadow.address_entries.begin());
 }
 
 ShadowStoreIterator ShadowStoreAlloc::values() noexcept
 {
-	ShadowStoreEntry* const entries = core->shadow.entries.begin();
+	ShadowStoreEntry* const entries = core->shadow.address_entries.begin();
 
-	const u32 end = core->shadow.entries.used();
+	const u32 end = core->shadow.address_entries.used();
 
 	u32 curr = 0;
 
@@ -233,15 +233,15 @@ ShadowStoreEntry* ShadowStoreAlloc::alloc(ShadowStoreKey key, [[maybe_unused]] u
 {
 	ShadowStoreEntry* entry;
 	
-	if (is_some(core->shadow.entries_freelist_head))
+	if (is_some(core->shadow.address_entries_freelist_head))
 	{
-		entry = get(core->shadow.entries_freelist_head);
+		entry = get(core->shadow.address_entries_freelist_head);
 
-		core->shadow.entries_freelist_head = entry->freelist.next;
+		core->shadow.address_entries_freelist_head = entry->freelist.next;
 	}
 	else
 	{
-		entry = core->shadow.entries.reserve();
+		entry = core->shadow.address_entries.reserve();
 	}
 
 	const Maybe<void*> allocation = comp_heap_alloc(core, key.attach_size, key.attach_align);
@@ -258,14 +258,14 @@ ShadowStoreEntry* ShadowStoreAlloc::alloc(ShadowStoreKey key, [[maybe_unused]] u
 
 void ShadowStoreAlloc::dealloc(u32 id) noexcept
 {
-	ASSERT_OR_IGNORE(id < core->shadow.entries.used());
+	ASSERT_OR_IGNORE(id < core->shadow.address_entries.used());
 
-	ShadowStoreEntry* const entry = core->shadow.entries.begin() + id;
+	ShadowStoreEntry* const entry = core->shadow.address_entries.begin() + id;
 
 	entry->freelist.null_padding_ = nullptr;
-	entry->freelist.next = core->shadow.entries_freelist_head;
+	entry->freelist.next = core->shadow.address_entries_freelist_head;
 
-	core->shadow.entries_freelist_head = some(entry);
+	core->shadow.address_entries_freelist_head = some(entry);
 }
 
 
@@ -281,7 +281,7 @@ ShadowStoreEntry* ShadowStoreIterator::next() noexcept
 {
 	ASSERT_OR_IGNORE(curr < end);
 
-	ShadowStoreEntry* const entries = core->shadow.entries.begin();
+	ShadowStoreEntry* const entries = core->shadow.address_entries.begin();
 
 	ShadowStoreEntry* const result = entries + curr;
 
@@ -322,7 +322,7 @@ static ShadowLayoutId intern_shadow_layout(CoreData* core, ShadowLayout* layout)
 	key.layout = layout;
 	key.core = core;
 
-	const ShadowLayoutEntry* const interned = core->shadow.layouts.value_from(key, layout->header.hash);
+	const ShadowLayoutEntry* const interned = core->shadow.layout_map.value_from(key, layout->header.hash);
 	
 	if (interned != reinterpret_cast<ShadowLayoutEntry*>(layout))
 	{
@@ -452,10 +452,10 @@ void shadow_store_init(CoreData* core, MemoryAllocation allocation) noexcept
 	core->shadow.address_map.init(allocation.ranges[0].mut_subrange(offset, address_lookups_size), 512, ShadowStoreAlloc{ core });
 	offset += address_lookups_size;
 
-	core->shadow.entries.init(allocation.ranges[0].mut_subrange(offset, address_entries_size), address_entries_commit_increment);
+	core->shadow.address_entries.init(allocation.ranges[0].mut_subrange(offset, address_entries_size), address_entries_commit_increment);
 	offset += address_entries_size;
 
-	core->shadow.layouts.init(allocation.ranges[0].mut_subrange(offset, layout_lookups_size), 512, ShadowLayoutAlloc{ core });
+	core->shadow.layout_map.init(allocation.ranges[0].mut_subrange(offset, layout_lookups_size), 512, ShadowLayoutAlloc{ core });
 	offset += layout_lookups_size;
 
 	core->shadow.layout_ids.init(allocation.ranges[0].mut_subrange(offset, layout_entries_size), layout_ids_commit_increment);
@@ -463,7 +463,7 @@ void shadow_store_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	ASSERT_OR_IGNORE(allocation.ranges[0].count() == offset);
 
-	core->shadow.entries_freelist_head = none<ShadowStoreEntry*>();
+	core->shadow.address_entries_freelist_head = none<ShadowStoreEntry*>();
 }
 
 

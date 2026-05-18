@@ -519,11 +519,11 @@ struct ShadowStore
 {
 	IdMap<ShadowStoreKey, ShadowStoreEntry, ShadowStoreAlloc> address_map;
 
-	IdMap<ShadowLayoutKey, ShadowLayoutEntry, ShadowLayoutAlloc> layouts;
+	IdMap<ShadowLayoutKey, ShadowLayoutEntry, ShadowLayoutAlloc> layout_map;
 
-	Maybe<ShadowStoreEntry*> entries_freelist_head;
+	Maybe<ShadowStoreEntry*> address_entries_freelist_head;
 
-	ReservedVec<ShadowStoreEntry> entries;
+	ReservedVec<ShadowStoreEntry> address_entries;
 
 	ReservedVec<CoreId> layout_ids;
 };
