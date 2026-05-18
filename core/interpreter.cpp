@@ -252,6 +252,8 @@ static CompValue alloc_temporary_value(CoreData* core, CompValue value) noexcept
 
 	range::mem_copy(temporary_value.bytes, value.bytes.immut());
 
+	shadow_copy(core, temporary_value.bytes, value.bytes);
+
 	return temporary_value;
 }
 
@@ -592,7 +594,13 @@ static Maybe<ClosureId> create_closure(CoreData* core, u32 value_count) noexcept
 		dst->align = src.align;
 		dst->type = src.type;
 
-		memcpy(member_data, src.bytes.begin(), src.bytes.count());
+		const MutRange<byte> dst_bytes{ member_data, src.bytes.count() };
+
+		const MutRange<byte> src_bytes = src.bytes;
+
+		range::mem_copy(dst_bytes, src_bytes.immut());
+
+		shadow_copy(core, dst_bytes, src_bytes);
 
 		member_data += src.bytes.count();
 	}
@@ -973,6 +981,8 @@ static const Opcode* convert_into(CoreData* core, const Opcode* code, CompValue 
 	if (relation == TypeRelation::Equal)
 	{
 		range::mem_copy(dst.bytes, src.bytes.immut());
+
+		shadow_copy(core, dst.bytes, src.bytes);
 
 		return code;
 	}
@@ -2038,7 +2048,13 @@ static const Opcode* handle_scope_alloc_untyped(CoreData* core, const Opcode* co
 	member->is_mut = is_mut;
 	member->type = top->type;
 
-	memcpy(member_value, top->bytes.begin(), top->bytes.count());
+	const MutRange<byte> dst_bytes{ member_value, top->bytes.count() };
+
+	const MutRange<byte> src_bytes = top->bytes;
+
+	range::mem_copy(dst_bytes, src_bytes.immut());
+
+	shadow_copy(core, dst_bytes, src_bytes);
 
 	core->interp.values.pop_by(1);
 
@@ -2119,18 +2135,18 @@ static const Opcode* handle_file_member_alloc_typed(CoreData* core, const Opcode
 	if (!type_metrics_from_id(core, member_type, &member_metrics))
 		return record_interpreter_error(core, code, CompileError::IncompleteType);
 
-	const Maybe<void*> alloc = comp_heap_alloc_global_member(core, member_metrics.size, member_metrics.align, member_type);
+	const Maybe<void*> allocation = comp_heap_alloc_global_member(core, member_metrics.size, member_metrics.align, member_type);
 
-	if (is_none(alloc))
+	if (is_none(allocation))
 		TODO("Implement GC traversal");
 
-	const CoreId value_id = core_id_from_address(core, get(alloc));
+	const CoreId value_id = core_id_from_address(core, get(allocation));
 
 	type_member_complete(core, init.type, init.rank, member_type, value_id, false);
 
 	core->interp.values.pop_by(1);
 
-	const MutRange<byte> bytes{ static_cast<byte*>(get(alloc)), member_metrics.size };
+	const MutRange<byte> bytes{ static_cast<byte*>(get(allocation)), member_metrics.size };
 
 	core->interp.write_ctxs.append(CompValue{ bytes, member_metrics.align, true, member_type });
 
@@ -2152,14 +2168,20 @@ static const Opcode* handle_file_member_alloc_untyped(CoreData* core, const Opco
 
 	CompValue* const top = core->interp.values.end() - 1;
 
-	const Maybe<void*> alloc = comp_heap_alloc_global_member(core, top->bytes.count(), top->align, top->type);
+	const Maybe<void*> allocation = comp_heap_alloc_global_member(core, top->bytes.count(), top->align, top->type);
 
-	if (is_none(alloc))
+	if (is_none(allocation))
 		TODO("Implement GC traversal.");
 
-	memcpy(get(alloc), top->bytes.begin(), top->bytes.count());
+	const MutRange<byte> dst_bytes{ static_cast<byte*>(get(allocation)), top->bytes.count() };
 
-	const CoreId value_id = core_id_from_address(core, static_cast<byte*>(get(alloc)));
+	const MutRange<byte> src_bytes = top->bytes;
+
+	range::mem_copy(dst_bytes, src_bytes.immut());
+
+	shadow_copy(core, dst_bytes, src_bytes);
+
+	const CoreId value_id = core_id_from_address(core, static_cast<byte*>(get(allocation)));
 
 	type_member_complete(core, init.type, init.rank, top->type, value_id, true);
 
@@ -2542,7 +2564,13 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CompVa
 			if (is_none(allocation))
 				TODO("Implement GC traversal.");
 
-			memcpy(get(allocation), default_value->bytes.begin(), default_value->bytes.count());
+			const MutRange<byte> dst_bytes{ static_cast<byte*>(get(allocation)), default_value->bytes.count() };
+
+			const MutRange<byte> src_bytes = default_value->bytes;
+
+			range::mem_copy(dst_bytes, src_bytes.immut());
+
+			shadow_copy(core, dst_bytes, src_bytes);
 
 			parameter_default = some(core_id_from_address(core, get(allocation)));
 		}
@@ -2574,7 +2602,13 @@ static const Opcode* handle_signature(CoreData* core, const Opcode* code, CompVa
 			if (is_none(allocation))
 				TODO("Implement GC traversal.");
 
-			memcpy(get(allocation), default_value->bytes.begin(), default_value->bytes.count());
+			const MutRange<byte> dst_bytes{ static_cast<byte*>(get(allocation)), default_value->bytes.count() };
+
+			const MutRange<byte> src_bytes = default_value->bytes;
+
+			range::mem_copy(dst_bytes, src_bytes.immut());
+
+			shadow_copy(core, dst_bytes, src_bytes);
 
 			parameter_default = some(core_id_from_address(core, get(allocation)));
 		}
@@ -2738,7 +2772,13 @@ static const Opcode* handle_dyn_signature(CoreData* core, const Opcode* code, Co
 				if (is_none(allocation))
 					TODO("Implement GC traversal.");
 
-				memcpy(get(allocation), default_value->bytes.begin(), default_value->bytes.count());
+				const MutRange<byte> dst_bytes{ static_cast<byte*>(get(allocation)), default_value->bytes.count() };
+
+				const MutRange<byte> src_bytes = default_value->bytes;
+
+				range::mem_copy(dst_bytes, src_bytes.immut());
+
+				shadow_copy(core, dst_bytes, src_bytes);
 
 				parameter_default = some(core_id_from_address(core, get(allocation)));
 			}
@@ -3375,7 +3415,13 @@ static const Opcode* handle_complete_param_untyped(CoreData* core, const Opcode*
 	if (is_none(allocation))
 		TODO("Implement GC traversal.");
 
-	memcpy(get(allocation), default_value->bytes.begin(), default_value->bytes.count());
+	const MutRange<byte> dst_bytes{ static_cast<byte*>(get(allocation)), default_value->bytes.count() };
+
+	const MutRange<byte> src_bytes = default_value->bytes;
+
+	range::mem_copy(dst_bytes, src_bytes.immut());
+
+	shadow_copy(core, dst_bytes, src_bytes);
 
 	const CoreId default_id = core_id_from_address(core, get(allocation));
 
@@ -3577,15 +3623,11 @@ static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [
 
 	for (u16 i = 0; i != leading_element_count; ++i)
 	{
-		const MutRange<byte> bytes = rst.bytes.mut_subrange(element_metrics.stride * i, element_metrics.size);
+		const MutRange<byte> dst_bytes = rst.bytes.mut_subrange(element_metrics.stride * i, element_metrics.size);
 
-		const TypeEquality equality = type_is_equal(core, element_type, element_values[i].type);
+		const CompValue dst{ dst_bytes, element_metrics.align, true, element_type };
 
-		if (equality == TypeEquality::Equal)
-			range::mem_copy(bytes, element_values[i].bytes.immut());
-		else if (equality == TypeEquality::Incomplete)
-			return record_interpreter_error(core, code, CompileError::IncompleteType);
-		else if (convert_into_assume_convertible(core, code, element_values[i], CompValue{ bytes, element_metrics.align, true, element_type }) == nullptr)
+		if (convert_into(core, code, element_values[i], dst) == nullptr)
 			return nullptr;
 	}
 
@@ -3701,9 +3743,13 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 			if (is_none(dst_info.value_or_default))
 				return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
-			const byte* const default_src = static_cast<byte*>(address_from_core_id(core, get(dst_info.value_or_default)));
+			byte* const default_begin = static_cast<byte*>(address_from_core_id(core, get(dst_info.value_or_default)));
 
-			range::mem_copy(dst.bytes, Range<byte>{ default_src, dst_metrics.size });
+			const MutRange<byte> default_bytes{ default_begin, dst_metrics.size };
+
+			range::mem_copy(dst.bytes, default_bytes.immut());
+
+			shadow_copy(core, dst.bytes, default_bytes);
 		}
 
 		return code;
@@ -3760,9 +3806,13 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 		if (is_none(info.value_or_default))
 			return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
 
-		const byte* const default_src = static_cast<byte*>(address_from_core_id(core, get(info.value_or_default)));
+		byte* const default_begin = static_cast<byte*>(address_from_core_id(core, get(info.value_or_default)));
 
-		range::mem_copy(dst.bytes, Range<byte>{ default_src, metrics.size });
+		const MutRange<byte> default_bytes{ default_begin, metrics.size };
+
+		range::mem_copy(dst.bytes, default_bytes.immut());
+
+		shadow_copy(core, dst.bytes, default_bytes);
 	}
 
 	return code;
@@ -3844,11 +3894,13 @@ static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* cod
 		if (!next(&it, &info, &unused_initializer))
 			TODO("Figure out what to do when post-initializing incomplete types and if it can even reasonably happen");
 
-		const Range<byte> src = values[i].bytes.immut();
+		const MutRange<byte> src = values[i].bytes;
 
 		const MutRange<byte> dst = member_bytes_by_info(core, initializer.bytes, info, src.count());
 
-		range::mem_copy(dst, src);
+		range::mem_copy(dst, src.immut());
+
+		shadow_copy(core, dst, src);
 	}
 
 	return push_location_value(core, code, write_ctx, initializer);
