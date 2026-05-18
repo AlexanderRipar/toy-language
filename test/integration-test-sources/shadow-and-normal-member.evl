@@ -1,0 +1,68 @@
+// success
+
+let Struct = func(members: ...Definition) -> Type => {
+
+	let builder = std.create_type_builder()
+
+	mut offset = 0
+
+	mut align = 1
+
+	let count = array_countof(typeof(members))
+
+	for i < count, i += 1 where mut i = 0
+	{
+		let member = members[i]
+
+		let member_type = std.definition_typeof(member)
+
+		let member_size = sizeof(member_type)
+
+		let member_align = alignof(member_type)
+
+		offset = (offset + member_align - 1) & ~(member_align - 1)
+
+		if align < member_align then
+			align = member_align
+
+		std.add_type_member(builder, member, offset)
+
+		offset += member_size
+	}
+
+	let stride = (offset + align - 1) & ~(align - 1)
+
+	std.complete_type(
+		.builder = builder,
+		.size = offset,
+		.stride = stride,
+		.align = align,
+	)
+}
+
+let MyType = Struct(mut T: Type, mut n: u64)
+
+let t: MyType = .{ MyType, 50000 }
+
+let unused_1 = std.assert(sizeof(MyType) == sizeof(u64))
+
+let unused_2 = std.assert(t.T == MyType)
+
+let unused_3 = std.assert(t.n == 50000)
+
+let u64_t = {
+	mut t: MyType = .{ u32, 1000 }
+
+	std.assert(t.T == u32)
+
+	t.T = u64
+	t.n = 10
+
+	std.assert(t.T == u64)
+
+	std.assert(t.n == 10)
+
+	t.T
+}
+
+let unused_4 = std.assert(u64_t == u64)
