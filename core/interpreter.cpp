@@ -3629,7 +3629,20 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 		if (!type_metrics_from_id(core, member_info.type_id, &member_metrics))
 			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
-		const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(member_info.offset, member_metrics.size);
+		ASSERT_OR_IGNORE(member_metrics.is_shadow == is_some(member_info.shadow_id));
+
+		MutRange<byte> bytes;
+
+		if (is_some(member_info.shadow_id))
+		{
+			byte* const begin = shadow_get(core, write_ctx->bytes.begin() + member_info.offset, get(member_info.shadow_id), member_info.shadow_rank);
+
+			bytes = MutRange<byte>{ begin, member_metrics.size };
+		}
+		else
+		{
+			bytes = write_ctx->bytes.mut_subrange(member_info.offset, member_metrics.size);
+		}
 
 		*write_ctx_dst = CompValue{ bytes, member_metrics.align, write_ctx->is_mut, member_info.type_id };
 
@@ -3658,7 +3671,18 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 			if (!type_metrics_from_id(core, defaulted_member_info.type_id, &defaulted_member_metrics))
 				return record_interpreter_error(core, code, CompileError::IncompleteType);
 
-			void* const default_dst = write_ctx->bytes.begin() + defaulted_member_info.offset;
+			ASSERT_OR_IGNORE(defaulted_member_metrics.is_shadow == is_some(defaulted_member_info.shadow_id));
+
+			void* default_dst;
+
+			if (is_some(defaulted_member_info.shadow_id))
+			{
+				default_dst = shadow_get(core, write_ctx->bytes.begin() + defaulted_member_info.offset, get(defaulted_member_info.shadow_id), defaulted_member_info.shadow_rank);
+			}
+			else
+			{
+				default_dst = write_ctx->bytes.begin() + defaulted_member_info.offset;
+			}
 
 			const void* const default_src = address_from_core_id(core, get(defaulted_member_info.value_or_default));
 
@@ -3702,7 +3726,20 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 		if (!type_metrics_from_id(core, named_member_info.type_id, &named_member_metrics))
 			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
-		const MutRange<byte> named_bytes = write_ctx->bytes.mut_subrange(named_member_info.offset, named_member_metrics.size);
+		ASSERT_OR_IGNORE(named_member_metrics.is_shadow == is_some(named_member_info.shadow_id));
+
+		MutRange<byte> named_bytes;
+
+		if (is_some(named_member_info.shadow_id))
+		{
+			byte* const begin = shadow_get(core, write_ctx->bytes.begin() + named_member_info.offset, get(named_member_info.shadow_id), named_member_info.shadow_rank);
+
+			named_bytes = MutRange<byte>{ begin, named_member_metrics.size };
+		}
+		else
+		{
+			named_bytes = write_ctx->bytes.mut_subrange(named_member_info.offset, named_member_metrics.size);
+		}
 
 		*write_ctx_dst = CompValue{ named_bytes, named_member_metrics.align, write_ctx->is_mut, named_member_info.type_id };
 
@@ -3724,7 +3761,20 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 			if (!type_metrics_from_id(core, following_member_info.type_id, &following_member_metrics))
 				return record_interpreter_error(core, code, CompileError::IncompleteType);
 
-			const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(following_member_info.offset, following_member_metrics.size);
+			ASSERT_OR_IGNORE(following_member_metrics.is_shadow == is_some(following_member_info.shadow_id));
+
+			MutRange<byte> bytes;
+
+			if (is_some(following_member_info.shadow_id))
+			{
+				byte* const begin = shadow_get(core, write_ctx->bytes.begin() + following_member_info.offset, get(following_member_info.shadow_id), following_member_info.shadow_rank);
+
+				bytes = MutRange<byte>{ begin, following_member_metrics.size };
+			}
+			else
+			{
+				bytes = write_ctx->bytes.mut_subrange(following_member_info.offset, following_member_metrics.size);
+			}
 
 			*write_ctx_dst = CompValue{ bytes, following_member_metrics.align, write_ctx->is_mut, following_member_info.type_id };
 
@@ -3754,7 +3804,18 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 		if (!type_metrics_from_id(core, defaulted_member_info.type_id, &defaulted_member_metrics))
 			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
-		void* const default_dst = write_ctx->bytes.begin() + defaulted_member_info.offset;
+		ASSERT_OR_IGNORE(defaulted_member_metrics.is_shadow == is_some(defaulted_member_info.shadow_id));
+
+		void* default_dst;
+
+		if (is_some(defaulted_member_info.shadow_id))
+		{
+			default_dst = shadow_get(core, write_ctx->bytes.begin() + defaulted_member_info.offset, get(defaulted_member_info.shadow_id), defaulted_member_info.shadow_rank);
+		}
+		else
+		{
+			default_dst = write_ctx->bytes.begin() + defaulted_member_info.offset;
+		}
 
 		const void* const default_src = address_from_core_id(core, get(defaulted_member_info.value_or_default));
 
