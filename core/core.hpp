@@ -2990,6 +2990,8 @@ byte* shadow_get(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 ra
 
 Maybe<byte*> shadow_try_get(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 rank) noexcept;
 
+void shadow_copy(CoreData* core, MutRange<byte> dst, MutRange<byte> src) noexcept;
+
 void shadow_clear(CoreData* core, byte* address) noexcept;
 
 

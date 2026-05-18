@@ -572,6 +572,58 @@ Maybe<byte*> shadow_try_get(CoreData* core, byte* address, ShadowLayoutId layout
 	return some(shadow_base + offset);
 }
 
+void shadow_copy(CoreData* core, MutRange<byte> dst, MutRange<byte> src) noexcept
+{
+	ASSERT_OR_IGNORE(dst.count() == src.count());
+
+	ShadowStoreKey existing_key{};
+
+	for (u64 i = 0; i != src.count() + 1; ++i)
+	{
+		existing_key.address = src.begin() + i;
+
+		const Maybe<ShadowStoreEntry*> opt_existing_entry = core->shadow.address_map.try_value_from(existing_key, fnv1a(range::from_object_bytes(&existing_key.address)));
+
+		if (is_none(opt_existing_entry))
+			continue;
+
+		ShadowStoreEntry* const existing_entry = get(opt_existing_entry);
+
+		ShadowLayout* const layout = static_cast<ShadowLayout*>(address_from_core_id(core, static_cast<CoreId>(existing_entry->data.attach_layout_id)));
+
+		ShadowStoreKey new_key{};
+		new_key.address = dst.begin() + i;
+		new_key.attach_align = layout->header.align;
+		new_key.layout_id = existing_entry->data.attach_layout_id;
+		new_key.attach_size = layout->header.size;
+
+		ShadowStoreEntry* const new_entry = core->shadow.address_map.value_from(new_key, fnv1a(range::from_object_bytes(&new_key.address)));
+
+		void* dst_value;
+
+		if (new_entry->data.attach_layout_id != existing_entry->data.attach_layout_id)
+		{
+			const Maybe<void*> allocation = comp_heap_alloc(core, layout->header.size, layout->header.align);
+
+			if (is_none(allocation))
+				TODO("Implement GC traversal.");
+
+			new_entry->data.attach_layout_id = existing_entry->data.attach_layout_id;
+			new_entry->data.attach_id = core_id_from_address(core, get(allocation));
+
+			dst_value = get(allocation);
+		}
+		else
+		{
+			dst_value = address_from_core_id(core, new_entry->data.attach_id);
+		}
+
+		const void* const src_value = address_from_core_id(core, existing_entry->data.attach_id);
+
+		memcpy(dst_value, src_value, layout->header.size);
+	}
+}
+
 void shadow_clear(CoreData* core, byte* address) noexcept
 {
 	ShadowStoreKey key{};
