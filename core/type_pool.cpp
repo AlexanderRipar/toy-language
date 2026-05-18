@@ -1165,7 +1165,7 @@ static bool init_structure_hash(CoreData* core, TypeStructure* structure) noexce
 
 	structure->hash = hash;
 
-	if (structure->tag != TypeTag::Composite)
+	if (structure->tag != TypeTag::Composite && structure->tag != TypeTag::CompositeLiteral)
 		return true;
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
