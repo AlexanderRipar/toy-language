@@ -966,7 +966,6 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 	case TypeTag::Signature:
 	case TypeTag::Composite:
 	case TypeTag::TailArray:
-	case TypeTag::Variadic:
 	case TypeTag::Trait:
 		; // Fallthrough to unreachable.
 	}
@@ -1320,7 +1319,6 @@ static CompareResult compare(CoreData* core, TypeId type, MutRange<byte> lhs, Mu
 	case TypeTag::Signature:
 	case TypeTag::TailArray:
 	case TypeTag::CompositeLiteral:
-	case TypeTag::Variadic:
 	case TypeTag::Divergent:
 	case TypeTag::Trait:
 	{

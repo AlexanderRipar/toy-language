@@ -642,7 +642,6 @@ static u32 structure_size(TypeStructure* structure) noexcept
 	}
 	
 	case TypeTag::Definition:
-	case TypeTag::Variadic:
 		TODO("Implement `structure_size(%)`.", tag_name(structure->tag));
 
 	case TypeTag::INVALID:
@@ -1107,7 +1106,6 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 	case TypeTag::Self:
 		return hash_self_type(core, hash, seen, reinterpret_cast<const SelfType*>(structure->attach));
 
-	case TypeTag::Variadic:
 	case TypeTag::Definition:
 		TODO("Implement `hash_type_structure_preseen(%)`.", tag_name(tag));
 
@@ -1214,7 +1212,6 @@ static TypeRelation type_can_implicitly_convert_from_to_assume_unequal(CoreData*
 	case TypeTag::Signature:
 	case TypeTag::Composite:
 	case TypeTag::TailArray:
-	case TypeTag::Variadic:
 	case TypeTag::Trait:
 	{
 		return TypeRelation::Unrelated;
@@ -1854,9 +1851,6 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 		return TypeEquality::Equal;
 	}
 
-	case TypeTag::Variadic:
-		TODO("Implement `type_is_equal_noloop(%)`.", tag_name(tag));
-
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
 		break; // Fallthrough to unreachable.
@@ -1969,7 +1963,7 @@ TypeId type_create_numeric(CoreData* core, TypeTag tag, NumericType attach) noex
 
 TypeId type_create_reference(CoreData* core, TypeTag tag, ReferenceType attach) noexcept
 {
-	ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray || tag == TypeTag::Variadic);
+	ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray);
 
 	return holotype_id_from_attachment(core, tag, range::from_object_bytes(&attach));
 }
@@ -2935,7 +2929,6 @@ bool type_metrics_from_id(CoreData* core, TypeId type_id, TypeMetrics* out) noex
 		return type_metrics_from_id(core, attach->base_type_id, out);
 	}
 
-	case TypeTag::Variadic:
 	case TypeTag::TailArray:
 		TODO("Implement `type_metrics_from_id(%)`.", tag_name(structure->tag));
 

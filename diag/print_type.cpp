@@ -59,7 +59,6 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 
 	case TypeTag::Slice:
 	case TypeTag::Ptr:
-	case TypeTag::Variadic:
 	{
 		const ReferenceType* const reference = type_attachment_from_id<ReferenceType>(core, type_id);
 
@@ -67,8 +66,6 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 
 		if (tag == TypeTag::Slice)
 			introducer = "[]";
-		else if (tag == TypeTag::Variadic)
-			introducer = "...";
 		else if (reference->is_opt && reference->is_multi)
 			introducer = "[?]";
 		else if (reference->is_multi)
