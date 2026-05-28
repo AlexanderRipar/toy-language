@@ -26,19 +26,6 @@ struct Scope
 	u32 temporary_data_used;
 };
 
-struct alignas(16) ScopeMember
-{
-	u32 offset;
-
-	u32 size;
-
-	u32 align : 31;
-
-	u32 is_mut : 1;
-
-	TypeId type;
-};
-
 struct alignas(16) ClosureMember
 {
 	u32 offset;
