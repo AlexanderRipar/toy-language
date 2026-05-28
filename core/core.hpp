@@ -2911,7 +2911,9 @@ enum class Builtin : u8
 	// `let _definition_typeof = func(definition: Definition) -> Type`
 	DefinitionTypeof,
 
-	ForeignFunction,
+	ForeignFunctionImport,
+
+	ForeignFunctionCall,
 
 	// Number of `Builtin`s, used for sizing arrays. Should not be used
 	// otherwise.

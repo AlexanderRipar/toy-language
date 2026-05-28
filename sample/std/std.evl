@@ -11,3 +11,5 @@ pub complete_type = func(builder: TypeBuilder, size: u64, align: u64, stride: u6
 pub definition_typeof = func(definition: Definition) -> Type => _definition_typeof(definition)
 
 pub assert = func(x: Bool) -> Void => if !x then unreachable
+
+pub foreign_function = func(Signature: Type, library_path: []u8, symbol: []u8) -> Signature => _foreign_function(Signature, library_path, symbol)

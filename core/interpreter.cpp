@@ -1878,7 +1878,7 @@ static const Opcode* builtin_definition_typeof(CoreData* core, const Opcode* cod
 	return push_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* builtin_foreign_function(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+static const Opcode* builtin_foreign_function_import(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	const TypeId signature_type = get_builtin_param<TypeId>(core, 0);
 
@@ -1886,7 +1886,138 @@ static const Opcode* builtin_foreign_function(CoreData* core, const Opcode* code
 
 	const Range<char8> symbol = get_builtin_param<Range<char8>>(core, 2);
 
-	TODO("Implement.");
+	minos::LibraryHandle library;
+
+	if (!minos::dynamic_library_create(library_path, &library))
+		return record_interpreter_error(core, code, CompileError::INVALID);
+
+	const void* function_address;
+
+	if (!minos::dynamic_library_load_function(library, symbol, &function_address))
+		return record_interpreter_error(core, code, CompileError::INVALID);
+
+
+	const TypeId signature_type_type = type_create_simple(core, TypeTag::Type);
+
+	const CompValue signature_closure_value = alloc_temporary_value_uninit(core, sizeof(TypeId), alignof(TypeId), signature_type_type);
+	range::mem_copy(signature_closure_value.bytes, range::from_object_bytes(&signature_type));
+
+	core->interp.values.append(signature_closure_value);
+
+
+
+	const TypeId function_address_type = type_create_numeric(core, TypeTag::Integer, NumericType{ sizeof(const void*) * 8, false });
+
+	const CompValue function_address_closure_value = alloc_temporary_value_uninit(core, sizeof(const void*), alignof(const void*), function_address_type);
+	range::mem_copy(function_address_closure_value.bytes, range::from_object_bytes(&function_address));
+
+	core->interp.values.append(function_address_closure_value);
+
+
+	const Maybe<ClosureId> closure = create_closure(core, 2);
+
+	if (is_none(closure))
+		return record_interpreter_error(core, code, CompileError::ClosureTooLarge);
+
+	CallableValue callable{};
+	callable.body_id = core->interp.builtin_infos[static_cast<u8>(Builtin::ForeignFunctionCall) - 1].body;
+	callable.closure_id = closure;
+	callable.self_id = none<TypeId>();
+
+	const MutRange<byte> callable_bytes = range::from_object_bytes_mut(&callable);
+
+	return convert_into(core, code, CompValue{ callable_bytes, alignof(CallableValue), true, signature_type }, *write_ctx);
+}
+
+static const Opcode* builtin_foreign_function_call(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(core->interp.active_closures.used() >= 1);
+
+	ASSERT_OR_IGNORE(core->interp.scopes.used() >= 1);
+
+
+
+	const ClosureId closure = core->interp.active_closures.end()[-1];
+
+	const void* const closure_address = address_from_core_id(core, static_cast<CoreId>(closure));
+
+	ASSERT_OR_IGNORE(*static_cast<const u64*>(closure_address) == 2);
+
+	const ClosureMember* const closure_members = static_cast<const ClosureMember*>(closure_address) + 1;
+
+	const TypeId signature_type = *reinterpret_cast<const TypeId*>(reinterpret_cast<const byte*>(closure_members + 0) + closure_members[0].offset);
+
+	const void* const native_callee = *reinterpret_cast<const void* const *>(reinterpret_cast<const byte*>(closure_members + 1) + closure_members[1].offset);
+
+
+
+	const SignatureTypeInfo signature_info = type_signature_info_from_id(core, signature_type);
+
+	ASSERT_OR_IGNORE(!signature_info.has_templated_return_type);
+
+	ASSERT_OR_IGNORE(!signature_info.is_variadic);
+
+	ASSERT_OR_IGNORE(signature_info.templated_parameter_count == 0);
+
+	ASSERT_OR_IGNORE(is_none(signature_info.closure_id));
+
+
+
+	const TypeId return_type = signature_info.return_type.complete.type_id;
+
+	const TypeEquality is_exact_return_type = type_is_equal(core, return_type, write_ctx->type);
+
+	ASSERT_OR_IGNORE(is_exact_return_type == TypeEquality::Equal || is_exact_return_type == TypeEquality::Unequal);
+
+	u32 prev_temporary_data_used;
+
+	CompValue return_value_dst;
+
+	if (is_exact_return_type == TypeEquality::Equal)
+	{
+		prev_temporary_data_used = 0;
+
+		return_value_dst = *write_ctx;
+	}
+	else
+	{
+		TypeMetrics return_type_metrics;
+
+		if (!type_metrics_from_id(core, return_type, &return_type_metrics))
+			ASSERT_UNREACHABLE;
+
+		prev_temporary_data_used = core->interp.temporary_data.used();
+
+		return_value_dst = alloc_temporary_value_uninit(core, return_type_metrics.size, return_type_metrics.align, return_type);
+	}
+
+
+
+	const Scope* call_scope = core->interp.scopes.end() - 1;
+
+	const ScopeMember* first_argument = core->interp.scope_members.begin() + call_scope->first_member_index;
+
+	const Range<ScopeMember> arguments{ first_argument, core->interp.scope_members.end() };
+
+
+
+	FFINativeCallArgs ffi_args;
+
+	ffi_prepare_args_for_native_call(core, arguments, core->interp.scope_data.begin(), return_value_dst.bytes.begin(), return_type, &ffi_args);
+
+	ffi_perform_native_call(native_callee, &ffi_args);
+
+
+
+	if (is_exact_return_type != TypeEquality::Equal)
+	{
+		if (convert_into(core, code, return_value_dst, *write_ctx) == nullptr)
+			return nullptr;
+
+		core->interp.temporary_data.pop_to(prev_temporary_data_used);
+	}
+
+	return code;
 }
 
 
@@ -2439,11 +2570,10 @@ static const Opcode* handle_load_builtin(CoreData* core, const Opcode* code, Com
 
 	ASSERT_OR_IGNORE(info.signature_type != TypeId::INVALID);
 
-	CallableValue body;
+	CallableValue body{};
 	body.body_id = info.body;
 	body.closure_id = none<ClosureId>();
 	body.self_id = none<TypeId>();
-	body.unused_ = 0;
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&body);
 
@@ -2474,30 +2604,32 @@ static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, Com
 		&builtin_source_id,
 		&builtin_caller_source_id,
 		&builtin_definition_typeof,
-		&builtin_foreign_function,
+		&builtin_foreign_function_import,
+		&builtin_foreign_function_call,
 	};
 
-	static_assert(HANDLERS[static_cast<u8>(Builtin::Integer)]           == &builtin_integer);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::Float)]             == &builtin_float);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::Type)]              == &builtin_type);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::Definition)]        == &builtin_definition);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::TypeInfo)]          == &builtin_typeinfo);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::Typeof)]            == &builtin_typeof);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::Returntypeof)]      == &builtin_returntypeof);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::Sizeof)]            == &builtin_sizeof);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::Alignof)]           == &builtin_alignof);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::Strideof)]          == &builtin_strideof);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::ArrayCountof)]      == &builtin_array_countof);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::Offsetof)]          == &builtin_offsetof);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::Nameof)]            == &builtin_nameof);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::Import)]            == &builtin_import);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::CreateTypeBuilder)] == &builtin_create_type_builder);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::AddTypeMember)]     == &builtin_add_type_member);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::CompleteType)]      == &builtin_complete_type);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::SourceId)]          == &builtin_source_id);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::CallerSourceId)]    == &builtin_caller_source_id);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::DefinitionTypeof)]  == &builtin_definition_typeof);
-	static_assert(HANDLERS[static_cast<u8>(Builtin::ForeignFunction)]   == &builtin_foreign_function);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::Integer)]               == &builtin_integer);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::Float)]                 == &builtin_float);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::Type)]                  == &builtin_type);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::Definition)]            == &builtin_definition);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::TypeInfo)]              == &builtin_typeinfo);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::Typeof)]                == &builtin_typeof);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::Returntypeof)]          == &builtin_returntypeof);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::Sizeof)]                == &builtin_sizeof);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::Alignof)]               == &builtin_alignof);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::Strideof)]              == &builtin_strideof);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::ArrayCountof)]          == &builtin_array_countof);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::Offsetof)]              == &builtin_offsetof);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::Nameof)]                == &builtin_nameof);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::Import)]                == &builtin_import);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::CreateTypeBuilder)]     == &builtin_create_type_builder);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::AddTypeMember)]         == &builtin_add_type_member);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::CompleteType)]          == &builtin_complete_type);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::SourceId)]              == &builtin_source_id);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::CallerSourceId)]        == &builtin_caller_source_id);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::DefinitionTypeof)]      == &builtin_definition_typeof);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::ForeignFunctionImport)] == &builtin_foreign_function_import);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::ForeignFunctionCall)]   == &builtin_foreign_function_call);
 
 	u8 ordinal;
 	code = code_attach(code, &ordinal);
@@ -6710,17 +6842,28 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	const OpcodeId foreign_function_body = opcode_id_from_builtin(core, Builtin::ForeignFunction);
+	const OpcodeId foreign_function_import_body = opcode_id_from_builtin(core, Builtin::ForeignFunctionImport);
 
-	const OpcodeId foreign_function_return_type_completion = opcode_id_from_return_type_completion_from_parameter(core, 0);
+	const OpcodeId foreign_function_import_return_type_completion = opcode_id_from_return_type_completion_from_parameter(core, 0);
 
-	const TypeId foreign_function_signature = make_func_type_with_templated_return_type(core, foreign_function_return_type_completion,
+	const TypeId foreign_function_import_signature = make_func_type_with_templated_return_type(core, foreign_function_import_return_type_completion,
 		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("Signature")), type_type, true },
 		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("library_path")), slice_of_u8_type, true },
 		BuiltinParamInfo{ id_from_identifier(core, range::from_literal_string("symbol")), slice_of_u8_type, true }
 	);
 
-	core->interp.builtin_infos[static_cast<u8>(Builtin::ForeignFunction) - 1] = BuiltinInfo{ foreign_function_body, foreign_function_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::ForeignFunctionImport) - 1] = BuiltinInfo{ foreign_function_import_body, foreign_function_import_signature };
+
+
+
+	const OpcodeId foreign_function_call_body = opcode_id_from_builtin(core, Builtin::ForeignFunctionCall);
+
+	// This is super-duper bogus. However, since we do not actually expose this
+	// in any way other than via `ForeignFunctionImport`, it just works (tm),
+	// as the signature type is never used.
+	const TypeId foreign_function_call_signature = TypeId::INVALID;
+
+	core->interp.builtin_infos[static_cast<u8>(Builtin::ForeignFunctionCall) - 1] = BuiltinInfo{ foreign_function_call_body, foreign_function_call_signature };
 
 
 
@@ -6962,7 +7105,8 @@ const char8* tag_name(Builtin builtin) noexcept
 		"SourceId",
 		"CallerSourceId",
 		"DefinitionTypeof",
-		"ForeignFunction",
+		"ForeignFunctionImport",
+		"ForeignFunctionCall",
 	};
 
 	u8 ordinal = static_cast<u8>(builtin);
