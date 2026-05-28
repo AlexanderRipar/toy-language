@@ -1,5 +1,4 @@
 	.intel_syntax noprefix
-	.intel_mnemonic
 	.text
 	.global ffi_asm_perform_native_call
 	.type ffi_asm_perform_native_call, @function
