@@ -2803,6 +2803,8 @@ const Opcode* opcode_from_id(CoreData* core, OpcodeId id) noexcept;
 
 SourceId source_id_of_opcode(CoreData* core, const Opcode* code) noexcept;
 
+bool return_type_opcodes_equal(CoreData* core, const Opcode* a_code, const Opcode* b_code) noexcept;
+
 const char8* tag_name(Opcode op) noexcept;
 
 

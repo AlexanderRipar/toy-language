@@ -1587,7 +1587,18 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 
 			if (a_signature->has_templated_return_type)
 			{
-				TODO("Handle comparison of signature types with templated return types.");
+				const Opcode* const a_return_type_completion = opcode_from_id(core, a_signature->return_type.completion_id);
+
+				const Opcode* const b_return_type_completion = opcode_from_id(core, b_signature->return_type.completion_id);
+
+				if (!return_type_opcodes_equal(core, a_return_type_completion, b_return_type_completion))
+				{
+					seen_set_pop(a_seen);
+
+					seen_set_pop(b_seen);
+
+					return TypeEquality::Unequal;
+				}
 			}
 			else
 			{

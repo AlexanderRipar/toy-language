@@ -3085,6 +3085,154 @@ SourceId source_id_of_opcode(CoreData* core, const Opcode* code) noexcept
 	return sources[lo].source;
 }
 
+bool return_type_opcodes_equal([[maybe_unused]] CoreData* core, const Opcode* a_code, const Opcode* b_code) noexcept
+{
+	if (a_code == b_code)
+		return true;
+
+	while (true)
+	{
+		const Opcode a = static_cast<Opcode>(static_cast<u8>(*a_code) & 0x7F);
+
+		const Opcode b = static_cast<Opcode>(static_cast<u8>(*b_code) & 0x7F);
+
+		if (a != b)
+			return false;
+
+		a_code += 1;
+
+		b_code += 1;
+
+		switch (a)
+		{
+		case Opcode::EndCode:
+		{
+			return true;
+		}
+
+		case Opcode::ScopeBegin:
+		case Opcode::LoadClosure:
+		{
+			return false;
+		}
+
+		case Opcode::LoadScope:
+		{
+			if (memcmp(a_code, b_code, 3) != 0)
+				return false;
+
+			a_code += 3;
+
+			b_code += 3;
+
+			continue;
+		}
+
+		case Opcode::LoadGlobal:
+		{
+			if (memcmp(a_code, b_code, 6) != 0)
+				return false;
+
+			a_code += 6;
+
+			b_code += 6;
+
+			continue;
+		}
+
+		case Opcode::LoadMember:
+		{
+			if (memcmp(a_code, b_code, 4) != 0)
+				return false;
+
+			a_code += 4;
+
+			b_code += 4;
+
+			continue;
+		}
+
+		case Opcode::Signature:
+		case Opcode::DynSignature:
+		case Opcode::BindBody:
+		case Opcode::PrepareArgs:
+		case Opcode::ExecArgs:
+		case Opcode::Call:
+		case Opcode::Return:
+		case Opcode::CompleteParamTypedNoDefault:
+		case Opcode::CompleteParamTypedWithDefault:
+		case Opcode::CompleteParamUntyped:
+		case Opcode::ArrayPreInit:
+		case Opcode::ArrayPostInit:
+		case Opcode::CompositePreInit:
+		case Opcode::CompositePostInit:
+		case Opcode::If:
+		case Opcode::IfElse:
+		case Opcode::Loop:
+		case Opcode::LoopFinally:
+		case Opcode::Switch:
+		case Opcode::AddressOf:
+		case Opcode::Dereference:
+		case Opcode::Slice:
+		case Opcode::Index:
+		case Opcode::BinaryArithmeticOp:
+		case Opcode::Shift:
+		case Opcode::BinaryBitwiseOp:
+		case Opcode::BitNot:
+		case Opcode::LogicalAnd:
+		case Opcode::LogicalOr:
+		case Opcode::LogicalNot:
+		case Opcode::Compare:
+		case Opcode::Negate:
+		case Opcode::UnaryPlus:
+		case Opcode::ArrayType:
+		case Opcode::ReferenceType:
+		case Opcode::Undefined:
+		case Opcode::Unreachable:
+		case Opcode::ValueInteger:
+		case Opcode::ValueFloat:
+		case Opcode::ValueString:
+		case Opcode::ValueVoid:
+		case Opcode::DiscardVoid:
+		case Opcode::CheckTopVoid:
+		case Opcode::CheckWriteCtxVoid:
+		case Opcode::Trait:
+		case Opcode::ImplMakeSelf:
+		case Opcode::ImplBody:
+		case Opcode::CompleteImplBody:
+		case Opcode::ImplMemberAllocPrepare:
+		case Opcode::CheckTypesEqual:
+		case Opcode::LoadSelf:
+		case Opcode::LoadTraitArgument:
+		case Opcode::ImplMemberAllocComplete:
+		case Opcode::PopSelf:
+		case Opcode::EndTraitMemberType:
+		case Opcode::Definition:
+		case Opcode::TypeType:
+		case Opcode::CompleteCircularDefinition:
+			TODO("Implement `return_type_opcodes_equal(%)`.", tag_name(a));
+
+		case Opcode::INVALID:
+		case Opcode::SetWriteCtx:
+		case Opcode::DuplicateToWriteCtx:
+		case Opcode::ScopeEnd:
+		case Opcode::ScopeEndPreserveTop:
+		case Opcode::ScopeAllocTyped:
+		case Opcode::ScopeAllocUntyped:
+		case Opcode::FileMemberAllocPrepare:
+		case Opcode::FileMemberAllocComplete:
+		case Opcode::FileMemberAllocTyped:
+		case Opcode::FileMemberAllocUntyped:
+		case Opcode::PopClosure:
+		case Opcode::LoadBuiltin:
+		case Opcode::ExecBuiltin:
+			; // Fallthrough to unreachable.
+		}
+
+		ASSERT_UNREACHABLE;
+	}
+}
+
 const char8* tag_name(Opcode op) noexcept
 {
 	static constexpr const char8* TAG_NAMES[] = {
