@@ -48,7 +48,7 @@ ffi_asm_perform_native_call:
 
 	# Set up xmm argument-register count for variadic callees.
 
-	mov rax, %rdi                      # %rax = in_xmm_arg_count
+	mov rax, rdi                       # %rax = in_xmm_arg_count
 
 	# Set up xmm argument-register values.
 
@@ -91,12 +91,14 @@ NEXT_STACK_ARG:
 	cmp rbx, rdi
 	je STACK_ARGS_DONE                 # if stack_arg_index == stack_arg_count then goto STACK_ARGS_DONE
 
-	mov rcx [rsi + rbx * 8]            # curr_stack_arg_value = [arg_values + stack_arg_index * 8]
+	mov rcx, [rsi + rbx * 8]           # curr_stack_arg_value = [arg_values + stack_arg_index * 8]
 	mov [rsp + rbx * 8], rcx           # [%rsp + stack_arg_index * 8] = curr_stack_arg_value
 
 	inc rbx                            # stack_arg_index += 1
 
 	jmp NEXT_STACK_ARG
+
+STACK_ARGS_DONE:
 
 
 
