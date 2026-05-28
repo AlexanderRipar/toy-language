@@ -3091,11 +3091,11 @@ MemberIterator members_of(CoreData* core, TypeId type_id) noexcept
 
 	const TypeStructure* const structure = get(opt_structure);
 
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral || structure->tag == TypeTag::Signature);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure + 1);
 
-	ASSERT_OR_IGNORE((composite->flags & CompositeFlags::User_IsOpen) == CompositeFlags::EMPTY);
+	ASSERT_OR_IGNORE(structure->tag != TypeTag::Composite || (composite->flags & CompositeFlags::User_IsOpen) == CompositeFlags::EMPTY);
 
 	const CompositeInfo info = composite_info(composite);
 
