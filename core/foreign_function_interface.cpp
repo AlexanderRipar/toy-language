@@ -8,20 +8,6 @@ extern "C"
 	extern void ffi_asm_perform_native_call(u64 arg_count, const u64* arg_values, const void* native_callee);
 }
 
-static constexpr u8 WIN32_RET_COPY_NONE = 0;
-static constexpr u8 WIN32_RET_COPY_I8   = 1;
-static constexpr u8 WIN32_RET_COPY_I16  = 2;
-static constexpr u8 WIN32_RET_COPY_I32  = 3;
-static constexpr u8 WIN32_RET_COPY_I64  = 4;
-static constexpr u8 WIN32_RET_COPY_FLT  = 5;
-static constexpr u8 WIN32_RET_COPY_DBL  = 6;
-
-static constexpr u8 SYSV_RET_COPY_NONE   = 0;
-static constexpr u8 SYSV_RET_COPY_GPR_LO = 0x01;
-static constexpr u8 SYSV_RET_COPY_XMM_LO = 0x02;
-static constexpr u8 SYSV_RET_COPY_GPR_HI = 0x04;
-static constexpr u8 SYSV_RET_COPY_XMM_HI = 0x08;
-
 // Pre-processes `arguments` and `return_value_dst` for native calls using the
 // system's calling convention.
 //
@@ -57,6 +43,14 @@ static constexpr u8 SYSV_RET_COPY_XMM_HI = 0x08;
 void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> arguments, byte* argument_data, byte* return_value_dst, TypeId return_type, FFINativeCallArgs* out) noexcept
 {
 #ifdef _WIN32
+
+	static constexpr u8 WIN32_RET_COPY_NONE = 0;
+	static constexpr u8 WIN32_RET_COPY_I8   = 1;
+	//                  WIN32_RET_COPY_I16  = 2;
+	//                  WIN32_RET_COPY_I32  = 3;
+	//                  WIN32_RET_COPY_I64  = 4;
+	static constexpr u8 WIN32_RET_COPY_FLT  = 5;
+	static constexpr u8 WIN32_RET_COPY_DBL  = 6;
 
 	u8 i = 0;
 
@@ -174,7 +168,31 @@ void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> argumen
 
 #else
 
-	TODO("Implement `ffi_prepare_args_for_native_call` for System-V.")
+	static constexpr u8 SYSV_RET_COPY_NONE   = 0;
+	static constexpr u8 SYSV_RET_COPY_GPR_LO = 0x01;
+	static constexpr u8 SYSV_RET_COPY_XMM_LO = 0x02;
+	static constexpr u8 SYSV_RET_COPY_GPR_HI = 0x04;
+	static constexpr u8 SYSV_RET_COPY_XMM_HI = 0x08;
+
+	(void) core;
+
+	(void) arguments;
+
+	(void) argument_data;
+
+	(void) return_value_dst;
+
+	(void) return_type;
+
+	(void) out;
+
+	(void) SYSV_RET_COPY_NONE;
+	(void) SYSV_RET_COPY_GPR_LO;
+	(void) SYSV_RET_COPY_XMM_LO;
+	(void) SYSV_RET_COPY_GPR_HI;
+	(void) SYSV_RET_COPY_XMM_HI;
+
+	TODO("Implement `ffi_prepare_args_for_native_call` for System-V.");
 
 #endif // _WIN32
 }
