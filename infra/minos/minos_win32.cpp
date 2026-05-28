@@ -1501,4 +1501,47 @@ bool minos::has_debugger_attached() noexcept
 	return static_cast<bool>(IsDebuggerPresent());
 }
 
+bool minos::dynamic_library_create(Range<char8> library_path, LibraryHandle* out) noexcept
+{
+	char16 utf16_path[MAX_PATH_CHARS + 1];
+
+	map_path(library_path, MutRange{ utf16_path });
+
+	const HMODULE handle = LoadLibraryW(utf16_path);
+
+	if (handle == nullptr)
+		return false;
+
+	*out = native_as<LibraryHandle>(handle);
+
+	return true;
+}
+
+void minos::dynamic_library_close(LibraryHandle handle) noexcept
+{
+	if (!FreeLibrary(reinterpret_cast<HMODULE>(handle)))
+		panic("FreeLibrary failed (0x%[|X]).\n", last_error());
+}
+
+bool minos::dynamic_library_load_function(LibraryHandle handle, Range<char8> symbol, const void** out) noexcept
+{
+	if (symbol.count() > 4096)
+		panic("`minos::dynamic_library_load_function` only supports symbols of up to 4096 characters, but got % characters.\n", symbol.count());
+
+	char8 terminated_symbol[4097];
+
+	memcpy(terminated_symbol, symbol.begin(), symbol.count());
+
+	terminated_symbol[symbol.count()] = '\0';
+
+	const void* const function_address = reinterpret_cast<const void*>(GetProcAddress(reinterpret_cast<HMODULE>(handle), terminated_symbol));
+
+	if (function_address == nullptr)
+		return false;
+
+	*out = function_address;
+
+	return true;
+}
+
 #endif // defined(_WIN32)

@@ -136,6 +136,11 @@ namespace minos
 		INVALID = 0,
 	};
 
+	enum class LibraryHandle : u64
+	{
+		INVALID = 0,
+	};
+
 	enum class GenericHandle : u64
 	{
 		INVALID = 0,
@@ -492,6 +497,12 @@ namespace minos
 	[[nodiscard]] u64 exact_timestamp_ticks_per_second() noexcept;
 
 	[[nodiscard]] bool has_debugger_attached() noexcept;
+
+	[[nodiscard]] bool dynamic_library_create(Range<char8> library_path, LibraryHandle* out) noexcept;
+
+	void dynamic_library_close(LibraryHandle handle) noexcept;
+
+	[[nodiscard]] bool dynamic_library_load_function(LibraryHandle handle, Range<char8> symbol, const void** out) noexcept;
 }
 
 #endif // MINSO_HPP_INCLUDE_GUARD

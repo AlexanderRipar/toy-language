@@ -33,6 +33,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <dirent.h>
+#include <dlfcn.h>
 
 
 
@@ -2245,6 +2246,62 @@ bool minos::has_debugger_attached() noexcept
 	// If the tracer's pid is nonzero, then we definitely have a debugger
 	// attached. Otherwise, we assume that there is no debugger attached.
 	return *pid >= '1' && *pid <= '9';
+}
+
+bool minos::dynamic_library_create(Range<char8> library_path, LibraryHandle* out) noexcept
+{
+	char8 terminated_path[PATH_MAX + 1];
+
+	if (library_path.count() > array_count(terminated_path) - 1)
+	{
+		errno = ENAMETOOLONG;
+
+		return false;
+	}
+
+	memcpy(terminated_path, library_path.begin(), library_path.count());
+
+	terminated_path[library_path.count()] = '\0';
+
+	void* const handle = dlopen(terminated_path, RTLD_LAZY);
+
+	if (handle == nullptr)
+		return false;
+
+	*out = static_cast<LibraryHandle>(reinterpret_cast<u64>(handle));
+
+	return true;
+}
+
+void minos::dynamic_library_close(LibraryHandle handle) noexcept
+{
+	if (dlclose(reinterpret_cast<void*>(static_cast<u64>(handle))) != 0)
+		panic("dlcose failed (%).\n", dlerror());
+}
+
+bool minos::dynamic_library_load_function(LibraryHandle handle, Range<char8> symbol, const void** out) noexcept
+{
+	char8 terminated_symbol[PATH_MAX + 1];
+
+	if (symbol.count() > array_count(terminated_symbol) - 1)
+	{
+		errno = ENAMETOOLONG;
+
+		return false;
+	}
+
+	memcpy(terminated_symbol, symbol.begin(), symbol.count());
+
+	terminated_symbol[symbol.count()] = '\0';
+
+	const void* symbol_address = dlsym(reinterpret_cast<void*>(static_cast<u64>(handle)), terminated_symbol);
+
+	if (symbol_address == nullptr)
+		return false;
+
+	*out = symbol_address;
+
+	return true;
 }
 
 #endif
