@@ -1,7 +1,12 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(compil0r)
+project(compil0r CXX)
 
+if (WIN32)
+	enable_language(ASM_MASM)
+else()
+	enable_language(ASM)
+endif()
 
 
 set(INFRA_SOURCES
@@ -35,6 +40,7 @@ set(CORE_SOURCES
 	core/comp_values.cpp
 	core/config.cpp
 	core/error_sink.cpp
+	core/foreign_function_interface.cpp
 	core/identifier_pool.cpp
 	core/interpreter.cpp
 	core/lexical_analyser.cpp
@@ -59,6 +65,16 @@ set(INTERFACE_HEADERS
 	infra/minos/minos.hpp
 )
 
+if (WIN32)
+	set(FFI_ASM_SOURCES
+		core/ffi_native/x64_win32_perform_native_call.asm
+	)
+else()
+	set(FFI_ASM_SOURCES
+		core/ffi_native/x64_sysv_perform_native_call.s
+	)
+endif()
+
 function(set_common_target_options NAME)
 	target_compile_features(${NAME} PRIVATE cxx_std_17)
 
@@ -72,11 +88,11 @@ function(set_common_target_options NAME)
 		)
 
 		target_compile_options(${NAME} PRIVATE
-			/W4
-			/wd4200 # nonstandard extension used: zero-sized array in struct/union
-			/wd4201 # nonstandard extension used: nameless struct/union
-			/wd4611 # interaction between '_setjmp' and C++ object destruction is non-portable
-			"$<$<NOT:$<CONFIG:Debug>>:/Zi>"
+			"$<$<COMPILE_LANGUAGE:CXX>:/W4>"
+			"$<$<COMPILE_LANGUAGE:CXX>:/wd4200>" # nonstandard extension used: zero-sized array in struct/union
+			"$<$<COMPILE_LANGUAGE:CXX>:/wd4201>" # nonstandard extension used: nameless struct/union
+			"$<$<COMPILE_LANGUAGE:CXX>:/wd4611>" # interaction between '_setjmp' and C++ object destruction is non-portable
+			"$<$<COMPILE_LANGUAGE:CXX>:$<$<NOT:$<CONFIG:Debug>>:/Zi>>"
 		)
 	elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
 		target_compile_options(${NAME} PRIVATE
@@ -114,7 +130,7 @@ function(prepare_executable NAME)
 	target_link_libraries(${NAME} PRIVATE elib)
 endfunction()
 
-prepare_object_library(elib ${CORE_SOURCES} ${DIAG_SOURCES} ${INFRA_SOURCES})
+prepare_object_library(elib ${CORE_SOURCES} ${DIAG_SOURCES} ${INFRA_SOURCES} ${FFI_ASM_SOURCES})
 
 prepare_executable(eval main.cpp ${INTERFACE_HEADERS})
 

@@ -2961,6 +2961,8 @@ struct alignas(8) DefinitionValue
 	Maybe<CoreId> value;
 };
 
+struct ScopeMember;
+
 bool import_prelude(CoreData* core, Range<char8> path) noexcept;
 
 Maybe<TypeId> import_file(CoreData* core, Range<char8> path, bool is_std) noexcept;
@@ -2996,6 +2998,22 @@ void shadow_copy(CoreData* core, MutRange<byte> dst, MutRange<byte> src) noexcep
 
 void shadow_clear(CoreData* core, byte* address) noexcept;
 
+
+
+
+
+struct FFINativeCallArgs
+{
+	u64 arg_count;
+
+	byte* return_value_dst;
+
+	u64 arg_values[1 + 128 + 3];
+};
+
+void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> arguments, byte* argument_data, byte* return_value_dst, TypeId return_type, FFINativeCallArgs* out) noexcept;
+
+void ffi_perform_native_call(const void* native_callee, const FFINativeCallArgs* simplified_args) noexcept;
 
 
 

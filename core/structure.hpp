@@ -84,6 +84,7 @@ struct IdentifierPool
 
 struct Scope;
 
+// "Public" definition required here for ffi argument passing.
 struct alignas(16) ScopeMember
 {
 	u32 offset;
