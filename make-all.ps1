@@ -139,6 +139,7 @@ while ($jobs.Count -ne 0)
 											 "^  Generating Code...$",
 											 "^  Compiling...$",
 											 "^  \w+\.cpp$",
+											 "^  \w+\.c$",
 											 "^  \d+>Checking Build System$",
 											 "^-- Selecting Windows SDK version ",
 											 "^-- Configuring done \(\d+(\.\d+)?s\)$",
