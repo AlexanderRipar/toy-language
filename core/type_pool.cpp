@@ -1603,8 +1603,14 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 				}
 			}
 
-			if (is_some(a_signature->closure_id))
-				TODO("Handle comparison of signatures that hold a closure.");
+			if (is_some(a_signature->closure_id) && !closure_equal(core, get(a_signature->closure_id), get(b_signature->closure_id)))
+			{
+				seen_set_pop(a_seen);
+
+				seen_set_pop(b_seen);
+
+				return TypeEquality::Unequal;
+			}
 
 			break;
 		}
