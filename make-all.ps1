@@ -133,8 +133,9 @@ while ($jobs.Count -ne 0)
 		$job_output = @($job_output |
 			Select-String -NotMatch -Pattern "^gmake(\[\d+\])?: Warning:  Clock skew detected.  Your build may be incomplete.$",
 											 "^gmake(\[\d+\])?: Warning: File '.+' has modification time \d+(\.\d+)? s in the future$",
-											 "^\[ *\d+\%] (Building CXX object|Linking CXX executable) ",
-											 "^MSBuild version ", "^  Building Custom Rule ",
+											 "^\[ *\d+\%] (Building CXX object|Linking CXX executable|Building ASM object) ",
+											 "^MSBuild version ",
+											 "^  Building Custom Rule ",
 											 "^  Generating Code...$",
 											 "^  Compiling...$",
 											 "^  \w+\.cpp$",
@@ -142,7 +143,9 @@ while ($jobs.Count -ne 0)
 											 "^-- Selecting Windows SDK version ",
 											 "^-- Configuring done \(\d+(\.\d+)?s\)$",
 											 "^-- Generating done \(\d+(\.\d+)?s\)$",
-											 "^-- Build files have been written to: ").Line
+											 "^-- Build files have been written to: ",
+											 "^\s*Creating library ",
+											 "^\s*Assembling ").Line
 
 		if ($completed_job.Name.Contains('msvc') -or $completed_job.Name.Contains('clangcl'))
 		{
