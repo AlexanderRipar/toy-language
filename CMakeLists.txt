@@ -110,6 +110,10 @@ function(set_common_target_options NAME)
 			-Wno-gnu-anonymous-struct # anonymous structs are a GNU extension
 			-Wno-nested-anon-types    # anonymous types declared in an anonymous union are an extension
 			-g
+
+			# Suppress `clang: warning: argument unused during compilation: '-D NDEBUG'` for assembly
+			# in release builds. No idea how to get rid of the `-DNDEBUG`, but hey, this works I guess.
+			"$<$<COMPILE_LANGUAGE:ASM>:$<$<NOT:$<CONFIG:Debug>>:-Wno-unused-command-line-argument>>"
 		)
 	else()
 		message(FATAL_ERROR "Unknown compiler id ${CMAKE_CXX_COMPILER_ID}")
