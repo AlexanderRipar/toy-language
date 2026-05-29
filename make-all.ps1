@@ -133,7 +133,7 @@ while ($jobs.Count -ne 0)
 		$job_output = @($job_output |
 			Select-String -NotMatch -Pattern "^gmake(\[\d+\])?: Warning:  Clock skew detected.  Your build may be incomplete.$",
 											 "^gmake(\[\d+\])?: Warning: File '.+' has modification time \d+(\.\d+)? s in the future$",
-											 "^\[ *\d+\%] (Building CXX object|Linking CXX executable|Building ASM object) ",
+											 "^\[ *\d+\%] (Building CXX object|Linking CXX executable|Building ASM object|Building C object|Linking C shared library) ",
 											 "^MSBuild version ",
 											 "^  Building Custom Rule ",
 											 "^  Generating Code...$",
