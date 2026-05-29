@@ -1522,7 +1522,7 @@ static const Opcode* builtin_float(CoreData* core, const Opcode* code, CompValue
 
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	TypeId float_type = type_create_numeric(core, TypeTag::Integer, NumericType{ bits, true });
+	TypeId float_type = type_create_numeric(core, TypeTag::Float, NumericType{ bits, true });
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&float_type);
 
