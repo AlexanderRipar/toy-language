@@ -109,7 +109,7 @@ COPY_ARGS_DONE:
 	vmovsd xmm2, QWORD PTR [rbx + 16]  ; %xmm2 = [arg_values + 16]
 
 	mov r9, [rbx + 24]                 ; %r9 = [arg_values + 24]
-	vmovsd xmm2, QWORD PTR [rbx + 24]  ; %xmm3 = [arg_values + 24]
+	vmovsd xmm3, QWORD PTR [rbx + 24]  ; %xmm3 = [arg_values + 24]
 
 
 
