@@ -18,11 +18,6 @@ extern "C"
 //   On System-V, receives the number of arguments the native callee expects
 //   in xmm registers.
 //
-// `out->return_value_dst`
-//   Receives a pointer to the address that will receive the value returned by
-//   the native callee. `ffi_perform_native_call` will take care of moving the
-//   return value here in case it is returned in a register.
-//
 // `out->arg_values`
 //   On Win32, receives the argument values that the native callee will accept
 //   via `ffi_perform_native_call`, with the first four going into both

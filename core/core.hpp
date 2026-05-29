@@ -3008,8 +3008,6 @@ struct FFINativeCallArgs
 {
 	u64 arg_count;
 
-	byte* return_value_dst;
-
 	u64 arg_values[1 + 128 + 3];
 };
 
