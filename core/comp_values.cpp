@@ -945,25 +945,29 @@ bool comp_float_from_s64(s64 value, CompFloatValue* out) noexcept
 
 bool comp_float_from_comp_integer(CompIntegerValue value, CompFloatValue* out) noexcept
 {
-	(void) value;
+	if (!is_inlined(value))
+		panic("Unexpected non-inlined `CompIntegerValue`.\n");
 
-	(void) out;
+	const s64 raw_value = value.rep >> 1;
 
-	TODO("Implement `comp_float_from_comp_integer()`.");
+	const f64 float_value = static_cast<f64>(raw_value);
+
+	if (static_cast<s64>(float_value) != raw_value)
+		return false;
+
+	*out = CompFloatValue{ float_value };
+
+	return true;
 }
 
 f64 f64_from_comp_float(CompFloatValue value) noexcept
 {
-	(void) value;
-
-	TODO("Implement `f64_from_comp_float()`.");
+	return value.rep;
 }
 
 f32 f32_from_comp_float(CompFloatValue value) noexcept
 {
-	(void) value;
-
-	TODO("Implement `f32_from_comp_float()`.");
+	return static_cast<f32>(value.rep);
 }
 
 CompFloatValue comp_float_add(CompFloatValue lhs, CompFloatValue rhs) noexcept
@@ -973,36 +977,22 @@ CompFloatValue comp_float_add(CompFloatValue lhs, CompFloatValue rhs) noexcept
 
 CompFloatValue comp_float_sub(CompFloatValue lhs, CompFloatValue rhs) noexcept
 {
-	(void) lhs;
-
-	(void) rhs;
-
-	TODO("Implement `comp_float_sub()`.");
+	return CompFloatValue{ lhs.rep - rhs.rep };
 }
 
 CompFloatValue comp_float_mul(CompFloatValue lhs, CompFloatValue rhs) noexcept
 {
-	(void) lhs;
-
-	(void) rhs;
-
-	TODO("Implement `comp_float_mul()`.");
+	return CompFloatValue{ lhs.rep * rhs.rep };
 }
 
 CompFloatValue comp_float_div(CompFloatValue lhs, CompFloatValue rhs) noexcept
 {
-	(void) lhs;
-
-	(void) rhs;
-
-	TODO("Implement `comp_float_div()`.");
+	return CompFloatValue{ lhs.rep / rhs.rep };
 }
 
 CompFloatValue comp_float_neg(CompFloatValue value) noexcept
 {
-	(void) value;
-
-	TODO("Implement `comp_float_neg()`.");
+	return CompFloatValue{ -value.rep };
 }
 
 WeakCompareOrdering comp_float_compare(CompFloatValue lhs, CompFloatValue rhs) noexcept
