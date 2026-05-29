@@ -26,6 +26,13 @@ target_compile_definitions(test PRIVATE HELPER_PROCESS_PATH="$<TARGET_FILE:test-
 
 
 
+# ffi-test is a shared library containing some simple functions that are used
+# to test the foreign function interface.
+
+add_library(ffi-test SHARED ffi_test.c)
+
+
+
 # Set up targets to run tests
 
 add_custom_target(run-core-tests COMMAND test --core WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
