@@ -1505,7 +1505,12 @@ bool minos::dynamic_library_create(Range<char8> library_path, LibraryHandle* out
 {
 	char16 utf16_path[MAX_PATH_CHARS + 1];
 
-	map_path(library_path, MutRange{ utf16_path });
+	const s32 character_count = MultiByteToWideChar(CP_UTF8, 0, library_path.begin(), static_cast<s32>(library_path.count()), utf16_path, static_cast<s32>(array_count(utf16_path) - 1));
+
+	if (character_count == 0)
+		panic("MultiByteToWideChar(library_path) failed (0x%[|X]).\n", last_error());
+
+	utf16_path[character_count] = '\0';
 
 	const HMODULE handle = LoadLibraryW(utf16_path);
 
