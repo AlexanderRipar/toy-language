@@ -1,5 +1,5 @@
 .code
-ffi_asm_perform_native_call PROC FRAME
+ffi_x64_win32_asm_perform_native_call PROC FRAME
 
 	; Arguments:
 	; - in_arg_count       rcx
@@ -194,6 +194,6 @@ DONE:
 
 	ret
 
-ffi_asm_perform_native_call ENDP
+ffi_x64_win32_asm_perform_native_call ENDP
 
 END

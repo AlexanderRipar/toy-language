@@ -3008,13 +3008,47 @@ void shadow_clear(CoreData* core, byte* address) noexcept;
 
 struct FFINativeCallArgs
 {
+#ifdef _WIN32
 	u64 arg_count;
 
-	u64 arg_values[1 + 128 + 3];
+	u64 arg_values[1 + 64 + 2];
+#else
+
+	// These get passed to asm by value.
+
+	u64 stack_count;
+
+	u64 stack_size;
+
+	u64 stack_arg_kinds[2];
+
+	// The layout starting from here is contractual, as it gets passed to asm
+	// by address; Do not change it.
+
+	u64 xmm_values[8];
+
+	u64 gpr_values[6];
+
+	u64 xmm_count;
+
+	u64 ret_copy_class;
+
+	u32 ret_copy_size_lo;
+
+	u32 ret_copy_size_hi;
+
+	u64 ret_copy_address;
+
+	u64 stack_values[128];
+#endif
 };
 
+// Pre-processes `arguments` and `return_value_dst` for native calls using the
+// system's calling convention.
 void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> arguments, byte* argument_data, byte* return_value_dst, TypeId return_type, FFINativeCallArgs* out) noexcept;
 
+// Calls out to `native_callee`, with `args` previously preprocessed by
+// `ffi_prepare_args_for_native_call`.
 void ffi_perform_native_call(const void* native_callee, const FFINativeCallArgs* simplified_args) noexcept;
 
 

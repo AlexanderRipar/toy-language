@@ -3,9 +3,11 @@
 
 #include "../infra/math.hpp"
 
+#ifdef _WIN32
+
 extern "C"
 {
-	extern void ffi_asm_perform_native_call(u64 arg_count, const u64* arg_values, const void* native_callee);
+	extern void ffi_x64_win32_asm_perform_native_call(u64 arg_count, const u64* arg_values, const void* native_callee);
 }
 
 // Pre-processes `arguments` and `return_value_dst` for native calls using the
@@ -14,9 +16,6 @@ extern "C"
 // `out->arg_count`
 //   On Win32, receives the number of arguments the native callee expects,
 //   including the implicit return value pointer, if applicable.
-//
-//   On System-V, receives the number of arguments the native callee expects
-//   in xmm registers.
 //
 // `out->arg_values`
 //   On Win32, receives the argument values that the native callee will accept
@@ -27,17 +26,9 @@ extern "C"
 //   provided to indicate how the return value of the native callee needs to be
 //   fixed up. If this is not `WIN32_RET_COPY_NONE`, the next element receives
 //   the address into which the return value must be written.
-//
-//   On System-V, receives `argument_count` xmm values, followed by the number
-//   64-bit words expected on the stack, and then the value of these words.
-//   The next six elements contain the argument values expected in general
-//   purpose registers, padded as necessary.
-//   The next element contains a `SYSV_RET_COPY_*` value. If this is not
-//   `SYSV_RET_COPY_NONE`, the following two elements respectively contain the
-//   return value destination and the size of the return value.
-void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> arguments, byte* argument_data, byte* return_value_dst, TypeId return_type, FFINativeCallArgs* out) noexcept
+void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> arguments, byte* argument_data_base, byte* return_value_dst, TypeId return_type, FFINativeCallArgs* out) noexcept
 {
-#ifdef _WIN32
+	ASSERT_OR_IGNORE(arguments.count() <= 64);
 
 	static constexpr u8 WIN32_RET_COPY_NONE = 0;
 	static constexpr u8 WIN32_RET_COPY_I8   = 1;
@@ -104,7 +95,7 @@ void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> argumen
 	{
 		const TypeTag param_type_tag = type_tag_from_id(core, curr_argument->type);
 
-		const byte* const arg_src = argument_data + curr_argument->offset;
+		const byte* const arg_src = argument_data_base + curr_argument->offset;
 
 		u64 arg_value = 0;
 
@@ -160,8 +151,249 @@ void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> argumen
 	out->arg_values[first_return_slot + 1] = return_copy_dst;
 
 	out->arg_count = i;
+}
+
+void ffi_perform_native_call(const void* native_callee, const FFINativeCallArgs* args) noexcept
+{
+	ffi_x64_win32_asm_perform_native_call(args->arg_count, args->arg_values, native_callee);
+}
 
 #else
+
+extern "C"
+{
+	extern void ffi_x64_sysv_asm_perform_native_call(u64 stack_count, u64 stack_size, const u64* arg_values, u64 stack_arg_kinds_lo, u64 stack_arg_kinds_hi, const void* native_callee);
+}
+
+enum class SysVArgumentClass : u8
+{
+	NoClass = 0,
+	Xmm,
+	Integer,
+};
+
+struct FFISysVTypeDesc
+{
+	SysVArgumentClass qword_classes[2];
+
+	u8 qword_sizes[2];
+
+	bool is_memory;
+};
+
+static FFISysVTypeDesc sysv_classify_composite_type(CoreData* core, TypeId type, FFISysVTypeDesc desc, u64 base_offset, u64 upper_bound) noexcept
+{
+	MemberIterator it = members_of(core, type);
+
+	while (has_next(&it))
+	{
+		MemberInfo info;
+
+		OpcodeId unused_initializer;
+
+		if (!next(&it, &info, &unused_initializer))
+			ASSERT_UNREACHABLE;
+
+		TypeMetrics metrics;
+
+		if (!type_metrics_from_id(core, info.type_id, &metrics))
+			ASSERT_UNREACHABLE;
+
+		if (info.is_global || metrics.size == 0)
+			continue;
+
+		if (metrics.is_shadow)
+			TODO("Support / Forbid shadow data types in FFI.");
+
+		const u64 begin_offset = base_offset + static_cast<u64>(info.offset);
+
+		const u64 end_offset = begin_offset + metrics.size;
+
+		if (info.offset < 0 || end_offset > upper_bound)
+			TODO("Support / Forbid non-simple-layout types in FFI.");
+
+		if (end_offset > 16)
+		{
+			desc.is_memory = true;
+
+			return desc;
+		}
+
+		if ((begin_offset & (metrics.align - 1)) != 0)
+		{
+			desc.is_memory = true;
+
+			return desc;
+		}
+
+		const TypeTag type_tag = type_tag_from_id(core, info.type_id);
+
+		// We know that the beginning and end of the member is in the same
+		// qword, since its maximum size is 8 and it is naturally aligned.
+		const u8 index = begin_offset / 8;
+
+		if (type_tag == TypeTag::Integer || type_tag == TypeTag::Ptr || type_tag == TypeTag::Boolean)
+		{
+			if (desc.qword_classes[index] < SysVArgumentClass::Integer)
+				desc.qword_classes[index] = SysVArgumentClass::Integer;
+
+			if (desc.qword_sizes[index] < (end_offset & 7))
+				desc.qword_sizes[index] = (end_offset & 7);
+		}
+		else if (type_tag == TypeTag::Float)
+		{
+			if (desc.qword_classes[index] < SysVArgumentClass::Xmm)
+				desc.qword_classes[index] = SysVArgumentClass::Xmm;
+
+			if (desc.qword_sizes[index] < (end_offset & 7))
+				desc.qword_sizes[index] = (end_offset & 7);
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(type_tag == TypeTag::Composite);
+
+			const FFISysVTypeDesc member_desc = sysv_classify_composite_type(core, info.type_id, desc, begin_offset, end_offset);
+
+			if (desc.qword_classes[0] < member_desc.qword_classes[0])
+				desc.qword_classes[0] = member_desc.qword_classes[0];
+
+			if (desc.qword_classes[1] < member_desc.qword_classes[1])
+				desc.qword_classes[1] = member_desc.qword_classes[1];
+
+			if (desc.qword_sizes[0] < member_desc.qword_sizes[0])
+				desc.qword_sizes[0] = member_desc.qword_sizes[0];
+
+			if (desc.qword_sizes[1] < member_desc.qword_sizes[1])
+				desc.qword_sizes[1] = member_desc.qword_sizes[1];
+		}
+	}
+
+	return desc;
+}
+
+static FFISysVTypeDesc sysv_classify_type(CoreData* core, TypeId type) noexcept
+{
+	FFISysVTypeDesc desc{};
+
+	const TypeTag type_tag = type_tag_from_id(core, type);
+
+	if (type_tag == TypeTag::Integer || type_tag == TypeTag::Ptr || type_tag == TypeTag::Boolean)
+	{
+		const NumericType attach = type_tag == TypeTag::Integer
+			? *type_attachment_from_id<NumericType>(core, type)
+			: type_tag == TypeTag::Ptr
+			? NumericType{ 64, false }
+			: NumericType{ 8, false };
+
+		ASSERT_OR_IGNORE(attach.bits == 8 || attach.bits == 16 || attach.bits == 32 || attach.bits == 64);
+
+		desc.qword_classes[0] = SysVArgumentClass::Integer;
+		desc.qword_sizes[0] = attach.bits / 8;
+
+		return desc;
+	}
+	else if (type_tag == TypeTag::Float)
+	{
+		const NumericType attach = *type_attachment_from_id<NumericType>(core, type);
+
+		ASSERT_OR_IGNORE(attach.bits == 32 || attach.bits == 64);
+
+		desc.qword_classes[0] = SysVArgumentClass::Xmm;
+		desc.qword_sizes[0] = attach.bits / 8;
+
+		return desc;
+	}
+
+	desc = sysv_classify_composite_type(core, type, desc, 0, UINT64_MAX);
+
+	// Fix up zero-sized types by simply returning them through a register.
+	// C and C++ do effectively the same for their `void` return type.
+	if (desc.qword_classes[0] == SysVArgumentClass::NoClass)
+		desc.qword_classes[0] = SysVArgumentClass::Integer;
+
+	return desc;
+}
+
+static void sysv_prepare_arg_qword(SysVArgumentClass qword_class, u8 qword_size, const byte* value, u64* stack_args_count, u64* gpr_count, FFINativeCallArgs* args) noexcept
+{
+	if (qword_class == SysVArgumentClass::NoClass)
+		return;
+
+	ASSERT_OR_IGNORE(qword_size != 0);
+
+	u64 qword = 0;
+	memcpy(&qword, value, qword_size);
+
+	if (qword_class == SysVArgumentClass::Xmm && args->xmm_count < array_count(args->xmm_values))
+	{
+		args->xmm_values[args->xmm_count] = qword;
+		args->xmm_count += 1;
+	}
+	else if (qword_class == SysVArgumentClass::Integer && *gpr_count < array_count(args->gpr_values))
+	{
+		args->gpr_values[*gpr_count] = qword;
+		*gpr_count += 1;
+	}
+	else
+	{
+		ASSERT_OR_IGNORE(args->stack_count < array_count(args->stack_values));
+
+		args->stack_values[args->stack_count] = qword;
+		args->stack_count += 1;
+
+		*stack_args_count += 1;
+
+		args->stack_size += 8;
+	}
+}
+
+static void sysv_prepare_arg(const ScopeMember* argument, FFISysVTypeDesc desc, const byte* value, u64* stack_args_count, u64* gpr_count, FFINativeCallArgs* args) noexcept
+{
+	if (desc.is_memory)
+	{
+		ASSERT_OR_IGNORE(args->stack_count < array_count(args->stack_values));
+
+		ASSERT_OR_IGNORE(*stack_args_count < 128);
+
+		u64 qword;
+
+		const bool is_small = argument->size <= 8;
+
+		if (is_small)
+		{
+			qword = 0;
+			memcpy(&qword, value, argument->size);
+		}
+		else
+		{
+			args->stack_values[args->stack_count] = argument->size;
+			args->stack_count += 1;
+
+			qword = reinterpret_cast<u64>(value);
+
+			args->stack_arg_kinds[*stack_args_count >> 6] |= static_cast<u64>(1) << (*stack_args_count & 63);
+		}
+
+		args->stack_values[args->stack_count] = qword;
+		args->stack_count += 1;
+
+		*stack_args_count += 1;
+
+		args->stack_size += (argument->size + 7) & ~7;
+	}
+	else
+	{
+		ASSERT_OR_IGNORE(desc.qword_classes[0] != SysVArgumentClass::NoClass);
+
+		sysv_prepare_arg_qword(desc.qword_classes[0], desc.qword_sizes[0], value, stack_args_count, gpr_count, args);
+
+		sysv_prepare_arg_qword(desc.qword_classes[1], desc.qword_sizes[1], value + 8, stack_args_count, gpr_count, args);
+	}
+}
+
+void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> arguments, byte* argument_data_base, byte* return_value_dst, TypeId return_type, FFINativeCallArgs* out) noexcept
+{
+	ASSERT_OR_IGNORE(arguments.count() <= 64);
 
 	static constexpr u8 SYSV_RET_COPY_NONE   = 0;
 	static constexpr u8 SYSV_RET_COPY_GPR_LO = 0x01;
@@ -169,35 +401,80 @@ void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> argumen
 	static constexpr u8 SYSV_RET_COPY_GPR_HI = 0x04;
 	static constexpr u8 SYSV_RET_COPY_XMM_HI = 0x08;
 
-	(void) core;
+	out->stack_count = 0;
+	out->stack_size = 0;
+	out->stack_arg_kinds[0] = 0;
+	out->stack_arg_kinds[1] = 0;
+	out->xmm_count = 0;
 
-	(void) arguments;
+	u64 stack_arg_count = 0;
 
-	(void) argument_data;
+	u64 gpr_count = 0;
 
-	(void) return_value_dst;
+	const FFISysVTypeDesc return_desc = sysv_classify_type(core, return_type);
 
-	(void) return_type;
+	if (return_desc.is_memory)
+	{
+		out->gpr_values[0] = reinterpret_cast<u64>(return_value_dst);
+		gpr_count = 1;
 
-	(void) out;
+		out->ret_copy_class = SYSV_RET_COPY_NONE;
+		out->ret_copy_size_lo = 0;
+		out->ret_copy_size_hi = 0;
+		out->ret_copy_address = 0;
+	}
+	else
+	{
+		u64 return_copy_class = 0;
 
-	(void) SYSV_RET_COPY_NONE;
-	(void) SYSV_RET_COPY_GPR_LO;
-	(void) SYSV_RET_COPY_XMM_LO;
-	(void) SYSV_RET_COPY_GPR_HI;
-	(void) SYSV_RET_COPY_XMM_HI;
+		if (return_desc.qword_classes[0] == SysVArgumentClass::Xmm)
+		{
+			return_copy_class |= SYSV_RET_COPY_XMM_LO;
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(return_desc.qword_classes[0] == SysVArgumentClass::Integer);
 
-	TODO("Implement `ffi_prepare_args_for_native_call` for System-V.");
+			return_copy_class |= SYSV_RET_COPY_GPR_LO;
+		}
 
-#endif // _WIN32
+		if (return_desc.qword_classes[1] == SysVArgumentClass::Xmm)
+		{
+			return_copy_class |= SYSV_RET_COPY_XMM_HI;
+		}
+		else if (return_desc.qword_classes[1] == SysVArgumentClass::Integer)
+		{
+			return_copy_class |= SYSV_RET_COPY_GPR_HI;
+		}
+
+		out->ret_copy_class = return_copy_class;
+		out->ret_copy_size_lo = return_desc.qword_sizes[0];
+		out->ret_copy_size_hi = return_desc.qword_sizes[1];
+		out->ret_copy_address = reinterpret_cast<u64>(return_value_dst);
+	}
+
+	for (u64 i = 0; i != arguments.count(); ++i)
+	{
+		const ScopeMember* const argument = arguments.begin() + i;
+
+		const byte* const value = argument_data_base + argument->offset;
+
+		const FFISysVTypeDesc desc = sysv_classify_type(core, argument->type);
+
+		sysv_prepare_arg(argument, desc, value, &stack_arg_count, &gpr_count, out);
+	}
 }
 
 // Calls out to `native_callee`, with `args` previously preprocessed by
 // `ffi_prepare_args_for_native_call`.
 void ffi_perform_native_call(const void* native_callee, const FFINativeCallArgs* args) noexcept
 {
-	ffi_asm_perform_native_call(args->arg_count, args->arg_values, native_callee);
+	ffi_x64_sysv_asm_perform_native_call(args->stack_count, args->stack_size, args->xmm_values, args->stack_arg_kinds[0], args->stack_arg_kinds[1], native_callee);
 }
+
+#endif // _WIN32
+
+
 
 
 
