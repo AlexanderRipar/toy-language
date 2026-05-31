@@ -5502,8 +5502,6 @@ static const Opcode* handle_undefined(CoreData* core, const Opcode* code, CompVa
 
 static const Opcode* handle_unreachable([[maybe_unused]] CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
 {
-	DEBUGBREAK;
-
 	return record_interpreter_error(core, code, CompileError::UnreachableReached);
 }
 
