@@ -1821,6 +1821,8 @@ enum class CompileError
 	CyclicDefinitionType,
 	CyclicParameterReference,
 	ArrayTypeRequired,
+	FFILibraryNotFound,
+	FFISymbolNotFound,
 	LexUnexpectedCharacter,
 	LexNullCharacter,
 	LexCommentMismatchedBegin,

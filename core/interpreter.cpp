@@ -1889,12 +1889,12 @@ static const Opcode* builtin_foreign_function_import(CoreData* core, const Opcod
 	minos::LibraryHandle library;
 
 	if (!minos::dynamic_library_create(library_path, &library))
-		return record_interpreter_error(core, code, CompileError::INVALID);
+		return record_interpreter_error(core, code, CompileError::FFILibraryNotFound);
 
 	const void* function_address;
 
 	if (!minos::dynamic_library_load_function(library, symbol, &function_address))
-		return record_interpreter_error(core, code, CompileError::INVALID);
+		return record_interpreter_error(core, code, CompileError::FFISymbolNotFound);
 
 
 	const TypeId signature_type_type = type_create_simple(core, TypeTag::Type);
