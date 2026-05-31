@@ -1882,9 +1882,46 @@ static const Opcode* builtin_foreign_function_import(CoreData* core, const Opcod
 {
 	const TypeId signature_type = get_builtin_param<TypeId>(core, 0);
 
-	const Range<char8> library_path = get_builtin_param<Range<char8>>(core, 1);
+	const Range<char8> raw_library_path = get_builtin_param<Range<char8>>(core, 1);
 
 	const Range<char8> symbol = get_builtin_param<Range<char8>>(core, 2);
+
+	Range<char8> library_path;
+
+	char8 library_path_buf[8192];
+
+	if (raw_library_path.count() >= 2 && raw_library_path[0] == '.' && (raw_library_path[1] == '/' || raw_library_path[1] == '\\' || raw_library_path[1] == '.'))
+	{
+		ASSERT_OR_IGNORE(core->interp.activations.used() >= 2);
+
+		const OpcodeId caller_activation = core->interp.activations.end()[-2];
+
+		const Opcode* const caller_opcode = opcode_from_id(core, caller_activation);
+
+		const SourceId caller_source = source_id_of_opcode(core, caller_opcode);
+
+		const Range<char8> path_base = source_file_path_from_source_id(core, caller_source);
+
+		char8 path_base_parent_buf[8192];
+
+		const u32 path_base_parent_chars = minos::path_to_absolute_directory(path_base, MutRange{ path_base_parent_buf });
+
+		if (path_base_parent_chars == 0 || path_base_parent_chars > array_count(path_base_parent_buf))
+			panic("Failed to get parent directory from source file (0x%[|X]).\n", minos::last_error());
+
+		const Range<char8> path_base_parent{ path_base_parent_buf, path_base_parent_chars };
+
+		const u32 library_path_chars = minos::path_to_absolute_relative_to(raw_library_path, path_base_parent, MutRange<char8>{ library_path_buf });
+
+		if (library_path_chars == 0 || library_path_chars > array_count(library_path_buf))
+			panic("Failed to make `path` % absolute relative to `from` % (0x%[|X]).\n", library_path, path_base, minos::last_error());
+
+		library_path = Range<char8>{ library_path_buf, library_path_chars };
+	}
+	else
+	{
+		library_path = raw_library_path;
+	}
 
 	minos::LibraryHandle library;
 
