@@ -1742,7 +1742,11 @@ static const Opcode* builtin_import(CoreData* core, const Opcode* code, CompValu
 	Maybe<TypeId> file_type = import_file(core, absolute_path, is_std);
 
 	if (is_none(file_type))
+	{
+		core->interp.is_ok = false;
+
 		return nullptr;
+	}
 
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
