@@ -13,3 +13,27 @@ pub definition_typeof = func(definition: Definition) -> Type => _definition_type
 pub assert = func(x: Bool) -> Void => if !x then unreachable
 
 pub foreign_function = func(Signature: Type, library_path: []u8, symbol: []u8) -> Signature => _foreign_function(Signature, library_path, symbol)
+
+pub CompEnvironment = Struct(
+	host: Struct(
+		os_kind: u8,   // Win32 = 1, Linux = 2 
+		arch_kind: u8, // x64 = 1
+	),
+	version: Struct(
+		major: u32,
+		minor: u32,
+	)
+)
+
+let the_comp_env: CompEnvironment = .{
+	.host = .{
+		.os_kind = _compiler_host_os(),
+		.arch_kind = _compiler_host_arch(),
+	},
+	.version = .{
+		.major = _compiler_major_version(),
+		.minor = _compiler_minor_version(),
+	},
+}
+
+pub comp_env = func() -> *CompEnvironment => the_comp_env.&

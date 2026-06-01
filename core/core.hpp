@@ -2917,6 +2917,14 @@ enum class Builtin : u8
 
 	ForeignFunctionCall,
 
+	CompilerHostOs,
+
+	CompilerHostArch,
+
+	CompilerMajorVersion,
+
+	CompilerMinorVersion,
+
 	// Number of `Builtin`s, used for sizing arrays. Should not be used
 	// otherwise.
 	MAX,

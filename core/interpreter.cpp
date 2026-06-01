@@ -2061,6 +2061,54 @@ static const Opcode* builtin_foreign_function_call(CoreData* core, const Opcode*
 	return code;
 }
 
+static const Opcode* builtin_compiler_host_os(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+{
+	#ifdef _WIN32
+	CompIntegerValue os_kind = comp_integer_from_u64(1);
+	#else // Linux
+	CompIntegerValue os_kind = comp_integer_from_u64(2);
+	#endif
+
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&os_kind);
+
+	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
+
+	return convert_into(core, code, CompValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type }, *write_ctx);
+}
+
+static const Opcode* builtin_compiler_host_arch(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+{
+	CompIntegerValue arch_kind = comp_integer_from_u64(1); // x64
+
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&arch_kind);
+
+	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
+
+	return convert_into(core, code, CompValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type }, *write_ctx);
+}
+
+static const Opcode* builtin_compiler_major_version(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+{
+	CompIntegerValue major_version = comp_integer_from_u64(0);
+
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&major_version);
+
+	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
+
+	return convert_into(core, code, CompValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type }, *write_ctx);
+}
+
+static const Opcode* builtin_compiler_minor_version(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+{
+	CompIntegerValue minor_version = comp_integer_from_u64(1);
+
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&minor_version);
+
+	const TypeId comp_integer_type = type_create_simple(core, TypeTag::CompInteger);
+
+	return convert_into(core, code, CompValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type }, *write_ctx);
+}
+
 
 
 static const Opcode* handle_end_code([[maybe_unused]] CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
@@ -2647,6 +2695,10 @@ static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, Com
 		&builtin_definition_typeof,
 		&builtin_foreign_function_import,
 		&builtin_foreign_function_call,
+		&builtin_compiler_host_os,
+		&builtin_compiler_host_arch,
+		&builtin_compiler_major_version,
+		&builtin_compiler_minor_version,
 	};
 
 	static_assert(HANDLERS[static_cast<u8>(Builtin::Integer)]               == &builtin_integer);
@@ -2671,6 +2723,10 @@ static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, Com
 	static_assert(HANDLERS[static_cast<u8>(Builtin::DefinitionTypeof)]      == &builtin_definition_typeof);
 	static_assert(HANDLERS[static_cast<u8>(Builtin::ForeignFunctionImport)] == &builtin_foreign_function_import);
 	static_assert(HANDLERS[static_cast<u8>(Builtin::ForeignFunctionCall)]   == &builtin_foreign_function_call);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::CompilerHostOs)]        == &builtin_compiler_host_os);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::CompilerHostArch)]      == &builtin_compiler_host_arch);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::CompilerMajorVersion)]  == &builtin_compiler_major_version);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::CompilerMinorVersion)]  == &builtin_compiler_minor_version);
 
 	u8 ordinal;
 	code = code_attach(code, &ordinal);
@@ -6906,6 +6962,26 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
+	const TypeId compiler_metainfo_signature = make_func_type(core, comp_integer_type);
+
+	const OpcodeId compiler_host_os_body = opcode_id_from_builtin(core, Builtin::CompilerHostOs);
+
+	const OpcodeId compiler_host_arch_body = opcode_id_from_builtin(core, Builtin::CompilerHostArch);
+
+	const OpcodeId compiler_major_version_body = opcode_id_from_builtin(core, Builtin::CompilerMajorVersion);
+
+	const OpcodeId compiler_minor_version_body = opcode_id_from_builtin(core, Builtin::CompilerMinorVersion);
+
+	core->interp.builtin_infos[static_cast<u8>(Builtin::CompilerHostOs) - 1] = BuiltinInfo { compiler_host_os_body, compiler_metainfo_signature };
+
+	core->interp.builtin_infos[static_cast<u8>(Builtin::CompilerHostArch) - 1] = BuiltinInfo { compiler_host_arch_body, compiler_metainfo_signature };
+
+	core->interp.builtin_infos[static_cast<u8>(Builtin::CompilerMajorVersion) - 1] = BuiltinInfo { compiler_major_version_body, compiler_metainfo_signature };
+
+	core->interp.builtin_infos[static_cast<u8>(Builtin::CompilerMinorVersion) - 1] = BuiltinInfo { compiler_minor_version_body, compiler_metainfo_signature };
+
+
+
 	if (is_some(core->interp.imported_opcodes_log_file))
 	{
 		for (u32 i = 0; i != array_count(core->interp.builtin_infos); ++i)
@@ -7146,6 +7222,10 @@ const char8* tag_name(Builtin builtin) noexcept
 		"DefinitionTypeof",
 		"ForeignFunctionImport",
 		"ForeignFunctionCall",
+		"CompilerHostOs",
+		"CompilerHostArch",
+		"CompilerMajorVersion",
+		"CompilerMinorVersion",
 	};
 
 	u8 ordinal = static_cast<u8>(builtin);
