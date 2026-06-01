@@ -2642,7 +2642,7 @@ static bool complete_fixup(CoreData* core, Fixup fixup) noexcept
 		if (fixup.if_branch_expect_void && fixup.expects_write_ctx)
 			emit_opcode(core, Opcode::CheckWriteCtxVoid, false, node);
 
-		if (!opcodes_from_expression(core, node, true))
+		if (!opcodes_from_expression(core, node, fixup.expects_write_ctx))
 			return false;
 
 		if (fixup.if_branch_expect_void && !fixup.expects_write_ctx)
