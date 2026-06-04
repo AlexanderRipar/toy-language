@@ -7,9 +7,12 @@
 #include "../range.hpp"
 #include "../minos/minos.hpp"
 #include "../print/print.hpp"
-#include "../container/reserved_vec.hpp"
 
-#include <csetjmp>
+static constexpr u64 TOML_HEAP_RESERVE = 1 << 18;
+
+static constexpr u64 TOML_HEAP_COMMIT_INCREMENT = 1 << 12;
+
+static constexpr u32 TOML_TABLE_INITIAL_CAPACITY = 2;
 
 struct CodepointBuffer
 {
@@ -18,37 +21,50 @@ struct CodepointBuffer
 	u8 length;
 };
 
+struct TomlLocation
+{
+	u32 line;
+
+	u32 column;
+};
+
+enum class TomlTokenTag : u8
+{
+	EMPTY = 0,
+	End,
+	Identifier,
+	Dot,
+	Set,
+	Comma,
+	CurlyBeg,
+	CurlyEnd,
+	BracketBeg,
+	BracketEnd,
+	DoubleBracketBeg,
+	DoubleBracketEnd,
+	Integer,
+	String,
+	MultilineString,
+	LiteralString,
+	MultilineLiteralString,
+};
+
 struct TomlToken
 {
-	enum class Type
-	{
-		EMPTY = 0,
-		End,
-		Identifier,
-		Dot,
-		Set,
-		Comma,
-		CurlyBeg,
-		CurlyEnd,
-		BracketBeg,
-		BracketEnd,
-		DoubleBracketBeg,
-		DoubleBracketEnd,
-		Integer,
-		String,
-		MultilineString,
-		LiteralString,
-		MultilineLiteralString,
-	} type;
+	TomlTokenTag tag;
 
 	Range<char8> content;
+
+	u32 line;
+
+	u32 column;
 };
 
 struct TomlParser
 {
-	static constexpr u32 HEAP_RESERVE = 1 << 18;
+	TreeSchemaTable* root_table;
 
-	static constexpr u32 HEAP_COMMIT_INCREMENT = 1 << 12;
+	TreeSchemaTable* active_table;
 
 	const char8* begin;
 
@@ -56,24 +72,91 @@ struct TomlParser
 
 	const char8* curr;
 
-	TomlToken peek;
+	const char8* line_begin;
 
-	u32 context_top;
+	u32 line;
 
-	const TreeSchemaNode* context_stack[8];
+	TreeSchemaAllocator ts_alloc;
 
-	MutRange<byte> out;
+	Range<char8> filepath;
 
-	const Range<char8> filepath;
-
-	Range<char8> path_base;
-
-	ReservedVec<byte> heap;
-
-	MutRange<byte> memory;
-
-	jmp_buf error_jump_buffer;
+	PrintSink error_sink;
 };
+
+
+
+static TomlLocation find_location(TomlParser* parser, const char8* location) noexcept
+{
+	ASSERT_OR_IGNORE(location >= parser->begin && location < parser->end);
+
+	const char8* line_begin = parser->begin;
+
+	u32 line_number = 1;
+
+	for (const char8* curr = parser->begin; curr != location; ++curr)
+	{
+		if (*curr == '\n')
+		{
+			line_begin = curr + 1;
+
+			line_number += 1;
+		}
+	}
+
+	return TomlLocation{ line_number, static_cast<u32>(1 + location - line_begin) };
+}
+
+static void toml_error_print_header(TomlParser* parser, u32 line, u32 column) noexcept
+{
+	ASSERT_OR_IGNORE((line == 0) == (column == 0));
+
+	if (line != 0)
+		(void) print(parser->error_sink, "%:%:%: ", parser->filepath, line, column);
+	else
+		(void) print(parser->error_sink, "%: ", parser->filepath);
+}
+
+static Range<char8> token_tag_error_prefix(TomlTokenTag tag) noexcept
+{
+	if (tag == TomlTokenTag::End)
+		return range::from_literal_string(" end of input");
+	else if (tag == TomlTokenTag::Identifier)
+		return range::from_literal_string(" key name");
+	else if (tag == TomlTokenTag::Integer)
+		return range::from_literal_string(" integer value");
+	else if (tag == TomlTokenTag::String || tag == TomlTokenTag::MultilineString || tag == TomlTokenTag::LiteralString || tag == TomlTokenTag::MultilineLiteralString)
+		return range::from_literal_string(" string value");
+	else
+		return range::from_literal_string("");
+
+}
+
+template<typename... Inserts>
+static [[nodiscard]] bool toml_line_error(TomlParser* parser, u32 line, u32 column, const char8* message, Inserts... inserts) noexcept
+{
+	toml_error_print_header(parser, line, column);
+
+	(void) print(parser->error_sink, message, inserts...);
+
+	DEBUGBREAK;
+
+	return false;
+}
+
+template<typename... Inserts>
+static [[nodiscard]] Maybe<TreeSchemaTable*> toml_io_error(PrintSink error_sink, Range<char8> filepath, const char8* message, Inserts... inserts) noexcept
+{
+	// Quick-and-dirty semi-initialized parser for error-reporting.
+	TomlParser parser{};
+	parser.filepath = filepath;
+	parser.error_sink = error_sink;
+
+	toml_error_print_header(&parser, 0, 0);
+
+	(void) print(error_sink, message, inserts...);
+
+	return none<TreeSchemaTable*>();
+}
 
 
 
@@ -102,57 +185,6 @@ static bool is_hex_digit(char8 c) noexcept
 	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
 
-static bool name_equal(Range<char8> text, const char8* name) noexcept
-{
-	for (u64 i = 0; i != text.count(); ++i)
-	{
-		if (text[i] != name[i])
-			return false;
-	}
-
-	return true;
-}
-
-
-
-static u32 find_line_number(Range<char8> content, u64 offset, u64* out_line_begin_offset) noexcept
-{
-	u64 line_begin = 0;
-
-	u32 line_number = 1;
-
-	for (u64 i = 0; i != offset; ++i)
-	{
-		if (content[i] == '\n')
-		{
-			line_begin = i;
-
-			line_number += 1;
-		}
-	}
-
-	*out_line_begin_offset = line_begin;
-
-	return line_number;
-}
-
-NORETURN static void toml_error(TomlParser* parser, const char8* curr, const char8* message) noexcept
-{
-	const u64 offset = curr - parser->begin;
-
-	u64 line_begin_offset;
-
-	const u32 line_number = find_line_number(Range{ parser->begin, parser->end }, offset, &line_begin_offset);
-
-	const u32 column_number = static_cast<u32>(1 + offset - line_begin_offset);
-
-	(void) print(minos::standard_file_handle(minos::StdFileName::StdErr), "%[]%:%: ", parser->filepath, line_number, column_number);
-
-	(void) print(minos::standard_file_handle(minos::StdFileName::StdErr), message);
-
-	longjmp(parser->error_jump_buffer, 1);
-}
-
 
 
 static void skip_whitespace(TomlParser* parser) noexcept
@@ -166,7 +198,13 @@ static void skip_whitespace(TomlParser* parser) noexcept
 			while (*parser->curr != '\0' && *parser->curr != '\n')
 				parser->curr += 1;
 		}
-		else if (*parser->curr != ' ' && *parser->curr != '\t' && *parser->curr != '\r' && *parser->curr != '\n')
+		else if (*parser->curr == '\n')
+		{
+			parser->line += 1;
+
+			parser->line_begin = parser->curr + 1;
+		}
+		else if (*parser->curr != ' ' && *parser->curr != '\t' && *parser->curr != '\r')
 		{
 			break;
 		}
@@ -175,22 +213,17 @@ static void skip_whitespace(TomlParser* parser) noexcept
 	}
 }
 
-static TomlToken next(TomlParser* parser) noexcept
+static bool next(TomlParser* parser, TomlToken* out) noexcept
 {
-	if (parser->peek.type != TomlToken::Type::EMPTY)
-	{
-		const TomlToken peek = parser->peek;
-
-		parser->peek.type = TomlToken::Type::EMPTY;
-
-		return peek;
-	}
-
 	skip_whitespace(parser);
 
 	const char8 first = *parser->curr;
 
 	const char8* const token_beg = parser->curr;
+
+	const u32 token_line = parser->line;
+
+	const u32 token_column = static_cast<u32>(1 + token_beg - parser->line_begin);
 
 	parser->curr += 1;
 
@@ -204,7 +237,7 @@ static TomlToken next(TomlParser* parser) noexcept
 				parser->curr += 1;
 
 			if (parser->curr == token_beg + 2)
-				toml_error(parser, parser->curr, "Expected at least one digit in integer literal.\n");
+				return toml_line_error(parser, parser->line, static_cast<u32>(1 + token_beg - parser->line_begin), "Expected at least one digit in integer literal.\n");
 		}
 		else if (*parser->curr == 'o')
 		{
@@ -214,7 +247,7 @@ static TomlToken next(TomlParser* parser) noexcept
 				parser->curr += 1;
 
 			if (parser->curr == token_beg + 2)
-				toml_error(parser, parser->curr, "Expected at least one digit in integer literal.\n");
+				return toml_line_error(parser, parser->line, static_cast<u32>(1 + token_beg - parser->line_begin), "Expected at least one digit in integer literal.\n");
 		}
 		else if (*parser->curr == 'b')
 		{
@@ -224,7 +257,7 @@ static TomlToken next(TomlParser* parser) noexcept
 				parser->curr += 1;
 
 			if (parser->curr == token_beg + 2)
-				toml_error(parser, parser->curr, "Expected at least one digit in integer literal.\n");
+				return toml_line_error(parser, parser->line, static_cast<u32>(1 + token_beg - parser->line_begin), "Expected at least one digit in integer literal.\n");
 		}
 		else
 		{
@@ -238,9 +271,11 @@ static TomlToken next(TomlParser* parser) noexcept
 			parser->curr += 1;
 
 		if (is_dec_digit(*parser->curr) || is_alpha(*parser->curr))
-			toml_error(parser, parser->curr, "Unexpected character after integer literal.\n");
+			return toml_line_error(parser, parser->line, static_cast<u32>(1 + token_beg - parser->line_begin), "Unexpected character after integer literal.\n");
 
-		return { TomlToken::Type::Integer, { token_beg, parser->curr } };
+		*out = TomlToken{ TomlTokenTag::Integer, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+		return true;
 	}
 	else if (is_alpha(first))
 	{
@@ -249,18 +284,23 @@ static TomlToken next(TomlParser* parser) noexcept
 		while (is_alpha(*parser->curr) || is_dec_digit(*parser->curr) || *parser->curr == '_' || *parser->curr == '-')
 			parser->curr += 1;
 
-		return { TomlToken::Type::Identifier, { token_beg, parser->curr } };
+		*out = TomlToken{ TomlTokenTag::Identifier, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+		return true;
 	}
 	else if (first < ' ')
 	{
-		if (first != '\0' || parser->curr != parser->end)
-			toml_error(parser, parser->curr, "Unexpected control character in config file.\n");
+		if (first != '\0' || parser->curr < parser->end)
+			return toml_line_error(parser, parser->line, static_cast<u32>(1 + token_beg - parser->line_begin), "Unexpected control character `\\%` in config file.\n", static_cast<u8>(first));
 
-		return { TomlToken::Type::End, {} };
+		*out = TomlToken{ TomlTokenTag::End, Range<char8>{ token_beg, token_beg }, token_line, token_column };
+
+		return true;
 	}
 	else switch (first)
 	{
 	case '\'':
+	{
 		if (*parser->curr == '\'' && parser->curr[1] == '\'')
 		{
 			parser->curr += 2;
@@ -275,13 +315,15 @@ static TomlToken next(TomlParser* parser) noexcept
 				}
 				else if (*parser->curr == '\0')
 				{
-					toml_error(parser, token_beg, "String not ended before end of file.\n");
+					return toml_line_error(parser, parser->line, static_cast<u32>(1 + token_beg - parser->line_begin), "String not ended before end of file.\n");
 				}
 
 				parser->curr += 1;
 			}
 
-			return { TomlToken::Type::MultilineLiteralString, { token_beg, parser->curr } };
+			*out = TomlToken{ TomlTokenTag::MultilineLiteralString, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+			return true;
 		}
 		else
 		{
@@ -295,16 +337,20 @@ static TomlToken next(TomlParser* parser) noexcept
 				}
 				else if (*parser->curr == '\0' || *parser->curr == '\r' || *parser->curr == '\n')
 				{
-					toml_error(parser, token_beg, "Single-line string not ended before end of line.\n");
+					return toml_line_error(parser, parser->line, static_cast<u32>(1 + token_beg - parser->line_begin), "Single-line string not ended before end of line.\n");
 				}
 
 				parser->curr += 1;
 			}
 
-			return { TomlToken::Type::LiteralString, { token_beg, parser->curr } };
+			*out = TomlToken{ TomlTokenTag::LiteralString, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+			return true;
 		}
+	}
 
 	case '"':
+	{
 		if (*parser->curr == '"' && parser->curr[1] == '"')
 		{
 			parser->curr += 2;
@@ -319,7 +365,12 @@ static TomlToken next(TomlParser* parser) noexcept
 				}
 				else if (*parser->curr == '\0')
 				{
-					toml_error(parser, token_beg, "String not ended before end of file.\n");
+					return toml_line_error(parser, parser->line, static_cast<u32>(1 + token_beg - parser->line_begin), "String not ended before end of file.\n");
+				}
+				else if (*parser->curr == '\n')
+				{
+					parser->line += 1;
+					parser->line_begin = parser->curr + 1;
 				}
 				else if (*parser->curr == '\\')
 				{
@@ -329,7 +380,9 @@ static TomlToken next(TomlParser* parser) noexcept
 				parser->curr += 1;
 			}
 
-			return { TomlToken::Type::MultilineString, { token_beg, parser->curr } };
+			*out = TomlToken{ TomlTokenTag::MultilineString, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+			return true;
 		}
 		else
 		{
@@ -343,7 +396,7 @@ static TomlToken next(TomlParser* parser) noexcept
 				}
 				else if (*parser->curr == '\0' || *parser->curr == '\r' || *parser->curr == '\n')
 				{
-					toml_error(parser, token_beg, "Single-line string not ended before end of line.\n");
+					return toml_line_error(parser, parser->line, static_cast<u32>(1 + token_beg - parser->line_begin), "Single-line string not ended before end of line.\n");
 				}
 				else if (*parser->curr == '\\')
 				{
@@ -353,285 +406,101 @@ static TomlToken next(TomlParser* parser) noexcept
 				parser->curr += 1;
 			}
 
-			return { TomlToken::Type::String, { token_beg, parser->curr } };
+			*out = TomlToken{ TomlTokenTag::String, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+			return true;
 		}
+	}
 
 	case '.':
-		return {  TomlToken::Type::Dot, { token_beg, parser->curr } };
+	{
+		*out = TomlToken{ TomlTokenTag::Dot, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+		return true;
+	}
 
 	case '=':
-		return {  TomlToken::Type::Set, { token_beg, parser->curr } };
+	{
+		*out = TomlToken{ TomlTokenTag::Set, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+		return true;
+	}
 
 	case '[':
+	{
 		if (*parser->curr == '[')
 		{
 			parser->curr += 1;
 
-			return { TomlToken::Type::DoubleBracketBeg, { token_beg, parser->curr } };
+			*out = TomlToken{ TomlTokenTag::DoubleBracketBeg, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+			return true;
 		}
 		else
 		{
-			return { TomlToken::Type::BracketBeg, { token_beg, parser->curr } };
+			*out = TomlToken{ TomlTokenTag::BracketBeg, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+			return true;
 		}
+	}
 
 	case ']':
+	{
 		if (parser->curr[1] == ']')
 		{
 			parser->curr += 1;
 
-			return { TomlToken::Type::DoubleBracketEnd, { token_beg, parser->curr } };
+			*out = TomlToken{ TomlTokenTag::DoubleBracketEnd, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+			return true;
 		}
 		else
 		{
-			return { TomlToken::Type::BracketEnd, { token_beg, parser->curr } };
+			*out = TomlToken{ TomlTokenTag::BracketEnd, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+			return true;
 		}
+	}
 
 	case '{':
-		return { TomlToken::Type::CurlyBeg, { token_beg, parser->curr } };
+	{
+		*out = TomlToken{ TomlTokenTag::CurlyBeg, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+		return true;
+	}
 
 	case '}':
-		return { TomlToken::Type::CurlyEnd, { token_beg, parser->curr } };
+	{
+		*out = TomlToken{ TomlTokenTag::CurlyEnd, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+		return true;
+	}
 
 	case ',':
-		return { TomlToken::Type::Comma, {token_beg, parser->curr } };
+	{
+		*out = TomlToken{ TomlTokenTag::Comma, Range<char8>{ token_beg, parser->curr }, token_line, token_column };
+
+		return true;
+	}
 
 	default:
-		toml_error(parser, token_beg, "Unexpected character in TOML file.\n");
+	{
+		return toml_line_error(parser, parser->line, static_cast<u32>(1 + token_beg - parser->line_begin), "Unexpected character `%` (0x%[|X]) in TOML file.\n", Range<char8>{ parser->curr, 1 }, static_cast<u8>(*parser->curr));
+	}
 	}
 
 	ASSERT_UNREACHABLE;
 }
 
-static TomlToken peek(TomlParser* parser) noexcept
-{
-	if (parser->peek.type != TomlToken::Type::EMPTY)
-		return parser->peek;
 
-	parser->peek = next(parser);
 
-	return parser->peek;
-}
-
-static void skip(TomlParser* parser) noexcept
-{
-	(void) next(parser);
-}
-
-
-
-static void parse_name_element(TomlParser* parser, const TomlToken& token) noexcept
-{
-	ASSERT_OR_IGNORE(token.type == TomlToken::Type::Identifier);
-
-	if (parser->context_top == array_count(parser->context_stack))
-		toml_error(parser, token.content.begin(), "Key nesting limit exceeded.\n");
-
-	ASSERT_OR_IGNORE(parser->context_top != 0);
-
-	const TreeSchemaNode* const context = parser->context_stack[parser->context_top - 1];
-
-	if (context->kind != TreeSchemaNodeKind::Container)
-		toml_error(parser, token.content.begin(), "Tried assigning to key that does not expect subkeys.\n");
-
-	for (const TreeSchemaNode& child : context->container.children)
-	{
-		if (name_equal(token.content, child.name))
-		{
-			parser->context_stack[parser->context_top] = &child;
-
-			parser->context_top += 1;
-
-			return;
-		}
-	}
-
-	toml_error(parser, token.content.begin(), "Key does not exist.\n");
-}
-
-static u32 parse_names(TomlParser* parser) noexcept
-{
-	u32 name_count = 1;
-
-	while (true)
-	{
-		const TomlToken identity = next(parser);
-
-		if (identity.type != TomlToken::Type::Identifier)
-			toml_error(parser, identity.content.begin(), "Expected key name.\n");
-
-		parse_name_element(parser, identity);
-
-		const TomlToken next = peek(parser);
-
-		if (next.type != TomlToken::Type::Dot)
-			return name_count;
-
-		skip(parser);
-
-		name_count += 1;
-	}
-}
-
-static void pop_names(TomlParser* parser, u32 count) noexcept
-{
-	ASSERT_OR_IGNORE(parser->context_top > count);
-
-	parser->context_top -= count;
-}
-
-
-
-static void parse_value(TomlParser* parser) noexcept;
-
-static void parse_inline_table(TomlParser* parser) noexcept
-{
-	ASSERT_OR_IGNORE(peek(parser).type == TomlToken::Type::CurlyBeg);
-
-	skip(parser);
-
-	TomlToken token = peek(parser);
-
-	// Empty inline table is a special case
-	if (token.type == TomlToken::Type::CurlyEnd)
-	{
-		skip(parser);
-
-		return;
-	}
-
-	while (true)
-	{
-		const u32 name_depth = parse_names(parser);
-
-		token = peek(parser);
-
-		if (token.type != TomlToken::Type::Set)
-			toml_error(parser, token.content.begin(), "Expected `=`.\n");
-
-		parse_value(parser);
-
-		pop_names(parser, name_depth);
-
-		token = next(parser);
-
-		if (token.type == TomlToken::Type::CurlyEnd)
-			return;
-		else if (token.type != TomlToken::Type::Comma)
-			toml_error(parser, token.content.begin(), "Expected `}` or `,`.\n");
-	}
-}
-
-static void parse_boolean(TomlParser* parser) noexcept
-{
-	const TomlToken token = next(parser);
-
-	ASSERT_OR_IGNORE(parser->context_top != 0);
-
-	const TreeSchemaNode* const context = parser->context_stack[parser->context_top - 1];
-
-	bool value;
-
-	if (name_equal(token.content, "true"))
-		value = true;
-	else if (name_equal(token.content, "false"))
-		value = false;
-	else
-		toml_error(parser, token.content.begin(), "Expected a value.\n");
-
-	if (context->kind != TreeSchemaNodeKind::Boolean)
-		toml_error(parser, token.content.begin(), "Value has the wrong type for the given key.\n");
-
-	*reinterpret_cast<bool*>(parser->out.begin() + context->target_offset) = value;
-}
-
-static void parse_integer(TomlParser* parser) noexcept
-{
-	const TomlToken token = next(parser);
-
-	ASSERT_OR_IGNORE(parser->context_top != 0);
-
-	const TreeSchemaNode* const context = parser->context_stack[parser->context_top - 1];
-
-	if (context->kind != TreeSchemaNodeKind::Integer)
-		toml_error(parser, token.content.begin(), "Value has the wrong type for the given key.\n");
-
-	const Range<char8> text = token.content;
-
-	s64 value = 0;
-
-	ASSERT_OR_IGNORE(text.count() != 0);
-
-	if (text[0] == '0')
-	{
-		ASSERT_OR_IGNORE(text.count() != 2);
-
-		if (text.count() == 1)
-		{
-			// Nothing to do; value is already 0
-		}
-		else if (text[1] == 'x')
-		{
-			for (u64 i = 2; i != text.count(); ++i)
-			{
-				const char8 c = text[i];
-
-				if (c >= '0' && c <= '9')
-					value = value * 16 + c - '0';
-				else if (c >= 'a' && c <= 'f')
-					value = value * 16 + c - 'a' + 10;
-				else if (c >= 'A' && c <= 'F')
-					value = value * 16 + c - 'A' + 10;
-				else
-					ASSERT_UNREACHABLE;
-			}
-		}
-		else if (text[1] == 'o')
-		{
-			for (u64 i = 2; i != text.count(); ++i)
-			{
-				const char8 c = text[i];
-
-				ASSERT_OR_IGNORE(c >= '0' && c <= '7');
-
-				value = value * 8 + c - '0';
-			}
-		}
-		else // if (text[1] == 'b')
-		{
-			ASSERT_OR_IGNORE(text[1] == 'b');
-
-			for (u64 i = 2; i != text.count(); ++i)
-			{
-				const char8 c = text[i];
-
-				ASSERT_OR_IGNORE(c == '0' || c == '1');
-
-				value = value * 2 + c - '0';
-			}
-		}
-	}
-	else
-	{
-		for (const char8 c : text)
-		{
-			ASSERT_OR_IGNORE(c >= '0' && c <= '9');
-
-			value = value * 10 + c - '0';
-		}
-	}
-
-	*reinterpret_cast<s64*>(parser->out.begin() + context->target_offset) = value;
-}
-
-static void parse_unicode_escape_sequence(TomlParser* parser, Range<char8> text, u32 escape_chars, CodepointBuffer* out) noexcept
+static bool parse_unicode_escape_sequence(TomlParser* parser, Range<char8> text, u32 escape_chars, CodepointBuffer* out) noexcept
 {
 	if (text.count() < escape_chars)
 	{
-		const char8* error = escape_chars == 4
-			? "`\\u` escape expects four hex digits.\n"
-			: "`\\U` escape expects eight hex digits.\n";
+		const TomlLocation location = find_location(parser, text.begin());
 
-		toml_error(parser, text.begin(), error);
+		return toml_line_error(parser, location.line, location.column, "`\\%` escape expects % hex digits but found `%`.\n", escape_chars == 4 ? "u" : "U", escape_chars, text.count());
 	}
 
 	u32 utf32 = 0;
@@ -641,13 +510,23 @@ static void parse_unicode_escape_sequence(TomlParser* parser, Range<char8> text,
 		const char8 c = text[i];
 
 		if (c >= '0' && c <= '9')
+		{
 			utf32 = utf32 * 16 + c - '0';
+		}
 		else if (c >= 'a' && c <= 'f')
+		{
 			utf32 = utf32 * 16 + c - 'a' + 10;
+		}
 		else if (c >= 'A' && c <= 'F')
+		{
 			utf32 = utf32 * 16 + c - 'A' + 10;
+		}
 		else
-			toml_error(parser, text.begin() + i, "Expected hexadecimal escape character.\n");
+		{
+		const TomlLocation location = find_location(parser, text.begin() + i);
+
+			return toml_line_error(parser, location.line, location.column, "Expected hexadecimal escape character but found `%`.\n", text.subrange(i, 1));
+		}
 	}
 
 	if (utf32 <= 0x7F)
@@ -682,8 +561,12 @@ static void parse_unicode_escape_sequence(TomlParser* parser, Range<char8> text,
 	}
 	else
 	{
-		toml_error(parser, text.begin(), "Escaped codepoint is larger than the maximum unicode codepoint (0x10FFFF).\n");
+		const TomlLocation location = find_location(parser, text.begin());
+
+		return toml_line_error(parser, location.line, location.column, "Escaped codepoint 0x%[|X] is larger than the maximum unicode codepoint (0x10FFFF).\n", utf32);
 	}
+
+	return true;
 }
 
 static u32 parse_escape_sequence(TomlParser* parser, Range<char8> text, CodepointBuffer* out) noexcept
@@ -762,43 +645,277 @@ static u32 parse_escape_sequence(TomlParser* parser, Range<char8> text, Codepoin
 	// FALLTHROUGH
 
 	default:
-		toml_error(parser, text.begin(), "Unexpected escape sequence.\n");
+	{
+		const TomlLocation location = find_location(parser, text.begin());
+
+		(void) toml_line_error(parser, location.line, location.column, "Unexpected escape sequence `%`.\n", text);
+
+		return 0;
+	}
 	}
 }
 
-static void parse_escaped_string_base(TomlParser* parser, Range<char8> string) noexcept
+
+
+static bool parse_value(TomlParser* parser, TomlToken token, void* into, bool is_array, Range<char8> name) noexcept;
+
+static bool parse_subkey(TomlParser* parser, TomlToken token, TreeSchemaTable* table) noexcept;
+
+
+
+static bool add_value_to_table_or_array(TomlParser* parser, void* into, bool into_is_array, TreeSchemaValue value) noexcept
 {
-	ASSERT_OR_IGNORE(parser->context_top != 0);
+	if (into_is_array)
+	{
+		if (!ts_array_add_value(&parser->ts_alloc, static_cast<TreeSchemaArray*>(into), value))
+			return toml_line_error(parser, value.source_line, value.source_column, "Failed to grow `TreeSchemaArray`.\n");
+	}
+	else
+	{
+		const TreeSchemaTableAddResult rst = ts_table_add_value(&parser->ts_alloc, static_cast<TreeSchemaTable*>(into), value);
 
-	const TreeSchemaNode* const context = parser->context_stack[parser->context_top - 1];
+		if (rst == TreeSchemaTableAddResult::NoMemory)
+		{
+			return toml_line_error(parser, value.source_line, value.source_column, "Failed to grow `TreeSchemaTable`.\n");
+		}
+		else if (rst == TreeSchemaTableAddResult::DuplicateName)
+		{
+			const TreeSchemaValue* const existing = get(ts_table_find_value(static_cast<TreeSchemaTable*>(into), value.name_and_tag.range()));
 
-	if (context->kind != TreeSchemaNodeKind::String && context->kind != TreeSchemaNodeKind::Path)
-		toml_error(parser, string.begin(), "Value has the wrong type for the given key.\n");
+			return toml_line_error(parser, value.source_line, value.source_column, "Table already contains a key named `%` (defined at %:%:%)", value.name_and_tag.range(), parser->filepath, existing->source_line, existing->source_column);
+		}
 
-	if (string[0] == '\n')
-		string = Range{ string.begin() + 1, string.end() };
-	else if (string[0] == '\r' && string[1] == '\n')
-		string = Range{ string.begin() + 2, string.end() };
+		ASSERT_OR_IGNORE(rst == TreeSchemaTableAddResult::Ok);
+	}
 
-	void* const allocation_begin = parser->heap.begin() + parser->heap.used();
+	return true;
+}
+
+static bool parse_boolean(TomlParser* parser, TomlToken token, void* into, bool into_is_array, Range<char8> name) noexcept
+{
+	if ((token.content.count() != 4 || !range::mem_equal(token.content, range::from_literal_string("true")))
+	 && (token.content.count() != 5 || !range::mem_equal(token.content, range::from_literal_string("false")))
+	) {
+		return toml_line_error(parser, token.line, token.column, "Expected value but got key name `%`.\n", token.content);
+	}
+
+	TreeSchemaValue toml_value{};
+	
+	if (!ts_value_from_boolean(&parser->ts_alloc, name, token.line, token.column, token.content.count() == 4, &toml_value))
+		return toml_line_error(parser, token.line, token.column, "Failed to allocate `TreeSchemaValue`.\n");
+
+	return add_value_to_table_or_array(parser, into, into_is_array, toml_value);
+}
+
+static bool parse_inline_table(TomlParser* parser, TomlToken token, void* into, bool into_is_array, Range<char8> name) noexcept
+{
+	ASSERT_OR_IGNORE(token.tag == TomlTokenTag::CurlyBeg);
+
+	const Maybe<TreeSchemaTable*> new_table = ts_table_create(&parser->ts_alloc);
+
+	if (is_none(new_table))
+		return toml_line_error(parser, token.line, token.column, "Failed to allocate `TreeSchemaTable`.\n");
+
+	TreeSchemaTable* const table = get(new_table);
+
+	TreeSchemaValue table_value{};
+	
+	if (!ts_value_from_table(&parser->ts_alloc, name, token.line, token.column, table, &table_value))
+		return toml_line_error(parser, token.line, token.column, "Failed to allocate `TreeSchemaValue`.\n");
+
+	if (!add_value_to_table_or_array(parser, into, into_is_array, table_value))
+		return false;
+
+	while (true)
+	{
+		if (!next(parser, &token))
+			return false;
+
+		if (!parse_subkey(parser, token, table))
+			return false;
+
+		if (!next(parser, &token))
+			return false;
+
+		if (token.tag == TomlTokenTag::CurlyEnd)
+		{
+			return true;
+		}
+		else if (token.tag != TomlTokenTag::Comma)
+		{
+			const Range<char8> prefix = token_tag_error_prefix(token.tag);
+
+			return toml_line_error(parser, token.line, token.column, "Expected `,` or `}` after key-value pair in inline table but found% `%`.\n", prefix, token.content);
+		}
+	}
+}
+
+static bool parse_array(TomlParser* parser, TomlToken token, void* into, bool into_is_array, Range<char8> name) noexcept
+{
+	ASSERT_OR_IGNORE(token.tag == TomlTokenTag::BracketBeg);
+
+	if (!next(parser, &token))
+		return false;
+
+	const Maybe<TreeSchemaArray*> new_array = ts_array_create(&parser->ts_alloc);
+
+	if (is_none(new_array))
+		return false;
+
+	TreeSchemaArray* const array = get(new_array);
+
+	TreeSchemaValue array_value{};
+
+	if (!ts_value_from_array(&parser->ts_alloc, name, token.line, token.column, array, &array_value))
+		return toml_line_error(parser, token.line, token.column, "Failed to allocate `TreeSchemaValue`.\n");
+
+	if (!add_value_to_table_or_array(parser, into, into_is_array, array_value))
+		return false;
+
+	if (!next(parser, &token))
+		return false;
+
+	while (true)
+	{
+		if (!parse_value(parser, token, array, true, Range<char8>{}))
+			return false;
+
+		if (!next(parser, &token))
+			return false;
+
+		if (token.tag == TomlTokenTag::BracketEnd)
+		{
+			return true;
+		}
+		else if (token.tag != TomlTokenTag::Comma)
+		{
+			const Range<char8> prefix = token_tag_error_prefix(token.tag);
+
+			return toml_line_error(parser, token.line, token.column, "Expected `,` or `]` after value in array but found% `%`.\n", prefix, token.content);
+		}
+	}
+}
+
+static bool parse_integer(TomlParser* parser, TomlToken token, void* into, bool into_is_array, Range<char8> name) noexcept
+{
+	ASSERT_OR_IGNORE(token.tag == TomlTokenTag::Integer);
+
+	// This has to hold, as otherwise the token would not have been classified
+	// as an integer.
+	ASSERT_OR_IGNORE(token.content.count() != 0);
+
+	const Range<char8> text = token.content;
+
+	s64 value = 0;
+
+	if (text[0] == '0')
+	{
+		ASSERT_OR_IGNORE(text.count() != 2);
+
+		if (text.count() == 1)
+		{
+			// Nothing to do; value is already 0
+		}
+		else if (text[1] == 'x')
+		{
+			for (u64 i = 2; i != text.count(); ++i)
+			{
+				const char8 c = text[i];
+
+				if (c >= '0' && c <= '9')
+					value = value * 16 + c - '0';
+				else if (c >= 'a' && c <= 'f')
+					value = value * 16 + c - 'a' + 10;
+				else if (c >= 'A' && c <= 'F')
+					value = value * 16 + c - 'A' + 10;
+				else
+					ASSERT_UNREACHABLE;
+			}
+		}
+		else if (text[1] == 'o')
+		{
+			for (u64 i = 2; i != text.count(); ++i)
+			{
+				const char8 c = text[i];
+
+				ASSERT_OR_IGNORE(c >= '0' && c <= '7');
+
+				value = value * 8 + c - '0';
+			}
+		}
+		else // if (text[1] == 'b')
+		{
+			ASSERT_OR_IGNORE(text[1] == 'b');
+
+			for (u64 i = 2; i != text.count(); ++i)
+			{
+				const char8 c = text[i];
+
+				ASSERT_OR_IGNORE(c == '0' || c == '1');
+
+				value = value * 2 + c - '0';
+			}
+		}
+	}
+	else
+	{
+		for (const char8 c : text)
+		{
+			ASSERT_OR_IGNORE(c >= '0' && c <= '9');
+
+			value = value * 10 + c - '0';
+		}
+	}
+
+	TreeSchemaValue toml_value{};
+
+	if (!ts_value_from_integer(&parser->ts_alloc, name, token.line, token.column, value, &toml_value))
+		return toml_line_error(parser, token.line, token.column, "Failed to allocate `TreeSchemaValue`.\n");
+
+	return add_value_to_table_or_array(parser, into, into_is_array, toml_value);
+}
+
+static bool parse_escaped_string(TomlParser* parser, TomlToken token, void* into, bool into_is_array, Range<char8> name) noexcept
+{
+	ASSERT_OR_IGNORE(token.tag == TomlTokenTag::String || token.tag == TomlTokenTag::MultilineString);
+
+	Range<char8> text = token.tag == TomlTokenTag::String
+		? token.content.subrange(1, token.content.count() - 2)
+		: token.content.subrange(3, token.content.count() - 6);
+
+	if (text[0] == '\n')
+		text = Range{ text.begin() + 1, text.end() };
+	else if (text[0] == '\r' && text[1] == '\n')
+		text = Range{ text.begin() + 2, text.end() };
+
+	u64 allocation_size = 0;
+
+	Range<char8> string;
+	
+	if (!ts_string_create(&parser->ts_alloc, Range<char8>{}, &string))
+		return toml_line_error(parser, token.line, token.column, "Failed to allocate `TreeSchemaString`.\n");
 
 	u32 uncopied_begin = 0;
 
 	u32 i = 0;
 
-	while (i < static_cast<u32>(string.count()))
+	while (i < static_cast<u32>(text.count()))
 	{
-		if (string[i] == '\\')
+		if (text[i] == '\\')
 		{
 			CodepointBuffer utf8;
 
-			const u32 escape_chars = parse_escape_sequence(parser, Range{ string.begin() + i, string.end() }, &utf8);
+			const u32 escape_chars = parse_escape_sequence(parser, Range{ text.begin() + i, text.end() }, &utf8);
 
 			const u32 uncopied_length = i - uncopied_begin;
 
-			parser->heap.append_exact(string.begin() + uncopied_begin, uncopied_length);
+			if (!ts_string_append(&parser->ts_alloc, text.subrange(uncopied_begin, uncopied_length), &string))
+				return toml_line_error(parser, token.line, token.column, "Failed to grow `TreeSchemaString`.\n");
 
-			parser->heap.append_exact(utf8.buf, utf8.length);
+			if (!ts_string_append(&parser->ts_alloc, Range<char8>{ utf8.buf, utf8.length }, &string))
+				return toml_line_error(parser, token.line, token.column, "Failed to grow `TreeSchemaString`.\n");
+
+			allocation_size += uncopied_length + utf8.length;
 
 			i += escape_chars;
 
@@ -810,307 +927,347 @@ static void parse_escaped_string_base(TomlParser* parser, Range<char8> string) n
 		}
 	}
 
-	ASSERT_OR_IGNORE(i == string.count());
+	ASSERT_OR_IGNORE(i == text.count());
 
 	const u32 uncopied_length = i - uncopied_begin;
 
-	parser->heap.append_exact(string.begin() + uncopied_begin, uncopied_length);
+	if (!ts_string_append(&parser->ts_alloc, text.subrange(uncopied_begin, uncopied_length), &string))
+		return toml_line_error(parser, token.line, token.column, "Failed to grow `TreeSchemaString`.\n");
 
-	Range<char8> value{ static_cast<const char8*>(allocation_begin), reinterpret_cast<const char8*>(parser->heap.begin()) + parser->heap.used() };
+	allocation_size += uncopied_length;
 
-	if (context->kind == TreeSchemaNodeKind::Path)
+	TreeSchemaValue toml_value{};
+	
+	if (!ts_value_from_string(&parser->ts_alloc, name, token.line, token.column, string, &toml_value))
+		return toml_line_error(parser, token.line, token.column, "Failed to allocate `TreeSchemaValue`.\n");
+
+	return add_value_to_table_or_array(parser, into, into_is_array, toml_value);
+}
+
+static bool parse_literal_string(TomlParser* parser, TomlToken token, void* into, bool into_is_array, Range<char8> name) noexcept
+{
+	ASSERT_OR_IGNORE(token.tag == TomlTokenTag::LiteralString || token.tag == TomlTokenTag::MultilineLiteralString);
+
+	Range<char8> text = token.tag == TomlTokenTag::LiteralString
+		? token.content.subrange(1, token.content.count() - 2)
+		: token.content.subrange(3, token.content.count() - 6);
+
+	if (text[0] == '\n')
+		text = Range{ text.begin() + 1, text.end() };
+	else if (text[0] == '\r' && text[1] == '\n')
+		text = Range{ text.begin() + 2, text.end() };
+
+	Range<char8> string;
+
+	if (!ts_string_create(&parser->ts_alloc, text, &string))
+		return toml_line_error(parser, token.line, token.column, "Failed to allocate `TreeSchemaString`.\n");
+
+	TreeSchemaValue toml_value{};
+	
+	if (!ts_value_from_string(&parser->ts_alloc, name, token.line, token.column, string, &toml_value))
+		return toml_line_error(parser, token.line, token.column, "Failed to allocate `TreeSchemaValue`.\n");
+
+	return add_value_to_table_or_array(parser, into, into_is_array, toml_value);
+}
+
+
+
+static bool parse_value(TomlParser* parser, TomlToken token, void* into, bool is_array, Range<char8> name) noexcept
+{
+	if (token.tag == TomlTokenTag::Identifier)
 	{
-		char8 path_buf[minos::MAX_PATH_CHARS];
-
-		const u32 path_chars = minos::path_to_absolute_relative_to(value, parser->path_base, MutRange{ path_buf });
-
-		if (path_chars == 0 || path_chars > array_count(path_buf))
-			toml_error(parser, string.begin(), "Resulting absolute path exceeds maximum path length.\n");
-
-		parser->heap.pop_by(static_cast<u32>(value.count()));
-
-		value = { value.begin(), path_chars };
-
-		parser->heap.append_exact(path_buf, path_chars);
+		return parse_boolean(parser, token, into, is_array, name);
 	}
-
-	*reinterpret_cast<Range<char8>*>(parser->out.begin() + context->target_offset) = value;
-}
-
-static void parse_string(TomlParser* parser) noexcept
-{
-	const TomlToken token = next(parser);
-
-	ASSERT_OR_IGNORE(token.content.count() >= 2);
-
-	parse_escaped_string_base(parser, Range{ token.content.begin() + 1, token.content.end() - 1 });
-}
-
-static void parse_multiline_string(TomlParser* parser) noexcept
-{
-	const TomlToken token = next(parser);
-
-	ASSERT_OR_IGNORE(token.content.count() >= 6);
-
-	parse_escaped_string_base(parser, Range{ token.content.begin() + 3, token.content.end() - 3 });
-}
-
-static void parse_literal_string_base(TomlParser* parser, Range<char8> string) noexcept
-{
-	ASSERT_OR_IGNORE(parser->context_top != 0);
-
-	const TreeSchemaNode* const context = parser->context_stack[parser->context_top - 1];
-
-	if (context->kind != TreeSchemaNodeKind::String && context->kind != TreeSchemaNodeKind::Path)
-		toml_error(parser, string.begin(), "Value has the wrong type for the given key.\n");
-
-	if (string[0] == '\n')
-		string = Range{ string.begin() + 1, string.end() };
-	else if (string[0] == '\r' && string[1] == '\n')
-		string = Range{ string.begin() + 2, string.end() };
-
-	Range<char8> value;
-
-	if (context->kind == TreeSchemaNodeKind::Path)
+	else if (token.tag == TomlTokenTag::CurlyBeg)
 	{
-		char8 path_buf[minos::MAX_PATH_CHARS];
-
-		const u32 path_chars = minos::path_to_absolute_relative_to(string, parser->path_base, MutRange{ path_buf });
-
-		if (path_chars == 0 || path_chars > array_count(path_buf))
-			toml_error(parser, string.begin(), "Resulting absolute path exceeds maximum path length.\n");
-
-		value = { reinterpret_cast<const char8*>(parser->heap.begin() + parser->heap.used()), path_chars };
-
-		parser->heap.append_exact(path_buf, path_chars);
+		return parse_inline_table(parser, token, into, is_array, name);
+	}
+	else if (token.tag == TomlTokenTag::BracketBeg)
+	{
+		return parse_array(parser, token, into, is_array, name);
+	}
+	else if (token.tag == TomlTokenTag::Integer)
+	{
+		return parse_integer(parser, token, into, is_array, name);
+	}
+	else if (token.tag == TomlTokenTag::String || token.tag == TomlTokenTag::MultilineString)
+	{
+		return parse_escaped_string(parser, token, into, is_array, name);
+	}
+	else if (token.tag == TomlTokenTag::LiteralString || token.tag == TomlTokenTag::MultilineLiteralString)
+	{
+		return parse_literal_string(parser, token, into, is_array, name);
 	}
 	else
 	{
-		void* const allocation_begin = parser->heap.begin() + parser->heap.used();
+		const Range<char8> prefix = token_tag_error_prefix(token.tag);
 
-		parser->heap.append_exact(string.begin(), static_cast<u32>(string.count()));
-
-		value = { static_cast<const char8*>(allocation_begin), static_cast<u32>(string.count()) };
+		return toml_line_error(parser, token.line, token.column, "Expected value but found% `%`.\n", prefix, token.content);
 	}
-
-	*reinterpret_cast<Range<char8>*>(parser->out.begin() + context->target_offset) = value;
 }
 
-static void parse_literal_string(TomlParser* parser) noexcept
+static bool parse_subkey(TomlParser* parser, TomlToken token, TreeSchemaTable* table) noexcept
 {
-	const TomlToken token = next(parser);
+	ASSERT_OR_IGNORE(token.tag == TomlTokenTag::Identifier);
 
-	ASSERT_OR_IGNORE(token.content.count() >= 2);
+	const Range<char8> name = token.content;
 
-	parse_literal_string_base(parser, Range{ token.content.begin() + 1, token.content.end() - 1});
-}
+	const u32 line = token.line;
 
-static void parse_multiline_literal_string(TomlParser* parser) noexcept
-{
-	const TomlToken token = next(parser);
+	const u32 column = token.column;
 
-	ASSERT_OR_IGNORE(token.content.count() >= 6);
+	if (!next(parser, &token))
+		return false;
 
-	parse_literal_string_base(parser, Range{ token.content.begin() + 3, token.content.end() - 3});
-}
-
-static void parse_value(TomlParser* parser) noexcept
-{
-	const TomlToken token = peek(parser);
-
-	switch (token.type)
+	if (token.tag == TomlTokenTag::Dot)
 	{
-	case TomlToken::Type::BracketBeg:
-		TODO("Implement toml array parsing (when necessary)");
+		const Maybe<TreeSchemaValue*> existing_value = ts_table_find_value(table, name);
 
-	case TomlToken::Type::CurlyBeg:
-		return parse_inline_table(parser);
+		TreeSchemaTable* subkey_table;
 
-	case TomlToken::Type::Identifier:
-		return parse_boolean(parser);
+		if (is_none(existing_value))
+		{
+			const Maybe<TreeSchemaTable*> new_subkey = ts_table_create(&parser->ts_alloc);
 
-	case TomlToken::Type::Integer:
-		return parse_integer(parser);
+			if (is_none(new_subkey))
+				return toml_line_error(parser, token.line, token.column, "Failed to allocate `TreeSchemaTable`.\n");
 
-	case TomlToken::Type::String:
-		return parse_string(parser);
+			TreeSchemaValue new_subkey_value{};
+			
+			if (!ts_value_from_table(&parser->ts_alloc, name, line, column, get(new_subkey), &new_subkey_value))
+				return toml_line_error(parser, token.line, token.column, "Failed to allocate `TreeSchemaValue`.\n");
 
-	case TomlToken::Type::LiteralString:
-		return parse_literal_string(parser);
+			const TreeSchemaTableAddResult add_rst = ts_table_add_value(&parser->ts_alloc, table, new_subkey_value);
 
-	case TomlToken::Type::MultilineString:
-		return parse_multiline_string(parser);
+			if (add_rst == TreeSchemaTableAddResult::NoMemory)
+				return toml_line_error(parser, token.line, token.column, "Failed to grow `TreeSchemaTable`.\n");
 
-	case TomlToken::Type::MultilineLiteralString:
-		return parse_multiline_literal_string(parser);
+			ASSERT_OR_IGNORE(add_rst == TreeSchemaTableAddResult::Ok);
 
-	default:
-		toml_error(parser, token.content.begin(), "Expected a value.\n");
+			subkey_table = get(new_subkey);
+		}
+		else if (get(existing_value)->name_and_tag.attachment() == TreeSchemaValueTag::Table)
+		{
+			subkey_table = get(existing_value)->value.table;
+		}
+		else
+		{
+			return toml_line_error(parser, line, column, "Key `%` was already defined at %:%:%", token.content, parser->filepath, get(existing_value)->source_line, get(existing_value)->source_column);
+		}
+
+		if (!next(parser, &token))
+			return false;
+
+		return parse_subkey(parser, token, subkey_table);
 	}
+	else if (token.tag == TomlTokenTag::Set)
+	{
+		if (!next(parser, &token))
+			return false;
+
+		return parse_value(parser, token, table, false, name);
+	}
+	else
+	{
+		const Range<char8> prefix = token_tag_error_prefix(token.tag);
+
+		return toml_line_error(parser, token.line, token.column, "Unexpected% `%` after key name. Expected `.` or `=`.\n", prefix, token.content);
+	}
+}
+
+static bool parse_table(TomlParser* parser) noexcept
+{
+	TomlToken token;
+
+	if (!next(parser, &token))
+		return false;
+
+	if (token.tag != TomlTokenTag::Identifier)
+	{
+		const Range<char8> prefix = token_tag_error_prefix(token.tag);
+
+		return toml_line_error(parser, token.line, token.column, "Expected key name after top-level `[`, but found% `%`.\n", prefix, token.content);
+	}
+
+	const Maybe<TreeSchemaTable*> table = ts_table_create(&parser->ts_alloc);
+
+	if (is_none(table))
+		return toml_line_error(parser, token.line, token.column, "Failed to allocate `TreeSchemaTable`.\n");
+
+	TreeSchemaValue table_value{};
+	
+	if (!ts_value_from_table(&parser->ts_alloc, token.content, token.line, token.column, get(table), &table_value))
+		return toml_line_error(parser, token.line, token.column, "Failed to allocate `TreeSchemaValue`.\n");
+
+	if (!add_value_to_table_or_array(parser, parser->root_table, false, table_value))
+		return false;
+
+	parser->active_table = get(table);
+
+
+
+	if (!next(parser, &token))
+		return false;
+
+	if (token.tag != TomlTokenTag::BracketEnd)
+	{
+		Range<char8> prefix;
+
+		if (token.tag == TomlTokenTag::End)
+		{
+			return toml_line_error(parser, token.line, token.column, "Expected `]` to end top-level table name, but found end of input.\n");
+		}
+
+		if (token.tag == TomlTokenTag::Integer)
+			prefix = range::from_literal_string(" integer value");
+		else if (token.tag == TomlTokenTag::String || token.tag == TomlTokenTag::MultilineString || token.tag == TomlTokenTag::LiteralString || token.tag == TomlTokenTag::MultilineLiteralString)
+			prefix = range::from_literal_string(" string value");
+		else
+			prefix = range::from_literal_string("");
+
+		return toml_line_error(parser, token.line, token.column, "Expected `]` to end top-level table name, but found% `%`.\n");
+	}
+
+	return true;
+}
+
+static bool parse_toml_root(TomlParser* parser, TomlToken token) noexcept
+{
+	if (token.tag == TomlTokenTag::Identifier)
+	{
+		return parse_subkey(parser, token, parser->active_table);
+	}
+	else if (token.tag == TomlTokenTag::BracketBeg)
+	{
+		return parse_table(parser);
+	}
+	else if (token.tag == TomlTokenTag::DoubleBracketBeg)
+	{
+		TODO("Implement TOML arrays-of-tables");
+	}
+	else
+	{
+		Range<char8> prefix;
+
+		if (token.tag == TomlTokenTag::Integer)
+			prefix = range::from_literal_string(" integer value");
+		else if (token.tag == TomlTokenTag::String || token.tag == TomlTokenTag::MultilineString || token.tag == TomlTokenTag::LiteralString || token.tag == TomlTokenTag::MultilineLiteralString)
+			prefix = range::from_literal_string(" string value");
+		else
+			prefix = range::from_literal_string("");
+
+		return toml_line_error(parser, token.line, token.column, "Unexpected top-level% `%`. Expected key name.\n", prefix, token.content);
+	}
+}
+
+static bool parse_toml(TomlParser* parser) noexcept
+{
+	TomlToken token;
+
+	if (!next(parser, &token))
+		return false;
+
+	while (token.tag != TomlTokenTag::End)
+	{
+		if (!parse_toml_root(parser, token))
+			return false;
+
+		if (!next(parser, &token))
+			return false;
+	}
+
+	return true;
 }
 
 
 
-
-
-static TomlParser init_toml_parser(Range<char8> filepath, const TreeSchemaNode* schema, MutRange<byte> inout_parsed, MutRange<byte>* out_allocation) noexcept
+Maybe<TreeSchemaTable*> parse_toml_blob(Range<char8> blob, Range<char8> filepath, PrintSink error_sink, TreeSchemaAllocator* inout_alloc) noexcept
 {
-	byte* const memory = static_cast<byte*>(minos::mem_reserve(TomlParser::HEAP_RESERVE));
+	TomlParser parser{};
+	parser.begin = blob.begin();
+	parser.curr = blob.begin();
+	parser.end = blob.end();
+	parser.line_begin = blob.begin();
+	parser.line = 1;
+	parser.ts_alloc = ts_allocator_create(TOML_HEAP_RESERVE, TOML_HEAP_COMMIT_INCREMENT);
+	parser.filepath = filepath;
+	parser.error_sink = error_sink;
+
+	const Maybe<TreeSchemaTable*> root_table = ts_table_create(&parser.ts_alloc);
+
+	if (is_none(root_table))
+		return none<TreeSchemaTable*>();
+
+	parser.root_table = get(root_table);
+	parser.active_table = get(root_table);
+
+	if (!parse_toml(&parser))
+		return none<TreeSchemaTable*>();
+
+	*inout_alloc = parser.ts_alloc;
+
+	return root_table;
+}
+
+Maybe<TreeSchemaTable*> parse_toml_file(Range<char8> filepath, PrintSink error_sink, TreeSchemaAllocator* inout_alloc) noexcept
+{
+	minos::FileHandle file;
+
+	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, none<const minos::CompletionInitializer*>(), false, &file))
+		return toml_io_error(error_sink, filepath, "Failed to open TOML file (0x%[|X]).\n", minos::last_error());
+
+	minos::FileInfo file_info;
+
+	if (!minos::file_get_info(file, &file_info))
+	{
+		minos::file_close(file);
+
+		return toml_io_error(error_sink, filepath, "Failed to get size of TOML file (0x%[|X]).\n", minos::last_error());
+	}
+
+	void* const memory = minos::mem_reserve(file_info.bytes);
 
 	if (memory == nullptr)
-		panic("Could not reserve memory for TomlParser (0x%[|X]).\n", minos::last_error());
+	{
+		minos::file_close(file);
 
-	TomlParser parser;
+		return toml_io_error(error_sink, filepath, "Failed to reserve % bytes of memory for reading TOML file (0x%[|X]).\n", minos::last_error());
+	}
 
-	parser.out = inout_parsed;
-	parser.peek = {};
-	parser.context_top = 1;
-	parser.context_stack[0] = schema;
-	parser.heap.init(MutRange<byte>{ memory, TomlParser::HEAP_RESERVE }, TomlParser::HEAP_COMMIT_INCREMENT);
-	parser.memory = MutRange<byte>{ memory, TomlParser::HEAP_RESERVE };
+	if (!minos::mem_commit(memory, file_info.bytes))
+	{
+		minos::mem_unreserve(memory, file_info.bytes);
 
-	minos::FileHandle filehandle;
+		minos::file_close(file);
 
-	if (!minos::file_create(filepath, minos::Access::Read, minos::ExistsMode::Open, minos::NewMode::Fail, minos::AccessPattern::Sequential, none<const minos::CompletionInitializer*>(), false, &filehandle))
-		panic("Could not open config file '%' (0x%[|X])\n", filepath, minos::last_error());
-
-	minos::FileInfo fileinfo;
-
-	if (!minos::file_get_info(filehandle, &fileinfo))
-		panic("Could not determine length of config file '%' (0x%[|X])\n", filepath, minos::last_error());
-
-	if (fileinfo.bytes > UINT32_MAX)
-		panic("Length of config file '%' (% bytes) exceeds the maximum size of 4GB", filepath, fileinfo.bytes);
-
-	parser.heap.reserve_exact(static_cast<u32>(fileinfo.bytes + 1));
-
-	char8* buffer = static_cast<char8*>(minos::mem_reserve(fileinfo.bytes + 1));
-
-	if (buffer == nullptr)
-		panic("Could not reserve buffer of % bytes for reading config file (0x%[|X])\n", fileinfo.bytes + 1, minos::last_error());
-
-	if (!minos::mem_commit(buffer, fileinfo.bytes + 1))
-		panic("Could not commit buffer of % bytes for reading config file (0x%[|X])\n", fileinfo.bytes + 1, minos::last_error());
-
-	buffer[fileinfo.bytes] = '\0';
-
-	parser.begin = buffer;
-	parser.end = buffer + fileinfo.bytes + 1;
-	parser.curr = buffer;
+		return toml_io_error(error_sink, filepath, "Failed to commit % bytes of memory for reading TOML file (0x%[|X]).\n", minos::last_error());
+	}
 
 	u32 bytes_read;
 
-	if (!minos::file_read(filehandle, MutRange{ reinterpret_cast<byte*>(buffer), fileinfo.bytes }, 0, &bytes_read))
-		panic("Could not read config file '%' (0x%[|X])\n", filepath, minos::last_error());
-
-	if (bytes_read != fileinfo.bytes)
-		panic("Could not read config file '%' completely (read % out of % bytes)\n", filepath, bytes_read, fileinfo.bytes);
-
-	minos::file_close(filehandle);
-
-	char8 path_base[minos::MAX_PATH_CHARS];
-
-	const u32 path_base_chars = minos::path_to_absolute_directory(filepath, MutRange{ path_base });
-
-	if (path_base_chars == 0 || path_base_chars > array_count(path_base))
-		panic("Could not determine folder containing config file (0x%[|X])\n", minos::last_error());
-
-	parser.path_base = { reinterpret_cast<char8*>(parser.heap.begin() + parser.heap.used()), path_base_chars };
-
-	parser.heap.append_exact(path_base, path_base_chars);
-
-	*out_allocation = MutRange{ parser.heap.begin(), TomlParser::HEAP_RESERVE };
-
-	return parser;
-}
-
-static void parse_toml_impl(TomlParser* parser) noexcept
-{
-	while (true)
+	if (!minos::file_read(file, MutRange<byte>{ static_cast<byte*>(memory), file_info.bytes }, 0, &bytes_read))
 	{
-		TomlToken token = peek(parser);
+		minos::mem_unreserve(memory, file_info.bytes);
 
-		switch (token.type)
-		{
-		case TomlToken::Type::BracketBeg:
-		{
-			skip(parser);
+		minos::file_close(file);
 
-			parser->context_top = 1;
-
-			(void) parse_names(parser);
-
-			token = next(parser);
-
-			if (token.type != TomlToken::Type::BracketEnd)
-				toml_error(parser, token.content.begin(), "Expected `]`.\n");
-
-			break;
-		}
-
-		case TomlToken::Type::Identifier:
-		{
-			const u32 name_depth = parse_names(parser);
-
-			token = next(parser);
-
-			if (token.type != TomlToken::Type::Set)
-				toml_error(parser, token.content.begin(), "Expected `=` or `.`.\n");
-
-			parse_value(parser);
-
-			pop_names(parser, name_depth);
-
-			break;
-		}
-
-		case TomlToken::Type::End:
-		{
-			return;
-		}
-
-		case TomlToken::Type::DoubleBracketBeg:
-			TODO("Implement TOML arrays-of-tables (when necessary)");
-
-		default:
-			ASSERT_UNREACHABLE;
-		}
-	}
-}
-
-
-
-bool parse_toml(Range<char8> filepath, const TreeSchemaNode* schema, MutRange<byte> inout_parsed, MutRange<byte>* out_allocation) noexcept
-{
-	MutRange<byte> allocation;
-
-	TomlParser parser = init_toml_parser(filepath, schema, inout_parsed, &allocation);
-
-	bool is_ok;
-
-	if (setjmp(parser.error_jump_buffer) == 0)
-	{
-		parse_toml_impl(&parser);
-
-		*out_allocation = allocation;
-
-		is_ok = true;
-	}
-	else
-	{
-		release_toml(allocation);
-
-		*out_allocation = {};
-
-		is_ok = false;
+		return toml_io_error(error_sink, filepath, "Failed to read from TOML file (0x%[|X])", minos::last_error());
 	}
 
-	minos::mem_unreserve(const_cast<char8*>(parser.begin), parser.end - parser.begin);
+	if (bytes_read != file_info.bytes)
+	{
+		minos::mem_unreserve(memory, file_info.bytes);
 
-	return is_ok;
-}
+		minos::file_close(file);
 
-void release_toml(MutRange<byte> allocation) noexcept
-{
-	minos::mem_unreserve(allocation.begin(), allocation.count());
+		return toml_io_error(error_sink, filepath, "Failed to read % bytes from from TOML file, reading % bytes instead (0x%[|X])", file_info.bytes, bytes_read, minos::last_error());
+	}
+
+	const Maybe<TreeSchemaTable*> result = parse_toml_blob(Range<char8>{ static_cast<char8*>(memory), file_info.bytes }, filepath, error_sink, inout_alloc);
+
+	minos::mem_unreserve(memory, file_info.bytes);
+
+	minos::file_close(file);
+
+	return result;
 }

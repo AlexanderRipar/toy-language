@@ -173,35 +173,41 @@ using OpcodeHandlerFunc = const Opcode* (*) (CoreData* core, const Opcode* code,
 
 static void log_ast(CoreData* core, AstNode* node) noexcept
 {
+	if (!core->interp.log_imported_asts)
+		return;
+
 	const SourceId source_id = source_id_of_ast_node(core, node);
 
 	const SourceLocation location = source_location_from_source_id(core, source_id);
 
-	diag::print_header(get(core->interp.imported_asts_log_file), "%:%:%",
+	diag::print_header(core->interp.imported_asts_sink, "%:%:%",
 		location.filepath,
 		location.line_number,
 		location.column_number
 	);
 
-	diag::print_ast(get(core->interp.imported_asts_log_file), core, node);
+	diag::print_ast(core->interp.imported_asts_sink, core, node);
 }
 
 static void log_opcodes(CoreData* core, const Opcode* code) noexcept
 {
+	if (!core->interp.log_imported_opcodes)
+		return;
+
 	const SourceId source_id = source_id_of_opcode(core, code);
 
 	SourceLocation location = source_location_from_source_id(core, source_id);
 
 	const OpcodeId code_id = id_from_opcode(core, code);
 
-	diag::print_header(get(core->interp.imported_opcodes_log_file), "%:%:% (OpcodeId<%>)",
+	diag::print_header(core->interp.imported_opcodes_sink, "%:%:% (OpcodeId<%>)",
 			location.filepath,
 			location.line_number,
 			location.column_number,
 			static_cast<u32>(code_id)
 	);
 
-	diag::print_opcodes(get(core->interp.imported_opcodes_log_file), core, code, true);
+	diag::print_opcodes(core->interp.imported_opcodes_sink, core, code, true);
 }
 
 
@@ -6318,8 +6324,7 @@ static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, Source
 
 		const IdentifierId identifier_id = attachment_of<AstDefinitionData>(node)->identifier_id;
 
-		if (is_some(core->interp.imported_opcodes_log_file))
-			log_opcodes(core, get(initializer));
+		log_opcodes(core, get(initializer));
 
 		const bool is_pub = has_flag(node, AstFlag::Definition_IsPub);
 
@@ -6394,8 +6399,7 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 		}
 	}
 
-	if (is_some(core->interp.imported_asts_log_file))
-		log_ast(core, ast);
+	log_ast(core, ast);
 
 	if (!type_from_ast(core, ast, type, file_id))
 	{
@@ -6982,7 +6986,7 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
-	if (is_some(core->interp.imported_opcodes_log_file))
+	if (core->interp.log_imported_opcodes)
 	{
 		for (u32 i = 0; i != array_count(core->interp.builtin_infos); ++i)
 		{
@@ -7027,9 +7031,30 @@ void interpreter_init(CoreData* core, MemoryAllocation allocation) noexcept
 {
 	Interpreter* const interp = &core->interp;
 
-	interp->imported_asts_log_file = config_open_log_file(core->config->logging.imports.asts, some(minos::StdFileName::StdOut));
-	interp->imported_opcodes_log_file = config_open_log_file(core->config->logging.imports.opcodes, some(minos::StdFileName::StdOut));
-	interp->imported_types_log_file = config_open_log_file(core->config->logging.imports.types, some(minos::StdFileName::StdOut));
+	const bool log_imported_asts = core->config->logging.imports.asts_sink.name_and_enabled.attachment();
+
+	interp->log_imported_asts = log_imported_asts;
+
+	if (log_imported_asts)
+		interp->imported_asts_sink = core->config->logging.imports.asts_sink.sink;
+
+
+	const bool log_imported_opcodes = core->config->logging.imports.opcodes_sink.name_and_enabled.attachment();
+
+	interp->log_imported_opcodes = log_imported_opcodes;
+
+	if (log_imported_opcodes)
+		interp->imported_opcodes_sink = core->config->logging.imports.opcodes_sink.sink;
+
+
+	const bool log_imported_types = core->config->logging.imports.types_sink.name_and_enabled.attachment();
+
+	interp->log_imported_opcodes = log_imported_types;
+
+	if (log_imported_types)
+		interp->imported_types_sink = core->config->logging.imports.types_sink.sink;
+
+
 
 	u64 offset = 0;
 

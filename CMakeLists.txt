@@ -19,6 +19,8 @@ set(INFRA_SOURCES
 	infra/print/print.cpp
 	infra/toml/toml.hpp
 	infra/toml/toml.cpp
+	infra/tree_schema/tree_schema.hpp
+	infra/tree_schema/tree_schema.cpp
 	infra/common.cpp
 	infra/assert.hpp
 	infra/hash.hpp
@@ -55,7 +57,6 @@ set(CORE_SOURCES
 set(DIAG_SOURCES
 	diag/diag.hpp
 	diag/print_ast.cpp
-	diag/print_config.cpp
 	diag/print_opcodes.cpp
 	diag/print_type.cpp
 )

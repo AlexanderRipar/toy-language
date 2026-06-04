@@ -8,10 +8,6 @@ namespace diag
 {
 	s64 print_ast(PrintSink sink, CoreData* core, AstNode* root) noexcept;
 
-	void print_config(PrintSink sink, const Config* config) noexcept;
-
-	void print_config_help(PrintSink sink, u32 depth = 0) noexcept;
-
 	s64 print_opcodes(PrintSink sink, CoreData* core, const Opcode* code, bool follow_refs) noexcept;
 
 	s64 print_type(PrintSink sink, CoreData* core, TypeId type_id) noexcept;
@@ -41,18 +37,6 @@ namespace diag
 	s64 print_ast(Sink sink, CoreData* core, AstNode* root) noexcept
 	{
 		return print_ast(print_make_sink(sink), core, root);
-	}
-
-	template<typename Sink>
-	void print_config(Sink sink, const Config* config) noexcept
-	{
-		print_config(print_make_sink(sink), config);
-	}
-
-	template<typename Sink>
-	void print_config_help(Sink sink, u32 depth = 0) noexcept
-	{
-		print_config_help(print_make_sink(sink), depth);
 	}
 
 	template<typename Sink>

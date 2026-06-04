@@ -6,10 +6,12 @@
 
 static CoreData* create_tiny_core() noexcept
 {
-	Config config{};
-	config.enable = { 0 };
+	Config config = config_defaults();
+
+	memset(&config.enable, 0, sizeof(config.enable));
 	config.enable.type_pool = true;
 	config.enable.heap = true;
+	config.enable.temp_stack = true;
 
 	return create_core_data(&config);
 }

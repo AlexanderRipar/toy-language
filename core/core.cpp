@@ -198,10 +198,8 @@ CoreData* create_core_data(const Config* config) noexcept
 
 
 
-	const Maybe<minos::FileHandle> config_log_file = config_open_log_file(config->logging.config, some(minos::StdFileName::StdOut));
-
-	if (is_some(config_log_file))
-		diag::print_config(get(config_log_file), config);
+	if (config->logging.config_sink.name_and_enabled.attachment())
+		print_config(config->logging.config_sink.sink, config);
 
 
 

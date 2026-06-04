@@ -16,17 +16,17 @@ s32 main(s32 argc, const char8** argv)
 	}
 	else if (argc == 2 && strcmp(argv[1], "-help") == 0)
 	{
-		diag::print_config_help(minos::standard_file_handle(minos::StdFileName::StdOut));
+		print_config_help(minos::standard_file_handle(minos::StdFileName::StdOut));
 
 		return EXIT_SUCCESS;
 	}
 	else if (argc == 3 && strcmp(argv[1] , "-config") == 0)
 	{
-		MutRange<byte> config_allocation;
+		Config config;
 
-		Config config{};
+		TreeSchemaAllocator ts_alloc;
 
-		if (!parse_toml(range::from_cstring(argv[2]), config_schema(), range::from_object_bytes_mut(&config), &config_allocation))
+		if (!config_from_toml_file(range::from_cstring(argv[2]), print_make_sink(minos::standard_file_handle(minos::StdFileName::StdErr)), &config, &ts_alloc))
 			return EXIT_FAILURE;
 
 		CoreData* const core = create_core_data(&config);
@@ -37,7 +37,7 @@ s32 main(s32 argc, const char8** argv)
 
 			release_core_data(core);
 
-			release_toml(config_allocation);
+			ts_allocator_release(ts_alloc);
 
 			return EXIT_SUCCESS;
 		}
@@ -49,7 +49,7 @@ s32 main(s32 argc, const char8** argv)
 
 			release_core_data(core);
 
-			release_toml(config_allocation);
+			ts_allocator_release(ts_alloc);
 
 			return EXIT_FAILURE;
 		}

@@ -34,9 +34,11 @@ struct ErrorSink
 
 	u8 source_tab_size;
 
-	ReservedVec<ErrorRecord> records;
+	bool enabled;
 
-	Maybe<minos::FileHandle> log_file;
+	PrintSink sink;
+
+	ReservedVec<ErrorRecord> records;
 };
 
 
@@ -145,11 +147,17 @@ struct Interpreter
 
 	BuiltinInfo builtin_infos[static_cast<u8>(Builtin::MAX) - 1];
 
-	Maybe<minos::FileHandle> imported_asts_log_file;
+	bool log_imported_asts;
 
-	Maybe<minos::FileHandle> imported_opcodes_log_file;
+	bool log_imported_opcodes;
 
-	Maybe<minos::FileHandle> imported_types_log_file;
+	bool log_imported_types;
+
+	PrintSink imported_asts_sink;
+
+	PrintSink imported_opcodes_sink;
+
+	PrintSink imported_types_sink;
 };
 
 

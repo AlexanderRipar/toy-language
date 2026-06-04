@@ -6,7 +6,7 @@
 #include "../infra/opt.hpp"
 #include "../infra/minos/minos.hpp"
 #include "../infra/print/print.hpp"
-#include "../infra/tree_schema.hpp"
+#include "../infra/tree_schema/tree_schema.hpp"
 
 
 
@@ -95,11 +95,11 @@ struct CoreData;
 
 
 
-struct ConfigLogFileRef
+struct ConfigPrintSink
 {
-	bool enable = true;
+	AttachmentRange<char8, bool> name_and_enabled;
 
-	Range<char8> filepath = {};
+	PrintSink sink;
 };
 
 // Structure holding config parameters used to parameterize the further
@@ -110,40 +110,40 @@ struct Config
 {
 	struct
 	{
-		Range<char8> filepath = range::from_literal_string("main.evl");
+		Range<char8> filepath;
 
-		Range<char8> symbol = range::from_literal_string("main");
+		Range<char8> symbol;
 	} entrypoint;
 
 	struct
 	{
 		struct
 		{
-			Range<char8> filepath = range::from_literal_string("prelude.evl");
+			Range<char8> filepath;
 		} prelude;
 	} std;
 
 	struct
 	{
-		u64 reserve = 1 << 30;
+		u64 reserve;
 
-		u64 commit_increment = 1 << 18;
+		u64 commit_increment;
 	} heap;
 
 	struct
 	{
 		struct
 		{
-			u64 reserve = 1 << 24;
+			u64 reserve;
 
-			u64 commit_increment = 1 << 12;
+			u64 commit_increment;
 		} addresses;
 
 		struct
 		{
-			u64 reserve = 1 << 24;
+			u64 reserve;
 
-			u64 commit_increment = 1 << 12;
+			u64 commit_increment;
 		} layouts;
 	} shadow_store;
 
@@ -151,22 +151,22 @@ struct Config
 	{
 		struct
 		{
-			ConfigLogFileRef asts{ false, {} };
+			ConfigPrintSink asts_sink;
 
-			ConfigLogFileRef opcodes{ false, {} };
+			ConfigPrintSink opcodes_sink;
 
-			ConfigLogFileRef types{ false, {} };
+			ConfigPrintSink types_sink;
 		} imports;
 
-		ConfigLogFileRef config{ false, {} };
-
-		struct
-		{
-			ConfigLogFileRef file{ true, {} };
-
-			s64 source_tab_size = 4;
-		} diagnostics;
+		ConfigPrintSink config_sink;
 	} logging;
+
+	struct
+	{
+		ConfigPrintSink sink;
+
+		s64 source_tab_size;
+	} diagnostics;
 
 	struct
 	{
@@ -195,12 +195,30 @@ struct Config
 		bool temp_stack = true;
 	} enable;
 
-	bool compile_all = false;
+	TreeSchemaTable* defines;
+
+	bool compile_all;
 };
 
-Maybe<minos::FileHandle> config_open_log_file(ConfigLogFileRef file_ref, Maybe<minos::StdFileName> fallback) noexcept;
+bool config_from_toml_file(Range<char8> filepath, PrintSink error_sink, Config* out_config, TreeSchemaAllocator* out_ts_alloc) noexcept;
 
-const TreeSchemaNode* config_schema() noexcept;
+Config config_defaults() noexcept;
+
+void print_config(PrintSink sink, const Config* config) noexcept;
+
+void print_config_help(PrintSink sink, u32 depth = 0) noexcept;
+
+template<typename Sink>
+void print_config(Sink sink, const Config* config) noexcept
+{
+	print_config(print_make_sink(sink), config);
+}
+
+template<typename Sink>
+void print_config_help(Sink sink, u32 depth = 0) noexcept
+{
+	print_config_help(print_make_sink(sink), depth);
+}
 
 
 
@@ -1934,11 +1952,11 @@ void print_errors(CoreData* core) noexcept;
 // `record_error` on the given `ErrorSink`.
 Range<ErrorRecord> get_errors(CoreData* core) noexcept;
 
-// Appends the message for the given `CompileError` to `dst`, prefixing it with
-// the `location`.
+// Appends the message for the given `CompileError` to `sink`, prefixing it with
+// the given `location`.
 // This is mainly intended for usage with `Config` parsing, as there is no
 // `ErrorSink` available at that point.
-void print_error(minos::FileHandle dst, const SourceLocation* location, CompileError error, u8 tab_size) noexcept;
+void print_error(PrintSink sink, const SourceLocation* location, CompileError error, u8 tab_size) noexcept;
 
 const char8* tag_name(CompileError error) noexcept;
 

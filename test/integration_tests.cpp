@@ -151,11 +151,13 @@ static IntegrationTestExpectation parse_integration_test_header(Range<char8> fil
 
 static Config dummy_config(Range<char8> filepath, bool expect_failure) noexcept
 {
-	Config config{};
+	Config config = config_defaults();
 	config.compile_all = true;
 	config.std.prelude.filepath = range::from_literal_string("../sample/std/prelude.evl");
-	config.logging.diagnostics.file.enable = !expect_failure;
 	config.entrypoint.filepath = filepath;
+
+	if (!expect_failure)
+		config.diagnostics.sink = ConfigPrintSink{ true, print_make_sink(minos::standard_file_handle(minos::StdFileName::StdErr)) };
 
 	return config;
 }
