@@ -647,7 +647,7 @@ static u64 print_sink_write_minos_filehandle(void* raw_attach, Range<char8> data
 
 PrintSink print_make_sink(minos::FileHandle filehandle) noexcept
 {
-	PrintSink sink;
+	PrintSink sink{};
 	sink.write_func = print_sink_write_minos_filehandle;
 	*reinterpret_cast<MinosFileHandleSinkAttach*>(sink.attach) = { filehandle, 0 };
 
@@ -661,7 +661,7 @@ struct MutRangeFormatSinkAttach
 	MutRange<char8> buffer;
 };
 
-u64 print_sink_write_mut_range(void* raw_attach, Range<char8> data) noexcept
+static u64 print_sink_write_mut_range(void* raw_attach, Range<char8> data) noexcept
 {
 	MutRangeFormatSinkAttach* const attach = static_cast<MutRangeFormatSinkAttach*>(raw_attach);
 
@@ -678,7 +678,7 @@ u64 print_sink_write_mut_range(void* raw_attach, Range<char8> data) noexcept
 
 PrintSink print_make_sink(MutRange<char8> buffer) noexcept
 {
-	PrintSink sink;
+	PrintSink sink{};
 	sink.write_func = print_sink_write_mut_range;
 	*reinterpret_cast<MutRangeFormatSinkAttach*>(sink.attach) = { buffer };
 
