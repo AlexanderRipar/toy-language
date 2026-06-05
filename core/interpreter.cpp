@@ -6707,7 +6707,8 @@ static TypeId type_from_ts_table(CoreData* core, const TreeSchemaTable* table) n
 		if (!type_metrics_from_id(core, member_type, &member_metrics))
 			ASSERT_UNREACHABLE;
 
-		size = (size + member_metrics.align - 1) & ~static_cast<u64>(member_metrics.align - 1);
+		if (!member_metrics.is_shadow)
+			size = (size + member_metrics.align - 1) & ~static_cast<u64>(member_metrics.align - 1);
 
 		UserCompositeMemberInit member{};
 		member.name = id_from_identifier(core, value->name_and_tag.range());
@@ -6802,7 +6803,11 @@ static void value_from_ts_table(CoreData* core, byte* dst, TypeId type, const Tr
 
 		ASSERT_OR_IGNORE(!member_info.is_global);
 
-		byte* const member_dst = dst + member_info.offset;
+		byte* const member_address = dst + member_info.offset;
+
+		byte* const member_dst = is_some(member_info.shadow_id)
+			? shadow_get(core, member_address, get(member_info.shadow_id), member_info.shadow_rank)
+			: member_address;
 
 		value_from_ts_value(core, member_dst, member_info.type_id, value);
 	}
