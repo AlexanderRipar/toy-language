@@ -139,8 +139,8 @@ CoreData* create_core_data(const Config* config) noexcept
 		&type_pool_validate_config,
 		&parser_validate_config,
 		&source_reader_validate_config,
-		&interpreter_validate_config,
 		&shadow_store_validate_config,
+		&interpreter_validate_config,
 	};
 
 	static constexpr memory_requirements_func MEMORY_REQUIREMENTS_FUNCS[] = {
@@ -154,8 +154,8 @@ CoreData* create_core_data(const Config* config) noexcept
 		&type_pool_memory_requirements,
 		&parser_memory_requirements,
 		&source_reader_memory_requirements,
-		&interpreter_memory_requirements,
 		&shadow_store_memory_requirements,
+		&interpreter_memory_requirements,
 	};
 
 	static constexpr init_func INIT_FUNCS[] = {
@@ -169,8 +169,8 @@ CoreData* create_core_data(const Config* config) noexcept
 		&type_pool_init,
 		&parser_init,
 		&source_reader_init,
-		&interpreter_init,
 		&shadow_store_init,
+		&interpreter_init,
 	};
 
 	const bool enable_flags[] = {
@@ -184,8 +184,8 @@ CoreData* create_core_data(const Config* config) noexcept
 		config->enable.type_pool,
 		config->enable.parser,
 		config->enable.source_reader,
-		config->enable.interpreter,
 		config->enable.shadow_store,
+		config->enable.interpreter,
 	};
 
 	static_assert(array_count(VALIDATE_CONFIG_FUNCS) == array_count(MEMORY_REQUIREMENTS_FUNCS));
