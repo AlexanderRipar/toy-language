@@ -37,16 +37,16 @@ add_library(ffi-test SHARED ffi_test.c)
 
 add_custom_target(run-core-tests COMMAND test --core WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
-add_dependencies(run-core-tests test test-process-helper)
+add_dependencies(run-core-tests test test-process-helper ffi-test)
 
 
 
 add_custom_target(run-minos-tests COMMAND test --minos WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
-add_dependencies(run-minos-tests test test-process-helper)
+add_dependencies(run-minos-tests test test-process-helper ffi-test)
 
 
 
 add_custom_target(run-tests COMMAND test WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
-add_dependencies(run-tests test test-process-helper)
+add_dependencies(run-tests test test-process-helper ffi-test)
