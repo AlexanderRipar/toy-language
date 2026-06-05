@@ -7464,33 +7464,8 @@ static bool validate_config_table(const TreeSchemaTable* table) noexcept
 		}
 		else if (value->name_and_tag.attachment() == TreeSchemaValueTag::Array)
 		{
-			const TreeSchemaArray* const array = value->value.array;
-
-			const u32 count = ts_array_count(array);
-
-			if (value == 0)
-				continue;
-
-			const TreeSchemaValue* const first = ts_array_at(array, 0);
-
-			for (u32 i = 1; i != count; ++i)
-			{
-				const TreeSchemaValue* const curr = ts_array_at(array, i);
-
-				if (curr->name_and_tag.attachment() != first->name_and_tag.attachment())
-					return false;
-
-				if (curr->name_and_tag.attachment() == TreeSchemaValueTag::Array)
-				{
-					if (!ts_array_types_equal(first->value.array, curr->value.array))
-						return false;
-				}
-				else if (curr->name_and_tag.attachment() == TreeSchemaValueTag::Table)
-				{
-					if (!ts_table_types_equal(first->value.table, curr->value.table))
-						return false;
-				}
-			}
+			if (!validate_config_array(value->value.array))
+				return false;
 		}
 	}
 
