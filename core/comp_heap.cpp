@@ -200,7 +200,7 @@ static Maybe<CompHeapAllocationHeader*> comp_heap_find_header(CoreData* core, by
 
 	const u64* const begin_bitmap = core->heap.begin_bitmap;
 
-	const u64 lower_slots_mask = (~static_cast<u64>(0)) >> (slot_offset & 63);
+	const u64 lower_slots_mask = (~static_cast<u64>(0)) >> (63 - (slot_offset & 63));
 
 	u64 i = slot_offset >> 6;
 
@@ -215,7 +215,7 @@ static Maybe<CompHeapAllocationHeader*> comp_heap_find_header(CoreData* core, by
 		curr = begin_bitmap[i];
 	}
 
-	const u8 offset_in_qword = count_trailing_zeros_assume_one(curr);
+	const u8 offset_in_qword = 63 - count_leading_zeros_assume_one(curr);
 
 	if ((core->heap.header_bitmap[i] & (static_cast<u64>(1) << offset_in_qword)) == 0)
 		return none<CompHeapAllocationHeader*>();
