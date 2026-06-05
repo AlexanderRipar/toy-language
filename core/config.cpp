@@ -255,7 +255,7 @@ static void config_error_header(TomlConfigMappingContext* ctx, u32 line, u32 col
 }
 
 template<typename... Inserts>
-static [[nodiscard]] bool config_error(TomlConfigMappingContext* ctx, u32 line, u32 column, const char8* message, Inserts... inserts) noexcept
+static bool config_error(TomlConfigMappingContext* ctx, u32 line, u32 column, const char8* message, Inserts... inserts) noexcept
 {
 	config_error_header(ctx, line, column);
 
