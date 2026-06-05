@@ -173,26 +173,9 @@ CoreData* create_core_data(const Config* config) noexcept
 		&interpreter_init,
 	};
 
-	const bool enable_flags[] = {
-		config->enable.heap,
-		config->enable.temp_stack,
-		config->enable.ast_pool,
-		config->enable.error_sink,
-		config->enable.identifier_pool,
-		config->enable.lexical_analyser,
-		config->enable.opcode_pool,
-		config->enable.type_pool,
-		config->enable.parser,
-		config->enable.source_reader,
-		config->enable.shadow_store,
-		config->enable.interpreter,
-	};
-
 	static_assert(array_count(VALIDATE_CONFIG_FUNCS) == array_count(MEMORY_REQUIREMENTS_FUNCS));
 
 	static_assert(array_count(VALIDATE_CONFIG_FUNCS) == array_count(INIT_FUNCS));
-
-	static_assert(array_count(VALIDATE_CONFIG_FUNCS) == array_count(enable_flags));
 
 	static constexpr u32 MEMBER_COUNT = static_cast<u32>(array_count(MEMORY_REQUIREMENTS_FUNCS));
 
@@ -209,7 +192,7 @@ CoreData* create_core_data(const Config* config) noexcept
 
 	for (u64 i = 0; i != MEMBER_COUNT; ++i)
 	{
-		if (enable_flags[i] && !VALIDATE_CONFIG_FUNCS[i](config, print_make_sink(config_validation_log_file)))
+		if (!VALIDATE_CONFIG_FUNCS[i](config, print_make_sink(config_validation_log_file)))
 			is_valid_config = false;
 	}
 
@@ -221,12 +204,7 @@ CoreData* create_core_data(const Config* config) noexcept
 	MemoryRequirements memory_requirements[MEMBER_COUNT];
 
 	for (u32 i = 0; i != MEMBER_COUNT; ++i)
-	{
-		if (enable_flags[i])
-			memory_requirements[i] = MEMORY_REQUIREMENTS_FUNCS[i](config);
-		else
-			memory_requirements[i] = MemoryRequirements{};
-	}
+		memory_requirements[i] = MEMORY_REQUIREMENTS_FUNCS[i](config);
 
 	MemoryRangeRequirement* range_requirements_buf[MAX_MEMORY_RANGE_REQUIREMENTS_COUNT * MEMBER_COUNT];
 
@@ -282,9 +260,6 @@ CoreData* create_core_data(const Config* config) noexcept
 
 	for (u64 i = 0; i != MEMBER_COUNT; ++i)
 	{
-		if (!enable_flags[i])
-			continue;
-
 		MemoryAllocation allocation;
 
 		for (u64 j = 0; j != memory_requirements[i].count; ++j)

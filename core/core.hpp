@@ -168,33 +168,6 @@ struct Config
 		s64 source_tab_size;
 	} diagnostics;
 
-	struct
-	{
-		bool heap = true;
-
-		bool ast_pool = true;
-
-		bool error_sink = true;
-
-		bool identifier_pool = true;
-
-		bool interpreter = true;
-
-		bool lexical_analyser = true;
-
-		bool opcode_pool = true;
-
-		bool parser = true;
-
-		bool source_reader = true;
-
-		bool type_pool = true;
-
-		bool shadow_store = true;
-
-		bool temp_stack = true;
-	} enable;
-
 	Maybe<const TreeSchemaTable*> defines;
 
 	bool compile_all;
