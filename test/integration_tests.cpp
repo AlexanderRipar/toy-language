@@ -5,6 +5,16 @@
 #include "../infra/range.hpp"
 #include "../core/core.hpp"
 
+#ifdef _WIN32
+	#ifdef _NDEBUG
+		#define FFI_TEST_LIBRARY_SUBPATH "Release/ffi-test.dll"
+	#else
+		#define FFI_TEST_LIBRARY_SUBPATH "Debug/ffi-test.dll"
+	#endif
+#else
+	#define FFI_TEST_LIBRARY_SUBPATH "libffi-test.so"
+#endif
+
 struct IntegrationTestExpectation
 {
 	Maybe<CompileError> error;
@@ -149,15 +159,33 @@ static IntegrationTestExpectation parse_integration_test_header(Range<char8> fil
 	};
 }
 
-static Config dummy_config(Range<char8> filepath, bool expect_failure) noexcept
+static Config dummy_config(Range<char8> filepath, bool expect_failure, TreeSchemaAllocator* ts_alloc) noexcept
 {
 	Config config = config_defaults();
 	config.compile_all = true;
 	config.std.prelude.filepath = range::from_literal_string("../sample/std/prelude.evl");
 	config.entrypoint.filepath = filepath;
 
-	if (!expect_failure)
-		config.diagnostics.sink = ConfigPrintSink{ true, print_make_sink(minos::standard_file_handle(minos::StdFileName::StdErr)) };
+	config.diagnostics.sink = expect_failure
+		? ConfigPrintSink{ { range::from_literal_string("$none"), false }, {} }
+		: ConfigPrintSink{ { range::from_literal_string("$stderr"), true }, print_make_sink(minos::standard_file_handle(minos::StdFileName::StdErr)) };
+
+	const Range<char8> ffi_test_library_path = range::from_literal_string("../../build/" COMPILER_SPEC "/test/" FFI_TEST_LIBRARY_SUBPATH);
+
+	TreeSchemaValue ffi_test_library_path_value{};
+
+	if (!ts_value_from_string(ts_alloc, range::from_literal_string("ffi_test_library_path"), 0, 0, ffi_test_library_path, &ffi_test_library_path_value))
+		panic("Failed to allocate compiler ffi_test library path `TreeSchemaValue` for integration test `%`.\n", filepath);
+
+	const Maybe<TreeSchemaTable*> defines = ts_table_create(ts_alloc);
+
+	if (is_none(defines))
+		panic("Failed to allocate defines `TreeSchemaTable` for integration test `%`.\n", filepath);
+
+	if (ts_table_add_value(ts_alloc, get(defines), ffi_test_library_path_value) != TreeSchemaTableAddResult::Ok)
+		panic("Failed to add ffi_test library path `TreeSchemaValue` to defines `TreeSchemaTable` for integration test `%`.\n", filepath);
+
+	config.defines = some<const TreeSchemaTable*>(get(defines));
 
 	return config;
 }
@@ -168,7 +196,9 @@ static void run_integration_test(Range<char8> filepath) noexcept
 
 	TEST_BEGIN_NAMED(filepath);
 
-	const Config config = dummy_config(filepath, is_some(expectation.error));
+	TreeSchemaAllocator ts_alloc = ts_allocator_create(4096, 4096);
+
+	const Config config = dummy_config(filepath, is_some(expectation.error), &ts_alloc);
 
 	CoreData* const core = create_core_data(&config);
 
@@ -205,6 +235,8 @@ static void run_integration_test(Range<char8> filepath) noexcept
 	}
 
 	release_core_data(core);
+
+	ts_allocator_release(ts_alloc);
 
 	TEST_END;
 }
