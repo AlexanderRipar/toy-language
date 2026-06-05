@@ -2349,7 +2349,7 @@ TypeId type_create_user_composite(CoreData* core, TypeTag tag, SourceId definiti
 {
 	ASSERT_OR_IGNORE(tag == TypeTag::Composite || tag == TypeTag::CompositeLiteral);
 
-	ASSERT_OR_IGNORE(definition_site != SourceId::INVALID);
+	ASSERT_OR_IGNORE(tag == TypeTag::CompositeLiteral || definition_site != SourceId::INVALID);
 
 	TypeStructure* const structure = composite_alloc(core, tag, CompositeKind::User, CompositeFlags::User_IsOpen, 4, false);
 
