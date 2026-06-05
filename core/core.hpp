@@ -195,7 +195,7 @@ struct Config
 		bool temp_stack = true;
 	} enable;
 
-	TreeSchemaTable* defines;
+	Maybe<const TreeSchemaTable*> defines;
 
 	bool compile_all;
 };

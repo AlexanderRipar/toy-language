@@ -431,9 +431,9 @@ static bool map_defaults_to_config(TomlConfigMappingContext* ctx, const ConfigMe
 
 	case ConfigMetadataTag::Dynamic:
 	{
-		ASSERT_OR_IGNORE(curr->offset + sizeof(Maybe<const TreeSchemaValue*>) < sizeof(Config));
+		ASSERT_OR_IGNORE(curr->offset + sizeof(Maybe<const TreeSchemaTable*>) < sizeof(Config));
 
-		*reinterpret_cast<Maybe<const TreeSchemaValue*>*>(reinterpret_cast<byte*>(ctx->out) + curr->offset) = none<const TreeSchemaValue*>();
+		*reinterpret_cast<Maybe<const TreeSchemaTable*>*>(reinterpret_cast<byte*>(ctx->out) + curr->offset) = none<const TreeSchemaTable*>();
 
 		return true;
 	}
@@ -605,12 +605,12 @@ static bool map_toml_to_config(TomlConfigMappingContext* ctx, const TreeSchemaVa
 
 	case ConfigMetadataTag::Dynamic:
 	{
-		ASSERT_OR_IGNORE(curr->offset + sizeof(Maybe<const TreeSchemaValue*>) < sizeof(Config));
+		ASSERT_OR_IGNORE(curr->offset + sizeof(Maybe<const TreeSchemaTable*>) < sizeof(Config));
 
 		if (toml->name_and_tag.attachment() != TreeSchemaValueTag::Table)
 			return config_error(ctx, toml->source_line, toml->source_column, "Config parameter `%` must be a TOML table.\n", curr->name);
 
-		*reinterpret_cast<Maybe<const TreeSchemaValue*>*>(reinterpret_cast<byte*>(ctx->out) + curr->offset) = some(toml);
+		*reinterpret_cast<Maybe<const TreeSchemaTable*>*>(reinterpret_cast<byte*>(ctx->out) + curr->offset) = some<const TreeSchemaTable*>(toml->value.table);
 
 		return true;
 	}
@@ -774,15 +774,17 @@ static void print_config_element(PrintSink sink, const Config* config, const Con
 
 	case ConfigMetadataTag::Dynamic:
 	{
-		ASSERT_OR_IGNORE(curr->offset + sizeof(Maybe<const TreeSchemaValue*>) < sizeof(Config));
+		ASSERT_OR_IGNORE(curr->offset + sizeof(Maybe<const TreeSchemaTable*>) < sizeof(Config));
 
-		const Maybe<const TreeSchemaValue*> value = *reinterpret_cast<const Maybe<const TreeSchemaValue*>*>(reinterpret_cast<const byte*>(config) + curr->offset);
+		const Maybe<const TreeSchemaTable*> value = *reinterpret_cast<const Maybe<const TreeSchemaTable*>*>(reinterpret_cast<const byte*>(config) + curr->offset);
 
 		if (is_some(value))
 		{
 			(void) print(sink, "= ");
 
-			print_tree_schema_value(sink, get(value), indent);
+			const TreeSchemaValue table_value = ts_value_from_table_unnamed(0, 0, const_cast<TreeSchemaTable*>(get(value)));
+
+			print_tree_schema_value(sink, &table_value, indent);
 		}
 		else
 		{
