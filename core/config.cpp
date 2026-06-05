@@ -232,8 +232,6 @@ struct TomlConfigMappingContext
 	char8 directory_path_buf[4096];
 };
 
-static constexpr auto X = offsetof(Config, shadow_store.addresses.commit_increment);
-
 static bool string_equal(Range<char8> a, Range<char8> b)
 {
 	if (a.count() != b.count())
