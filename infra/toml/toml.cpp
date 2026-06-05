@@ -132,7 +132,7 @@ static Range<char8> token_tag_error_prefix(TomlTokenTag tag) noexcept
 }
 
 template<typename... Inserts>
-static [[nodiscard]] bool toml_line_error(TomlParser* parser, u32 line, u32 column, const char8* message, Inserts... inserts) noexcept
+static bool toml_line_error(TomlParser* parser, u32 line, u32 column, const char8* message, Inserts... inserts) noexcept
 {
 	toml_error_print_header(parser, line, column);
 
@@ -144,7 +144,7 @@ static [[nodiscard]] bool toml_line_error(TomlParser* parser, u32 line, u32 colu
 }
 
 template<typename... Inserts>
-static [[nodiscard]] Maybe<TreeSchemaTable*> toml_io_error(PrintSink error_sink, Range<char8> filepath, const char8* message, Inserts... inserts) noexcept
+static Maybe<TreeSchemaTable*> toml_io_error(PrintSink error_sink, Range<char8> filepath, const char8* message, Inserts... inserts) noexcept
 {
 	// Quick-and-dirty semi-initialized parser for error-reporting.
 	TomlParser parser{};
