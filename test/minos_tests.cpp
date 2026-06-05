@@ -18,19 +18,7 @@
 	#error HELPER_PROCESS_PATH was not defined. Build with cmake to correct this.
 #endif
 
-#ifdef NDEBUG
-	#define COMPILER_MODE "rel"
-#else
-	#define COMPILER_MODE "dbg"
-#endif
-
-#ifdef _WIN32
-	#define COMPILER_PLATFORM "win32"
-#else
-	#define COMPILER_PLATFORM "linux"
-#endif
-
-#define TEST_DIRECTORY  "minos_fs_data/dynamic_data/" COMPILER_PLATFORM "-" COMPILER_NAME "-" COMPILER_MODE
+#define TEST_DIRECTORY  "minos_fs_data/dynamic_data/" COMPILER_SPEC
 
 static constexpr u32 TIMEOUT_TEST_MILLIS = 70;
 

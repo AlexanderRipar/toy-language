@@ -27,4 +27,23 @@ bool perform_debugbreak_helper() noexcept;
 	#error("Unsupported compiler")
 #endif
 
+#ifdef NDEBUG
+	#define COMPILER_MODE "rel"
+#else
+	#define COMPILER_MODE "dbg"
+#endif
+
+#ifdef _WIN32
+	#define COMPILER_PLATFORM "win32"
+#else
+	#define COMPILER_PLATFORM "linux"
+#endif
+
+#if defined(_WIN32) && defined(__clang__)
+	#define COMPILER_SPEC COMPILER_PLATFORM "-" COMPILER_NAME "cl-" COMPILER_MODE
+#else
+	#define COMPILER_SPEC COMPILER_PLATFORM "-" COMPILER_NAME "-" COMPILER_MODE
+#endif
+
+
 #endif // HOST_COMPILER_INCLUDE_GUARD
