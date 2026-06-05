@@ -2115,6 +2115,33 @@ static const Opcode* builtin_compiler_minor_version(CoreData* core, const Opcode
 	return convert_into(core, code, CompValue{ bytes, alignof(CompIntegerValue), true, comp_integer_type }, *write_ctx);
 }
 
+static const Opcode* builtin_comp_defines_type(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+{
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
+
+	TypeId defines_type = core->interp.config_defines_type;
+
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&defines_type);
+
+	return convert_into(core, code, CompValue{ bytes, alignof(TypeId), true, type_type }, *write_ctx);
+}
+
+static const Opcode* builtin_comp_defines(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+{
+	const TypeId defines_type = core->interp.config_defines_type;
+
+	TypeMetrics metrics;
+
+	if (!type_metrics_from_id(core, defines_type, &metrics))
+		ASSERT_UNREACHABLE;
+
+	byte* const begin = static_cast<byte*>(address_from_core_id(core, core->interp.config_defines_value));
+
+	const MutRange<byte> bytes{ begin, metrics.size };
+
+	return convert_into(core, code, CompValue{ bytes, metrics.align, true, defines_type }, *write_ctx);
+}
+
 
 
 static const Opcode* handle_end_code([[maybe_unused]] CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
@@ -2705,6 +2732,8 @@ static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, Com
 		&builtin_compiler_host_arch,
 		&builtin_compiler_major_version,
 		&builtin_compiler_minor_version,
+		&builtin_comp_defines_type,
+		&builtin_comp_defines,
 	};
 
 	static_assert(HANDLERS[static_cast<u8>(Builtin::Integer)]               == &builtin_integer);
@@ -2733,6 +2762,8 @@ static const Opcode* handle_exec_builtin(CoreData* core, const Opcode* code, Com
 	static_assert(HANDLERS[static_cast<u8>(Builtin::CompilerHostArch)]      == &builtin_compiler_host_arch);
 	static_assert(HANDLERS[static_cast<u8>(Builtin::CompilerMajorVersion)]  == &builtin_compiler_major_version);
 	static_assert(HANDLERS[static_cast<u8>(Builtin::CompilerMinorVersion)]  == &builtin_compiler_minor_version);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::CompDefinesType)]       == &builtin_comp_defines_type);
+	static_assert(HANDLERS[static_cast<u8>(Builtin::CompDefines)]           == &builtin_comp_defines);
 
 	u8 ordinal;
 	code = code_attach(code, &ordinal);
@@ -6631,6 +6662,285 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 
 
 
+static TypeId type_from_ts_value(CoreData* core, const TreeSchemaValue* value) noexcept;
+
+static void value_from_ts_value(CoreData* core, byte* dst, TypeId type, const TreeSchemaValue* value) noexcept;
+
+static TypeId type_from_ts_array(CoreData* core, const TreeSchemaArray* array) noexcept
+{
+	const u32 count = ts_array_count(array);
+
+	Maybe<TypeId> element_type = none<TypeId>();
+
+	if (count == 0)
+	{
+		element_type = none<TypeId>();
+	}
+	else
+	{
+		const TreeSchemaValue* value = ts_array_at(array, 0);
+
+		element_type = some(type_from_ts_value(core, value));
+	}
+
+	return type_create_array(core, TypeTag::ArrayLiteral, ArrayType{ count, element_type });
+}
+
+static TypeId type_from_ts_table(CoreData* core, const TreeSchemaTable* table) noexcept
+{
+	const TypeId type = type_create_user_composite(core, TypeTag::CompositeLiteral, SourceId::INVALID);
+
+	u64 size = 0;
+
+	u32 align = 1;
+
+	TreeSchemaTableIterator it = ts_table_values(table);
+
+	while (has_next(&it))
+	{
+		const TreeSchemaValue* const value = next(&it);
+
+		const TypeId member_type = type_from_ts_value(core, value);
+
+		TypeMetrics member_metrics;
+
+		if (!type_metrics_from_id(core, member_type, &member_metrics))
+			ASSERT_UNREACHABLE;
+
+		size = (size + member_metrics.align - 1) & ~static_cast<u64>(member_metrics.align - 1);
+
+		UserCompositeMemberInit member{};
+		member.name = id_from_identifier(core, value->name_and_tag.range());
+		member.type_id = member_type;
+		member.default_value = none<CoreId>();
+		member.is_pub = true;
+		member.is_mut = false;
+		member.offset = size;
+
+		// Since `TreeSchema` is keyed by name, there can be no duplicate
+		// member names, so `type_add_user_composite_member` cannot fail.
+		if (!type_add_user_composite_member(core, type, member))
+			ASSERT_UNREACHABLE;
+
+		if (align < member_metrics.align)
+			align = member_metrics.align;
+
+		size += member_metrics.size;
+	}
+
+	UserCompositeSealInfo seal_info{};
+	seal_info.size = size;
+	seal_info.stride = (size + align - 1) & ~static_cast<u64>(align - 1);
+	seal_info.align = align;
+
+	return type_seal_user_composite(core, type, seal_info);
+}
+
+static TypeId type_from_ts_value(CoreData* core, const TreeSchemaValue* value) noexcept
+{
+	switch (value->name_and_tag.attachment())
+	{
+	case TreeSchemaValueTag::Table:
+	{
+		return type_from_ts_table(core, value->value.table);
+	}
+
+	case TreeSchemaValueTag::Array:
+	{
+		return type_from_ts_array(core, value->value.array);
+	}
+
+	case TreeSchemaValueTag::Integer:
+	{
+		return type_create_simple(core, TypeTag::CompInteger);
+	}
+
+	case TreeSchemaValueTag::String:
+	{
+		ReferenceType slice_of_u8_attach{};
+		slice_of_u8_attach.referenced_type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 8, false });
+		slice_of_u8_attach.is_opt = false;
+		slice_of_u8_attach.is_multi = false;
+		slice_of_u8_attach.is_mut = false;
+
+		return type_create_reference(core, TypeTag::Slice, slice_of_u8_attach);
+	}
+
+	case TreeSchemaValueTag::Boolean:
+	{
+		return type_create_simple(core, TypeTag::Boolean);
+	}
+
+	case TreeSchemaValueTag::INVALID:
+		; // Fallthrough to unreachable.
+	}
+
+	ASSERT_UNREACHABLE;
+}
+
+static void value_from_ts_table(CoreData* core, byte* dst, TypeId type, const TreeSchemaTable* table) noexcept
+{
+	ASSERT_OR_IGNORE(type_tag_from_id(core, type) == TypeTag::CompositeLiteral);
+
+	TreeSchemaTableIterator it = ts_table_values(table);
+
+	while (has_next(&it))
+	{
+		const TreeSchemaValue* const value = next(&it);
+
+		const Range<char8> name = value->name_and_tag.range();
+
+		const IdentifierId name_id = id_from_identifier(core, name);
+
+		MemberInfo member_info;
+
+		OpcodeId unused_initializer;
+
+		const MemberByNameRst member_rst = type_member_info_by_name(core, type, name_id, &member_info, &unused_initializer);
+
+		ASSERT_OR_IGNORE(member_rst == MemberByNameRst::Ok);
+
+		ASSERT_OR_IGNORE(!member_info.is_global);
+
+		byte* const member_dst = dst + member_info.offset;
+
+		value_from_ts_value(core, member_dst, member_info.type_id, value);
+	}
+}
+
+static void value_from_ts_array(CoreData* core, byte* dst, TypeId type, const TreeSchemaArray* array) noexcept
+{
+	ASSERT_OR_IGNORE(type_tag_from_id(core, type) == TypeTag::ArrayLiteral);
+
+	const u32 count = ts_array_count(array);
+
+	if (count == 0)
+		return;
+
+	const ArrayType* const attach = type_attachment_from_id<ArrayType>(core, type);
+
+	const TypeId element_type = get(attach->element_type);
+
+	TypeMetrics element_metrics;
+
+	if (!type_metrics_from_id(core, element_type, &element_metrics))
+		ASSERT_UNREACHABLE;
+
+	for (u32 i = 0; i != count; ++i)
+	{
+		const TreeSchemaValue* const value = ts_array_at(array, i);
+
+		byte* const element_dst = dst + i * element_metrics.stride;
+
+		value_from_ts_value(core, element_dst, element_type, value);
+	}
+}
+
+static void value_from_ts_value(CoreData* core, byte* dst, TypeId type, const TreeSchemaValue* value) noexcept
+{
+	switch (value->name_and_tag.attachment())
+	{
+	case TreeSchemaValueTag::Table:
+	{
+		value_from_ts_table(core, dst, type, value->value.table);
+
+		return;
+	}
+
+	case TreeSchemaValueTag::Array:
+	{
+		value_from_ts_array(core, dst, type, value->value.array);
+
+		return;
+	}
+
+	case TreeSchemaValueTag::Integer:
+	{
+		ASSERT_OR_IGNORE(type_tag_from_id(core, type) == TypeTag::CompInteger);
+
+		const CompIntegerValue native_value = comp_integer_from_s64(value->value.integer);
+
+		memcpy(dst, &native_value, sizeof(native_value));
+
+		return;
+	}
+
+	case TreeSchemaValueTag::String:
+	{
+		ASSERT_OR_IGNORE(type_tag_from_id(core, type) == TypeTag::Slice);
+
+		const Range<char8> native_value = value->value.string;
+
+		memcpy(dst, &native_value, sizeof(native_value));
+
+		return;
+	}
+
+	case TreeSchemaValueTag::Boolean:
+	{
+		ASSERT_OR_IGNORE(type_tag_from_id(core, type) == TypeTag::Boolean);
+
+		const bool native_value = value->value.boolean;
+
+		memcpy(dst, &native_value, sizeof(native_value));
+
+		return;
+	}
+
+	case TreeSchemaValueTag::INVALID:
+		; // Fallthrough to unreachable.
+	}
+}
+
+static void init_defines(CoreData* core) noexcept
+{
+	TypeId defines_type;
+
+	CoreId defines_value;
+
+	if (is_some(core->config->defines))
+	{
+		defines_type = type_from_ts_table(core, get(core->config->defines));
+
+		TypeMetrics metrics;
+
+		if (!type_metrics_from_id(core, defines_type, &metrics))
+			ASSERT_UNREACHABLE;
+
+		const Maybe<void*> allocation = comp_heap_alloc(core, metrics.size, metrics.align);
+
+		if (is_none(allocation))
+			panic("Failed to allocate Config's `defines` value in `CompHeap`.\n");
+
+		value_from_ts_table(core, static_cast<byte*>(get(allocation)), defines_type, get(core->config->defines));
+
+		defines_value = core_id_from_address(core, get(allocation));
+	}
+	else
+	{
+		defines_type = type_create_user_composite(core, TypeTag::CompositeLiteral, SourceId::INVALID);
+
+		UserCompositeSealInfo seal_info{};
+		seal_info.size = 0;
+		seal_info.stride = 0;
+		seal_info.align = 1;
+
+		defines_type = type_seal_user_composite(core, defines_type, seal_info);
+
+		const Maybe<void*> allocation = comp_heap_alloc(core, 0, 1);
+
+		if (is_none(allocation))
+			panic("Failed to allocate Config's `defines` value in `CompHeap`.\n");
+
+		defines_value = core_id_from_address(core, get(allocation));
+	}
+
+	core->interp.config_defines_type = defines_type;
+	core->interp.config_defines_value = defines_value;
+}
+
+
+
 static TypeId make_func_type_from_array(CoreData* core, TypeId return_type, u8 parameter_count, const BuiltinParamInfo* params) noexcept
 {
 	TypeId signature_type = type_create_signature(core, true, parameter_count);
@@ -6976,13 +7286,29 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 	const OpcodeId compiler_minor_version_body = opcode_id_from_builtin(core, Builtin::CompilerMinorVersion);
 
-	core->interp.builtin_infos[static_cast<u8>(Builtin::CompilerHostOs) - 1] = BuiltinInfo { compiler_host_os_body, compiler_metainfo_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::CompilerHostOs) - 1] = BuiltinInfo{ compiler_host_os_body, compiler_metainfo_signature };
 
-	core->interp.builtin_infos[static_cast<u8>(Builtin::CompilerHostArch) - 1] = BuiltinInfo { compiler_host_arch_body, compiler_metainfo_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::CompilerHostArch) - 1] = BuiltinInfo{ compiler_host_arch_body, compiler_metainfo_signature };
 
-	core->interp.builtin_infos[static_cast<u8>(Builtin::CompilerMajorVersion) - 1] = BuiltinInfo { compiler_major_version_body, compiler_metainfo_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::CompilerMajorVersion) - 1] = BuiltinInfo{ compiler_major_version_body, compiler_metainfo_signature };
 
-	core->interp.builtin_infos[static_cast<u8>(Builtin::CompilerMinorVersion) - 1] = BuiltinInfo { compiler_minor_version_body, compiler_metainfo_signature };
+	core->interp.builtin_infos[static_cast<u8>(Builtin::CompilerMinorVersion) - 1] = BuiltinInfo{ compiler_minor_version_body, compiler_metainfo_signature };
+
+
+
+	const OpcodeId comp_defines_type_body = opcode_id_from_builtin(core, Builtin::CompDefinesType);
+
+	const TypeId comp_defines_type_signature = make_func_type(core, type_type);
+
+	core->interp.builtin_infos[static_cast<u8>(Builtin::CompDefinesType) - 1] = BuiltinInfo{ comp_defines_type_body, comp_defines_type_signature };
+
+
+
+	const OpcodeId comp_defines_body = opcode_id_from_builtin(core, Builtin::CompDefines);
+
+	const TypeId comp_defines_signature = make_func_type(core, core->interp.config_defines_type);
+
+	core->interp.builtin_infos[static_cast<u8>(Builtin::CompDefines)- 1] = BuiltinInfo{ comp_defines_body, comp_defines_signature };
 
 
 
@@ -6999,8 +7325,184 @@ static void init_builtin_infos(CoreData* core) noexcept
 
 
 
+static bool ts_table_types_equal(const TreeSchemaTable* a, const TreeSchemaTable* b) noexcept;
+
+static bool validate_config_table(const TreeSchemaTable* table) noexcept;
+
+static bool ts_array_types_equal(const TreeSchemaArray* a, const TreeSchemaArray* b) noexcept
+{
+	const u32 a_count = ts_array_count(a);
+
+	const u32 b_count = ts_array_count(b);
+
+	if (a_count != b_count)
+		return false;
+
+	for (u32 i = 0; i != a_count; ++i)
+	{
+		const TreeSchemaValue* const a_curr = ts_array_at(a, i);
+
+		const TreeSchemaValue* const b_curr = ts_array_at(b, i);
+
+		if (a_curr->name_and_tag.attachment() != b_curr->name_and_tag.attachment())
+			return false;
+
+		if (a_curr->name_and_tag.attachment() == TreeSchemaValueTag::Table)
+		{
+			if (!ts_table_types_equal(a_curr->value.table, b_curr->value.table))
+				return false;
+		}
+		else if (a_curr->name_and_tag.attachment() == TreeSchemaValueTag::Array)
+		{
+			if (!ts_array_types_equal(a_curr->value.array, b_curr->value.array))
+				return false;
+		}
+	}
+
+	return true;
+}
+
+static bool ts_table_types_equal(const TreeSchemaTable* a, const TreeSchemaTable* b) noexcept
+{
+	const u32 a_count = ts_table_count(a);
+
+	const u32 b_count = ts_table_count(b);
+
+	if (a_count != b_count)
+		return false;
+
+	TreeSchemaTableIterator a_it = ts_table_values(a);
+
+	while (has_next(&a_it))
+	{
+		const TreeSchemaValue* const a_curr = next(&a_it);
+
+		const Maybe<const TreeSchemaValue*> opt_b_curr = ts_table_find_value(b, a_curr->name_and_tag.range());
+
+		if (is_none(opt_b_curr))
+			return false;
+
+		const TreeSchemaValue* const b_curr = get(opt_b_curr);
+
+		if (a_curr->name_and_tag.attachment() != b_curr->name_and_tag.attachment())
+			return false;
+
+		if (a_curr->name_and_tag.attachment() == TreeSchemaValueTag::Table)
+		{
+			if (!ts_table_types_equal(a_curr->value.table, b_curr->value.table))
+				return false;
+		}
+		else if (a_curr->name_and_tag.attachment() == TreeSchemaValueTag::Array)
+		{
+			if (!ts_array_types_equal(a_curr->value.array, b_curr->value.array))
+				return false;
+		}
+	}
+
+	return true;
+} 
+
+static bool validate_config_array(const TreeSchemaArray* array) noexcept
+{
+	const u32 count = ts_array_count(array);
+
+	if (count == 0)
+		return true;
+
+	const TreeSchemaValue* const first = ts_array_at(array, 0);
+
+	if (first->name_and_tag.attachment() == TreeSchemaValueTag::Table)
+	{
+		if (!validate_config_table(first->value.table))
+			return false;
+	}
+	else if (first->name_and_tag.attachment() == TreeSchemaValueTag::Array)
+	{
+		if (!validate_config_array(first->value.array))
+			return false;
+	}
+
+	for (u32 i = 0; i != count; ++i)
+	{
+		const TreeSchemaValue* const curr = ts_array_at(array, i);
+
+		if (curr->name_and_tag.attachment() != first->name_and_tag.attachment())
+			return false;
+
+		if (curr->name_and_tag.attachment() == TreeSchemaValueTag::Array)
+		{
+			if (!ts_array_types_equal(first->value.array, curr->value.array))
+				return false;
+		}
+		else if (curr->name_and_tag.attachment() == TreeSchemaValueTag::Table)
+		{
+			if (!ts_table_types_equal(first->value.table, curr->value.table))
+				return false;
+		}
+	}
+
+	return true;
+}
+
+static bool validate_config_table(const TreeSchemaTable* table) noexcept
+{
+	TreeSchemaTableIterator it = ts_table_values(table);
+
+	while (has_next(&it))
+	{
+		const TreeSchemaValue* const value = next(&it);
+
+		if (value->name_and_tag.attachment() == TreeSchemaValueTag::Table)
+		{
+			if (!validate_config_table(value->value.table))
+				return false;
+		}
+		else if (value->name_and_tag.attachment() == TreeSchemaValueTag::Array)
+		{
+			const TreeSchemaArray* const array = value->value.array;
+
+			const u32 count = ts_array_count(array);
+
+			if (value == 0)
+				continue;
+
+			const TreeSchemaValue* const first = ts_array_at(array, 0);
+
+			for (u32 i = 1; i != count; ++i)
+			{
+				const TreeSchemaValue* const curr = ts_array_at(array, i);
+
+				if (curr->name_and_tag.attachment() != first->name_and_tag.attachment())
+					return false;
+
+				if (curr->name_and_tag.attachment() == TreeSchemaValueTag::Array)
+				{
+					if (!ts_array_types_equal(first->value.array, curr->value.array))
+						return false;
+				}
+				else if (curr->name_and_tag.attachment() == TreeSchemaValueTag::Table)
+				{
+					if (!ts_table_types_equal(first->value.table, curr->value.table))
+						return false;
+				}
+			}
+		}
+	}
+
+	return true;
+}
+
+
+
 bool interpreter_validate_config([[maybe_unused]] const Config* config, [[maybe_unused]] PrintSink sink) noexcept
 {
+	if (is_some(config->defines) && !validate_config_table(get(config->defines)))
+	{
+		(void) print(sink, "Config key `defines` contains an array whose elements are of different types.\n");
+
+		return false;
+	}
+
 	return true;
 }
 
@@ -7049,7 +7551,7 @@ void interpreter_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	const bool log_imported_types = core->config->logging.imports.types_sink.name_and_enabled.attachment();
 
-	interp->log_imported_opcodes = log_imported_types;
+	interp->log_imported_types = log_imported_types;
 
 	if (log_imported_types)
 		interp->imported_types_sink = core->config->logging.imports.types_sink.sink;
@@ -7101,6 +7603,8 @@ void interpreter_init(CoreData* core, MemoryAllocation allocation) noexcept
 	offset += SELFS_RESERVE_SIZE;
 
 	ASSERT_OR_IGNORE(allocation.ranges[0].count() == offset);
+
+	init_defines(core);
 
 	init_builtin_infos(core);
 }
@@ -7251,6 +7755,8 @@ const char8* tag_name(Builtin builtin) noexcept
 		"CompilerHostArch",
 		"CompilerMajorVersion",
 		"CompilerMinorVersion",
+		"CompDefinesType",
+		"CompDefines",
 	};
 
 	u8 ordinal = static_cast<u8>(builtin);

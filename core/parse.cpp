@@ -286,6 +286,8 @@ static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
 	range::from_literal_string("_compiler_host_arch",     static_cast<u8>(Builtin::CompilerHostArch)),
 	range::from_literal_string("_compiler_major_version", static_cast<u8>(Builtin::CompilerMajorVersion)),
 	range::from_literal_string("_compiler_minor_version", static_cast<u8>(Builtin::CompilerMinorVersion)),
+	range::from_literal_string("_comp_defines_type",      static_cast<u8>(Builtin::CompDefinesType)),
+	range::from_literal_string("_comp_defines",           static_cast<u8>(Builtin::CompDefines)),
 };
 
 // Operator Description Tuple. Consists of:

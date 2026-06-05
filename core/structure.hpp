@@ -143,6 +143,10 @@ struct Interpreter
 
 	ReservedVec<TypeId> selfs;
 
+	TypeId config_defines_type;
+
+	CoreId config_defines_value;
+
 	bool is_ok;
 
 	BuiltinInfo builtin_infos[static_cast<u8>(Builtin::MAX) - 1];

@@ -14,6 +14,10 @@ pub assert = func(x: Bool) -> Void => if !x then unreachable
 
 pub foreign_function = func(Signature: Type, library_path: []u8, symbol: []u8) -> Signature => _foreign_function(Signature, library_path, symbol)
 
+
+
+pub comp_env = func() -> *CompEnvironment => the_comp_env.&
+
 pub CompEnvironment = Struct(
 	host: Struct(
 		os_kind: u8,   // Win32 = 1, Linux = 2 
@@ -22,7 +26,8 @@ pub CompEnvironment = Struct(
 	version: Struct(
 		major: u32,
 		minor: u32,
-	)
+	),
+	defines: _comp_defines_type()
 )
 
 let the_comp_env: CompEnvironment = .{
@@ -34,6 +39,5 @@ let the_comp_env: CompEnvironment = .{
 		.major = _compiler_major_version(),
 		.minor = _compiler_minor_version(),
 	},
+	.defines = _comp_defines()
 }
-
-pub comp_env = func() -> *CompEnvironment => the_comp_env.&
