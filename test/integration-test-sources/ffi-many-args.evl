@@ -1,0 +1,38 @@
+// success
+
+let lib_path = std.comp_env().*.defines.ffi_test_library_path
+
+
+let ffi_test_sum_u64 = std.foreign_function(func(a: u64, b: u64, c: u64, d: u64, e: u64, f: u64, g: u64, h: u64) -> u64, lib_path, "ffi_test_sum_u64"[..])
+
+let expected_8589936692 = ffi_test_sum_u64(100, 200, 300, 400, 500, 600, 1 << 32, 1 << 32)
+
+let unused_4 = std.assert(expected_8589936692 == 8589936692)
+
+
+let ffi_test_sum_f64 = std.foreign_function(func(a: f64, b: f64, c: f64, d: f64, e: f64, f: f64, g: f64, h: f64) -> f64, lib_path, "ffi_test_sum_f64"[..])
+
+let expected_10 = ffi_test_sum_f64(1.0, 2.0, 3.0, 0.5, 0.5, 2.0, 2.0, -1.0)
+
+let unused_5 = std.assert(expected_10 == 10.0)
+
+
+let ffi_test_sum_f32 = std.foreign_function(func(a: f32, b: f32, c: f32, d: f32, e: f32, f: f32, g: f32, h: f32) -> f32, lib_path, "ffi_test_sum_f32"[..])
+
+let expected_minus_36 = ffi_test_sum_f32(-1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0, -8.0)
+
+let unused_6 = std.assert(expected_minus_36 == -36.0)
+
+
+let ffi_test_sum_mixed_f32 = std.foreign_function(func(a: f32, x0: u64, b: f32, x1: u64, c: f32, x2: u64, d: f32, x3: u64, e: f32, x4: u64, f: f32, x5: u64, g: f32, x6: u64, h: f32, x7: u64) -> f32, lib_path, "ffi_test_sum_mixed_f32"[..])
+
+let expected_minus_28 = ffi_test_sum_mixed_f32(0.0, 0, -1.0, 1, -2.0, 2, -3.0, 3, -4.0, 4, -5.0, 5, -6.0, 6, -7.0, 7)
+
+let unused_7 = std.assert(expected_minus_28 == -28.0)
+
+
+let ffi_test_sum_mixed_u64 = std.foreign_function(func(a: f32, x0: u64, b: f32, x1: u64, c: f32, x2: u64, d: f32, x3: u64, e: f32, x4: u64, f: f32, x5: u64, g: f32, x6: u64, h: f32, x7: u64) -> u64, lib_path, "ffi_test_sum_mixed_u64"[..])
+
+let expected_28 = ffi_test_sum_mixed_u64(0.0, 0, -1.0, 1, -2.0, 2, -3.0, 3, -4.0, 4, -5.0, 5, -6.0, 6, -7.0, 7)
+
+let unused_8 = std.assert(expected_28 == 28)

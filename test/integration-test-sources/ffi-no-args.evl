@@ -1,0 +1,10 @@
+// success
+
+let lib_path = std.comp_env().*.defines.ffi_test_library_path
+
+
+let ffi_test_constant_42_u64 = std.foreign_function(func() -> u64, lib_path, "ffi_test_constant_42_u64"[..])
+
+let expected_42 = ffi_test_constant_42_u64()
+
+let unused_1 = std.assert(expected_42 == 42)
