@@ -279,8 +279,6 @@ static bool next(TomlParser* parser, TomlToken* out) noexcept
 	}
 	else if (is_alpha(first))
 	{
-		parser->curr += 1;
-
 		while (is_alpha(*parser->curr) || is_dec_digit(*parser->curr) || *parser->curr == '_' || *parser->curr == '-')
 			parser->curr += 1;
 
