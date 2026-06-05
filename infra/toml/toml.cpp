@@ -12,8 +12,6 @@ static constexpr u64 TOML_HEAP_RESERVE = 1 << 18;
 
 static constexpr u64 TOML_HEAP_COMMIT_INCREMENT = 1 << 12;
 
-static constexpr u32 TOML_TABLE_INITIAL_CAPACITY = 2;
-
 struct CodepointBuffer
 {
 	char8 buf[4];
@@ -883,8 +881,6 @@ static bool parse_escaped_string(TomlParser* parser, TomlToken token, void* into
 	else if (text[0] == '\r' && text[1] == '\n')
 		text = Range{ text.begin() + 2, text.end() };
 
-	u64 allocation_size = 0;
-
 	Range<char8> string;
 	
 	if (!ts_string_create(&parser->ts_alloc, Range<char8>{}, &string))
@@ -910,8 +906,6 @@ static bool parse_escaped_string(TomlParser* parser, TomlToken token, void* into
 			if (!ts_string_append(&parser->ts_alloc, Range<char8>{ utf8.buf, utf8.length }, &string))
 				return toml_line_error(parser, token.line, token.column, "Failed to grow `TreeSchemaString`.\n");
 
-			allocation_size += uncopied_length + utf8.length;
-
 			i += escape_chars;
 
 			uncopied_begin = i;
@@ -928,8 +922,6 @@ static bool parse_escaped_string(TomlParser* parser, TomlToken token, void* into
 
 	if (!ts_string_append(&parser->ts_alloc, text.subrange(uncopied_begin, uncopied_length), &string))
 		return toml_line_error(parser, token.line, token.column, "Failed to grow `TreeSchemaString`.\n");
-
-	allocation_size += uncopied_length;
 
 	TreeSchemaValue toml_value{};
 	
