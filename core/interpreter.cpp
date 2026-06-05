@@ -6797,7 +6797,7 @@ static void value_from_ts_table(CoreData* core, byte* dst, TypeId type, const Tr
 
 		OpcodeId unused_initializer;
 
-		const MemberByNameRst member_rst = type_member_info_by_name(core, type, name_id, &member_info, &unused_initializer);
+		[[maybe_unused]] const MemberByNameRst member_rst = type_member_info_by_name(core, type, name_id, &member_info, &unused_initializer);
 
 		ASSERT_OR_IGNORE(member_rst == MemberByNameRst::Ok);
 
