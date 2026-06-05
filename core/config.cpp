@@ -167,6 +167,21 @@ struct ConfigMetadata
 	ConfigMetadataEntry compile_all;
 };
 
+struct TomlConfigMappingContext
+{
+	Config* out;
+
+	Range<char8> directory_path;
+
+	Maybe<TreeSchemaAllocator*> ts_alloc;
+
+	Range<char8> filepath;
+
+	PrintSink error_sink;
+
+	char8 directory_path_buf[4096];
+};
+
 
 
 static constexpr ConfigMetadata init_metadata() noexcept
@@ -216,21 +231,6 @@ static constexpr ConfigMetadata init_metadata() noexcept
 static constexpr ConfigMetadata CONFIG_METADATA = init_metadata();
 
 
-
-struct TomlConfigMappingContext
-{
-	Config* out;
-
-	Range<char8> directory_path;
-
-	Maybe<TreeSchemaAllocator*> ts_alloc;
-
-	Range<char8> filepath;
-
-	PrintSink error_sink;
-
-	char8 directory_path_buf[4096];
-};
 
 static bool string_equal(Range<char8> a, Range<char8> b)
 {
