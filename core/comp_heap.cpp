@@ -368,7 +368,7 @@ bool comp_heap_leak(CoreData* core, MutRange<byte> memory) noexcept
 
 	ASSERT_OR_IGNORE(memory.begin() > core->heap.memory);
 	
-	ASSERT_OR_IGNORE(memory.end() < core->heap.memory + core->heap.used);
+	ASSERT_OR_IGNORE(memory.end() <= core->heap.memory + core->heap.used);
 
 	const u64 slot = (memory.begin() - core->heap.memory) / COMP_HEAP_MIN_ALLOCATION_SIZE;
 
