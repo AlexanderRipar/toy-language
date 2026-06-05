@@ -754,9 +754,6 @@ static bool parse_array(TomlParser* parser, TomlToken token, void* into, bool in
 {
 	ASSERT_OR_IGNORE(token.tag == TomlTokenTag::BracketBeg);
 
-	if (!next(parser, &token))
-		return false;
-
 	const Maybe<TreeSchemaArray*> new_array = ts_array_create(&parser->ts_alloc);
 
 	if (is_none(new_array))
@@ -772,11 +769,11 @@ static bool parse_array(TomlParser* parser, TomlToken token, void* into, bool in
 	if (!add_value_to_table_or_array(parser, into, into_is_array, array_value))
 		return false;
 
-	if (!next(parser, &token))
-		return false;
-
 	while (true)
 	{
+		if (!next(parser, &token))
+			return false;
+
 		if (!parse_value(parser, token, array, true, Range<char8>{}))
 			return false;
 
