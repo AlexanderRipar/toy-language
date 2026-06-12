@@ -6982,7 +6982,7 @@ static bool validate_config_array(const TreeSchemaArray* array) noexcept
 	const u32 count = ts_array_count(array);
 
 	if (count == 0)
-		return true;
+		return false;
 
 	const TreeSchemaValue* const first = ts_array_at(array, 0);
 
@@ -7048,7 +7048,7 @@ bool interpreter_validate_config([[maybe_unused]] const Config* config, [[maybe_
 {
 	if (is_some(config->defines) && !validate_config_table(get(config->defines)))
 	{
-		(void) print(sink, "Config key `defines` contains an array whose elements are of different types.\n");
+		(void) print(sink, "Config key `defines` contains an array that has no elements or whose elements are of different types.\n");
 
 		return false;
 	}
