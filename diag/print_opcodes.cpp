@@ -514,7 +514,8 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 		return PrintResult{ code + sizeof(OpcodeImplMemberAllocCompleteFlags), 0 };
 	}
 
-	case Opcode::Definition:
+	case Opcode::DefinitionTyped:
+	case Opcode::DefinitionUntyped:
 	{
 		return PrintResult{ code + sizeof(IdentifierId) + sizeof(OpcodeDefinitionFlags), 0 };
 	}
@@ -1679,7 +1680,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 		return PrintResult{ code, header_written + written };
 	}
 
-	case Opcode::Definition:
+	case Opcode::DefinitionTyped:
 	{
 		IdentifierId name_id;
 		code = code_attach(code, &name_id);
@@ -1689,11 +1690,33 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 		const Range<char8> name_str = identifier_name_from_id(core, name_id);
 
-		const s64 written = print(sink, " is_pub=% is_mut=% has_type=% has_value=% name=IdentifierId<%> (%)",
+		const s64 written = print(sink, " is_pub=% is_mut=% has_value=% name=IdentifierId<%> (%)",
 			flags.is_pub,
 			flags.is_mut,
-			flags.has_type,
-			flags.has_value,
+			flags.typed_has_value,
+			static_cast<u32>(name_id),
+			name_str
+		);
+
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		return PrintResult{ code, header_written };
+	}
+
+	case Opcode::DefinitionUntyped:
+	{
+		IdentifierId name_id;
+		code = code_attach(code, &name_id);
+
+		OpcodeDefinitionFlags flags;
+		code = code_attach(code, &flags);
+
+		const Range<char8> name_str = identifier_name_from_id(core, name_id);
+
+		const s64 written = print(sink, " is_pub=% is_mut=% name=IdentifierId<%> (%)",
+			flags.is_pub,
+			flags.is_mut,
 			static_cast<u32>(name_id),
 			name_str
 		);

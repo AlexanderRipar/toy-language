@@ -6228,41 +6228,30 @@ static const Opcode* handle_end_trait_member_type(CoreData* core, const Opcode* 
 	return code;
 }
 
-static const Opcode* handle_definition(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+static const Opcode* handle_definition_typed(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
+
 	IdentifierId name;
 	code = code_attach(code, &name);
 
 	OpcodeDefinitionFlags flags;
 	code = code_attach(code, &flags);
 
-	ASSERT_OR_IGNORE(core->interp.values.used() >= static_cast<u32>(flags.has_type) + static_cast<u32>(flags.has_value));
-
-	DefinitionValue definition{};
-	definition.name = name;
-	definition.is_mut = flags.is_mut;
-	definition.is_pub = flags.is_pub;
-
 	CompValue* const top = core->interp.values.end() - 1;
 
-	if (flags.has_type)
-	{
-		CompValue* const type_value = top - static_cast<u32>(flags.has_value);
+	if (type_tag_from_id(core, top->type) != TypeTag::Type)
+		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
-		ASSERT_OR_IGNORE(type_tag_from_id(core, type_value->type) == TypeTag::Type);
+	const TypeId defined_type = *value_as<TypeId>(top);
 
-		definition.type = *value_as<TypeId>(type_value);
-	}
-	else
-	{
-		definition.type = top->type;
-	}
+	Maybe<CoreId> defined_value;
 
-	if (flags.has_value)
+	if (flags.typed_has_value)
 	{
 		TypeMetrics metrics;
-		
-		if (!type_metrics_from_id(core, definition.type, &metrics))
+
+		if (!type_metrics_from_id(core, defined_type, &metrics))
 			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		const Maybe<void*> allocation = comp_heap_alloc(core, metrics.size, metrics.align);
@@ -6272,24 +6261,60 @@ static const Opcode* handle_definition(CoreData* core, const Opcode* code, CompV
 
 		const MutRange<byte> value_bytes{ static_cast<byte*>(get(allocation)), metrics.size };
 
-		const CompValue dst{ value_bytes, metrics.align, true, definition.type };
+		core->interp.write_ctxs.append(CompValue{ value_bytes, metrics.align, true, defined_type });
 
-		if (convert_into(core, code, *top, dst) == nullptr)
-			return nullptr;
-
-		definition.value = some(core_id_from_address(core, get(allocation)));
+		defined_value = some(core_id_from_address(core, get(allocation)));
 	}
 	else
 	{
-		definition.value = none<CoreId>();
+		defined_value = none<CoreId>();
 	}
+
+	DefinitionValue definition{};
+	definition.name = name;
+	definition.is_mut = flags.is_mut;
+	definition.is_pub = flags.is_pub;
+	definition.type = defined_type;
+	definition.value = defined_value;
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&definition);
 
 	const TypeId definition_type = type_create_simple(core, TypeTag::Definition);
 
-	if (flags.has_type && flags.has_value)
-		core->interp.values.pop_by(1);
+	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(DefinitionValue), true, definition_type });
+}
+
+static const Opcode* handle_definition_untyped(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
+
+	IdentifierId name;
+	code = code_attach(code, &name);
+
+	OpcodeDefinitionFlags flags;
+	code = code_attach(code, &flags);
+
+	CompValue* const top = core->interp.values.end() - 1;
+
+	const TypeId defined_type = top->type;
+
+	const Maybe<void*> allocation = comp_heap_alloc(core, top->bytes.count(), top->align);
+
+	if (is_none(allocation))
+		TODO("Implement GC traversal.");
+
+	memcpy(get(allocation), top->bytes.begin(), top->bytes.count());
+
+	DefinitionValue definition{};
+	definition.name = name;
+	definition.is_mut = flags.is_mut;
+	definition.is_pub = flags.is_pub;
+	definition.type = defined_type;
+	definition.value = some(core_id_from_address(core, get(allocation)));
+
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&definition);
+
+	const TypeId definition_type = type_create_simple(core, TypeTag::Definition);
 
 	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(DefinitionValue), true, definition_type });
 }
@@ -6522,7 +6547,8 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 		&handle_impl_member_alloc_complete,        // ImplMemberAllocComplete
 		&handle_pop_self,                          // PopSelf
 		&handle_end_trait_member_type,             // EndTraitMemberType
-		&handle_definition,                        // Definition
+		&handle_definition_typed,                  // DefinitionTyped
+		&handle_definition_untyped,                // DefinitionUntyped
 		&handle_type_type,                         // TypeType
 		&handle_complete_circular_definition,      // CompleteCircularDefinition
 	};
@@ -6601,7 +6627,8 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ImplMemberAllocComplete)]       == &handle_impl_member_alloc_complete);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::PopSelf)]                       == &handle_pop_self);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::EndTraitMemberType)]            == &handle_end_trait_member_type);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::Definition)]                    == &handle_definition);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::DefinitionTyped)]               == &handle_definition_typed);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::DefinitionUntyped)]             == &handle_definition_untyped);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::TypeType)]                      == &handle_type_type);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CompleteCircularDefinition)]    == &handle_complete_circular_definition);
 

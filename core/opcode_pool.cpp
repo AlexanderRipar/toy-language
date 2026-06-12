@@ -521,23 +521,43 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 		return rst;
 	}
 
-	case Opcode::Definition:
+	case Opcode::DefinitionTyped:
 	{
 		OpcodeDefinitionFlags flags;
 		memcpy(&flags, code + 1 + sizeof(IdentifierId), sizeof(flags));
 
-		ASSERT_OR_IGNORE(flags.has_type || flags.has_value);
-
-		rst.values_diff = -static_cast<s32>(flags.has_type && flags.has_value);
+		if (flags.typed_has_value)
+		{
+			if (expects_write_ctx)
+				rst.values_diff = -1;
+			else
+				rst.write_ctxs_diff = 1;
+		}
+		else if (expects_write_ctx)
+		{
+			rst.values_diff = -1;
+			rst.write_ctxs_diff = -1;
+		}
 
 		if (expects_write_ctx)
+			rst.values_diff = -1;
+		else
+			rst.write_ctxs_diff = 1;
+
+		return rst;
+	}
+
+	case Opcode::DefinitionUntyped:
+	{
+		if (expects_write_ctx)
 		{
-			rst.values_diff -= 1; 
+			rst.values_diff = -1;
 			rst.write_ctxs_diff = -1;
 		}
 
 		return rst;
 	}
+
 	case Opcode::Switch:
 		TODO("Implement `opcode_effects(%)`.", tag_name(op));
 
@@ -1453,28 +1473,33 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 		ASSERT_OR_IGNORE(is_some(info.type) || is_some(info.value));
 
-		if (is_some(info.type))
-		{
-			if (!opcodes_from_expression(core, get(info.type), false))
-				return false;
-		}
-
-		if (is_some(info.value))
-		{
-			if (!opcodes_from_expression(core, get(info.value), false))
-				return false;
-		}
-
 		const IdentifierId name = attachment_of<AstDefinitionData>(node)->identifier_id;
 
 		OpcodeDefinitionFlags flags{};
 		flags.is_pub = has_flag(node, AstFlag::Definition_IsPub);
 		flags.is_mut = has_flag(node, AstFlag::Definition_IsMut);
-		flags.has_type = is_some(info.type);
-		flags.has_value = is_some(info.value);
-		flags.unused_ = 0;
+		flags.typed_has_value = is_some(info.type) && is_some(info.value);
 
-		emit_opcode(core, Opcode::Definition, expects_write_ctx, node, name, flags);
+		if (is_some(info.type))
+		{
+			if (!opcodes_from_expression(core, get(info.type), false))
+				return false;
+
+			emit_opcode(core, Opcode::DefinitionTyped, expects_write_ctx, node, name, flags);
+
+			if (is_some(info.value))
+			{
+				if (!opcodes_from_expression(core, get(info.value), true))
+					return false;
+			}
+		}
+		else
+		{
+			if (!opcodes_from_expression(core, get(info.value), false))
+				return false;
+
+			emit_opcode(core, Opcode::DefinitionUntyped, expects_write_ctx, node, name, flags);
+		}
 
 		return true;
 	}
@@ -3207,7 +3232,8 @@ bool return_type_opcodes_equal([[maybe_unused]] CoreData* core, const Opcode* a_
 		case Opcode::ImplMemberAllocComplete:
 		case Opcode::PopSelf:
 		case Opcode::EndTraitMemberType:
-		case Opcode::Definition:
+		case Opcode::DefinitionTyped:
+		case Opcode::DefinitionUntyped:
 		case Opcode::TypeType:
 		case Opcode::CompleteCircularDefinition:
 			TODO("Implement `return_type_opcodes_equal(%)`.", tag_name(a));
@@ -3311,7 +3337,8 @@ const char8* tag_name(Opcode op) noexcept
 		"ImplMemberAllocComplete",
 		"PopSelf",
 		"EndTraitMemberType",
-		"Definition",
+		"DefinitionTyped",
+		"DefinitionUntyped",
 		"TypeType",
 		"CompleteCircularDefinition",
 	};

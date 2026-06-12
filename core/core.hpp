@@ -2661,7 +2661,8 @@ enum class Opcode : u8
 	ImplMemberAllocComplete,
 	PopSelf,
 	EndTraitMemberType,
-	Definition,
+	DefinitionTyped,
+	DefinitionUntyped,
 	TypeType,
 	CompleteCircularDefinition,
 };
@@ -2754,11 +2755,9 @@ struct OpcodeDefinitionFlags
 
 	u8 is_mut : 1;
 
-	u8 has_type : 1;
+	u8 typed_has_value : 1;
 
-	u8 has_value : 1;
-
-	u8 unused_ : 4;
+	u8 unused_ : 5;
 };
 
 struct OpcodeScopeAllocTypedFlags
