@@ -1,6 +1,5 @@
-entrypoint.filepath = 'source.evl'
+entrypoint.path = 'source.evl'
 
-std.prelude.filepath = 'std/prelude.evl'
+std.prelude.path = 'std/prelude.evl'
 
-logging.imports.opcodes.enable = true
-logging.imports.types.enable = true
+logging.imports.opcodes = '$stderr'
