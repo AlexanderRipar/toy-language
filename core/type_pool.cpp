@@ -581,7 +581,6 @@ static u32 structure_size(TypeStructure* structure) noexcept
 	case TypeTag::TypeInfo:
 	case TypeTag::TypeBuilder:
 	case TypeTag::Divergent:
-	case TypeTag::Undefined:
 	{
 		return sizeof(TypeStructure);
 	}
@@ -1076,7 +1075,6 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 	case TypeTag::TypeInfo:
 	case TypeTag::TypeBuilder:
 	case TypeTag::Divergent:
-	case TypeTag::Undefined:
 		return hash;
 
 	case TypeTag::Integer:
@@ -1229,11 +1227,6 @@ static TypeRelation type_can_implicitly_convert_from_to_assume_unequal(CoreData*
 		return TypeRelation::FirstConvertsToSecond;
 	}
 
-	case TypeTag::Undefined:
-	{
-		return TypeRelation::FirstConvertsToSecond;
-	}
-
 	case TypeTag::Slice:
 	case TypeTag::Ptr:
 	{
@@ -1381,7 +1374,6 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 	case TypeTag::TypeInfo:
 	case TypeTag::TypeBuilder:
 	case TypeTag::Divergent:
-	case TypeTag::Undefined:
 	{
 		seen_set_pop(a_seen);
 
@@ -1809,7 +1801,7 @@ void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	core->types.simple_type_base_id = core_id_from_address(core, first_simple_structure);
 
-	for (u8 ordinal = static_cast<u8>(TypeTag::Void) + 1; ordinal != static_cast<u8>(TypeTag::Undefined) + 1; ++ordinal)
+	for (u8 ordinal = static_cast<u8>(TypeTag::Void) + 1; ordinal != static_cast<u8>(TypeTag::Divergent) + 1; ++ordinal)
 	{
 		// TODO: Once hashing is implemented for all types, this pseudo-hashing
 		// can be removed.
@@ -1824,7 +1816,7 @@ void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 TypeId type_create_simple([[maybe_unused]] CoreData* core, TypeTag tag) noexcept
 {
-	ASSERT_OR_IGNORE(tag >= TypeTag::Void && tag <= TypeTag::Undefined);
+	ASSERT_OR_IGNORE(tag >= TypeTag::Void && tag <= TypeTag::Divergent);
 
 	const TypeId type_id = static_cast<TypeId>(static_cast<u32>(core->types.simple_type_base_id) + static_cast<u32>(tag) - static_cast<u32>(TypeTag::Void));
 
@@ -2660,7 +2652,6 @@ bool type_metrics_from_id(CoreData* core, TypeId type_id, TypeMetrics* out) noex
 	{
 	case TypeTag::Void:
 	case TypeTag::Divergent:
-	case TypeTag::Undefined:
 	{
 		*out = TypeMetrics{ 0, 0, 1, false };
 
@@ -2901,7 +2892,6 @@ const char8* tag_name(TypeTag tag) noexcept
 		"TypeInfo",
 		"TypeBuilder",
 		"Divergent",
-		"Undefined",
 		"Integer",
 		"Float",
 		"Slice",

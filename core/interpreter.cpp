@@ -745,14 +745,6 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 		return code;
 	}
 
-	case TypeTag::Undefined:
-	{
-		// Debug pattern for uninitialized memory.
-		range::mem_set(dst.bytes, 0xA6);
-
-		return code;
-	}
-
 	case TypeTag::Slice:
 	case TypeTag::Ptr:
 	{
@@ -1134,7 +1126,6 @@ static CompareResult compare(CoreData* core, TypeId type, MutRange<byte> lhs, Mu
 	}
 
 	case TypeTag::Definition:
-	case TypeTag::Undefined:
 	case TypeTag::Signature:
 	case TypeTag::TailArray:
 	case TypeTag::Divergent:
@@ -5183,21 +5174,14 @@ static const Opcode* handle_reference_type(CoreData* core, const Opcode* code, C
 	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_undefined(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+static const Opcode* handle_undefined([[maybe_unused]] CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
-	if (write_ctx == nullptr)
-	{
-		const TypeId undefined_type = type_create_simple(core, TypeTag::Undefined);
+	ASSERT_OR_IGNORE(write_ctx != nullptr);
 
-		return push_temporary_value(core, code, write_ctx, CompValue{ {}, 1, true, undefined_type });
-	}
-	else
-	{
-		// Debug pattern for uninitialized memory.
-		range::mem_set(write_ctx->bytes, 0xA6);
+	// Debug pattern for uninitialized memory.
+	range::mem_set(write_ctx->bytes, 0xA6);
 
-		return code;
-	}
+	return code;
 }
 
 static const Opcode* handle_unreachable([[maybe_unused]] CoreData* core, [[maybe_unused]] const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept

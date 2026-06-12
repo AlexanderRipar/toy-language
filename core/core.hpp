@@ -2016,9 +2016,6 @@ enum class TypeTag : u8
 	// No additional structural data is stored.
 	Divergent,
 
-	// Tag of the `undefined` type, used for the `undefined` keyword.
-	Undefined,
-
 	// Tag of integer types. Its structure is represented by a `NumericType`.
 	Integer,
 

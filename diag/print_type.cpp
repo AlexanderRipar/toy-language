@@ -32,7 +32,6 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 	case TypeTag::Boolean:
 	case TypeTag::TypeBuilder:
 	case TypeTag::Divergent:
-	case TypeTag::Undefined:
 	case TypeTag::TypeInfo:
 	case TypeTag::TailArray:
 	{

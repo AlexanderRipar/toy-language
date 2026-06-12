@@ -281,7 +281,6 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	case Opcode::LoadClosure:
 	case Opcode::LoadBuiltin:
 	case Opcode::LoopFinally:
-	case Opcode::Undefined:
 	case Opcode::Unreachable:
 	case Opcode::ValueInteger:
 	case Opcode::ValueFloat:
@@ -301,10 +300,11 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	}
 
 	case Opcode::ExecBuiltin:
+	case Opcode::Undefined:
 	{
 		ASSERT_OR_IGNORE(expects_write_ctx);
 
-		rst.write_ctxs_diff -= 1;
+		rst.write_ctxs_diff = -1;
 
 		return rst;
 	}
@@ -1827,6 +1827,9 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 	case AstTag::Undefined:
 	{
+		if (!expects_write_ctx)
+			return record_opcode_emission_error(core, node, CompileError::INVALID); // TODO: Error code.
+
 		emit_opcode(core, Opcode::Undefined, expects_write_ctx, node);
 
 		return true;
