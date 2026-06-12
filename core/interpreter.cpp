@@ -764,174 +764,6 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 		return code;
 	}
 
-	case TypeTag::CompositeLiteral:
-	{
-		ASSERT_OR_IGNORE(type_tag_from_id(core, dst.type) == TypeTag::Composite);
-
-		u32 dst_member_count;
-
-		if (!type_member_count(core, dst.type, &dst_member_count))
-			return record_interpreter_error(core, code, CompileError::IncompleteType);
-
-		const u32 seen_members_size = ((dst_member_count + 7) / 8 + sizeof(u64) - 1) & ~(sizeof(u64) - 1);
-
-		CompValue seen_members_value = alloc_temporary_value_uninit(core, seen_members_size, alignof(u64), TypeId::INVALID);
-
-		u64* const seen_members = reinterpret_cast<u64*>(seen_members_value.bytes.begin());
-
-		memset(seen_members, 0, seen_members_size);
-
-		u32 rank = 0;
-
-		MemberIterator it = members_of(core, src.type);
-
-		while (has_next(&it))
-		{
-			MemberInfo src_info;
-
-			OpcodeId unused_src_initializer;
-
-			if (!next(&it, &src_info, &unused_src_initializer))
-				ASSERT_UNREACHABLE;
-
-			TypeMetrics src_metrics;
-
-			if (!type_metrics_from_id(core, src_info.type_id, &src_metrics))
-				ASSERT_UNREACHABLE;
-
-			const CompValue src_member_value = member_value_by_info(core, src.bytes, src.is_mut, src_info, src_metrics);
-
-			const IdentifierId src_name = type_member_name_by_rank(core, src.type, src_info.rank);
-
-			CompValue dst_member_value;
-
-			if (src_name != IdentifierId::INVALID)
-			{
-				MemberInfo info;
-
-				TypeMetrics metrics;
-
-				if (!member_value_by_name_with_info(core, dst, src_name, &dst_member_value, &info, &metrics))
-					return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetIsMissingMember);
-
-				rank = info.rank;
-			}
-			else
-			{
-				if (rank == dst_member_count)
-					return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetHasTooFewMembers);
-
-				dst_member_value = member_value_by_rank(core, dst, static_cast<u16>(rank));
-			}
-
-			u64* const seen_members_elem = seen_members + rank / 64;
-
-			const u64 member_bit = static_cast<u64>(1) << (rank % 64);
-
-			if ((*seen_members_elem & member_bit) != 0)
-				return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetMemberMappedTwice);
-
-			*seen_members_elem |= member_bit;
-
-			if (convert_into(core, code, src_member_value, dst_member_value) == nullptr)
-				return nullptr;
-
-			rank += 1;
-		}
-
-		for (u32 i = 0; i != dst_member_count; ++i)
-		{
-			const u64 seen_members_elem = seen_members[i >> 6];
-
-			const u64 member_bit = static_cast<u64>(1) << (i & 63);
-
-			if ((seen_members_elem & member_bit) != 0)
-				continue;
-
-			MemberInfo member_info;
-
-			OpcodeId unused_initializer;
-
-			if (!type_member_info_by_rank(core, dst.type, static_cast<u16>(i), &member_info, &unused_initializer))
-				ASSERT_UNREACHABLE;
-
-			if (is_none(member_info.value_or_default))
-				return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
-
-			TypeMetrics member_metrics;
-			
-			if (!type_metrics_from_id(core, member_info.type_id, &member_metrics))
-				ASSERT_UNREACHABLE;
-
-			const MutRange<byte> member_bytes = member_bytes_by_info(core, dst.bytes, member_info, member_metrics.size);
-
-			const byte* const default_src = static_cast<byte*>(address_from_core_id(core, get(member_info.value_or_default)));
-
-			range::mem_copy(member_bytes, Range<byte>{ default_src, member_metrics.size });
-		}
-
-		return code;
-	}
-
-	case TypeTag::ArrayLiteral:
-	{
-		ASSERT_OR_IGNORE(type_tag_from_id(core, dst.type) == TypeTag::Array);
-
-		const ArrayType* const dst_attach = type_attachment_from_id<ArrayType>(core, dst.type);
-
-		// Early-out here to avoid `get`ting the element type of `src` which
-		// may be `none` if there are no elements.
-		if (dst_attach->element_count == 0)
-			return code;
-
-		const ArrayType* const src_attach = type_attachment_from_id<ArrayType>(core, src.type);
-
-		ASSERT_OR_IGNORE(dst_attach->element_count == src_attach->element_count);
-
-		const TypeId dst_elem_type = get(dst_attach->element_type);
-
-		const TypeId src_elem_type = get(src_attach->element_type);
-
-		const TypeEquality elem_equality = type_is_equal(core, dst_elem_type, src_elem_type);
-
-		ASSERT_OR_IGNORE(elem_equality != TypeEquality::Incomplete);
-
-		if (elem_equality == TypeEquality::Equal)
-		{
-			range::mem_copy(dst.bytes, src.bytes.immut());
-		}
-		else
-		{
-			ASSERT_OR_IGNORE(type_relation(core, src_elem_type, dst_elem_type) == TypeRelation::FirstConvertsToSecond);
-
-			TypeMetrics dst_elem_metrics;
-			
-			if (!type_metrics_from_id(core, dst_elem_type, &dst_elem_metrics))
-				ASSERT_UNREACHABLE;
-
-			TypeMetrics src_elem_metrics;
-
-			if (!type_metrics_from_id(core, src_elem_type, &src_elem_metrics))
-				ASSERT_UNREACHABLE;
-
-			for (u64 i = 0; i != dst_attach->element_count; ++i)
-			{
-				MutRange<byte> dst_elem_bytes = dst.bytes.mut_subrange(dst_elem_metrics.stride * i, dst_elem_metrics.size);
-
-				MutRange<byte> src_elem_bytes = src.bytes.mut_subrange(src_elem_metrics.stride * i, src_elem_metrics.size);
-
-				const CompValue dst_elem_value{ dst_elem_bytes, dst_elem_metrics.align, true, dst_elem_type };
-
-				const CompValue src_elem_value{ src_elem_bytes, src_elem_metrics.align, false, src_elem_type };
-
-				if (convert_into_assume_convertible(core, code, src_elem_value, dst_elem_value) == nullptr)
-					return nullptr;
-			}
-		}
-
-		return code;
-	}
-
 	case TypeTag::Self:
 	{
 		[[maybe_unused]] const SelfType* const attach = type_attachment_from_id<SelfType>(core, src.type);
@@ -1236,18 +1068,12 @@ static CompareResult compare(CoreData* core, TypeId type, MutRange<byte> lhs, Mu
 	}
 
 	case TypeTag::Array:
-	case TypeTag::ArrayLiteral:
 	{
 		const ArrayType array_type = *type_attachment_from_id<ArrayType>(core, type);
 
-		if (is_none(array_type.element_type))
-			return CompareResult{ CompareEquality::Equal };
-
-		const TypeId element_type = get(array_type.element_type);
-
 		TypeMetrics metrics;
 		
-		if (!type_metrics_from_id(core, element_type, &metrics))
+		if (!type_metrics_from_id(core, array_type.element_type, &metrics))
 			ASSERT_UNREACHABLE;
 
 		for (u64 i = 0; i != array_type.element_count; ++i)
@@ -1256,7 +1082,7 @@ static CompareResult compare(CoreData* core, TypeId type, MutRange<byte> lhs, Mu
 
 			const MutRange<byte> rhs_elem{ rhs.begin() + i * metrics.stride, metrics.size };
 
-			const CompareResult result = compare(core, element_type, lhs_elem, rhs_elem);
+			const CompareResult result = compare(core, array_type.element_type, lhs_elem, rhs_elem);
 
 			if (result.tag == CompareTag::INVALID)
 				return result;
@@ -1311,7 +1137,6 @@ static CompareResult compare(CoreData* core, TypeId type, MutRange<byte> lhs, Mu
 	case TypeTag::Undefined:
 	case TypeTag::Signature:
 	case TypeTag::TailArray:
-	case TypeTag::CompositeLiteral:
 	case TypeTag::Divergent:
 	case TypeTag::Trait:
 	{
@@ -1328,7 +1153,7 @@ static CompareResult compare(CoreData* core, TypeId type, MutRange<byte> lhs, Mu
 
 static const Opcode* scope_alloc_typed_member_variadic(CoreData* core, const Opcode* code, bool is_mut, TypeId element_type, u64 element_count) noexcept
 {
-	const TypeId type = type_create_array(core, TypeTag::Array, ArrayType{ element_count, some(element_type) });
+	const TypeId type = type_create_array(core, ArrayType{ element_count, element_type });
 
 	TypeMetrics member_metrics;
 
@@ -1681,7 +1506,7 @@ static const Opcode* builtin_array_countof(CoreData* core, const Opcode* code, C
 
 	const TypeTag type_tag = type_tag_from_id(core, type);
 
-	if (type_tag != TypeTag::Array && type_tag != TypeTag::ArrayLiteral)
+	if (type_tag != TypeTag::Array)
 		return record_interpreter_error(core, code, CompileError::ArrayTypeRequired);
 
 	const ArrayType* const attach = type_attachment_from_id<ArrayType>(core, type);
@@ -1767,7 +1592,7 @@ static const Opcode* builtin_create_type_builder(CoreData* core, const Opcode* c
 
 	const TypeId type_builder_type = type_create_simple(core, TypeTag::TypeBuilder);
 
-	TypeId builder = type_create_user_composite(core, TypeTag::Composite, source_id);
+	TypeId builder = type_create_user_composite(core, source_id);
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&builder);
 
@@ -2540,7 +2365,7 @@ static const Opcode* handle_load_member(CoreData* core, const Opcode* code, Comp
 
 	const TypeTag type_tag = type_tag_from_id(core, type);
 
-	if (type_tag == TypeTag::Composite || type_tag == TypeTag::CompositeLiteral)
+	if (type_tag == TypeTag::Composite)
 	{
 		MemberInfo info;
 
@@ -3712,20 +3537,12 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, Co
 
 	const TypeTag type_tag = type_tag_from_id(core, dst_type);
 
-	if (type_tag != TypeTag::Array && type_tag != TypeTag::ArrayLiteral)
+	if (type_tag != TypeTag::Array)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	const ArrayType* const array_type = type_attachment_from_id<ArrayType>(core, dst_type);
 
-	if (is_none(array_type->element_type))
-	{
-		if (leading_element_count != 0 || index_count != 0)
-			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
-
-		return code;
-	}
-
-	const TypeId dst_elem_type = get(array_type->element_type);
+	const TypeId dst_elem_type = array_type->element_type;
 
 	TypeMetrics dst_elem_metrics;
 	
@@ -3799,162 +3616,6 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, Co
 	return code;
 }
 
-static const Opcode* handle_array_postinit(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
-{
-	ASSERT_OR_IGNORE(write_ctx == nullptr);
-
-	u16 total_element_count;
-	code = code_attach(code, &total_element_count);
-
-	u16 index_count;
-	code = code_attach(code, &index_count);
-
-	u16 leading_element_count;
-	code = code_attach(code, &leading_element_count);
-
-	if (total_element_count == 0)
-	{
-		ASSERT_OR_IGNORE(index_count == 0);
-
-		const TypeId array_type = type_create_array(core, TypeTag::ArrayLiteral, ArrayType{ 0, none<TypeId>() });
-
-		CompValue rst = alloc_temporary_value_uninit(core, 0, 1, array_type);
-
-		return push_location_value(core, code, write_ctx, rst);
-	}
-
-	ASSERT_OR_IGNORE(static_cast<u32>(total_element_count) + index_count <= core->interp.values.used());
-
-	CompValue* const indices = core->interp.values.end() - total_element_count - index_count;
-
-	CompValue* const element_values = core->interp.values.end() - total_element_count;
-
-	// First, find the common type of all elements, or fail if there is none.
-
-	TypeId element_type = element_values[0].type;
-
-	for (u16 i = 1; i != total_element_count; ++i)
-	{
-		const TypeRelation relation = type_relation(core, element_type, element_values[i].type);
-
-		if (relation == TypeRelation::Unrelated)
-			return record_interpreter_error(core, code, CompileError::NoCommonArrayElementType);
-		else if (relation == TypeRelation::FirstConvertsToSecond)
-			element_type = element_values[i].type;
-	}
-
-	TypeMetrics element_metrics;
-	
-	if (!type_metrics_from_id(core, element_type, &element_metrics))
-		return record_interpreter_error(core, code, CompileError::IncompleteType);
-
-
-	// Next, work out how large the array needs to be.
-
-	u64 max_element_index = leading_element_count;
-
-	const Opcode* const code_before_indices = code;
-
-	for (u16 i = 0; i != index_count; ++i)
-	{
-		u64 index;
-
-		const U64FromValueRst index_rst = u64_from_value(core, indices[i], &index);
-
-		if (index_rst == U64FromValueRst::Inconvertible)
-			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
-		else if (index_rst == U64FromValueRst::TooLarge)
-			return record_interpreter_error(core, code, CompileError::ArrayInitializerIndexTooLarge);
-		else if (index_rst == U64FromValueRst::Negative)
-			return record_interpreter_error(core, code, CompileError::ArrayInitializerIndexNegative);
-		else
-			ASSERT_OR_IGNORE(index_rst == U64FromValueRst::Ok);
-
-		u16 following_element_count;
-		code = code_attach(code, &following_element_count);
-
-		if (index + following_element_count > max_element_index)
-		{
-			if (max_element_index > UINT16_MAX)
-				return record_interpreter_error(core, code, CompileError::ArrayInitializerTooManyElements);
-
-			max_element_index = index + following_element_count;
-		}
-	}
-
-	code = code_before_indices;
-
-	const TypeId array_type = type_create_array(core, TypeTag::ArrayLiteral, ArrayType{ max_element_index, some(element_type) });
-
-	CompValue rst = alloc_temporary_value_uninit(core, element_metrics.stride * (max_element_index - 1) + element_metrics.size, element_metrics.align, array_type);
-
-	for (u16 i = 0; i != leading_element_count; ++i)
-	{
-		const MutRange<byte> dst_bytes = rst.bytes.mut_subrange(element_metrics.stride * i, element_metrics.size);
-
-		const CompValue dst{ dst_bytes, element_metrics.align, true, element_type };
-
-		if (convert_into(core, code, element_values[i], dst) == nullptr)
-			return nullptr;
-	}
-
-	if (index_count == 0)
-	{
-		core->interp.values.pop_by(total_element_count + index_count);
-
-		return push_location_value(core, code, write_ctx, rst);
-	}
-
-	SeenSet seen = seen_set_init(core, static_cast<u16>(max_element_index), leading_element_count);
-
-	u16 value_index = 0;
-
-	for (u16 i = 0; i != index_count; ++i)
-	{
-		u64 base_index;
-
-		const U64FromValueRst base_index_rst = u64_from_value(core, indices[i], &base_index);
-
-		if (base_index_rst == U64FromValueRst::Inconvertible)
-			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
-		else if (base_index_rst == U64FromValueRst::TooLarge)
-			return record_interpreter_error(core, code, CompileError::ArrayInitializerIndexTooLarge);
-		else if (base_index_rst == U64FromValueRst::Negative)
-			return record_interpreter_error(core, code, CompileError::ArrayInitializerIndexNegative);
-		else
-			ASSERT_OR_IGNORE(base_index_rst == U64FromValueRst::Ok);
-
-		u16 following_element_count;
-		code = code_attach(code, &following_element_count);
-
-		ASSERT_OR_IGNORE(base_index + following_element_count <= max_element_index);
-
-		if (!seen_set_set(seen, static_cast<u16>(base_index), following_element_count))
-			return record_interpreter_error(core, code, CompileError::ArrayInitializerDuplicateElement);
-
-		for (u16 j = 0; j != following_element_count; ++i)
-		{
-			const MutRange<byte> bytes = rst.bytes.mut_subrange((base_index + j) * element_metrics.stride, element_metrics.size);
-
-			if (convert_into_assume_convertible(core, code, element_values[value_index + j], CompValue{ bytes, element_metrics.align, true, element_type }) == nullptr)
-				return nullptr;
-		}
-
-		value_index += following_element_count;
-	}
-
-	core->interp.values.pop_by(total_element_count + index_count);
-
-	u16 unseen_index;
-
-	while (seen_set_next_unseen(seen, leading_element_count, &unseen_index))
-	{
-		TODO("Implement array literals with default value");
-	}
-
-	return push_location_value(core, code, write_ctx, rst);
-}
-
 static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
 	ASSERT_OR_IGNORE(write_ctx != nullptr);
@@ -3972,7 +3633,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 	u16 leading_member_count;
 	code = code_attach(code, &leading_member_count);
 
-	if (type_tag != TypeTag::CompositeLiteral && type_tag != TypeTag::Composite)
+	if (type_tag != TypeTag::Composite)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	u32 member_count;
@@ -4083,94 +3744,6 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 	}
 
 	return code;
-}
-
-static const Opcode* handle_composite_postinit(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
-{
-	ASSERT_OR_IGNORE(write_ctx == nullptr);
-
-	u16 total_member_count;
-	code = code_attach(code, &total_member_count);
-
-	ASSERT_OR_IGNORE(core->interp.values.used() >= total_member_count);
-
-	CompValue* const values = core->interp.values.end() - total_member_count;
-
-	TypeId initializer_type = type_create_user_composite(core, TypeTag::CompositeLiteral, source_id_of_opcode(core, code));
-
-	u64 size = 0;
-
-	u32 align = 1;
-
-	for (u16 i = 0; i != total_member_count; ++i)
-	{
-		IdentifierId name;
-		code = code_attach(code, &name);
-
-		const TypeId member_type = values[i].type;
-
-		TypeMetrics member_metrics;
-		
-		if (!type_metrics_from_id(core, member_type, &member_metrics))
-			return record_interpreter_error(core, code, CompileError::IncompleteType);
-
-		size = next_multiple(size, static_cast<u64>(member_metrics.align));
-
-		UserCompositeMemberInit init{};
-		init.name = name;
-		init.type_id = member_type;
-		init.default_value = none<CoreId>();
-		init.is_pub = true;
-		init.is_mut = true;
-		init.offset = size;
-
-		size += member_metrics.size;
-
-		if (align < member_metrics.align)
-			align = member_metrics.align;
-
-		if (!type_add_user_composite_member(core, initializer_type, init))
-			ASSERT_UNREACHABLE;
-	}
-
-	UserCompositeSealInfo seal{};
-	seal.size = size;
-	seal.stride = next_multiple(size, static_cast<u64>(align));
-	seal.align = align;
-
-	initializer_type = type_seal_user_composite(core, initializer_type, seal);
-
-	TypeMetrics metrics;
-	
-	if (!type_metrics_from_id(core, initializer_type, &metrics))
-		return record_interpreter_error(core, code, CompileError::IncompleteType);
-
-	MemberIterator it = members_of(core, initializer_type);
-
-	CompValue initializer = alloc_temporary_value_uninit(core, metrics.size, metrics.align, initializer_type);
-
-	for (u16 i = 0; i != total_member_count; ++i)
-	{
-		if (!has_next(&it))
-			ASSERT_UNREACHABLE;
-
-		MemberInfo info;
-
-		OpcodeId unused_initializer;
-
-		if (!next(&it, &info, &unused_initializer))
-			TODO("Figure out what to do when post-initializing incomplete types and if it can even reasonably happen");
-
-		const MutRange<byte> src = values[i].bytes;
-
-		const MutRange<byte> dst = member_bytes_by_info(core, initializer.bytes, info, src.count());
-
-		range::mem_copy(dst, src.immut());
-
-		shadow_copy(core, dst, src);
-	}
-
-	return push_location_value(core, code, write_ctx, initializer);
 }
 
 static const Opcode* handle_if(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
@@ -4490,23 +4063,18 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CompValue*
 			return record_interpreter_error(core, code, CompileError::SliceOperatorIndicesReversed);
 	}
 
-	if (type_tag == TypeTag::Array || type_tag == TypeTag::ArrayLiteral)
+	if (type_tag == TypeTag::Array)
 	{
 		const ArrayType array_type = *type_attachment_from_id<ArrayType>(core, type);
-
-		if (is_none(array_type.element_type))
-			return record_interpreter_error(core, code, CompileError::SliceOperatorUntypedArrayLiteral);
 
 		const u64 max_index = has_end_index ? end_index : begin_index;
 
 		if (max_index >= array_type.element_count)
 			return record_interpreter_error(core, code, CompileError::SliceOperatorIndexOutOfBounds);
 
-		const TypeId elem_type = get(array_type.element_type);
-
 		TypeMetrics elem_metrics;
 		
-		if (!type_metrics_from_id(core, elem_type, &elem_metrics))
+		if (!type_metrics_from_id(core, array_type.element_type, &elem_metrics))
 			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		byte* const begin_ptr = lhs->bytes.begin() + begin_index * elem_metrics.stride;
@@ -4519,7 +4087,7 @@ static const Opcode* handle_slice(CoreData* core, const Opcode* code, CompValue*
 			return record_interpreter_error(core, code, CompileError::BadHeapPointer);
 
 		ReferenceType slice_type{};
-		slice_type.referenced_type_id = elem_type;
+		slice_type.referenced_type_id = array_type.element_type;
 		slice_type.is_opt = false;
 		slice_type.is_multi = false;
 		slice_type.is_mut = lhs->is_mut;
@@ -4632,28 +4200,23 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CompValue*
 
 	const TypeTag type_tag = type_tag_from_id(core, type);
 
-	if (type_tag == TypeTag::Array || type_tag == TypeTag::ArrayLiteral)
+	if (type_tag == TypeTag::Array)
 	{
 		const ArrayType array_type = *type_attachment_from_id<ArrayType>(core, type);
-
-		if (is_none(array_type.element_type))
-			return record_interpreter_error(core, code, CompileError::SliceOperatorUntypedArrayLiteral);
 
 		if (array_type.element_count <= index)
 			return record_interpreter_error(core, code, CompileError::ArrayIndexOutOfBounds);
 
-		const TypeId elem_type = get(array_type.element_type);
-
 		TypeMetrics elem_metrics;
 		
-		if (!type_metrics_from_id(core, elem_type, &elem_metrics))
+		if (!type_metrics_from_id(core, array_type.element_type, &elem_metrics))
 			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
 		core->interp.values.pop_by(1);
 
 		const MutRange<byte> bytes = lhs->bytes.mut_subrange(index * elem_metrics.stride, elem_metrics.size);
 
-		return poppush_location_value(core, code, write_ctx, CompValue{ bytes, elem_metrics.align, true, elem_type });
+		return poppush_location_value(core, code, write_ctx, CompValue{ bytes, elem_metrics.align, true, array_type.element_type });
 	}
 	else if (type_tag == TypeTag::Slice)
 	{
@@ -5581,7 +5144,7 @@ static const Opcode* handle_array_type(CoreData* core, const Opcode* code, CompV
 
 	const TypeId element_type = *value_as<TypeId>(element_type_value);
 
-	TypeId array_type = type_create_array(core, TypeTag::Array, ArrayType{ element_count, some(element_type) });
+	TypeId array_type = type_create_array(core, ArrayType{ element_count, element_type });
 
 	const MutRange<byte> bytes = range::from_object_bytes_mut(&array_type);
 
@@ -6506,9 +6069,7 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 		&handle_complete_param_typed_with_default, // CompleteParamTypedWithDefault
 		&handle_complete_param_untyped,            // CompleteParamUntyped
 		&handle_array_preinit,                     // ArrayPreInit
-		&handle_array_postinit,                    // ArrayPostInit
 		&handle_composite_preinit,                 // CompositePreInit
-		&handle_composite_postinit,                // CompositePostInit
 		&handle_if,                                // If
 		&handle_if_else,                           // IfElse
 		&handle_loop,                              // Loop
@@ -6586,9 +6147,7 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CompleteParamTypedWithDefault)] == &handle_complete_param_typed_with_default);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CompleteParamUntyped)]          == &handle_complete_param_untyped);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::ArrayPreInit)]                  == &handle_array_preinit);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::ArrayPostInit)]                 == &handle_array_postinit);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CompositePreInit)]              == &handle_composite_preinit);
-	static_assert(HANDLERS[static_cast<u8>(Opcode::CompositePostInit)]             == &handle_composite_postinit);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::If)]                            == &handle_if);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::IfElse)]                        == &handle_if_else);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::Loop)]                          == &handle_loop);
@@ -6713,12 +6272,12 @@ static TypeId type_from_ts_array(CoreData* core, const TreeSchemaArray* array) n
 		element_type = some(type_from_ts_value(core, value));
 	}
 
-	return type_create_array(core, TypeTag::ArrayLiteral, ArrayType{ count, element_type });
+	return type_create_array(core, ArrayType{ count, get(element_type) });
 }
 
 static TypeId type_from_ts_table(CoreData* core, const TreeSchemaTable* table) noexcept
 {
-	const TypeId type = type_create_user_composite(core, TypeTag::CompositeLiteral, SourceId::INVALID);
+	const TypeId type = type_create_user_composite(core, SourceId::INVALID);
 
 	u64 size = 0;
 
@@ -6811,7 +6370,7 @@ static TypeId type_from_ts_value(CoreData* core, const TreeSchemaValue* value) n
 
 static void value_from_ts_table(CoreData* core, byte* dst, TypeId type, const TreeSchemaTable* table) noexcept
 {
-	ASSERT_OR_IGNORE(type_tag_from_id(core, type) == TypeTag::CompositeLiteral);
+	ASSERT_OR_IGNORE(type_tag_from_id(core, type) == TypeTag::Composite);
 
 	TreeSchemaTableIterator it = ts_table_values(table);
 
@@ -6845,18 +6404,15 @@ static void value_from_ts_table(CoreData* core, byte* dst, TypeId type, const Tr
 
 static void value_from_ts_array(CoreData* core, byte* dst, TypeId type, const TreeSchemaArray* array) noexcept
 {
-	ASSERT_OR_IGNORE(type_tag_from_id(core, type) == TypeTag::ArrayLiteral);
-
-	const u32 count = ts_array_count(array);
-
-	if (count == 0)
-		return;
+	ASSERT_OR_IGNORE(type_tag_from_id(core, type) == TypeTag::Array);
 
 	const ArrayType* const attach = type_attachment_from_id<ArrayType>(core, type);
 
-	const TypeId element_type = get(attach->element_type);
+	const TypeId element_type = attach->element_type;
 
 	TypeMetrics element_metrics;
+
+	const u32 count = ts_array_count(array);
 
 	if (!type_metrics_from_id(core, element_type, &element_metrics))
 		ASSERT_UNREACHABLE;
@@ -6953,7 +6509,7 @@ static void init_defines(CoreData* core) noexcept
 	}
 	else
 	{
-		defines_type = type_create_user_composite(core, TypeTag::CompositeLiteral, SourceId::INVALID);
+		defines_type = type_create_user_composite(core, SourceId::INVALID);
 
 		UserCompositeSealInfo seal_info{};
 		seal_info.size = 0;

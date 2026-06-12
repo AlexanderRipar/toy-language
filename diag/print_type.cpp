@@ -88,17 +88,16 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 		return indent_written + written + referenced_written;
 	}
 
-	case TypeTag::ArrayLiteral:
 	case TypeTag::Array:
 	{
 		const ArrayType* const array = type_attachment_from_id<ArrayType>(core, type_id);
 
-		const s64 written = print(sink, "%[][%]", tag == TypeTag::ArrayLiteral ? "." : "", array->element_count);
+		const s64 written = print(sink, "[%]", array->element_count);
 
 		if (written < 0)
 			return -1;
 
-		const s64 element_written = print_type_impl(sink, core, is_some(array->element_type) ? get(array->element_type) : TypeId::INVALID, indent + 1, true);
+		const s64 element_written = print_type_impl(sink, core, array->element_type, indent + 1, true);
 
 		if (element_written < 0)
 			return -1;
@@ -109,7 +108,6 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 	case TypeTag::Signature:
 	case TypeTag::Trait:
 	case TypeTag::Composite:
-	case TypeTag::CompositeLiteral:
 	{
 		s64 total_written = 0;
 

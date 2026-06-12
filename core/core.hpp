@@ -1748,7 +1748,6 @@ enum class CompileError
 	SliceOperatorIndicesReversed,
 	SliceOperatorIndexTooLarge,
 	SliceOperatorIndexNegative,
-	SliceOperatorUntypedArrayLiteral,
 	DerefInvalidOperandType,
 	BitNotInvalidOperandType,
 	NegateInvalidOperandType,
@@ -2053,13 +2052,6 @@ enum class TypeTag : u8
 	// `ReferenceType`.
 	TailArray,
 
-	// Tag of composite literal types.
-	CompositeLiteral,
-
-	// Tag of array literal types. Its structure is represented by an
-	// `ArrayType`.
-	ArrayLiteral,
-
 	// Tag of trait types.
 	Trait,
 
@@ -2342,7 +2334,7 @@ struct alignas(8) ArrayType
 	u64 element_count;
 
 	// `TypeId` of the array's elements.
-	Maybe<TypeId> element_type;
+	TypeId element_type;
 
 	// Explicit padding to allow consistent hashing without incurring undefined
 	// behaviour by accessing structure padding.
@@ -2399,7 +2391,7 @@ TypeId type_create_reference(CoreData* core, TypeTag tag, ReferenceType attach) 
 // Creates an "array", i.e. `Array` or `ArrayLiteral` type.
 // This takes a tag indicating which type to create, along with an `ArrayType`
 // further describing it.
-TypeId type_create_array(CoreData* core, TypeTag tag, ArrayType attach) noexcept;
+TypeId type_create_array(CoreData* core, ArrayType attach) noexcept;
 
 
 
@@ -2443,7 +2435,7 @@ void type_seal_impl_body(CoreData* core, TypeId type_id) noexcept;
 
 
 
-TypeId type_create_user_composite(CoreData* core, TypeTag tag, SourceId definition_site) noexcept;
+TypeId type_create_user_composite(CoreData* core, SourceId definition_site) noexcept;
 
 bool type_add_user_composite_member(CoreData* core, TypeId type_id, UserCompositeMemberInit init) noexcept;
 
@@ -2532,7 +2524,7 @@ const T* type_attachment_from_id(CoreData* core, TypeId type_id) noexcept
 		else if constexpr (is_same_cpp_type<T, NumericType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Integer || tag == TypeTag::Float);
 		else if constexpr (is_same_cpp_type<T, ArrayType>)
-			ASSERT_OR_IGNORE(tag == TypeTag::Array || tag == TypeTag::ArrayLiteral);
+			ASSERT_OR_IGNORE(tag == TypeTag::Array);
 		else if constexpr (is_same_cpp_type<T, SelfType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Self);
 		else
@@ -2617,9 +2609,7 @@ enum class Opcode : u8
 	CompleteParamTypedWithDefault,
 	CompleteParamUntyped,
 	ArrayPreInit,
-	ArrayPostInit,
 	CompositePreInit,
-	CompositePostInit,
 	If,
 	IfElse,
 	Loop,

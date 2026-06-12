@@ -135,7 +135,7 @@ static void type_create_array_with_integer_elements_returns_array_type() noexcep
 
 	TEST_UNEQUAL(s32_id, TypeId::INVALID);
 
-	const TypeId array_id = type_create_array(core, TypeTag::Array, ArrayType{ 128, some(s32_id) });
+	const TypeId array_id = type_create_array(core, ArrayType{ 128, s32_id });
 
 	TEST_UNEQUAL(array_id, TypeId::INVALID);
 
@@ -145,7 +145,7 @@ static void type_create_array_with_integer_elements_returns_array_type() noexcep
 
 	TEST_EQUAL(interned->element_count, 128);
 
-	TEST_EQUAL(get(interned->element_type), s32_id);
+	TEST_EQUAL(interned->element_type, s32_id);
 
 	release_core_data(core);
 
@@ -162,7 +162,7 @@ static void type_create_array_with_integer_twice_returns_same_type_id() noexcept
 
 	TEST_UNEQUAL(s32_id, TypeId::INVALID);
 
-	const TypeId array_id_1 = type_create_array(core, TypeTag::Array, ArrayType{ 128, some(s32_id) });
+	const TypeId array_id_1 = type_create_array(core, ArrayType{ 128, s32_id });
 
 	TEST_UNEQUAL(array_id_1, TypeId::INVALID);
 
@@ -172,9 +172,9 @@ static void type_create_array_with_integer_twice_returns_same_type_id() noexcept
 
 	TEST_EQUAL(interned_array_1->element_count, 128);
 
-	TEST_EQUAL(get(interned_array_1->element_type), s32_id);
+	TEST_EQUAL(interned_array_1->element_type, s32_id);
 
-	const TypeId array_id_2 = type_create_array(core, TypeTag::Array, ArrayType{ 128, some(s32_id) });
+	const TypeId array_id_2 = type_create_array(core, ArrayType{ 128, s32_id });
 
 	TEST_UNEQUAL(array_id_2, TypeId::INVALID);
 
@@ -184,7 +184,7 @@ static void type_create_array_with_integer_twice_returns_same_type_id() noexcept
 
 	TEST_EQUAL(interned_array_2->element_count, 128);
 
-	TEST_EQUAL(get(interned_array_2->element_type), s32_id);
+	TEST_EQUAL(interned_array_2->element_type, s32_id);
 
 	TEST_EQUAL(array_id_1, array_id_2);
 
@@ -201,7 +201,7 @@ static void type_create_composite_creates_composite_type_with_no_members() noexc
 
 	CoreData* const core = create_tiny_core();
 
-	const TypeId composite = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId composite = type_create_user_composite(core, static_cast<SourceId>(1));
 
 	TEST_UNEQUAL(composite, TypeId::INVALID);
 
@@ -240,7 +240,7 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 
 	CoreData* const core = create_tiny_core();
 
-	const TypeId composite = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId composite = type_create_user_composite(core, static_cast<SourceId>(1));
 
 	TEST_UNEQUAL(composite, TypeId::INVALID);
 
@@ -303,9 +303,9 @@ static void empty_composites_are_equal() noexcept
 
 	CoreData* const core = create_tiny_core();
 
-	const TypeId a = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId a = type_create_user_composite(core, static_cast<SourceId>(1));
 
-	const TypeId b = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId b = type_create_user_composite(core, static_cast<SourceId>(1));
 
 	const TypeEquality equal = type_is_equal(core, a, b);
 
@@ -331,13 +331,13 @@ static void composites_with_empty_composite_member_are_equal() noexcept
 
 	CoreData* const core = create_tiny_core();
 
-	const TypeId x = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId x = type_create_user_composite(core, static_cast<SourceId>(1));
 
-	const TypeId y = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId y = type_create_user_composite(core, static_cast<SourceId>(1));
 
-	const TypeId a = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId a = type_create_user_composite(core, static_cast<SourceId>(1));
 
-	const TypeId b = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId b = type_create_user_composite(core, static_cast<SourceId>(1));
 
 	UserCompositeMemberInit member = dummy_user_member();
 
@@ -362,7 +362,7 @@ static void pointers_to_same_composite_are_equal() noexcept
 
 	CoreData* const core = create_tiny_core();
 
-	const TypeId composite = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId composite = type_create_user_composite(core, static_cast<SourceId>(1));
 
 	UserCompositeSealInfo seal{};
 	seal.size = 0;
@@ -396,7 +396,7 @@ static void pointers_to_equal_composites_are_equal() noexcept
 
 	CoreData* const core = create_tiny_core();
 
-	const TypeId composite_1 = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId composite_1 = type_create_user_composite(core, static_cast<SourceId>(1));
 
 	UserCompositeSealInfo seal{};
 	seal.size = 0;
@@ -405,7 +405,7 @@ static void pointers_to_equal_composites_are_equal() noexcept
 
 	type_seal_user_composite(core, composite_1, seal);
 
-	const TypeId composite_2 = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId composite_2 = type_create_user_composite(core, static_cast<SourceId>(1));
 
 	type_seal_user_composite(core, composite_2, seal);
 
@@ -449,9 +449,9 @@ static void composites_with_same_distinct_source_and_pointers_to_self_are_equal(
 	reference.is_multi = false;
 	reference.is_mut = false;
 
-	const TypeId a = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId a = type_create_user_composite(core, static_cast<SourceId>(1));
 
-	const TypeId b = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId b = type_create_user_composite(core, static_cast<SourceId>(1));
 
 	reference.referenced_type_id = a;
 	const TypeId p_a = type_create_reference(core, TypeTag::Ptr, reference);
@@ -502,9 +502,9 @@ static void composites_with_same_distinct_source_and_pointers_to_each_other_are_
 	reference.is_multi = false;
 	reference.is_mut = false;
 
-	const TypeId a = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId a = type_create_user_composite(core, static_cast<SourceId>(1));
 
-	const TypeId b = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId b = type_create_user_composite(core, static_cast<SourceId>(1));
 
 	reference.referenced_type_id = a;
 	const TypeId p_a = type_create_reference(core, TypeTag::Ptr, reference);
@@ -555,9 +555,9 @@ static void composites_with_same_distinct_source_and_pointers_to_self_and_differ
 	reference.is_multi = false;
 	reference.is_mut = false;
 
-	const TypeId a = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId a = type_create_user_composite(core, static_cast<SourceId>(1));
 
-	const TypeId b = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId b = type_create_user_composite(core, static_cast<SourceId>(1));
 
 	reference.referenced_type_id = a;
 	const TypeId p_a = type_create_reference(core, TypeTag::Ptr, reference);
@@ -621,13 +621,13 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 
 	UserCompositeMemberInit member = dummy_user_member();
 
-	const TypeId a1 = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId a1 = type_create_user_composite(core, static_cast<SourceId>(1));
 
-	const TypeId a2 = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId a2 = type_create_user_composite(core, static_cast<SourceId>(1));
 
-	const TypeId b1 = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId b1 = type_create_user_composite(core, static_cast<SourceId>(1));
 
-	const TypeId b2 = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId b2 = type_create_user_composite(core, static_cast<SourceId>(1));
 
 	reference.referenced_type_id = a1;
 	const TypeId p_a1 = type_create_reference(core, TypeTag::Ptr, reference);
@@ -711,13 +711,13 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 
 	UserCompositeMemberInit member = dummy_user_member();
 
-	const TypeId a1 = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId a1 = type_create_user_composite(core, static_cast<SourceId>(1));
 
-	const TypeId a2 = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId a2 = type_create_user_composite(core, static_cast<SourceId>(1));
 
-	const TypeId b1 = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId b1 = type_create_user_composite(core, static_cast<SourceId>(1));
 
-	const TypeId b2 = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId b2 = type_create_user_composite(core, static_cast<SourceId>(1));
 
 	reference.referenced_type_id = a1;
 	const TypeId p_a1 = type_create_reference(core, TypeTag::Ptr, reference);
@@ -799,9 +799,9 @@ static void pair_types_with_same_element_types_are_considered_equal() noexcept
 
 	CoreData* const core = create_tiny_core();
 
-	const TypeId a = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId a = type_create_user_composite(core, static_cast<SourceId>(1));
 
-	const TypeId b = type_create_user_composite(core, TypeTag::Composite, static_cast<SourceId>(1));
+	const TypeId b = type_create_user_composite(core, static_cast<SourceId>(1));
 
 	UserCompositeMemberInit member = dummy_user_member();
 	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, false });

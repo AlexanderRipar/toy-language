@@ -414,21 +414,6 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 		return rst;
 	}
 
-	case Opcode::ArrayPostInit:
-	{
-		ASSERT_OR_IGNORE(!expects_write_ctx);
-
-		u16 total_element_count;
-		memcpy(&total_element_count, code + 1, sizeof(total_element_count));
-
-		u16 index_count;
-		memcpy(&index_count, code + 3, sizeof(index_count));
-
-		rst.values_diff = 1 - static_cast<s32>(total_element_count + index_count);
-
-		return rst;
-	}
-
 	case Opcode::CompositePreInit:
 	{
 		ASSERT_OR_IGNORE(expects_write_ctx);
@@ -437,18 +422,6 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 		memcpy(&elems_count, code + 3, sizeof(elems_count));
 
 		rst.write_ctxs_diff = static_cast<u32>(elems_count) - 1;
-
-		return rst;
-	}
-
-	case Opcode::CompositePostInit:
-	{
-		ASSERT_OR_IGNORE(!expects_write_ctx);
-
-		u16 total_member_count;
-		memcpy(&total_member_count, code + 1, sizeof(total_member_count));
-
-		rst.values_diff = 1 - static_cast<s32>(total_member_count);
 
 		return rst;
 	}
@@ -1236,232 +1209,117 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 	case AstTag::CompositeInitializer:
 	{
-		// This is treated separately depending on whether there is a write
-		// context.
-		// If there is one, then `Opcode::CompositePreInit` is used to
-		// split it into write contexts corresponding to its members in
-		// initializer order. Member initializers are then evaluated directly
-		// into these.
-		// If there is no write context, then `Opcode::CompositePostInit` is
-		// used instead. This expects its member initializers already on the
-		// stack, and combines them into an instance of a new
-		// `CompositeLiteral` type.
+		if (!expects_write_ctx)
+			return record_opcode_emission_error(core, node, CompileError::INVALID); // TODO: Error code.
 
-		if (expects_write_ctx)
+		u16 named_member_count = 0;
+
+		u16 write_ctxs_diff = 0;
+
+		AstDirectChildIterator it = direct_children_of(node);
+
+		while (has_next(&it))
 		{
-			u16 named_member_count = 0;
+			AstNode* const member = next(&it);
 
-			u16 write_ctxs_diff = 0;
+			if (member->tag == AstTag::OpSet)
+				named_member_count += 1;
 
-			AstDirectChildIterator it = direct_children_of(node);
-
-			while (has_next(&it))
-			{
-				AstNode* const member = next(&it);
-
-				if (member->tag == AstTag::OpSet)
-					named_member_count += 1;
-
-				write_ctxs_diff += 1;
-			}
-
-			// Since we use `emit_opcode_raw` and not `emit_opcode`, we need to
-			// manually adjust and check the current state.
-			{
-				ASSERT_OR_IGNORE(core->opcodes.state.write_ctxs_diff != 0);
-
-				core->opcodes.state.write_ctxs_diff += write_ctxs_diff - 1;
-			}
-
-			const u32 attach_size = 3 * sizeof(u16) + named_member_count * (sizeof(IdentifierId) + sizeof(u16));
-
-			byte* attach = emit_opcode_raw(core, Opcode::CompositePreInit, true, node, attach_size);
-
-			memcpy(attach, &named_member_count, sizeof(u16));
-			attach += sizeof(u16);
-
-			memcpy(attach, &write_ctxs_diff, sizeof(u16));
-			attach += sizeof(u16);
-
-			u16 following_member_count = 0;
-
-			it = direct_children_of(node);
-
-			while (has_next(&it))
-			{
-				AstNode* const member = next(&it);
-
-				AstNode* value;
-
-				if (member->tag == AstTag::OpSet)
-				{
-					AstNode* const implied_member = first_child_of(member);
-
-					if (implied_member->tag != AstTag::ImpliedMember)
-						return record_opcode_emission_error(core, implied_member, CompileError::AssignmentInCompositeInitializer);
-
-					value = next_sibling_of(implied_member);
-
-					memcpy(attach, &following_member_count, sizeof(u16));
-
-					attach += sizeof(u16);
-
-					memcpy(attach, &attachment_of<AstImpliedMemberData>(implied_member)->identifier_id, sizeof(IdentifierId));
-
-					attach += sizeof(IdentifierId);
-
-					following_member_count = 1;
-				}
-				else
-				{
-					value = member;
-
-					following_member_count += 1;
-				}
-
-				if (!opcodes_from_expression(core, value, true))
-					return false;
-			}
-
-			memcpy(attach, &following_member_count, sizeof(u16));
+			write_ctxs_diff += 1;
 		}
-		else
+
+		// Since we use `emit_opcode_raw` and not `emit_opcode`, we need to
+		// manually adjust and check the current state.
 		{
-			u16 total_member_count = 0;
+			ASSERT_OR_IGNORE(core->opcodes.state.write_ctxs_diff != 0);
 
-			AstDirectChildIterator it = direct_children_of(node);
+			core->opcodes.state.write_ctxs_diff += write_ctxs_diff - 1;
+		}
 
-			while (has_next(&it))
+		const u32 attach_size = 3 * sizeof(u16) + named_member_count * (sizeof(IdentifierId) + sizeof(u16));
+
+		byte* attach = emit_opcode_raw(core, Opcode::CompositePreInit, true, node, attach_size);
+
+		memcpy(attach, &named_member_count, sizeof(u16));
+		attach += sizeof(u16);
+
+		memcpy(attach, &write_ctxs_diff, sizeof(u16));
+		attach += sizeof(u16);
+
+		u16 following_member_count = 0;
+
+		it = direct_children_of(node);
+
+		while (has_next(&it))
+		{
+			AstNode* const member = next(&it);
+
+			AstNode* value;
+
+			if (member->tag == AstTag::OpSet)
 			{
-				AstNode* const member = next(&it);
+				AstNode* const implied_member = first_child_of(member);
 
-				AstNode* value;
+				if (implied_member->tag != AstTag::ImpliedMember)
+					return record_opcode_emission_error(core, implied_member, CompileError::AssignmentInCompositeInitializer);
 
-				if (member->tag == AstTag::OpSet)
-				{
-					AstNode* const implied_member = first_child_of(member);
+				value = next_sibling_of(implied_member);
 
-					if (implied_member->tag != AstTag::ImpliedMember)
-						return record_opcode_emission_error(core, implied_member, CompileError::AssignmentInCompositeInitializer);
+				memcpy(attach, &following_member_count, sizeof(u16));
 
-					value = next_sibling_of(implied_member);
-				}
-				else
-				{
-					value = member;
-				}
+				attach += sizeof(u16);
 
-				if (!opcodes_from_expression(core, value, false))
-					return false;
-
-				total_member_count += 1;
-			}
-
-
-			// Since we use `emit_opcode_raw` and not `emit_opcode`, we need to
-			// manually adjust and check the current state.
-			{
-				ASSERT_OR_IGNORE(core->opcodes.state.values_diff >= total_member_count);
-
-				core->opcodes.state.values_diff -= total_member_count - 1;
-			}
-
-			byte* attach = emit_opcode_raw(core, Opcode::CompositePostInit, false, node, sizeof(u16) + total_member_count * sizeof(IdentifierId));
-
-			memcpy(attach, &total_member_count, sizeof(u16));
-
-			attach += sizeof(u16);
-
-			it = direct_children_of(node);
-
-			while (has_next(&it))
-			{
-				AstNode* const member = next(&it);
-
-				IdentifierId name;
-
-				if (member->tag == AstTag::OpSet)
-				{
-					AstNode* const implied_member = first_child_of(member);
-
-					name = attachment_of<AstImpliedMemberData>(implied_member)->identifier_id;
-				}
-				else
-				{
-					name = IdentifierId::INVALID;
-				}
-
-				memcpy(attach, &name, sizeof(IdentifierId));
+				memcpy(attach, &attachment_of<AstImpliedMemberData>(implied_member)->identifier_id, sizeof(IdentifierId));
 
 				attach += sizeof(IdentifierId);
+
+				following_member_count = 1;
 			}
+			else
+			{
+				value = member;
+
+				following_member_count += 1;
+			}
+
+			if (!opcodes_from_expression(core, value, true))
+				return false;
 		}
+
+		memcpy(attach, &following_member_count, sizeof(u16));
 
 		return true;
 	}
 
 	case AstTag::ArrayInitializer:
 	{
-		// This is treated separately depending on whether there is a write
-		// context.
-		// If there is one, then `Opcode::ArrayPreInit` is used to
-		// split it into write contexts corresponding to its elements. Element
-		// initializers are then evaluated directly into these.
-		// If there is no write context, then `Opcode::ArrayPostInit` is used
-		// instead. This expects its member initializers already on the stack,
-		// and combines them into an instance of a new `ArrayLiteral` type.
+		if (!expects_write_ctx)
+			return record_opcode_emission_error(core, node, CompileError::INVALID); // TODO: Error code.
 
-		if (expects_write_ctx)
+		AstDirectChildIterator it = direct_children_of(node);
+
+		u16 element_count = 0;
+
+		while (has_next(&it))
 		{
-			AstDirectChildIterator it = direct_children_of(node);
+			(void) next(&it);
 
-			u16 element_count = 0;
-
-			while (has_next(&it))
-			{
-				(void) next(&it);
-
-				element_count += 1;
-			}
-
-			// TODO: Allow for element indices in initializers in the AST.
-			const u16 index_count = 0;
-
-			emit_opcode(core, Opcode::ArrayPreInit, true, node, index_count, element_count);
-
-			it = direct_children_of(node);
-
-			while (has_next(&it))
-			{
-				AstNode* const element = next(&it);
-
-				if (!opcodes_from_expression(core, element, true))
-					return false;
-			}
+			element_count += 1;
 		}
-		else
+
+		// TODO: Allow for element indices in initializers in the AST.
+		const u16 index_count = 0;
+
+		emit_opcode(core, Opcode::ArrayPreInit, true, node, index_count, element_count);
+
+		it = direct_children_of(node);
+
+		while (has_next(&it))
 		{
-			AstDirectChildIterator it = direct_children_of(node);
+			AstNode* const element = next(&it);
 
-			u16 element_count = 0;
-
-			while (has_next(&it))
-			{
-				AstNode* const element = next(&it);
-
-				if (!opcodes_from_expression(core, element, false))
-					return false;
-
-				element_count += 1;
-			}
-
-			// TODO: Allow for element indices in initializers in the AST.
-			const u16 total_element_count = element_count;
-
-			// TODO: Allow for element indices in initializers in the AST.
-			const u16 index_count = 0;
-
-			emit_opcode(core, Opcode::ArrayPostInit, false, node, total_element_count, index_count, element_count);
+			if (!opcodes_from_expression(core, element, true))
+				return false;
 		}
 
 		return true;
@@ -3188,9 +3046,7 @@ bool return_type_opcodes_equal([[maybe_unused]] CoreData* core, const Opcode* a_
 		case Opcode::CompleteParamTypedWithDefault:
 		case Opcode::CompleteParamUntyped:
 		case Opcode::ArrayPreInit:
-		case Opcode::ArrayPostInit:
 		case Opcode::CompositePreInit:
-		case Opcode::CompositePostInit:
 		case Opcode::If:
 		case Opcode::IfElse:
 		case Opcode::Loop:
@@ -3293,9 +3149,7 @@ const char8* tag_name(Opcode op) noexcept
 		"CompleteParamTypedWithDefault",
 		"CompleteParamUntyped",
 		"ArrayPreInit",
-		"ArrayPostInit",
 		"CompositePreInit",
-		"CompositePostInit",
 		"If",
 		"IfElse",
 		"Loop",

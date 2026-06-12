@@ -600,7 +600,6 @@ static u32 structure_size(TypeStructure* structure) noexcept
 	}
 
 	case TypeTag::Array:
-	case TypeTag::ArrayLiteral:
 	{
 		return sizeof(TypeStructure) + sizeof(ArrayType);
 	}
@@ -618,7 +617,6 @@ static u32 structure_size(TypeStructure* structure) noexcept
 	}
 
 	case TypeTag::Composite:
-	case TypeTag::CompositeLiteral:
 	case TypeTag::Trait:
 	{
 		const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure + 1);
@@ -1056,10 +1054,7 @@ static u32 hash_array_type(CoreData* core, u32 hash, SeenSet* seen, const ArrayT
 {
 	hash = fnv1a_step(hash, range::from_object_bytes(&attach->element_count)) | 1;
 
-	if (is_some(attach->element_type))
-		return hash_type_id(core, hash, seen, get(attach->element_type));
-	else
-		return hash;
+	return hash_type_id(core, hash, seen, attach->element_type);
 }
 
 static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, TypeStructure* structure) noexcept
@@ -1094,12 +1089,10 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 		return hash_reference_type(core, hash, seen, reinterpret_cast<const ReferenceType*>(structure->attach));
 
 	case TypeTag::Array:
-	case TypeTag::ArrayLiteral:
 		return hash_array_type(core, hash, seen, reinterpret_cast<const ArrayType*>(structure->attach));
 
 	case TypeTag::Signature:
 	case TypeTag::Composite:
-	case TypeTag::CompositeLiteral:
 	case TypeTag::Trait:
 		return hash_composite_type(core, hash, seen, reinterpret_cast<const CompositeType*>(structure->attach));
 
@@ -1163,7 +1156,7 @@ static bool init_structure_hash(CoreData* core, TypeStructure* structure) noexce
 
 	structure->hash = hash;
 
-	if (structure->tag != TypeTag::Composite && structure->tag != TypeTag::CompositeLiteral)
+	if (structure->tag != TypeTag::Composite)
 		return true;
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
@@ -1274,125 +1267,6 @@ static TypeRelation type_can_implicitly_convert_from_to_assume_unequal(CoreData*
 
 			return TypeRelation::FirstConvertsToSecond;
 		}
-	}
-
-	case TypeTag::CompositeLiteral:
-	{
-		if (to_tag != TypeTag::Composite)
-			return TypeRelation::Unrelated;
-
-		const CompositeType* const from_attach = reinterpret_cast<const CompositeType*>(from->attach);
-
-		const CompositeType* const to_attach = reinterpret_cast<const CompositeType*>(to->attach);
-
-		ASSERT_OR_IGNORE(from_attach->kind == CompositeKind::User);
-
-		if (to_attach->kind != CompositeKind::User)
-			return TypeRelation::Unrelated;
-
-		const u32 required_seen_qwords = to_attach->member_used / 64 + 63;
-
-		const u64 mark = temp_stack_mark(core);
-
-		u64* seen_member_bits = static_cast<u64*>(temp_stack_alloc(core, required_seen_qwords, sizeof(u64)));
-
-		memset(seen_member_bits, 0, required_seen_qwords * sizeof(u64));
-
-		u32 to_rank = 0;
-
-		const CompositeInfo from_info = composite_info(from_attach);
-
-		const CompositeInfo to_info = composite_info(to_attach);
-
-		// Check whether all members in `from` have a corresponding non-global
-		// member in `to` of a type they can be converted to.
-		for (u32 i = 0; i != from_info.member_count; ++i)
-		{
-			const CompositeMember from_member = from_info.member_types[i];
-
-			const IdentifierId from_name = from_info.member_names[i];
-
-			if (from_name != IdentifierId::INVALID)
-			{
-				u16 found_rank;
-
-				if (!find_member_by_name(to_info, from_name, &found_rank))
-				{
-					temp_stack_release(core, mark);
-
-					return TypeRelation::Unrelated;
-				}
-
-				to_rank = found_rank;
-			}
-
-			const CompositeMember to_member = to_info.member_types[to_rank];
-
-			if (to_member.is_pending)
-				TODO("Implement implicit convertability check from composite literal to incomplete type");
-
-			const TypeRelation member_relation = type_can_implicitly_convert_from_to(core, from_member.type_id, to_member.type_id);
-
-			ASSERT_OR_IGNORE(member_relation != TypeRelation::SecondConvertsToFirst);
-
-			if (member_relation != TypeRelation::Equal && member_relation != TypeRelation::FirstConvertsToSecond)
-			{
-				temp_stack_release(core, mark);
-
-				return member_relation;
-			}
-
-			seen_member_bits[to_rank >> 6] |= static_cast<u64>(1) << (to_rank & 63);
-
-			to_rank += 1;
-		}
-
-		// Check whether all members of `to` that are not contained in `from`
-		// have a default value.
-		for (u32 i = 0; i != to_attach->member_used; ++i)
-		{
-			if ((seen_member_bits[i >> 6] & (static_cast<u64>(1) << (i & 63))) != 0)
-				continue;
-
-			const CompositeMember to_member = to_info.member_types[i];
-
-			if (is_none(to_member.value_or_default))
-			{
-				temp_stack_release(core, mark);
-
-				return TypeRelation::Unrelated;
-			}
-		}
-
-		temp_stack_release(core, mark);
-
-		return TypeRelation::FirstConvertsToSecond;
-	}
-
-	case TypeTag::ArrayLiteral:
-	{
-		if (to_tag != TypeTag::Array && to_tag != TypeTag::ArrayLiteral)
-			return TypeRelation::Unrelated;
-
-		const ArrayType* const from_attach = reinterpret_cast<const ArrayType*>(from->attach);
-
-		const ArrayType* const to_attach = reinterpret_cast<const ArrayType*>(to->attach);
-
-		if (from_attach->element_count != to_attach->element_count)
-			return TypeRelation::Unrelated;
-
-		// An empty array literal with no element type can be converted to
-		// an empty array or array literal with any other element type.
-		if (is_none(from_attach->element_type))
-			return TypeRelation::FirstConvertsToSecond;
-
-		const TypeRelation element_relation = type_can_implicitly_convert_from_to(core, get(from_attach->element_type), get(to_attach->element_type));
-
-		ASSERT_OR_IGNORE(element_relation != TypeRelation::SecondConvertsToFirst);
-
-		return element_relation == TypeRelation::Equal
-			? TypeRelation::FirstConvertsToSecond
-			: element_relation;
 	}
 
 	case TypeTag::Self:
@@ -1534,7 +1408,6 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 
 	case TypeTag::Signature:
 	case TypeTag::Composite:
-	case TypeTag::CompositeLiteral:
 	case TypeTag::Trait:
 	{
 		const CompositeType* const a_attach = reinterpret_cast<CompositeType*>(a->attach);
@@ -1753,7 +1626,6 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 	}
 
 	case TypeTag::Array:
-	case TypeTag::ArrayLiteral:
 	{
 		const ArrayType* const a_attach = reinterpret_cast<ArrayType*>(a->attach);
 
@@ -1768,20 +1640,7 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 			return TypeEquality::Unequal;
 		}
 
-		const Maybe<TypeId> a_next = a_attach->element_type;
-
-		const Maybe<TypeId> b_next = b_attach->element_type;
-
-		TypeEquality element_result;
-
-		// Array literals may have `TypeId::INVALID` as their element type if
-		// they have no elements, because no element type can be inferred in
-		// that case. This needs to be special cased to avoid recursing on a
-		// `TypeId::INVALID`.
-		if (tag == TypeTag::ArrayLiteral && (is_none(a_next) || is_none(b_next)))
-			element_result = is_none(a_next) && is_none(b_next) ? TypeEquality::Equal : TypeEquality::Unequal;
-		else
-			element_result = type_is_equal_noloop(core, get(a_next), get(b_next), a_seen, b_seen);
+		const TypeEquality element_result = type_is_equal_noloop(core, a_attach->element_type, b_attach->element_type, a_seen, b_seen);
 
 		seen_set_pop(a_seen);
 
@@ -1988,15 +1847,9 @@ TypeId type_create_reference(CoreData* core, TypeTag tag, ReferenceType attach) 
 	return holotype_id_from_attachment(core, tag, range::from_object_bytes(&attach));
 }
 
-TypeId type_create_array(CoreData* core, TypeTag tag, ArrayType attach) noexcept
+TypeId type_create_array(CoreData* core, ArrayType attach) noexcept
 {
-	ASSERT_OR_IGNORE(tag == TypeTag::Array || tag == TypeTag::ArrayLiteral);
-
-	// Carve out exception for array literal with no elements having no
-	// intrinsic element type.
-	ASSERT_OR_IGNORE(is_some(attach.element_type) || (tag == TypeTag::ArrayLiteral && attach.element_count == 0));
-
-	return holotype_id_from_attachment(core, tag, range::from_object_bytes(&attach));
+	return holotype_id_from_attachment(core, TypeTag::Array, range::from_object_bytes(&attach));
 }
 
 
@@ -2348,13 +2201,9 @@ void type_seal_impl_body(CoreData* core, TypeId type_id) noexcept
 
 
 
-TypeId type_create_user_composite(CoreData* core, TypeTag tag, SourceId definition_site) noexcept
+TypeId type_create_user_composite(CoreData* core, SourceId definition_site) noexcept
 {
-	ASSERT_OR_IGNORE(tag == TypeTag::Composite || tag == TypeTag::CompositeLiteral);
-
-	ASSERT_OR_IGNORE(tag == TypeTag::CompositeLiteral || definition_site != SourceId::INVALID);
-
-	TypeStructure* const structure = composite_alloc(core, tag, CompositeKind::User, CompositeFlags::User_IsOpen, 4, false);
+	TypeStructure* const structure = composite_alloc(core, TypeTag::Composite, CompositeKind::User, CompositeFlags::User_IsOpen, 4, false);
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
 
@@ -2380,9 +2229,9 @@ bool type_add_user_composite_member(CoreData* core, TypeId type_id, UserComposit
 
 	TypeStructure* structure = structure_from_id_follow_with_last_indirection(core, type_id, &indirection_structure);
 
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
 
-	ASSERT_OR_IGNORE(init.name != IdentifierId::INVALID || structure->tag == TypeTag::CompositeLiteral);
+	ASSERT_OR_IGNORE(init.name != IdentifierId::INVALID);
 
 	CompositeType* composite = reinterpret_cast<CompositeType*>(structure + 1);
 
@@ -2430,7 +2279,7 @@ TypeId type_seal_user_composite(CoreData* core, TypeId type_id, UserCompositeSea
 
 	TypeStructure* structure = get(structure_from_id_follow(core, type_id));
 
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
 
 	CompositeType* composite = reinterpret_cast<CompositeType*>(structure + 1);
 
@@ -2677,7 +2526,7 @@ bool type_member_count(CoreData* core, TypeId type_id, u32* out) noexcept
 
 	TypeStructure* const structure = get(opt_structure);
 
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure->attach);
 
@@ -2891,29 +2740,20 @@ bool type_metrics_from_id(CoreData* core, TypeId type_id, TypeMetrics* out) noex
 	}
 
 	case TypeTag::Array:
-	case TypeTag::ArrayLiteral:
 	{
 		const ArrayType* const array = reinterpret_cast<const ArrayType*>(structure->attach);
 
-		if (is_some(array->element_type))
-		{
-			TypeMetrics element_metrics;
-			
-			if (!type_metrics_from_id(core, get(array->element_type), &element_metrics))
-				return false;
+		TypeMetrics element_metrics;
+		
+		if (!type_metrics_from_id(core, array->element_type, &element_metrics))
+			return false;
 
-			*out = TypeMetrics{ element_metrics.stride * (array->element_count - 1) + element_metrics.size, (element_metrics.stride * array->element_count), element_metrics.align, element_metrics.is_shadow };
-		}
-		else
-		{
-			*out = TypeMetrics{ 0, 0, 1, false };
-		}
+		*out = TypeMetrics{ element_metrics.stride * (array->element_count - 1) + element_metrics.size, (element_metrics.stride * array->element_count), element_metrics.align, element_metrics.is_shadow };
 
 		return true;
 	}
 
 	case TypeTag::Composite:
-	case TypeTag::CompositeLiteral:
 	{
 		const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
@@ -2980,7 +2820,6 @@ bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberIn
 
 	ASSERT_OR_IGNORE(
 		structure->tag == TypeTag::Composite
-	 || structure->tag == TypeTag::CompositeLiteral
 	 || structure->tag == TypeTag::Signature
 	 || structure->tag == TypeTag::Trait
 	);
@@ -3002,7 +2841,6 @@ MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, Identif
 
 	ASSERT_OR_IGNORE(
 		structure->tag == TypeTag::Composite
-	 || structure->tag == TypeTag::CompositeLiteral
 	 || structure->tag == TypeTag::Signature
 	 || structure->tag == TypeTag::Trait
 	);
@@ -3027,7 +2865,7 @@ IdentifierId type_member_name_by_rank(CoreData* core, TypeId type_id, u16 rank) 
 
 	const TypeStructure* const structure = get(structure_from_id_follow(core, type_id));
 
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral);
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure->attach);
 
@@ -3073,8 +2911,6 @@ const char8* tag_name(TypeTag tag) noexcept
 		"Builtin",
 		"Composite",
 		"TailArray",
-		"CompositeLiteral",
-		"ArrayLiteral",
 		"Variadic",
 		"Trait",
 	};
@@ -3111,7 +2947,7 @@ MemberIterator members_of(CoreData* core, TypeId type_id) noexcept
 
 	const TypeStructure* const structure = get(opt_structure);
 
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::CompositeLiteral || structure->tag == TypeTag::Signature);
+	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite || structure->tag == TypeTag::Signature);
 
 	const CompositeType* const composite = reinterpret_cast<const CompositeType*>(structure + 1);
 

@@ -265,17 +265,6 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 		return PrintResult{ code + sizeof(u16) + index_count * sizeof(u16), 0 };
 	}
 
-	case Opcode::ArrayPostInit:
-	{
-		code += sizeof(u16);
-
-		u16 index_count;
-
-		code = code_attach(code, &index_count);
-
-		return PrintResult{ code + sizeof(u16) + index_count * sizeof(u16), 0 };
-	}
-
 	case Opcode::CompositePreInit:
 	{
 		u16 names_count;
@@ -283,15 +272,6 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 		code = code_attach(code, &names_count);
 
 		return PrintResult{ code + 2 * sizeof(u16) + names_count * (sizeof(IdentifierId) + sizeof(u16)), 0 };
-	}
-
-	case Opcode::CompositePostInit:
-	{
-		u16 member_count;
-
-		code = code_attach(code, &member_count);
-
-		return PrintResult{ code + member_count * sizeof(IdentifierId), 0 };
 	}
 
 	case Opcode::If:
@@ -1038,46 +1018,6 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 		return PrintResult{ code, header_written + total_written };
 	}
 
-	case Opcode::ArrayPostInit:
-	{
-		u16 total_element_count;
-
-		code = code_attach(code, &total_element_count);
-
-		u16 index_count;
-
-		code = code_attach(code, &index_count);
-
-		u16 leading_element_count;
-
-		code = code_attach(code, &leading_element_count);
-
-		s64 total_written = print(sink, " index_count=% leading_elem_count=% total_elem_count=%",
-			index_count,
-			leading_element_count,
-			total_element_count
-		);
-
-		if (total_written < 0)
-			return PrintResult{ nullptr, -1 };
-
-		for (u16 i = 0; i != index_count; ++i)
-		{
-			u16 following_element_count;
-
-			code = code_attach(code, &following_element_count);
-
-			const s64 written = print(sink, "\n     -        following_elem_count=%", following_element_count);
-
-			if (written < 0)
-				return PrintResult{ nullptr, -1 };
-
-			total_written += written;
-		}
-
-		return PrintResult{ code, header_written + total_written };
-	}
-
 	case Opcode::CompositePreInit:
 	{
 		u16 names_count;
@@ -1112,41 +1052,6 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 			const s64 written = print(sink, "\n     -        following_elem_count=% name=IdentifierId<%> (%)",
 				following_initializer_count,
-				static_cast<u32>(name),
-				name_str
-			);
-
-			if (written < 0)
-				return PrintResult{ nullptr, -1 };
-
-			total_written += written;
-		}
-
-		return PrintResult{ code, header_written + total_written };
-	}
-
-	case Opcode::CompositePostInit:
-	{
-		u16 member_count;
-
-		code = code_attach(code, &member_count);
-
-		s64 total_written = print(sink, " total_elem_count=%", member_count);
-
-		if (total_written < 0)
-			return PrintResult{ nullptr, -1 };
-
-		for (u16 i = 0; i != member_count; ++i)
-		{
-			IdentifierId name;
-
-			code = code_attach(code, &name);
-
-			const Range<char8> name_str = name == IdentifierId::INVALID
-				? range::from_literal_string("<INVALID>")
-				: identifier_name_from_id(core, name);
-
-			const s64 written = print(sink, "\n     -        name=IdentifierId<%> (%)",
 				static_cast<u32>(name),
 				name_str
 			);

@@ -1004,7 +1004,7 @@ static Lexeme scan_string_token(CoreData* core) noexcept
 
 	buffer_index += bytes_to_copy;
 
-	const TypeId string_type_id = type_create_array(core, TypeTag::Array, ArrayType{ buffer_index, some(core->parser.u8_type_id) });
+	const TypeId string_type_id = type_create_array(core, ArrayType{ buffer_index, core->parser.u8_type_id });
 
 	const Maybe<void*> allocation = comp_heap_alloc(core, buffer_index, 1);
 

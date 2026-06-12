@@ -35,7 +35,6 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Begin index of slicing operator must be less than or equal to end index.\n",                                                                   // SliceOperatorIndicesReversed
 		"Index of slicing operator must fit into unsigned 64-bit integer.\n",                                                                           // SliceOperatorIndexTooLarge
 		"Index of slicing operator must not be negative.\n",                                                                                            // SliceOperatorIndexNegative
-		"Left-hand-side of slicing operator occurring in untyped context cannot be an empty array literal.\n",                                          // SliceOperatorUntypedArrayLiteral
 		"Operand of `.*` must be a pointer.\n",                                                                                                         // DerefInvalidOperandType
 		"`~` can only be applied to integer operands.\n",                                                                                               // BitNotInvalidOperandType
 		"Unary `-` can only be applied to signed integer or float-point operands.\n",                                                                   // NegateInvalidOperandType
@@ -329,7 +328,6 @@ static constexpr const char8* COMPILE_ERROR_NAMES[] = {
 	"SliceOperatorIndicesReversed",
 	"SliceOperatorIndexTooLarge",
 	"SliceOperatorIndexNegative",
-	"SliceOperatorUntypedArrayLiteral",
 	"DerefInvalidOperandType",
 	"BitNotInvalidOperandType",
 	"NegateInvalidOperandType",
