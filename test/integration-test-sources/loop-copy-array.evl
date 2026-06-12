@@ -1,6 +1,6 @@
 // success
 
-let xs = .[10, 20, 30, 40, 50]
+let xs: [5]CompInteger = .[10, 20, 30, 40, 50]
 
 let ys = {
 	let tmp: [5]u32 = undefined
