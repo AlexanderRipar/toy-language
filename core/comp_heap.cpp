@@ -387,10 +387,12 @@ bool comp_heap_leak(CoreData* core, MutRange<byte> memory) noexcept
 
 	byte* const allocation_begin = reinterpret_cast<byte*>(get(header)) + COMP_HEAP_MIN_ALLOCATION_SIZE;
 
+	byte* const allocation_end = allocation_begin + get(header)->size;
+
 	// If either the given memory is not entirely contained within the found
 	// header, it is out-of-bounds from the guest's perspective, indicating
 	// that there is an error and we should terminate with a diagnostic.
-	if (allocation_begin + get(header)->size <= memory.begin() || allocation_begin + get(header)->size > memory.end())
+	if (allocation_begin > memory.begin() || allocation_end < memory.end())
 		return false;
 
 	const MutRange<byte> allocation{ allocation_begin, get(header)->size };
