@@ -1242,35 +1242,38 @@ static TypeRelation type_can_implicitly_convert_from_to_assume_unequal(CoreData*
 	}
 
 	case TypeTag::Slice:
-	{
-		if (to_tag != TypeTag::Slice)
-			return TypeRelation::Unrelated;
-
-		const ReferenceType* const from_attach = reinterpret_cast<const ReferenceType*>(from->attach);
-
-		const ReferenceType* const to_attach = reinterpret_cast<const ReferenceType*>(to->attach);
-
-		return from_attach->is_mut || !to_attach->is_mut
-			? TypeRelation::FirstConvertsToSecond
-			: TypeRelation::Unrelated;
-	}
-
 	case TypeTag::Ptr:
 	{
-		if (to_tag != TypeTag::Ptr)
+		if (from_tag != to_tag)
 			return TypeRelation::Unrelated;
 
 		const ReferenceType* const from_attach = reinterpret_cast<const ReferenceType*>(from->attach);
 
 		const ReferenceType* const to_attach = reinterpret_cast<const ReferenceType*>(to->attach);
 
-		const bool is_qualifier_convertible = (from_attach->is_mut || !to_attach->is_mut)
-		                                   && (!from_attach->is_opt || to_attach->is_opt)
-			                               && (from_attach->is_multi || !to_attach->is_multi);
+		if ((!from_attach->is_mut && to_attach->is_mut)
+		 || (from_attach->is_opt && !to_attach->is_opt)
+		 || (!from_attach->is_multi && to_attach->is_multi)
+		) {
+			return TypeRelation::Unrelated;
+		}
 
-		return is_qualifier_convertible
-			? TypeRelation::FirstConvertsToSecond
-			: TypeRelation::Unrelated;
+		const TypeEquality element_equality = type_is_equal(core, from_attach->referenced_type_id, to_attach->referenced_type_id);
+
+		if (element_equality == TypeEquality::Incomplete)
+		{
+			return TypeRelation::Incomplete;
+		}
+		else if (element_equality == TypeEquality::Unequal)
+		{
+			return TypeRelation::Unrelated;
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(element_equality == TypeEquality::Equal);
+
+			return TypeRelation::FirstConvertsToSecond;
+		}
 	}
 
 	case TypeTag::CompositeLiteral:
