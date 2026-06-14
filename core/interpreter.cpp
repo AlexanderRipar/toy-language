@@ -3751,6 +3751,9 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, Co
 
 	if (index_count == 0)
 	{
+		if (dst_element_count != leading_element_count)
+			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
+
 		return code;
 	}
 

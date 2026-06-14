@@ -5,7 +5,7 @@ let g = func() -> u32 => {
 
 	let h = func(T: Type, es: [x]T) -> T => es[0]
 
-	let rh = h(u32, .[1, 2])
+	let rh = h(u32, .[1, 2, 3, 4, 5])
 
 	rh
 }
