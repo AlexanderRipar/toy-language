@@ -358,8 +358,8 @@ static constexpr OperatorDesc BINARY_OPERATOR_DESCS[] = {
 	{ AstTag::OpSubTC,     AstFlag::EMPTY, 3, true,  true  }, // -:
 	{ AstTag::OpMulTC,     AstFlag::EMPTY, 2, true,  true  }, // *:
 	{ AstTag::OpMod,       AstFlag::EMPTY, 2, true,  true  }, // %
-	{ AstTag::UOpAddr,     AstFlag::EMPTY, 1, false, false }, // .&
-	{ AstTag::UOpDeref,    AstFlag::EMPTY, 1, false, false }, // .*
+	{ AstTag::UOpAddr,     AstFlag::EMPTY, 1, true,  false }, // .&
+	{ AstTag::UOpDeref,    AstFlag::EMPTY, 1, true,  false }, // .*
 	{ AstTag::OpBitAnd,    AstFlag::EMPTY, 6, true,  true  }, // &
 	{ AstTag::OpBitOr,     AstFlag::EMPTY, 6, true,  true  }, // |
 	{ AstTag::OpBitXor,    AstFlag::EMPTY, 6, true,  true  }, // ^
