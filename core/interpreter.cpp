@@ -236,7 +236,7 @@ static CompValue alloc_temporary_value_uninit(CoreData* core, u64 size, u32 alig
 
 	byte* const bytes = core->interp.temporary_data.reserve(static_cast<u32>(size));
 
-	return CompValue{ MutRange<byte>{ bytes, size }, align, true, type };
+	return CompValue{ MutRange<byte>{ bytes, size }, align, false, type };
 }
 
 static CompValue alloc_temporary_value(CoreData* core, CompValue value) noexcept
