@@ -76,6 +76,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::EndTraitMemberType:
 	case Opcode::TypeType:
 	case Opcode::CompleteCircularDefinition:
+	case Opcode::PromoteIndirectWriteCtx:
 	{
 		return PrintResult{ code, 0 };
 	}
@@ -1630,6 +1631,53 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 			return PrintResult{ nullptr, -1 };
 
 		return PrintResult{ code, header_written };
+	}
+
+	case Opcode::PromoteIndirectWriteCtx:
+	{
+		u8 modifier_count;
+		code = code_attach(code, &modifier_count);
+		
+		s64 written = print(sink, " modifiers=%", modifier_count);
+
+		if (written < 0)
+			return PrintResult{ nullptr, -1 };
+
+		for (u8 i = 0; i != modifier_count; ++i)
+		{
+			OpcodePromoteIndirectWriteCtxModifier modifier;
+			code = code_attach(code, &modifier);
+
+			Range<char8> modifier_name;
+
+			if (modifier == OpcodePromoteIndirectWriteCtxModifier::AddressOf)
+			{
+				modifier_name = range::from_literal_string("AddressOf");
+			}
+			else if (modifier == OpcodePromoteIndirectWriteCtxModifier::Deref)
+			{
+				modifier_name = range::from_literal_string("Deref");
+			}
+			else if (modifier == OpcodePromoteIndirectWriteCtxModifier::Index)
+			{
+				modifier_name = range::from_literal_string("Index");
+			}
+			else
+			{
+				ASSERT_OR_IGNORE(modifier == OpcodePromoteIndirectWriteCtxModifier::Slice);
+
+				modifier_name = range::from_literal_string("Slice");
+			}
+
+			const s64 modifier_written = print(sink, "\n     -        %: %", i, modifier_name);
+
+			if (modifier_written < 0)
+				return PrintResult{ nullptr, -1 };
+
+			written += modifier_written;
+		}
+
+		return PrintResult{ code, header_written + written };
 	}
 
 	case Opcode::Switch:

@@ -34,6 +34,7 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 	case TypeTag::Divergent:
 	case TypeTag::TypeInfo:
 	case TypeTag::TailArray:
+	case TypeTag::Arrayish:
 	{
 		const s64 written = print(sink, "%\n", tag_name(tag));
 

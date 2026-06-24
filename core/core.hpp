@@ -2053,6 +2053,8 @@ enum class TypeTag : u8
 	Trait,
 
 	Self,
+
+	Arrayish,
 };
 
 enum class TypeEquality : u8
@@ -2281,8 +2283,6 @@ struct FileCompositeMemberInit
 
 	bool is_mut;
 };
-
-
 
 // Structural data for `Ptr`, `Slice` and `TailArray` types.
 struct alignas(8) ReferenceType
@@ -2517,7 +2517,7 @@ const T* type_attachment_from_id(CoreData* core, TypeId type_id) noexcept
 		const TypeTag tag = type_tag_from_id(core, type_id);
 
 		if constexpr (is_same_cpp_type<T, ReferenceType>)
-			ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray);
+			ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray || tag == TypeTag::Arrayish);
 		else if constexpr (is_same_cpp_type<T, NumericType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Integer || tag == TypeTag::Float);
 		else if constexpr (is_same_cpp_type<T, ArrayType>)
@@ -2652,6 +2652,7 @@ enum class Opcode : u8
 	DefinitionUntyped,
 	TypeType,
 	CompleteCircularDefinition,
+	PromoteIndirectWriteCtx,
 };
 
 enum class OpcodeSliceKind : u8
@@ -2763,6 +2764,14 @@ struct OpcodeImplMemberAllocCompleteFlags
 	u8 is_circular : 1;
 
 	u8 unused_ : 6;
+};
+
+enum class OpcodePromoteIndirectWriteCtxModifier : u8
+{
+	AddressOf,
+	Deref,
+	Index,
+	Slice,
 };
 
 enum class OpcodeId : u32

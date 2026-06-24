@@ -784,6 +784,7 @@ static const Opcode* convert_into_assume_convertible(CoreData* core, const Opcod
 	case TypeTag::Composite:
 	case TypeTag::TailArray:
 	case TypeTag::Trait:
+	case TypeTag::Arrayish:
 		; // Fallthrough to unreachable.
 	}
 
@@ -1136,6 +1137,7 @@ static CompareResult compare(CoreData* core, TypeId type, MutRange<byte> lhs, Mu
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
+	case TypeTag::Arrayish:
 		; // Fallthrough to unreachable.
 	}
 
@@ -3514,58 +3516,19 @@ static const Opcode* handle_complete_param_untyped(CoreData* core, const Opcode*
 
 static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(write_ctx != nullptr);
-
 	u16 index_count;
 	code = code_attach(code, &index_count);
 
-	ASSERT_OR_IGNORE(core->interp.values.used() >= index_count);
+	ASSERT_OR_IGNORE(core->interp.values.used() >= static_cast<u32>(index_count) + (write_ctx == nullptr ? 1 : 0));
 
 	u16 leading_element_count;
 	code = code_attach(code, &leading_element_count);
 
-	const TypeId dst_type = write_ctx->type;
-
-	const TypeTag type_tag = type_tag_from_id(core, dst_type);
-
-	if (type_tag != TypeTag::Array)
-		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
-
-	const ArrayType* const array_type = type_attachment_from_id<ArrayType>(core, dst_type);
-
-	const TypeId dst_elem_type = array_type->element_type;
-
-	TypeMetrics dst_elem_metrics;
-	
-	if (!type_metrics_from_id(core, dst_elem_type, &dst_elem_metrics))
-		return record_interpreter_error(core, code, CompileError::IncompleteType);
-
 	CompValue* const indices = core->interp.values.end() - index_count;
 
-	const u64 dst_element_count = array_type->element_count;
+	u64 src_element_count = leading_element_count;
 
-	if (dst_element_count > UINT16_MAX)
-		return record_interpreter_error(core, code, CompileError::ArrayInitializerTooManyElements);
-
-	if (dst_element_count < leading_element_count)
-		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
-
-	for (u16 i = 0; i != leading_element_count; ++i)
-	{
-		const MutRange<byte> bytes = write_ctx->bytes.mut_subrange(i * dst_elem_metrics.stride, dst_elem_metrics.size);
-
-		core->interp.write_ctxs.append(CompValue{ bytes, dst_elem_metrics.align, true, dst_elem_type });
-	}
-
-	if (index_count == 0)
-	{
-		if (dst_element_count != leading_element_count)
-			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
-
-		return code;
-	}
-
-	SeenSet seen = seen_set_init(core, static_cast<u16>(dst_element_count), leading_element_count);
+	const Opcode* const pre_following_code = code;
 
 	for (u16 i = 0; i != index_count; ++i)
 	{
@@ -3585,6 +3548,118 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, Co
 		else
 			ASSERT_OR_IGNORE(index_rst == U64FromValueRst::Ok);
 
+		u64 end_index;
+
+		if (!add_checked_u64(following_element_count, index, &end_index))
+			return record_interpreter_error(core, code, CompileError::ArrayInitializerIndexTooLarge);
+
+		if (src_element_count < end_index)
+			src_element_count = end_index;
+	}
+
+	code = pre_following_code;
+
+	CompValue base_write_ctx;
+
+	u64 dst_element_count;
+
+	TypeId dst_element_type;
+
+	if (write_ctx == nullptr)
+	{
+		CompValue* const raw_dst_type_value = core->interp.values.end() - index_count - 1;
+
+		ASSERT_OR_IGNORE(type_tag_from_id(core, raw_dst_type_value->type) == TypeTag::Type);
+
+		const TypeId raw_dst_type = *value_as<TypeId>(raw_dst_type_value);
+
+		const TypeTag raw_dst_type_tag = type_tag_from_id(core, raw_dst_type);
+
+		TypeId dst_type;
+
+		if (raw_dst_type_tag == TypeTag::Arrayish)
+		{
+			const ReferenceType* const attach = type_attachment_from_id<ReferenceType>(core, raw_dst_type);
+
+			dst_type = type_create_array(core, ArrayType{ src_element_count, attach->referenced_type_id });
+
+			dst_element_count = src_element_count;
+
+			dst_element_type = attach->referenced_type_id;
+		}
+		else if (raw_dst_type_tag == TypeTag::Array)
+		{
+			const ArrayType* const attach = type_attachment_from_id<ArrayType>(core, raw_dst_type);
+
+			dst_type = raw_dst_type;
+
+			dst_element_count = attach->element_count;
+
+			dst_element_type = attach->element_type;
+		}
+		else
+		{
+			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
+		}
+
+		TypeMetrics metrics;
+
+		if (!type_metrics_from_id(core, dst_type, &metrics))
+			ASSERT_UNREACHABLE;
+
+		base_write_ctx = alloc_temporary_value_uninit(core, metrics.size, metrics.align, dst_type);
+
+		*raw_dst_type_value = base_write_ctx;
+	}
+	else
+	{
+		const TypeId dst_type = write_ctx->type;
+
+		const TypeTag type_tag = type_tag_from_id(core, dst_type);
+
+		if (type_tag != TypeTag::Array)
+			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
+
+		const ArrayType* const array_type = type_attachment_from_id<ArrayType>(core, dst_type);
+
+		dst_element_count = array_type->element_count;
+
+		dst_element_type = array_type->element_type;
+
+		base_write_ctx = *write_ctx;
+
+		if (dst_element_count != src_element_count)
+			return record_interpreter_error(core, code, CompileError::ArrayInitializerTooManyElements);
+	}
+
+	TypeMetrics dst_element_metrics;
+
+	if (!type_metrics_from_id(core, dst_element_type, &dst_element_metrics))
+		return record_interpreter_error(core, code, CompileError::IncompleteType);
+
+	for (u16 i = 0; i != leading_element_count; ++i)
+	{
+		const MutRange<byte> bytes = base_write_ctx.bytes.mut_subrange(i * dst_element_metrics.stride, dst_element_metrics.size);
+
+		core->interp.write_ctxs.append(CompValue{ bytes, dst_element_metrics.align, true, dst_element_type });
+	}
+
+	if (index_count == 0)
+		return code;
+
+	SeenSet seen = seen_set_init(core, static_cast<u16>(dst_element_count), leading_element_count);
+
+	for (u16 i = 0; i != index_count; ++i)
+	{
+		u16 following_element_count;
+		code = code_attach(code, &following_element_count);
+
+		u64 index;
+
+		[[maybe_unused]] const U64FromValueRst index_rst = u64_from_value(core, indices[i], &index);
+
+		ASSERT_OR_IGNORE(index_rst == U64FromValueRst::Ok);
+
 		if (index + following_element_count > dst_element_count)
 			return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
@@ -3593,9 +3668,9 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, Co
 
 		for (u16 j = 0; j != following_element_count; ++j)
 		{
-			const MutRange<byte> bytes = write_ctx->bytes.mut_subrange((index + j) * dst_elem_metrics.stride, dst_elem_metrics.size);
+			const MutRange<byte> bytes = base_write_ctx.bytes.mut_subrange((index + j) * dst_element_metrics.stride, dst_element_metrics.size);
 
-			core->interp.write_ctxs.append(CompValue{ bytes, dst_elem_metrics.align, true, dst_elem_type });
+			core->interp.write_ctxs.append(CompValue{ bytes, dst_element_metrics.align, true, dst_element_type });
 		}
 	}
 
@@ -3609,12 +3684,6 @@ static const Opcode* handle_array_preinit(CoreData* core, const Opcode* code, Co
 
 static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(write_ctx != nullptr);
-
-	const TypeId dst_type = write_ctx->type;
-
-	const TypeTag type_tag = type_tag_from_id(core, dst_type);
-
 	u16 names_count;
 	code = code_attach(code, &names_count);
 
@@ -3624,11 +3693,43 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 	u16 leading_member_count;
 	code = code_attach(code, &leading_member_count);
 
+	CompValue base_write_ctx;
+
+	TypeId dst_type;
+
+	if (write_ctx == nullptr)
+	{
+		ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
+
+		CompValue* const type_value = core->interp.values.end() - 1;
+
+		ASSERT_OR_IGNORE(type_tag_from_id(core, type_value->type) == TypeTag::Type);
+
+		dst_type = *value_as<TypeId>(type_value);
+
+		TypeMetrics metrics;
+
+		if (!type_metrics_from_id(core, dst_type, &metrics))
+			ASSERT_UNREACHABLE;
+
+		base_write_ctx = alloc_temporary_value_uninit(core, metrics.size, metrics.align, dst_type);
+
+		*type_value = base_write_ctx;
+	}
+	else
+	{
+		dst_type = write_ctx->type;
+
+		base_write_ctx = *write_ctx;
+	}
+
+	const TypeTag type_tag = type_tag_from_id(core, dst_type);
+
 	if (type_tag != TypeTag::Composite)
 		return record_interpreter_error(core, code, CompileError::TypesCannotConvert);
 
 	u32 member_count;
-	
+
 	// Since we are subdividing an existing write context of type `dst_type`,
 	// `dst_type` must already be complete, as it couldn't be allocated
 	// otherwise. Thus, `type_member_count` cannot fail here.
@@ -3644,7 +3745,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 	for (u16 i = 0; i != leading_member_count; ++i)
 	{
-		*write_ctx_dst = member_value_by_rank(core, *write_ctx, i);
+		*write_ctx_dst = member_value_by_rank(core, base_write_ctx, i);
 
 		write_ctx_dst -= 1;
 	}
@@ -3657,7 +3758,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 			TypeMetrics dst_metrics;
 
-			const CompValue dst = member_value_by_rank_with_info(core, *write_ctx, i, &dst_info, &dst_metrics);
+			const CompValue dst = member_value_by_rank_with_info(core, base_write_ctx, i, &dst_info, &dst_metrics);
 
 			if (is_none(dst_info.value_or_default))
 				return record_interpreter_error(core, code, CompileError::CompositeLiteralSourceIsMissingMember);
@@ -3688,7 +3789,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 		TypeMetrics unused_metrics;
 
-		if (!member_value_by_name_with_info(core, *write_ctx, name, write_ctx_dst, &info, &unused_metrics))
+		if (!member_value_by_name_with_info(core, base_write_ctx, name, write_ctx_dst, &info, &unused_metrics))
 			return record_interpreter_error(core, code, CompileError::CompositeLiteralTargetIsMissingMember);
 
 		ASSERT_OR_IGNORE(!info.is_global);
@@ -3703,7 +3804,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 		for (u16 j = 1; j != following_member_count; ++j)
 		{
-			*write_ctx_dst = member_value_by_rank(core, *write_ctx, info.rank + j);
+			*write_ctx_dst = member_value_by_rank(core, base_write_ctx, info.rank + j);
 
 			write_ctx_dst -= 1;
 		}
@@ -3717,7 +3818,7 @@ static const Opcode* handle_composite_preinit(CoreData* core, const Opcode* code
 
 		TypeMetrics metrics;
 
-		const CompValue dst = member_value_by_rank_with_info(core, *write_ctx, unseen_index, &info, &metrics);
+		const CompValue dst = member_value_by_rank_with_info(core, base_write_ctx, unseen_index, &info, &metrics);
 
 		if (info.is_global)
 			continue;
@@ -5174,12 +5275,38 @@ static const Opcode* handle_reference_type(CoreData* core, const Opcode* code, C
 	return poppush_temporary_value(core, code, write_ctx, CompValue{ bytes, alignof(TypeId), true, type_type });
 }
 
-static const Opcode* handle_undefined([[maybe_unused]] CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
+static const Opcode* handle_undefined(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
-	ASSERT_OR_IGNORE(write_ctx != nullptr);
+	MutRange<byte> dst;
+
+	if (write_ctx == nullptr)
+	{
+		ASSERT_OR_IGNORE(core->interp.values.used() >= 1);
+
+		CompValue* const type_value = core->interp.values.end() - 1;
+
+		ASSERT_OR_IGNORE(type_tag_from_id(core, type_value->type) == TypeTag::Type);
+
+		const TypeId dst_type = *value_as<TypeId>(type_value);
+
+		TypeMetrics metrics;
+
+		if (!type_metrics_from_id(core, dst_type, &metrics))
+			ASSERT_UNREACHABLE;
+
+		const CompValue base_write_ctx = alloc_temporary_value_uninit(core, metrics.size, metrics.align, dst_type);
+
+		*type_value = base_write_ctx;
+
+		dst = base_write_ctx.bytes;
+	}
+	else
+	{
+		dst = write_ctx->bytes;
+	}
 
 	// Debug pattern for uninitialized memory.
-	range::mem_set(write_ctx->bytes, 0xA6);
+	range::mem_set(dst, 0xA6);
 
 	return code;
 }
@@ -5901,6 +6028,88 @@ static const Opcode* handle_complete_circular_definition(CoreData* core, const O
 	return code;
 }
 
+static const Opcode* handle_promote_indirect_write_ctx(CoreData* core, const Opcode* code, [[maybe_unused]] CompValue* write_ctx) noexcept
+{
+	ASSERT_OR_IGNORE(write_ctx == nullptr);
+
+	ASSERT_OR_IGNORE(core->interp.write_ctxs.used() >= 1);
+
+	u8 modifier_count;
+	code = code_attach(code, &modifier_count);
+
+	CompValue* const indirect_write_ctx = core->interp.write_ctxs.end() - 1;
+
+	TypeId type = indirect_write_ctx->type;
+
+	for (u8 i = 0; i != modifier_count; ++i)
+	{
+		OpcodePromoteIndirectWriteCtxModifier modifier;
+		code = code_attach(code, &modifier);
+
+		const TypeTag type_tag = type_tag_from_id(core, type);
+
+		if (modifier == OpcodePromoteIndirectWriteCtxModifier::AddressOf)
+		{
+			if (type_tag != TypeTag::Ptr)
+				return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error code.
+
+			const ReferenceType* const attach = type_attachment_from_id<ReferenceType>(core, type);
+
+			type = attach->referenced_type_id;
+		}
+		else if (modifier == OpcodePromoteIndirectWriteCtxModifier::Deref)
+		{
+			ReferenceType reference_attach{};
+			reference_attach.referenced_type_id = type;
+			reference_attach.is_opt = false;
+			reference_attach.is_multi = true;
+			reference_attach.is_mut = false;
+
+			type = type_create_reference(core, TypeTag::Ptr, reference_attach);
+		}
+		else if (modifier == OpcodePromoteIndirectWriteCtxModifier::Index)
+		{
+			ReferenceType reference_attach{};
+			reference_attach.referenced_type_id = type;
+			reference_attach.is_opt = false;
+			reference_attach.is_multi = false;
+			reference_attach.is_mut = false;
+
+			type = type_create_reference(core, TypeTag::Arrayish, reference_attach);
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(modifier == OpcodePromoteIndirectWriteCtxModifier::Slice);
+
+			if (type_tag != TypeTag::Slice && type_tag != TypeTag::Ptr && type_tag != TypeTag::Arrayish && type_tag != TypeTag::Array)
+				return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error code.
+
+			const ReferenceType* const attach = type_attachment_from_id<ReferenceType>(core, type);
+
+			if (type_tag == TypeTag::Ptr && !attach->is_multi)
+				return record_interpreter_error(core, code, CompileError::INVALID); // TODO: Error code.
+
+			ReferenceType reference_attach{};
+			reference_attach.referenced_type_id = attach->referenced_type_id;
+			reference_attach.is_opt = false;
+			reference_attach.is_multi = false;
+			reference_attach.is_mut = false;
+
+			type = type_create_reference(core, TypeTag::Arrayish, reference_attach);
+		}
+	}
+
+	const MutRange<byte> bytes = range::from_object_bytes_mut(&type);
+
+	const TypeId type_type = type_create_simple(core, TypeTag::Type);
+
+	const CompValue temporary_value = alloc_temporary_value(core, CompValue{ bytes, alignof(TypeId), true, type_type });
+
+	core->interp.values.append(temporary_value);
+
+	return code;
+}
+
 
 
 static bool type_from_ast(CoreData* core, AstNode* ast, TypeId file_type, SourceFileId file_id) noexcept
@@ -6099,6 +6308,7 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 		&handle_definition_untyped,                // DefinitionUntyped
 		&handle_type_type,                         // TypeType
 		&handle_complete_circular_definition,      // CompleteCircularDefinition
+		&handle_promote_indirect_write_ctx,        // PromoteIndirectWriteCtx
 	};
 
 	static_assert(HANDLERS[static_cast<u8>(Opcode::EndCode)]                       == &handle_end_code);
@@ -6177,6 +6387,7 @@ static bool interpret_opcodes(CoreData* core, const Opcode* ops) noexcept
 	static_assert(HANDLERS[static_cast<u8>(Opcode::DefinitionUntyped)]             == &handle_definition_untyped);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::TypeType)]                      == &handle_type_type);
 	static_assert(HANDLERS[static_cast<u8>(Opcode::CompleteCircularDefinition)]    == &handle_complete_circular_definition);
+	static_assert(HANDLERS[static_cast<u8>(Opcode::PromoteIndirectWriteCtx)]       == &handle_promote_indirect_write_ctx);
 
 	core->interp.is_ok = true;
 

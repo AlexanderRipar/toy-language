@@ -21,6 +21,13 @@ static constexpr u32 FIXUPS_RESERVE_SIZE = (1 << 20) * 3;
 
 static constexpr u32 FIXUPS_COMMIT_INCREMENT_COUNT = 1 << 12;
 
+struct IndirectWriteCtx
+{
+	OpcodePromoteIndirectWriteCtxModifier tag;
+
+	Maybe<const IndirectWriteCtx*> next;
+};
+
 enum class FixupKind : u8
 {
 	INVALID = 0,
@@ -119,7 +126,6 @@ static bool record_opcode_emission_error(CoreData* core, AstNode* source_node, C
 
 	return false;
 }
-
 
 
 
@@ -320,7 +326,6 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 	}
 
 	case Opcode::ExecBuiltin:
-	case Opcode::Undefined:
 	{
 		ASSERT_OR_IGNORE(expects_write_ctx);
 
@@ -410,8 +415,6 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 
 	case Opcode::ArrayPreInit:
 	{
-		ASSERT_OR_IGNORE(expects_write_ctx);
-
 		u16 index_count;
 		memcpy(&index_count, code + 1, sizeof(index_count));
 
@@ -423,25 +426,30 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 		for (u16 i = 0; i != index_count; ++i)
 		{
 			u16 following_element_count;
-			memcpy(&following_element_count, code + 3 + i * sizeof(following_element_count), sizeof(following_element_count));
+			memcpy(&following_element_count, code + 5 + i * sizeof(following_element_count), sizeof(following_element_count));
 
 			total_element_count += following_element_count;
 		}
 
 		rst.values_diff = -static_cast<s32>(index_count);
-		rst.write_ctxs_diff = static_cast<s32>(total_element_count) - 1;
+
+		if (expects_write_ctx)
+			rst.write_ctxs_diff = static_cast<s32>(total_element_count) - 1;
+		else
+			rst.write_ctxs_diff = static_cast<s32>(total_element_count);
 
 		return rst;
 	}
 
 	case Opcode::CompositePreInit:
 	{
-		ASSERT_OR_IGNORE(expects_write_ctx);
-
 		u16 elems_count;
 		memcpy(&elems_count, code + 3, sizeof(elems_count));
 
-		rst.write_ctxs_diff = static_cast<u32>(elems_count) - 1;
+		if (expects_write_ctx)
+			rst.write_ctxs_diff = static_cast<s32>(elems_count) - 1;
+		else
+			rst.write_ctxs_diff = static_cast<s32>(elems_count);
 
 		return rst;
 	}
@@ -489,6 +497,14 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 		{
 			rst.values_diff = -1;
 		}
+
+		return rst;
+	}
+
+	case Opcode::Undefined:
+	{
+		if (expects_write_ctx)
+			rst.write_ctxs_diff = -1;
 
 		return rst;
 	}
@@ -555,6 +571,7 @@ static OpcodeEffects opcode_effects(const Opcode* code) noexcept
 		TODO("Implement `opcode_effects(%)`.", tag_name(op));
 
 	case Opcode::INVALID:
+	case Opcode::PromoteIndirectWriteCtx:
 		; // Fallthrough to unreachable
 	}
 
@@ -615,6 +632,48 @@ static void emit_opcode(CoreData* core, Opcode code, bool expects_write_ctx, Ast
 	 && core->opcodes.state.write_ctxs_diff >= 0
 	 && core->opcodes.state.closures_diff >= 0
 	);
+}
+
+
+
+static bool emit_write_ctx_promotion(CoreData* core, AstNode* node, bool expects_write_ctx, Maybe<const IndirectWriteCtx*> indirect_ctx) noexcept
+{
+	if (expects_write_ctx)
+		return true;
+
+	if (is_none(indirect_ctx))
+		return record_opcode_emission_error(core, node, CompileError::INVALID); // TODO: Error code.
+
+	s8 count = 1;
+
+	for (const IndirectWriteCtx* curr = get(indirect_ctx); is_some(curr->next); curr = get(curr->next))
+	{
+		ASSERT_OR_IGNORE(count != INT8_MAX);
+
+		count += 1;
+	}
+
+	byte* attach = emit_opcode_raw(core, Opcode::PromoteIndirectWriteCtx, false, node, count + 1);
+
+	memcpy(attach, &count, sizeof(u8));
+	attach += 1;
+
+	const IndirectWriteCtx* curr = get(indirect_ctx);
+
+	while (true)
+	{
+		count -= 1;
+		memcpy(attach + count, &curr->tag, sizeof(OpcodePromoteIndirectWriteCtxModifier));
+
+		if (is_none(curr->next))
+			break;
+
+		curr = get(curr->next);
+	}
+
+	core->opcodes.state.values_diff += 1;
+
+	return true;
 }
 
 
@@ -803,7 +862,7 @@ static void emit_closure_values(CoreData* core, AstNode* node, const ClosureList
 
 
 
-static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_write_ctx) noexcept;
+static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_write_ctx, Maybe<const IndirectWriteCtx*> indirect_ctx = none<const IndirectWriteCtx*>()) noexcept;
 
 static bool opcodes_from_scope_definition(CoreData* core, AstNode* node) noexcept
 {
@@ -1210,7 +1269,7 @@ static bool opcodes_from_arguments(CoreData* core, AstNode* callee) noexcept
 	return true;
 }
 
-static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_write_ctx) noexcept
+static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_write_ctx, Maybe<const IndirectWriteCtx*> indirect_ctx) noexcept
 {
 	const AstTag tag = node->tag;
 
@@ -1225,8 +1284,8 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 	case AstTag::CompositeInitializer:
 	{
-		if (!expects_write_ctx)
-			return record_opcode_emission_error(core, node, CompileError::INVALID); // TODO: Error code.
+		if (!emit_write_ctx_promotion(core, node, expects_write_ctx, indirect_ctx))
+			return false;
 
 		u16 named_member_count = 0;
 
@@ -1247,14 +1306,22 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		// Since we use `emit_opcode_raw` and not `emit_opcode`, we need to
 		// manually adjust and check the current state.
 		{
-			ASSERT_OR_IGNORE(core->opcodes.state.write_ctxs_diff != 0);
+			if (expects_write_ctx)
+			{
+				ASSERT_OR_IGNORE(core->opcodes.state.write_ctxs_diff != 0);
 
-			core->opcodes.state.write_ctxs_diff += write_ctxs_diff - 1;
+				core->opcodes.state.write_ctxs_diff += write_ctxs_diff - 1;
+			}
+			else
+			{
+				core->opcodes.state.values_diff -= 1;
+				core->opcodes.state.write_ctxs_diff += write_ctxs_diff;
+			}
 		}
 
 		const u32 attach_size = 3 * sizeof(u16) + named_member_count * (sizeof(IdentifierId) + sizeof(u16));
 
-		byte* attach = emit_opcode_raw(core, Opcode::CompositePreInit, true, node, attach_size);
+		byte* attach = emit_opcode_raw(core, Opcode::CompositePreInit, expects_write_ctx, node, attach_size);
 
 		memcpy(attach, &named_member_count, sizeof(u16));
 		attach += sizeof(u16);
@@ -1309,8 +1376,8 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 	case AstTag::ArrayInitializer:
 	{
-		if (!expects_write_ctx)
-			return record_opcode_emission_error(core, node, CompileError::INVALID); // TODO: Error code.
+		if (!emit_write_ctx_promotion(core, node, expects_write_ctx, indirect_ctx))
+			return false;
 
 		AstDirectChildIterator it = direct_children_of(node);
 
@@ -1326,7 +1393,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		// TODO: Allow for element indices in initializers in the AST.
 		const u16 index_count = 0;
 
-		emit_opcode(core, Opcode::ArrayPreInit, true, node, index_count, element_count);
+		emit_opcode(core, Opcode::ArrayPreInit, expects_write_ctx, node, index_count, element_count);
 
 		it = direct_children_of(node);
 
@@ -1843,8 +1910,8 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 
 	case AstTag::Undefined:
 	{
-		if (!expects_write_ctx)
-			return record_opcode_emission_error(core, node, CompileError::INVALID); // TODO: Error code.
+		if (!emit_write_ctx_promotion(core, node, expects_write_ctx, indirect_ctx))
+			return false;
 
 		emit_opcode(core, Opcode::Undefined, expects_write_ctx, node);
 
@@ -1905,7 +1972,9 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	{
 		OpSliceOfInfo info = get_op_slice_of_info(node);
 
-		if (!opcodes_from_expression(core, info.sliced, false))
+		const IndirectWriteCtx child_indirect_ctx{ OpcodePromoteIndirectWriteCtxModifier::Slice, indirect_ctx };
+
+		if (!opcodes_from_expression(core, info.sliced, false, some(&child_indirect_ctx)))
 			return false;
 
 		if (is_some(info.begin))
@@ -2041,7 +2110,9 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	{
 		AstNode* const operand = first_child_of(node);
 
-		if (!opcodes_from_expression(core, operand, false))
+		const IndirectWriteCtx child_indirect_ctx{ OpcodePromoteIndirectWriteCtxModifier::AddressOf, indirect_ctx };
+
+		if (!opcodes_from_expression(core, operand, false, some(&child_indirect_ctx)))
 			return false;
 
 		emit_opcode(core, Opcode::AddressOf, expects_write_ctx, node);
@@ -2053,7 +2124,9 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	{
 		AstNode* const operand = first_child_of(node);
 
-		if (!opcodes_from_expression(core, operand, false))
+		const IndirectWriteCtx child_indirect_ctx{ OpcodePromoteIndirectWriteCtxModifier::Deref, indirect_ctx };
+
+		if (!opcodes_from_expression(core, operand, false, some(&child_indirect_ctx)))
 			return false;
 
 		emit_opcode(core, Opcode::Dereference, expects_write_ctx, node);
@@ -2387,7 +2460,9 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	{
 		AstNode* const lhs = first_child_of(node);
 
-		if (!opcodes_from_expression(core, lhs, false))
+		const IndirectWriteCtx child_indirect_ctx{ OpcodePromoteIndirectWriteCtxModifier::Index, indirect_ctx };
+
+		if (!opcodes_from_expression(core, lhs, false, some(&child_indirect_ctx)))
 			return false;
 
 		AstNode* const rhs = next_sibling_of(lhs);
@@ -3126,6 +3201,7 @@ bool return_type_opcodes_equal([[maybe_unused]] CoreData* core, const Opcode* a_
 		case Opcode::PopClosure:
 		case Opcode::LoadBuiltin:
 		case Opcode::ExecBuiltin:
+		case Opcode::PromoteIndirectWriteCtx:
 			; // Fallthrough to unreachable.
 		}
 
@@ -3213,6 +3289,7 @@ const char8* tag_name(Opcode op) noexcept
 		"DefinitionUntyped",
 		"TypeType",
 		"CompleteCircularDefinition",
+		"PromoteIndirectWriteCtx",
 	};
 
 	u8 ordinal = static_cast<u8>(op);

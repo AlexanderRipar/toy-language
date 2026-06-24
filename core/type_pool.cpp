@@ -642,6 +642,7 @@ static u32 structure_size(TypeStructure* structure) noexcept
 		TODO("Implement `structure_size(%)`.", tag_name(structure->tag));
 
 	case TypeTag::INVALID:
+	case TypeTag::Arrayish:
 		; // Fallthrough to unreachable.
 	}
 
@@ -1084,6 +1085,7 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 	case TypeTag::Slice:
 	case TypeTag::Ptr:
 	case TypeTag::TailArray:
+	case TypeTag::Arrayish:
 		return hash_reference_type(core, hash, seen, reinterpret_cast<const ReferenceType*>(structure->attach));
 
 	case TypeTag::Array:
@@ -1275,6 +1277,7 @@ static TypeRelation type_can_implicitly_convert_from_to_assume_unequal(CoreData*
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
+	case TypeTag::Arrayish:
 		break; // Fallthrough to unreachable.
 	}
 
@@ -1590,6 +1593,7 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 	case TypeTag::TailArray:
 	case TypeTag::Slice:
 	case TypeTag::Ptr:
+	case TypeTag::Arrayish:
 	{
 		const ReferenceType* const a_attach = reinterpret_cast<ReferenceType*>(a->attach);
 
@@ -1834,7 +1838,7 @@ TypeId type_create_numeric(CoreData* core, TypeTag tag, NumericType attach) noex
 
 TypeId type_create_reference(CoreData* core, TypeTag tag, ReferenceType attach) noexcept
 {
-	ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray);
+	ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray || tag == TypeTag::Arrayish);
 
 	return holotype_id_from_attachment(core, tag, range::from_object_bytes(&attach));
 }
@@ -2785,6 +2789,7 @@ bool type_metrics_from_id(CoreData* core, TypeId type_id, TypeMetrics* out) noex
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
+	case TypeTag::Arrayish:
 		break; // Fallthrough to unreachable.
 	}
 
