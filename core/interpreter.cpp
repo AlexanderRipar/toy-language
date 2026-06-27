@@ -2252,9 +2252,10 @@ static const Opcode* handle_file_member_alloc_untyped(CoreData* core, const Opco
 
 	type_member_complete(core, init.type, init.rank, top->type, value_id, true);
 
-	core->interp.global_initializations.pop_by(1);
-
 	core->interp.values.pop_by(1);
+
+	core->interp.temporary_data.pop_to(init.temporary_data_used);
+	core->interp.global_initializations.pop_by(1);
 
 	return code;
 }
