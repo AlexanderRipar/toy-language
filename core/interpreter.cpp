@@ -4321,14 +4321,14 @@ static const Opcode* handle_index(CoreData* core, const Opcode* code, CompValue*
 		if (!type_metrics_from_id(core, elem_type, &elem_metrics))
 			return record_interpreter_error(core, code, CompileError::IncompleteType);
 
-		const MutRange<byte> slice = *value_as<MutRange<byte>>(lhs);
+		MutRange<byte> slice = *value_as<MutRange<byte>>(lhs);
 
 		if (index * elem_metrics.stride > slice.count())
 			return record_interpreter_error(core, code, CompileError::ArrayIndexOutOfBounds);
 
 		core->interp.values.pop_by(1);
 
-		const MutRange<byte> bytes = lhs->bytes.mut_subrange(index * elem_metrics.stride, elem_metrics.size);
+		const MutRange<byte> bytes = slice.mut_subrange(index * elem_metrics.stride, elem_metrics.size);
 
 		return poppush_location_value(core, code, write_ctx, CompValue{ bytes, elem_metrics.align, true, elem_type });
 	}
