@@ -1,0 +1,11 @@
+// success
+
+let S = Struct(
+	x: []u32
+)
+
+let f = func(p: *S) -> u32 => p.*.x[0]
+
+let x = f(.{ .[1][..] }.&)
+
+let unused = std.assert(x == 1)

@@ -1,0 +1,11 @@
+// success
+
+let S = Struct(
+	x: []u32
+)
+
+let unused = {
+	let s: *S = .{ .[5][..] }.&
+
+	std.assert(s.*.x[0] == 5)
+}
