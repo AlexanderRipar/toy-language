@@ -76,7 +76,6 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::EndTraitMemberType:
 	case Opcode::TypeType:
 	case Opcode::CompleteCircularDefinition:
-	case Opcode::PromoteIndirectWriteCtx:
 	{
 		return PrintResult{ code, 0 };
 	}
@@ -499,6 +498,15 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 	case Opcode::DefinitionUntyped:
 	{
 		return PrintResult{ code + sizeof(IdentifierId) + sizeof(OpcodeDefinitionFlags), 0 };
+	}
+
+	case Opcode::PromoteIndirectWriteCtx:
+	{
+		
+		u8 modifier_count;
+		memcpy(&modifier_count, code, sizeof(u8));
+
+		return PrintResult{ code + 1 + modifier_count, 0 };
 	}
 
 	case Opcode::Switch:
@@ -1637,7 +1645,7 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 	{
 		u8 modifier_count;
 		code = code_attach(code, &modifier_count);
-		
+
 		s64 written = print(sink, " modifiers=%", modifier_count);
 
 		if (written < 0)
