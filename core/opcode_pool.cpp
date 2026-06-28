@@ -1306,17 +1306,12 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		// Since we use `emit_opcode_raw` and not `emit_opcode`, we need to
 		// manually adjust and check the current state.
 		{
-			if (expects_write_ctx)
-			{
-				ASSERT_OR_IGNORE(core->opcodes.state.write_ctxs_diff != 0);
+			ASSERT_OR_IGNORE(!expects_write_ctx || core->opcodes.state.write_ctxs_diff != 0);
 
+			if (expects_write_ctx)
 				core->opcodes.state.write_ctxs_diff += write_ctxs_diff - 1;
-			}
 			else
-			{
-				core->opcodes.state.values_diff -= 1;
 				core->opcodes.state.write_ctxs_diff += write_ctxs_diff;
-			}
 		}
 
 		const u32 attach_size = 3 * sizeof(u16) + named_member_count * (sizeof(IdentifierId) + sizeof(u16));
