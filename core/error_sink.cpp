@@ -146,8 +146,8 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Expected `(` after `trait`.\n",                                                                                                                // ParseSignatureMissingParenthesisAfterTrait
 		"Exceeded maximum of 64 function parameters.\n",                                                                                                // ParseSignatureTooManyParameters
 		"Expected `,` or `)` after parameter definition.\n",                                                                                            // ParseSignatureUnexpectedParameterListEnd
-		"Expected `=` or `expects` after trait parameter list.\n",                                                                                      // ParseTraitMissingSetOrExpects
-		"Expected `=` after trait expects clause.\n",                                                                                                   // ParseTraitMissingSet
+		"Expected `=` or `requires` after trait parameter list.\n",                                                                                      // ParseTraitMissingSetOrRequires
+		"Expected `=` after trait requires clause.\n",                                                                                                   // ParseTraitMissingSet
 		"Expected definition or `impl` at file's top level.\n",                                                                                         // ParseUnexpectedTopLevelExpr
 		"Expected `}` or `,` after composite initializer member expression.\n",                                                                         // ParseCompositeLiteralUnexpectedToken
 		"Expected `]` or `,` after array initializer element expression.\n",                                                                            // ParseArrayLiteralUnexpectedToken
@@ -439,7 +439,7 @@ static constexpr const char8* COMPILE_ERROR_NAMES[] = {
 	"ParseSignatureMissingParenthesisAfterTrait",
 	"ParseSignatureTooManyParameters",
 	"ParseSignatureUnexpectedParameterListEnd",
-	"ParseTraitMissingSetOrExpects",
+	"ParseTraitMissingSetOrRequires",
 	"ParseTraitMissingSet",
 	"ParseUnexpectedTopLevelExpr",
 	"ParseCompositeLiteralUnexpectedToken",

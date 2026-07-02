@@ -713,7 +713,7 @@ enum class AstTag : u8
 	ArrayInitializer,
 	Wildcard,
 	Where,
-	Expects,
+	Requires,
 	Ensures,
 	Definition,
 	Parameter,
@@ -828,12 +828,12 @@ enum class AstFlag : u8
 
 	Switch_HasWhere                  = 0x20,
 
-	Signature_HasExpects             = 0x01,
+	Signature_HasRequires             = 0x01,
 	Signature_HasEnsures             = 0x02,
 	Signature_IsProc                 = 0x04,
 	Signature_HasTemplatedReturnType = 0x08,
 
-	Trait_HasExpects                 = 0x01,
+	Trait_HasRequires                 = 0x01,
 
 	Catch_HasDefinition              = 0x01,
 
@@ -1203,9 +1203,9 @@ struct SignatureInfo
 	// it has one.
 	AstNode* return_type;
 
-	// Optional `AstNode` with tag `AstTag::Expects` containing the function's
-	// `expects` clause if it has one.
-	Maybe<AstNode*> expects;
+	// Optional `AstNode` with tag `AstTag::Requires` containing the function's
+	// `requires` clause if it has one.
+	Maybe<AstNode*> requires;
 
 	// Optional `AstNode` with tag `AstTag::Ensures` containing the function's
 	// `ensures` clause if it has one.
@@ -1859,7 +1859,7 @@ enum class CompileError
 	ParseSignatureMissingParenthesisAfterTrait,
 	ParseSignatureTooManyParameters,
 	ParseSignatureUnexpectedParameterListEnd,
-	ParseTraitMissingSetOrExpects,
+	ParseTraitMissingSetOrRequires,
 	ParseTraitMissingSet,
 	ParseUnexpectedTopLevelExpr,
 	ParseCompositeLiteralUnexpectedToken,

@@ -647,13 +647,13 @@ SignatureInfo get_signature_info(AstNode* signature) noexcept
 
 	desc.return_type = curr;
 
-	if (has_flag(signature, AstFlag::Signature_HasExpects))
+	if (has_flag(signature, AstFlag::Signature_HasRequires))
 	{
 		curr = next_sibling_of(curr);
 
-		ASSERT_OR_IGNORE(curr->tag == AstTag::Expects);
+		ASSERT_OR_IGNORE(curr->tag == AstTag::Requires);
 
-		desc.expects = some(curr);
+		desc.requires = some(curr);
 	}
 
 	if (has_flag(signature, AstFlag::Signature_HasEnsures))
@@ -883,7 +883,7 @@ const char8* tag_name(AstTag tag) noexcept
 		"ArrayInitializer",
 		"Wildcard",
 		"Where",
-		"Expects",
+		"Requires",
 		"Ensures",
 		"Definition",
 		"Parameter",

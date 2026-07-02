@@ -989,8 +989,8 @@ static bool opcodes_from_signature(CoreData* core, AstNode* node, bool expects_w
 {
 	SignatureInfo info = get_signature_info(node);
 
-	if (is_some(info.expects))
-		TODO("Implement opcode generation for signature-level `expects`");
+	if (is_some(info.requires))
+		TODO("Implement opcode generation for signature-level `requires`");
 
 	if (is_some(info.ensures))
 		TODO("Implement opcode generation for signature-level `ensures`");
@@ -2471,7 +2471,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	}
 
 	case AstTag::Wildcard:
-	case AstTag::Expects:
+	case AstTag::Requires:
 	case AstTag::Ensures:
 	case AstTag::ForEach:
 	case AstTag::Switch:

@@ -787,8 +787,8 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 	{
 		const SignatureInfo info = get_signature_info(node);
 
-		if (is_some(info.expects))
-			TODO("Handle signature-level `expects` in `resolve_names_rec`");
+		if (is_some(info.requires))
+			TODO("Handle signature-level `requires` in `resolve_names_rec`");
 
 		if (is_some(info.ensures))
 			TODO("Handle signature-level `ensures` in `resolve_names_rec`");
@@ -838,8 +838,8 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 	}
 	else if (tag == AstTag::Trait)
 	{
-		if (has_flag(node, AstFlag::Trait_HasExpects))
-			TODO("Handle trait-level `expects` in `resolve_names_rec`");
+		if (has_flag(node, AstFlag::Trait_HasRequires))
+			TODO("Handle trait-level `requires` in `resolve_names_rec`");
 
 		ScopeMap* const parameter_list_scope = scope_map_alloc(core, ScopeMapKind::TraitSignature);
 		push_scope(core, parameter_list_scope);

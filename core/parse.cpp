@@ -32,7 +32,7 @@ enum class Token : u8
 		KwdImpl,              // impl
 		KwdSelf,              // self
 		KwdWhere,             // where
-		KwdExpects,           // expects
+		KwdRequires,          // requires
 		KwdEnsures,           // ensures
 		KwdCatch,             // catch
 		KwdLet,               // let
@@ -137,7 +137,7 @@ const char8* token_name(Token token) noexcept
 		"impl",
 		"self",
 		"where",
-		"expects",
+		"requires",
 		"ensures",
 		"catch",
 		"let",
@@ -250,7 +250,7 @@ static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
 	range::from_literal_string("impl",                    static_cast<u8>(Token::KwdImpl)),
 	range::from_literal_string("self",                    static_cast<u8>(Token::KwdSelf)),
 	range::from_literal_string("where",                   static_cast<u8>(Token::KwdWhere)),
-	range::from_literal_string("expects",                 static_cast<u8>(Token::KwdExpects)),
+	range::from_literal_string("requires",                static_cast<u8>(Token::KwdRequires)),
 	range::from_literal_string("ensures",                 static_cast<u8>(Token::KwdEnsures)),
 	range::from_literal_string("pub",                     static_cast<u8>(Token::KwdPub)),
 	range::from_literal_string("mut",                     static_cast<u8>(Token::KwdMut)),
@@ -2015,9 +2015,9 @@ static AstBuilderToken parse_switch(CoreData* core) noexcept
 	return push_node(core, first_child_token, source_id, flags, AstTag::Switch);
 }
 
-static AstBuilderToken parse_expects(CoreData* core) noexcept
+static AstBuilderToken parse_requires(CoreData* core) noexcept
 {
-	ASSERT_OR_IGNORE(peek(core).token == Token::KwdExpects);
+	ASSERT_OR_IGNORE(peek(core).token == Token::KwdRequires);
 
 	const SourceId source_id = next(core).source_id;
 
@@ -2033,7 +2033,7 @@ static AstBuilderToken parse_expects(CoreData* core) noexcept
 		parse_expr(core, false);
 	}
 
-	return push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstTag::Expects);
+	return push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstTag::Requires);
 }
 
 static AstBuilderToken parse_ensures(CoreData* core) noexcept
@@ -2133,12 +2133,12 @@ static AstBuilderToken parse_signature(CoreData* core) noexcept
 
 	lexeme = peek(core);
 
-	if (lexeme.token == Token::KwdExpects)
+	if (lexeme.token == Token::KwdRequires)
 	{
-		flags |= AstFlag::Signature_HasExpects;
+		flags |= AstFlag::Signature_HasRequires;
 
-		// Expects
-		parse_expects(core);
+		// Requires
+		parse_requires(core);
 
 		lexeme = peek(core);
 	}
@@ -2221,9 +2221,9 @@ static AstBuilderToken parse_trait(CoreData* core) noexcept
 
 	lexeme = next(core);
 
-	if (lexeme.token == Token::KwdExpects)
+	if (lexeme.token == Token::KwdRequires)
 	{
-		parse_expects(core);
+		parse_requires(core);
 
 		lexeme = next(core);
 	}
