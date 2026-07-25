@@ -828,12 +828,12 @@ enum class AstFlag : u8
 
 	Switch_HasWhere                  = 0x20,
 
-	Signature_HasRequires             = 0x01,
+	Signature_HasRequires            = 0x01,
 	Signature_HasEnsures             = 0x02,
 	Signature_IsProc                 = 0x04,
 	Signature_HasTemplatedReturnType = 0x08,
 
-	Trait_HasRequires                 = 0x01,
+	Trait_HasRequires                = 0x01,
 
 	Catch_HasDefinition              = 0x01,
 
