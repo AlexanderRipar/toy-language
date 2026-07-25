@@ -109,7 +109,7 @@ struct ScopeMapInfo
 
 
 
-static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool close_in_innermost, bool ignore_definition, Maybe<AstNode*> assignment = none<AstNode*>()) noexcept;
+static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool close_in_innermost, bool ignore_definition, bool is_type_evaluated, Maybe<AstNode*> assignment = none<AstNode*>()) noexcept;
 
 
 
@@ -631,7 +631,7 @@ static bool push_scope_for_node(CoreData* core, AstNode* node, bool close_in_inn
 
 		ASSERT_OR_IGNORE(where_child->tag == AstTag::Definition);
 
-		resolve_names_rec(core, where_child, true, close_in_innermost, false);
+		resolve_names_rec(core, where_child, true, close_in_innermost, false, false);
 	}
 
 	return true;
@@ -639,7 +639,7 @@ static bool push_scope_for_node(CoreData* core, AstNode* node, bool close_in_inn
 
 
 
-static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool close_in_innermost, bool ignore_definition, Maybe<AstNode*> assignment) noexcept
+static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool close_in_innermost, bool ignore_definition, bool is_type_evaluated, Maybe<AstNode*> assignment) noexcept
 {
 	ASSERT_OR_IGNORE(core->lex.scopes_top >= 0 && static_cast<u64>(core->lex.scopes_top) < array_count(core->lex.scopes));
 
@@ -767,7 +767,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 		// Defer popping of the signature scope, as it remains active for the
 		// body.
-		resolve_names_rec(core, signature, false, close_in_innermost, false);
+		resolve_names_rec(core, signature, false, close_in_innermost, false, true);
 
 		// The closure used for the function body is separate from that for
 		// templated parameters and a templated return type. Since the
@@ -778,7 +778,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 		AstNode* const body = next_sibling_of(signature);
 
-		resolve_names_rec(core, body, true, close_in_innermost, false);
+		resolve_names_rec(core, body, true, close_in_innermost, false, false);
 
 		set_closure_list(core, core->lex.closures[core->lex.scopes_top], &attachment_of<AstFuncData>(node)->closure_list_id);
 
@@ -823,15 +823,15 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 			if (is_templated)
 				parameter->flags |= AstFlag::Definition_IsTemplatedParam;
 
-			resolve_names_rec(core, parameter, true, is_templated, false);
+			resolve_names_rec(core, parameter, true, is_templated, false, is_type_evaluated);
 		}
 
-		const bool return_type_is_templated = check_expression_is_templated(core, info.return_type, true);
+		const bool return_type_is_templated = check_expression_is_templated(core, info.return_type, is_type_evaluated);
 
 		if (return_type_is_templated)
 			node->flags |= AstFlag::Signature_HasTemplatedReturnType;
 
-		resolve_names_rec(core, info.return_type, true, return_type_is_templated, false);
+		resolve_names_rec(core, info.return_type, true, return_type_is_templated, false, is_type_evaluated);
 
 		set_closure_list(core, core->lex.closures[core->lex.scopes_top], &attachment_of<AstSignatureData>(node)->closure_list_id);
 
@@ -888,7 +888,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 			ASSERT_OR_IGNORE(curr->tag == AstTag::Definition);
 
-			resolve_names_rec(core, curr, true, close_in_innermost, false);
+			resolve_names_rec(core, curr, true, close_in_innermost, false, false);
 		}
 
 		pop_scope(core);
@@ -899,11 +899,11 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 	{
 		AstNode* const on = first_child_of(node);
 
-		resolve_names_rec(core, on, true, close_in_innermost, false);
+		resolve_names_rec(core, on, true, close_in_innermost, false, is_type_evaluated);
 
 		AstNode* const trait = next_sibling_of(on);
 
-		resolve_names_rec(core, trait, true, close_in_innermost, false);
+		resolve_names_rec(core, trait, true, close_in_innermost, false, is_type_evaluated);
 
 		ScopeMap* const scope = scope_map_alloc(core, ScopeMapKind::Global);
 		push_scope(core, scope);
@@ -919,7 +919,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 			ASSERT_OR_IGNORE(curr->tag == AstTag::Definition);
 
-			resolve_names_rec(core, curr, true, close_in_innermost, false);
+			resolve_names_rec(core, curr, true, close_in_innermost, false, false);
 		}
 
 		set_closure_list(core, core->lex.closures[core->lex.scopes_top], &attachment_of<AstImplData>(node)->closure_list_id);
@@ -930,7 +930,9 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 	{
 		const bool has_scope = push_scope_for_node(core, node, close_in_innermost);
 
-		if (!ignore_definition && (tag == AstTag::Definition || tag == AstTag::Parameter))
+		const bool is_definition = tag == AstTag::Definition || tag == AstTag::Parameter;
+
+		if (!ignore_definition && is_definition)
 		{
 			ASSERT_OR_IGNORE(core->lex.scopes_top >= 0);
 
@@ -951,6 +953,8 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 			core->lex.scopes[core->lex.scopes_top] = get(new_scope);
 		}
+
+		bool is_definition_type = is_definition && has_flag(node, AstFlag::Definition_HasType);
 
 		const bool ignore_child_definitions = tag == AstTag::Call;
 
@@ -982,7 +986,9 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 			if (child->tag == AstTag::Where)
 				continue;
 
-			resolve_names_rec(core, child, true, close_in_innermost, ignore_child_definitions, child_assignment);
+			resolve_names_rec(core, child, true, close_in_innermost, ignore_child_definitions, is_type_evaluated || is_definition_type, child_assignment);
+
+			is_definition_type = false;
 
 			// Quick hack to only consider identifiers in the left-hand-side of
 			// assignments.
@@ -1043,20 +1049,22 @@ static void resolve_names_root(CoreData* core, AstNode* root, SourceFileId file_
 		{
 			AstNode* child = first_child_of(node);
 
-			resolve_names_rec(core, child, true, true, false);
+			const bool is_definition_type = has_flag(node, AstFlag::Definition_HasType);
+
+			resolve_names_rec(core, child, true, true, false, is_definition_type);
 
 			if (has_next_sibling(child))
 			{
 				child = next_sibling_of(child);
 
-				resolve_names_rec(core, child, true, true, false);
+				resolve_names_rec(core, child, true, true, false, false);
 
 				ASSERT_OR_IGNORE(!has_next_sibling(child));
 			}
 		}
 		else
 		{
-			resolve_names_rec(core, node, true, true, false);
+			resolve_names_rec(core, node, true, true, false, false);
 		}
 	}
 }
