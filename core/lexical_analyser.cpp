@@ -97,7 +97,7 @@ struct alignas(8) ScopeEntry
 
 	u8 unused_ = 0;
 
-	Maybe<AstNode*> definition;
+	AstNode* node;
 };
 
 struct ScopeMapInfo
@@ -448,7 +448,7 @@ static u16 add_name_to_closures(CoreData* core, IdentifierId name, u16 closed_ov
 			closure_entry.closure_source_rank = closed_over_rank;
 			closure_entry.closure_source_is_closure = closure_source_is_closure;
 			closure_entry.closure_source_out = static_cast<u8>(i - source_index);
-			closure_entry.definition = none<AstNode*>();
+			closure_entry.node = nullptr;
 
 			// This addition can never fail, as we just checked whether the
 			// name is already present. As such, we pass a dummy `nullptr` as
@@ -679,9 +679,9 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 			if (scope_map_get(scope, name, &scope_entry))
 			{
-				if (is_some(scope_entry.definition) && is_descendant_of(get(scope_entry.definition), node))
+				if (is_descendant_of(scope_entry.node, node))
 				{
-					if (get(scope_entry.definition)->tag == AstTag::Parameter)
+					if (scope_entry.node->tag == AstTag::Parameter)
 					{
 						// A parameter must not reference itself at all.
 
@@ -689,8 +689,9 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 						core->lex.has_error = true;
 					}
-					else if (has_flag(get(scope_entry.definition), AstFlag::Definition_HasType)
-					 && is_descendant_of(first_child_of(get(scope_entry.definition)), node)
+					else if ((scope_entry.node->tag == AstTag::Definition || scope_entry.node->tag == AstTag::Parameter)
+					 && has_flag(scope_entry.node, AstFlag::Definition_HasType)
+					 && is_descendant_of(first_child_of(scope_entry.node), node)
 					) {
 						// A definition must not be referenced from within its
 						// explicit type expression. If this is the case, emit
@@ -701,7 +702,8 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 						core->lex.has_error = true;
 					}
 
-					get(scope_entry.definition)->flags |= AstFlag::Definition_HasSelfReference;
+					if (scope_entry.node->tag == AstTag::Definition || scope_entry.node->tag == AstTag::Parameter)
+						scope_entry.node->flags |= AstFlag::Definition_HasSelfReference;
 				}
 
 				if (scope->kind == ScopeMapKind::Global)
@@ -865,7 +867,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 			ScopeEntry entry{};
 			entry.rank = scope->used;
-			entry.definition = none<AstNode*>();
+			entry.node = parameter;
 
 			const Maybe<ScopeMap*> new_scope = scope_map_add(core, scope, name, entry, node);
 
@@ -940,7 +942,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 			ScopeEntry entry{};
 			entry.rank = scope->used;
-			entry.definition = some(node);
+			entry.node = node;
 
 			const Maybe<ScopeMap*> new_scope = scope_map_add(core, scope, name, entry, node);
 
@@ -994,7 +996,7 @@ static void resolve_names_root(CoreData* core, AstNode* root, SourceFileId file_
 
 		ScopeEntry entry{};
 		entry.rank = rank;
-		entry.definition = some(node);
+		entry.node = node;
 
 		const Maybe<ScopeMap*> new_scope = scope_map_add(core, scope, attach->identifier_id, entry, node);
 
