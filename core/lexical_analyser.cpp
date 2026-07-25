@@ -109,7 +109,7 @@ struct ScopeMapInfo
 
 
 
-static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool close_in_innermost, bool ignore_definition) noexcept;
+static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool close_in_innermost, bool ignore_definition, Maybe<AstNode*> assignment = none<AstNode*>()) noexcept;
 
 
 
@@ -639,7 +639,7 @@ static bool push_scope_for_node(CoreData* core, AstNode* node, bool close_in_inn
 
 
 
-static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool close_in_innermost, bool ignore_definition) noexcept
+static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool close_in_innermost, bool ignore_definition, Maybe<AstNode*> assignment) noexcept
 {
 	ASSERT_OR_IGNORE(core->lex.scopes_top >= 0 && static_cast<u64>(core->lex.scopes_top) < array_count(core->lex.scopes));
 
@@ -954,6 +954,23 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 		const bool ignore_child_definitions = tag == AstTag::Call;
 
+		// Decide whether a child could be a type-evaluated value assignment.
+		// This is the case if it is on the left-hand-side of an assignment and
+		// is an identifier that is reached via array indices and member
+		// accesses.
+		// Pointer and slice dereferences are of no concern here, as they
+		// cannot be mutable for type-evaluated definitions, meaning that they
+		// cannot appear as the destination of an assignment.
+
+		Maybe<AstNode*> child_assignment;
+
+		if (tag >= AstTag::OpSet && tag <= AstTag::OpSetShiftR)
+			child_assignment = some(node);
+		else if (tag == AstTag::Identifier || tag == AstTag::Member || tag == AstTag::OpArrayIndex)
+			child_assignment = assignment;
+		else
+			child_assignment = none<AstNode*>();
+
 		// Traverse node's children recursively.
 
 		AstDirectChildIterator it = direct_children_of(node);
@@ -965,7 +982,13 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 			if (child->tag == AstTag::Where)
 				continue;
 
-			resolve_names_rec(core, child, true, close_in_innermost, ignore_child_definitions);
+			resolve_names_rec(core, child, true, close_in_innermost, ignore_child_definitions, child_assignment);
+
+			// Quick hack to only consider identifiers in the left-hand-side of
+			// assignments.
+			// This works since all potentially type-evaluated assignment
+			// destination preserving nodes only have a single child
+			child_assignment = none<AstNode*>();
 		}
 
 		if (has_scope)
