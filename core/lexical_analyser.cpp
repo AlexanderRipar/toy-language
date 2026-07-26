@@ -56,12 +56,13 @@ struct alignas(8) ScopeMap
 // - closure_source_rank: Unused.
 // - closure_source_out: Unused.
 // - closure_source_is_closure: Unused.
-// - param_is_templated: Unused.
 //
 // Closure: When a non-global definition from an outer scope is used in a
 // nested function, it is closed-over to extend its lifetime to that of the
 // nested function. In this case, a new definition is created (as part of the
-// closure), with the following semantics:
+// closure), with the following semantics. Note additionally that Signature
+// `ScopeMap`s only occur on the `closures` stack, while all other types solely
+// occur on the `scopes` stack of `LexicalAnalyser`.
 // - rank: Rank of the definition inside the closure.
 // - closure_source_rank: Rank of the definition in the outer scope, used for
 //   efficient capturing.
@@ -69,20 +70,15 @@ struct alignas(8) ScopeMap
 //   closure exists and the scope in which the closed-over definition lives.
 // - closure_source_is_closure: True if and only if the closed-over
 //   definition is itself part of a closure.
-// - param_is_templated: Unused.
 //
-// Signature: Function parameters are treated mostly like normal parameters,
+// Signature: Function parameters are treated mostly like normal definitions,
 // with the exception that parameters may be templated (dependent on a
-// preceding parameter's value), which is indicated by the `param_is_templated`
-// member being true. Note additionally that Signature `ScopeMap`s only occur
-// on the `closures` stack, while all other types solely occur on the `scopes`
-// stack of `LexicalAnalyser`:
+// preceding parameter's value), which is tracked in the parameter node's
+// flags.
 // - rank: Rank of the parameter inside the signature.
 // - closure_source_rank: Unused.
 // - closure_source_out: Unused.
 // - closure_source_is_closure: Unused.
-// - param_is_templated: True if and only if the parameter is templated, meaning
-//   that it depends on a preceding parameter's value.
 struct alignas(8) ScopeEntry
 {
 	u16 rank;
@@ -92,8 +88,6 @@ struct alignas(8) ScopeEntry
 	u8 closure_source_out;
 
 	bool closure_source_is_closure;
-
-	bool param_is_templated;
 
 	AstNode* node;
 };
