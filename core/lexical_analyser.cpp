@@ -95,8 +95,6 @@ struct alignas(8) ScopeEntry
 
 	bool param_is_templated;
 
-	u8 unused_ = 0;
-
 	AstNode* node;
 };
 
@@ -256,7 +254,7 @@ static void scope_map_dealloc(CoreData* core, ScopeMap* scope) noexcept
 	(void) scope;
 }
 
-static bool scope_map_get(ScopeMap* scope, IdentifierId name, ScopeEntry* out) noexcept
+static Maybe<ScopeEntry*> scope_map_get(ScopeMap* scope, IdentifierId name) noexcept
 {
 	const ScopeMapInfo info = scope_map_info(scope);
 
@@ -275,14 +273,10 @@ static bool scope_map_get(ScopeMap* scope, IdentifierId name, ScopeEntry* out) n
 		const bool has_value = (occupied_bits & occupied_mask) != 0;
 
 		if (!has_value)
-			return false;
+			return none<ScopeEntry*>();
 
 		if (info.names[index] == name)
-		{
-			*out = info.entries[index];
-
-			return true;
-		}
+			return some(&info.entries[index]);
 
 		index += 1;
 
@@ -310,7 +304,7 @@ static bool scope_map_get(ScopeMap* scope, IdentifierId name, ScopeEntry* out) n
 		}
 
 		if (initial_index == index)
-			return false;
+			return none<ScopeEntry*>();
 	}
 }
 
@@ -439,11 +433,17 @@ static u16 add_name_to_closures(CoreData* core, IdentifierId name, u16 closed_ov
 
 		ScopeMap* const closure = core->lex.closures[i];
 
-		ScopeEntry closure_entry;
+		const Maybe<ScopeEntry*> existing_entry = scope_map_get(closure, name);
 
-		if (!scope_map_get(closure, name, &closure_entry))
+		if (is_some(existing_entry))
 		{
-			closure_entry = {};
+			ASSERT_OR_IGNORE(get(existing_entry)->closure_source_rank == closed_over_rank && get(existing_entry)->closure_source_is_closure == closure_source_is_closure);
+
+			closed_over_rank = get(existing_entry)->rank;
+		}
+		else
+		{
+			ScopeEntry closure_entry{};
 			closure_entry.rank = closure->used;
 			closure_entry.closure_source_rank = closed_over_rank;
 			closure_entry.closure_source_is_closure = closure_source_is_closure;
@@ -456,11 +456,9 @@ static u16 add_name_to_closures(CoreData* core, IdentifierId name, u16 closed_ov
 			const Maybe<ScopeMap*> new_closure = scope_map_add(core, closure, name, closure_entry, nullptr);
 
 			core->lex.closures[i] = get(new_closure);
+
+			closed_over_rank = closure_entry.rank;
 		}
-
-		ASSERT_OR_IGNORE(closure_entry.closure_source_rank == closed_over_rank && closure_entry.closure_source_is_closure == closure_source_is_closure);
-
-		closed_over_rank = closure_entry.rank;
 
 		source_index = i;
 
@@ -488,8 +486,6 @@ static bool check_expression_is_templated(CoreData* core, AstNode* node, bool do
 		{
 			ScopeMap* const scope = core->lex.scopes[i];
 
-			ScopeEntry unused_scope_entry;
-
 			// Since we are looking for templating relative to a particular
 			// signature, we can recognize that signature's scope by it being
 			// of kind `Signature` (note that
@@ -502,7 +498,9 @@ static bool check_expression_is_templated(CoreData* core, AstNode* node, bool do
 			// not occur at all up to and including the signature, we have a
 			// potentially captured variable, but not yet a templated
 			// parameter.
-			if (scope_map_get(scope, name, &unused_scope_entry))
+			const Maybe<ScopeEntry*> scope_entry = scope_map_get(scope, name);
+
+			if (is_some(scope_entry))
 				return scope->kind == ScopeMapKind::Signature;
 			else if (scope->kind == ScopeMapKind::Signature)
 				return false;
@@ -675,13 +673,19 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 		{
 			ScopeMap* const scope = core->lex.scopes[i];
 
-			ScopeEntry scope_entry;
+			const Maybe<ScopeEntry*> opt_scope_entry = scope_map_get(scope, name);
 
-			if (scope_map_get(scope, name, &scope_entry))
+			if (is_some(opt_scope_entry))
 			{
-				if (is_descendant_of(scope_entry.node, node))
+				ScopeEntry* const scope_entry = get(opt_scope_entry);
+
+				AstNode* const entry_node = scope_entry->node;
+
+				const AstTag entry_tag = entry_node->tag;
+
+				if (is_descendant_of(entry_node, node))
 				{
-					if (scope_entry.node->tag == AstTag::Parameter)
+					if (entry_tag == AstTag::Parameter)
 					{
 						// A parameter must not reference itself at all.
 
@@ -689,9 +693,9 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 						core->lex.has_error = true;
 					}
-					else if ((scope_entry.node->tag == AstTag::Definition || scope_entry.node->tag == AstTag::Parameter)
-					 && has_flag(scope_entry.node, AstFlag::Definition_HasType)
-					 && is_descendant_of(first_child_of(scope_entry.node), node)
+					else if ((entry_tag == AstTag::Definition || entry_tag == AstTag::Parameter)
+					 && has_flag(entry_node, AstFlag::Definition_HasType)
+					 && is_descendant_of(first_child_of(entry_node), node)
 					) {
 						// A definition must not be referenced from within its
 						// explicit type expression. If this is the case, emit
@@ -702,8 +706,8 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 						core->lex.has_error = true;
 					}
 
-					if (scope_entry.node->tag == AstTag::Definition || scope_entry.node->tag == AstTag::Parameter)
-						scope_entry.node->flags |= AstFlag::Definition_HasSelfReference;
+					if (entry_tag == AstTag::Definition || entry_tag == AstTag::Parameter)
+						entry_node->flags |= AstFlag::Definition_HasSelfReference;
 				}
 
 				if (scope->kind == ScopeMapKind::Global)
@@ -720,12 +724,12 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 					binding->global.kind_ = NameBindingKind::Global;
 					binding->global.file_id = file_id;
-					binding->global.rank = scope_entry.rank;
+					binding->global.rank = scope_entry->rank;
 				}
 				else if (scope->kind == ScopeMapKind::TraitSignature)
 				{
 					binding->trait_argument.kind_ = NameBindingKind::TraitArgument;
-					binding->trait_argument.rank = static_cast<u8>(scope_entry.rank);
+					binding->trait_argument.rank = static_cast<u8>(scope_entry->rank);
 				}
 				else if (is_closed_over)
 				{
@@ -733,7 +737,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 					// between its definition and its use.
 					// If `close_in_innermost` is `false`, we skip the
 					// innermost closure.
-					const u16 rank_in_closure = add_name_to_closures(core, name, scope_entry.rank, i, close_in_innermost);
+					const u16 rank_in_closure = add_name_to_closures(core, name, scope_entry->rank, i, close_in_innermost);
 
 					binding->closed.kind_ = NameBindingKind::Closed;
 					binding->closed.rank_in_closure = rank_in_closure;
@@ -742,7 +746,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 				{
 					binding->scoped.kind_ = NameBindingKind::Scoped;
 					binding->scoped.out = static_cast<u8>(core->lex.scopes_top - i);
-					binding->scoped.rank = scope_entry.rank;
+					binding->scoped.rank = scope_entry->rank;
 				}
 
 				// Return, as we have found a match.
