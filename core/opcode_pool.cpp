@@ -1277,7 +1277,9 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	{
 	case AstTag::Builtin:
 	{
-		emit_opcode(core, Opcode::LoadBuiltin, expects_write_ctx, node, static_cast<Builtin>(node->flags));
+		const AstBuiltinData* const attach = attachment_of<AstBuiltinData>(node);
+
+		emit_opcode(core, Opcode::LoadBuiltin, expects_write_ctx, node, attach->builtin);
 
 		return true;
 	}

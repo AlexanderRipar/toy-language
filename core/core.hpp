@@ -1191,6 +1191,15 @@ struct alignas(8) AstImplData
 	u32 unused_ = 0;
 };
 
+struct alignas(8) AstBuiltinData
+{
+	static constexpr AstTag TAG = AstTag::Builtin;
+
+	Builtin builtin;
+
+	u32 unused_ = 0;
+};
+
 // Neatly structured summary of the child structure of an `AstNode` with tag
 // `AstTag::Func`. To obtain this for a given node, call `get_func_info`.
 struct SignatureInfo

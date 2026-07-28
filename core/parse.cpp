@@ -2517,7 +2517,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, static_cast<AstFlag>(lexeme.builtin), AstTag::Builtin);
+				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstBuiltinData{ lexeme.builtin });
 
 				push_operand(core, &stack, value_token);
 			}
