@@ -7,7 +7,11 @@
 
 static s64 print_node_header(PrintSink sink, CoreData* core, const AstNode* node, s32 depth) noexcept
 {
-	s64 total_written = print(sink, "%[< %]%", "", (depth + 1) * 2, tag_name(node->tag));
+	const Range<char8> type_evaluated_tag = has_flag(node, AstFlag::Any_IsTypeEvaluated)
+		? range::from_literal_string(" #TE")
+		: range::from_literal_string("");
+
+	s64 total_written = print(sink, "%[< %]%[]%", "", (depth + 1) * 2, tag_name(node->tag), type_evaluated_tag);
 
 	if (total_written < 0)
 		return -1;
@@ -40,11 +44,11 @@ static s64 print_node_header(PrintSink sink, CoreData* core, const AstNode* node
 		s64 written;
 
 		if (attach->binding.kind == NameBindingKind::Global)
-			written = print(sink, " g%@%", attach->binding.global.rank, static_cast<u32>(attach->binding.global.file_id));
+			written = print(sink, " g%@%]", attach->binding.global.rank, static_cast<u32>(attach->binding.global.file_id));
 		else if (attach->binding.kind == NameBindingKind::Scoped)
-			written = print(sink, " s%@%", attach->binding.scoped.rank, attach->binding.scoped.out);
+			written = print(sink, " s%@%]", attach->binding.scoped.rank, attach->binding.scoped.out);
 		else if (attach->binding.kind == NameBindingKind::Closed)
-			written = print(sink, " c%", attach->binding.closed.rank_in_closure);
+			written = print(sink, " c%]", attach->binding.closed.rank_in_closure);
 		else
 			ASSERT_UNREACHABLE;
 
