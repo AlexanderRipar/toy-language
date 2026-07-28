@@ -50,12 +50,26 @@ struct alignas(8) ScopeMap
 // on circumstances, different parts of this structure are relevant, with the
 // others being unused:
 //
-// Local / Global: A normal definition as in `let x = 5`, including definitions
-// made at global as well as block scope.
+// Local: A definition made inside a block or where, as in `let x = 5`.
 // - rank: Rank of the definition in its scope.
 // - closure_source_rank: Unused.
 // - closure_source_out: Unused.
 // - closure_source_is_closure: Unused.
+// - is_type_evaluated: Whether the definition is used in a type context.
+// - assignment_dst_references_count: Number of elements in
+//   `assignment_dst_references`.
+// - assignment_dst_references: If the definition is not (yet) marked as
+//   type-evaluated, all references to the definition that might be the
+//   destination of an assignment, none otherwise.
+//
+// Global: A definition at global scope, i.e. at the root of a source file.
+// - rank: Rank of the definition in its scope.
+// - closure_source_rank: Unused.
+// - closure_source_out: Unused.
+// - closure_source_is_closure: Unused.
+// - is_type_evaluated: Unused.
+// - assignment_dst_references_count: Unused.
+// - assignment_dst_references: Unused.
 //
 // Closure: When a non-global definition from an outer scope is used in a
 // nested function, it is closed-over to extend its lifetime to that of the
@@ -70,6 +84,9 @@ struct alignas(8) ScopeMap
 //   closure exists and the scope in which the closed-over definition lives.
 // - closure_source_is_closure: True if and only if the closed-over
 //   definition is itself part of a closure.
+// - is_type_evaluated: Unused.
+// - assignment_dst_references_count: Unused.
+// - assignment_dst_references: Unused.
 //
 // Signature: Function parameters are treated mostly like normal definitions,
 // with the exception that parameters may be templated (dependent on a
@@ -79,6 +96,12 @@ struct alignas(8) ScopeMap
 // - closure_source_rank: Unused.
 // - closure_source_out: Unused.
 // - closure_source_is_closure: Unused.
+// - is_type_evaluated: Whether the definition is used in a type context.
+// - assignment_dst_references_count: Number of elements in
+//   `assignment_dst_references`.
+// - assignment_dst_references: If the definition is not (yet) marked as
+//   type-evaluated, all references to the definition that might be the
+//   destination of an assignment, none otherwise.
 struct alignas(8) ScopeEntry
 {
 	u16 rank;
@@ -88,6 +111,12 @@ struct alignas(8) ScopeEntry
 	u8 closure_source_out;
 
 	bool closure_source_is_closure;
+
+	bool is_type_evaluated;
+
+	u32 assignment_dst_references_count;
+
+	Maybe<CoreId> assignment_dst_references;
 
 	AstNode* node;
 };
@@ -327,6 +356,35 @@ static void scope_map_reset(ScopeMap* scope) noexcept
 
 	memset(scope->occupied_bits, 0, sizeof(u64) * (scope->capacity + 63) / 64);
 }
+
+static void scope_entry_add_assignment(CoreData* core, ScopeEntry* entry, AstNode* assignment) noexcept
+{
+	u32 used = entry->assignment_dst_references_count;
+
+	AstNodeId* assignment_dst_references = is_some(entry->assignment_dst_references)
+		? static_cast<AstNodeId*>(address_from_core_id(core, get(entry->assignment_dst_references)))
+		: nullptr;
+
+	if (is_pow2(used))
+	{
+		const u32 initial_capacity = used;
+
+		const u32 new_capacity = initial_capacity == 0 ? 2 : initial_capacity * 2;
+
+		void* const new_assignment_dst_references = temp_stack_alloc(core, new_capacity * sizeof(AstNodeId), alignof(AstNodeId));
+
+		memcpy(new_assignment_dst_references, assignment_dst_references, initial_capacity * sizeof(AstNodeId));
+
+		entry->assignment_dst_references = some(core_id_from_address(core, new_assignment_dst_references));
+
+		assignment_dst_references = static_cast<AstNodeId*>(new_assignment_dst_references);
+	}
+
+	assignment_dst_references[used] = id_from_ast_node(core, assignment);
+
+	entry->assignment_dst_references_count = used + 1;
+}
+
 
 
 
@@ -631,6 +689,78 @@ static bool push_scope_for_node(CoreData* core, AstNode* node, bool close_in_inn
 
 
 
+static void mark_as_type_evaluated(CoreData* core, AstNode* node) noexcept
+{
+	if (has_flag(node, AstFlag::Any_IsTypeEvaluated))
+		return;
+
+	node->flags |= AstFlag::Any_IsTypeEvaluated;
+
+	const AstTag tag = node->tag;
+
+	if (tag == AstTag::Identifier)
+	{
+		const IdentifierId name = attachment_of<AstIdentifierData>(node)->identifier_id;
+
+		for (s32 i = core->lex.scopes_top; i >= 0; --i)
+		{
+			ScopeMap* const scope = core->lex.scopes[i];
+
+			const Maybe<ScopeEntry*> opt_entry = scope_map_get(scope, name);
+
+			if (is_none(opt_entry))
+				continue;
+
+			ScopeEntry* const entry = get(opt_entry);
+
+			if (scope->kind == ScopeMapKind::Global)
+				return;
+
+			if (entry->is_type_evaluated)
+				return;
+
+			entry->is_type_evaluated = true;
+
+			mark_as_type_evaluated(core, entry->node);
+
+			const AstNodeId* const assignments = is_some(entry->assignment_dst_references)
+				? static_cast<AstNodeId*>(address_from_core_id(core, get(entry->assignment_dst_references)))
+				: nullptr;
+
+			const u32 assignment_count = entry->assignment_dst_references_count;
+
+			for (u32 j = 0; j != assignment_count; ++j)
+			{
+				AstNode* const assignment = ast_node_from_id(core, assignments[j]);
+
+				mark_as_type_evaluated(core, assignment);
+			}
+
+			return;
+		}
+
+		ASSERT_UNREACHABLE;
+	}
+	else
+	{
+		const bool break_after_first = tag == AstTag::Func;
+
+		AstDirectChildIterator it = direct_children_of(node);
+
+		while (has_next(&it))
+		{
+			AstNode* const child = next(&it);
+
+			mark_as_type_evaluated(core, child);
+
+			if (break_after_first)
+				break;
+		}
+	}
+}
+
+
+
 static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool close_in_innermost, bool ignore_definition, bool is_type_evaluated, Maybe<AstNode*> assignment) noexcept
 {
 	ASSERT_OR_IGNORE(core->lex.scopes_top >= 0 && static_cast<u64>(core->lex.scopes_top) < array_count(core->lex.scopes));
@@ -742,6 +872,17 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 					binding->scoped.out = static_cast<u8>(core->lex.scopes_top - i);
 					binding->scoped.rank = scope_entry->rank;
 				}
+
+				if (scope->kind != ScopeMapKind::Global && is_some(assignment))
+				{
+					if (!is_type_evaluated && !scope_entry->is_type_evaluated)
+						scope_entry_add_assignment(core, scope_entry, get(assignment));
+					else
+						mark_as_type_evaluated(core, get(assignment));
+				}
+
+				if (is_type_evaluated || (scope->kind != ScopeMapKind::Global && is_closed_over))
+					mark_as_type_evaluated(core, node);
 
 				// Return, as we have found a match.
 				return;

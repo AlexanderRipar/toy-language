@@ -841,6 +841,8 @@ enum class AstFlag : u8
 	OpSliceOf_HasEnd                 = 0x02,
 
 	Type_IsMut                       = 0x02,
+
+	Any_IsTypeEvaluated              = 0x80,
 };
 
 // Id used to refer to an `AstNode` in the `AstPool`.
