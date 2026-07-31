@@ -805,6 +805,8 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 				AstNode* const entry_node = scope_entry->node;
 
+				attachment->definition_id = id_from_ast_node(core, entry_node);
+
 				const AstTag entry_tag = entry_node->tag;
 
 				if (is_descendant_of(entry_node, node))

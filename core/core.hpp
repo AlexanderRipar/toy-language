@@ -1079,6 +1079,10 @@ struct alignas(8) AstIdentifierData
 	// `IdentifierId` of the identifier represented by this node.
 	IdentifierId identifier_id;
 
+	// Id of the node referenced by the identifier. This can have either
+	// `AstTag::Definition` or `AstTag::Parameter`.
+	AstNodeId definition_id;
+
 	// Location of the definition this identifier is referring to, relative
 	// to the identifier's position in the source code.
 	// This is set by `resolve_names`.
