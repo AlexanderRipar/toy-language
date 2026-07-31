@@ -291,7 +291,7 @@ void ast_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	asts->nodes.init(allocation.ranges[0], static_cast<u32>(1) << 18);
 
-	asts->closure_lists.init(allocation.ranges[1], static_cast<u32>(1) << 12);
+	asts->attachment_lists.init(allocation.ranges[1], static_cast<u32>(1) << 12);
 
 	u64 offset = 0;
 
@@ -310,7 +310,7 @@ void ast_pool_init(CoreData* core, MemoryAllocation allocation) noexcept
 
 	(void) asts->sources.reserve();
 
-	(void) asts->closure_lists.reserve();
+	(void) asts->attachment_lists.reserve();
 }
 
 
@@ -430,25 +430,52 @@ AstNode* complete_ast(CoreData* core) noexcept
 
 
 
-ClosureList* alloc_closure_list(CoreData* core, u16 entry_count) noexcept
+ClosureList* alloc_closure_list(CoreData* core, u32 entry_count) noexcept
 {
-	ClosureList* const list = core->asts.closure_lists.reserve(entry_count + 1);
+	const u64 size = sizeof(ClosureList) + static_cast<u64>(entry_count) * sizeof(ClosureListEntry);
+
+	ASSERT_OR_IGNORE(size <= UINT32_MAX);
+
+	ClosureList* const list = static_cast<ClosureList*>(core->asts.attachment_lists.reserve_exact(static_cast<u32>(size)));
 	list->count = entry_count;
-	list->unused_ = 0;
 
 	return list;
 }
 
 ClosureListId id_from_closure_list(CoreData* core, ClosureList* closure_list) noexcept
 {
-	return static_cast<ClosureListId>(closure_list  - core->asts.closure_lists.begin());
+	return static_cast<ClosureListId>(reinterpret_cast<u32*>(closure_list) - core->asts.attachment_lists.begin());
 }
 
 ClosureList* closure_list_from_id(CoreData* core, ClosureListId id) noexcept
 {
 	ASSERT_OR_IGNORE(id != ClosureListId::INVALID);
 
-	return core->asts.closure_lists.begin() + static_cast<u32>(id);
+	return reinterpret_cast<ClosureList*>(core->asts.attachment_lists.begin() + static_cast<u32>(id));
+}
+
+
+
+ReferenceList* alloc_reference_list(CoreData* core, u32 entry_count) noexcept
+{
+	const u64 size = sizeof(ReferenceList) + static_cast<u64>(entry_count) * sizeof(AstNodeId);
+
+	ASSERT_OR_IGNORE(size <= UINT32_MAX);
+
+	ReferenceList* const list = static_cast<ReferenceList*>(core->asts.attachment_lists.reserve_exact(static_cast<u32>(size)));
+	list->count = entry_count;
+
+	return list;
+}
+
+ReferenceListId id_from_reference_list(CoreData* core, ReferenceList* reference_list) noexcept
+{
+	return static_cast<ReferenceListId>(reinterpret_cast<u32*>(reference_list) - core->asts.attachment_lists.begin());
+}
+
+ReferenceList* reference_list_from_id(CoreData* core, ReferenceListId id) noexcept
+{
+	return reinterpret_cast<ReferenceList*>(core->asts.attachment_lists.begin() + static_cast<u32>(id));
 }
 
 

@@ -388,44 +388,6 @@ static void scope_entry_add_assignment(CoreData* core, ScopeEntry* entry, AstNod
 
 
 
-static void push_scope(CoreData* core, ScopeMap* scope) noexcept
-{
-	ASSERT_OR_IGNORE(static_cast<u64>(core->lex.scopes_top) + 1 < array_count(core->lex.scopes));
-
-	core->lex.scopes_top += 1;
-
-	core->lex.scopes[core->lex.scopes_top] = scope;
-}
-
-static void pop_scope(CoreData* core) noexcept
-{
-	ASSERT_OR_IGNORE(core->lex.scopes_top >= 0);
-
-	ScopeMap* const scope = core->lex.scopes[core->lex.scopes_top];
-
-	if (scope->has_closure)
-		scope_map_dealloc(core, core->lex.closures[core->lex.scopes_top]);
-
-	scope_map_dealloc(core, scope);
-
-	core->lex.scopes_top -= 1;
-}
-
-static void set_closure(CoreData* core, ScopeMap* closure) noexcept
-{
-	static_assert(sizeof(LexicalAnalyser::scopes) == sizeof(LexicalAnalyser::closures));
-
-	ASSERT_OR_IGNORE(static_cast<u64>(core->lex.scopes_top) < array_count(core->lex.scopes));
-
-	ASSERT_OR_IGNORE(!core->lex.scopes[core->lex.scopes_top]->has_closure);
-
-	core->lex.scopes[core->lex.scopes_top]->has_closure = true;
-
-	core->lex.closures[core->lex.scopes_top] = closure;
-}
-
-
-
 static void set_closure_list(CoreData* core, ScopeMap* closure, Maybe<ClosureListId>* out) noexcept
 {
 	if (closure->used == 0)
@@ -522,6 +484,119 @@ static u16 add_name_to_closures(CoreData* core, IdentifierId name, u16 closed_ov
 	ASSERT_OR_IGNORE(closure_source_is_closure);
 
 	return closed_over_rank;
+}
+
+
+
+static void set_reference_list(CoreData* core, AstNode* definition) noexcept
+{
+	AstDefinitionData* const definition_attach = attachment_of<AstDefinitionData>(definition);
+
+	u32 reference_count = 0;
+
+	AstNodeId curr = static_cast<AstNodeId>(definition_attach->reference_list_id);
+
+	if (curr == AstNodeId::INVALID && !has_flag(definition, AstFlag::Definition_IsPub))
+	{
+		record_error(core, definition, CompileError::UnreferencedDefinition);
+
+		// For now this is just a "soft" error, since we don't yet have a good
+		// way to explicitly allow unreferenced definitions via `_ = id`, but
+		// we need them in tests.
+		// core->lex.has_error = true;
+	}
+
+	while (curr != AstNodeId::INVALID)
+	{
+		AstNode* const reference = ast_node_from_id(core, curr);
+
+		curr = attachment_of<AstIdentifierData>(reference)->definition_id;
+
+		reference_count += 1;
+	}
+
+	const AstNodeId definition_id = id_from_ast_node(core, definition);
+
+	ReferenceList* const list = alloc_reference_list(core, reference_count);
+
+	curr = static_cast<AstNodeId>(definition_attach->reference_list_id);
+
+	definition_attach->reference_list_id = id_from_reference_list(core, list);
+
+	u32 i = 0;
+
+	while (curr != AstNodeId::INVALID)
+	{
+		AstNode* const reference = ast_node_from_id(core, curr);
+
+		AstIdentifierData* const reference_attach = attachment_of<AstIdentifierData>(reference);
+
+		list->entries[i] = curr;
+
+		curr = reference_attach->definition_id;
+
+		reference_attach->definition_id = definition_id;
+
+		i += 1;
+	}
+
+	ASSERT_OR_IGNORE(i == reference_count);
+}
+
+
+
+static void push_scope(CoreData* core, ScopeMap* scope) noexcept
+{
+	ASSERT_OR_IGNORE(static_cast<u64>(core->lex.scopes_top) + 1 < array_count(core->lex.scopes));
+
+	core->lex.scopes_top += 1;
+
+	core->lex.scopes[core->lex.scopes_top] = scope;
+}
+
+static void pop_scope(CoreData* core) noexcept
+{
+	ASSERT_OR_IGNORE(core->lex.scopes_top >= 0);
+
+	ScopeMap* const scope = core->lex.scopes[core->lex.scopes_top];
+
+	const ScopeMapInfo info = scope_map_info(scope);
+
+	const u64* const occupied_bits = scope->occupied_bits;
+
+	const u32 capacity = scope->capacity;
+
+	for (u32 i = 0; i != (capacity + 63) / 64; ++i)
+	{
+		for (u64 bits = occupied_bits[i]; bits != 0; bits = bits & (bits - 1))
+		{
+			const u8 first_bit = count_trailing_zeros(bits);
+
+			AstNode* const definition = info.entries[i * 64 + first_bit].node;
+
+			set_reference_list(core, definition);
+		}
+	}
+
+	if (scope->has_closure)
+		scope_map_dealloc(core, core->lex.closures[core->lex.scopes_top]);
+
+	scope_map_dealloc(core, scope);
+
+	core->lex.scopes_top -= 1;
+}
+
+static void set_closure(CoreData* core, ScopeMap* closure) noexcept
+{
+	static_assert(sizeof(LexicalAnalyser::scopes) == sizeof(LexicalAnalyser::closures));
+
+	ASSERT_OR_IGNORE(static_cast<u64>(core->lex.scopes_top) < array_count(core->lex.scopes));
+
+	ASSERT_OR_IGNORE(!core->lex.scopes[core->lex.scopes_top]->has_closure);
+
+	core->lex.scopes[core->lex.scopes_top]->has_closure = true;
+
+	core->lex.closures[core->lex.scopes_top] = closure;
 }
 
 
@@ -807,7 +882,14 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 				ASSERT_OR_IGNORE(entry_node->tag == AstTag::Definition);
 
-				attachment->definition_id = id_from_ast_node(core, entry_node);
+				AstDefinitionData* const entry_attachment = attachment_of<AstDefinitionData>(entry_node);
+
+				// Temporarily repurpose the definition's `reference_list_id`
+				// and identifier's `definition_id` fields as a linked list of
+				// definition references which can then be resolved into a
+				// proper `ReferenceList`.
+				attachment->definition_id = static_cast<AstNodeId>(entry_attachment->reference_list_id);
+				entry_attachment->reference_list_id = static_cast<ReferenceListId>(id_from_ast_node(core, node));
 
 				if (is_descendant_of(entry_node, node))
 				{

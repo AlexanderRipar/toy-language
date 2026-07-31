@@ -1108,7 +1108,9 @@ static bool opcodes_from_signature(CoreData* core, AstNode* node, bool expects_w
 		{
 			const ClosureList* const closure_list = closure_list_from_id(core, get(closure_list_id));
 
-			closed_over_value_count = closure_list->count;
+			ASSERT_OR_IGNORE(closure_list->count <= UINT16_MAX);
+
+			closed_over_value_count = static_cast<u16>(closure_list->count);
 
 			emit_closure_values(core, node, closure_list);
 		}
@@ -1630,7 +1632,9 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		{
 			const ClosureList* const closure_list = closure_list_from_id(core, get(body_closure_list));
 
-			closed_over_value_count = closure_list->count;
+			ASSERT_OR_IGNORE(closure_list->count <= UINT16_MAX);
+
+			closed_over_value_count = static_cast<u16>(closure_list->count);
 
 			emit_closure_values(core, node, closure_list);
 		}
@@ -1791,7 +1795,9 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		{
 			const ClosureList* const closure_list = closure_list_from_id(core, get(closure_list_id));
 
-			closed_value_count = closure_list->count;
+			ASSERT_OR_IGNORE(closure_list->count <= UINT16_MAX);
+
+			closed_value_count = static_cast<u16>(closure_list->count);
 
 			emit_closure_values(core, node, closure_list);
 		}

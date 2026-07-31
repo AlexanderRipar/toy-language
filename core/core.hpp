@@ -915,6 +915,11 @@ enum class ClosureListId : u32
 	INVALID = 0,
 };
 
+enum class ReferenceListId : u32
+{
+	INVALID = 0,
+};
+
 // Result of a call to `next(AstPreorderIterator*)` or
 // `next(AstPostorderIterator)`. See `AstPreorderIterator` and
 // `AstPostorderIterator` for further details.
@@ -1141,9 +1146,7 @@ struct alignas(8) AstDefinitionData
 	// `IdentifierId` of the definition.
 	IdentifierId identifier_id;
 
-	// Padding to ensure consistent binary representation and avoid compiler
-	// warnings regarding padding due to `alignas`.
-	u32 unused_ = 0;
+	ReferenceListId reference_list_id;
 };
 
 struct alignas(8) AstSignatureData
@@ -1313,7 +1316,7 @@ struct OpSliceOfInfo
 	Maybe<AstNode*> end;
 };
 
-struct ClosureListEntry
+struct alignas(4) ClosureListEntry
 {
 	u16 source_rank;
 
@@ -1322,17 +1325,29 @@ struct ClosureListEntry
 	bool source_is_closure;
 };
 
-struct alignas(4) ClosureList
+struct ClosureList
 {
-	u16 count;
-
-	u16 unused_;
+	u32 count;
 
 	#if COMPILER_GCC
 		#pragma GCC diagnostic push
 		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
 	#endif
 	ClosureListEntry entries[];
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
+};
+
+struct ReferenceList
+{
+	u32 count;
+
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids flexible array member
+	#endif
+	AstNodeId entries[];
 	#if COMPILER_GCC
 		#pragma GCC diagnostic pop
 	#endif
@@ -1431,11 +1446,20 @@ AstNode* complete_ast(CoreData* core) noexcept;
 
 
 
-ClosureList* alloc_closure_list(CoreData* core, u16 entry_count) noexcept;
+ClosureList* alloc_closure_list(CoreData* core, u32 entry_count) noexcept;
 
 ClosureListId id_from_closure_list(CoreData* core, ClosureList* closure_list) noexcept;
 
 ClosureList* closure_list_from_id(CoreData* core, ClosureListId id) noexcept;
+
+
+
+ReferenceList* alloc_reference_list(CoreData* core, u32 entry_count) noexcept;
+
+ReferenceListId id_from_reference_list(CoreData* core, ReferenceList* reference_list) noexcept;
+
+ReferenceList* reference_list_from_id(CoreData* core, ReferenceListId id) noexcept;
+
 
 
 // Checks whether `node` has any child nodes.
@@ -1810,6 +1834,7 @@ enum class CompileError
 	ScopeNameNotDefined,
 	CyclicDefinitionType,
 	CyclicParameterReference,
+	UnreferencedDefinition,
 	ArrayTypeRequired,
 	FFILibraryNotFound,
 	FFISymbolNotFound,

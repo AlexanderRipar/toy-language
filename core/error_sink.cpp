@@ -97,6 +97,7 @@ static const char8* error_message_of(CompileError error) noexcept
 		"Name not defined.\n",                                                                                                                          // ScopeNameNotDefined
 		"Explicit type expressions references the definition it is a part of.\n",                                                                       // CyclicDefinitionType
 		"Parameter type or value expression references the definition it is a part of.\n",                                                              // CyclicParameterReference
+		"Definition is never used.\n",                                                                                                                  // UnreferencedDefinition
 		"`_array_countof` requires an array type.\n",                                                                                                   // ArrayTypeRequired
 		"Could not find the requested library.\n",                                                                                                      // FFILibraryNotFound
 		"Could not find the requested symbol in the given library.\n",                                                                                  // FFISymbolNotFound
@@ -390,6 +391,7 @@ static constexpr const char8* COMPILE_ERROR_NAMES[] = {
 	"ScopeNameNotDefined",
 	"CyclicDefinitionType",
 	"CyclicParameterReference",
+	"UnreferencedDefinition",
 	"ArrayTypeRequired",
 	"FFILibraryNotFound",
 	"FFISymbolNotFound",

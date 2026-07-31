@@ -23,7 +23,7 @@ struct AstPool
 
 	ReservedVec<SourceId> source_builder;
 
-	ReservedVec<ClosureList> closure_lists;
+	ReservedVec<u32> attachment_lists;
 };
 
 
