@@ -716,7 +716,6 @@ enum class AstTag : u8
 	Requires,
 	Ensures,
 	Definition,
-	Parameter,
 	Block,
 	If,
 	For,
@@ -1079,8 +1078,8 @@ struct alignas(8) AstIdentifierData
 	// `IdentifierId` of the identifier represented by this node.
 	IdentifierId identifier_id;
 
-	// Id of the node referenced by the identifier. This can have either
-	// `AstTag::Definition` or `AstTag::Parameter`.
+	// Id of the node referenced by the identifier. This will always be the id
+	// of a node with `AstTag::Definition`.
 	AstNodeId definition_id;
 
 	// Location of the definition this identifier is referring to, relative
@@ -1140,20 +1139,6 @@ struct alignas(8) AstDefinitionData
 	static constexpr AstTag TAG = AstTag::Definition;
 
 	// `IdentifierId` of the definition.
-	IdentifierId identifier_id;
-
-	// Padding to ensure consistent binary representation and avoid compiler
-	// warnings regarding padding due to `alignas`.
-	u32 unused_ = 0;
-};
-
-// Attachment of an `AstNode` with tag `AstTag::Parameter`.
-struct alignas(8) AstParameterData
-{
-	// Tag used for sanity checks in debug builds.
-	static constexpr AstTag TAG = AstTag::Parameter;
-
-	// `IdentifierId` of the parameter.
 	IdentifierId identifier_id;
 
 	// Padding to ensure consistent binary representation and avoid compiler

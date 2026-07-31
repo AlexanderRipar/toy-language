@@ -969,7 +969,7 @@ static bool opcodes_from_parameter(CoreData* core, AstNode* node, u8 rank, Ident
 		}
 	}
 
-	*out_name = attachment_of<AstParameterData>(node)->identifier_id;
+	*out_name = attachment_of<AstDefinitionData>(node)->identifier_id;
 
 	OpcodeSignaturePerParameterFlags flags;
 	flags.has_type = is_some(info.type);
@@ -1707,7 +1707,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		{
 			AstNode* const parameter = next(&parameters);
 
-			const IdentifierId name = attachment_of<AstParameterData>(parameter)->identifier_id;
+			const IdentifierId name = attachment_of<AstDefinitionData>(parameter)->identifier_id;
 
 			memcpy(attach, &name, sizeof(IdentifierId));
 			attach += sizeof(IdentifierId);
@@ -2490,7 +2490,6 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	case AstTag::INVALID:
 	case AstTag::File:
 	case AstTag::Where:
-	case AstTag::Parameter:
 	case AstTag::Case:
 	case AstTag::ParameterList:
 	case AstTag::TraitParameterList:

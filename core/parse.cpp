@@ -1708,9 +1708,7 @@ static AstBuilderToken parse_definition(CoreData* core, bool is_optional_type, b
 		parse_error_continuable(core, lexeme.source_id, CompileError::ParseDefinitionMissingEquals);
 	}
 
-	return is_param
-		? push_node(core, first_child_token, source_id, flags, AstParameterData{ identifier_id })
-		: push_node(core, first_child_token, source_id, flags, AstDefinitionData{ identifier_id });
+	return push_node(core, first_child_token, source_id, flags, AstDefinitionData{ identifier_id });
 }
 
 static AstBuilderToken parse_return(CoreData* core) noexcept
@@ -2204,7 +2202,7 @@ static AstBuilderToken parse_trait(CoreData* core) noexcept
 		if (lexeme.token != Token::Ident)
 			parse_error_fatal(core, lexeme.source_id, CompileError::ParseTraitParameterMissingName);
 
-		const AstBuilderToken parameter_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstParameterData{ lexeme.identifier_id });
+		const AstBuilderToken parameter_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstDefinitionData{ lexeme.identifier_id });
 
 		if (first_parameter_token == AstBuilderToken::NO_CHILDREN)
 			first_parameter_token = parameter_token;

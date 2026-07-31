@@ -811,15 +811,16 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 				if (is_descendant_of(entry_node, node))
 				{
-					if (entry_tag == AstTag::Parameter)
+					if (scope->kind == ScopeMapKind::Signature)
 					{
-						// A parameter must not reference itself at all.
+						// Since we are in a signature, the definition is a
+						// parameter, which must not reference itself at all.
 
 						record_error(core, node, CompileError::CyclicParameterReference);
 
 						core->lex.has_error = true;
 					}
-					else if ((entry_tag == AstTag::Definition || entry_tag == AstTag::Parameter)
+					else if (entry_tag == AstTag::Definition
 					 && has_flag(entry_node, AstFlag::Definition_HasType)
 					 && is_descendant_of(first_child_of(entry_node), node)
 					) {
@@ -832,7 +833,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 						core->lex.has_error = true;
 					}
 
-					if (entry_tag == AstTag::Definition || entry_tag == AstTag::Parameter)
+					if (entry_tag == AstTag::Definition)
 						entry_node->flags |= AstFlag::Definition_HasSelfReference;
 				}
 
@@ -1000,9 +1001,9 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 		{
 			AstNode* const parameter = next(&it);
 
-			ASSERT_OR_IGNORE(parameter->tag == AstTag::Parameter);
+			ASSERT_OR_IGNORE(parameter->tag == AstTag::Definition);
 
-			const IdentifierId name = attachment_of<AstParameterData>(parameter)->identifier_id;
+			const IdentifierId name = attachment_of<AstDefinitionData>(parameter)->identifier_id;
 
 			ScopeMap* const scope = core->lex.scopes[core->lex.scopes_top];
 
@@ -1071,15 +1072,11 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 	{
 		const bool has_scope = push_scope_for_node(core, node, close_in_innermost);
 
-		const bool is_definition = tag == AstTag::Definition || tag == AstTag::Parameter;
-
-		if (!ignore_definition && is_definition)
+		if (!ignore_definition && tag == AstTag::Definition)
 		{
 			ASSERT_OR_IGNORE(core->lex.scopes_top >= 0);
 
-			const IdentifierId name = tag == AstTag::Definition
-				? attachment_of<AstDefinitionData>(node)->identifier_id
-				: attachment_of<AstParameterData>(node)->identifier_id;
+			const IdentifierId name = attachment_of<AstDefinitionData>(node)->identifier_id;
 
 			ScopeMap* const scope = core->lex.scopes[core->lex.scopes_top];
 
@@ -1095,7 +1092,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 			core->lex.scopes[core->lex.scopes_top] = get(new_scope);
 		}
 
-		bool is_definition_type = is_definition && has_flag(node, AstFlag::Definition_HasType);
+		bool is_definition_type = tag == AstTag::Definition && has_flag(node, AstFlag::Definition_HasType);
 
 		const bool ignore_child_definitions = tag == AstTag::Call;
 

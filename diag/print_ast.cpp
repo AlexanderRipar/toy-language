@@ -57,14 +57,12 @@ static s64 print_node_header(PrintSink sink, CoreData* core, const AstNode* node
 
 		total_written += written;
 	}
-	else if (node->tag == AstTag::Definition || node->tag == AstTag::Parameter || node->tag == AstTag::Member || node->tag == AstTag::ImpliedMember)
+	else if (node->tag == AstTag::Definition || node->tag == AstTag::Member || node->tag == AstTag::ImpliedMember)
 	{
 		IdentifierId identifier_id;
 
 		if (node->tag == AstTag::Definition)
 			identifier_id = attachment_of<AstDefinitionData>(node)->identifier_id;
-		else if (node->tag == AstTag::Parameter)
-			identifier_id = attachment_of<AstParameterData>(node)->identifier_id;
 		else if (node->tag == AstTag::Member)
 			identifier_id = attachment_of<AstMemberData>(node)->identifier_id;
 		else

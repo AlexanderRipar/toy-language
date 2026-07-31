@@ -672,7 +672,7 @@ SignatureInfo get_signature_info(AstNode* signature) noexcept
 
 DefinitionInfo get_definition_info(AstNode* definition) noexcept
 {
-	ASSERT_OR_IGNORE(definition->tag == AstTag::Definition || definition->tag == AstTag::Parameter);
+	ASSERT_OR_IGNORE(definition->tag == AstTag::Definition);
 
 	if (!has_children(definition))
 		return {};
@@ -886,7 +886,6 @@ const char8* tag_name(AstTag tag) noexcept
 		"Requires",
 		"Ensures",
 		"Definition",
-		"Parameter",
 		"Block",
 		"If",
 		"For",
