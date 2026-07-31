@@ -227,6 +227,18 @@ void* temp_stack_alloc(CoreData* core, u64 size, u64 align) noexcept;
 
 void temp_stack_release(CoreData* core, u64 mark) noexcept;
 
+template<typename T>
+inline T* temp_stack_typed_align(CoreData* core) noexcept
+{
+	return static_cast<T*>(temp_stack_alloc(core, 0, alignof(T)));
+}
+
+template<typename T>
+inline T* temp_stack_typed_alloc(CoreData* core) noexcept
+{
+	return static_cast<T*>(temp_stack_alloc(core, sizeof(T), alignof(T)));
+}
+
 
 
 
