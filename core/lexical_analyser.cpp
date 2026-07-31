@@ -805,9 +805,9 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 				AstNode* const entry_node = scope_entry->node;
 
-				attachment->definition_id = id_from_ast_node(core, entry_node);
+				ASSERT_OR_IGNORE(entry_node->tag == AstTag::Definition);
 
-				const AstTag entry_tag = entry_node->tag;
+				attachment->definition_id = id_from_ast_node(core, entry_node);
 
 				if (is_descendant_of(entry_node, node))
 				{
@@ -820,10 +820,8 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 						core->lex.has_error = true;
 					}
-					else if (entry_tag == AstTag::Definition
-					 && has_flag(entry_node, AstFlag::Definition_HasType)
-					 && is_descendant_of(first_child_of(entry_node), node)
-					) {
+					else if (has_flag(entry_node, AstFlag::Definition_HasType) && is_descendant_of(first_child_of(entry_node), node))
+					{
 						// A definition must not be referenced from within its
 						// explicit type expression. If this is the case, emit
 						// an error.
@@ -833,8 +831,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 						core->lex.has_error = true;
 					}
 
-					if (entry_tag == AstTag::Definition)
-						entry_node->flags |= AstFlag::Definition_HasSelfReference;
+					entry_node->flags |= AstFlag::Definition_HasSelfReference;
 				}
 
 				if (scope->kind == ScopeMapKind::Global)
