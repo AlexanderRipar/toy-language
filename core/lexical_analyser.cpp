@@ -998,9 +998,9 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 		{
 			AstNode* const parameter = next(&it);
 
-			ASSERT_OR_IGNORE(parameter->tag == AstTag::Identifier);
+			ASSERT_OR_IGNORE(parameter->tag == AstTag::Parameter);
 
-			const IdentifierId name = attachment_of<AstIdentifierData>(parameter)->identifier_id;
+			const IdentifierId name = attachment_of<AstParameterData>(parameter)->identifier_id;
 
 			ScopeMap* const scope = core->lex.scopes[core->lex.scopes_top];
 

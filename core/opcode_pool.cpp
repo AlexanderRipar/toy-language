@@ -1707,7 +1707,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 		{
 			AstNode* const parameter = next(&parameters);
 
-			const IdentifierId name = attachment_of<AstIdentifierData>(parameter)->identifier_id;
+			const IdentifierId name = attachment_of<AstParameterData>(parameter)->identifier_id;
 
 			memcpy(attach, &name, sizeof(IdentifierId));
 			attach += sizeof(IdentifierId);

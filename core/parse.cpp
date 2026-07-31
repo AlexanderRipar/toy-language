@@ -2204,7 +2204,7 @@ static AstBuilderToken parse_trait(CoreData* core) noexcept
 		if (lexeme.token != Token::Ident)
 			parse_error_fatal(core, lexeme.source_id, CompileError::ParseTraitParameterMissingName);
 
-		const AstBuilderToken parameter_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstIdentifierData{ lexeme.identifier_id, NameBinding{} });
+		const AstBuilderToken parameter_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstParameterData{ lexeme.identifier_id });
 
 		if (first_parameter_token == AstBuilderToken::NO_CHILDREN)
 			first_parameter_token = parameter_token;
