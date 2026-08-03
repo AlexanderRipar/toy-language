@@ -254,11 +254,9 @@ struct Lexeme
 
 		struct
 		{
-			byte* value_begin;
+			CoreId value_begin;
 
 			u32 value_size;
-
-			TypeId type_id;
 		} string;
 	};
 

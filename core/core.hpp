@@ -1141,14 +1141,9 @@ struct alignas(8) AstLitStringData
 	// Tag used for sanity checks in debug builds.
 	static constexpr AstTag TAG = AstTag::LitString;
 
-	// `ForeverValueId` of the global `u8` array representing this string's
-	// value.
-	void* value_begin;
+	CoreId value_id;
 
 	u32 value_size;
-
-	// `TypeId` of the `u8` array representing this string's value.
-	TypeId type_id;
 };
 
 // Attachment of an `AstNode` with tag `AstTag::Definition`.

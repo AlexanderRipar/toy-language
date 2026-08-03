@@ -5343,16 +5343,19 @@ static const Opcode* handle_value_float(CoreData* core, const Opcode* code, Comp
 
 static const Opcode* handle_value_string(CoreData* core, const Opcode* code, CompValue* write_ctx) noexcept
 {
-	byte* value_begin;
-	code = code_attach(code, &value_begin);
+	CoreId string_id;
+	code = code_attach(code, &string_id);
 
-	u32 value_size;
-	code = code_attach(code, &value_size);
+	u32 string_size;
+	code = code_attach(code, &string_size);
 
-	TypeId type;
-	code = code_attach(code, &type);
+	byte* const string_begin = static_cast<byte*>(address_from_core_id(core, string_id));
 
-	const MutRange<byte> bytes{ value_begin, value_size };
+	const MutRange<byte> bytes{ string_begin, string_size };
+
+	const TypeId u8_type = type_create_numeric(core, TypeTag::Integer, NumericType{ 8, false });
+
+	const TypeId type = type_create_array(core, ArrayType{ string_size, u8_type });
 
 	const CompValue value{ bytes, 1, false, type };
 

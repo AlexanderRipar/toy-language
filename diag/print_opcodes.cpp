@@ -402,7 +402,7 @@ static PrintResult follow_ref_impl(PrintSink sink, CoreData* core, const Opcode*
 
 	case Opcode::ValueString:
 	{
-		return PrintResult{ code + sizeof(byte*) + sizeof(u32) + sizeof(TypeId), 0 };
+		return PrintResult{ code + sizeof(CoreId) + sizeof(u32), 0 };
 	}
 
 	case Opcode::Trait:
@@ -1376,16 +1376,15 @@ static PrintResult print_opcode_impl(PrintSink sink, CoreData* core, const Opcod
 
 	case Opcode::ValueString:
 	{
-		char8* value_begin;
-		code = code_attach(code, &value_begin);
+		CoreId string_id;
+		code = code_attach(code, &string_id);
 
-		u32 value_size;
-		code = code_attach(code, &value_size);
+		u32 string_size;
+		code = code_attach(code, &string_size);
 
-		TypeId type_id;
-		code = code_attach(code, &type_id);
+		const char8* string_begin = static_cast<char8*>(address_from_core_id(core, string_id));
 
-		const s64 written = print(sink, " type=TypeId<%> value=\"%\"", static_cast<u32>(type_id), Range<char8>{ value_begin, value_size });
+		const s64 written = print(sink, " value=\"%\"", Range<char8>{ string_begin, string_size });
 
 		if (written < 0)
 			return PrintResult{ nullptr, -1 };

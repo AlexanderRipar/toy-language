@@ -1966,7 +1966,7 @@ static bool opcodes_from_expression(CoreData* core, AstNode* node, bool expects_
 	{
 		const AstLitStringData attach = *attachment_of<AstLitStringData>(node);
 
-		emit_opcode(core, Opcode::ValueString, expects_write_ctx, node, attach.value_begin, attach.value_size, attach.type_id);
+		emit_opcode(core, Opcode::ValueString, expects_write_ctx, node, attach.value_id, attach.value_size);
 
 		return true;
 	}

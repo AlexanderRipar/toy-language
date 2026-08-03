@@ -1004,8 +1004,6 @@ static Lexeme scan_string_token(CoreData* core) noexcept
 
 	buffer_index += bytes_to_copy;
 
-	const TypeId string_type_id = type_create_array(core, ArrayType{ buffer_index, core->parser.u8_type_id });
-
 	const Maybe<void*> allocation = comp_heap_alloc(core, buffer_index, 1);
 
 	if (is_none(allocation))
@@ -1017,9 +1015,8 @@ static Lexeme scan_string_token(CoreData* core) noexcept
 
 	Lexeme rst;
 	rst.token = Token::LitString;
-	rst.string.value_begin = static_cast<byte*>(get(allocation));
+	rst.string.value_begin = core_id_from_address(core, get(allocation));
 	rst.string.value_size = buffer_index;
-	rst.string.type_id = string_type_id;
 
 	return rst;
 }
@@ -2284,7 +2281,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 			{
 				expecting_operand = false;
 
-				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitStringData{ lexeme.string.value_begin, lexeme.string.value_size, lexeme.string.type_id });
+				const AstBuilderToken value_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstLitStringData{ lexeme.string.value_begin, lexeme.string.value_size });
 
 				push_operand(core, &stack, value_token);
 			}
