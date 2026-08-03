@@ -825,6 +825,8 @@ enum class AstFlag : u8
 	Definition_IsTemplatedParam      = 0x10,
 	Definition_HasSelfReference      = 0x20,
 
+	Identifier_IsTemplatedParamRef   = 0x01,
+
 	If_HasWhere                      = 0x01,
 	If_HasElse                       = 0x02,
 

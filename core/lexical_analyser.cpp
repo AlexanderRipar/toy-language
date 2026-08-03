@@ -628,9 +628,18 @@ static bool check_expression_is_templated(CoreData* core, AstNode* node, bool do
 			const Maybe<ScopeEntry*> scope_entry = scope_map_get(scope, name);
 
 			if (is_some(scope_entry))
-				return scope->kind == ScopeMapKind::Signature;
+			{
+				if (scope->kind != ScopeMapKind::Signature)
+					return false;
+
+				node->flags |= AstFlag::Identifier_IsTemplatedParamRef;
+
+				return true;
+			}
 			else if (scope->kind == ScopeMapKind::Signature)
+			{
 				return false;
+			}
 		}
 
 		ASSERT_UNREACHABLE;
