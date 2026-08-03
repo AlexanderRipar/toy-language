@@ -1752,11 +1752,15 @@ static AstBuilderToken parse_argument(CoreData* core) noexcept
 		return parse_expr(core, true);
 }
 
-static AstBuilderToken parse_statement(CoreData* core) noexcept
+static AstBuilderToken parse_statement(CoreData* core, bool* out_is_definition) noexcept
 {
 	const Lexeme lexeme = peek(core);
 
-	if (is_definition_start(lexeme.token))
+	const bool is_definition = is_definition_start(lexeme.token);
+
+	*out_is_definition = is_definition;
+
+	if (is_definition)
 		return parse_definition(core, true, false, false, nullptr);
 	else if (lexeme.token == Token::KwdReturn)
 		return parse_return(core);
@@ -1776,6 +1780,8 @@ static AstBuilderToken parse_where(CoreData* core) noexcept
 
 	const AstBuilderToken first_child_token = parse_definition(core, true, false, false, nullptr);
 
+	u16 definition_count = 0;
+
 	while (true)
 	{
 		if (peek(core).token != Token::Comma)
@@ -1783,10 +1789,17 @@ static AstBuilderToken parse_where(CoreData* core) noexcept
 
 		skip(core);
 
+		const SourceId definition_source_id = peek(core).source_id;
+
 		parse_definition(core, true, false, false, nullptr);
+
+		if (definition_count == UINT16_MAX)
+			parse_error_continuable(core, definition_source_id, CompileError::ScopeTooManyDefinitions);
+
+		definition_count += 1;
 	}
 
-	return push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstTag::Where);
+	return push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstWhereData{ definition_count });
 }
 
 static AstBuilderToken parse_if(CoreData* core) noexcept
@@ -2410,12 +2423,31 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 
 				AstBuilderToken first_child_token = AstBuilderToken::NO_CHILDREN;
 
+				u16 definition_count = 0;
+
+				// Track definitions with a "delay" of one, to avoid counting
+				// trailing definitions, which haven't been properly defined
+				// yet.
+				bool prev_was_definition = false;
+
 				while (lexeme.token != Token::CurlyR)
 				{
-					const AstBuilderToken curr_token = parse_statement(core);
+					bool is_definition;
+
+					const AstBuilderToken curr_token = parse_statement(core, &is_definition);
 
 					if (first_child_token == AstBuilderToken::NO_CHILDREN)
 						first_child_token = curr_token;
+
+					if (prev_was_definition)
+					{
+						if (definition_count == UINT16_MAX)
+							parse_error_continuable(core, lexeme.source_id, CompileError::ScopeTooManyDefinitions);
+
+						definition_count += 1;
+					}
+
+					prev_was_definition = is_definition;
 
 					lexeme = peek(core);
 
@@ -2423,7 +2455,7 @@ static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept
 						break;
 				}
 
-				const AstBuilderToken block_token = push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstTag::Block);
+				const AstBuilderToken block_token = push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstBlockData{ definition_count });
 
 				push_operand(core, &stack, block_token);
 			}
