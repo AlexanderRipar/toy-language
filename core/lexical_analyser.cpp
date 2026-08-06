@@ -712,7 +712,22 @@ static bool check_parameter_is_templated(CoreData* core, AstNode* node) noexcept
 	return check_expression_is_templated(core, second_child, true);
 }
 
-static bool push_scope_for_node(CoreData* core, AstNode* node, bool close_in_innermost) noexcept
+static bool push_synthetic_scope_for_node(CoreData* core, AstNode* node) noexcept
+{
+	if (node->tag == AstTag::For)
+	{
+		ScopeMap* const scope = scope_map_alloc(core, ScopeMapKind::Local);
+		push_scope(core, scope);
+
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+static bool push_natural_scope_for_node(CoreData* core, AstNode* node, bool close_in_innermost) noexcept
 {
 	const AstTag tag = node->tag;
 
@@ -1107,10 +1122,15 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 			core->lex.scopes[core->lex.scopes_top] = get(new_scope);
 		}
 
-		AstNode* curr = parameters;
-
 		ScopeMap* const body_scope = scope_map_alloc(core, ScopeMapKind::Global);
 		push_scope(core, body_scope);
+
+		// Create a synthetic scope to match the one created during `Code2`
+		// generation.
+		ScopeMap* const synthetic_scope = scope_map_alloc(core, ScopeMapKind::Local);
+		push_scope(core, synthetic_scope);
+
+		AstNode* curr = parameters;
 
 		while (has_next_sibling(curr))
 		{
@@ -1121,8 +1141,13 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 			resolve_names_rec(core, curr, true, close_in_innermost, false, false);
 		}
 
+		// Pop synthetic scope.
 		pop_scope(core);
 
+		// Pop body scope.
+		pop_scope(core);
+
+		// Pop parameter list scope.
 		pop_scope(core);
 	}
 	else if (tag == AstTag::Impl)
@@ -1135,11 +1160,16 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 
 		resolve_names_rec(core, trait, true, close_in_innermost, false, is_type_evaluated);
 
-		ScopeMap* const scope = scope_map_alloc(core, ScopeMapKind::Global);
-		push_scope(core, scope);
+		ScopeMap* const body_scope = scope_map_alloc(core, ScopeMapKind::Global);
+		push_scope(core, body_scope);
 
 		ScopeMap* const closure = scope_map_alloc(core, ScopeMapKind::Closure);
 		set_closure(core, closure);
+
+		// Create a synthetic scope to match the one created during `Code2`
+		// generation.
+		ScopeMap* const synthetic_scope = scope_map_alloc(core, ScopeMapKind::Local);
+		push_scope(core, synthetic_scope);
 
 		AstNode* curr = trait;
 
@@ -1152,13 +1182,21 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 			resolve_names_rec(core, curr, true, close_in_innermost, false, false);
 		}
 
+		// Pop synthetic scope.
+		pop_scope(core);
+
 		set_closure_list(core, core->lex.closures[core->lex.scopes_top], &attachment_of<AstImplData>(node)->closure_list_id);
 
+		// Pop body scope.
 		pop_scope(core);
 	}
 	else
 	{
-		const bool has_scope = push_scope_for_node(core, node, close_in_innermost);
+		const bool has_natural_scope = push_natural_scope_for_node(core, node, close_in_innermost);
+
+		// Emit scopes to match the helper scopes emitted in during `Code2`
+		// generation.
+		const bool has_synthetic_scope = push_synthetic_scope_for_node(core, node);
 
 		if (!ignore_definition && tag == AstTag::Definition)
 		{
@@ -1223,7 +1261,10 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 			child_assignment = none<AstNode*>();
 		}
 
-		if (has_scope)
+		if (has_synthetic_scope)
+			pop_scope(core);
+
+		if (has_natural_scope)
 			pop_scope(core);
 	}
 }

@@ -40,6 +40,8 @@ bool shadow_store_validate_config(const Config* config, PrintSink sink) noexcept
 
 bool temp_stack_validate_config(const Config* config, PrintSink sink) noexcept;
 
+bool type2_validate_config(const Config* config, PrintSink sink) noexcept;
+
 
 
 MemoryRequirements comp_heap_memory_requirements(const Config* config) noexcept;
@@ -66,6 +68,8 @@ MemoryRequirements shadow_store_memory_requirements(const Config* config) noexce
 
 MemoryRequirements temp_stack_memory_requirements(const Config* config) noexcept;
 
+MemoryRequirements type2_memory_requirements([[maybe_unused]] const Config* config) noexcept;
+
 
 
 void comp_heap_init(CoreData* core, MemoryAllocation allocation) noexcept;
@@ -91,6 +95,8 @@ void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept;
 void shadow_store_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
 void temp_stack_init(CoreData* core, MemoryAllocation allocation) noexcept;
+
+void type2_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
 
 
@@ -141,6 +147,7 @@ CoreData* create_core_data(const Config* config) noexcept
 		&source_reader_validate_config,
 		&shadow_store_validate_config,
 		&interpreter_validate_config,
+		&type2_validate_config,
 	};
 
 	static constexpr memory_requirements_func MEMORY_REQUIREMENTS_FUNCS[] = {
@@ -156,6 +163,7 @@ CoreData* create_core_data(const Config* config) noexcept
 		&source_reader_memory_requirements,
 		&shadow_store_memory_requirements,
 		&interpreter_memory_requirements,
+		&type2_memory_requirements,
 	};
 
 	static constexpr init_func INIT_FUNCS[] = {
@@ -171,6 +179,7 @@ CoreData* create_core_data(const Config* config) noexcept
 		&source_reader_init,
 		&shadow_store_init,
 		&interpreter_init,
+		&type2_init,
 	};
 
 	static_assert(array_count(VALIDATE_CONFIG_FUNCS) == array_count(MEMORY_REQUIREMENTS_FUNCS));

@@ -38,6 +38,7 @@ set(CORE_SOURCES
 	core/core.hpp
 	core/core.cpp
 	core/ast_pool.cpp
+	core/code2_pool.cpp
 	core/comp_heap.cpp
 	core/comp_values.cpp
 	core/config.cpp
@@ -57,6 +58,7 @@ set(CORE_SOURCES
 set(DIAG_SOURCES
 	diag/diag.hpp
 	diag/print_ast.cpp
+	diag/print_code2.cpp
 	diag/print_opcodes.cpp
 	diag/print_type.cpp
 )

@@ -3104,6 +3104,549 @@ void ffi_perform_native_call(const void* native_callee, const FFINativeCallArgs*
 
 
 
+
+enum class Code2Op : u8
+{
+	INVALID = 0,
+	End,
+	ScopeBegin,
+	ScopeEnd,
+	Builtin,
+	Composite,
+	Array,
+	Definition,
+	DefineLocalTyped,
+	DefineLocalUntyped,
+	ConsumeVoid,
+	Void,
+	If,
+	Loop,
+	Func,
+	SignatureBegin,
+	SignatureEnd,
+	Parameter,
+	Trait,
+	Impl,
+	ImplTraitCall,
+	Self,
+	Unreachable,
+	Undefined,
+	TemplatedParamValue,
+	TemplatedParamLocation,
+	LocalValue,
+	LocalLocation,
+	GlobalValue,
+	GlobalLocation,
+	ClosedValue,
+	ClosedLocation,
+	TraitArgumentValue,
+	TraitArgumentLocation,
+	Slice,
+	Return,
+	Integer16,
+	Integer64,
+	IntegerHuge,
+	Float,
+	String,
+	Call,
+	TypeTailArray,
+	TypeSlice,
+	TypePtr,
+	Eval,
+	Defer,
+	Distinct,
+	Address,
+	Dereference,
+	BitNot,
+	LogicalNot,
+	Negate,
+	UnaryPlus,
+	Add,
+	Sub,
+	Mul,
+	Div,
+	AddTC,
+	SubTC,
+	MulTC,
+	Mod,
+	BitAnd,
+	BitOr,
+	BitXor,
+	ShiftLeft,
+	ShiftRight,
+	TypeArray,
+	Index,
+	LogicalAnd,
+	LogicalOr,
+	MemberValue,
+	MemberLocation,
+	Compare,
+	Set,
+	LoadLocation,
+};
+
+enum class Code2Id : u32
+{
+	INVALID = 0,
+};
+
+template<typename T>
+union Code2IdWith
+{
+	static_assert(sizeof(T) == 1);
+
+	Code2Id shifted_id;
+
+	T with;
+
+	Code2IdWith(Code2Id id, T t) noexcept
+		: shifted_id{ id }
+	{
+		with = t;
+	}
+};
+
+using Code2IdWithOp = Code2IdWith<Code2Op>;
+
+
+
+struct alignas(4) Code2AttScopeBegin
+{
+	Code2IdWithOp scope_end;
+
+	u16 definition_count;
+};
+
+struct alignas(4) Code2AttScopeEnd
+{
+	Code2IdWithOp scope_begin;
+};
+
+struct alignas(4) Code2AttBuiltin
+{
+	Code2Op op;
+
+	Builtin builtin;
+
+	u16 unused_ = 0;
+};
+
+struct alignas(4) Code2AttComposite_Member
+{
+	Maybe<IdentifierId> name;
+
+	Code2Id value;
+};
+
+struct alignas(4) Code2AttComposite
+{
+	Code2Op op;
+
+	u16 member_count;
+
+	Code2AttComposite_Member members[];
+};
+
+struct alignas(4) Code2AttArray_Element
+{
+	Code2Id value;
+};
+
+struct alignas(4) Code2AttArray
+{
+	Code2Op op;
+
+	u16 element_count;
+
+	Code2AttArray_Element elements[];
+};
+
+struct Code2AttDefinition_Flags
+{
+	bool is_mut : 1;
+
+	bool is_pub : 1;
+
+	bool has_self_reference : 1;
+};
+
+struct alignas(4) Code2AttDefinition
+{
+	Code2IdWithOp opt_type;
+
+	Code2IdWith<Code2AttDefinition_Flags> opt_value;
+};
+
+struct Code2AttDefineLocal_Flags
+{
+	bool is_mut : 1;
+
+	bool has_self_reference : 1;
+};
+
+struct alignas(4) Code2AttDefineLocalTyped
+{
+	Code2IdWithOp scope_begin;
+
+	Code2IdWith<Code2AttDefineLocal_Flags> value;
+
+	Code2Id type;
+
+	u32 definition_index;
+};
+
+struct alignas(4) Code2AttDefineLocalUntyped
+{
+	Code2IdWithOp scope_begin;
+
+	Code2IdWith<Code2AttDefineLocal_Flags> value;
+
+	u32 definition_index;
+};
+
+struct alignas(4) Code2AttIf
+{
+	Code2IdWithOp condition;
+
+	Code2Id consequent;
+
+	Code2Id alternative;
+};
+
+struct alignas(4) Code2AttLoop
+{
+	Code2Op op;
+
+	Code2Id condition;
+
+	Code2Id body;
+
+	Code2Id finally;
+};
+
+struct alignas(4) Code2AttSignatureBegin
+{
+	Code2Op op;
+
+	u8 parameter_count;
+
+	bool is_proc;
+
+	u8 unused_ = 0;
+};
+
+struct alignas(4) Code2AttSignatureEnd
+{
+	Code2IdWithOp signature;
+
+	Code2Id return_value;
+};
+
+struct Code2AttParameter_Flags
+{
+	bool is_mut : 1;
+
+	bool is_eval : 1;
+
+	bool is_templated : 1;
+
+	bool is_variadic : 1;
+};
+
+struct alignas(4) Code2AttParameter
+{
+	Code2IdWithOp signature;
+
+	Code2IdWith<Code2AttParameter_Flags> type;
+
+	Maybe<Code2Id> default_value;
+
+	IdentifierId name;
+};
+
+struct alignas(4) Code2AttFunc
+{
+	Code2IdWithOp signature;
+
+	Code2Id body;
+};
+
+struct alignas(4) Code2AttTrait_Member
+{
+	IdentifierId name;
+
+	bool is_mut;
+
+	bool is_pub;
+
+	Code2Id type;
+
+	Maybe<Code2Id> default_value;
+};
+
+struct alignas(4) Code2AttTrait
+{
+	Code2Op op;
+
+	u8 parameter_count;
+
+	u16 member_count;
+
+	IdentifierId parameters[];
+
+	// Code2AttTrait_Member members[];
+};
+
+struct alignas(4) Code2AttImpl_Member
+{
+	IdentifierId name;
+
+	bool is_mut;
+
+	bool is_pub;
+
+	Maybe<Code2Id> type;
+
+	Code2Id value;
+};
+
+struct alignas(4) Code2AttImpl
+{
+	Code2IdWithOp base;
+
+	Code2Id trait_call;
+
+	u16 member_count;
+
+	u16 unused_ = 0;
+
+	Code2AttImpl_Member members[];
+};
+
+struct alignas(4) Code2AttTemplatedParamRef
+{
+	Code2Op op;
+
+	u16 rank;
+};
+
+struct alignas(4) Code2AttLocalRef
+{
+	Code2Op op;
+
+	u8 out;
+
+	u16 rank;
+};
+
+struct alignas(4) Code2AttGlobalRef
+{
+	Code2Op op;
+
+	u16 rank;
+};
+
+struct alignas(4) Code2AttClosedRef
+{
+	Code2Op op;
+
+	u16 rank;
+};
+
+struct alignas(4) Code2AttTraitArgumentRef
+{
+	Code2Op op;
+
+	u8 rank;
+
+	u16 unused_ = 0;
+};
+
+struct alignas(4) Code2AttSlice
+{
+	Code2IdWithOp sliced;
+
+	Maybe<Code2Id> begin;
+
+	Maybe<Code2Id> end;
+};
+
+struct alignas(4) Code2AttInteger16
+{
+	Code2Op op;
+
+	u16 value;
+};
+
+struct alignas(4) Code2AttInteger64
+{
+	Code2Op op;
+
+	u32 value_lo;
+
+	u32 value_hi;
+};
+
+struct alignas(4) Code2AttIntegerHuge
+{
+	Code2Op op;
+
+	u16 unused_ = 0;
+
+	byte alignas(4) value_bytes[sizeof(CompIntegerValue)];
+};
+
+struct alignas(4) Code2AttFloat
+{
+	Code2Op op;
+
+	u32 lo;
+
+	u32 hi;
+};
+
+struct alignas(4) Code2AttString
+{
+	Code2Op op;
+
+	CoreId data;
+
+	u32 size;
+};
+
+struct alignas(4) Code2AttCall_Argument
+{
+	Maybe<IdentifierId> name;
+
+	Code2Id value;
+};
+
+struct alignas(4) Code2AttCall
+{
+	Code2Op op;
+
+	u8 argument_count;
+
+	Code2Id callee;
+
+	Code2AttCall_Argument arguments[];
+};
+
+struct alignas(4) Code2AttReferenceType
+{
+	Code2IdWithOp lhs;
+
+	bool is_mut;
+
+	bool is_opt;
+
+	bool is_multi;
+};
+
+struct alignas(4) Code2AttLogicalOp
+{
+	Code2IdWithOp lhs;
+
+	Code2Id rhs;
+};
+
+struct alignas(4) Code2AttMember
+{
+	Code2IdWithOp composite;
+
+	IdentifierId name;
+};
+
+enum class Code2AttCompare_Kind : u8
+{
+	INVALID = 0,
+	LessThan,
+	GreaterThan,
+	LessThanOrEqual,
+	GreaterThanOrEqual,
+	NotEqual,
+	Equal,
+};
+
+struct alignas(4) Code2AttCompare
+{
+	Code2IdWithOp lhs;
+
+	Code2IdWith<Code2AttCompare_Kind> rhs;
+};
+
+struct alignas(4) Code2AttNonaryOp
+{
+	Code2Op op;
+
+	u16 unused_ = 0;
+};
+
+struct alignas(4) Code2AttBinaryOp
+{
+	Code2IdWithOp lhs;
+
+	Code2Id rhs;
+};
+
+struct alignas(4) Code2AttUnaryOp
+{
+	Code2IdWithOp operand;
+};
+
+
+
+struct Code2GlobalDefinition
+{
+	SourceFileId file;
+
+	Code2Id begin;
+
+	Maybe<Code2Id> type;
+
+	Code2Id value;
+};
+
+
+
+template<typename T>
+static Code2Id code2_id_of(Code2IdWith<T> id) noexcept
+{
+	return static_cast<Code2Id>(static_cast<u32>(id.shifted_id) >> 8);
+}
+
+template<typename T>
+static T code2_with_of(Code2IdWith<T> id) noexcept
+{
+	return id.with;
+}
+
+template<typename T>
+static Code2IdWith<T> code2_id_with(Code2Id id, T with) noexcept
+{
+	ASSERT_OR_IGNORE(static_cast<u32>(id) < (1 << 24));
+
+	return Code2IdWith{ static_cast<Code2Id>(static_cast<u32>(id) << 8), with };
+}
+
+Code2Id id_from_code2(CoreData* core, const Code2Op* code) noexcept;
+
+const Code2Op* code2_from_id(CoreData* core, Code2Id id) noexcept;
+
+
+
+Code2GlobalDefinition code2_from_top_level_definition(CoreData* core, AstNode* node, SourceFileId file) noexcept;
+
+
+
+const char8* tag_name(Code2Op op) noexcept;
+
+const char8* tag_name(Code2AttCompare_Kind kind) noexcept;
+
+
+
+
+
 struct CoreData;
 
 enum class CoreId : u32

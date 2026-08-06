@@ -552,6 +552,17 @@ struct ShadowStore
 
 
 
+struct Code2Fixup;
+
+struct Code2Pool
+{
+	ReservedVec<u32> codes;
+
+	ReservedVec<Code2Fixup> fixups;
+};
+
+
+
 struct CoreData
 {
 	u64 allocation_size;
@@ -581,6 +592,8 @@ struct CoreData
 	ShadowStore shadow;
 
 	LexicalAnalyser lex;
+
+	Code2Pool code2;
 };
 
 
