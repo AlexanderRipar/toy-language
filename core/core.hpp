@@ -1164,7 +1164,7 @@ struct alignas(8) AstSignatureData
 
 	Maybe<ClosureListId> closure_list_id;
 
-	u32 unused_ = 0;
+	u8 parameter_count;
 };
 
 struct alignas(8) AstTraitParameterListData

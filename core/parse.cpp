@@ -2159,7 +2159,7 @@ static AstBuilderToken parse_signature(CoreData* core) noexcept
 		parse_ensures(core);
 	}
 
-	return push_node(core, parameter_list_token, func_source_id, flags, AstSignatureData{ none<ClosureListId>() });
+	return push_node(core, parameter_list_token, func_source_id, flags, AstSignatureData{ none<ClosureListId>(), static_cast<u8>(param_count) });
 }
 
 static AstBuilderToken parse_func(CoreData* core) noexcept
