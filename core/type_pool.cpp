@@ -228,17 +228,6 @@ struct alignas(8) IndirectionType
 	u32 unused_ = 0;
 };
 
-struct alignas(8) ImplKeyType
-{
-	TypeId base_type_id;
-
-	TypeId trait_type_id;
-
-	Maybe<TypeId> impl_type_id;
-
-	u32 unused_ = 0;
-};
-
 
 
 struct alignas(8) TypeStructure
