@@ -1,1 +1,1 @@
-let main = proc() -> s32 => { 42 }
+pub main = proc() -> s32 => { 42 }
