@@ -6220,6 +6220,33 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 
 	log_ast(core, ast);
 
+	{
+		AstDirectChildIterator it = direct_children_of(ast);
+
+		while (has_next(&it))
+		{
+			AstNode* const node = next(&it);
+
+			const Code2Id definition = code2_from_top_level_definition(core, node);
+
+			const Code2Header* const definition_header = code2_chunk_from_id(core, definition);
+
+			const minos::FileHandle std_err = minos::standard_file_handle(minos::StdFileName::StdErr);
+
+			const IdentifierId name_id = attachment_of<AstDefinitionData>(node)->identifier_id;
+
+			const Range<char8> name = identifier_name_from_id(core, name_id);
+
+			const SourceId source_id = source_id_of_ast_node(core, node);
+
+			const SourceLocation source = source_location_from_source_id(core, source_id);
+
+			print(std_err, "\n> % [%:%:%]\n", name, source.filepath, source.line_number, source.column_number);
+
+			diag::print_code2(minos::standard_file_handle(minos::StdFileName::StdErr), core, definition_header);
+		}
+	}
+
 	if (!type_from_ast(core, ast, type, file_id))
 	{
 		read.source_file->has_error = true;

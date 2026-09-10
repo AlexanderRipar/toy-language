@@ -563,6 +563,27 @@ struct Code2Pool
 
 
 
+struct TypecheckScope;
+
+struct TypecheckValue;
+
+struct Typechecker
+{
+	Maybe<TypecheckScope*> top_scope;
+
+	ReservedVec<TypecheckScope> scopes;
+
+	ReservedVec<TypecheckValue> values;
+
+	ReservedVec<Code2Id> active_chunks;
+
+	TypeId builtin_types[static_cast<u8>(Builtin::MAX)];
+
+	bool is_ok;
+};
+
+
+
 struct CoreData
 {
 	u64 allocation_size;
@@ -594,6 +615,8 @@ struct CoreData
 	LexicalAnalyser lex;
 
 	Code2Pool code2;
+
+	Typechecker typecheck;
 };
 
 

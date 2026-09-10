@@ -12,7 +12,7 @@ namespace diag
 
 	s64 print_type(PrintSink sink, CoreData* core, TypeId type_id) noexcept;
 
-	s64 print_code2(PrintSink sink, CoreData* core, const Code2Op* code2) noexcept;
+	s64 print_code2(PrintSink sink, CoreData* core, const Code2Header* header) noexcept;
 
 	template<typename Sink, typename... Inserts>
 	s64 print_header(Sink sink, const char8* format, Inserts... inserts) noexcept
@@ -54,9 +54,9 @@ namespace diag
 	}
 
 	template<typename Sink>
-	s64 print_code2(Sink sink, CoreData* core, const Code2Op* code2) noexcept
+	s64 print_code2(Sink sink, CoreData* core, const Code2Header* header) noexcept
 	{
-		return print_code2(print_make_sink(sink), core, code2);
+		return print_code2(print_make_sink(sink), core, header);
 	}
 }
 

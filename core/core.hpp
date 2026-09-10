@@ -3108,15 +3108,17 @@ void ffi_perform_native_call(const void* native_callee, const FFINativeCallArgs*
 enum class Code2Op : u8
 {
 	INVALID = 0,
-	End,
+	Leave,
+	Repeat,
 	ScopeBegin,
 	ScopeEnd,
 	Builtin,
 	Composite,
 	Array,
 	Definition,
-	DefineLocalTyped,
-	DefineLocalUntyped,
+	MakeLocation,
+	WithType,
+	DefineLocal,
 	ConsumeVoid,
 	Void,
 	If,
@@ -3142,10 +3144,8 @@ enum class Code2Op : u8
 	TraitArgumentValue,
 	TraitArgumentLocation,
 	Slice,
-	Return,
 	Integer16,
 	Integer64,
-	IntegerHuge,
 	Float,
 	String,
 	Call,
@@ -3190,123 +3190,301 @@ enum class Code2Id : u32
 	INVALID = 0,
 };
 
-template<typename T>
-union Code2IdWith
+enum class Code2Offset : u32
 {
-	static_assert(sizeof(T) == 1);
-
-	Code2Id shifted_id;
-
-	T with;
-
-	Code2IdWith(Code2Id id, T t) noexcept
-		: shifted_id{ id }
-	{
-		with = t;
-	}
+	INVALID = 0,
 };
 
-using Code2IdWithOp = Code2IdWith<Code2Op>;
 
 
+enum class Code2AttCompare_Kind : u8
+{
+	INVALID = 0,
+	LessThan,
+	GreaterThan,
+	LessThanOrEqual,
+	GreaterThanOrEqual,
+	NotEqual,
+	Equal,
+};
+
+struct alignas(4) Code2
+{
+	union
+	{
+		Code2Op op;
+
+		struct
+		{
+			Code2Op op_;
+
+			u16 out;
+		} leave;
+
+		struct
+		{
+			Code2Op op_;
+
+			u16 out;
+		} repeat;
+
+		struct
+		{
+			Code2Op op_;
+
+			u16 definition_count;
+		} scope_begin;
+
+		struct
+		{
+			Code2Op op_;
+
+			Builtin builtin;
+		} builtin;
+
+		struct
+		{
+			Code2Op op_;
+
+			u16 member_count;
+		} composite;
+
+		struct
+		{
+			Code2Op op_;
+
+			u16 element_count;
+		} array;
+
+		struct
+		{
+			Code2Op op_;
+
+			bool is_mut : 1;
+
+			bool is_pub : 1;
+
+			bool has_self_reference : 1;
+		} definition;
+
+		struct
+		{
+			Code2Op op_;
+
+			bool is_mut;
+		} make_location;
+
+		struct
+		{
+			Code2Op op_;
+
+			bool is_mut : 1;
+
+			bool has_self_reference : 1;
+
+			u16 definition_index;
+		} define_local;
+
+		struct
+		{
+			Code2Op op_;
+
+			u8 parameter_count;
+
+			bool is_proc;
+		} signature_begin;
+
+		struct
+		{
+			Code2Op op_;
+
+			bool is_mut : 1;
+
+			bool is_eval : 1;
+
+			bool is_templated : 1;
+
+			bool is_variadic : 1;
+		} parameter;
+
+		struct
+		{
+			Code2Op op_;
+
+			u8 parameter_count;
+
+			u16 member_count;
+		} trait;
+
+		struct
+		{
+			Code2Op op_;
+
+			u16 member_count;
+		} impl;
+
+		struct
+		{
+			Code2Op op_;
+
+			u16 rank;
+		} templated_parameter_ref;
+
+		struct
+		{
+			Code2Op op_;
+
+			u8 out;
+
+			u16 rank;
+		} local_ref;
+
+		struct
+		{
+			Code2Op op_;
+
+			u16 rank;
+		} global_ref;
+
+		struct
+		{
+			Code2Op op_;
+
+			u16 rank;
+		} closed_ref;
+
+		struct
+		{
+			Code2Op op_;
+
+			u8 rank;
+		} trait_argument_ref;
+
+		struct
+		{
+			Code2Op op_;
+
+			u16 value;
+		} integer16;
+
+		struct
+		{
+			Code2Op op_;
+
+			u8 argument_count;
+		} call;
+
+		struct
+		{
+			Code2Op op_;
+
+			bool is_mut;
+
+			bool is_opt;
+
+			bool is_multi;
+		} reference_type;
+
+		struct
+		{
+			Code2Op op_;
+
+			Code2AttCompare_Kind kind;
+		} compare;
+	};
+
+	Maybe<TypeId> type;
+};
+
+struct alignas(4) Code2Header
+{
+	u32 size;
+
+	Code2Offset last_leave;
+
+	Maybe<TypeId> type;
+};
+
+
+
+struct alignas(4) Code2AttLeave
+{
+	Code2 header;
+
+	Code2Offset value;
+
+	Maybe<Code2Offset> prev;
+};
+
+struct alignas(4) Code2AttRepeat
+{
+	Code2 header;
+};
 
 struct alignas(4) Code2AttScopeBegin
 {
-	Code2IdWithOp scope_end;
-
-	u16 definition_count;
-};
-
-struct alignas(4) Code2AttScopeEnd
-{
-	Code2IdWithOp scope_begin;
+	Code2 header;
 };
 
 struct alignas(4) Code2AttBuiltin
 {
-	Code2Op op;
-
-	Builtin builtin;
-
-	u16 unused_ = 0;
+	Code2 header;
 };
 
 struct alignas(4) Code2AttComposite_Member
 {
 	Maybe<IdentifierId> name;
 
-	Code2Id value;
+	Code2Offset value;
 };
 
 struct alignas(4) Code2AttComposite
 {
-	Code2Op op;
-
-	u16 member_count;
+	Code2 header;
 
 	Code2AttComposite_Member members[];
 };
 
 struct alignas(4) Code2AttArray_Element
 {
-	Code2Id value;
+	Code2Offset value;
 };
 
 struct alignas(4) Code2AttArray
 {
-	Code2Op op;
-
-	u16 element_count;
+	Code2 header;
 
 	Code2AttArray_Element elements[];
 };
 
-struct Code2AttDefinition_Flags
-{
-	bool is_mut : 1;
-
-	bool is_pub : 1;
-
-	bool has_self_reference : 1;
-};
-
 struct alignas(4) Code2AttDefinition
 {
-	Code2IdWithOp opt_type;
+	Code2 header;
 
-	Code2IdWith<Code2AttDefinition_Flags> opt_value;
+	Maybe<Code2Offset> type;
+
+	Maybe<Code2Offset> value;
 };
 
-struct Code2AttDefineLocal_Flags
+struct alignas(4) Code2AttMakeLocation
 {
-	bool is_mut : 1;
+	Code2 header;
 
-	bool has_self_reference : 1;
+	Code2Offset value;
 };
 
-struct alignas(4) Code2AttDefineLocalTyped
+struct alignas(4) Code2AttDefineLocal
 {
-	Code2IdWithOp scope_begin;
+	Code2 header;
 
-	Code2IdWith<Code2AttDefineLocal_Flags> value;
-
-	Code2Id type;
-
-	u32 definition_index;
-};
-
-struct alignas(4) Code2AttDefineLocalUntyped
-{
-	Code2IdWithOp scope_begin;
-
-	Code2IdWith<Code2AttDefineLocal_Flags> value;
-
-	u32 definition_index;
+	Code2Offset value;
 };
 
 struct alignas(4) Code2AttIf
 {
-	Code2IdWithOp condition;
+	Code2 header;
+
+	Code2Offset condition;
 
 	Code2Id consequent;
 
@@ -3315,58 +3493,43 @@ struct alignas(4) Code2AttIf
 
 struct alignas(4) Code2AttLoop
 {
-	Code2Op op;
-
-	Code2Id condition;
+	Code2 header;
 
 	Code2Id body;
-
-	Code2Id finally;
 };
 
 struct alignas(4) Code2AttSignatureBegin
 {
-	Code2Op op;
-
-	u8 parameter_count;
-
-	bool is_proc;
-
-	u8 unused_ = 0;
+	Code2 header;
 };
 
 struct alignas(4) Code2AttSignatureEnd
 {
-	Code2IdWithOp signature;
+	Code2 header;
 
-	Code2Id return_value;
-};
+	Code2Offset signature;
 
-struct Code2AttParameter_Flags
-{
-	bool is_mut : 1;
-
-	bool is_eval : 1;
-
-	bool is_templated : 1;
-
-	bool is_variadic : 1;
+	Code2Offset return_type;
 };
 
 struct alignas(4) Code2AttParameter
 {
-	Code2IdWithOp signature;
+	Code2 header;
 
-	Code2IdWith<Code2AttParameter_Flags> type;
+	Code2Offset signature;
 
-	Maybe<Code2Id> default_value;
+	Code2Offset type;
+
+	Maybe<Code2Offset> default_value;
 
 	IdentifierId name;
 };
 
 struct alignas(4) Code2AttFunc
 {
-	Code2IdWithOp signature;
+	Code2 header;
+
+	Code2Offset signature;
 
 	Code2Id body;
 };
@@ -3386,11 +3549,7 @@ struct alignas(4) Code2AttTrait_Member
 
 struct alignas(4) Code2AttTrait
 {
-	Code2Op op;
-
-	u8 parameter_count;
-
-	u16 member_count;
+	Code2 header;
 
 	IdentifierId parameters[];
 
@@ -3412,102 +3571,77 @@ struct alignas(4) Code2AttImpl_Member
 
 struct alignas(4) Code2AttImpl
 {
-	Code2IdWithOp base;
+	Code2 header;
 
-	Code2Id trait_call;
+	Code2Offset base_type;
 
-	u16 member_count;
-
-	u16 unused_ = 0;
+	Code2Offset trait_call;
 
 	Code2AttImpl_Member members[];
 };
 
 struct alignas(4) Code2AttTemplatedParamRef
 {
-	Code2Op op;
-
-	u16 rank;
+	Code2 header;
 };
 
 struct alignas(4) Code2AttLocalRef
 {
-	Code2Op op;
-
-	u8 out;
-
-	u16 rank;
+	Code2 header;
 };
 
 struct alignas(4) Code2AttGlobalRef
 {
-	Code2Op op;
-
-	u16 rank;
+	Code2 header;
 };
 
 struct alignas(4) Code2AttClosedRef
 {
-	Code2Op op;
-
-	u16 rank;
+	Code2 header;
 };
 
 struct alignas(4) Code2AttTraitArgumentRef
 {
-	Code2Op op;
-
-	u8 rank;
-
-	u16 unused_ = 0;
+	Code2 header;
 };
 
 struct alignas(4) Code2AttSlice
 {
-	Code2IdWithOp sliced;
+	Code2 header;
 
-	Maybe<Code2Id> begin;
+	Code2Offset sliced;
 
-	Maybe<Code2Id> end;
+	Maybe<Code2Offset> begin;
+
+	Maybe<Code2Offset> end;
 };
 
 struct alignas(4) Code2AttInteger16
 {
-	Code2Op op;
-
-	u16 value;
+	Code2 header;
 };
 
 struct alignas(4) Code2AttInteger64
 {
-	Code2Op op;
+	Code2 header;
 
 	u32 value_lo;
 
 	u32 value_hi;
 };
 
-struct alignas(4) Code2AttIntegerHuge
-{
-	Code2Op op;
-
-	u16 unused_ = 0;
-
-	byte alignas(4) value_bytes[sizeof(CompIntegerValue)];
-};
-
 struct alignas(4) Code2AttFloat
 {
-	Code2Op op;
+	Code2 header;
 
-	u32 lo;
+	u32 value_lo;
 
-	u32 hi;
+	u32 value_hi;
 };
 
 struct alignas(4) Code2AttString
 {
-	Code2Op op;
+	Code2 header;
 
 	CoreId data;
 
@@ -3523,119 +3657,109 @@ struct alignas(4) Code2AttCall_Argument
 
 struct alignas(4) Code2AttCall
 {
-	Code2Op op;
+	Code2 header;
 
-	u8 argument_count;
-
-	Code2Id callee;
+	Code2Offset callee;
 
 	Code2AttCall_Argument arguments[];
 };
 
 struct alignas(4) Code2AttReferenceType
 {
-	Code2IdWithOp lhs;
+	Code2 header;
 
-	bool is_mut;
-
-	bool is_opt;
-
-	bool is_multi;
+	Code2Offset operand;
 };
 
 struct alignas(4) Code2AttLogicalOp
 {
-	Code2IdWithOp lhs;
+	Code2 header;
+
+	Code2Offset lhs;
 
 	Code2Id rhs;
 };
 
 struct alignas(4) Code2AttMember
 {
-	Code2IdWithOp composite;
+	Code2 header;
+
+	Code2Offset composite;
 
 	IdentifierId name;
 };
 
-enum class Code2AttCompare_Kind : u8
-{
-	INVALID = 0,
-	LessThan,
-	GreaterThan,
-	LessThanOrEqual,
-	GreaterThanOrEqual,
-	NotEqual,
-	Equal,
-};
-
 struct alignas(4) Code2AttCompare
 {
-	Code2IdWithOp lhs;
+	Code2 header;
 
-	Code2IdWith<Code2AttCompare_Kind> rhs;
+	Code2Offset lhs;
+
+	Code2Offset rhs;
 };
 
 struct alignas(4) Code2AttNonaryOp
 {
-	Code2Op op;
-
-	u16 unused_ = 0;
+	Code2 header;
 };
 
 struct alignas(4) Code2AttBinaryOp
 {
-	Code2IdWithOp lhs;
+	Code2 header;
 
-	Code2Id rhs;
+	Code2Offset lhs;
+
+	Code2Offset rhs;
 };
 
 struct alignas(4) Code2AttUnaryOp
 {
-	Code2IdWithOp operand;
-};
+	Code2 header;
 
-
-
-struct Code2GlobalDefinition
-{
-	SourceFileId file;
-
-	Code2Id begin;
-
-	Maybe<Code2Id> type;
-
-	Code2Id value;
+	Code2Offset operand;
 };
 
 
 
 template<typename T>
-static Code2Id code2_id_of(Code2IdWith<T> id) noexcept
+static const T* attachment_of(const Code2* code) noexcept
 {
-	return static_cast<Code2Id>(static_cast<u32>(id.shifted_id) >> 8);
+	return reinterpret_cast<const T*>(code);
 }
 
 template<typename T>
-static T code2_with_of(Code2IdWith<T> id) noexcept
+static T* attachment_of(Code2* code) noexcept
 {
-	return id.with;
+	return reinterpret_cast<T*>(code);
 }
 
-template<typename T>
-static Code2IdWith<T> code2_id_with(Code2Id id, T with) noexcept
-{
-	ASSERT_OR_IGNORE(static_cast<u32>(id) < (1 << 24));
 
-	return Code2IdWith{ static_cast<Code2Id>(static_cast<u32>(id) << 8), with };
-}
 
-Code2Id id_from_code2(CoreData* core, const Code2Op* code) noexcept;
+Code2Id id_from_code2_chunk(CoreData* core, const Code2Header* header) noexcept;
 
-const Code2Op* code2_from_id(CoreData* core, Code2Id id) noexcept;
+Code2Header* code2_chunk_from_id(CoreData* core, Code2Id id) noexcept;
 
 
 
-Code2GlobalDefinition code2_from_top_level_definition(CoreData* core, AstNode* node, SourceFileId file) noexcept;
+Code2Offset offset_from_code2(const Code2Header* header, const Code2* data) noexcept;
+
+Code2* code2_from_offset(Code2Header* header, Code2Offset offset) noexcept;
+
+const Code2* code2_from_offset(const Code2Header* header, Code2Offset offset) noexcept;
+
+
+
+const Code2* code2_chunk_begin(const Code2Header* header) noexcept;
+
+Code2* code2_chunk_begin(Code2Header* header) noexcept;
+
+Code2* code2_chunk_end(Code2Header* header) noexcept;
+
+const Code2* code2_chunk_end(const Code2Header* header) noexcept;
+
+
+
+Code2Id code2_from_top_level_definition(CoreData* core, AstNode* node) noexcept;
 
 
 

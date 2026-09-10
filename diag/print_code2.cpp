@@ -7,86 +7,96 @@ struct PrintResult
 {
 	s64 written;
 
-	const Code2Op* next;
+	const Code2* next;
 };
 
-template<typename T>
-static const T* attachment_of(const Code2Op* op) noexcept
+static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Header* base, const Code2* code) noexcept
 {
-	return reinterpret_cast<const T*>(op);
-}
+	const Code2Op op = code->op;
 
-static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Op* op) noexcept
-{
-	const char8* const op_name = tag_name(*op);
+	const char8* const op_name = tag_name(op);
 
-	const Code2Id id = id_from_code2(core, op);
+	const Code2Offset offset = offset_from_code2(base, code);
 
-	s64 total_written = print(sink, "  %[> 6] %", static_cast<u32>(id), op_name);
+	s64 total_written = print(sink, "%[> 6] %", static_cast<u32>(offset), op_name);
 
 	if (total_written < 0)
 		return { -1, nullptr };
 
-	switch (*op)
+	switch (op)
 	{
-	case Code2Op::End:
+	case Code2Op::Leave:
 	{
-		s64 written = print(sink, "\n");
+		const Code2AttLeave* const attach = attachment_of<Code2AttLeave>(code);
 
-		if (written < 0)
-			return { -1, nullptr };
-
-		return { total_written, nullptr };
-	}
-
-	case Code2Op::ScopeBegin:
-	{
-		const Code2AttScopeBegin* const attach = attachment_of<Code2AttScopeBegin>(op);
-
-		s64 written = print(sink, " definitions=% end=%\n", attach->definition_count, static_cast<u32>(code2_id_of(attach->scope_end)));
-
-		if (written < 0)
-			return { -1, nullptr };
-
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
-	}
-
-	case Code2Op::ScopeEnd:
-	{
-		const Code2AttScopeEnd* const attach = attachment_of<Code2AttScopeEnd>(op);
-
-		s64 written = print(sink, " begin=%\n", static_cast<u32>(code2_id_of(attach->scope_begin)));
-
-		if (written < 0)
-			return { -1, nullptr };
-
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
-	}
-
-	case Code2Op::Builtin:
-	{
-		const Code2AttBuiltin* const attach = attachment_of<Code2AttBuiltin>(op);
-
-		s64 written = print(sink, " builtin=%\n", tag_name(attach->builtin));
-
-		if (written < 0)
-			return { -1, nullptr };
-
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
-	}
-
-	case Code2Op::Composite:
-	{
-		const Code2AttComposite* const attach = attachment_of<Code2AttComposite>(op);
-
-		s64 written = print(sink, " members=%\n", attach->member_count);
+		s64 written = print(sink, " out=% value=%",
+			attach->header.leave.out,
+			static_cast<u32>(attach->value)
+		);
 
 		if (written < 0)
 			return { -1, nullptr };
 
 		total_written += written;
 
-		for (u16 i = 0; i != attach->member_count; ++i)
+		written = is_some(attach->prev)
+			? print(sink, " prev=%\n", static_cast<u32>(get(attach->prev)))
+			: print(sink, " prev=<none>\n");
+
+		if (written < 0)
+			return { -1, nullptr };
+
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
+	}
+
+	case Code2Op::Repeat:
+	{
+		const Code2AttRepeat* const attach = attachment_of<Code2AttRepeat>(code);
+
+		s64 written = print(sink, " out=%\n", attach->header.repeat.out);
+
+		if (written < 0)
+			return { -1, nullptr };
+
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
+	}
+
+	case Code2Op::ScopeBegin:
+	{
+		const Code2AttScopeBegin* const attach = attachment_of<Code2AttScopeBegin>(code);
+
+		s64 written = print(sink, " definitions=%\n", attach->header.scope_begin.definition_count);
+
+		if (written < 0)
+			return { -1, nullptr };
+
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
+	}
+
+	case Code2Op::Builtin:
+	{
+		const Code2AttBuiltin* const attach = attachment_of<Code2AttBuiltin>(code);
+
+		s64 written = print(sink, " builtin=%\n", tag_name(attach->header.builtin.builtin));
+
+		if (written < 0)
+			return { -1, nullptr };
+
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
+	}
+
+	case Code2Op::Composite:
+	{
+		const Code2AttComposite* const attach = attachment_of<Code2AttComposite>(code);
+
+		s64 written = print(sink, " members=%\n", attach->header.composite.member_count);
+
+		if (written < 0)
+			return { -1, nullptr };
+
+		total_written += written;
+
+		for (u16 i = 0; i != attach->header.composite.member_count; ++i)
 		{
 			const Code2AttComposite_Member* const member = attach->members + i;
 
@@ -102,21 +112,21 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Op
 			total_written += written;
 		}
 
-		return { total_written, reinterpret_cast<const Code2Op*>(attach->members + attach->member_count) };
+		return { total_written, reinterpret_cast<const Code2*>(attach->members + attach->header.composite.member_count) };
 	}
 
 	case Code2Op::Array:
 	{
-		const Code2AttArray* const attach = attachment_of<Code2AttArray>(op);
+		const Code2AttArray* const attach = attachment_of<Code2AttArray>(code);
 
-		s64 written = print(sink, " elements=%\n", attach->element_count);
+		s64 written = print(sink, " elements=%\n", attach->header.array.element_count);
 
 		if (written < 0)
 			return { -1, nullptr };
 
 		total_written += written;
 
-		for (u16 i = 0; i != attach->element_count; ++i)
+		for (u16 i = 0; i != attach->header.array.element_count; ++i)
 		{
 			const Code2AttArray_Element* const member = attach->elements + i;
 
@@ -128,15 +138,15 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Op
 			total_written += written;
 		}
 
-		return { total_written, reinterpret_cast<const Code2Op*>(attach->elements + attach->element_count) };
+		return { total_written, reinterpret_cast<const Code2*>(attach->elements + attach->header.array.element_count) };
 	}
 
 	case Code2Op::Definition:
 	{
-		const Code2AttDefinition* const attach = attachment_of<Code2AttDefinition>(op);
+		const Code2AttDefinition* const attach = attachment_of<Code2AttDefinition>(code);
 
-		s64 written = code2_id_of(attach->opt_type) != Code2Id::INVALID
-			? print(sink, " type=%", static_cast<u32>(code2_id_of(attach->opt_type)))
+		s64 written = is_some(attach->type)
+			? print(sink, " type=%", static_cast<u32>(get(attach->type)))
 			: print(sink, " type=<none>");
 
 		if (written < 0)
@@ -144,55 +154,49 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Op
 
 		total_written += written;
 
-		written = code2_id_of(attach->opt_value) != Code2Id::INVALID
-			? print(sink, " value=%\n", static_cast<u32>(code2_id_of(attach->opt_value)))
+		written = is_some(attach->value)
+			? print(sink, " value=%\n", static_cast<u32>(get(attach->value)))
 			: print(sink, " value=<none>\n");
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
-	case Code2Op::DefineLocalTyped:
+	case Code2Op::MakeLocation:
 	{
-		const Code2AttDefineLocalTyped* const attach = attachment_of<Code2AttDefineLocalTyped>(op);
+		const Code2AttMakeLocation* const attach = attachment_of<Code2AttMakeLocation>(code);
 
-		s64 written = print(sink, " scope=% index=% type=% value=% mut=% selfref=%\n",
-			static_cast<u32>(code2_id_of(attach->scope_begin)),
-			attach->definition_index,
-			static_cast<u32>(attach->type),
-			static_cast<u32>(code2_id_of(attach->value)),
-			code2_with_of(attach->value).is_mut,
-			code2_with_of(attach->value).has_self_reference
+		s64 written = print(sink, " mut=% value=%\n",
+			attach->header.make_location.is_mut,
+			static_cast<u32>(attach->value)
 		);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
-	case Code2Op::DefineLocalUntyped:
+	case Code2Op::DefineLocal:
 	{
-		const Code2AttDefineLocalUntyped* const attach = attachment_of<Code2AttDefineLocalUntyped>(op);
+		const Code2AttDefineLocal* const attach = attachment_of<Code2AttDefineLocal>(code);
 
-		s64 written = print(sink, " scope=% index=% value=% mut=% selfref=%\n",
-			static_cast<u32>(code2_id_of(attach->scope_begin)),
-			attach->definition_index,
-			static_cast<u32>(code2_id_of(attach->value)),
-			code2_with_of(attach->value).is_mut,
-			code2_with_of(attach->value).has_self_reference
+		s64 written = print(sink, " index=% value=% mut=% selfref=%\n",
+			attach->header.define_local.definition_index,
+			static_cast<u32>(attach->value),
+			attach->header.define_local.is_mut,
+			attach->header.define_local.has_self_reference
 		);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::ConsumeVoid:
-	case Code2Op::Return:
 	case Code2Op::Eval:
 	case Code2Op::Defer:
 	case Code2Op::Distinct:
@@ -204,111 +208,119 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Op
 	case Code2Op::UnaryPlus:
 	case Code2Op::LoadLocation:
 	{
-		const Code2AttUnaryOp* const attach = attachment_of<Code2AttUnaryOp>(op);
+		const Code2AttUnaryOp* const attach = attachment_of<Code2AttUnaryOp>(code);
 
-		s64 written = print(sink, " operand=%\n", static_cast<u32>(code2_id_of(attach->operand)));
+		s64 written = print(sink, " operand=%\n", static_cast<u32>(attach->operand));
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
+	case Code2Op::ScopeEnd:
 	case Code2Op::Void:
 	case Code2Op::Self:
 	case Code2Op::Unreachable:
 	case Code2Op::Undefined:
 	{
-		const Code2AttNonaryOp* const attach = attachment_of<Code2AttNonaryOp>(op);
+		const Code2AttNonaryOp* const attach = attachment_of<Code2AttNonaryOp>(code);
 
 		s64 written = print(sink, "\n");
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::If:
 	{
-		const Code2AttIf* const attach = attachment_of<Code2AttIf>(op);
+		const Code2AttIf* const attach = attachment_of<Code2AttIf>(code);
 
-		s64 written = print(sink, " condition=% consequent=@% alternative=@%\n", static_cast<u32>(code2_id_of(attach->condition)), static_cast<u32>(attach->consequent), static_cast<u32>(attach->alternative));
+		s64 written = print(sink, " condition=% consequent=@% alternative=@%\n",
+			static_cast<u32>(attach->condition),
+			static_cast<u32>(attach->consequent),
+			static_cast<u32>(attach->alternative)
+		);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Loop:
 	{
-		const Code2AttLoop* const attach = attachment_of<Code2AttLoop>(op);
+		const Code2AttLoop* const attach = attachment_of<Code2AttLoop>(code);
 
-		s64 written = print(sink, " condition=@% body=@% finally=@%\n", static_cast<u32>(attach->condition), static_cast<u32>(attach->body), static_cast<u32>(attach->finally));
+		s64 written = print(sink, " body=@%\n", static_cast<u32>(attach->body));
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Func:
 	{
-		const Code2AttFunc* const attach = attachment_of<Code2AttFunc>(op);
+		const Code2AttFunc* const attach = attachment_of<Code2AttFunc>(code);
 
-		s64 written = print(sink, "signature=% body=@%\n", static_cast<u32>(code2_id_of(attach->signature)), static_cast<u32>(attach->body));
+		s64 written = print(sink, " signature=% body=@%\n",
+			static_cast<u32>(attach->signature),
+			static_cast<u32>(attach->body)
+		);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::SignatureBegin:
 	{
-		const Code2AttSignatureBegin* const attach = attachment_of<Code2AttSignatureBegin>(op);
+		const Code2AttSignatureBegin* const attach = attachment_of<Code2AttSignatureBegin>(code);
 
 		s64 written = print(sink, " kind=% parameters=%\n",
-			attach->is_proc ? range::from_literal_string("proc") : range::from_literal_string("func"),
-			attach->parameter_count
+			attach->header.signature_begin.is_proc ? range::from_literal_string("proc") : range::from_literal_string("func"),
+			attach->header.signature_begin.parameter_count
 		);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::SignatureEnd:
 	{
-		const Code2AttSignatureEnd* const attach = attachment_of<Code2AttSignatureEnd>(op);
+		const Code2AttSignatureEnd* const attach = attachment_of<Code2AttSignatureEnd>(code);
 
 		s64 written = print(sink, " signature=% rettype=%\n",
-			static_cast<u32>(code2_id_of(attach->signature)),
-			static_cast<u32>(attach->return_value)
+			static_cast<u32>(attach->signature),
+			static_cast<u32>(attach->return_type)
 		);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Parameter:
 	{
-		const Code2AttParameter* const attach = attachment_of<Code2AttParameter>(op);
+		const Code2AttParameter* const attach = attachment_of<Code2AttParameter>(code);
 
 		const Range<char8> name = identifier_name_from_id(core, attach->name);
 
 		s64 written = print(sink, " signature=% name=% mut=% eval=% templated=% variadic=% type=%",
-			static_cast<u32>(code2_id_of(attach->signature)),
+			static_cast<u32>(attach->signature),
 			name,
-			code2_with_of(attach->type).is_mut,
-			code2_with_of(attach->type).is_eval,
-			code2_with_of(attach->type).is_templated,
-			code2_with_of(attach->type).is_variadic,
-			static_cast<u32>(code2_id_of(attach->type))
+			attach->header.parameter.is_mut,
+			attach->header.parameter.is_eval,
+			attach->header.parameter.is_templated,
+			attach->header.parameter.is_variadic,
+			static_cast<u32>(attach->type)
 		);
 
 		if (written < 0)
@@ -323,21 +335,21 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Op
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Trait:
 	{
-		const Code2AttTrait* const attach = attachment_of<Code2AttTrait>(op);
+		const Code2AttTrait* const attach = attachment_of<Code2AttTrait>(code);
 
-		s64 written = print(sink, " parameters=% members=%\n", attach->parameter_count, attach->member_count);
+		s64 written = print(sink, " parameters=% members=%\n", attach->header.trait.parameter_count, attach->header.trait.member_count);
 
 		if (written < 0)
 			return { -1, nullptr };
 
 		total_written += written;
 
-		for (u8 i = 0; i != attach->parameter_count; ++i)
+		for (u8 i = 0; i != attach->header.trait.parameter_count; ++i)
 		{
 			const Range<char8> name = identifier_name_from_id(core, attach->parameters[i]);
 
@@ -356,9 +368,9 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Op
 
 		total_written += written;
 
-		const Code2AttTrait_Member* const members = reinterpret_cast<const Code2AttTrait_Member*>(attach->parameters + attach->parameter_count);
+		const Code2AttTrait_Member* const members = reinterpret_cast<const Code2AttTrait_Member*>(attach->parameters + attach->header.trait.parameter_count);
 
-		for (u16 i = 0; i != attach->member_count; ++i)
+		for (u16 i = 0; i != attach->header.trait.member_count; ++i)
 		{
 			const Range<char8> name = identifier_name_from_id(core, members[i].name);
 
@@ -385,26 +397,26 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Op
 			total_written += written;
 		}
 
-		return { total_written, reinterpret_cast<const Code2Op*>(members + attach->member_count) };
+		return { total_written, reinterpret_cast<const Code2*>(members + attach->header.trait.member_count) };
 	}
 
 	case Code2Op::Impl:
 	{
-		const Code2AttImpl* const attach = attachment_of<Code2AttImpl>(op);
+		const Code2AttImpl* const attach = attachment_of<Code2AttImpl>(code);
 
-		s64 written = print(sink, " base=% traitcall=% members=%\n", static_cast<u32>(code2_id_of(attach->base)), static_cast<u32>(attach->trait_call), attach->member_count);
-
-		if (written < 0)
-			return { -1, nullptr };
-
-		total_written += written;
+		s64 written = print(sink, " base=% traitcall=% members=%\n", static_cast<u32>(attach->base_type), static_cast<u32>(attach->trait_call), attach->header.impl.member_count);
 
 		if (written < 0)
 			return { -1, nullptr };
 
 		total_written += written;
 
-		for (u16 i = 0; i != attach->member_count; ++i)
+		if (written < 0)
+			return { -1, nullptr };
+
+		total_written += written;
+
+		for (u16 i = 0; i != attach->header.impl.member_count; ++i)
 		{
 			const Range<char8> name = identifier_name_from_id(core, attach->members[i].name);
 
@@ -437,28 +449,32 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Op
 			total_written += written;
 		}
 
-		return { total_written, reinterpret_cast<const Code2Op*>(attach->members + attach->member_count) };
+		return { total_written, reinterpret_cast<const Code2*>(attach->members + attach->header.impl.member_count) };
 	}
 
 	case Code2Op::ImplTraitCall:
 	case Code2Op::Call:
 	{
-		const Code2AttCall* const attach = attachment_of<Code2AttCall>(op);
+		const Code2AttCall* const attach = attachment_of<Code2AttCall>(code);
 
-		s64 written = print(sink, " callee=% arguments=%\n", static_cast<u32>(attach->callee), attach->argument_count);
+		s64 written = print(sink, " callee=% arguments=%\n", static_cast<u32>(attach->callee), attach->header.call.argument_count);
 
 		if (written < 0)
 			return { -1, nullptr };
 
 		total_written += written;
 
-		for (u8 i = 0; i != attach->argument_count; ++i)
+		for (u8 i = 0; i != attach->header.call.argument_count; ++i)
 		{
 			const Range<char8> name = is_some(attach->arguments[i].name)
 				? identifier_name_from_id(core, get(attach->arguments[i].name))
 				: range::from_literal_string("<none>");
 
-			written = print(sink, "            [%] name=% value=@%\n", i, name, static_cast<u32>(attach->arguments[i].value));
+			written = print(sink, "            [%] name=% value=@%\n",
+				i,
+				name,
+				static_cast<u32>(attach->arguments[i].value)
+			);
 
 			if (written < 0)
 				return { -1, nullptr };
@@ -466,79 +482,79 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Op
 			total_written += written;
 		}
 
-		return { total_written, reinterpret_cast<const Code2Op*>(attach->arguments + attach->argument_count) };
+		return { total_written, reinterpret_cast<const Code2*>(attach->arguments + attach->header.call.argument_count) };
 	}
 
 	case Code2Op::TemplatedParamValue:
 	case Code2Op::TemplatedParamLocation:
 	{
-		const Code2AttTemplatedParamRef* const attach = attachment_of<Code2AttTemplatedParamRef>(op);
+		const Code2AttTemplatedParamRef* const attach = attachment_of<Code2AttTemplatedParamRef>(code);
 
-		s64 written = print(sink, " rank=%\n", attach->rank);
+		s64 written = print(sink, " rank=%\n", attach->header.templated_parameter_ref.rank);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::LocalValue:
 	case Code2Op::LocalLocation:
 	{
-		const Code2AttLocalRef* const attach = attachment_of<Code2AttLocalRef>(op);
+		const Code2AttLocalRef* const attach = attachment_of<Code2AttLocalRef>(code);
 
-		s64 written = print(sink, " out=% rank=%\n", attach->out, attach->rank);
+		s64 written = print(sink, " out=% rank=%\n", attach->header.local_ref.out, attach->header.local_ref.rank);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::GlobalValue:
 	case Code2Op::GlobalLocation:
 	{
-		const Code2AttGlobalRef* const attach = attachment_of<Code2AttGlobalRef>(op);
+		const Code2AttGlobalRef* const attach = attachment_of<Code2AttGlobalRef>(code);
 
-		s64 written = print(sink, " rank=%\n", attach->rank);
+		s64 written = print(sink, " rank=%\n", attach->header.global_ref.rank);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::ClosedValue:
 	case Code2Op::ClosedLocation:
 	{
-		const Code2AttClosedRef* const attach = attachment_of<Code2AttClosedRef>(op);
+		const Code2AttClosedRef* const attach = attachment_of<Code2AttClosedRef>(code);
 
-		s64 written = print(sink, " rank=%\n", attach->rank);
+		s64 written = print(sink, " rank=%\n", attach->header.closed_ref.rank);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::TraitArgumentValue:
 	case Code2Op::TraitArgumentLocation:
 	{
-		const Code2AttTraitArgumentRef* const attach = attachment_of<Code2AttTraitArgumentRef>(op);
+		const Code2AttTraitArgumentRef* const attach = attachment_of<Code2AttTraitArgumentRef>(code);
 
-		s64 written = print(sink, " rank=%\n", attach->rank);
+		s64 written = print(sink, " rank=%\n", attach->header.trait_argument_ref.rank);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Slice:
 	{
-		const Code2AttSlice* const attach = attachment_of<Code2AttSlice>(op);
+		const Code2AttSlice* const attach = attachment_of<Code2AttSlice>(code);
 
-		s64 written = print(sink, " sliced=%", static_cast<u32>(code2_id_of(attach->sliced)));
+		s64 written = print(sink, " sliced=%", static_cast<u32>(attach->sliced));
 
 		if (written < 0)
 			return { -1, nullptr };
@@ -562,56 +578,62 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Op
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Integer16:
 	{
-		const Code2AttInteger16* const attach = attachment_of<Code2AttInteger16>(op);
+		const Code2AttInteger16* const attach = attachment_of<Code2AttInteger16>(code);
 
-		s64 written = print(sink, " value=%\n", attach->value);
+		s64 written = print(sink, " value=%\n", attach->header.integer16.value);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Integer64:
 	{
-		const Code2AttInteger64* const attach = attachment_of<Code2AttInteger64>(op);
+		const Code2AttInteger64* const attach = attachment_of<Code2AttInteger64>(code);
 
-		s64 written = print(sink, " value=%\n", attach->value_lo | (static_cast<u64>(attach->value_hi) << 32));
+		CompIntegerValue value;
+
+		memcpy(&value, &attach->value_lo, sizeof(CompIntegerValue));
+
+		s64 written;
+		
+		u64 raw_value;
+		
+		if (u64_from_comp_integer(value, 64, &raw_value))
+			written = print(sink, " value=%\n", raw_value);
+		else
+			written = print(sink, " value=<huge>\n");
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
-	}
-
-	case Code2Op::IntegerHuge:
-	{
-		TODO("Implement `print_one_code2(IntegerHuge)`.");
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Float:
 	{
-		const Code2AttFloat* const attach = attachment_of<Code2AttFloat>(op);
+		const Code2AttFloat* const attach = attachment_of<Code2AttFloat>(code);
 
 		CompFloatValue value;
-		memcpy(&value, &attach->lo, sizeof(CompFloatValue));
+		memcpy(&value, &attach->value_lo, sizeof(CompFloatValue));
 
-		s64 written = print(sink, " value=%\n", value.rep);
+		s64 written = print(sink, " value=%\n", f64_from_comp_float(value));
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::String:
 	{
-		const Code2AttString* const attach = attachment_of<Code2AttString>(op);
+		const Code2AttString* const attach = attachment_of<Code2AttString>(code);
 
 		const char8* const begin = static_cast<char8*>(address_from_core_id(core, attach->data));
 
@@ -622,23 +644,29 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Op
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::TypeTailArray:
 	case Code2Op::TypeSlice:
 	case Code2Op::TypePtr:
 	{
-		const Code2AttReferenceType* const attach = attachment_of<Code2AttReferenceType>(op);
+		const Code2AttReferenceType* const attach = attachment_of<Code2AttReferenceType>(code);
 
-		s64 written = print(sink, " mut=% opt=% multi=% operand=%\n", attach->is_mut, attach->is_opt, attach->is_multi, static_cast<u32>(code2_id_of(attach->lhs)));
+		s64 written = print(sink, " mut=% opt=% multi=% operand=%\n",
+			attach->header.reference_type.is_mut,
+			attach->header.reference_type.is_opt,
+			attach->header.reference_type.is_multi,
+			static_cast<u32>(attach->operand)
+		);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
+	case Code2Op::WithType:
 	case Code2Op::Add:
 	case Code2Op::Sub:
 	case Code2Op::Mul:
@@ -656,56 +684,66 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Op
 	case Code2Op::Index:
 	case Code2Op::Set:
 	{
-		const Code2AttBinaryOp* const attach = attachment_of<Code2AttBinaryOp>(op);
+		const Code2AttBinaryOp* const attach = attachment_of<Code2AttBinaryOp>(code);
 
-		s64 written = print(sink, " lhs=% rhs=%\n", static_cast<u32>(code2_id_of(attach->lhs)), static_cast<u32>(attach->rhs));
+		s64 written = print(sink, " lhs=% rhs=%\n",
+			static_cast<u32>(attach->lhs),
+			static_cast<u32>(attach->rhs)
+		);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::LogicalAnd:
 	case Code2Op::LogicalOr:
 	{
-		const Code2AttLogicalOp* const attach = attachment_of<Code2AttLogicalOp>(op);
+		const Code2AttLogicalOp* const attach = attachment_of<Code2AttLogicalOp>(code);
 
-		s64 written = print(sink, " lhs=% rhs=@%\n", static_cast<u32>(code2_id_of(attach->lhs)), static_cast<u32>(attach->rhs));
+		s64 written = print(sink, " lhs=% rhs=@%\n",
+			static_cast<u32>(attach->lhs),
+			static_cast<u32>(attach->rhs)
+		);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::MemberValue:
 	case Code2Op::MemberLocation:
 	{
-		const Code2AttMember* const attach = attachment_of<Code2AttMember>(op);
+		const Code2AttMember* const attach = attachment_of<Code2AttMember>(code);
 
 		const Range<char8> name = identifier_name_from_id(core, attach->name);
 
-		s64 written = print(sink, " operand=% name=%\n", static_cast<u32>(code2_id_of(attach->composite)), name);
+		s64 written = print(sink, " operand=% name=%\n", static_cast<u32>(attach->composite), name);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Compare:
 	{
-		const Code2AttCompare* const attach = attachment_of<Code2AttCompare>(op);
+		const Code2AttCompare* const attach = attachment_of<Code2AttCompare>(code);
 
-		const char8* const name = tag_name(code2_with_of(attach->rhs));
+		const char8* const kind = tag_name(attach->header.compare.kind);
 
-		s64 written = print(sink, " kind=% lhs=% rhs=%\n", name, static_cast<u32>(code2_id_of(attach->lhs)), static_cast<u32>(code2_id_of(attach->rhs)));
+		s64 written = print(sink, " kind=% lhs=% rhs=%\n",
+			kind,
+			static_cast<u32>(attach->lhs),
+			static_cast<u32>(attach->rhs)
+		);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		return { total_written + written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::INVALID:
@@ -715,73 +753,74 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Op
 	ASSERT_UNREACHABLE;
 }
 
-static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Code2Op* op) noexcept
+static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Code2* code) noexcept
 {
-	switch (*op)
+	switch (code->op)
 	{
-	case Code2Op::End:
+	case Code2Op::Leave:
 	{
-		return { 0, nullptr };
+		const Code2AttLeave* const attach = attachment_of<Code2AttLeave>(code);
+
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
+	}
+
+	case Code2Op::Repeat:
+	{
+		const Code2AttRepeat* const attach = attachment_of<Code2AttRepeat>(code);
+
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::ScopeBegin:
 	{
-		const Code2AttScopeBegin* const attach = attachment_of<Code2AttScopeBegin>(op);
+		const Code2AttScopeBegin* const attach = attachment_of<Code2AttScopeBegin>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
-	}
-
-	case Code2Op::ScopeEnd:
-	{
-		const Code2AttScopeEnd* const attach = attachment_of<Code2AttScopeEnd>(op);
-
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Builtin:
 	{
-		const Code2AttBuiltin* const attach = attachment_of<Code2AttBuiltin>(op);
+		const Code2AttBuiltin* const attach = attachment_of<Code2AttBuiltin>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Composite:
 	{
-		const Code2AttComposite* const attach = attachment_of<Code2AttComposite>(op);
+		const Code2AttComposite* const attach = attachment_of<Code2AttComposite>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach->members + attach->member_count) };
+		return { 0, reinterpret_cast<const Code2*>(attach->members + attach->header.composite.member_count) };
 	}
 
 	case Code2Op::Array:
 	{
-		const Code2AttArray* const attach = attachment_of<Code2AttArray>(op);
+		const Code2AttArray* const attach = attachment_of<Code2AttArray>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach->elements + attach->element_count) };
+		return { 0, reinterpret_cast<const Code2*>(attach->elements + attach->header.array.element_count) };
 	}
 
 	case Code2Op::Definition:
 	{
-		const Code2AttDefinition* const attach = attachment_of<Code2AttDefinition>(op);
+		const Code2AttDefinition* const attach = attachment_of<Code2AttDefinition>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
-	case Code2Op::DefineLocalTyped:
+	case Code2Op::MakeLocation:
 	{
-		const Code2AttDefineLocalTyped* const attach = attachment_of<Code2AttDefineLocalTyped>(op);
+		const Code2AttMakeLocation* const attach = attachment_of<Code2AttMakeLocation>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
-	case Code2Op::DefineLocalUntyped:
+	case Code2Op::DefineLocal:
 	{
-		const Code2AttDefineLocalUntyped* const attach = attachment_of<Code2AttDefineLocalUntyped>(op);
+		const Code2AttDefineLocal* const attach = attachment_of<Code2AttDefineLocal>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::ConsumeVoid:
-	case Code2Op::Return:
 	case Code2Op::Eval:
 	case Code2Op::Defer:
 	case Code2Op::Distinct:
@@ -793,26 +832,27 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 	case Code2Op::UnaryPlus:
 	case Code2Op::LoadLocation:
 	{
-		const Code2AttUnaryOp* const attach = attachment_of<Code2AttUnaryOp>(op);
+		const Code2AttUnaryOp* const attach = attachment_of<Code2AttUnaryOp>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
+	case Code2Op::ScopeEnd:
 	case Code2Op::Void:
 	case Code2Op::Self:
 	case Code2Op::Unreachable:
 	case Code2Op::Undefined:
 	{
-		const Code2AttNonaryOp* const attach = attachment_of<Code2AttNonaryOp>(op);
+		const Code2AttNonaryOp* const attach = attachment_of<Code2AttNonaryOp>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::If:
 	{
 		s64 total_written = 0;
 
-		const Code2AttIf* const attach = attachment_of<Code2AttIf>(op);
+		const Code2AttIf* const attach = attachment_of<Code2AttIf>(code);
 
 		s64 written = print(sink, "\n");
 
@@ -821,7 +861,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 		total_written += written;
 
-		const Code2Op* const consequent = code2_from_id(core, attach->consequent);
+		const Code2Header* const consequent = code2_chunk_from_id(core, attach->consequent);
 
 		written = diag::print_code2(sink, core, consequent);
 
@@ -837,23 +877,21 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 		total_written += written;
 
-		const Code2Op* const alternative = code2_from_id(core, attach->alternative);
+		const Code2Header* const alternative = code2_chunk_from_id(core, attach->alternative);
 
 		written = diag::print_code2(sink, core, alternative);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		total_written += written;
-
-		return { total_written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Loop:
 	{
 		s64 total_written = 0;
 
-		const Code2AttLoop* const attach = attachment_of<Code2AttLoop>(op);
+		const Code2AttLoop* const attach = attachment_of<Code2AttLoop>(code);
 
 		s64 written = print(sink, "\n");
 
@@ -862,90 +900,65 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 		total_written += written;
 
-		const Code2Op* const condition = code2_from_id(core, attach->condition);
-
-		written = diag::print_code2(sink, core, condition);
-
-		if (written < 0)
-			return { -1, nullptr };
-
-		total_written += written;
-
-		const Code2Op* const body = code2_from_id(core, attach->body);
+		const Code2Header* const body = code2_chunk_from_id(core, attach->body);
 
 		written = diag::print_code2(sink, core, body);
 
 		if (written < 0)
 			return { -1, nullptr };
 
-		written = print(sink, "\n");
-
-		if (written < 0)
-			return { -1, nullptr };
-
-		total_written += written;
-
-		const Code2Op* const finally = code2_from_id(core, attach->finally);
-
-		written = diag::print_code2(sink, core, finally);
-
-		if (written < 0)
-			return { -1, nullptr };
-
-		total_written += written;
-
-		return { total_written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Func:
 	{
-		const Code2AttFunc* const attach = attachment_of<Code2AttFunc>(op);
+		const Code2AttFunc* const attach = attachment_of<Code2AttFunc>(code);
 
 		const s64 newline_written = print(sink, "\n");
 
 		if (newline_written < 0)
 			return { -1, nullptr };
 
-		const Code2Op* const body = code2_from_id(core, attach->body);
+		const Code2Header* const body = code2_chunk_from_id(core, attach->body);
 
 		const s64 body_written = diag::print_code2(sink, core, body);
 
 		if (body_written < 0)
 			return { -1, nullptr };
 
-		return { newline_written + body_written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { newline_written + body_written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::SignatureBegin:
 	{
-		const Code2AttSignatureBegin* const attach = attachment_of<Code2AttSignatureBegin>(op);
+		const Code2AttSignatureBegin* const attach = attachment_of<Code2AttSignatureBegin>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::SignatureEnd:
 	{
-		const Code2AttSignatureEnd* const attach = attachment_of<Code2AttSignatureEnd>(op);
+		const Code2AttSignatureEnd* const attach = attachment_of<Code2AttSignatureEnd>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Parameter:
 	{
-		const Code2AttParameter* const attach = attachment_of<Code2AttParameter>(op);
+		const Code2AttParameter* const attach = attachment_of<Code2AttParameter>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Trait:
 	{
-		const Code2AttTrait* const attach = attachment_of<Code2AttTrait>(op);
+		const Code2AttTrait* const attach = attachment_of<Code2AttTrait>(code);
 
-		const Code2AttTrait_Member* const members = reinterpret_cast<const Code2AttTrait_Member*>(attach->parameters + attach->parameter_count);
+		const Code2AttTrait_Member* const members = reinterpret_cast<const Code2AttTrait_Member*>(attach->parameters + attach->header.trait.parameter_count);
 
 		s64 total_written = 0;
 
-		for (u16 i = 0; i != attach->member_count; ++i)
+		for (u16 i = 0; i != attach->header.trait.member_count; ++i)
 		{
 			const s64 type_newline_written = print(sink, "\n");
 
@@ -954,7 +967,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 			total_written += type_newline_written;
 
-			const Code2Op* const type = code2_from_id(core, members[i].type);
+			const Code2Header* const type = code2_chunk_from_id(core, members[i].type);
 
 			const s64 type_written = diag::print_code2(sink, core, type);
 
@@ -972,7 +985,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 				total_written += default_value_newline_written;
 
-				const Code2Op* const default_value = code2_from_id(core, get(members[i].default_value));
+				const Code2Header* const default_value = code2_chunk_from_id(core, get(members[i].default_value));
 
 				const s64 default_value_written = diag::print_code2(sink, core, default_value);
 
@@ -983,16 +996,16 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 			}
 		}
 
-		return { total_written, reinterpret_cast<const Code2Op*>(members + attach->member_count) };
+		return { total_written, reinterpret_cast<const Code2*>(members + attach->header.trait.member_count) };
 	}
 
 	case Code2Op::Impl:
 	{
-		const Code2AttImpl* const attach = attachment_of<Code2AttImpl>(op);
+		const Code2AttImpl* const attach = attachment_of<Code2AttImpl>(code);
 
 		s64 total_written = 0;
 
-		for (u16 i = 0; i != attach->member_count; ++i)
+		for (u16 i = 0; i != attach->header.impl.member_count; ++i)
 		{
 			if (is_some(attach->members[i].type))
 			{
@@ -1003,7 +1016,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 				total_written += type_newline_written;
 
-				const Code2Op* const type = code2_from_id(core, get(attach->members[i].type));
+				const Code2Header* const type = code2_chunk_from_id(core, get(attach->members[i].type));
 
 				const s64 type_written = diag::print_code2(sink, core, type);
 
@@ -1020,7 +1033,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 			total_written += value_newline_written;
 
-			const Code2Op* const value = code2_from_id(core, attach->members[i].value);
+			const Code2Header* const value = code2_chunk_from_id(core, attach->members[i].value);
 
 			const s64 value_written = diag::print_code2(sink, core, value);
 
@@ -1030,17 +1043,17 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 			total_written += value_written;
 		}
 
-		return { total_written, reinterpret_cast<const Code2Op*>(attach->members + attach->member_count) };
+		return { total_written, reinterpret_cast<const Code2*>(attach->members + attach->header.impl.member_count) };
 	}
 
 	case Code2Op::ImplTraitCall:
 	case Code2Op::Call:
 	{
-		const Code2AttCall* const attach = attachment_of<Code2AttCall>(op);
+		const Code2AttCall* const attach = attachment_of<Code2AttCall>(code);
 
 		s64 total_written = 0;
 
-		for (u16 i = 0; i != attach->argument_count; ++i)
+		for (u16 i = 0; i != attach->header.call.argument_count; ++i)
 		{
 			const s64 newline_written = print(sink, "\n");
 
@@ -1049,7 +1062,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 			total_written += newline_written;
 
-			const Code2Op* const value = code2_from_id(core, attach->arguments[i].value);
+			const Code2Header* const value = code2_chunk_from_id(core, attach->arguments[i].value);
 
 			const s64 value_written = diag::print_code2(sink, core, value);
 
@@ -1059,100 +1072,94 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 			total_written += value_written;
 		}
 
-		return { total_written, reinterpret_cast<const Code2Op*>(attach->arguments + attach->argument_count) };
+		return { total_written, reinterpret_cast<const Code2*>(attach->arguments + attach->header.call.argument_count) };
 	}
 
 	case Code2Op::TemplatedParamValue:
 	case Code2Op::TemplatedParamLocation:
 	{
-		const Code2AttTemplatedParamRef* const attach = attachment_of<Code2AttTemplatedParamRef>(op);
+		const Code2AttTemplatedParamRef* const attach = attachment_of<Code2AttTemplatedParamRef>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::LocalValue:
 	case Code2Op::LocalLocation:
 	{
-		const Code2AttLocalRef* const attach = attachment_of<Code2AttLocalRef>(op);
+		const Code2AttLocalRef* const attach = attachment_of<Code2AttLocalRef>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::GlobalValue:
 	case Code2Op::GlobalLocation:
 	{
-		const Code2AttGlobalRef* const attach = attachment_of<Code2AttGlobalRef>(op);
+		const Code2AttGlobalRef* const attach = attachment_of<Code2AttGlobalRef>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::ClosedValue:
 	case Code2Op::ClosedLocation:
 	{
-		const Code2AttClosedRef* const attach = attachment_of<Code2AttClosedRef>(op);
+		const Code2AttClosedRef* const attach = attachment_of<Code2AttClosedRef>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::TraitArgumentValue:
 	case Code2Op::TraitArgumentLocation:
 	{
-		const Code2AttTraitArgumentRef* const attach = attachment_of<Code2AttTraitArgumentRef>(op);
+		const Code2AttTraitArgumentRef* const attach = attachment_of<Code2AttTraitArgumentRef>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Slice:
 	{
-		const Code2AttSlice* const attach = attachment_of<Code2AttSlice>(op);
+		const Code2AttSlice* const attach = attachment_of<Code2AttSlice>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Integer16:
 	{
-		const Code2AttInteger16* const attach = attachment_of<Code2AttInteger16>(op);
+		const Code2AttInteger16* const attach = attachment_of<Code2AttInteger16>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Integer64:
 	{
-		const Code2AttInteger64* const attach = attachment_of<Code2AttInteger64>(op);
+		const Code2AttInteger64* const attach = attachment_of<Code2AttInteger64>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
-	}
-
-	case Code2Op::IntegerHuge:
-	{
-		const Code2AttIntegerHuge* const attach = attachment_of<Code2AttIntegerHuge>(op);
-
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Float:
 	{
-		const Code2AttFloat* const attach = attachment_of<Code2AttFloat>(op);
+		const Code2AttFloat* const attach = attachment_of<Code2AttFloat>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::String:
 	{
-		const Code2AttString* const attach = attachment_of<Code2AttString>(op);
+		const Code2AttString* const attach = attachment_of<Code2AttString>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::TypeTailArray:
 	case Code2Op::TypeSlice:
 	case Code2Op::TypePtr:
 	{
-		const Code2AttReferenceType* const attach = attachment_of<Code2AttReferenceType>(op);
+		const Code2AttReferenceType* const attach = attachment_of<Code2AttReferenceType>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
+	case Code2Op::WithType:
 	case Code2Op::Add:
 	case Code2Op::Sub:
 	case Code2Op::Mul:
@@ -1170,44 +1177,44 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 	case Code2Op::Index:
 	case Code2Op::Set:
 	{
-		const Code2AttBinaryOp* const attach = attachment_of<Code2AttBinaryOp>(op);
+		const Code2AttBinaryOp* const attach = attachment_of<Code2AttBinaryOp>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::LogicalAnd:
 	case Code2Op::LogicalOr:
 	{
-		const Code2AttLogicalOp* const attach = attachment_of<Code2AttLogicalOp>(op);
+		const Code2AttLogicalOp* const attach = attachment_of<Code2AttLogicalOp>(code);
 
 		const s64 newline_written = print(sink, "\n");
 
 		if (newline_written < 0)
 			return { -1, nullptr };
 
-		const Code2Op* const rhs = code2_from_id(core, attach->rhs);
+		const Code2Header* const rhs = code2_chunk_from_id(core, attach->rhs);
 
 		const s64 rhs_written = diag::print_code2(sink, core, rhs);
 
 		if (rhs_written < 0)
 			return { -1, nullptr };
 
-		return { newline_written + rhs_written, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { newline_written + rhs_written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::MemberValue:
 	case Code2Op::MemberLocation:
 	{
-		const Code2AttMember* const attach = attachment_of<Code2AttMember>(op);
+		const Code2AttMember* const attach = attachment_of<Code2AttMember>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::Compare:
 	{
-		const Code2AttCompare* const attach = attachment_of<Code2AttCompare>(op);
+		const Code2AttCompare* const attach = attachment_of<Code2AttCompare>(code);
 
-		return { 0, reinterpret_cast<const Code2Op*>(attach + 1) };
+		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
 	case Code2Op::INVALID:
@@ -1217,38 +1224,45 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 	ASSERT_UNREACHABLE;
 }
 
-s64 diag::print_code2(PrintSink sink, CoreData* core, const Code2Op* op) noexcept
+s64 diag::print_code2(PrintSink sink, CoreData* core, const Code2Header* header) noexcept
 {
-	const Code2Op* const begin = op;
+	const Code2* const begin = code2_chunk_begin(header);
 
-	s64 total_written = 0;
+	const Code2* const end = code2_chunk_end(header);
 
-	PrintResult result;
+	const Code2Id id = id_from_code2_chunk(core, header);
 
-	do
+	s64 total_written = print(sink, " @%\n", static_cast<u32>(id));
+
+	if (total_written < 0)
+		return -1;
+
+	PrintResult result{};
+
+	const Code2* curr = begin;
+
+	while (curr != end && result.written >= 0)
 	{
-		result = print_one_code2(sink, core, op);
+		result = print_one_code2(sink, core, header, curr);
 
-		op = result.next;
+		curr = result.next;
 
 		total_written += result.written;
 	}
-	while (op != nullptr);
 
 	if (result.written < 0)
 		return -1;
 
-	op = begin;
+	curr = begin;
 
-	do
+	while (curr != end && result.written >= 0)
 	{
-		result = print_one_code2_ref(sink, core, op);
+		result = print_one_code2_ref(sink, core, curr);
 
-		op = result.next;
+		curr = result.next;
 
 		total_written += result.written;
 	}
-	while (op != nullptr);
 	
 	if (result.written < 0)
 		return -1;
