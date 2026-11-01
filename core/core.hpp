@@ -33,6 +33,8 @@ enum class CoreId : u32;
 
 enum class SourceFileId : u32;
 
+enum class Code2Id : u32;
+
 enum class NameBindingKind : u8
 {
 	INVALID = 0,
@@ -2063,6 +2065,8 @@ enum class TypeTag : u8
 	// No additional structural data is stored.
 	TypeBuilder,
 
+	Undefined,
+
 	// Tag used to indicate that something diverges, effectively making its
 	// type irrelevant. This can be implicitly converted to anything else.
 	// No additional structural data is stored.
@@ -2106,7 +2110,7 @@ enum class TypeTag : u8
 
 	Self,
 
-	Arrayish,
+	Distinct,
 };
 
 enum class TypeEquality : u8
@@ -2174,7 +2178,7 @@ struct SignatureTypeInfo
 
 		struct
 		{
-			OpcodeId completion_id;
+			Code2Id completion_id;
 		} templated;
 	} return_type;
 
@@ -2183,9 +2187,7 @@ struct SignatureTypeInfo
 
 struct MemberInfo
 {
-	TypeId type_id;
-
-	Maybe<CoreId> value_or_default;
+	TypeAndValue type_and_value;
 
 	bool is_pub : 1;
 
@@ -2198,10 +2200,6 @@ struct MemberInfo
 	bool is_impl_member_from_trait_default : 1;
 
 	u16 rank;
-
-	u16 shadow_rank;
-
-	Maybe<ShadowLayoutId> shadow_id;
 
 	s64 offset;
 };
@@ -2229,24 +2227,32 @@ struct MemberIterator
 
 
 
+struct PendingTypeAndValue
+{
+	Maybe<Code2Id> type;
+
+	Maybe<Code2Id> value;
+};
+
+struct CompleteTypeAndValue
+{
+	TypeId type;
+
+	Maybe<CoreId> value;
+};
+
+union TypeAndValue
+{
+	PendingTypeAndValue pending;
+
+	CompleteTypeAndValue complete;
+};
+
 struct SignatureParameterInit
 {
 	IdentifierId name;
 
-	union
-	{
-		struct
-		{
-			TypeId type_id;
-
-			Maybe<CoreId> default_value;
-		} complete;
-
-		struct
-		{
-			OpcodeId completion_id;
-		} templated;
-	};
+	TypeAndValue type_and_value;
 
 	bool is_templated;
 
@@ -2268,7 +2274,7 @@ struct SignatureSealInfo
 
 		struct
 		{
-			OpcodeId completion_id;
+			Code2Id initializer;
 		} templated;
 	} return_type;
 
@@ -2281,9 +2287,7 @@ struct TraitMemberInit
 {
 	IdentifierId name;
 
-	OpcodeId type_completion_id;
-
-	Maybe<OpcodeId> default_completion_id;
+	PendingTypeAndValue initializer;
 
 	bool is_mut;
 };
@@ -2292,9 +2296,7 @@ struct ImplMemberInit
 {
 	IdentifierId name;
 
-	OpcodeId type_completion_id;
-
-	OpcodeId value_completion_id;
+	PendingTypeAndValue initializer;
 
 	bool is_mut;
 
@@ -2305,9 +2307,7 @@ struct UserCompositeMemberInit
 {
 	IdentifierId name;
 
-	TypeId type_id;
-
-	Maybe<CoreId> default_value;
+	CompleteTypeAndValue type_and_value;
 
 	bool is_pub;
 
@@ -2329,7 +2329,7 @@ struct FileCompositeMemberInit
 {
 	IdentifierId name;
 
-	OpcodeId completion_id;
+	Code2Id initializer;
 
 	bool is_pub;
 
@@ -2400,7 +2400,7 @@ struct alignas(8) SelfType
 
 	SourceId definition_source_id;
 
-	OpcodeId trait_body_opcode_id;
+	Code2Id trait_body;
 
 	Maybe<ClosureId> impl_closure_id;
 
@@ -2458,7 +2458,9 @@ TypeId type_seal_signature(CoreData* core, TypeId type_id, SignatureSealInfo sea
 
 TypeId type_instantiate_templated_signature(CoreData* core, TypeId type_id) noexcept;
 
-void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<CoreId> default_value) noexcept;
+void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id, u16 rank, CompleteTypeAndValue type_and_value) noexcept;
+
+void type_complete_templated_signature_return_type(CoreData* core, TypeId type_id, TypeId return_type_id) noexcept;
 
 
 
@@ -2466,7 +2468,7 @@ TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names) no
 
 
 
-TypeId type_create_self(CoreData* core, TypeId base_type_id, TypeId trait_type_id, u8 trait_argument_count, OpcodeId trait_body_opcode_id, SourceId definition_source_id, Maybe<ClosureId> impl_closure_id, Maybe<ClosureId> trait_closure_id) noexcept;
+TypeId type_create_self(CoreData* core, TypeId base_type_id, TypeId trait_type_id, u8 trait_argument_count, Code2Id trait_body, SourceId definition_source_id, Maybe<ClosureId> impl_closure_id, Maybe<ClosureId> trait_closure_id) noexcept;
 
 TypeId type_set_self_trait_arguments(CoreData* core, TypeId type_id, const TypeId* arguments) noexcept;
 
@@ -2478,7 +2480,7 @@ TypeId type_create_impl_body(CoreData* core, TypeId self_type_id, u16 trait_memb
 
 void type_add_impl_body_member(CoreData* core, TypeId type_id, ImplMemberInit init) noexcept;
 
-OpcodeId type_impl_body_member_type_initializer(CoreData* core, TypeId type_id, u16 rank) noexcept;
+Code2Id type_impl_body_member_type_initializer(CoreData* core, TypeId type_id, u16 rank) noexcept;
 
 void type_seal_impl_body(CoreData* core, TypeId type_id) noexcept;
 
@@ -2498,13 +2500,17 @@ void type_add_file_composite_member(CoreData* core, TypeId type_id, FileComposit
 
 
 
-bool type_member_begin_initialization_by_rank(CoreData* core, TypeId type_id, u16 rank) noexcept;
+TypeId type_create_approx_composite(CoreData* core, u16 member_count) noexcept;
 
-bool type_member_begin_initialization_by_name(CoreData* core, TypeId type_id, IdentifierId name, u16* out_rank) noexcept;
+void type_add_approx_composite_member(CoreData* core, TypeId type_id, u16 rank, Maybe<IdentifierId> name, TypeId member_type_id) noexcept;
 
-void type_member_complete(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, CoreId value_id, bool end_initialization) noexcept;
 
-void type_member_end_initialization(CoreData* core, TypeId type_id, u16 rank) noexcept;
+
+bool type_file_member_init_begin(CoreData* core, TypeId type_id, u16 rank) noexcept;
+
+void type_file_member_init_set_type(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id) noexcept;
+
+void type_file_member_init_complete(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, CoreId value_id) noexcept;
 
 
 
@@ -2543,15 +2549,15 @@ bool type_member_count(CoreData* core, TypeId type_id, u32* out) noexcept;
 
 bool type_composite_is_impl_body(CoreData* core, TypeId type_id) noexcept;
 
-bool type_implements_trait(CoreData* core, TypeId type_id, OpcodeId trait_body_opcode_id, Range<TypeId> argument_types) noexcept;
+bool type_implements_trait(CoreData* core, TypeId type_id, Code2Id trait_body, Range<TypeId> argument_types) noexcept;
 
 bool type_get_holotype(CoreData* core, TypeId type_id, TypeId* out_holotype_id) noexcept;
 
 SignatureTypeInfo type_signature_info_from_id(CoreData* core, TypeId type_id) noexcept;
 
-bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberInfo* out_info, OpcodeId* out_initializer) noexcept;
+bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberInfo* out) noexcept;
 
-MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, IdentifierId name, MemberInfo* out_info, OpcodeId* out_initializer) noexcept;
+MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, IdentifierId name, MemberInfo* out) noexcept;
 
 IdentifierId type_member_name_by_rank(CoreData* core, TypeId type_id, u16 rank) noexcept;
 
@@ -2598,7 +2604,7 @@ MemberIterator members_of(CoreData* core, TypeId type_id) noexcept;
 // Retrieves the next element of `iterator`. This function may only be called
 // exactly once after `has_next` called on the same iterator has returned
 // `true`.
-bool next(MemberIterator* it, MemberInfo* out_info, OpcodeId* out_initializer_id) noexcept;
+bool next(MemberIterator* it, MemberInfo* out_info, PendingTypeAndValue* out_initializer_id) noexcept;
 
 // Checks whether `iterator` has an element to be returned by a future call to
 // `next`. This call is idempotent.
@@ -2843,7 +2849,7 @@ const Opcode* opcode_from_id(CoreData* core, OpcodeId id) noexcept;
 
 SourceId source_id_of_opcode(CoreData* core, const Opcode* code) noexcept;
 
-bool return_type_opcodes_equal(CoreData* core, const Opcode* a_code, const Opcode* b_code) noexcept;
+bool return_type_templates_equal(CoreData* core, const Code2Block* a_code, const Code2Block* b_code) noexcept;
 
 const char8* tag_name(Opcode op) noexcept;
 
@@ -3015,6 +3021,13 @@ struct alignas(8) DefinitionValue
 	Maybe<CoreId> value;
 };
 
+struct SliceValue
+{
+	void* begin;
+
+	u64 count;
+};
+
 struct ScopeMember;
 
 bool import_prelude(CoreData* core, Range<char8> path) noexcept;
@@ -3110,37 +3123,29 @@ enum class Code2Op : u8
 	INVALID = 0,
 	Leave,
 	Repeat,
-	ScopeBegin,
-	ScopeEnd,
 	Builtin,
 	Composite,
 	Array,
 	Definition,
 	MakeLocation,
-	WithType,
-	DefineLocal,
+	DefineUntyped,
+	DefineTyped,
 	ConsumeVoid,
 	Void,
 	If,
 	Loop,
 	Func,
-	SignatureBegin,
-	SignatureEnd,
-	Parameter,
+	Signature,
 	Trait,
 	Impl,
 	ImplTraitCall,
 	Self,
 	Unreachable,
 	Undefined,
-	TemplatedParamValue,
-	TemplatedParamLocation,
 	LocalValue,
 	LocalLocation,
 	GlobalValue,
 	GlobalLocation,
-	ClosedValue,
-	ClosedLocation,
 	TraitArgumentValue,
 	TraitArgumentLocation,
 	Slice,
@@ -3161,19 +3166,8 @@ enum class Code2Op : u8
 	LogicalNot,
 	Negate,
 	UnaryPlus,
-	Add,
-	Sub,
-	Mul,
-	Div,
-	AddTC,
-	SubTC,
-	MulTC,
-	Mod,
-	BitAnd,
-	BitOr,
-	BitXor,
-	ShiftLeft,
-	ShiftRight,
+	BinaryArithmetic,
+	BitShift,
 	TypeArray,
 	Index,
 	LogicalAnd,
@@ -3181,8 +3175,8 @@ enum class Code2Op : u8
 	MemberValue,
 	MemberLocation,
 	Compare,
-	Set,
-	LoadLocation,
+	Store,
+	DupAndLoadLocation,
 };
 
 enum class Code2Id : u32
@@ -3197,9 +3191,29 @@ enum class Code2Offset : u32
 
 
 
+enum class Code2AttBinaryArithmetic_Kind : u8
+{
+	Add,
+	Sub,
+	Mul,
+	Div,
+	AddTC,
+	SubTC,
+	MulTC,
+	Mod,
+	BitAnd,
+	BitOr,
+	BitXor,
+};
+
+enum class Code2AttBitShift_Kind : u8
+{
+	Left,
+	Right,
+};
+
 enum class Code2AttCompare_Kind : u8
 {
-	INVALID = 0,
 	LessThan,
 	GreaterThan,
 	LessThanOrEqual,
@@ -3218,6 +3232,8 @@ struct alignas(4) Code2
 		{
 			Code2Op op_;
 
+			bool is_type_eval;
+
 			u16 out;
 		} leave;
 
@@ -3234,6 +3250,13 @@ struct alignas(4) Code2
 
 			u16 definition_count;
 		} scope_begin;
+
+		struct
+		{
+			Code2Op op_;
+
+			u16 definition_count;
+		} scope_end;
 
 		struct
 		{
@@ -3282,30 +3305,48 @@ struct alignas(4) Code2
 
 			bool has_self_reference : 1;
 
+			bool is_type_eval : 1;
+
 			u16 definition_index;
-		} define_local;
+		} define;
 
 		struct
 		{
 			Code2Op op_;
 
-			u8 parameter_count;
-
-			bool is_proc;
-		} signature_begin;
+			bool is_type_eval : 1;
+		} consume_void;
 
 		struct
 		{
 			Code2Op op_;
 
-			bool is_mut : 1;
+			bool is_type_eval : 1;
 
-			bool is_eval : 1;
+			bool evaluated_condition : 1;
+		} if_;
 
-			bool is_templated : 1;
+		struct
+		{
+			Code2Op op_;
 
-			bool is_variadic : 1;
-		} parameter;
+			bool is_type_eval : 1;
+		} loop;
+
+		struct
+		{
+			Code2Op op_;
+
+			u8 parameter_count : 6;
+
+			u8 is_func : 1;
+
+			u8 is_variadic : 1;
+
+			u16 has_templated_return_type : 1;
+
+			u16 closed_count : 15;
+		} signature;
 
 		struct
 		{
@@ -3322,13 +3363,6 @@ struct alignas(4) Code2
 
 			u16 member_count;
 		} impl;
-
-		struct
-		{
-			Code2Op op_;
-
-			u16 rank;
-		} templated_parameter_ref;
 
 		struct
 		{
@@ -3389,20 +3423,49 @@ struct alignas(4) Code2
 		{
 			Code2Op op_;
 
+			Code2AttBinaryArithmetic_Kind kind;
+		} binary_arithmetic;
+
+		struct
+		{
+			Code2Op op_;
+
+			Code2AttBitShift_Kind kind;
+		} bit_shift;
+
+		struct
+		{
+			Code2Op op_;
+
+			bool is_mut : 1;
+
+			bool is_pub : 1;
+
+			bool composite_is_type : 1;
+
+			u16 rank;
+		} member_ref;
+
+		struct
+		{
+			Code2Op op_;
+
 			Code2AttCompare_Kind kind;
 		} compare;
 	};
 
-	Maybe<TypeId> type;
+	TypeId type;
 };
 
-struct alignas(4) Code2Header
+struct alignas(4) Code2Block
 {
+	TypeId type;
+
 	u32 size;
 
-	Code2Offset last_leave;
+	u16 definition_count;
 
-	Maybe<TypeId> type;
+	u16 static_leave_count;
 };
 
 
@@ -3411,19 +3474,9 @@ struct alignas(4) Code2AttLeave
 {
 	Code2 header;
 
-	Code2Offset value;
+	Code2Offset operand;
 
-	Maybe<Code2Offset> prev;
-};
-
-struct alignas(4) Code2AttRepeat
-{
-	Code2 header;
-};
-
-struct alignas(4) Code2AttScopeBegin
-{
-	Code2 header;
+	Code2Id target;
 };
 
 struct alignas(4) Code2AttBuiltin
@@ -3461,23 +3514,11 @@ struct alignas(4) Code2AttDefinition
 {
 	Code2 header;
 
+	IdentifierId name;
+
 	Maybe<Code2Offset> type;
 
 	Maybe<Code2Offset> value;
-};
-
-struct alignas(4) Code2AttMakeLocation
-{
-	Code2 header;
-
-	Code2Offset value;
-};
-
-struct alignas(4) Code2AttDefineLocal
-{
-	Code2 header;
-
-	Code2Offset value;
 };
 
 struct alignas(4) Code2AttIf
@@ -3498,31 +3539,48 @@ struct alignas(4) Code2AttLoop
 	Code2Id body;
 };
 
-struct alignas(4) Code2AttSignatureBegin
+struct alignas(4) Code2AttSignature_Parameter
 {
-	Code2 header;
-};
-
-struct alignas(4) Code2AttSignatureEnd
-{
-	Code2 header;
-
-	Code2Offset signature;
-
-	Code2Offset return_type;
-};
-
-struct alignas(4) Code2AttParameter
-{
-	Code2 header;
-
-	Code2Offset signature;
-
-	Code2Offset type;
-
-	Maybe<Code2Offset> default_value;
-
 	IdentifierId name;
+
+	bool is_mut : 1;
+
+	bool is_eval : 1;
+
+	bool is_templated : 1;
+
+	union
+	{
+		struct
+		{
+			Code2Offset type;
+
+			Maybe<Code2Offset> default_value;
+		} complete;
+
+		struct
+		{
+			Code2Id type;
+
+			Maybe<Code2Id> default_value;
+		} templated;
+	};
+};
+
+struct alignas(4) Code2AttSignature
+{
+	Code2 header;
+
+	union
+	{
+		Code2Offset complete;
+
+		Code2Id templated;
+	} return_type;
+
+	Code2AttSignature_Parameter parameters[];
+
+	// Code2Offset closed[];
 };
 
 struct alignas(4) Code2AttFunc
@@ -3580,31 +3638,6 @@ struct alignas(4) Code2AttImpl
 	Code2AttImpl_Member members[];
 };
 
-struct alignas(4) Code2AttTemplatedParamRef
-{
-	Code2 header;
-};
-
-struct alignas(4) Code2AttLocalRef
-{
-	Code2 header;
-};
-
-struct alignas(4) Code2AttGlobalRef
-{
-	Code2 header;
-};
-
-struct alignas(4) Code2AttClosedRef
-{
-	Code2 header;
-};
-
-struct alignas(4) Code2AttTraitArgumentRef
-{
-	Code2 header;
-};
-
 struct alignas(4) Code2AttSlice
 {
 	Code2 header;
@@ -3614,11 +3647,6 @@ struct alignas(4) Code2AttSlice
 	Maybe<Code2Offset> begin;
 
 	Maybe<Code2Offset> end;
-};
-
-struct alignas(4) Code2AttInteger16
-{
-	Code2 header;
 };
 
 struct alignas(4) Code2AttInteger64
@@ -3650,7 +3678,12 @@ struct alignas(4) Code2AttString
 
 struct alignas(4) Code2AttCall_Argument
 {
-	Maybe<IdentifierId> name;
+	union
+	{
+		Maybe<IdentifierId> name;
+
+		u8 rank;
+	};
 
 	Code2Id value;
 };
@@ -3662,13 +3695,6 @@ struct alignas(4) Code2AttCall
 	Code2Offset callee;
 
 	Code2AttCall_Argument arguments[];
-};
-
-struct alignas(4) Code2AttReferenceType
-{
-	Code2 header;
-
-	Code2Offset operand;
 };
 
 struct alignas(4) Code2AttLogicalOp
@@ -3684,23 +3710,16 @@ struct alignas(4) Code2AttMember
 {
 	Code2 header;
 
-	Code2Offset composite;
+	union
+	{
+		Code2Offset offset;
+
+		TypeId type;
+
+		CoreId type_member_data;
+	} composite;
 
 	IdentifierId name;
-};
-
-struct alignas(4) Code2AttCompare
-{
-	Code2 header;
-
-	Code2Offset lhs;
-
-	Code2Offset rhs;
-};
-
-struct alignas(4) Code2AttNonaryOp
-{
-	Code2 header;
 };
 
 struct alignas(4) Code2AttBinaryOp
@@ -3735,27 +3754,27 @@ static T* attachment_of(Code2* code) noexcept
 
 
 
-Code2Id id_from_code2_chunk(CoreData* core, const Code2Header* header) noexcept;
+Code2Id id_from_code2_block(CoreData* core, const Code2Block* block) noexcept;
 
-Code2Header* code2_chunk_from_id(CoreData* core, Code2Id id) noexcept;
-
-
-
-Code2Offset offset_from_code2(const Code2Header* header, const Code2* data) noexcept;
-
-Code2* code2_from_offset(Code2Header* header, Code2Offset offset) noexcept;
-
-const Code2* code2_from_offset(const Code2Header* header, Code2Offset offset) noexcept;
+Code2Block* code2_block_from_id(CoreData* core, Code2Id id) noexcept;
 
 
 
-const Code2* code2_chunk_begin(const Code2Header* header) noexcept;
+Code2Offset offset_from_code2(const Code2Block* block, const Code2* data) noexcept;
 
-Code2* code2_chunk_begin(Code2Header* header) noexcept;
+Code2* code2_from_offset(Code2Block* block, Code2Offset offset) noexcept;
 
-Code2* code2_chunk_end(Code2Header* header) noexcept;
+const Code2* code2_from_offset(const Code2Block* block, Code2Offset offset) noexcept;
 
-const Code2* code2_chunk_end(const Code2Header* header) noexcept;
+
+
+Code2* code2_block_begin(Code2Block* block) noexcept;
+
+const Code2* code2_block_begin(const Code2Block* block) noexcept;
+
+Code2* code2_block_end(Code2Block* block) noexcept;
+
+const Code2* code2_block_end(const Code2Block* block) noexcept;
 
 
 

@@ -10,7 +10,7 @@ struct PrintResult
 	const Code2* next;
 };
 
-static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Header* base, const Code2* code) noexcept
+static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2Block* base, const Code2* code) noexcept
 {
 	const Code2Op op = code->op;
 
@@ -179,7 +179,7 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2He
 		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
-	case Code2Op::DefineLocal:
+	case Code2Op::DefineUntyped:
 	{
 		const Code2AttDefineLocal* const attach = attachment_of<Code2AttDefineLocal>(code);
 
@@ -206,7 +206,7 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2He
 	case Code2Op::LogicalNot:
 	case Code2Op::Negate:
 	case Code2Op::UnaryPlus:
-	case Code2Op::LoadLocation:
+	case Code2Op::DupAndLoadLocation:
 	{
 		const Code2AttUnaryOp* const attach = attachment_of<Code2AttUnaryOp>(code);
 
@@ -277,7 +277,7 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2He
 		return { total_written + written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
-	case Code2Op::SignatureBegin:
+	case Code2Op::Signature:
 	{
 		const Code2AttSignatureBegin* const attach = attachment_of<Code2AttSignatureBegin>(code);
 
@@ -682,7 +682,7 @@ static PrintResult print_one_code2(PrintSink sink, CoreData* core, const Code2He
 	case Code2Op::ShiftRight:
 	case Code2Op::TypeArray:
 	case Code2Op::Index:
-	case Code2Op::Set:
+	case Code2Op::Store:
 	{
 		const Code2AttBinaryOp* const attach = attachment_of<Code2AttBinaryOp>(code);
 
@@ -813,7 +813,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 		return { 0, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
-	case Code2Op::DefineLocal:
+	case Code2Op::DefineUntyped:
 	{
 		const Code2AttDefineLocal* const attach = attachment_of<Code2AttDefineLocal>(code);
 
@@ -830,7 +830,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 	case Code2Op::LogicalNot:
 	case Code2Op::Negate:
 	case Code2Op::UnaryPlus:
-	case Code2Op::LoadLocation:
+	case Code2Op::DupAndLoadLocation:
 	{
 		const Code2AttUnaryOp* const attach = attachment_of<Code2AttUnaryOp>(code);
 
@@ -861,7 +861,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 		total_written += written;
 
-		const Code2Header* const consequent = code2_chunk_from_id(core, attach->consequent);
+		const Code2Block* const consequent = code2_block_from_id(core, attach->consequent);
 
 		written = diag::print_code2(sink, core, consequent);
 
@@ -877,7 +877,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 		total_written += written;
 
-		const Code2Header* const alternative = code2_chunk_from_id(core, attach->alternative);
+		const Code2Block* const alternative = code2_block_from_id(core, attach->alternative);
 
 		written = diag::print_code2(sink, core, alternative);
 
@@ -900,7 +900,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 		total_written += written;
 
-		const Code2Header* const body = code2_chunk_from_id(core, attach->body);
+		const Code2Block* const body = code2_block_from_id(core, attach->body);
 
 		written = diag::print_code2(sink, core, body);
 
@@ -919,7 +919,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 		if (newline_written < 0)
 			return { -1, nullptr };
 
-		const Code2Header* const body = code2_chunk_from_id(core, attach->body);
+		const Code2Block* const body = code2_block_from_id(core, attach->body);
 
 		const s64 body_written = diag::print_code2(sink, core, body);
 
@@ -929,7 +929,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 		return { newline_written + body_written, reinterpret_cast<const Code2*>(attach + 1) };
 	}
 
-	case Code2Op::SignatureBegin:
+	case Code2Op::Signature:
 	{
 		const Code2AttSignatureBegin* const attach = attachment_of<Code2AttSignatureBegin>(code);
 
@@ -967,7 +967,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 			total_written += type_newline_written;
 
-			const Code2Header* const type = code2_chunk_from_id(core, members[i].type);
+			const Code2Block* const type = code2_block_from_id(core, members[i].type);
 
 			const s64 type_written = diag::print_code2(sink, core, type);
 
@@ -985,7 +985,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 				total_written += default_value_newline_written;
 
-				const Code2Header* const default_value = code2_chunk_from_id(core, get(members[i].default_value));
+				const Code2Block* const default_value = code2_block_from_id(core, get(members[i].default_value));
 
 				const s64 default_value_written = diag::print_code2(sink, core, default_value);
 
@@ -1016,7 +1016,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 				total_written += type_newline_written;
 
-				const Code2Header* const type = code2_chunk_from_id(core, get(attach->members[i].type));
+				const Code2Block* const type = code2_block_from_id(core, get(attach->members[i].type));
 
 				const s64 type_written = diag::print_code2(sink, core, type);
 
@@ -1033,7 +1033,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 			total_written += value_newline_written;
 
-			const Code2Header* const value = code2_chunk_from_id(core, attach->members[i].value);
+			const Code2Block* const value = code2_block_from_id(core, attach->members[i].value);
 
 			const s64 value_written = diag::print_code2(sink, core, value);
 
@@ -1062,7 +1062,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 
 			total_written += newline_written;
 
-			const Code2Header* const value = code2_chunk_from_id(core, attach->arguments[i].value);
+			const Code2Block* const value = code2_block_from_id(core, attach->arguments[i].value);
 
 			const s64 value_written = diag::print_code2(sink, core, value);
 
@@ -1175,7 +1175,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 	case Code2Op::ShiftRight:
 	case Code2Op::TypeArray:
 	case Code2Op::Index:
-	case Code2Op::Set:
+	case Code2Op::Store:
 	{
 		const Code2AttBinaryOp* const attach = attachment_of<Code2AttBinaryOp>(code);
 
@@ -1192,7 +1192,7 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 		if (newline_written < 0)
 			return { -1, nullptr };
 
-		const Code2Header* const rhs = code2_chunk_from_id(core, attach->rhs);
+		const Code2Block* const rhs = code2_block_from_id(core, attach->rhs);
 
 		const s64 rhs_written = diag::print_code2(sink, core, rhs);
 
@@ -1224,13 +1224,13 @@ static PrintResult print_one_code2_ref(PrintSink sink, CoreData* core, const Cod
 	ASSERT_UNREACHABLE;
 }
 
-s64 diag::print_code2(PrintSink sink, CoreData* core, const Code2Header* header) noexcept
+s64 diag::print_code2(PrintSink sink, CoreData* core, const Code2Block* header) noexcept
 {
-	const Code2* const begin = code2_chunk_begin(header);
+	const Code2* const begin = code2_block_begin(header);
 
-	const Code2* const end = code2_chunk_end(header);
+	const Code2* const end = code2_block_end(header);
 
-	const Code2Id id = id_from_code2_chunk(core, header);
+	const Code2Id id = id_from_code2_block(core, header);
 
 	s64 total_written = print(sink, " @%\n", static_cast<u32>(id));
 

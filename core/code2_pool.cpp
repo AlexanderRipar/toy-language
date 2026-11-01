@@ -76,13 +76,13 @@ struct Code2Fixup
 
 
 
-Code2Id id_from_code2_chunk(CoreData* core, const Code2Header* header) noexcept
+Code2Id id_from_code2_block(CoreData* core, const Code2Block* block) noexcept
 {
-	ASSERT_OR_IGNORE(header >= reinterpret_cast<Code2Header*>(core->code2.codes.begin()));
+	ASSERT_OR_IGNORE(header >= reinterpret_cast<Code2Block*>(core->code2.codes.begin()));
 
-	ASSERT_OR_IGNORE(header < reinterpret_cast<Code2Header*>(core->code2.codes.end()));
+	ASSERT_OR_IGNORE(header < reinterpret_cast<Code2Block*>(core->code2.codes.end()));
 
-	ASSERT_OR_IGNORE(header > reinterpret_cast<Code2Header*>(core));
+	ASSERT_OR_IGNORE(header > reinterpret_cast<Code2Block*>(core));
 
 	const u64 offset = reinterpret_cast<const u32*>(header) - reinterpret_cast<const u32*>(core);
 
@@ -91,62 +91,62 @@ Code2Id id_from_code2_chunk(CoreData* core, const Code2Header* header) noexcept
 	return static_cast<Code2Id>(offset);
 }
 
-Code2Header* code2_chunk_from_id(CoreData* core, Code2Id id) noexcept
+Code2Block* code2_block_from_id(CoreData* core, Code2Id id) noexcept
 {
 	ASSERT_OR_IGNORE(id != Code2Id::INVALID);
 
-	Code2Header* const header = reinterpret_cast<Code2Header*>(reinterpret_cast<u32*>(core) + static_cast<u32>(id));
+	Code2Block* const header = reinterpret_cast<Code2Block*>(reinterpret_cast<u32*>(core) + static_cast<u32>(id));
 
-	ASSERT_OR_IGNORE(header >= reinterpret_cast<Code2Header*>(core->code2.codes.begin()));
+	ASSERT_OR_IGNORE(header >= reinterpret_cast<Code2Block*>(core->code2.codes.begin()));
 
-	ASSERT_OR_IGNORE(header < reinterpret_cast<Code2Header*>(core->code2.codes.end()));
+	ASSERT_OR_IGNORE(header < reinterpret_cast<Code2Block*>(core->code2.codes.end()));
 
-	ASSERT_OR_IGNORE(header > reinterpret_cast<Code2Header*>(core));
+	ASSERT_OR_IGNORE(header > reinterpret_cast<Code2Block*>(core));
 
 	return header;
 }
 
 
 
-Code2Offset offset_from_code2(const Code2Header* header, const Code2* data) noexcept
+Code2Offset offset_from_code2(const Code2Block* block, const Code2* data) noexcept
 {
 	ASSERT_OR_IGNORE(reinterpret_cast<const u32*>(header) < reinterpret_cast<const u32*>(data));
 
 	return static_cast<Code2Offset>(reinterpret_cast<const u32*>(data) - reinterpret_cast<const u32*>(header));
 }
 
-Code2* code2_from_offset(Code2Header* header, Code2Offset offset) noexcept
+Code2* code2_from_offset(Code2Block* block, Code2Offset offset) noexcept
 {
 	ASSERT_OR_IGNORE(offset != Code2Offset::INVALID);
 
 	return reinterpret_cast<Code2*>(reinterpret_cast<u32*>(header) + static_cast<u32>(offset));
 }
 
-const Code2* code2_from_offset(const Code2Header* header, Code2Offset offset) noexcept
+const Code2* code2_from_offset(const Code2Block* block, Code2Offset offset) noexcept
 {
-	return code2_from_offset(const_cast<Code2Header*>(header), offset);
+	return code2_from_offset(const_cast<Code2Block*>(header), offset);
 }
 
 
 
-Code2* code2_chunk_begin(Code2Header* header) noexcept
+Code2* code2_block_begin(Code2Block* block) noexcept
 {
-	return reinterpret_cast<Code2*>(header + 1);
+	return reinterpret_cast<Code2*>(block + 1);
 }
 
-const Code2* code2_chunk_begin(const Code2Header* header) noexcept
+const Code2* code2_block_begin(const Code2Block* block) noexcept
 {
-	return code2_chunk_begin(const_cast<Code2Header*>(header));
+	return code2_block_begin(const_cast<Code2Block*>(block));
 }
 
-Code2* code2_chunk_end(Code2Header* header) noexcept
+Code2* code2_block_end(Code2Block* block) noexcept
 {
-	return reinterpret_cast<Code2*>(reinterpret_cast<u32*>(header) + header->size);
+	return reinterpret_cast<Code2*>(reinterpret_cast<u32*>(block) + header->size);
 }
 
-const Code2* code2_chunk_end(const Code2Header* header) noexcept
+const Code2* code2_block_end(const Code2Block* block) noexcept
 {
-	return code2_chunk_end(const_cast<Code2Header*>(header));
+	return code2_block_end(const_cast<Code2Block*>(block));
 }
 
 
@@ -177,32 +177,32 @@ static T* emit_code2(CoreData* core, T data) noexcept
 }
 
 template<typename T>
-static Code2Offset emit_code2_offset(CoreData* core, const Code2Header* header, T data) noexcept
+static Code2Offset emit_code2_offset(CoreData* core, const Code2Block* header, T data) noexcept
 {
 	void* const attach = emit_code2(core, data);
 
 	return static_cast<Code2Offset>(static_cast<const u32*>(attach) - reinterpret_cast<const u32*>(header));
 }
 
-static Code2Header* emit_header(CoreData* core) noexcept
+static Code2Block* emit_header(CoreData* core) noexcept
 {
-	return emit_code2(core, Code2Header{});
+	return emit_code2(core, Code2Block{});
 }
 
-static Code2Id complete_header_delayed_leave(CoreData* core, Code2Header* header) noexcept
+static Code2Id complete_header_delayed_leave(CoreData* core, Code2Block* header) noexcept
 {
 	header->size = static_cast<u32>(core->code2.codes.end() - reinterpret_cast<u32*>(header));
 	header->last_leave = Code2Offset::INVALID;
 
-	return id_from_code2_chunk(core, header);
+	return id_from_code2_block(core, header);
 }
 
-static Code2Id complete_header_with_leave(CoreData* core, Code2Header* header, Code2Offset last_leave) noexcept
+static Code2Id complete_header_with_leave(CoreData* core, Code2Block* header, Code2Offset last_leave) noexcept
 {
 	header->size = static_cast<u32>(core->code2.codes.end() - reinterpret_cast<u32*>(header));
 	header->last_leave = last_leave;
 
-	return id_from_code2_chunk(core, header);
+	return id_from_code2_block(core, header);
 }
 
 
@@ -275,9 +275,9 @@ static void fixup_impl_member_default_value(CoreData* core, Code2Id* dst, AstNod
 }
 
 
-static Code2Offset code2_from_expr(CoreData* core, AstNode* node, const Code2Header* header, Code2AttScopeBegin* scope, LocationMode location_mode) noexcept;
+static Code2Offset code2_from_expr(CoreData* core, AstNode* node, const Code2Block* header, Code2AttScopeBegin* scope, LocationMode location_mode) noexcept;
 
-static Code2AttScopeBegin* code2_from_where_prefix(CoreData* core, AstNode* node, const Code2Header* header) noexcept
+static Code2AttScopeBegin* code2_from_where_prefix(CoreData* core, AstNode* node, const Code2Block* header) noexcept
 {
 	const u16 definition_count = attachment_of<AstWhereData>(node)->definition_count;
 
@@ -323,12 +323,12 @@ static Code2AttScopeBegin* code2_from_where_prefix(CoreData* core, AstNode* node
 			value = untyped_value;
 		}
 
-		Code2AttDefineLocal define_attach_value{};
-		define_attach_value.header.define_local.op_ = Code2Op::DefineLocal;
-		define_attach_value.header.define_local.definition_index = definition_count;
-		define_attach_value.header.define_local.is_mut = is_mut;
-		define_attach_value.header.define_local.has_self_reference = has_self_reference;
-		define_attach_value.value = value;
+		Code2AttUnaryOp define_attach_value{};
+		define_attach_value.header.define.op_ = Code2Op::DefineUntyped;
+		define_attach_value.header.define.definition_index = definition_count;
+		define_attach_value.header.define.is_mut = is_mut;
+		define_attach_value.header.define.has_self_reference = has_self_reference;
+		define_attach_value.operand = value;
 
 		(void) emit_code2(core, define_attach_value);
 	}
@@ -344,7 +344,7 @@ static void code2_from_where_suffix(CoreData* core) noexcept
 	(void) emit_code2(core, attach_value);
 }
 
-static Code2Offset code2_from_signature(CoreData* core, AstNode* node, const Code2Header* header, Code2AttScopeBegin* scope) noexcept
+static Code2Offset code2_from_signature(CoreData* core, AstNode* node, const Code2Block* header, Code2AttScopeBegin* scope) noexcept
 {
 	const SignatureInfo info = get_signature_info(node);
 
@@ -353,7 +353,7 @@ static Code2Offset code2_from_signature(CoreData* core, AstNode* node, const Cod
 	const u8 parameter_count = attachment_of<AstSignatureData>(node)->parameter_count;
 
 	Code2AttSignatureBegin begin_attach_value{};
-	begin_attach_value.header.signature_begin.op_ = Code2Op::SignatureBegin;
+	begin_attach_value.header.signature_begin.op_ = Code2Op::Signature;
 	begin_attach_value.header.signature_begin.parameter_count = parameter_count;
 	begin_attach_value.header.signature_begin.is_proc = is_proc;
 
@@ -422,7 +422,7 @@ static Code2Offset code2_from_signature(CoreData* core, AstNode* node, const Cod
 	return emit_code2_offset(core, header, end_attach_value);
 }
 
-static Code2Offset code2_from_call_generic(CoreData* core, AstNode* node, const Code2Header* header, Code2AttScopeBegin* scope, Code2Op op) noexcept
+static Code2Offset code2_from_call_generic(CoreData* core, AstNode* node, const Code2Block* header, Code2AttScopeBegin* scope, Code2Op op) noexcept
 {
 	AstNode* const callee_node = first_child_of(node);
 
@@ -490,7 +490,7 @@ static bool is_location_ast_tag(AstTag tag) noexcept
 	return tag == AstTag::Identifier || tag == AstTag::UOpDeref || tag == AstTag::Member || tag == AstTag::OpArrayIndex;
 }
 
-static Code2Offset code2_from_expr_raw(CoreData* core, AstNode* node, const Code2Header* header, Code2AttScopeBegin* scope, LocationMode location_mode) noexcept
+static Code2Offset code2_from_expr_raw(CoreData* core, AstNode* node, const Code2Block* header, Code2AttScopeBegin* scope, LocationMode location_mode) noexcept
 {
 	const AstTag tag = node->tag;
 
@@ -706,12 +706,12 @@ static Code2Offset code2_from_expr_raw(CoreData* core, AstNode* node, const Code
 					value = untyped_value;
 				}
 
-				Code2AttDefineLocal define_attach_value{};
-				define_attach_value.header.define_local.op_ = Code2Op::DefineLocal;
-				define_attach_value.header.define_local.is_mut = is_mut;
-				define_attach_value.header.define_local.has_self_reference = has_self_reference;
-				define_attach_value.header.define_local.definition_index = definition_index;
-				define_attach_value.value = value;
+				Code2AttUnaryOp define_attach_value{};
+				define_attach_value.header.define.op_ = Code2Op::DefineUntyped;
+				define_attach_value.header.define.is_mut = is_mut;
+				define_attach_value.header.define.has_self_reference = has_self_reference;
+				define_attach_value.header.define.definition_index = definition_index;
+				define_attach_value.operand = value;
 
 				(void) emit_code2(core, define_attach_value);
 
@@ -1338,7 +1338,7 @@ static Code2Offset code2_from_expr_raw(CoreData* core, AstNode* node, const Code
 		if (tag == AstTag::UOpDeref && location_mode == LocationMode::Value)
 		{
 			Code2AttUnaryOp load_attach_value{};
-			load_attach_value.header.op = Code2Op::LoadLocation;
+			load_attach_value.header.op = Code2Op::DupAndLoadLocation;
 			load_attach_value.operand = result;
 
 			return emit_code2_offset(core, header, load_attach_value);
@@ -1396,7 +1396,7 @@ static Code2Offset code2_from_expr_raw(CoreData* core, AstNode* node, const Code
 		if (tag == AstTag::OpArrayIndex && location_mode == LocationMode::Value)
 		{
 			Code2AttUnaryOp load_attach_value{};
-			load_attach_value.header.op = Code2Op::LoadLocation;
+			load_attach_value.header.op = Code2Op::DupAndLoadLocation;
 			load_attach_value.operand = result;
 
 			return emit_code2_offset(core, header, load_attach_value);
@@ -1484,7 +1484,7 @@ static Code2Offset code2_from_expr_raw(CoreData* core, AstNode* node, const Code
 		const Code2Offset rhs = code2_from_expr(core, rhs_node, header, scope, LocationMode::Value);
 
 		Code2AttBinaryOp attach_value{};
-		attach_value.header.op = Code2Op::Set;
+		attach_value.header.op = Code2Op::Store;
 		attach_value.lhs = lhs;
 		attach_value.rhs = rhs;
 
@@ -1510,7 +1510,7 @@ static Code2Offset code2_from_expr_raw(CoreData* core, AstNode* node, const Code
 		const Code2Offset lhs_location = code2_from_expr(core, lhs_node, header, scope, LocationMode::AssignmentDst);
 
 		Code2AttUnaryOp lhs_attach_value{};
-		lhs_attach_value.header.op = Code2Op::LoadLocation;
+		lhs_attach_value.header.op = Code2Op::DupAndLoadLocation;
 		lhs_attach_value.operand = lhs_location;
 
 		const Code2Offset lhs = emit_code2_offset(core, header, lhs_attach_value);
@@ -1529,7 +1529,7 @@ static Code2Offset code2_from_expr_raw(CoreData* core, AstNode* node, const Code
 		const Code2Offset op_result = emit_code2_offset(core, header, op_attach_value);
 
 		Code2AttBinaryOp set_attach_value{};
-		set_attach_value.header.op = Code2Op::Set;
+		set_attach_value.header.op = Code2Op::Store;
 		set_attach_value.lhs = lhs;
 		set_attach_value.rhs = op_result;
 
@@ -1553,7 +1553,7 @@ static Code2Offset code2_from_expr_raw(CoreData* core, AstNode* node, const Code
 	ASSERT_UNREACHABLE;
 }
 
-static Code2Offset code2_from_expr(CoreData* core, AstNode* node, const Code2Header* header, Code2AttScopeBegin* scope, LocationMode location_mode) noexcept
+static Code2Offset code2_from_expr(CoreData* core, AstNode* node, const Code2Block* header, Code2AttScopeBegin* scope, LocationMode location_mode) noexcept
 {
 	const AstTag tag = node->tag;
 
@@ -1565,10 +1565,10 @@ static Code2Offset code2_from_expr(CoreData* core, AstNode* node, const Code2Hea
 	}
 	else if (location_mode == LocationMode::AddressSrc)
 	{
-		Code2AttMakeLocation location_attach_value{};
+		Code2AttUnaryOp location_attach_value{};
 		location_attach_value.header.make_location.op_ = Code2Op::MakeLocation;
 		location_attach_value.header.make_location.is_mut = false;
-		location_attach_value.value = result;
+		location_attach_value.operand = result;
 
 		return emit_code2_offset(core, header, location_attach_value);
 	}
@@ -1584,7 +1584,7 @@ static Code2Offset code2_from_expr(CoreData* core, AstNode* node, const Code2Hea
 
 
 
-static void code2_from_fixup(CoreData* core, Code2Fixup fixup, Code2Header* header) noexcept
+static void code2_from_fixup(CoreData* core, Code2Fixup fixup, Code2Block* header) noexcept
 {
 	switch (fixup.tag)
 	{
@@ -1764,7 +1764,7 @@ static void code2_from_fixups(CoreData* core) noexcept
 		const Code2Fixup fixup = core->code2.fixups.end()[-1];
 		core->code2.fixups.pop_by(1);
 
-		Code2Header* const header = emit_header(core);
+		Code2Block* const header = emit_header(core);
 
 		code2_from_fixup(core, fixup, header);
 	}
@@ -1808,7 +1808,7 @@ Code2Id code2_from_top_level_definition(CoreData* core, AstNode* node) noexcept
 
 	ASSERT_OR_IGNORE(is_some(info.value));
 
-	Code2Header* const header = emit_header(core);
+	Code2Block* const header = emit_header(core);
 
 	
 	const Code2Offset type = is_some(info.type)
@@ -1868,13 +1868,13 @@ const char8* tag_name(Code2Op op) noexcept
 		"Definition",
 		"MakeLocation",
 		"WithType",
-		"DefineLocal",
+		"DefineUntyped",
 		"ConsumeVoid",
 		"Void",
 		"If",
 		"Loop",
 		"Func",
-		"SignatureBegin",
+		"Signature",
 		"SignatureEnd",
 		"Parameter",
 		"Trait",
@@ -1931,7 +1931,7 @@ const char8* tag_name(Code2Op op) noexcept
 		"MemberValue",
 		"MemberLocation",
 		"Compare",
-		"Set",
+		"Store",
 		"LoadLocation",
 	};
 

@@ -108,7 +108,7 @@ struct alignas(8) CompositeSignatureExtraData
 	{
 		TypeId type_id;
 
-		OpcodeId completion_id;
+		Code2Id completion_id;
 	} return_type;
 
 	Maybe<ClosureId> closure_id;
@@ -137,14 +137,7 @@ struct alignas(8) CompositeUserExtraData
 
 struct alignas(8) CompositeMember
 {
-	TypeId type_id;
-
-	union
-	{
-		Maybe<CoreId> value_or_default;
-
-		OpcodeId completion_id;
-	};
+	TypeAndValue type_and_value;
 
 	bool is_pending : 1;
 
@@ -157,10 +150,6 @@ struct alignas(8) CompositeMember
 	bool is_initializing : 1;
 
 	bool is_impl_member_from_trait_default : 1;
-
-	u16 shadow_rank;
-
-	Maybe<ShadowLayoutId> shadow_id;
 };
 
 struct alignas(8) CompositeType
@@ -430,44 +419,22 @@ static bool find_member_by_name(CompositeInfo info, IdentifierId name, u16* out_
 	return false;
 }
 
-static bool fill_member_info(CompositeInfo info, u16 rank, MemberInfo* out_info, OpcodeId* out_completion_id) noexcept
+static bool fill_member_info(CompositeInfo info, u16 rank, MemberInfo* out_info) noexcept
 {
 	ASSERT_OR_IGNORE(rank < info.member_count);
 
 	const CompositeMember type = info.member_types[rank];
 
-	if (type.is_pending)
-	{
-		*out_completion_id = type.completion_id;
+	out_info->type_and_value = type.type_and_value;
+	out_info->is_pub = type.is_pub;
+	out_info->is_mut = type.is_mut;
+	out_info->is_eval = type.is_eval;
+	out_info->is_global = info.kind != CompositeKind::User && info.kind != CompositeKind::Signature;
+	out_info->is_impl_member_from_trait_default = type.is_impl_member_from_trait_default;
+	out_info->rank = rank;
+	out_info->offset = !type.is_pending && is_some(info.member_offsets) ? get(info.member_offsets)[rank] : 0;
 
-		out_info->type_id = TypeId::INVALID;
-		out_info->value_or_default = none<CoreId>();
-		out_info->rank = rank;
-		out_info->is_pub = type.is_pub;
-		out_info->is_mut = type.is_mut;
-		out_info->is_eval = type.is_eval;
-		out_info->is_global = info.kind != CompositeKind::User && info.kind != CompositeKind::Signature;
-		out_info->is_impl_member_from_trait_default = type.is_impl_member_from_trait_default;
-
-		return false;
-	}
-	else
-	{
-		*out_completion_id = OpcodeId::INVALID;
-
-		out_info->type_id = type.type_id;
-		out_info->value_or_default = type.value_or_default;
-		out_info->is_pub = type.is_pub;
-		out_info->is_mut = type.is_mut;
-		out_info->is_eval = type.is_eval;
-		out_info->is_global = info.kind != CompositeKind::User && info.kind != CompositeKind::Signature;
-		out_info->rank = rank;
-		out_info->shadow_rank = type.shadow_rank;
-		out_info->shadow_id = type.shadow_id;
-		out_info->offset = is_some(info.member_offsets) ? get(info.member_offsets)[rank] : 0;
-
-		return true;
-	}
+	return !type.is_pending;
 }
 
 
@@ -570,6 +537,7 @@ static u32 structure_size(TypeStructure* structure) noexcept
 	case TypeTag::TypeInfo:
 	case TypeTag::TypeBuilder:
 	case TypeTag::Divergent:
+	case TypeTag::Undefined:
 	{
 		return sizeof(TypeStructure);
 	}
@@ -631,7 +599,6 @@ static u32 structure_size(TypeStructure* structure) noexcept
 		TODO("Implement `structure_size(%)`.", tag_name(structure->tag));
 
 	case TypeTag::INVALID:
-	case TypeTag::Arrayish:
 		; // Fallthrough to unreachable.
 	}
 
@@ -820,86 +787,6 @@ static void seen_set_pop(SeenSet* set) noexcept
 
 
 
-static void init_user_composite_shadow_data(CoreData* core, CompositeType* composite) noexcept
-{
-	struct OffsetComparator
-	{
-		static s64 compare(const ShadowLayoutMemberInitializer& a, const ShadowLayoutMemberInitializer& b) noexcept
-		{
-			if (a.offset_in_type < b.offset_in_type)
-				return -1;
-			else if (a.offset_in_type > b.offset_in_type)
-				return 1;
-			else if (a.rank_in_type < b.rank_in_type)
-				return -1;
-			else if (a.rank_in_type > b.rank_in_type)
-				return 1;
-			else
-				return 0;
-		}
-	};
-
-	const CompositeInfo info = composite_info(composite);
-
-	ASSERT_OR_IGNORE(info.kind == CompositeKind::User);
-
-	const u64 mark = temp_stack_mark(core);
-
-	ShadowLayoutMemberInitializer* const by_offset = static_cast<ShadowLayoutMemberInitializer*>(temp_stack_alloc(core, info.member_count * sizeof(ShadowLayoutMemberInitializer), alignof(ShadowLayoutMemberInitializer)));
-
-	u16 shadow_member_count = 0;
-
-	for (u16 i = 0; i != info.member_count; ++i)
-	{
-		TypeMetrics metrics;
-		
-		// Since we are only being called because the user composite has just
-		// been successfully hashed, all of its members must themselves also be
-		// complete already, making `type_metrics_from_id` safe to call.
-		if (!type_metrics_from_id(core, info.member_types[i].type_id, &metrics))
-			ASSERT_UNREACHABLE;
-
-		if (!metrics.is_shadow)
-			continue;
-
-		by_offset[shadow_member_count].offset_in_type = get(info.member_offsets)[i];
-		by_offset[shadow_member_count].type_id = info.member_types[i].type_id;
-		by_offset[shadow_member_count].rank_in_type = i;
-
-		shadow_member_count += 1;
-	}
-
-	inplace_sort<ShadowLayoutMemberInitializer, OffsetComparator>(MutRange{ by_offset, shadow_member_count });
-
-	u16 i = 0;
-
-	while (i != shadow_member_count)
-	{
-		const s64 offset = by_offset[i].offset_in_type;
-
-		const u16 begin = i;
-
-		i += 1;
-
-		while (i != shadow_member_count && by_offset[i].offset_in_type == offset)
-			i += 1;
-
-		const u16 end = i;
-
-		const ShadowLayoutId shadow_id = shadow_create_layout(core, Range{ by_offset + begin, by_offset + end });
-
-		for (u16 j = 0; j != end - begin; ++j)
-		{
-			const u16 rank = by_offset[begin + j].rank_in_type;
-
-			info.member_types[rank].shadow_id = some(shadow_id);
-			info.member_types[rank].shadow_rank = j;
-		}
-	}
-
-	temp_stack_release(core, mark);
-}
-
 
 
 static u32 hash_type_id(CoreData* core, u32 hash, SeenSet* seen, TypeId type) noexcept;
@@ -993,7 +880,7 @@ static u32 hash_composite_type(CoreData* core, u32 hash, SeenSet* seen, const Co
 
 		hash = fnv1a_step(hash, flags) | 1;
 
-		hash = hash_type_id(core, hash, seen, member_type.type_id);
+		hash = hash_type_id(core, hash, seen, member_type.type_and_value.complete.type);
 
 		if (hash == 0)
 			return 0;
@@ -1020,7 +907,7 @@ static u32 hash_self_type(CoreData* core, u32 hash, SeenSet* seen, const SelfTyp
 	if (hash == 0)
 		return 0;
 
-	return fnv1a_step(hash, range::from_object_bytes(&attach->trait_body_opcode_id)) | 1;
+	return fnv1a_step(hash, range::from_object_bytes(&attach->trait_body)) | 1;
 }
 
 static u32 hash_numeric_type([[maybe_unused]] CoreData* core, u32 hash, const NumericType* attach) noexcept
@@ -1065,6 +952,7 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 	case TypeTag::TypeInfo:
 	case TypeTag::TypeBuilder:
 	case TypeTag::Divergent:
+	case TypeTag::Undefined:
 		return hash;
 
 	case TypeTag::Integer:
@@ -1074,7 +962,6 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 	case TypeTag::Slice:
 	case TypeTag::Ptr:
 	case TypeTag::TailArray:
-	case TypeTag::Arrayish:
 		return hash_reference_type(core, hash, seen, reinterpret_cast<const ReferenceType*>(structure->attach));
 
 	case TypeTag::Array:
@@ -1150,9 +1037,6 @@ static bool init_structure_hash(CoreData* core, TypeStructure* structure) noexce
 
 	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
 
-	if (composite->kind == CompositeKind::User)
-		init_user_composite_shadow_data(core, composite);
-
 	return true;
 }
 
@@ -1197,6 +1081,11 @@ static TypeRelation type_can_implicitly_convert_from_to_assume_unequal(CoreData*
 	case TypeTag::Trait:
 	{
 		return TypeRelation::Unrelated;
+	}
+
+	case TypeTag::Undefined:
+	{
+		return TypeRelation::FirstConvertsToSecond;
 	}
 
 	case TypeTag::CompInteger:
@@ -1266,7 +1155,6 @@ static TypeRelation type_can_implicitly_convert_from_to_assume_unequal(CoreData*
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
-	case TypeTag::Arrayish:
 		break; // Fallthrough to unreachable.
 	}
 
@@ -1366,6 +1254,7 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 	case TypeTag::TypeInfo:
 	case TypeTag::TypeBuilder:
 	case TypeTag::Divergent:
+	case TypeTag::Undefined:
 	{
 		seen_set_pop(a_seen);
 
@@ -1447,11 +1336,11 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 
 			if (a_signature->has_templated_return_type)
 			{
-				const Opcode* const a_return_type_completion = opcode_from_id(core, a_signature->return_type.completion_id);
+				const Code2Block* const a_return_type_completion = code2_block_from_id(core, a_signature->return_type.completion_id);
 
-				const Opcode* const b_return_type_completion = opcode_from_id(core, b_signature->return_type.completion_id);
+				const Code2Block* const b_return_type_completion = code2_block_from_id(core, b_signature->return_type.completion_id);
 
-				if (!return_type_opcodes_equal(core, a_return_type_completion, b_return_type_completion))
+				if (!return_type_templates_equal(core, a_return_type_completion, b_return_type_completion))
 				{
 					seen_set_pop(a_seen);
 
@@ -1532,7 +1421,7 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 				return TypeEquality::Unequal;
 			}
 
-			if (a_member.value_or_default != b_member.value_or_default)
+			if (a_member.type_and_value.complete.value != b_member.type_and_value.complete.value)
 			{
 				seen_set_pop(a_seen);
 
@@ -1541,11 +1430,11 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 				return TypeEquality::Unequal;
 			}
 
-			ASSERT_OR_IGNORE((a_member.type_id == TypeId::INVALID) == (b_member.type_id == TypeId::INVALID));
+			ASSERT_OR_IGNORE((a_member.type_and_value.complete.type == TypeId::INVALID) == (b_member.type_and_value.complete.type == TypeId::INVALID));
 
-			if (a_member.type_id != TypeId::INVALID && b_member.type_id != TypeId::INVALID)
+			if (a_member.type_and_value.complete.type != TypeId::INVALID && b_member.type_and_value.complete.type != TypeId::INVALID)
 			{
-				const TypeEquality member_equality = type_is_equal_noloop(core, a_member.type_id, b_member.type_id, a_seen, b_seen);
+				const TypeEquality member_equality = type_is_equal_noloop(core, a_member.type_and_value.complete.type, b_member.type_and_value.complete.type, a_seen, b_seen);
 
 				if (member_equality != TypeEquality::Equal)
 				{
@@ -1582,7 +1471,6 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 	case TypeTag::TailArray:
 	case TypeTag::Slice:
 	case TypeTag::Ptr:
-	case TypeTag::Arrayish:
 	{
 		const ReferenceType* const a_attach = reinterpret_cast<ReferenceType*>(a->attach);
 
@@ -1644,7 +1532,7 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 
 		if (a_attach->argument_count != b_attach->argument_count
 		 || a_attach->definition_source_id != b_attach->definition_source_id
-		 || a_attach->trait_body_opcode_id != b_attach->trait_body_opcode_id
+		 || a_attach->trait_body != b_attach->trait_body
 		) {
 			seen_set_pop(a_seen);
 
@@ -1827,7 +1715,7 @@ TypeId type_create_numeric(CoreData* core, TypeTag tag, NumericType attach) noex
 
 TypeId type_create_reference(CoreData* core, TypeTag tag, ReferenceType attach) noexcept
 {
-	ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray || tag == TypeTag::Arrayish);
+	ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray);
 
 	return holotype_id_from_attachment(core, tag, range::from_object_bytes(&attach));
 }
@@ -1898,6 +1786,7 @@ void type_add_signature_parameter(CoreData* core, TypeId type_id, SignatureParam
 
 	info.member_names[info.member_count] = init.name;
 
+	info.member_types[info.member_count].type_and_value = init.type_and_value;
 	info.member_types[info.member_count].is_pending = init.is_templated;
 	info.member_types[info.member_count].is_initializing = false;
 	info.member_types[info.member_count].is_pub = false;
@@ -1906,17 +1795,9 @@ void type_add_signature_parameter(CoreData* core, TypeId type_id, SignatureParam
 
 	if (init.is_templated)
 	{
-		info.member_types[info.member_count].type_id = TypeId::INVALID;
-		info.member_types[info.member_count].completion_id = init.templated.completion_id;
-
 		CompositeSignatureExtraData* const signature = reinterpret_cast<CompositeSignatureExtraData*>(composite + 1);
 
 		signature->templated_parameter_count += 1;
-	}
-	else
-	{
-		info.member_types[info.member_count].type_id = init.complete.type_id;
-		info.member_types[info.member_count].value_or_default = init.complete.default_value;
 	}
 
 	composite->member_used += 1;
@@ -1935,7 +1816,7 @@ TypeId type_seal_signature(CoreData* core, TypeId type_id, SignatureSealInfo sea
 	if (seal_info.has_templated_return_type)
 	{
 		signature->has_templated_return_type = true;
-		signature->return_type.completion_id = seal_info.return_type.templated.completion_id;
+		signature->return_type.completion_id = seal_info.return_type.templated.initializer;
 	}
 	else
 	{
@@ -1979,7 +1860,7 @@ TypeId type_instantiate_templated_signature(CoreData* core, TypeId type_id) noex
 	return id_from_structure(core, copied_structure);
 }
 
-void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, Maybe<CoreId> default_value) noexcept
+void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id, u16 rank, CompleteTypeAndValue type_and_value) noexcept
 {
 	TypeStructure* const structure = structure_from_id_direct(core, type_id);
 
@@ -1993,15 +1874,19 @@ void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id,
 
 	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
 
-	info.member_types[rank].type_id = member_type_id;
 	info.member_types[rank].is_pending = false;
-	info.member_types[rank].value_or_default = default_value;
+	info.member_types[rank].type_and_value.complete = type_and_value;
 
 	CompositeSignatureExtraData* const signature = reinterpret_cast<CompositeSignatureExtraData*>(composite + 1);
 
 	ASSERT_OR_IGNORE(signature->templated_parameter_count != 0);
 
 	signature->templated_parameter_count -= 1;
+}
+
+void type_complete_templated_signature_return_type(CoreData* core, TypeId type_id, TypeId return_type_id) noexcept
+{
+	TODO("Implement.");
 }
 
 
@@ -2033,13 +1918,13 @@ TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names) no
 	{
 		info.member_names[i] = parameter_names[i];
 
-		info.member_types[i].type_id = type_type_id;
+		info.member_types[i].type_and_value.complete.type = type_type_id;
+		info.member_types[i].type_and_value.complete.value = none<CoreId>();
 		info.member_types[i].is_pending = false;
 		info.member_types[i].is_initializing = false;
 		info.member_types[i].is_pub = false;
 		info.member_types[i].is_mut = false;
 		info.member_types[i].is_eval = true;
-		info.member_types[i].value_or_default = none<CoreId>();
 	}
 
 	if (!init_structure_hash(core, structure))
@@ -2050,7 +1935,7 @@ TypeId type_create_trait(CoreData* core, Range<IdentifierId> parameter_names) no
 
 
 
-TypeId type_create_self(CoreData* core, TypeId base_type_id, TypeId trait_type_id, u8 trait_argument_count, OpcodeId trait_body_opcode_id, SourceId definition_source_id, Maybe<ClosureId> impl_closure_id, Maybe<ClosureId> trait_closure_id) noexcept
+TypeId type_create_self(CoreData* core, TypeId base_type_id, TypeId trait_type_id, u8 trait_argument_count, Code2Id trait_body, SourceId definition_source_id, Maybe<ClosureId> impl_closure_id, Maybe<ClosureId> trait_closure_id) noexcept
 {
 	byte attach_buffer[sizeof(SelfType)];
 
@@ -2059,7 +1944,7 @@ TypeId type_create_self(CoreData* core, TypeId base_type_id, TypeId trait_type_i
 	attach->trait_type_id = trait_type_id;
 	attach->body_type_id = none<TypeId>();
 	attach->definition_source_id = definition_source_id;
-	attach->trait_body_opcode_id = trait_body_opcode_id;
+	attach->trait_body = trait_body;
 	attach->impl_closure_id = impl_closure_id;
 	attach->trait_closure_id = trait_closure_id;
 	attach->argument_count = trait_argument_count;
@@ -2132,35 +2017,15 @@ void type_add_impl_body_member(CoreData* core, TypeId type_id, ImplMemberInit in
 
 	info.member_names[rank] = init.name;
 
-	info.member_types[rank].type_id = static_cast<TypeId>(init.type_completion_id);
+	info.member_types[rank].type_and_value.pending = init.initializer;
 	info.member_types[rank].is_pending = true;
 	info.member_types[rank].is_initializing = false;
 	info.member_types[rank].is_pub = true;
 	info.member_types[rank].is_mut = init.is_mut;
 	info.member_types[rank].is_eval = false;
 	info.member_types[rank].is_impl_member_from_trait_default = init.is_from_trait_default;
-	info.member_types[rank].completion_id = init.value_completion_id;
 
 	composite->member_used += 1;
-}
-
-OpcodeId type_impl_body_member_type_initializer(CoreData* core, TypeId type_id, u16 rank) noexcept
-{
-	TypeStructure* const structure = structure_from_id_direct(core, type_id);
-
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
-
-	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
-
-	ASSERT_OR_IGNORE(rank < composite->member_used);
-
-	ASSERT_OR_IGNORE(composite->kind == CompositeKind::Impl);
-
-	CompositeInfo info = composite_info(composite);
-
-	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
-
-	return static_cast<OpcodeId>(info.member_types[rank].type_id);
 }
 
 void type_seal_impl_body(CoreData* core, TypeId type_id) noexcept
@@ -2240,16 +2105,13 @@ bool type_add_user_composite_member(CoreData* core, TypeId type_id, UserComposit
 
 	info.member_names[info.member_count] = init.name;
 
-	info.member_types[info.member_count].type_id = init.type_id;
+	info.member_types[info.member_count].type_and_value.complete = init.type_and_value;
 	info.member_types[info.member_count].is_pending = false;
 	info.member_types[info.member_count].is_pub = init.is_pub;
 	info.member_types[info.member_count].is_mut = init.is_mut;
 	info.member_types[info.member_count].is_eval = false;
 	info.member_types[info.member_count].is_initializing = false;
 	info.member_types[info.member_count].is_impl_member_from_trait_default = false;
-	info.member_types[info.member_count].value_or_default = init.default_value;
-	info.member_types[info.member_count].shadow_id = none<ShadowLayoutId>();
-	info.member_types[info.member_count].shadow_rank = 0;
 
 	get(info.member_offsets)[info.member_count] = init.offset;
 
@@ -2314,24 +2176,24 @@ void type_add_file_composite_member(CoreData* core, TypeId type_id, FileComposit
 
 	ASSERT_OR_IGNORE(composite->member_used < composite->member_capacity);
 
-	CompositeInfo info = composite_info(composite);
+	const CompositeInfo info = composite_info(composite);
 
 	info.member_names[info.member_count] = init.name;
 
-	info.member_types[info.member_count].type_id = TypeId::INVALID;
+	info.member_types[info.member_count].type_and_value.pending.type = none<Code2Id>();
+	info.member_types[info.member_count].type_and_value.pending.value = some(init.initializer);
 	info.member_types[info.member_count].is_pending = true;
 	info.member_types[info.member_count].is_initializing = false;
 	info.member_types[info.member_count].is_pub = init.is_pub;
 	info.member_types[info.member_count].is_mut = init.is_mut;
 	info.member_types[info.member_count].is_eval = false;
-	info.member_types[info.member_count].completion_id = init.completion_id;
 
 	composite->member_used += 1;
 }
 
 
 
-bool type_member_begin_initialization_by_rank(CoreData* core, TypeId type_id, u16 rank) noexcept
+bool type_file_member_init_begin(CoreData* core, TypeId type_id, u16 rank) noexcept
 {
 	TypeStructure* const structure = structure_from_id_direct(core, type_id);
 
@@ -2355,36 +2217,7 @@ bool type_member_begin_initialization_by_rank(CoreData* core, TypeId type_id, u1
 	return true;
 }
 
-bool type_member_begin_initialization_by_name(CoreData* core, TypeId type_id, IdentifierId name, u16* out_rank) noexcept
-{
-	TypeStructure* const structure = structure_from_id_direct(core, type_id);
-
-	ASSERT_OR_IGNORE(structure->tag == TypeTag::Composite);
-
-	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
-
-	ASSERT_OR_IGNORE(composite->kind == CompositeKind::File || composite->kind == CompositeKind::Impl);
-
-	CompositeInfo info = composite_info(composite);
-
-	u16 rank;
-
-	if (!find_member_by_name(info, name, &rank))
-		ASSERT_UNREACHABLE;
-
-	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
-
-	if (info.member_types[rank].is_initializing)
-		return false;
-
-	info.member_types[rank].is_initializing = true;
-
-	*out_rank = rank;
-
-	return true;
-}
-
-void type_member_complete(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, CoreId value_id, bool end_initialization) noexcept
+void type_file_member_init_set_type(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id) noexcept
 {
 	TypeStructure* const structure = structure_from_id_direct(core, type_id);
 
@@ -2396,19 +2229,18 @@ void type_member_complete(CoreData* core, TypeId type_id, u16 rank, TypeId membe
 
 	ASSERT_OR_IGNORE(rank < composite->member_used);
 
-	CompositeInfo info = composite_info(composite);
+	const CompositeInfo info = composite_info(composite);
 
 	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
 
 	ASSERT_OR_IGNORE(info.member_types[rank].is_initializing);
 
-	info.member_types[rank].type_id = member_type_id;
-	info.member_types[rank].is_pending = !end_initialization;
-	info.member_types[rank].is_initializing = !end_initialization;
-	info.member_types[rank].value_or_default = some(value_id);
+	ASSERT_OR_IGNORE(info.member_types[rank].type_and_value.complete.type == TypeId::INVALID);
+
+	info.member_types[rank].type_and_value.complete.type = member_type_id;
 }
 
-void type_member_end_initialization(CoreData* core, TypeId type_id, u16 rank) noexcept
+void type_file_member_init_complete(CoreData* core, TypeId type_id, u16 rank, TypeId member_type_id, CoreId value_id) noexcept
 {
 	TypeStructure* const structure = structure_from_id_direct(core, type_id);
 
@@ -2420,11 +2252,16 @@ void type_member_end_initialization(CoreData* core, TypeId type_id, u16 rank) no
 
 	ASSERT_OR_IGNORE(rank < composite->member_used);
 
-	CompositeInfo info = composite_info(composite);
+	const CompositeInfo info = composite_info(composite);
 
-	// Note that `is_initializing` and `is_pending` may already be `false` from
-	// a previous call to `type_member_relax_initialization`.
+	ASSERT_OR_IGNORE(info.member_types[rank].is_pending);
 
+	ASSERT_OR_IGNORE(info.member_types[rank].is_initializing);
+
+	ASSERT_OR_IGNORE(info.member_types[rank].type_and_value.complete.type == TypeId::INVALID || info.member_types[rank].type_and_value.complete.type == member_type_id);
+
+	info.member_types[rank].type_and_value.complete.type = member_type_id;
+	info.member_types[rank].type_and_value.complete.value = some(value_id);
 	info.member_types[rank].is_pending = false;
 	info.member_types[rank].is_initializing = false;
 }
@@ -2538,7 +2375,7 @@ bool type_composite_is_impl_body(CoreData* core, TypeId type_id) noexcept
 	return composite->kind == CompositeKind::Impl;
 }
 
-bool type_implements_trait(CoreData* core, TypeId type_id, OpcodeId trait_body_opcode_id, Range<TypeId> argument_types) noexcept
+bool type_implements_trait(CoreData* core, TypeId type_id, Code2Id trait_body, Range<TypeId> argument_types) noexcept
 {
 	const Maybe<TypeStructure*> opt_structure = structure_from_id_follow(core, type_id);
 
@@ -2557,7 +2394,7 @@ bool type_implements_trait(CoreData* core, TypeId type_id, OpcodeId trait_body_o
 	if (!attach->has_arguments)
 		return false;
 
-	if (attach->trait_body_opcode_id != trait_body_opcode_id)
+	if (attach->trait_body != trait_body)
 		return false;
 
 	for (u8 i = 0; i != attach->argument_count; ++i)
@@ -2645,6 +2482,7 @@ bool type_metrics_from_id(CoreData* core, TypeId type_id, TypeMetrics* out) noex
 	{
 	case TypeTag::Void:
 	case TypeTag::Divergent:
+	case TypeTag::Undefined:
 	{
 		*out = TypeMetrics{ 0, 0, 1, false };
 
@@ -2778,7 +2616,6 @@ bool type_metrics_from_id(CoreData* core, TypeId type_id, TypeMetrics* out) noex
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
-	case TypeTag::Arrayish:
 		break; // Fallthrough to unreachable.
 	}
 
@@ -2797,7 +2634,7 @@ TypeTag type_tag_from_id(CoreData* core, TypeId type_id) noexcept
 	return get(structure)->tag;
 }
 
-bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberInfo* out_info, OpcodeId* out_completion_id) noexcept
+bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberInfo* out) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
@@ -2815,10 +2652,10 @@ bool type_member_info_by_rank(CoreData* core, TypeId type_id, u16 rank, MemberIn
 
 	CompositeInfo info = composite_info(composite);
 
-	return fill_member_info(info, rank, out_info, out_completion_id);
+	return fill_member_info(info, rank, out);
 }
 
-MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, IdentifierId name, MemberInfo* out_info, OpcodeId* out_completion_id) noexcept
+MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, IdentifierId name, MemberInfo* out) noexcept
 {
 	ASSERT_OR_IGNORE(type_id != TypeId::INVALID);
 
@@ -2839,7 +2676,7 @@ MemberByNameRst type_member_info_by_name(CoreData* core, TypeId type_id, Identif
 	if (!find_member_by_name(info, name, &rank))
 		return MemberByNameRst::NotFound;
 
-	return fill_member_info(info, rank, out_info, out_completion_id)
+	return fill_member_info(info, rank, out)
 		? MemberByNameRst::Ok
 		: MemberByNameRst::Incomplete;
 }
@@ -2885,6 +2722,7 @@ const char8* tag_name(TypeTag tag) noexcept
 		"Boolean",
 		"TypeInfo",
 		"TypeBuilder",
+		"Undefined",
 		"Divergent",
 		"Integer",
 		"Float",
@@ -2951,7 +2789,7 @@ MemberIterator members_of(CoreData* core, TypeId type_id) noexcept
 	return it;
 }
 
-bool next(MemberIterator* it, MemberInfo* out_info, OpcodeId* out_completion_id) noexcept
+bool next(MemberIterator* it, MemberInfo* out) noexcept
 {
 	ASSERT_OR_IGNORE(has_next(it));
 
@@ -2966,7 +2804,7 @@ bool next(MemberIterator* it, MemberInfo* out_info, OpcodeId* out_completion_id)
 	info.member_types = const_cast<CompositeMember*>(static_cast<const CompositeMember*>(it->types));
 	info.member_offsets = is_some(it->offsets) ? some(const_cast<s64*>(get(it->offsets))) : none<s64*>();
 
-	return fill_member_info(info, rank, out_info, out_completion_id);
+	return fill_member_info(info, rank, out);
 }
 
 bool has_next(const MemberIterator* it) noexcept

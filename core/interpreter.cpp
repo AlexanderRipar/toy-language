@@ -531,7 +531,7 @@ static void prepare_circular_definition_type_indirection_global(CoreData* core, 
 
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	type_member_complete(core, file_type, rank, type_type, core_id_from_address(core, get(allocation)), true);
+	type_file_member_init_complete(core, file_type, rank, type_type, core_id_from_address(core, get(allocation)), true);
 }
 
 static Maybe<ClosureId> create_closure(CoreData* core, u32 value_count) noexcept
@@ -630,7 +630,7 @@ static CompValue member_value_by_rank(CoreData* core, CompValue composite, u16 r
 {
 	MemberInfo info;
 
-	OpcodeId unused_initializer;
+	Code2Id unused_initializer;
 	
 	if (!type_member_info_by_rank(core, composite.type, rank, &info, &unused_initializer))
 		ASSERT_UNREACHABLE;
@@ -2142,7 +2142,7 @@ static const Opcode* handle_file_member_alloc_prepare(CoreData* core, const Opco
 
 	const TypeId file_type = source_file->type;
 
-	if (!type_member_begin_initialization_by_rank(core, file_type, rank))
+	if (!type_file_member_init_begin(core, file_type, rank))
 		return record_interpreter_error(core, code, CompileError::CircularGlobalInitialization);
 
 	GlobalInitialization* const init = core->interp.global_initializations.reserve();
@@ -2209,7 +2209,7 @@ static const Opcode* handle_file_member_alloc_typed(CoreData* core, const Opcode
 
 	const CoreId value_id = core_id_from_address(core, get(allocation));
 
-	type_member_complete(core, init.type, init.rank, member_type, value_id, false);
+	type_file_member_init_complete(core, init.type, init.rank, member_type, value_id, false);
 
 	core->interp.values.pop_by(1);
 
@@ -2250,7 +2250,7 @@ static const Opcode* handle_file_member_alloc_untyped(CoreData* core, const Opco
 
 	const CoreId value_id = core_id_from_address(core, static_cast<byte*>(get(allocation)));
 
-	type_member_complete(core, init.type, init.rank, top->type, value_id, true);
+	type_file_member_init_complete(core, init.type, init.rank, top->type, value_id, true);
 
 	core->interp.values.pop_by(1);
 
@@ -5591,8 +5591,8 @@ static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CompVa
 
 			ImplMemberInit member{};
 			member.name = trait_member_name;
-			member.type_completion_id = type_init;
-			member.value_completion_id = get(default_init);
+			member.type_initializer = type_init;
+			member.value_initializer = get(default_init);
 			member.is_mut = is_mut;
 			member.is_from_trait_default = true;
 
@@ -5626,8 +5626,8 @@ static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CompVa
 
 		ImplMemberInit member{};
 		member.name = trait_member_name;
-		member.type_completion_id = type_init;
-		member.value_completion_id = value_init;
+		member.type_initializer = type_init;
+		member.value_initializer = value_init;
 		member.is_mut = impl_is_mut;
 		member.is_from_trait_default = false;
 
@@ -5657,8 +5657,8 @@ static const Opcode* handle_impl_body(CoreData* core, const Opcode* code, CompVa
 
 		ImplMemberInit member{};
 		member.name = member_name;
-		member.type_completion_id = type_init;
-		member.value_completion_id = get(default_init);
+		member.type_initializer = type_init;
+		member.value_initializer = get(default_init);
 		member.is_mut = is_mut;
 		member.is_from_trait_default = true;
 
@@ -6229,7 +6229,7 @@ static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, b
 
 			const Code2Id definition = code2_from_top_level_definition(core, node);
 
-			const Code2Header* const definition_header = code2_chunk_from_id(core, definition);
+			const Code2Block* const definition_header = code2_block_from_id(core, definition);
 
 			const minos::FileHandle std_err = minos::standard_file_handle(minos::StdFileName::StdErr);
 

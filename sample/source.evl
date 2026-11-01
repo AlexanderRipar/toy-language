@@ -1,1 +1,25 @@
 pub main = proc() -> s32 => { 42 }
+
+pub x: u32 = {
+	let y: Type = u32
+
+	let n = 5
+
+	mut xs: *[n]y = .[5, 6, 7, 8, 9].&
+
+	xs.*[0]
+}
+
+pub y = {
+
+	let T = if true {
+		if x == 5 then
+			u32
+		else
+			u8
+	} else {}
+
+	let n: T = 50
+
+	n
+}

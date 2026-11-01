@@ -2,4 +2,5 @@ entrypoint.path = 'source.evl'
 
 std.prelude.path = 'std/prelude.evl'
 
-logging.imports.opcodes = '$stderr'
+# logging.imports.opcodes = '$stderr'
+# logging.imports.asts = '$stderr'

@@ -8,6 +8,7 @@
 #include "../infra/hash.hpp"
 #include "../infra/container/id_map.hpp"
 #include "../infra/container/reserved_vec.hpp"
+#include "../infra/container/reserved_byte_stack.hpp"
 #include "../infra/minos/minos.hpp"
 
 #include <cstddef>
@@ -563,21 +564,25 @@ struct Code2Pool
 
 
 
-struct TypecheckScope;
-
 struct TypecheckValue;
+
+struct TypecheckActivation;
+
+
 
 struct Typechecker
 {
-	Maybe<TypecheckScope*> top_scope;
+	ReservedByteStack activations;
 
-	ReservedVec<TypecheckScope> scopes;
+	ReservedByteStack values;
 
-	ReservedVec<TypecheckValue> values;
+	ReservedByteStack locations;
 
-	ReservedVec<Code2Id> active_chunks;
+	TypeId active_file_type;
 
 	TypeId builtin_types[static_cast<u8>(Builtin::MAX)];
+
+	TypecheckFunction builtin_functions[static_cast<u8>(Builtin::MAX)];
 
 	bool is_ok;
 };
