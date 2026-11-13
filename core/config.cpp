@@ -145,7 +145,7 @@ struct ConfigMetadata
 
 			ConfigMetadataEntry asts;
 
-			ConfigMetadataEntry opcodes;
+			ConfigMetadataEntry code2s;
 
 			ConfigMetadataEntry types;
 		} imports;
@@ -165,6 +165,8 @@ struct ConfigMetadata
 	ConfigMetadataEntry defines;
 
 	ConfigMetadataEntry compile_all;
+
+	ConfigMetadataEntry parse_only;
 };
 
 struct TomlConfigMappingContext
@@ -213,7 +215,7 @@ static constexpr ConfigMetadata init_metadata() noexcept
 	rst.logging.self_ = META_TABLE("logging", logging, "Logging configuration");
 	rst.logging.imports.self_ = META_TABLE("imports", logging.imports, "File import logging parameters");
 	rst.logging.imports.asts = META_PRINT_SINK("asts", logging.imports.asts_sink, range::from_literal_string("$none"), "File abstract syntax trees are written to when files are imported");
-	rst.logging.imports.opcodes = META_PRINT_SINK("opcodes", logging.imports.opcodes_sink, range::from_literal_string("$none"), "File interpreter opcodes are written to when files are imported");
+	rst.logging.imports.code2s = META_PRINT_SINK("code2s", logging.imports.code2s_sink, range::from_literal_string("$none"), "File typechecker opcodes are written to when files are imported");
 	rst.logging.imports.types = META_PRINT_SINK("types", logging.imports.types_sink, range::from_literal_string("$none"), "File top-level types are written to when files are imported");
 	rst.logging.config = META_PRINT_SINK("config", logging.config_sink, range::from_literal_string("$none"), "File the parsed configuration gets written to");
 
@@ -224,6 +226,7 @@ static constexpr ConfigMetadata init_metadata() noexcept
 	rst.defines = META_DYNAMIC("defines", defines, "Definitions made accessible to the program under compilation via `std.comp_env().*.definitions`. May contain arbitrary nested values");
 
 	rst.compile_all = META_BOOLEAN("compile-all", compile_all, false, "Whether to compile all top-level definitions. If this is `true`, all top-level definitions of imported files are compiled. If it is `false`, only definitions used by public symbols are compiled");
+	rst.parse_only = META_BOOLEAN("parse-only", parse_only, false, "If this is set only the file identified by `entrypoint.path` is parsed. No further processing occurs");
 
 	return rst;
 }

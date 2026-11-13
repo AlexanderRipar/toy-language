@@ -1034,7 +1034,7 @@ static void resolve_names_rec(CoreData* core, AstNode* node, bool do_pop, bool c
 	{
 		const SignatureInfo info = get_signature_info(node);
 
-		if (is_some(info.requires))
+		if (is_some(info.requires_))
 			TODO("Handle signature-level `requires` in `resolve_names_rec`");
 
 		if (is_some(info.ensures))

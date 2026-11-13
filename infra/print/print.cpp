@@ -53,7 +53,7 @@ struct CharRangePrintAttach
 
 
 
-static Maybe<char8*> state_reserve_buffer(PrintState* state, u64 n) noexcept
+Maybe<char8*> ps_reserve_buffer(PrintState* state, u64 n) noexcept
 {
 	ASSERT_OR_IGNORE(array_count(state->buffer) >= n);
 
@@ -76,7 +76,7 @@ static Maybe<char8*> state_reserve_buffer(PrintState* state, u64 n) noexcept
 	return some(result);
 }
 
-static bool state_fill(PrintState* state, u64 count, char8 fill_char) noexcept
+bool ps_fill(PrintState* state, u64 count, char8 fill_char) noexcept
 {
 	const u64 available = array_count(state->buffer) - state->buffer_used;
 
@@ -109,14 +109,14 @@ static bool state_fill(PrintState* state, u64 count, char8 fill_char) noexcept
 	return true;
 }
 
-static bool state_prepad(PrintState* state, PrintAlignment alignment, u64 content_size, u64 frame_size, char8 padding) noexcept
+bool ps_prepad(PrintState* state, PrintAlignment alignment, u64 content_size, u64 frame_size, char8 padding) noexcept
 {
 	if (alignment == PrintAlignment::Right)
 	{
 		if (content_size >= frame_size)
 			return true;
 
-		return state_fill(state, frame_size - content_size, padding);
+		return ps_fill(state, frame_size - content_size, padding);
 	}
 	else if (alignment == PrintAlignment::Center)
 	{
@@ -125,7 +125,7 @@ static bool state_prepad(PrintState* state, PrintAlignment alignment, u64 conten
 
 		const u64 padding_size = (1 + frame_size - content_size) / 2;
 
-		return state_fill(state, padding_size, padding);
+		return ps_fill(state, padding_size, padding);
 	}
 	else
 	{
@@ -133,14 +133,14 @@ static bool state_prepad(PrintState* state, PrintAlignment alignment, u64 conten
 	}
 }
 
-static bool state_postpad(PrintState* state, PrintAlignment alignment, u64 content_size, u64 frame_size, char8 padding) noexcept
+bool ps_postpad(PrintState* state, PrintAlignment alignment, u64 content_size, u64 frame_size, char8 padding) noexcept
 {
 	if (alignment == PrintAlignment::Left)
 	{
 		if (content_size >= frame_size)
 			return true;
 
-		return state_fill(state, frame_size - content_size, padding);
+		return ps_fill(state, frame_size - content_size, padding);
 	}
 	else if (alignment == PrintAlignment::Center)
 	{
@@ -152,7 +152,7 @@ static bool state_postpad(PrintState* state, PrintAlignment alignment, u64 conte
 		if (padding_size == 0)
 			return true;
 
-		return state_fill(state, padding_size, padding);
+		return ps_fill(state, padding_size, padding);
 	}
 	else
 	{
@@ -160,7 +160,7 @@ static bool state_postpad(PrintState* state, PrintAlignment alignment, u64 conte
 	}
 }
 
-static bool print_chars(PrintState* state, Range<char8> value) noexcept
+bool ps_print_chars(PrintState* state, Range<char8> value) noexcept
 {
 	const u64 value_count = value.count();
 
@@ -241,10 +241,10 @@ static bool print_format_generic_float(PrintState* state, f64 value, PrintSpec s
 
 	ASSERT_OR_IGNORE(required_chars > 0);
 
-	if (!state_prepad(state, spec.alignment, required_chars, spec.align_frame_size, spec.align_padding_char))
+	if (!ps_prepad(state, spec.alignment, required_chars, spec.align_frame_size, spec.align_padding_char))
 		return false;
 
-	const Maybe<char8*> buffer = state_reserve_buffer(state, required_chars + 1);
+	const Maybe<char8*> buffer = ps_reserve_buffer(state, required_chars + 1);
 
 	if (is_none(buffer))
 		return false;
@@ -255,7 +255,7 @@ static bool print_format_generic_float(PrintState* state, f64 value, PrintSpec s
 	// Manually remove the trailing '\0' introduced by `snprintf`.
 	state->buffer_used -= 1;
 
-	if (!state_postpad(state, spec.alignment, required_chars, spec.align_frame_size, spec.align_padding_char))
+	if (!ps_postpad(state, spec.alignment, required_chars, spec.align_frame_size, spec.align_padding_char))
 		return false;
 
 	return true;
@@ -340,10 +340,10 @@ static bool print_format_int(PrintState* state, const void* insert_attach, Print
 		required_chars = log10_ceil(value);
 	}
 
-	if (!state_prepad(state, spec.alignment, required_chars, spec.align_frame_size, spec.align_padding_char))
+	if (!ps_prepad(state, spec.alignment, required_chars, spec.align_frame_size, spec.align_padding_char))
 		return false;
 
-	const Maybe<char8*> maybe_buffer = state_reserve_buffer(state, required_chars);
+	const Maybe<char8*> maybe_buffer = ps_reserve_buffer(state, required_chars);
 
 	if (is_none(maybe_buffer))
 		return false;
@@ -424,7 +424,7 @@ static bool print_format_int(PrintState* state, const void* insert_attach, Print
 	if (is_negative)
 		*curr = '-';
 
-	if (!state_postpad(state, spec.alignment, required_chars, spec.align_frame_size, spec.align_padding_char))
+	if (!ps_postpad(state, spec.alignment, required_chars, spec.align_frame_size, spec.align_padding_char))
 		return false;
 
 	return true;
@@ -467,10 +467,10 @@ static bool print_format_bool(PrintState* state, const void* raw_attach, PrintSp
 		stringified_bool_chars = 5;
 	}
 
-	if (!state_prepad(state, spec.alignment, stringified_bool_chars, spec.align_frame_size, spec.align_padding_char))
+	if (!ps_prepad(state, spec.alignment, stringified_bool_chars, spec.align_frame_size, spec.align_padding_char))
 		return false;
 
-	const Maybe<char8*> maybe_buffer = state_reserve_buffer(state, stringified_bool_chars);
+	const Maybe<char8*> maybe_buffer = ps_reserve_buffer(state, stringified_bool_chars);
 
 	if (is_none(maybe_buffer))
 		return false;
@@ -479,7 +479,7 @@ static bool print_format_bool(PrintState* state, const void* raw_attach, PrintSp
 
 	memcpy(buffer, stringified_bool, stringified_bool_chars);
 
-	if (!state_postpad(state, spec.alignment, stringified_bool_chars, spec.align_frame_size, spec.align_padding_char))
+	if (!ps_postpad(state, spec.alignment, stringified_bool_chars, spec.align_frame_size, spec.align_padding_char))
 		return false;
 
 	return true;
@@ -493,13 +493,13 @@ static bool print_format_char_range(PrintState* state, const void* raw_attach, P
 
 	const Range<char8> value = attach->value;
 
-	if (!state_prepad(state, spec.alignment, value.count(), spec.align_frame_size, spec.align_padding_char))
+	if (!ps_prepad(state, spec.alignment, value.count(), spec.align_frame_size, spec.align_padding_char))
 		return false;
 
-	if (!print_chars(state, value))
+	if (!ps_print_chars(state, value))
 		return false;
 
-	if (!state_postpad(state, spec.alignment, value.count(), spec.align_frame_size, spec.align_padding_char))
+	if (!ps_postpad(state, spec.alignment, value.count(), spec.align_frame_size, spec.align_padding_char))
 		return false;
 
 	return true;
@@ -942,7 +942,7 @@ s64 vprint(PrintSink sink, Range<char8> format, Range<PrintInsert> inserts) noex
 
 		if (i + 1 != count && chars[i + 1] == '%')
 		{
-			if (!print_chars(&state, Range{ chars + section_begin, chars + i + 1 }))
+			if (!ps_print_chars(&state, Range{ chars + section_begin, chars + i + 1 }))
 				return -1;
 
 			i += 2;
@@ -953,7 +953,7 @@ s64 vprint(PrintSink sink, Range<char8> format, Range<PrintInsert> inserts) noex
 		}
 		else if (i + 1 != count && chars[i + 1] == '[')
 		{
-			if (!print_chars(&state, Range{ chars + section_begin, chars + i }))
+			if (!ps_print_chars(&state, Range{ chars + section_begin, chars + i }))
 				return -1;
 
 			const PrintSpecInfo info = parse_print_spec(chars, count, insert_index, i + 2);
@@ -992,7 +992,7 @@ s64 vprint(PrintSink sink, Range<char8> format, Range<PrintInsert> inserts) noex
 		}
 		else
 		{
-			if (!print_chars(&state, Range{ chars + section_begin, chars + i }))
+			if (!ps_print_chars(&state, Range{ chars + section_begin, chars + i }))
 				return -1;
 
 			i += 1;
@@ -1018,7 +1018,7 @@ s64 vprint(PrintSink sink, Range<char8> format, Range<PrintInsert> inserts) noex
 			return -1;
 	}
 
-	if (!print_chars(&state, Range{ chars + section_begin, chars  + i }))
+	if (!ps_print_chars(&state, Range{ chars + section_begin, chars  + i }))
 		return -1;
 
 	if (state.buffer_used != 0)

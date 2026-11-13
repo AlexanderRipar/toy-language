@@ -38,11 +38,11 @@ enum class Token : u8
 		KwdLet,               // let
 		KwdPub,               // pub
 		KwdMut,               // mut
+		KwdGlobal,            // global
 		KwdUnreachable,       // unreachable
 		KwdUndefined,         // undefined
 		KwdReturn,            // return
-		KwdLeave,             // leave
-		KwdYield,             // yield
+		KwdBreak,             // break
 		OpMemberOrRef,        // .
 		DoubleDot,            // ..
 		ArrayInitializer,     // .[
@@ -143,11 +143,11 @@ const char8* token_name(Token token) noexcept
 		"let",
 		"pub",
 		"mut",
+		"global",
 		"unreachable",
 		"undefined",
 		"return",
-		"leave",
-		"yield",
+		"break",
 		".",
 		"..",
 		".[",
@@ -254,12 +254,12 @@ static constexpr AttachmentRange<char8, u8> KEYWORDS[] = {
 	range::from_literal_string("ensures",                 static_cast<u8>(Token::KwdEnsures)),
 	range::from_literal_string("pub",                     static_cast<u8>(Token::KwdPub)),
 	range::from_literal_string("mut",                     static_cast<u8>(Token::KwdMut)),
+	range::from_literal_string("global",                  static_cast<u8>(Token::KwdGlobal)),
 	range::from_literal_string("let",                     static_cast<u8>(Token::KwdLet)),
 	range::from_literal_string("unreachable",             static_cast<u8>(Token::KwdUnreachable)),
 	range::from_literal_string("undefined",               static_cast<u8>(Token::KwdUndefined)),
 	range::from_literal_string("return",                  static_cast<u8>(Token::KwdReturn)),
-	range::from_literal_string("leave",                   static_cast<u8>(Token::KwdLeave)),
-	range::from_literal_string("yield",                   static_cast<u8>(Token::KwdYield)),
+	range::from_literal_string("break",                   static_cast<u8>(Token::KwdBreak)),
 	range::from_literal_string("distinct",                static_cast<u8>(Token::KwdDistinct)),
 	range::from_literal_string("_integer",                static_cast<u8>(Builtin::Integer)),
 	range::from_literal_string("_float",                  static_cast<u8>(Builtin::Float)),
@@ -979,7 +979,7 @@ static Lexeme scan_string_token(CoreData* core) noexcept
 				buffer_index += 4;
 			}
 
-			copy_begin = buffer + buffer_index;
+			copy_begin = curr;
 		}
 		else if (*curr == '\n')
 		{
@@ -1593,7 +1593,8 @@ static bool is_definition_start(Token token) noexcept
 {
 	return token == Token::KwdLet
 		|| token == Token::KwdPub
-		|| token == Token::KwdMut;
+		|| token == Token::KwdMut
+		|| token == Token::KwdGlobal;
 }
 
 static AstBuilderToken parse_expr(CoreData* core, bool allow_complex) noexcept;
@@ -1637,6 +1638,13 @@ static AstBuilderToken parse_definition(CoreData* core, bool is_optional_type, b
 					parse_error_continuable(core, lexeme.source_id, CompileError::ParseDefinitionMultipleMut);
 
 				flags |= AstFlag::Definition_IsMut;
+			}
+			else if (lexeme.token == Token::KwdGlobal)
+			{
+				if ((flags & AstFlag::Definition_IsGlobal) != AstFlag::EMPTY)
+					parse_error_continuable(core, lexeme.source_id, CompileError::ParseDefinitionMultipleMut);
+
+				flags |= AstFlag::Definition_IsGlobal;
 			}
 			else
 			{
@@ -1705,7 +1713,7 @@ static AstBuilderToken parse_definition(CoreData* core, bool is_optional_type, b
 		parse_error_continuable(core, lexeme.source_id, CompileError::ParseDefinitionMissingEquals);
 	}
 
-	return push_node(core, first_child_token, source_id, flags, AstDefinitionData{ identifier_id });
+	return push_node(core, first_child_token, source_id, flags, AstDefinitionData{ identifier_id, ReferenceListId::INVALID });
 }
 
 static AstBuilderToken parse_return(CoreData* core) noexcept
@@ -1719,24 +1727,15 @@ static AstBuilderToken parse_return(CoreData* core) noexcept
 	return push_node(core, value_token, source_id, AstFlag::EMPTY, AstTag::Return);
 }
 
-static AstBuilderToken parse_leave(CoreData* core) noexcept
+static AstBuilderToken parse_break(CoreData* core) noexcept
 {
-	ASSERT_OR_IGNORE(peek(core).token == Token::KwdLeave);
-
-	const SourceId source_id = next(core).source_id;
-
-	return push_node(core, AstBuilderToken::NO_CHILDREN, source_id, AstFlag::EMPTY, AstTag::Leave);
-}
-
-static AstBuilderToken parse_yield(CoreData* core) noexcept
-{
-	ASSERT_OR_IGNORE(peek(core).token == Token::KwdYield);
+	ASSERT_OR_IGNORE(peek(core).token == Token::KwdBreak);
 
 	const SourceId source_id = next(core).source_id;
 
 	const AstBuilderToken value_token = parse_expr(core, true);
 
-	return push_node(core, value_token, source_id, AstFlag::EMPTY, AstTag::Yield);
+	return push_node(core, value_token, source_id, AstFlag::EMPTY, AstTag::Break);
 }
 
 static AstBuilderToken parse_argument(CoreData* core) noexcept
@@ -1761,10 +1760,8 @@ static AstBuilderToken parse_statement(CoreData* core, bool* out_is_definition) 
 		return parse_definition(core, true, false, false, nullptr);
 	else if (lexeme.token == Token::KwdReturn)
 		return parse_return(core);
-	else if (lexeme.token == Token::KwdLeave)
-		return parse_leave(core);
-	else if (lexeme.token == Token::KwdYield)
-		return parse_yield(core);
+	else if (lexeme.token == Token::KwdBreak)
+		return parse_break(core);
 	else
 		return parse_expr(core, true);
 }
@@ -1823,7 +1820,12 @@ static AstBuilderToken parse_if(CoreData* core) noexcept
 	if (lexeme.token == Token::KwdThen)
 		skip(core);
 
-	parse_expr(core, true);
+	bool consequent_is_definition;
+
+	parse_statement(core, &consequent_is_definition);
+
+	if (consequent_is_definition)
+		parse_error_continuable(core, lexeme.source_id, CompileError::ParseUnexpectedTopLevelExpr);
 
 	lexeme = peek(core);
 
@@ -1833,7 +1835,12 @@ static AstBuilderToken parse_if(CoreData* core) noexcept
 
 		skip(core);
 
-		parse_expr(core, true);
+		bool alternative_is_definition;
+
+		parse_statement(core, &alternative_is_definition);
+
+		if (alternative_is_definition)
+			parse_error_continuable(core, lexeme.source_id, CompileError::ParseUnexpectedTopLevelExpr);
 	}
 
 	return push_node(core, first_child_token, source_id, flags, AstTag::If);
@@ -1978,6 +1985,8 @@ static AstBuilderToken parse_case(CoreData* core) noexcept
 
 	if (lexeme.token != Token::ThinArrowR)
 		parse_error_fatal(core, lexeme.source_id, CompileError::ParseCaseMissingThinArrowRight);
+
+	(void) parse_expr(core, true);
 
 	return push_node(core, first_child_token, source_id, AstFlag::EMPTY, AstTag::Case);
 }
@@ -2212,7 +2221,7 @@ static AstBuilderToken parse_trait(CoreData* core) noexcept
 		if (lexeme.token != Token::Ident)
 			parse_error_fatal(core, lexeme.source_id, CompileError::ParseTraitParameterMissingName);
 
-		const AstBuilderToken parameter_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstDefinitionData{ lexeme.identifier_id });
+		const AstBuilderToken parameter_token = push_node(core, AstBuilderToken::NO_CHILDREN, lexeme.source_id, AstFlag::EMPTY, AstDefinitionData{ lexeme.identifier_id, ReferenceListId::INVALID });
 
 		if (first_parameter_token == AstBuilderToken::NO_CHILDREN)
 			first_parameter_token = parameter_token;

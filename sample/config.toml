@@ -1,6 +1,8 @@
-entrypoint.path = 'source.evl'
+entrypoint.path = 'cpp-translations/parse.cpp.lophus'
 
 std.prelude.path = 'std/prelude.evl'
 
-# logging.imports.opcodes = '$stderr'
+# logging.imports.code2s = '$stderr'
 # logging.imports.asts = '$stderr'
+
+parse-only = true

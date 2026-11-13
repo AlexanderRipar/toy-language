@@ -15,8 +15,8 @@ static UserCompositeMemberInit dummy_user_member() noexcept
 {
 	UserCompositeMemberInit member{};
 	member.name = static_cast<IdentifierId>(42);
-	member.type_id = TypeId::INVALID;
-	member.default_value = none<CoreId>();
+	member.type_and_value.type = TypeId::INVALID;
+	member.type_and_value.value = none<CoreId>();
 	member.is_pub = false;
 	member.is_mut = false;
 	member.offset = 0;
@@ -220,9 +220,7 @@ static void type_create_composite_creates_composite_type_with_no_members() noexc
 	{
 		MemberInfo unused_member_info;
 
-		OpcodeId unused_member_initializer;
-
-		TEST_EQUAL(next(&it, &unused_member_info, &unused_member_initializer), true);
+		TEST_EQUAL(next(&it, &unused_member_info), true);
 
 		member_count += 1;
 	}
@@ -245,7 +243,7 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 	TEST_UNEQUAL(composite, TypeId::INVALID);
 
 	UserCompositeMemberInit member_init = dummy_user_member();
-	member_init.type_id = type_create_simple(core, TypeTag::Boolean);
+	member_init.type_and_value.type = type_create_simple(core, TypeTag::Boolean);
 
 	TEST_EQUAL(type_add_user_composite_member(core, composite, member_init), true);
 
@@ -264,9 +262,7 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 	{
 		MemberInfo member_info;
 
-		OpcodeId member_initializer;
-
-		TEST_EQUAL(next(&it, &member_info, &member_initializer), true);
+		TEST_EQUAL(next(&it, &member_info), true);
 
 
 		TEST_EQUAL(member_info.is_eval, false);
@@ -277,9 +273,9 @@ static void type_create_composite_and_add_member_creates_composite_type_with_one
 
 		TEST_EQUAL(member_info.offset, member_init.offset);
 
-		TEST_EQUAL(member_info.type_id, member_init.type_id);
+		TEST_EQUAL(member_info.type_and_value.complete.type, member_init.type_and_value.type);
 
-		TEST_EQUAL(member_info.value_or_default, member_init.default_value);
+		TEST_EQUAL(member_info.type_and_value.complete.value, member_init.type_and_value.value);
 
 		member_count += 1;
 	}
@@ -341,10 +337,10 @@ static void composites_with_empty_composite_member_are_equal() noexcept
 
 	UserCompositeMemberInit member = dummy_user_member();
 
-	member.type_id = x;
+	member.type_and_value.type = x;
 	TEST_EQUAL(type_add_user_composite_member(core, a, member), true);
 
-	member.type_id = y;
+	member.type_and_value.type = y;
 	TEST_EQUAL(type_add_user_composite_member(core, b, member), true);
 
 	const TypeEquality equal = type_is_equal(core, a, b);
@@ -459,10 +455,10 @@ static void composites_with_same_distinct_source_and_pointers_to_self_are_equal(
 	reference.referenced_type_id = b;
 	const TypeId p_b = type_create_reference(core, TypeTag::Ptr, reference);
 
-	member.type_id = p_a;
+	member.type_and_value.type = p_a;
 	TEST_EQUAL(type_add_user_composite_member(core, a, member), true);
 
-	member.type_id = p_b;
+	member.type_and_value.type = p_b;
 	TEST_EQUAL(type_add_user_composite_member(core, b, member), true);
 
 	UserCompositeSealInfo seal{};
@@ -512,10 +508,10 @@ static void composites_with_same_distinct_source_and_pointers_to_each_other_are_
 	reference.referenced_type_id = b;
 	const TypeId p_b = type_create_reference(core, TypeTag::Ptr, reference);
 
-	member.type_id = p_b;
+	member.type_and_value.type = p_b;
 	TEST_EQUAL(type_add_user_composite_member(core, a, member), true);
 
-	member.type_id = p_a;
+	member.type_and_value.type = p_a;
 	TEST_EQUAL(type_add_user_composite_member(core, b, member), true);
 
 	UserCompositeSealInfo seal{};
@@ -566,19 +562,19 @@ static void composites_with_same_distinct_source_and_pointers_to_self_and_differ
 	const TypeId p_b = type_create_reference(core, TypeTag::Ptr, reference);
 
 	member.name = static_cast<IdentifierId>(1);
-	member.type_id = p_b;
+	member.type_and_value.type = p_b;
 	TEST_EQUAL(type_add_user_composite_member(core, a, member), true);
 
 	member.name = static_cast<IdentifierId>(2);
-	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 8, false });
+	member.type_and_value.type = type_create_numeric(core, TypeTag::Integer, NumericType{ 8, false });
 	TEST_EQUAL(type_add_user_composite_member(core, a, member), true);
 
 	member.name = static_cast<IdentifierId>(1);
-	member.type_id = p_a;
+	member.type_and_value.type = p_a;
 	TEST_EQUAL(type_add_user_composite_member(core, b, member), true);
 
 	member.name = static_cast<IdentifierId>(2);
-	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 64, false });
+	member.type_and_value.type = type_create_numeric(core, TypeTag::Integer, NumericType{ 64, false });
 	TEST_EQUAL(type_add_user_composite_member(core, b, member), true);
 
 	UserCompositeSealInfo seal{};
@@ -641,25 +637,25 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 	reference.referenced_type_id = b2;
 	const TypeId p_b2 = type_create_reference(core, TypeTag::Ptr, reference);
 
-	member.type_id = p_a2;
+	member.type_and_value.type = p_a2;
 	TEST_EQUAL(type_add_user_composite_member(core, a1, member), true);
 
-	member.type_id = p_a1;
+	member.type_and_value.type = p_a1;
 	TEST_EQUAL(type_add_user_composite_member(core, a2, member), true);
 
-	member.type_id = p_b2;
+	member.type_and_value.type = p_b2;
 	TEST_EQUAL(type_add_user_composite_member(core, b1, member), true);
 
-	member.type_id = p_b1;
+	member.type_and_value.type = p_b1;
 	TEST_EQUAL(type_add_user_composite_member(core, b2, member), true);
 
 	member.name = static_cast<IdentifierId>(404);
 
-	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, false });
+	member.type_and_value.type = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, false });
 	TEST_EQUAL(type_add_user_composite_member(core, a1, member), true);
 	TEST_EQUAL(type_add_user_composite_member(core, b1, member), true);
 
-	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 64, false });
+	member.type_and_value.type = type_create_numeric(core, TypeTag::Integer, NumericType{ 64, false });
 	TEST_EQUAL(type_add_user_composite_member(core, a2, member), true);
 	TEST_EQUAL(type_add_user_composite_member(core, b2, member), true);
 
@@ -731,25 +727,25 @@ static void mutually_referencing_pairs_of_composites_with_different_second_membe
 	reference.referenced_type_id = b2;
 	const TypeId p_b2 = type_create_reference(core, TypeTag::Ptr, reference);
 
-	member.type_id = p_a2;
+	member.type_and_value.type = p_a2;
 	TEST_EQUAL(type_add_user_composite_member(core, a1, member), true);
 
-	member.type_id = p_a1;
+	member.type_and_value.type = p_a1;
 	TEST_EQUAL(type_add_user_composite_member(core, a2, member), true);
 
-	member.type_id = p_b2;
+	member.type_and_value.type = p_b2;
 	TEST_EQUAL(type_add_user_composite_member(core, b1, member), true);
 
-	member.type_id = p_b1;
+	member.type_and_value.type = p_b1;
 	TEST_EQUAL(type_add_user_composite_member(core, b2, member), true);
 
 	member.name = static_cast<IdentifierId>(404);
 
-	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, false });
+	member.type_and_value.type = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, false });
 	TEST_EQUAL(type_add_user_composite_member(core, a1, member), true);
 	TEST_EQUAL(type_add_user_composite_member(core, b1, member), true);
 
-	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 64, false });
+	member.type_and_value.type = type_create_numeric(core, TypeTag::Integer, NumericType{ 64, false });
 	TEST_EQUAL(type_add_user_composite_member(core, a2, member), true);
 	TEST_EQUAL(type_add_user_composite_member(core, b2, member), true);
 
@@ -804,7 +800,7 @@ static void pair_types_with_same_element_types_are_considered_equal() noexcept
 	const TypeId b = type_create_user_composite(core, static_cast<SourceId>(1));
 
 	UserCompositeMemberInit member = dummy_user_member();
-	member.type_id = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, false });
+	member.type_and_value.type = type_create_numeric(core, TypeTag::Integer, NumericType{ 32, false });
 
 	TEST_EQUAL(type_add_user_composite_member(core, a, member), true);
 	TEST_EQUAL(type_add_user_composite_member(core, b, member), true);

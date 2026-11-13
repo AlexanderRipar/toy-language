@@ -23,11 +23,7 @@ enum class TypeId : u32;
 // further information.
 enum class SourceId : u32;
 
-enum class Builtin : u8;
-
 enum class ClosureId : u32;
-
-enum class OpcodeId : u32;
 
 enum class CoreId : u32;
 
@@ -91,7 +87,130 @@ union alignas(8) NameBinding
 	
 };
 
+struct Code2Block;
+
 struct CoreData;
+
+
+
+
+
+// Builtin functions that the compiler needs to evaluate in a special way.
+// These include functions that expose type, type creation, as well as
+// introspection.
+enum class Builtin : u8
+{
+	// Should not be used, reserved for sanity checking in debug builds.
+	INVALID = 0,
+
+	// Returns an integer type with the given bit width and signedness.
+	// `let _integer = func(bits: CompInteger, is_signed: Bool) -> Type`
+	Integer,
+
+	// Returns a float type with the given bit width.
+	// `let _float = func(bits: CompInteger) -> Type`
+	Float,
+
+	// Returns the `Type` type.
+	// `let _type = func() -> Type`
+	Type,
+
+	// Returns the `Definition` type.
+	// `let _definition = func() -> Type`
+	Definition,
+
+	// Returns the `TypeInfo` type.
+	// `let _type_info = func() -> Type`
+	TypeInfo,
+
+	// Returns the type of its argument, or the value of its argument if it is
+	// of type `Type`.
+	// `let _typeof = func(arg: TypeInfo) -> Type`
+	Typeof,
+
+	// Returns the return type of its argument, which must refer to a function
+	// or builtin type.
+	// `let _returntypeof = func(arg: TypeInfo) -> Type`
+	Returntypeof,
+
+	// Returns the size of its argument.
+	// `let _sizeof = func(arg: Type) -> CompInteger`
+	Sizeof,
+
+	// Returns the alignment of its argument.
+	// `let _alignof = func(arg: Type) -> CompInteger`
+	Alignof,
+
+	// Returns the stride of its argument.
+	// `let _strideof = func(arg: Type) -> CompInteger`
+	Strideof,
+
+	ArrayCountof,
+
+	// TODO: This is not yet specified.
+	Offsetof,
+
+	// TODO: This is not yet specified.
+	Nameof,
+
+	// Imports the file specified by `path`, resolved relative to the path of
+	// the file containing the `SourceId` `from`. If `is_std` is `true`,
+	// builtins are allowed in the imported file, otherwise they are
+	// disallowed.
+	// The imported file's type is returned.
+	// `let _import = func(path: []u8, is_std: Bool, from: u32) -> Type`
+	Import,
+
+	// Creates an empty, unsealed composite type with its `distinct_source_id`
+	// set to `source_id`, returning it typed as a `TypeTag::TypeBuilder`.
+	// `let _create_type_builder = func(source_id: u32) -> TypeBuilder`
+	CreateTypeBuilder,
+
+	// Adds a member to a `TypeBuilder`.
+	// `let _add_type_member = func(builder: TypeBuilder, definition: Definition, offset: s64) -> Void`
+	AddTypeMember,
+
+	// Turns the given `TypeBuilder` into a `Type`, in effect calling
+	// `type_seal_composite` with the given (range-checked) `size`, `align` and
+	// `stride`, and then completing all of its members' types and values.
+	// `let _complete_type = func(builder: TypeBuilder, size: u64, align: u64, stride: u64) -> Type`
+	CompleteType,
+
+	// Returns the `SourceId` of the call site as a `u32`.
+	// `let _source_id = func() -> u32`
+	SourceId,
+
+	// Returns the `SourceId` of the call site's caller as a `u32`.
+	// `let _caller_source_id = func() -> u32`
+	CallerSourceId,
+
+	// Returns the type of the passed definition, calculating it if
+	// `has_pending_type` is set.
+	// `let _definition_typeof = func(definition: Definition) -> Type`
+	DefinitionTypeof,
+
+	ForeignFunctionImport,
+
+	ForeignFunctionCall,
+
+	CompilerHostOs,
+
+	CompilerHostArch,
+
+	CompilerMajorVersion,
+
+	CompilerMinorVersion,
+
+	CompDefinesType,
+
+	CompDefines,
+
+	// Number of `Builtin`s, used for sizing arrays. Should not be used
+	// otherwise.
+	MAX,
+};
+
+const char8* tag_name(Builtin builtin) noexcept;
 
 
 
@@ -155,7 +274,7 @@ struct Config
 		{
 			ConfigPrintSink asts_sink;
 
-			ConfigPrintSink opcodes_sink;
+			ConfigPrintSink code2s_sink;
 
 			ConfigPrintSink types_sink;
 		} imports;
@@ -173,6 +292,8 @@ struct Config
 	Maybe<const TreeSchemaTable*> defines;
 
 	bool compile_all;
+
+	bool parse_only;
 };
 
 bool config_from_toml_file(Range<char8> filepath, PrintSink error_sink, Config* out_config, TreeSchemaAllocator* out_ts_alloc) noexcept;
@@ -751,8 +872,7 @@ enum class AstTag : u8
 	LitString,
 	OpSliceOf,
 	Return,
-	Leave,
-	Yield,
+	Break,
 	ParameterList,
 	TraitParameterList,
 	Call,
@@ -822,10 +942,11 @@ enum class AstFlag : u8
 
 	Definition_IsPub                 = 0x01,
 	Definition_IsMut                 = 0x02,
-	Definition_HasType               = 0x04,
-	Definition_IsEval                = 0x08,
-	Definition_IsTemplatedParam      = 0x10,
-	Definition_HasSelfReference      = 0x20,
+	Definition_IsGlobal              = 0x04,
+	Definition_HasType               = 0x08,
+	Definition_IsEval                = 0x10,
+	Definition_IsTemplatedParam      = 0x20,
+	Definition_HasSelfReference      = 0x40,
 
 	Identifier_IsTemplatedParamRef   = 0x01,
 
@@ -1237,7 +1358,7 @@ struct SignatureInfo
 
 	// Optional `AstNode` with tag `AstTag::Requires` containing the function's
 	// `requires` clause if it has one.
-	Maybe<AstNode*> requires;
+	Maybe<AstNode*> requires_;
 
 	// Optional `AstNode` with tag `AstTag::Ensures` containing the function's
 	// `ensures` clause if it has one.
@@ -2157,6 +2278,27 @@ struct TypeMetrics
 	bool is_shadow;
 };
 
+struct PendingTypeAndValue
+{
+	Maybe<Code2Id> type;
+
+	Maybe<Code2Id> value;
+};
+
+struct CompleteTypeAndValue
+{
+	TypeId type;
+
+	Maybe<CoreId> value;
+};
+
+union TypeAndValue
+{
+	PendingTypeAndValue pending;
+
+	CompleteTypeAndValue complete;
+};
+
 struct SignatureTypeInfo
 {
 	u8 templated_parameter_count;
@@ -2226,27 +2368,6 @@ struct MemberIterator
 };
 
 
-
-struct PendingTypeAndValue
-{
-	Maybe<Code2Id> type;
-
-	Maybe<Code2Id> value;
-};
-
-struct CompleteTypeAndValue
-{
-	TypeId type;
-
-	Maybe<CoreId> value;
-};
-
-union TypeAndValue
-{
-	PendingTypeAndValue pending;
-
-	CompleteTypeAndValue complete;
-};
 
 struct SignatureParameterInit
 {
@@ -2329,7 +2450,9 @@ struct FileCompositeMemberInit
 {
 	IdentifierId name;
 
-	Code2Id initializer;
+	Maybe<Code2Id> type_initializer;
+
+	Code2Id value_initializer;
 
 	bool is_pub;
 
@@ -2575,7 +2698,7 @@ const T* type_attachment_from_id(CoreData* core, TypeId type_id) noexcept
 		const TypeTag tag = type_tag_from_id(core, type_id);
 
 		if constexpr (is_same_cpp_type<T, ReferenceType>)
-			ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray || tag == TypeTag::Arrayish);
+			ASSERT_OR_IGNORE(tag == TypeTag::Ptr || tag == TypeTag::Slice || tag == TypeTag::TailArray);
 		else if constexpr (is_same_cpp_type<T, NumericType>)
 			ASSERT_OR_IGNORE(tag == TypeTag::Integer || tag == TypeTag::Float);
 		else if constexpr (is_same_cpp_type<T, ArrayType>)
@@ -2604,7 +2727,7 @@ MemberIterator members_of(CoreData* core, TypeId type_id) noexcept;
 // Retrieves the next element of `iterator`. This function may only be called
 // exactly once after `has_next` called on the same iterator has returned
 // `true`.
-bool next(MemberIterator* it, MemberInfo* out_info, PendingTypeAndValue* out_initializer_id) noexcept;
+bool next(MemberIterator* it, MemberInfo* out_info) noexcept;
 
 // Checks whether `iterator` has an element to be returned by a future call to
 // `next`. This call is idempotent.
@@ -2629,500 +2752,12 @@ Maybe<AstNode*> parse(CoreData* core, Range<char8> content, SourceId source_id_b
 
 
 
-struct OpcodePool;
-
-enum class Opcode : u8
-{
-	INVALID = 0,
-	EndCode,
-	SetWriteCtx,
-	DuplicateToWriteCtx,
-	ScopeBegin,
-	ScopeEnd,
-	ScopeEndPreserveTop,
-	ScopeAllocTyped,
-	ScopeAllocUntyped,
-	FileMemberAllocPrepare,
-	FileMemberAllocComplete,
-	FileMemberAllocTyped,
-	FileMemberAllocUntyped,
-	PopClosure,
-	LoadScope,
-	LoadGlobal,
-	LoadMember,
-	LoadClosure,
-	LoadBuiltin,
-	ExecBuiltin,
-	Signature,
-	DynSignature,
-	BindBody,
-	PrepareArgs,
-	ExecArgs,
-	Call,
-	Return,
-	CompleteParamTypedNoDefault,
-	CompleteParamTypedWithDefault,
-	CompleteParamUntyped,
-	ArrayPreInit,
-	CompositePreInit,
-	If,
-	IfElse,
-	Loop,
-	LoopFinally,
-	Switch,
-	AddressOf,
-	Dereference,
-	Slice,
-	Index,
-	BinaryArithmeticOp,
-	Shift,
-	BinaryBitwiseOp,
-	BitNot,
-	LogicalAnd,
-	LogicalOr,
-	LogicalNot,
-	Compare,
-	Negate,
-	UnaryPlus,
-	ArrayType,
-	ReferenceType,
-	Undefined,
-	Unreachable,
-	ValueInteger,
-	ValueFloat,
-	ValueString,
-	ValueVoid,
-	DiscardVoid,
-	CheckTopVoid,
-	CheckWriteCtxVoid,
-	Trait,
-	ImplMakeSelf,
-	ImplBody,
-	CompleteImplBody,
-	ImplMemberAllocPrepare,
-	CheckTypesEqual,
-	LoadSelf,
-	LoadTraitArgument,
-	ImplMemberAllocComplete,
-	PopSelf,
-	EndTraitMemberType,
-	DefinitionTyped,
-	DefinitionUntyped,
-	TypeType,
-	CompleteCircularDefinition,
-	PromoteIndirectWriteCtx,
-};
-
-enum class OpcodeSliceKind : u8
-{
-	NoBounds,
-	BeginBound,
-	EndBound,
-	BothBounds,
-};
-
-enum class OpcodeBinaryArithmeticOpKind : u8
-{
-	Add,
-	Sub,
-	Mul,
-	Div,
-	AddTC,
-	SubTC,
-	MulTC,
-	Mod,
-};
-
-enum class OpcodeShiftKind : bool
-{
-	Left,
-	Right,
-};
-
-enum class OpcodeBinaryBitwiseOpKind : u8
-{
-	And,
-	Or,
-	Xor,
-};
-
-enum class OpcodeCompareKind : u8
-{
-	LessThan,
-	GreaterThan,
-	LessThanOrEqual,
-	GreaterThanOrEqual,
-	NotEqual,
-	Equal,
-};
-
-struct OpcodeReferenceTypeFlags
-{
-	u8 tag : 5;
-
-	u8 is_opt : 1;
-
-	u8 is_multi : 1;
-
-	u8 is_mut : 1;
-};
-
-struct OpcodeSignatureFlags
-{
-	u8 is_func : 1;
-
-	u8 has_templated_parameter_list : 1;
-
-	u8 has_templated_return_type : 1;
-
-	u8 unused_ : 5;
-};
-
-struct OpcodeSignaturePerParameterFlags
-{
-	u8 has_type : 1;
-
-	u8 has_default : 1;
-
-	u8 is_mut : 1;
-
-	u8 is_eval : 1;
-
-	u8 is_templated : 1;
-
-	u8 is_variadic : 1;
-
-	u8 unused_ : 2;
-};
-
-struct OpcodeDefinitionFlags
-{
-	u8 is_pub : 1;
-
-	u8 is_mut : 1;
-
-	u8 typed_has_value : 1;
-
-	u8 unused_ : 5;
-};
-
-struct OpcodeScopeAllocTypedFlags
-{
-	u8 is_mut : 1;
-
-	u8 is_circular : 1;
-
-	u8 unused_ : 6;
-};
-
-struct OpcodeImplMemberAllocCompleteFlags
-{
-	u8 is_trait_default : 1;
-
-	u8 is_circular : 1;
-
-	u8 unused_ : 6;
-};
-
-enum class OpcodePromoteIndirectWriteCtxModifier : u8
-{
-	AddressOf,
-	Deref,
-	Index,
-	Slice,
-};
-
-enum class OpcodeId : u32
-{
-	INVALID = 0,
-};
-
-const Maybe<Opcode*> opcodes_from_file_member_ast(CoreData* core, AstNode* node, SourceFileId file_id, u16 rank) noexcept;
-
-OpcodeId opcode_id_from_builtin(CoreData* core, Builtin builtin) noexcept;
-
-OpcodeId opcode_id_from_return_type_completion_from_parameter(CoreData* core, u8 parameter_rank) noexcept;
-
-OpcodeId id_from_opcode(CoreData* core, const Opcode* code);
-
-const Opcode* opcode_from_id(CoreData* core, OpcodeId id) noexcept;
-
-SourceId source_id_of_opcode(CoreData* core, const Opcode* code) noexcept;
-
-bool return_type_templates_equal(CoreData* core, const Code2Block* a_code, const Code2Block* b_code) noexcept;
-
-const char8* tag_name(Opcode op) noexcept;
-
-
-
-
-struct Interpreter;
-
-enum class ClosureId : u32
-{
-	INVALID = 0,
-};
-
-// Builtin functions that the compiler needs to evaluate in a special way.
-// These include functions that expose type, type creation, as well as
-// introspection.
-enum class Builtin : u8
-{
-	// Should not be used, reserved for sanity checking in debug builds.
-	INVALID = 0,
-
-	// Returns an integer type with the given bit width and signedness.
-	// `let _integer = func(bits: CompInteger, is_signed: Bool) -> Type`
-	Integer,
-
-	// Returns a float type with the given bit width.
-	// `let _float = func(bits: CompInteger) -> Type`
-	Float,
-
-	// Returns the `Type` type.
-	// `let _type = func() -> Type`
-	Type,
-
-	// Returns the `Definition` type.
-	// `let _definition = func() -> Type`
-	Definition,
-
-	// Returns the `TypeInfo` type.
-	// `let _type_info = func() -> Type`
-	TypeInfo,
-
-	// Returns the type of its argument, or the value of its argument if it is
-	// of type `Type`.
-	// `let _typeof = func(arg: TypeInfo) -> Type`
-	Typeof,
-
-	// Returns the return type of its argument, which must refer to a function
-	// or builtin type.
-	// `let _returntypeof = func(arg: TypeInfo) -> Type`
-	Returntypeof,
-
-	// Returns the size of its argument.
-	// `let _sizeof = func(arg: Type) -> CompInteger`
-	Sizeof,
-
-	// Returns the alignment of its argument.
-	// `let _alignof = func(arg: Type) -> CompInteger`
-	Alignof,
-
-	// Returns the stride of its argument.
-	// `let _strideof = func(arg: Type) -> CompInteger`
-	Strideof,
-
-	ArrayCountof,
-
-	// TODO: This is not yet specified.
-	Offsetof,
-
-	// TODO: This is not yet specified.
-	Nameof,
-
-	// Imports the file specified by `path`, resolved relative to the path of
-	// the file containing the `SourceId` `from`. If `is_std` is `true`,
-	// builtins are allowed in the imported file, otherwise they are
-	// disallowed.
-	// The imported file's type is returned.
-	// `let _import = func(path: []u8, is_std: Bool, from: u32) -> Type`
-	Import,
-
-	// Creates an empty, unsealed composite type with its `distinct_source_id`
-	// set to `source_id`, returning it typed as a `TypeTag::TypeBuilder`.
-	// `let _create_type_builder = func(source_id: u32) -> TypeBuilder`
-	CreateTypeBuilder,
-
-	// Adds a member to a `TypeBuilder`.
-	// `let _add_type_member = func(builder: TypeBuilder, definition: Definition, offset: s64) -> Void`
-	AddTypeMember,
-
-	// Turns the given `TypeBuilder` into a `Type`, in effect calling
-	// `type_seal_composite` with the given (range-checked) `size`, `align` and
-	// `stride`, and then completing all of its members' types and values.
-	// `let _complete_type = func(builder: TypeBuilder, size: u64, align: u64, stride: u64) -> Type`
-	CompleteType,
-
-	// Returns the `SourceId` of the call site as a `u32`.
-	// `let _source_id = func() -> u32`
-	SourceId,
-
-	// Returns the `SourceId` of the call site's caller as a `u32`.
-	// `let _caller_source_id = func() -> u32`
-	CallerSourceId,
-
-	// Returns the type of the passed definition, calculating it if
-	// `has_pending_type` is set.
-	// `let _definition_typeof = func(definition: Definition) -> Type`
-	DefinitionTypeof,
-
-	ForeignFunctionImport,
-
-	ForeignFunctionCall,
-
-	CompilerHostOs,
-
-	CompilerHostArch,
-
-	CompilerMajorVersion,
-
-	CompilerMinorVersion,
-
-	CompDefinesType,
-
-	CompDefines,
-
-	// Number of `Builtin`s, used for sizing arrays. Should not be used
-	// otherwise.
-	MAX,
-};
-
-struct CompValue
-{
-	MutRange<byte> bytes;
-
-	u32 align : 31;
-
-	u32 is_mut : 1;
-
-	TypeId type;
-};
-
-struct alignas(8) CallableValue
-{
-	OpcodeId body_id;
-
-	Maybe<ClosureId> closure_id;
-
-	Maybe<TypeId> self_id;
-
-	u32 unused_ = 0;
-};
-
-struct alignas(8) TraitValue
-{
-	Maybe<ClosureId> closure;
-
-	// This simply points into the opcode stream.
-	OpcodeId member_completions;
-};
-
-struct alignas(8) DefinitionValue
-{
-	IdentifierId name;
-
-	bool is_mut : 1;
-
-	bool is_pub : 1;
-
-	TypeId type;
-
-	Maybe<CoreId> value;
-};
-
-struct SliceValue
-{
-	void* begin;
-
-	u64 count;
-};
-
-struct ScopeMember;
-
-bool import_prelude(CoreData* core, Range<char8> path) noexcept;
-
-Maybe<TypeId> import_file(CoreData* core, Range<char8> path, bool is_std) noexcept;
-
-bool evaluate_file_definition_by_name(CoreData* core, TypeId file_type, IdentifierId name) noexcept;
-
-bool evaluate_all_file_definitions(CoreData* core, TypeId file_type) noexcept;
-
-bool closure_equal(CoreData* core, ClosureId a, ClosureId b) noexcept;
-
-const char8* tag_name(Builtin builtin) noexcept;
-
-
-
-
-
-struct alignas(8) ShadowLayoutMemberInitializer
-{
-	s64 offset_in_type;
-
-	u16 rank_in_type;
-
-	TypeId type_id;
-};
-
-ShadowLayoutId shadow_create_layout(CoreData* core, Range<ShadowLayoutMemberInitializer> initializers) noexcept;
-
-byte* shadow_get(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 rank) noexcept;
-
-Maybe<byte*> shadow_try_get(CoreData* core, byte* address, ShadowLayoutId layout_id, u16 rank) noexcept;
-
-void shadow_copy(CoreData* core, MutRange<byte> dst, MutRange<byte> src) noexcept;
-
-void shadow_clear(CoreData* core, byte* address) noexcept;
-
-
-
-
-
-struct FFINativeCallArgs
-{
-#ifdef _WIN32
-	u64 arg_count;
-
-	u64 arg_values[1 + 64 + 2];
-#else
-
-	// These get passed to asm by value.
-
-	u64 stack_count;
-
-	u64 stack_size;
-
-	u64 stack_arg_kinds[2];
-
-	// The layout starting from here is contractual, as it gets passed to asm
-	// by address; Do not change it.
-
-	u64 xmm_values[8];
-
-	u64 gpr_values[6];
-
-	u64 xmm_count;
-
-	u64 ret_copy_class;
-
-	u32 ret_copy_size_lo;
-
-	u32 ret_copy_size_hi;
-
-	u64 ret_copy_address;
-
-	u64 stack_values[128];
-#endif
-};
-
-// Pre-processes `arguments` and `return_value_dst` for native calls using the
-// system's calling convention.
-void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> arguments, byte* argument_data, byte* return_value_dst, TypeId return_type, FFINativeCallArgs* out) noexcept;
-
-// Calls out to `native_callee`, with `args` previously preprocessed by
-// `ffi_prepare_args_for_native_call`.
-void ffi_perform_native_call(const void* native_callee, const FFINativeCallArgs* simplified_args) noexcept;
-
-
-
-
-
 enum class Code2Op : u8
 {
 	INVALID = 0,
 	Leave,
 	Repeat,
+	Jump,
 	Builtin,
 	Composite,
 	Array,
@@ -3146,6 +2781,8 @@ enum class Code2Op : u8
 	LocalLocation,
 	GlobalValue,
 	GlobalLocation,
+	ClosedValue,
+	ClosedLocation,
 	TraitArgumentValue,
 	TraitArgumentLocation,
 	Slice,
@@ -3231,8 +2868,6 @@ struct alignas(4) Code2
 		struct
 		{
 			Code2Op op_;
-
-			bool is_type_eval;
 
 			u16 out;
 		} leave;
@@ -3457,6 +3092,13 @@ struct alignas(4) Code2
 	TypeId type;
 };
 
+struct Code2Location
+{
+	Maybe<Code2Id> block;
+
+	Code2Offset offset;
+};
+
 struct alignas(4) Code2Block
 {
 	TypeId type;
@@ -3464,8 +3106,6 @@ struct alignas(4) Code2Block
 	u32 size;
 
 	u16 definition_count;
-
-	u16 static_leave_count;
 };
 
 
@@ -3476,7 +3116,7 @@ struct alignas(4) Code2AttLeave
 
 	Code2Offset operand;
 
-	Code2Id target;
+	Code2Location prev_leave;
 };
 
 struct alignas(4) Code2AttBuiltin
@@ -3495,7 +3135,14 @@ struct alignas(4) Code2AttComposite
 {
 	Code2 header;
 
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids anonymous strcuts
+	#endif
 	Code2AttComposite_Member members[];
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
 };
 
 struct alignas(4) Code2AttArray_Element
@@ -3507,7 +3154,14 @@ struct alignas(4) Code2AttArray
 {
 	Code2 header;
 
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids anonymous strcuts
+	#endif
 	Code2AttArray_Element elements[];
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
 };
 
 struct alignas(4) Code2AttDefinition
@@ -3532,7 +3186,7 @@ struct alignas(4) Code2AttIf
 	Code2Id alternative;
 };
 
-struct alignas(4) Code2AttLoop
+struct alignas(4) Code2AttJump
 {
 	Code2 header;
 
@@ -3578,7 +3232,14 @@ struct alignas(4) Code2AttSignature
 		Code2Id templated;
 	} return_type;
 
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids anonymous strcuts
+	#endif
 	Code2AttSignature_Parameter parameters[];
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
 
 	// Code2Offset closed[];
 };
@@ -3609,7 +3270,14 @@ struct alignas(4) Code2AttTrait
 {
 	Code2 header;
 
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids anonymous strcuts
+	#endif
 	IdentifierId parameters[];
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
 
 	// Code2AttTrait_Member members[];
 };
@@ -3635,7 +3303,14 @@ struct alignas(4) Code2AttImpl
 
 	Code2Offset trait_call;
 
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids anonymous strcuts
+	#endif
 	Code2AttImpl_Member members[];
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
 };
 
 struct alignas(4) Code2AttSlice
@@ -3694,7 +3369,14 @@ struct alignas(4) Code2AttCall
 
 	Code2Offset callee;
 
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids anonymous strcuts
+	#endif
 	Code2AttCall_Argument arguments[];
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
 };
 
 struct alignas(4) Code2AttLogicalOp
@@ -3778,13 +3460,117 @@ const Code2* code2_block_end(const Code2Block* block) noexcept;
 
 
 
-Code2Id code2_from_top_level_definition(CoreData* core, AstNode* node) noexcept;
+bool code2_from_top_level_definition(CoreData* core, AstNode* definition, Maybe<Code2Id>* out_type, Code2Id* out_value) noexcept;
 
 
 
 const char8* tag_name(Code2Op op) noexcept;
 
+const char8* tag_name(Code2AttBinaryArithmetic_Kind kind) noexcept;
+
+const char8* tag_name(Code2AttBitShift_Kind kind) noexcept;
+
 const char8* tag_name(Code2AttCompare_Kind kind) noexcept;
+
+
+
+
+
+struct alignas(8) DefinitionValue
+{
+	IdentifierId name;
+
+	bool is_mut : 1;
+
+	bool is_pub : 1;
+
+	TypeId type;
+
+	Maybe<CoreId> value;
+};
+
+struct SliceValue
+{
+	void* begin;
+
+	u64 count;
+};
+
+struct alignas(8) CallableValue
+{
+	TypeId signature_type;
+
+	Code2Id body;
+};
+
+struct alignas(8) TypecheckDefinition
+{
+	TypeId type;
+
+	u32 size;
+
+	u8 align_log2;
+
+	bool is_type_eval;
+
+	bool is_mut;
+
+	u32 location_offset;
+};
+
+enum class ClosureId : u32
+{
+	INVALID = 0,
+};
+
+
+
+
+
+struct FFINativeCallArgs
+{
+#ifdef _WIN32
+	u64 arg_count;
+
+	u64 arg_values[1 + 64 + 2];
+#else
+
+	// These get passed to asm by value.
+
+	u64 stack_count;
+
+	u64 stack_size;
+
+	u64 stack_arg_kinds[2];
+
+	// The layout starting from here is contractual, as it gets passed to asm
+	// by address; Do not change it.
+
+	u64 xmm_values[8];
+
+	u64 gpr_values[6];
+
+	u64 xmm_count;
+
+	u64 ret_copy_class;
+
+	u32 ret_copy_size_lo;
+
+	u32 ret_copy_size_hi;
+
+	u64 ret_copy_address;
+
+	u64 stack_values[128];
+#endif
+};
+
+// Pre-processes `arguments` and `return_value_dst` for native calls using the
+// system's calling convention.
+void ffi_prepare_args_for_native_call(CoreData* core, Range<TypecheckDefinition> arguments, byte* argument_data, byte* return_value_dst, TypeId return_type, FFINativeCallArgs* out) noexcept;
+
+// Calls out to `native_callee`, with `args` previously preprocessed by
+// `ffi_prepare_args_for_native_call`.
+void ffi_perform_native_call(const void* native_callee, const FFINativeCallArgs* simplified_args) noexcept;
 
 
 

@@ -15,6 +15,7 @@ set(INFRA_SOURCES
 	infra/minos/minos.hpp
 	infra/minos/minos_win32.cpp
 	infra/minos/minos_linux.cpp
+	infra/print/insert_helpers.hpp
 	infra/print/print.hpp
 	infra/print/print.cpp
 	infra/toml/toml.hpp
@@ -52,11 +53,14 @@ set(CORE_SOURCES
 	core/shadow_store.cpp
 	core/source_reader.cpp
 	core/temp_stack.cpp
+	core/typecheck.cpp
 	core/type_pool.cpp
 )
 
 set(DIAG_SOURCES
 	diag/diag.hpp
+	diag/diag_helpers.hpp
+	diag/diag_helpers.cpp
 	diag/print_ast.cpp
 	diag/print_code2.cpp
 	diag/print_opcodes.cpp
@@ -103,7 +107,9 @@ function(set_common_target_options NAME)
 			-Wpedantic
 			-Wextra
 			-g
+			-pg
 		)
+		target_link_options(${NAME} PRIVATE -pg)
 	elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
 		target_compile_options(${NAME} PRIVATE
 			-Wall

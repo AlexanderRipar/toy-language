@@ -1,3 +1,4 @@
+/*
 #include "core.hpp"
 #include "structure.hpp"
 
@@ -3161,3 +3162,4 @@ const char8* tag_name(Opcode op) noexcept
 
 	return TAG_NAMES[ordinal];
 }
+*/

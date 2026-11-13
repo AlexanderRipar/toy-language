@@ -135,7 +135,7 @@ struct alignas(8) CompositeUserExtraData
 	SourceId definition_site;
 };
 
-struct alignas(8) CompositeMember
+struct CompositeMember
 {
 	TypeAndValue type_and_value;
 
@@ -596,6 +596,7 @@ static u32 structure_size(TypeStructure* structure) noexcept
 	}
 	
 	case TypeTag::Definition:
+	case TypeTag::Distinct:
 		TODO("Implement `structure_size(%)`.", tag_name(structure->tag));
 
 	case TypeTag::INVALID:
@@ -976,6 +977,7 @@ static u32 hash_type_structure_preseen(CoreData* core, u32 hash, SeenSet* seen, 
 		return hash_self_type(core, hash, seen, reinterpret_cast<const SelfType*>(structure->attach));
 
 	case TypeTag::Definition:
+	case TypeTag::Distinct:
 		TODO("Implement `hash_type_structure_preseen(%)`.", tag_name(tag));
 
 	case TypeTag::INVALID:
@@ -1031,11 +1033,6 @@ static bool init_structure_hash(CoreData* core, TypeStructure* structure) noexce
 		return false;
 
 	structure->hash = hash;
-
-	if (structure->tag != TypeTag::Composite)
-		return true;
-
-	CompositeType* const composite = reinterpret_cast<CompositeType*>(structure + 1);
 
 	return true;
 }
@@ -1152,6 +1149,9 @@ static TypeRelation type_can_implicitly_convert_from_to_assume_unequal(CoreData*
 			? TypeRelation::FirstConvertsToSecond
 			: base_relation;
 	}
+
+	case TypeTag::Distinct:
+		TODO("Implement `type_can_implicitly_convert_from_to_assume_unequal(%)`.", tag_name(from_tag));
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
@@ -1336,18 +1336,7 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 
 			if (a_signature->has_templated_return_type)
 			{
-				const Code2Block* const a_return_type_completion = code2_block_from_id(core, a_signature->return_type.completion_id);
-
-				const Code2Block* const b_return_type_completion = code2_block_from_id(core, b_signature->return_type.completion_id);
-
-				if (!return_type_templates_equal(core, a_return_type_completion, b_return_type_completion))
-				{
-					seen_set_pop(a_seen);
-
-					seen_set_pop(b_seen);
-
-					return TypeEquality::Unequal;
-				}
+				TODO("Implement return type completion equality check.");
 			}
 			else
 			{
@@ -1363,13 +1352,9 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 				}
 			}
 
-			if (is_some(a_signature->closure_id) && !closure_equal(core, get(a_signature->closure_id), get(b_signature->closure_id)))
+			if (is_some(a_signature->closure_id))
 			{
-				seen_set_pop(a_seen);
-
-				seen_set_pop(b_seen);
-
-				return TypeEquality::Unequal;
+				TODO("Implement signature closure equality check.");
 			}
 
 			break;
@@ -1576,24 +1561,14 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 			return TypeEquality::Unequal;
 		}
 
-		if (is_some(a_attach->trait_closure_id)
-		 && !closure_equal(core, get(a_attach->trait_closure_id), get(b_attach->trait_closure_id))
-		) {
-			seen_set_pop(a_seen);
-
-			seen_set_pop(b_seen);
-
-			return TypeEquality::Unequal;
+		if (is_some(a_attach->trait_closure_id))
+		{
+			TODO("Implement trait closure equality check.");
 		}
 
-		if (is_some(a_attach->impl_closure_id)
-		 && !closure_equal(core, get(a_attach->impl_closure_id), get(b_attach->impl_closure_id))
-		) {
-			seen_set_pop(a_seen);
-
-			seen_set_pop(b_seen);
-
-			return TypeEquality::Unequal;
+		if (is_some(a_attach->impl_closure_id))
+		{
+			TODO("Implement impl closure equality check.");
 		}
 
 		seen_set_pop(a_seen);
@@ -1602,6 +1577,9 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 
 		return TypeEquality::Equal;
 	}
+
+	case TypeTag::Distinct:
+		TODO("Implement `type_is_equal_noloop(%)`.", tag_name(tag));
 
 	case TypeTag::INVALID:
 	case TypeTag::INDIRECTION:
@@ -1615,7 +1593,7 @@ static TypeEquality type_is_equal_noloop(CoreData* core, TypeId type_id_a, TypeI
 
 static TypeStructure* make_structure_nohash(CoreData* core, TypeTag tag, Range<byte> attach, u64 reserve_size) noexcept
 {
-	ASSERT_OR_IGNORE(reserve_size <= UINT16_MAX && reserve_size >= attach.count());
+	ASSERT_OR_IGNORE(sizeof(TypeStructure) + reserve_size <= UINT32_MAX && reserve_size >= attach.count());
 
 	const Maybe<void*> allocation = comp_heap_alloc(core, sizeof(TypeStructure) + reserve_size, 16);
 
@@ -1886,6 +1864,12 @@ void type_complete_templated_signature_parameter(CoreData* core, TypeId type_id,
 
 void type_complete_templated_signature_return_type(CoreData* core, TypeId type_id, TypeId return_type_id) noexcept
 {
+	(void) core;
+
+	(void) type_id;
+
+	(void) return_type_id;
+
 	TODO("Implement.");
 }
 
@@ -2180,8 +2164,8 @@ void type_add_file_composite_member(CoreData* core, TypeId type_id, FileComposit
 
 	info.member_names[info.member_count] = init.name;
 
-	info.member_types[info.member_count].type_and_value.pending.type = none<Code2Id>();
-	info.member_types[info.member_count].type_and_value.pending.value = some(init.initializer);
+	info.member_types[info.member_count].type_and_value.pending.type = init.type_initializer;
+	info.member_types[info.member_count].type_and_value.pending.value = some(init.value_initializer);
 	info.member_types[info.member_count].is_pending = true;
 	info.member_types[info.member_count].is_initializing = false;
 	info.member_types[info.member_count].is_pub = init.is_pub;
@@ -2189,6 +2173,33 @@ void type_add_file_composite_member(CoreData* core, TypeId type_id, FileComposit
 	info.member_types[info.member_count].is_eval = false;
 
 	composite->member_used += 1;
+}
+
+
+
+
+TypeId type_create_approx_composite(CoreData* core, u16 member_count) noexcept
+{
+	(void) core;
+
+	(void) member_count;
+
+	TODO("Implement.");
+}
+
+void type_add_approx_composite_member(CoreData* core, TypeId type_id, u16 rank, Maybe<IdentifierId> name, TypeId member_type_id) noexcept
+{
+	(void) core;
+
+	(void) type_id;
+
+	(void) rank;
+
+	(void) name;
+
+	(void) member_type_id;
+
+	TODO("Implement.");
 }
 
 
@@ -2599,9 +2610,7 @@ bool type_metrics_from_id(CoreData* core, TypeId type_id, TypeMetrics* out) noex
 
 	case TypeTag::Trait:
 	{
-		*out = TypeMetrics{ sizeof(TraitValue), sizeof(TraitValue), alignof(TraitValue), true };
-
-		return true;
+		TODO("Implement.");
 	}
 
 	case TypeTag::Self:
@@ -2612,6 +2621,7 @@ bool type_metrics_from_id(CoreData* core, TypeId type_id, TypeMetrics* out) noex
 	}
 
 	case TypeTag::TailArray:
+	case TypeTag::Distinct:
 		TODO("Implement `type_metrics_from_id(%)`.", tag_name(structure->tag));
 
 	case TypeTag::INVALID:

@@ -179,11 +179,11 @@ public:
 
 		const u32 page_bytes = minos::page_bytes();
 
-		const u32 target_commit = (preserved_commit + page_bytes - 1) & ~(page_bytes - 1);
+		const u64 target_commit_bytes = (static_cast<u64>(preserved_commit) * sizeof(T) + page_bytes - 1) & ~static_cast<u64>((page_bytes - 1));
 
-		minos::mem_decommit(reinterpret_cast<byte*>(m_memory) + target_commit, m_committed - target_commit);
+		minos::mem_decommit(reinterpret_cast<byte*>(m_memory) + target_commit_bytes, static_cast<u64>(m_committed) * sizeof(T) - target_commit_bytes);
 
-		m_committed = target_commit;
+		m_committed = static_cast<Index>(target_commit_bytes / sizeof(T));
 	}
 
 	T& top() noexcept

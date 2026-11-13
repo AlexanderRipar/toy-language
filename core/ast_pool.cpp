@@ -680,7 +680,7 @@ SignatureInfo get_signature_info(AstNode* signature) noexcept
 
 		ASSERT_OR_IGNORE(curr->tag == AstTag::Requires);
 
-		desc.requires = some(curr);
+		desc.requires_ = some(curr);
 	}
 
 	if (has_flag(signature, AstFlag::Signature_HasEnsures))
@@ -934,8 +934,7 @@ const char8* tag_name(AstTag tag) noexcept
 		"LitString",
 		"OpSliceOf",
 		"Return",
-		"Leave",
-		"Yield",
+		"Break",
 		"ParameterList",
 		"TraitParameterList",
 		"Call",

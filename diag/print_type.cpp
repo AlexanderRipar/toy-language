@@ -31,6 +31,7 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 	case TypeTag::CompFloat:
 	case TypeTag::Boolean:
 	case TypeTag::TypeBuilder:
+	case TypeTag::Undefined:
 	case TypeTag::Divergent:
 	case TypeTag::TypeInfo:
 	case TypeTag::TailArray:
@@ -58,6 +59,7 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 
 	case TypeTag::Slice:
 	case TypeTag::Ptr:
+	case TypeTag::Distinct:
 	{
 		const ReferenceType* const reference = type_attachment_from_id<ReferenceType>(core, type_id);
 
@@ -152,9 +154,7 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 		{
 			MemberInfo member_info;
 
-			OpcodeId member_initializer;
-
-			const bool is_complete = next(&it, &member_info, &member_initializer);
+			const bool is_complete = next(&it, &member_info);
 
 			const IdentifierId member_name = type_member_name_by_rank(core, type_id, member_info.rank);
 
@@ -203,11 +203,11 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 
 			if (is_complete)
 			{
-				type_written = print_type_impl(sink, core, member_info.type_id, indent + 1, true);
+				type_written = print_type_impl(sink, core, member_info.type_and_value.complete.type, indent + 1, true);
 			}
 			else
 			{
-				type_written = print(sink, "OpcodeId<%u>", static_cast<u32>(member_initializer));
+				type_written = print(sink, "Code2Id<%u>", static_cast<u32>(get(member_info.type_and_value.pending.type)));
 			}
 
 			if (type_written < 0)
@@ -233,7 +233,7 @@ static s64 print_type_impl(PrintSink sink, CoreData* core, TypeId type_id, u32 i
 
 			if (info.has_templated_return_type)
 			{
-				return_type_written = print(sink, " -> OpcodeId<%>", static_cast<u32>(info.return_type.templated.completion_id));
+				return_type_written = print(sink, " -> Code2Id<%>", static_cast<u32>(info.return_type.templated.completion_id));
 			}
 			else
 			{

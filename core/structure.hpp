@@ -85,88 +85,6 @@ struct IdentifierPool
 
 
 
-struct Scope;
-
-// "Public" definition required here for ffi argument passing.
-struct alignas(16) ScopeMember
-{
-	u32 offset;
-
-	u32 size;
-
-	u32 align : 31;
-
-	u32 is_mut : 1;
-
-	TypeId type;
-};
-
-struct LoopInfo;
-
-struct ArgumentPack;
-
-struct GlobalInitialization;
-
-struct BuiltinInfo
-{
-	OpcodeId body;
-
-	TypeId signature_type;
-};
-
-struct Interpreter
-{
-	ReservedVec<Scope> scopes;
-
-	ReservedVec<ScopeMember> scope_members;
-
-	ReservedVec<byte> scope_data;
-
-	ReservedVec<CompValue> values;
-
-	ReservedVec<byte> temporary_data;
-
-	ReservedVec<OpcodeId> activations;
-
-	ReservedVec<u32> call_activation_indices;
-
-	ReservedVec<LoopInfo> loop_stack;
-
-	ReservedVec<CompValue> write_ctxs;
-
-	ReservedVec<ClosureId> active_closures;
-
-	ReservedVec<Maybe<OpcodeId>> argument_callbacks;
-
-	ReservedVec<ArgumentPack> argument_packs;
-
-	ReservedVec<GlobalInitialization> global_initializations;
-
-	ReservedVec<TypeId> selfs;
-
-	TypeId config_defines_type;
-
-	CoreId config_defines_value;
-
-	bool is_ok;
-
-	BuiltinInfo builtin_infos[static_cast<u8>(Builtin::MAX) - 1];
-
-	bool log_imported_asts;
-
-	bool log_imported_opcodes;
-
-	bool log_imported_types;
-
-	PrintSink imported_asts_sink;
-
-	PrintSink imported_opcodes_sink;
-
-	PrintSink imported_types_sink;
-};
-
-
-
 enum class ScopeMapKind : u8;
 
 struct ScopeMap;
@@ -184,51 +102,6 @@ struct LexicalAnalyser
 	ScopeMap* scopes[MAX_AST_DEPTH];
 
 	ScopeMap* closures[MAX_AST_DEPTH];
-};
-
-
-
-enum class FixupKind : u8;
-
-struct Fixup;
-
-struct SourceMapping;
-
-struct OpcodeEffects
-{
-	s32 values_diff;
-
-	s32 scopes_diff;
-
-	s32 write_ctxs_diff;
-
-	s32 closures_diff;
-};
-
-struct OpcodeTranslationFlags
-{
-	bool allow_return : 1;
-
-	bool allow_self : 1;
-
-	bool allow_void_break : 1;
-
-	bool allow_valued_break : 1;
-};
-
-struct OpcodePool
-{
-	OpcodeEffects state;
-
-	OpcodeEffects return_adjust;
-
-	OpcodeTranslationFlags flags;
-
-	ReservedVec<Opcode> codes;
-
-	ReservedVec<SourceMapping> sources;
-
-	ReservedVec<Fixup> fixups;
 };
 
 
@@ -555,12 +428,25 @@ struct ShadowStore
 
 struct Code2Fixup;
 
+#ifdef COMPILER_MSVC
+	#pragma warning(push)
+	#pragma warning(disable : 4324) // structure was padded due to alignment specifier
+#endif
 struct Code2Pool
 {
 	ReservedVec<u32> codes;
 
 	ReservedVec<Code2Fixup> fixups;
+
+	jmp_buf error_jmp_buf;
+
+	u16 return_out;
+
+	u16 break_out;
 };
+#ifdef COMPILER_MSVC
+	#pragma warning(pop)
+#endif
 
 
 
@@ -582,7 +468,7 @@ struct Typechecker
 
 	TypeId builtin_types[static_cast<u8>(Builtin::MAX)];
 
-	TypecheckFunction builtin_functions[static_cast<u8>(Builtin::MAX)];
+	CallableValue builtin_functions[static_cast<u8>(Builtin::MAX)];
 
 	bool is_ok;
 };
@@ -605,10 +491,6 @@ struct CoreData
 
 	IdentifierPool identifiers;
 
-	Interpreter interp;
-
-	OpcodePool opcodes;
-
 	Parser parser;
 
 	SourceReader reader;
@@ -622,6 +504,20 @@ struct CoreData
 	Code2Pool code2;
 
 	Typechecker typecheck;
+
+
+
+	bool log_imported_asts;
+
+	bool log_imported_code2s;
+
+	bool log_imported_types;
+
+	PrintSink imported_asts_sink;
+
+	PrintSink imported_code2s_sink;
+
+	PrintSink imported_types_sink;
 };
 
 

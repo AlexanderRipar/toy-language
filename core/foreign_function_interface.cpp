@@ -26,7 +26,7 @@ extern "C"
 //   provided to indicate how the return value of the native callee needs to be
 //   fixed up. If this is not `WIN32_RET_COPY_NONE`, the next element receives
 //   the address into which the return value must be written.
-void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> arguments, byte* argument_data_base, byte* return_value_dst, TypeId return_type, FFINativeCallArgs* out) noexcept
+void ffi_prepare_args_for_native_call(CoreData* core, Range<TypecheckDefinition> arguments, byte* argument_data_base, byte* return_value_dst, TypeId return_type, FFINativeCallArgs* out) noexcept
 {
 	ASSERT_OR_IGNORE(arguments.count() <= 64);
 
@@ -91,11 +91,11 @@ void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> argumen
 		}
 	}
 
-	for (const ScopeMember* curr_argument = arguments.begin(); curr_argument != arguments.end(); curr_argument++)
+	for (const TypecheckDefinition* curr_argument = arguments.begin(); curr_argument != arguments.end(); ++curr_argument)
 	{
 		const TypeTag param_type_tag = type_tag_from_id(core, curr_argument->type);
 
-		const byte* const arg_src = argument_data_base + curr_argument->offset;
+		const byte* const arg_src = argument_data_base - curr_argument->location_offset;
 
 		u64 arg_value = 0;
 
@@ -189,14 +189,12 @@ static FFISysVTypeDesc sysv_classify_composite_type(CoreData* core, TypeId type,
 	{
 		MemberInfo info;
 
-		OpcodeId unused_initializer;
-
-		if (!next(&it, &info, &unused_initializer))
+		if (!next(&it, &info))
 			ASSERT_UNREACHABLE;
 
 		TypeMetrics metrics;
 
-		if (!type_metrics_from_id(core, info.type_id, &metrics))
+		if (!type_metrics_from_id(core, info.type_and_value.complete.type, &metrics))
 			ASSERT_UNREACHABLE;
 
 		if (info.is_global || metrics.size == 0)
@@ -226,7 +224,7 @@ static FFISysVTypeDesc sysv_classify_composite_type(CoreData* core, TypeId type,
 			return desc;
 		}
 
-		const TypeTag type_tag = type_tag_from_id(core, info.type_id);
+		const TypeTag type_tag = type_tag_from_id(core, info.type_and_value.complete.type);
 
 		// We know that the beginning and end of the member is in the same
 		// qword, since its maximum size is 8 and it is naturally aligned.
@@ -252,7 +250,7 @@ static FFISysVTypeDesc sysv_classify_composite_type(CoreData* core, TypeId type,
 		{
 			ASSERT_OR_IGNORE(type_tag == TypeTag::Composite);
 
-			const FFISysVTypeDesc member_desc = sysv_classify_composite_type(core, info.type_id, desc, begin_offset, end_offset);
+			const FFISysVTypeDesc member_desc = sysv_classify_composite_type(core, info.type_and_value.complete.type, desc, begin_offset, end_offset);
 
 			if (desc.qword_classes[0] < member_desc.qword_classes[0])
 				desc.qword_classes[0] = member_desc.qword_classes[0];
@@ -347,7 +345,7 @@ static void sysv_prepare_arg_qword(SysVArgumentClass qword_class, u8 qword_size,
 	}
 }
 
-static void sysv_prepare_arg(const ScopeMember* argument, FFISysVTypeDesc desc, const byte* value, u64* stack_args_count, u64* gpr_count, FFINativeCallArgs* args) noexcept
+static void sysv_prepare_arg(const TypecheckDefinition* argument, FFISysVTypeDesc desc, const byte* value, u64* stack_args_count, u64* gpr_count, FFINativeCallArgs* args) noexcept
 {
 	if (desc.is_memory)
 	{
@@ -391,7 +389,7 @@ static void sysv_prepare_arg(const ScopeMember* argument, FFISysVTypeDesc desc, 
 	}
 }
 
-void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> arguments, byte* argument_data_base, byte* return_value_dst, TypeId return_type, FFINativeCallArgs* out) noexcept
+void ffi_prepare_args_for_native_call(CoreData* core, Range<TypecheckDefinition> arguments, byte* argument_data_base, byte* return_value_dst, TypeId return_type, FFINativeCallArgs* out) noexcept
 {
 	ASSERT_OR_IGNORE(arguments.count() <= 64);
 
@@ -455,9 +453,9 @@ void ffi_prepare_args_for_native_call(CoreData* core, Range<ScopeMember> argumen
 
 	for (u64 i = 0; i != arguments.count(); ++i)
 	{
-		const ScopeMember* const argument = arguments.begin() + i;
+		const TypecheckDefinition* const argument = arguments.begin() + i;
 
-		const byte* const value = argument_data_base + argument->offset;
+		const byte* const value = argument_data_base + argument->location_offset;
 
 		const FFISysVTypeDesc desc = sysv_classify_type(core, argument->type);
 

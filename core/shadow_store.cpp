@@ -1,3 +1,4 @@
+/*
 #include "core.hpp"
 #include "structure.hpp"
 
@@ -631,3 +632,4 @@ void shadow_clear(CoreData* core, byte* address) noexcept
 
 	(void) core->shadow.address_map.try_remove(key, fnv1a(range::from_object_bytes(&address)));
 }
+*/

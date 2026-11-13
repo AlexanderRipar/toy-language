@@ -24,11 +24,7 @@ bool error_sink_validate_config(const Config* config, PrintSink sink) noexcept;
 
 bool identifier_pool_validate_config(const Config* config, PrintSink sink) noexcept;
 
-bool interpreter_validate_config(const Config* config, PrintSink sink) noexcept;
-
 bool lexical_analyser_validate_config(const Config* config, PrintSink sink) noexcept;
-
-bool opcode_pool_validate_config(const Config* config, PrintSink sink) noexcept;
 
 bool parser_validate_config(const Config* config, PrintSink sink) noexcept;
 
@@ -36,11 +32,9 @@ bool source_reader_validate_config(const Config* config, PrintSink sink) noexcep
 
 bool type_pool_validate_config(const Config* config, PrintSink sink) noexcept;
 
-bool shadow_store_validate_config(const Config* config, PrintSink sink) noexcept;
-
 bool temp_stack_validate_config(const Config* config, PrintSink sink) noexcept;
 
-bool type2_validate_config(const Config* config, PrintSink sink) noexcept;
+bool code2_validate_config(const Config* config, PrintSink sink) noexcept;
 
 
 
@@ -52,11 +46,7 @@ MemoryRequirements error_sink_memory_requirements(const Config* config) noexcept
 
 MemoryRequirements identifier_pool_memory_requirements(const Config* config) noexcept;
 
-MemoryRequirements interpreter_memory_requirements(const Config* config) noexcept;
-
 MemoryRequirements lexical_analyser_memory_requirements(const Config* config) noexcept;
-
-MemoryRequirements opcode_pool_memory_requirements(const Config* config) noexcept;
 
 MemoryRequirements parser_memory_requirements(const Config* config) noexcept;
 
@@ -64,11 +54,9 @@ MemoryRequirements source_reader_memory_requirements(const Config* config) noexc
 
 MemoryRequirements type_pool_memory_requirements(const Config* config) noexcept;
 
-MemoryRequirements shadow_store_memory_requirements(const Config* config) noexcept;
-
 MemoryRequirements temp_stack_memory_requirements(const Config* config) noexcept;
 
-MemoryRequirements type2_memory_requirements([[maybe_unused]] const Config* config) noexcept;
+MemoryRequirements code2_memory_requirements([[maybe_unused]] const Config* config) noexcept;
 
 
 
@@ -80,11 +68,7 @@ void error_sink_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
 void identifier_pool_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
-void interpreter_init(CoreData* core, MemoryAllocation allocation) noexcept;
-
 void lexical_analyser_init(CoreData* core, MemoryAllocation allocation) noexcept;
-
-void opcode_pool_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
 void parser_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
@@ -92,11 +76,9 @@ void source_reader_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
 void type_pool_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
-void shadow_store_init(CoreData* core, MemoryAllocation allocation) noexcept;
-
 void temp_stack_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
-void type2_init(CoreData* core, MemoryAllocation allocation) noexcept;
+void code2_init(CoreData* core, MemoryAllocation allocation) noexcept;
 
 
 
@@ -141,13 +123,10 @@ CoreData* create_core_data(const Config* config) noexcept
 		&error_sink_validate_config,
 		&identifier_pool_validate_config,
 		&lexical_analyser_validate_config,
-		&opcode_pool_validate_config,
 		&type_pool_validate_config,
 		&parser_validate_config,
 		&source_reader_validate_config,
-		&shadow_store_validate_config,
-		&interpreter_validate_config,
-		&type2_validate_config,
+		&code2_validate_config,
 	};
 
 	static constexpr memory_requirements_func MEMORY_REQUIREMENTS_FUNCS[] = {
@@ -157,13 +136,10 @@ CoreData* create_core_data(const Config* config) noexcept
 		&error_sink_memory_requirements,
 		&identifier_pool_memory_requirements,
 		&lexical_analyser_memory_requirements,
-		&opcode_pool_memory_requirements,
 		&type_pool_memory_requirements,
 		&parser_memory_requirements,
 		&source_reader_memory_requirements,
-		&shadow_store_memory_requirements,
-		&interpreter_memory_requirements,
-		&type2_memory_requirements,
+		&code2_memory_requirements,
 	};
 
 	static constexpr init_func INIT_FUNCS[] = {
@@ -173,13 +149,10 @@ CoreData* create_core_data(const Config* config) noexcept
 		&error_sink_init,
 		&identifier_pool_init,
 		&lexical_analyser_init,
-		&opcode_pool_init,
 		&type_pool_init,
 		&parser_init,
 		&source_reader_init,
-		&shadow_store_init,
-		&interpreter_init,
-		&type2_init,
+		&code2_init,
 	};
 
 	static_assert(array_count(VALIDATE_CONFIG_FUNCS) == array_count(MEMORY_REQUIREMENTS_FUNCS));
@@ -187,8 +160,6 @@ CoreData* create_core_data(const Config* config) noexcept
 	static_assert(array_count(VALIDATE_CONFIG_FUNCS) == array_count(INIT_FUNCS));
 
 	static constexpr u32 MEMBER_COUNT = static_cast<u32>(array_count(MEMORY_REQUIREMENTS_FUNCS));
-
-
 
 	if (config->logging.config_sink.name_and_enabled.attachment())
 		print_config(config->logging.config_sink.sink, config);
@@ -263,9 +234,30 @@ CoreData* create_core_data(const Config* config) noexcept
 	if (!minos::mem_commit(memory, (sizeof(CoreData) + page_mask) & ~page_mask))
 		panic("Failed to commit memory for `CoreData` (0x%[|X]).\n", minos::last_error());
 
+
+
 	CoreData* const core = static_cast<CoreData*>(memory);
 	core->config = config;
 	core->allocation_size = total_allocation_size;
+
+
+
+	const bool log_imported_asts = config->logging.imports.asts_sink.name_and_enabled.attachment();
+	core->log_imported_asts = log_imported_asts;
+	if (log_imported_asts)
+		core->imported_asts_sink = config->logging.imports.asts_sink.sink;
+
+	const bool log_imported_code2s = config->logging.imports.code2s_sink.name_and_enabled.attachment();
+	core->log_imported_code2s = log_imported_code2s;
+	if (log_imported_code2s)
+		core->imported_code2s_sink = config->logging.imports.code2s_sink.sink;
+
+	const bool log_imported_types = config->logging.imports.types_sink.name_and_enabled.attachment();
+	core->log_imported_types = log_imported_types;
+	if (log_imported_types)
+		core->imported_types_sink = config->logging.imports.types_sink.sink;
+
+
 
 	for (u64 i = 0; i != MEMBER_COUNT; ++i)
 	{
@@ -291,31 +283,185 @@ void release_core_data(CoreData* core) noexcept
 
 
 
-bool run_compilation(CoreData* core, bool main_is_std) noexcept
+static void log_ast(CoreData* core, AstNode* ast) noexcept
 {
-	if (!import_prelude(core, core->config->std.prelude.filepath))
-		return false;
+	if (!core->log_imported_asts)
+		return;
 
-	const Maybe<TypeId> main_file_type_id = import_file(core, core->config->entrypoint.filepath, main_is_std);
+	if (diag::print_ast(core->imported_asts_sink, core, ast) < 0)
+		panic("Failed to print imported AST.");
+}
 
-	if (is_none(main_file_type_id))
-		return false;
+static void log_code2(CoreData* core, Code2Id block_id) noexcept
+{
+	if (!core->log_imported_code2s)
+		return;
 
-	if (core->config->compile_all)
+	Code2Block* const block = code2_block_from_id(core, block_id);
+
+	if (diag::print_code2(core->imported_code2s_sink, core, block) < 0)
+		panic("Failed to print imported Code2.");
+}
+
+static bool file_type_from_ast_definitions(CoreData* core, AstNode* ast, TypeId file_type) noexcept
+{
+	AstDirectChildIterator it = direct_children_of(ast);
+
+	bool is_ok = true;
+
+	while (has_next(&it))
 	{
-		if (!evaluate_all_file_definitions(core, get(main_file_type_id)))
-			return false;
+		AstNode* const node = next(&it);
+
+		Maybe<Code2Id> type_initializer;
+
+		Code2Id value_initializer;
+
+		if (!code2_from_top_level_definition(core, node, &type_initializer, &value_initializer))
+		{
+			is_ok = false;
+
+			continue;
+		}
+
+		if (is_some(type_initializer))
+			log_code2(core, get(type_initializer));
+
+		log_code2(core, value_initializer);
+
+		const IdentifierId identifier_id = attachment_of<AstDefinitionData>(node)->identifier_id;
+
+		const bool is_pub = has_flag(node, AstFlag::Definition_IsPub);
+
+		const bool is_mut = has_flag(node, AstFlag::Definition_IsMut);
+
+		FileCompositeMemberInit init{};
+		init.name = identifier_id;
+		init.type_initializer = type_initializer;
+		init.value_initializer = value_initializer;
+		init.is_pub = is_pub;
+		init.is_mut = is_mut;
+
+		type_add_file_composite_member(core, file_type, init);
+	}
+
+	return is_ok;
+}
+
+static Maybe<TypeId> import_file_or_prelude(CoreData* core, Range<char8> path, bool is_prelude, bool is_std) noexcept
+{
+	const u64 start_time = minos::exact_timestamp();
+
+	SourceFileRead read = read_source_file(core, path);
+
+	if (read.source_file->has_error)
+		return none<TypeId>();
+
+	if (read.content.begin() == nullptr)
+		some(read.source_file->type);
+
+	const u32 repeats = core->config->parse_only ? 100 : 1;
+
+	Maybe<AstNode*> opt_ast = none<AstNode*>();
+
+	for (u32 i = 0, n = 1; i != repeats; ++i, n++)
+	{
+		if (i != 0)
+		{
+			core->asts.nodes.reset();
+			core->asts.sources.reset();
+			core->asts.attachment_lists.reset();
+		}
+
+		opt_ast = parse(core, read.content, read.source_file->source_id_base, is_std);
+
+		if (is_none(opt_ast))
+		{
+			read.source_file->has_error = true;
+
+			return none<TypeId>();
+		}
+	}
+
+	AstNode* const ast = get(opt_ast);
+
+	const SourceId root_source = source_id_of_ast_node(core, ast);
+
+	const AstFileData* const root_data = attachment_of<AstFileData>(ast);
+
+	const TypeId file_type = type_create_file_composite(core, static_cast<u16>(root_data->member_count), root_source);
+
+	const SourceFileId source_file = id_from_source_file(core, read.source_file);
+
+	read.source_file->ast = id_from_ast_node(core, ast);
+	read.source_file->type = file_type;
+
+	if (core->config->parse_only)
+	{
+		const u64 end_time = minos::exact_timestamp();
+
+		const u64 microseconds = (end_time - start_time) * 1000000 / minos::exact_timestamp_ticks_per_second();
+
+		minos::FileInfo path_info;
+
+		if (!minos::path_get_info(path, &path_info))
+			panic("minos::path_get_info(%) failed.\n", path);
+
+		print(minos::standard_file_handle(minos::StdFileName::StdErr), "Imported % (% bytes) in %us.\n", path, path_info.bytes, microseconds);
+
+		return some(file_type);
+	}
+
+	if (is_prelude)
+	{
+		if (!set_prelude_scope(core, ast, source_file))
+		{
+			read.source_file->has_error = true;
+
+			return none<TypeId>();
+		}
 	}
 	else
 	{
-		const IdentifierId entrypoint_name = id_from_identifier(core, core->config->entrypoint.symbol);
+		if (!resolve_names(core, ast, source_file))
+		{
+			read.source_file->has_error = true;
 
-		if (!evaluate_file_definition_by_name(core, get(main_file_type_id), entrypoint_name))
+			return none<TypeId>();
+		}
+	}
+
+	log_ast(core, ast);
+
+	if (!file_type_from_ast_definitions(core, ast, file_type))
+	{
+		read.source_file->has_error = true;
+
+		return none<TypeId>();
+	}
+
+	return some(file_type);
+}
+
+bool run_compilation(CoreData* core, bool main_is_std) noexcept
+{
+	if (!core->config->parse_only)
+	{
+		const Maybe<TypeId> prelude_type = import_file_or_prelude(core, core->config->std.prelude.filepath, true, true);
+
+		if (is_none(prelude_type))
 			return false;
 	}
 
+	const Maybe<TypeId> main_file_type = import_file_or_prelude(core, core->config->entrypoint.filepath, false, main_is_std);
+
+	if (is_none(main_file_type))
+		return false;
+
 	return true;
 }
+
+
 
 void* address_from_core_id(CoreData* core, CoreId id) noexcept
 {
@@ -333,4 +479,48 @@ CoreId core_id_from_address(CoreData* core, const void* memory) noexcept
 	ASSERT_OR_IGNORE(memory < reinterpret_cast<byte*>(core) + core->allocation_size);
 
 	return static_cast<CoreId>((static_cast<const byte*>(memory) - reinterpret_cast<byte*>(core)) >> COMP_HEAP_MIN_ALLOCATION_SIZE_LOG2);
+}
+
+
+
+const char8* tag_name(Builtin builtin) noexcept
+{
+	static constexpr const char8* BUILTIN_NAMES[] = {
+		"INVALID",
+		"Integer",
+		"Float",
+		"Type",
+		"Definition",
+		"TypeInfo",
+		"Typeof",
+		"Returntypeof",
+		"Sizeof",
+		"Alignof",
+		"Strideof",
+		"ArrayCountof",
+		"Offsetof",
+		"Nameof",
+		"Import",
+		"CreateTypeBuilder",
+		"AddTypeMember",
+		"CompleteType",
+		"SourceId",
+		"CallerSourceId",
+		"DefinitionTypeof",
+		"ForeignFunctionImport",
+		"ForeignFunctionCall",
+		"CompilerHostOs",
+		"CompilerHostArch",
+		"CompilerMajorVersion",
+		"CompilerMinorVersion",
+		"CompDefinesType",
+		"CompDefines",
+	};
+
+	u8 ordinal = static_cast<u8>(builtin);
+
+	if (ordinal >= array_count(BUILTIN_NAMES))
+		ordinal = 0;
+
+	return BUILTIN_NAMES[ordinal];
 }

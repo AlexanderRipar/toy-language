@@ -1,3 +1,4 @@
+/*
 #include "core.hpp"
 #include "structure.hpp"
 
@@ -531,7 +532,7 @@ static void prepare_circular_definition_type_indirection_global(CoreData* core, 
 
 	const TypeId type_type = type_create_simple(core, TypeTag::Type);
 
-	type_file_member_init_complete(core, file_type, rank, type_type, core_id_from_address(core, get(allocation)), true);
+	type_file_member_init_complete(core, file_type, rank, type_type, core_id_from_address(core, get(allocation)));
 }
 
 static Maybe<ClosureId> create_closure(CoreData* core, u32 value_count) noexcept
@@ -7558,3 +7559,4 @@ const char8* tag_name(Builtin builtin) noexcept
 
 	return BUILTIN_NAMES[ordinal];
 }
+*/

@@ -11,7 +11,7 @@ enum class ContState : u32
 	ERROR,
 	If_Alternative,
 	If_SetType,
-	Loop_SetType,
+	LoopOrJump_SetType,
 	InitGlobal_LockType,
 	InitGlobal_LockValueUntyped,
 	InitGlobal_LockValueTyped,
@@ -32,21 +32,10 @@ struct alignas(8) TypecheckValue
 	bool is_mut;
 };
 
-struct alignas(8) TypecheckDefinition
-{
-	TypeId type;
-
-	u32 size;
-
-	u8 align_log2;
-
-	bool is_type_eval;
-
-	bool is_mut;
-
-	u32 location_offset;
-};
-
+#ifdef COMPILER_MSVC
+	#pragma warning(push)
+	#pragma warning(disable : 4324) // structure was padded due to alignment specifier
+#endif
 struct alignas(8) TypecheckActivation
 {
 	Code2Block* block;
@@ -63,24 +52,93 @@ struct alignas(8) TypecheckActivation
 
 	u32 prev_locations_used;
 
+	Code2Location prev_leave;
+
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids anonymous strcuts
+	#endif
 	TypecheckDefinition definitions[];
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
 };
 
 struct alignas(8) TypecheckClosure
 {
 	u32 count;
 
+	#if COMPILER_GCC
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic" // ISO C++ forbids anonymous strcuts
+	#endif
 	TypecheckDefinition definitions[];
+	#if COMPILER_GCC
+		#pragma GCC diagnostic pop
+	#endif
 
-	// byte allocation[..];
+	// byte allocation[];
 };
+#ifdef COMPILER_MSVC
+	#pragma warning(pop)
+#endif
 
-struct alignas(8) TypecheckFunction
+enum class PopTypeResult
 {
-	TypeId signature_type;
-
-	Code2Id body;
+	Ok,
+	NoValue,
+	Failure,
 };
+
+enum class LockTypeCallResult : u8
+{
+	OkTypeEval,
+	OkNonTypeEval,
+	Failure,
+};
+
+struct TypecheckNext
+{
+	Code2* code;
+
+	Code2Block* block;
+
+	ContState state = ContState::INITIAL;
+};
+
+
+
+
+
+static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, Maybe<TypeId> expected_type) noexcept;
+
+static TypecheckNext typecheck_block(CoreData* core, Maybe<Code2*> cont_code, ContState cont_state, Code2Block* block, bool preserve_locations, bool is_dynamic_control_flow) noexcept;
+
+static bool lock_type_block(CoreData* core, Code2Block* block, Maybe<TypeId> expected_type) noexcept;
+
+static TypecheckNext initialize_global_cont(CoreData* core, Code2Block* block, Code2* code, ContState state, TypeId file_type, const MemberInfo* info) noexcept;
+
+
+
+
+
+static bool record_lock_type_error(CoreData* core, Code2* code) noexcept
+{
+	(void) core;
+
+	(void) code;
+
+	TODO("Implement.");
+}
+
+static TypecheckNext record_typecheck_error(CoreData* core, Code2* code) noexcept
+{
+	(void) core;
+
+	(void) code;
+
+	TODO("Implement.");
+}
 
 
 
@@ -169,6 +227,8 @@ static bool pop_value_into_definition(CoreData* core, TypecheckDefinition* dst, 
 		: 0;
 
 	pop_value(core);
+
+	return is_type_eval;
 }
 
 static Maybe<ClosureId> pop_values_into_closure(CoreData* core, Code2Block* block, Range<Code2Offset> closed_codes) noexcept
@@ -199,7 +259,7 @@ static Maybe<ClosureId> pop_values_into_closure(CoreData* core, Code2Block* bloc
 			return none<ClosureId>();
 		}
 
-		size = (size + metrics.align - 1) & ~(metrics.align - 1);
+		size = (size + metrics.align - 1) & ~static_cast<u64>(metrics.align - 1);
 
 		if (size + metrics.size < size)
 		{
@@ -257,7 +317,7 @@ static Maybe<ClosureId> pop_values_into_closure(CoreData* core, Code2Block* bloc
 		}
 		#endif
 
-		value_offset = (value_offset + value_align - 1) & ~(value_align - 1);
+		value_offset = (value_offset + value_align - 1) & ~static_cast<u64>(value_align - 1);
 
 		memcpy(value_base + value_offset, get(value->begin), value_size);
 
@@ -357,6 +417,30 @@ static void push_value(CoreData* core, T value, bool is_mut) noexcept
 
 
 
+static TypecheckActivation* top_activation(CoreData* core) noexcept
+{
+	ASSERT_OR_IGNORE(used(&core->typecheck.activations) != 0);
+
+	return static_cast<TypecheckActivation*>(top(&core->typecheck.activations));
+}
+
+static TypecheckActivation* next_activation(CoreData* core, TypecheckActivation* activation) noexcept
+{
+	ASSERT_OR_IGNORE(activation->prev_activation != 0);
+
+	return static_cast<TypecheckActivation*>(from_top(&core->typecheck.activations, activation->prev_activation));
+}
+
+static TypecheckActivation* get_activation(CoreData* core, u32 out) noexcept
+{
+	TypecheckActivation* activation = top_activation(core);
+
+	for (u32 i = 0; i != out; ++i)
+		activation = next_activation(core, activation);
+
+	return activation;
+}
+
 static void push_activation(CoreData* core, Code2Block* block, Maybe<Code2*> cont_code, ContState cont_state, bool preserve_locations, bool is_dynamic_control_flow) noexcept
 {
 	if (is_some(cont_code))
@@ -383,6 +467,73 @@ static void push_activation(CoreData* core, Code2Block* block, Maybe<Code2*> con
 	activation->prev_locations_used = prev_locations_used;
 	activation->definition_count = 0;
 	activation->is_dynamic_control_flow = is_dynamic_control_flow;
+}
+
+static bool unify_leaves(CoreData* core, TypecheckActivation* activation) noexcept
+{
+	// `Divergent` can be implicitly converted to every other type, so it's a
+	// nice initial value here.
+	// It is also the type of a block that does not get targetted by any
+	// leaves, i.e. a block that gets left from an inner block.
+	TypeId common_type = type_create_simple(core, TypeTag::Divergent);
+
+	Code2Location curr = activation->prev_leave;
+
+	while (is_some(curr.block))
+	{
+		Code2Block* const block = code2_block_from_id(core, get(curr.block));
+
+		Code2* const code = code2_from_offset(block, curr.offset);
+
+		ASSERT_OR_IGNORE(code->op == Code2Op::Leave);
+
+		Code2AttLeave* const attachment = attachment_of<Code2AttLeave>(code);
+
+		Code2* const operand = code2_from_offset(block, attachment->operand);
+
+		const TypeRelation relation = type_relation(core, common_type, operand->type);
+
+		if (relation == TypeRelation::FirstConvertsToSecond)
+			common_type = operand->type;
+		else if (relation == TypeRelation::Unrelated || relation == TypeRelation::Incomplete)
+			return record_lock_type_error(core, code);
+		else
+			ASSERT_OR_IGNORE(relation == TypeRelation::Equal || relation == TypeRelation::SecondConvertsToFirst);
+	}
+
+	curr = activation->prev_leave;
+
+	while (is_some(curr.block))
+	{
+		Code2Block* const block = code2_block_from_id(core, get(curr.block));
+
+		Code2* const code = code2_from_offset(block, curr.offset);
+
+		ASSERT_OR_IGNORE(code->op == Code2Op::Leave);
+
+		Code2AttLeave* const attachment = attachment_of<Code2AttLeave>(code);
+
+		Code2* const operand = code2_from_offset(block, attachment->operand);
+
+		if (!lock_type_single(core, block, operand, some(common_type)))
+			return false;
+	}
+
+	activation->block->type = common_type;
+
+	return true;
+}
+
+static void register_leave(CoreData* core, Code2Block* block, Code2* code, u32 out) noexcept
+{
+	Code2AttLeave* const attachment = attachment_of<Code2AttLeave>(code);
+
+	TypecheckActivation* const target_activation = get_activation(core, out);
+
+	attachment->prev_leave = target_activation->prev_leave;
+
+	target_activation->prev_leave.block = some(id_from_code2_block(core, block));
+	target_activation->prev_leave.offset = offset_from_code2(block, code);
 }
 
 static Maybe<TypecheckActivation*> pop_non_control_flow_activations(CoreData* core, u32 out) noexcept
@@ -418,52 +569,9 @@ static Maybe<TypecheckActivation*> pop_non_control_flow_activations(CoreData* co
 		: some(top_activation(core));
 }
 
-static TypecheckActivation* next_activation(CoreData* core, TypecheckActivation* activation) noexcept
-{
-	ASSERT_OR_IGNORE(activation->prev_activation != 0);
-
-	return static_cast<TypecheckActivation*>(from_top(&core->typecheck.activations, activation->prev_activation));
-}
-
-static TypecheckActivation* top_activation(CoreData* core) noexcept
-{
-	ASSERT_OR_IGNORE(used(&core->typecheck.activations) != 0);
-
-	return static_cast<TypecheckActivation*>(top(&core->typecheck.activations));
-}
-
-static TypecheckActivation* get_activation(CoreData* core, u32 out) noexcept
-{
-	TypecheckActivation* activation = top_activation(core);
-
-	for (u32 i = 0; i != out; ++i)
-		activation = next_activation(core, activation);
-
-	return activation;
-}
 
 
-
-static void unify_leaves(CoreData* core, TypecheckActivation* activation) noexcept
-{
-	TODO("Implement.");
-}
-
-static bool register_leave(CoreData* core, Code2Block* block, Code2* code, u32 out) noexcept
-{
-	TODO("Implement.");
-}
-
-
-
-enum class PopTypeResult
-{
-	Ok,
-	NoValue,
-	Failure,
-};
-
-static PopTypeResult pop_int_to_u64(CoreData* core, Code2* code, TypeId type, u64* out) noexcept
+static PopTypeResult pop_int_to_u64(CoreData* core, TypeId type, u64* out) noexcept
 {
 	const TypeTag type_tag = type_tag_from_id(core, type);
 
@@ -472,23 +580,17 @@ static PopTypeResult pop_int_to_u64(CoreData* core, Code2* code, TypeId type, u6
 		CompIntegerValue value;
 
 		if (!pop_value_as(core, &value))
-		{
-			// TODO: Record Error.
-
 			return PopTypeResult::NoValue;
-		}
 
 		if (!u64_from_comp_integer(value, 64, out))
-		{
-			// TODO: Record Error.
-
 			return PopTypeResult::Failure;
-		}
 
 		return PopTypeResult::Ok;
 	}
-	else if (type_tag == TypeTag::Integer)
+	else
 	{
+		ASSERT_OR_IGNORE(type_tag == TypeTag::Integer);
+
 		const NumericType type_attachment = *type_attachment_from_id<NumericType>(core, type);
 
 		ASSERT_OR_IGNORE(type_attachment.bits >= 8 && type_attachment.bits <= 64 && is_pow2(type_attachment.bits));
@@ -498,25 +600,15 @@ static PopTypeResult pop_int_to_u64(CoreData* core, Code2* code, TypeId type, u6
 		TypecheckValue* const top = peek_value(core);
 
 		if (is_none(top->begin))
-		{
-			// TODO: Record Error.
-
 			return PopTypeResult::NoValue;
-		}
 
-		ASSERT_OR_IGNORE(type_attachment.bits / 8 == top->size);
+		ASSERT_OR_IGNORE(static_cast<u32>(type_attachment.bits) / 8 == top->size);
 
 		memcpy(&bits, get(top->begin), type_attachment.bits / 8);
 
 		*out = bits;
 
 		return PopTypeResult::Ok;
-	}
-	else
-	{
-		// TODO: Record Error.
-
-		return PopTypeResult::Failure;
 	}
 }
 
@@ -595,7 +687,7 @@ static bool evaluate_binary_arithmetic_integer_op(CoreData* core, Code2* code, u
 {
 	ASSERT_OR_IGNORE(bits >= 8 && bits <= 64 && is_pow2(bits));
 
-	const u8 size = bits / 8;
+	const u8 size = static_cast<u8>(bits / 8);
 
 	const Range<byte> lhs_value{ static_cast<const byte*>(lhs), size };
 
@@ -694,7 +786,7 @@ static bool evaluate_binary_arithmetic_integer_op(CoreData* core, Code2* code, u
 	ASSERT_UNREACHABLE;
 }
 
-static CompFloatValue evaluate_binary_arithmetic_comp_float_op(CoreData* core, Code2* code, CompFloatValue lhs, CompFloatValue rhs) noexcept
+static CompFloatValue evaluate_binary_arithmetic_comp_float_op(Code2* code, CompFloatValue lhs, CompFloatValue rhs) noexcept
 {
 	switch (code->binary_arithmetic.kind)
 	{
@@ -724,20 +816,20 @@ static CompFloatValue evaluate_binary_arithmetic_comp_float_op(CoreData* core, C
 }
 
 template<typename T>
-static T evaluate_binary_arithmetic_float_op(CoreData* core, Code2* code, T lhs, T rhs) noexcept
+static T evaluate_binary_arithmetic_float_op(Code2* code, T lhs, T rhs) noexcept
 {
-	switch (code->op)
+	switch (code->binary_arithmetic.kind)
 	{
-	case Code2Op::Add:
+	case Code2AttBinaryArithmetic_Kind::Add:
 		return lhs + rhs;
 
-	case Code2Op::Sub:
+	case Code2AttBinaryArithmetic_Kind::Sub:
 		return lhs - rhs;
 
-	case Code2Op::Mul:
+	case Code2AttBinaryArithmetic_Kind::Mul:
 		return lhs * rhs;
 
-	case Code2Op::Div:
+	case Code2AttBinaryArithmetic_Kind::Div:
 		return lhs / rhs;
 
 	default:
@@ -771,13 +863,9 @@ static bool evaluate_binary_arithmetic_op(CoreData* core, Code2* code, TypeId ty
 	{
 		const NumericType type_attachment = *type_attachment_from_id<NumericType>(core, type);
 
-		const u8 bits = type_attachment.bits;
+		const u16 bits = type_attachment.bits;
 
 		const bool is_signed = type_attachment.is_signed;
-
-		const void* lhs_value = get(lhs->begin);
-
-		const void* rhs_value = get(rhs->begin);
 
 		u64 result;
 
@@ -795,7 +883,7 @@ static bool evaluate_binary_arithmetic_op(CoreData* core, Code2* code, TypeId ty
 
 		const CompFloatValue rhs_value = *static_cast<CompFloatValue*>(get(rhs->begin));
 
-		const CompFloatValue result = evaluate_binary_arithmetic_comp_float_op(core, code, lhs_value, rhs_value);
+		const CompFloatValue result = evaluate_binary_arithmetic_comp_float_op(code, lhs_value, rhs_value);
 
 		pop_value(core);
 		pop_value(core);
@@ -806,7 +894,7 @@ static bool evaluate_binary_arithmetic_op(CoreData* core, Code2* code, TypeId ty
 	{
 		const NumericType type_attachment = *type_attachment_from_id<NumericType>(core, type);
 
-		const u8 bits = type_attachment.bits;
+		const u16 bits = type_attachment.bits;
 
 		if (bits == 32)
 		{
@@ -814,7 +902,7 @@ static bool evaluate_binary_arithmetic_op(CoreData* core, Code2* code, TypeId ty
 
 			const f32 rhs_value = *static_cast<f32*>(get(rhs->begin));
 
-			const f32 result = evaluate_binary_arithmetic_float_op<f32>(core, code, lhs_value, rhs_value);
+			const f32 result = evaluate_binary_arithmetic_float_op<f32>(code, lhs_value, rhs_value);
 
 			pop_value(core);
 			pop_value(core);
@@ -829,7 +917,7 @@ static bool evaluate_binary_arithmetic_op(CoreData* core, Code2* code, TypeId ty
 
 			const f64 rhs_value = *static_cast<f64*>(get(rhs->begin));
 
-			const f64 result = evaluate_binary_arithmetic_float_op<f64>(core, code, lhs_value, rhs_value);
+			const f64 result = evaluate_binary_arithmetic_float_op<f64>(code, lhs_value, rhs_value);
 
 			pop_value(core);
 			pop_value(core);
@@ -873,7 +961,7 @@ static bool evaluate_shift(CoreData* core, Code2* code, TypeId type, TypeId rhs_
 
 			memcpy(&rhs_integer_value, get(rhs->begin), bits / 8);
 
-			if (rhs_type_attachment.is_signed && bits != 64 && (rhs_integer_value & (static_cast<u64>(1) << bits - 1)) != 0)
+			if (rhs_type_attachment.is_signed && bits != 64 && (rhs_integer_value & ((static_cast<u64>(1) << bits) - 1)) != 0)
 				return record_lock_type_error(core, code);
 
 			rhs_value = comp_integer_from_u64(rhs_integer_value);
@@ -1053,6 +1141,8 @@ static bool evaluate_ordering(CoreData* core, Code2* code, TypeId type, Typechec
 		*out = lhs_value == rhs_value
 			? WeakCompareOrdering::Equal
 			: WeakCompareOrdering::GreaterThan;
+
+		return true;
 	}
 
 	case TypeTag::Integer:
@@ -1213,19 +1303,12 @@ static bool evaluate_compare(CoreData* core, Code2* code, TypeId type, Typecheck
 
 
 
-enum class LockTypeCallResult : u8
-{
-	OkTypeEval,
-	OkNonTypeEval,
-	Failure,
-};
-
-static bool lock_type_call_argument_default(CoreData* core, Code2* code, TypeId signature, u32 rank, LockTypeCallResult status) noexcept
+static void lock_type_call_argument_default(CoreData* core, TypeId signature, u16 rank, LockTypeCallResult status) noexcept
 {
 	// If we already know that the call won't be evaluated, we can skip setting
 	// up the argument default values.
 	if (status == LockTypeCallResult::OkNonTypeEval)
-		return true;
+		return;
 
 	MemberInfo info;
 
@@ -1235,7 +1318,7 @@ static bool lock_type_call_argument_default(CoreData* core, Code2* code, TypeId 
 	// Skip setting up `eval` parameters. They are baked into the de-templated
 	// callee already anyways.
 	if (info.is_eval)
-		return true;
+		return;
 
 	// This has already been ensured by `typecheck_call_arguments`.
 	ASSERT_OR_IGNORE(is_some(info.type_and_value.complete.value));
@@ -1251,7 +1334,7 @@ static bool lock_type_call_argument_default(CoreData* core, Code2* code, TypeId 
 
 	TypecheckDefinition* const definition = activation->definitions + rank;
 	definition->type = info.type_and_value.complete.type;
-	definition->size = metrics.size;
+	definition->size = static_cast<u32>(metrics.size);
 	definition->align_log2 = count_trailing_zeros_assume_one(metrics.align);
 	definition->is_type_eval = info.is_eval;
 	definition->is_mut = info.is_mut;
@@ -1260,11 +1343,9 @@ static bool lock_type_call_argument_default(CoreData* core, Code2* code, TypeId 
 	const void* const default_value = address_from_core_id(core, get(info.type_and_value.complete.value));
 
 	definition->location_offset = push_location(core, default_value, metrics.size, metrics.align);
-
-	return true;
 }
 
-static LockTypeCallResult lock_type_call_argument_value(CoreData* core, Code2* code, TypeId signature, u16 rank, Code2Id argument_value_id) noexcept
+static LockTypeCallResult lock_type_call_argument_value(CoreData* core, TypeId signature, u16 rank, Code2Id argument_value_id) noexcept
 {
 	MemberInfo info;
 
@@ -1288,7 +1369,7 @@ static LockTypeCallResult lock_type_call_argument_value(CoreData* core, Code2* c
 
 	TypecheckDefinition* const definition = activation->definitions + rank;
 	definition->type = info.type_and_value.complete.type;
-	definition->size = metrics.size;
+	definition->size = static_cast<u32>(metrics.size);
 	definition->align_log2 = count_trailing_zeros_assume_one(metrics.align);
 	definition->is_type_eval = info.is_eval;
 	definition->is_mut = info.is_mut;
@@ -1329,39 +1410,36 @@ static LockTypeCallResult lock_type_call_arguments(CoreData* core, Code2* code, 
 	{
 		const u32 rank = attachment->arguments[i].rank;
 
-		for (u32 i = prev_rank; i != rank; ++i)
-		{
-			if (!lock_type_call_argument_default(core, code, signature, i, rst))
-				return LockTypeCallResult::Failure;
-		}
+		for (u32 j = prev_rank; j != rank; ++j)
+			lock_type_call_argument_default(core, signature, static_cast<u16>(j), rst);
 
 		prev_rank = rank + 1;
 
-		const LockTypeCallResult argument_rst = lock_type_call_argument_value(core, code, signature, rank, attachment->arguments[i].value);
+		const LockTypeCallResult argument_rst = lock_type_call_argument_value(core, signature, static_cast<u16>(rank), attachment->arguments[i].value);
 
 		if (argument_rst == LockTypeCallResult::Failure)
+		{
+			Code2Block* const value_block = code2_block_from_id(core, attachment->arguments[i].value);
+
+			Code2* const value = code2_block_begin(value_block);
+
+			(void) record_lock_type_error(core, value);
+
 			return LockTypeCallResult::Failure;
+		}
 		else if (argument_rst == LockTypeCallResult::OkNonTypeEval)
 			rst = LockTypeCallResult::OkNonTypeEval;
 	}
 
 	for (u32 i = prev_rank; i != parameter_count; ++i)
-	{
-		if (!lock_type_call_argument_default(core, code, signature, i, rst))
-			return LockTypeCallResult::Failure;
-	}
+		lock_type_call_argument_default(core, signature, static_cast<u16>(i), rst);
 
 	return rst;
 }
 
 
 
-static bool record_lock_type_error(CoreData* core, Code2* code) noexcept
-{
-	TODO("Implement.");
-}
-
-static bool lock_type_update_to_desired(CoreData* core, Code2Block* block, Code2* code, Maybe<TypeId> expected_type) noexcept
+static bool lock_type_update_to_desired(CoreData* core, Code2* code, Maybe<TypeId> expected_type) noexcept
 {
 	if (is_none(expected_type))
 		return true;
@@ -1380,7 +1458,7 @@ static bool lock_type_update_to_desired(CoreData* core, Code2Block* block, Code2
 	return true;
 }
 
-static bool lock_type_check_is_desired(CoreData* core, Code2Block* block, Code2* code, Maybe<TypeId> expected_type) noexcept
+static bool lock_type_check_is_desired(CoreData* core, Code2* code, Maybe<TypeId> expected_type) noexcept
 {
 	if (is_none(expected_type))
 		return true;
@@ -1411,6 +1489,36 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 {
 	switch (code->op)
 	{
+	case Code2Op::Jump:
+	case Code2Op::Loop:
+	{
+		Code2AttJump* const attachment = attachment_of<Code2AttJump>(code);
+
+		if (!lock_type_update_to_desired(core, code, expected_type))
+			return false;
+
+		if (code->loop.is_type_eval)
+		{
+			TODO("Implement type-evaluated loop conditions");
+		}
+		else
+		{
+			Code2Block* const body = code2_block_from_id(core, attachment->body);
+
+			if (!lock_type_block(core, body, expected_type))
+				return false;
+
+			TypeMetrics metrics;
+
+			if (!type_metrics_from_id(core, code->type, &metrics))
+				return record_lock_type_error(core, code);
+
+			push_value_empty(core, metrics.size, metrics.align, false);
+		}
+
+		return true;
+	}
+
 	case Code2Op::Builtin:
 	{
 		const u8 ordinal = static_cast<u8>(code->builtin.builtin);
@@ -1419,7 +1527,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 
 		push_value(core, core->typecheck.builtin_functions[ordinal], false);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		return true;
@@ -1460,13 +1568,13 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 
 
 
-		const u32 mark = temp_stack_mark(core);
+		const u64 mark = temp_stack_mark(core);
 
 		const u64 bits_word_count = (dst_member_count + 63) / 64;
 
 		u64* const bits = static_cast<u64*>(temp_stack_alloc(core, bits_word_count * sizeof(u64), alignof(u64)));
 
-		bool is_type_evaluable;
+		bool is_type_evaluable = true;
 
 		const u32 src_member_count = attachment->header.composite.member_count;
 
@@ -1499,7 +1607,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 			{
 				// This can never fail, since we already check for the type
 				// being incomplete in the above call to `type_member_count`.
-				if (!type_member_info_by_rank(core, get(expected_type), dst_rank, &info))
+				if (!type_member_info_by_rank(core, get(expected_type), static_cast<u16>(dst_rank), &info))
 					ASSERT_UNREACHABLE;
 			}
 
@@ -1549,7 +1657,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 
 				// This can never fail, since we already check for the type
 				// being incomplete in the above call to `type_member_count`.
-				if (!type_member_info_by_rank(core, get(expected_type), i * 64 + bit_index, &info))
+				if (!type_member_info_by_rank(core, get(expected_type), static_cast<u16>(i * 64 + bit_index), &info))
 					ASSERT_UNREACHABLE;
 
 				if (info.is_global)
@@ -1663,6 +1771,10 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 				if (is_none(defined_value))
 					is_type_evaluable = false;
 			}
+			else
+			{
+				defined_value = none<CoreId>();
+			}
 		}
 		else
 		{
@@ -1697,7 +1809,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 			push_value_empty(core, sizeof(DefinitionValue), alignof(DefinitionValue), false);
 		}
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		return true;
@@ -1723,7 +1835,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		push_value_raw_uninit(core, 0, 1, false);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		return true;
@@ -1733,7 +1845,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttIf* const attachment = attachment_of<Code2AttIf>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		if (code->if_.is_type_eval)
@@ -1770,47 +1882,16 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 		return true;
 	}
 
-	case Code2Op::Loop:
-	{
-		Code2AttLoop* const attachment = attachment_of<Code2AttLoop>(code);
-
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
-			return false;
-
-		if (code->loop.is_type_eval)
-		{
-			TODO("Implement type-evaluated loop conditions");
-		}
-		else
-		{
-			Code2Block* const body = code2_block_from_id(core, attachment->body);
-
-			if (!lock_type_block(core, body, expected_type))
-				return false;
-
-			TypeMetrics metrics;
-
-			if (!type_metrics_from_id(core, code->type, &metrics))
-				return record_lock_type_error(core, code);
-
-			push_value_empty(core, metrics.size, metrics.align, false);
-		}
-
-		return true;
-	}
-
 	case Code2Op::Func:
 	{
 		Code2AttFunc* const attachment = attachment_of<Code2AttFunc>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		const TypeId signature_type = code->type;
 
-		const SignatureTypeInfo info = type_signature_info_from_id(core, signature_type);
-
-		TypecheckFunction value{};
+		CallableValue value{};
 		value.signature_type = signature_type;
 		value.body = attachment->body;
 
@@ -1823,10 +1904,10 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttSignature* const attachment = attachment_of<Code2AttSignature>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
-		const u32 parameter_count = code->signature.parameter_count;
+		const u8 parameter_count = code->signature.parameter_count;
 
 		const u32 closed_count = code->signature.closed_count;
 
@@ -1863,7 +1944,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 				if (!lock_type_single(core, block, type, some(type_type)))
 					return false;
 
-				TypeId parameter_type;
+				TypeId parameter_type = TypeId::INVALID;
 
 				if (!pop_value_as(core, &parameter_type))
 				{
@@ -1896,7 +1977,8 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 				init.type_and_value.complete.value = default_value_id;
 			}
 
-			type_add_signature_parameter(core, signature, init);
+			if (is_type_evaluable)
+				type_add_signature_parameter(core, signature, init);
 		}
 
 		// Evaluate the return type if possible, or handle the templated return
@@ -1918,8 +2000,6 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 
 			if (!lock_type_single(core, block, return_type, some(type_type)))
 				return false;
-
-			TypecheckValue* const return_type_value = peek_value(core);
 
 			TypeId return_type_type;
 
@@ -1967,7 +2047,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 		{
 			const TypeId sealed_signature = type_seal_signature(core, signature, seal);
 
-			push_value(core, seal, false);
+			push_value(core, sealed_signature, false);
 		}
 		else
 		{
@@ -2000,7 +2080,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	case Code2Op::Unreachable:
 	case Code2Op::Undefined:
 	{
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		TypeMetrics metrics;
@@ -2020,12 +2100,12 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		if (code->op == Code2Op::LocalValue)
 		{
-			if (!lock_type_update_to_desired(core, block, code, expected_type))
+			if (!lock_type_update_to_desired(core, code, expected_type))
 				return false;
 		}
 		else
 		{
-			if (!lock_type_check_is_desired(core, block, code, expected_type))
+			if (!lock_type_check_is_desired(core, code, expected_type))
 				return false;
 		}
 
@@ -2061,12 +2141,12 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		if (code->op == Code2Op::GlobalValue)
 		{
-			if (!lock_type_update_to_desired(core, block, code, expected_type))
+			if (!lock_type_update_to_desired(core, code, expected_type))
 				return false;
 		}
 		else
 		{
-			if (!lock_type_check_is_desired(core, block, code, expected_type))
+			if (!lock_type_check_is_desired(core, code, expected_type))
 				return false;
 		}
 
@@ -2090,6 +2170,12 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 		return true;
 	}
 
+	case Code2Op::ClosedValue:
+	case Code2Op::ClosedLocation:
+	{
+		TODO("Implement `lock_type_single(%)`.", tag_name(code->op));
+	}
+
 	case Code2Op::TraitArgumentValue:
 	case Code2Op::TraitArgumentLocation:
 	{
@@ -2100,7 +2186,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttSlice* const attachment = attachment_of<Code2AttSlice>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		Code2* const sliced = code2_from_offset(block, attachment->sliced);
@@ -2158,8 +2244,6 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 				base_ptr = *reinterpret_cast<void**>(get(sliced_value->begin));
 		}
 
-		bool is_type_evaluable = true;
-
 		u64 begin_value;
 
 		if (is_some(attachment->begin))
@@ -2169,7 +2253,12 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 			if (!lock_type_single(core, block, begin, none<TypeId>()))
 				return false;
 
-			const PopTypeResult rst = pop_int_to_u64(core, begin, begin->type, &begin_value);
+			const TypeTag begin_type_tag = type_tag_from_id(core, begin->type);
+
+			if (begin_type_tag != TypeTag::CompInteger && begin_type_tag != TypeTag::Integer)
+				return record_lock_type_error(core, code);
+
+			const PopTypeResult rst = pop_int_to_u64(core, begin->type, &begin_value);
 
 			if (rst == PopTypeResult::NoValue)
 				is_type_evaluable = false;
@@ -2185,30 +2274,39 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 
 		u64 end_value;
 
-		if (is_some(attachment->begin))
+		if (is_some(attachment->end))
 		{
 			Code2* const end = code2_from_offset(block, get(attachment->end));
 
 			if (!lock_type_single(core, block, end, none<TypeId>()))
 				return false;
 
-			const PopTypeResult rst = pop_int_to_u64(core, end, end->type, &end_value);
+			const TypeTag end_type_tag = type_tag_from_id(core, end->type);
+
+			if (end_type_tag != TypeTag::CompInteger && end_type_tag != TypeTag::Integer)
+				return record_lock_type_error(core, code);
+
+			const PopTypeResult rst = pop_int_to_u64(core, end->type, &end_value);
 
 			if (rst == PopTypeResult::NoValue)
+			{
 				is_type_evaluable = false;
+			}
 			else if (rst == PopTypeResult::Failure)
+			{
 				return false;
+			}
 			else
+			{
 				ASSERT_OR_IGNORE(rst == PopTypeResult::Ok);
+
+				if (has_max_index && max_index < end_value)
+					return record_lock_type_error(core, code);
+			}
 		}
-		else if (sliced_type_tag == TypeTag::Array)
+		else if (sliced_type_tag == TypeTag::Array || sliced_type_tag == TypeTag::Slice)
 		{
 			end_value = max_index;
-		}
-		else if (sliced_type_tag == TypeTag::Slice)
-		{
-			if (is_type_evaluable)
-				end_value = max_index;
 		}
 		else
 		{
@@ -2242,7 +2340,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 
 	case Code2Op::Integer16:
 	{
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		const TypeId type = code->type;
@@ -2280,7 +2378,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttInteger64* const attachment = attachment_of<Code2AttInteger64>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		const TypeId type = code->type;
@@ -2328,7 +2426,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttString* const attachment = attachment_of<Code2AttString>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		void* const begin = address_from_core_id(core, attachment->data);
@@ -2342,7 +2440,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttCall* const attachment = attachment_of<Code2AttCall>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		Code2* const callee = code2_from_offset(block, attachment->callee);
@@ -2350,7 +2448,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 		if (!lock_type_single(core, block, callee, none<TypeId>()))
 			return false;
 
-		TypecheckFunction callee_value;
+		CallableValue callee_value;
 
 		const bool callee_is_type_evaluated = pop_value_as(core, &callee_value);
 
@@ -2389,7 +2487,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttUnaryOp* const attachment = attachment_of<Code2AttUnaryOp>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		Code2* const operand = code2_from_offset(block, attachment->operand);
@@ -2442,11 +2540,16 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 		TODO("Implement `lock_type_single(%)`.", tag_name(code->op));
 	}
 
+	case Code2Op::Distinct:
+	{
+		TODO("Implement `lock_type_single(%)`.", tag_name(code->op));
+	}
+
 	case Code2Op::Address:
 	{
 		Code2AttUnaryOp* const attachment = attachment_of<Code2AttUnaryOp>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		Code2* const operand = code2_from_offset(block, attachment->operand);
@@ -2472,7 +2575,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttUnaryOp* const attachment = attachment_of<Code2AttUnaryOp>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		Code2* const operand = code2_from_offset(block, attachment->operand);
@@ -2509,7 +2612,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttUnaryOp* const attachment = attachment_of<Code2AttUnaryOp>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		const TypeId type = code->type;
@@ -2563,7 +2666,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 			if (code->op == Code2Op::BitNot)
 				bits = ~bits;
 			else if (code->op == Code2Op::Negate)
-				bits = -bits;
+				bits = static_cast<u64>(-static_cast<s64>(bits));
 			else
 				ASSERT_OR_IGNORE(code->op == Code2Op::UnaryPlus);
 
@@ -2626,7 +2729,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttUnaryOp* const attachment = attachment_of<Code2AttUnaryOp>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		ASSERT_OR_IGNORE(type_tag_from_id(core, code->type) == TypeTag::Boolean);
@@ -2650,7 +2753,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttBinaryOp* const attachment = attachment_of<Code2AttBinaryOp>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		const TypeId type = code->type;
@@ -2671,7 +2774,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 
 		const bool is_type_evaluable = is_some(lhs_value->begin) && is_some(rhs_value->begin);
 
-		if ( is_some(lhs_value->begin) && is_some(rhs_value->begin))
+		if (is_type_evaluable)
 		{
 			if (!evaluate_binary_arithmetic_op(core, code, type, lhs_value, rhs_value))
 				return false;
@@ -2695,12 +2798,15 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttBinaryOp* const attachment = attachment_of<Code2AttBinaryOp>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		const TypeId type = code->type;
 
 		const TypeTag type_tag = type_tag_from_id(core, type);
+
+		if (type_tag != TypeTag::CompInteger && type_tag != TypeTag::Integer)
+			return record_lock_type_error(core, code);
 
 		Code2* const lhs = code2_from_offset(block, attachment->lhs);
 
@@ -2715,13 +2821,18 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 		if (!lock_type_single(core, block, rhs, none<TypeId>()))
 			return false;
 
-		TypecheckValue* const rhs_value = peek_value(core);
-
 		const TypeId shift_type = rhs->type;
 
 		const TypeTag shift_type_tag = type_tag_from_id(core, shift_type);
 
-		if (is_some(lhs_value->begin) && is_some(rhs_value->begin))
+		if (shift_type_tag != TypeTag::CompInteger && shift_type_tag != TypeTag::Integer)
+			return record_lock_type_error(core, rhs);
+
+		TypecheckValue* const rhs_value = peek_value(core);
+
+		const bool is_type_evaluable = is_some(lhs_value->begin) && is_some(rhs_value->begin);
+
+		if (is_type_evaluable)
 		{
 			if (!evaluate_shift(core, code, type, shift_type, lhs_value, rhs_value))
 				return false;
@@ -2745,7 +2856,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttBinaryOp* const attachment = attachment_of<Code2AttBinaryOp>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		Code2* const lhs = code2_from_offset(block, attachment->lhs);
@@ -2755,9 +2866,12 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 
 		const TypeTag lhs_type_tag = type_tag_from_id(core, lhs->type);
 
+		if (lhs_type_tag != TypeTag::CompInteger && lhs_type_tag != TypeTag::Integer)
+			return record_lock_type_error(core, lhs);
+
 		u64 element_count;
 
-		const PopTypeResult rst = pop_int_to_u64(core, lhs, lhs->type, &element_count);
+		const PopTypeResult rst = pop_int_to_u64(core, lhs->type, &element_count);
 
 		if (rst == PopTypeResult::Failure)
 			return false;
@@ -2796,7 +2910,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttBinaryOp* const attachment = attachment_of<Code2AttBinaryOp>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		Code2* const lhs = code2_from_offset(block, attachment->lhs);
@@ -2871,9 +2985,14 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 		if (!lock_type_single(core, block, rhs, none<TypeId>()))
 			return false;
 
+		const TypeTag rhs_type_tag = type_tag_from_id(core, rhs->type);
+
+		if (rhs_type_tag != TypeTag::CompInteger && rhs_type_tag != TypeTag::Integer)
+			return record_lock_type_error(core, code);
+
 		u64 index;
 
-		const PopTypeResult rst = pop_int_to_u64(core, rhs, rhs->type, &index);
+		const PopTypeResult rst = pop_int_to_u64(core, rhs->type, &index);
 
 		if (rst == PopTypeResult::Failure)
 			return false;
@@ -2915,7 +3034,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttLogicalOp* const attachment = attachment_of<Code2AttLogicalOp>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		Code2* const lhs = code2_from_offset(block, attachment->lhs);
@@ -2956,7 +3075,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttMember* const attachment = attachment_of<Code2AttMember>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		TypeMetrics member_metrics;
@@ -2992,7 +3111,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 			{
 				MemberInfo member_info;
 
-				const MemberByNameRst rst = type_member_info_by_name(core, composite->type, attachment->name, &member_info);
+				[[maybe_unused]] const MemberByNameRst rst = type_member_info_by_name(core, composite->type, attachment->name, &member_info);
 
 				// We know this can't be `MemberByNameRst::Incomplete` since we have
 				// already initialized global members during forward typechecking.
@@ -3020,7 +3139,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttBinaryOp* const attachment = attachment_of<Code2AttBinaryOp>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		Code2* const lhs = code2_from_offset(block, attachment->lhs);
@@ -3085,7 +3204,7 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttBinaryOp* const attachment = attachment_of<Code2AttBinaryOp>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		Code2* const lhs = code2_from_offset(block, attachment->lhs);
@@ -3128,10 +3247,13 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 	{
 		Code2AttUnaryOp* const attachment = attachment_of<Code2AttUnaryOp>(code);
 
-		if (!lock_type_update_to_desired(core, block, code, expected_type))
+		if (!lock_type_update_to_desired(core, code, expected_type))
 			return false;
 
 		Code2* const operand = code2_from_offset(block, attachment->operand);
+
+		if (!lock_type_single(core, block, operand, expected_type))
+			return false;
 
 		// The type of `operand` has already been locked by the other reference
 		// to it, so do not call `lock_type_single` on it again.
@@ -3160,24 +3282,16 @@ static bool lock_type_single(CoreData* core, Code2Block* block, Code2* code, May
 
 static bool lock_type_block(CoreData* core, Code2Block* block, Maybe<TypeId> expected_type) noexcept
 {
+	(void) core;
+
+	(void) block;
+
+	(void) expected_type;
+
 	TODO("Implement.");
 }
 
 
-
-struct TypecheckNext
-{
-	Code2* code;
-
-	Code2Block* block;
-
-	ContState state;
-};
-
-static TypecheckNext record_typecheck_error(CoreData* core, Code2* code) noexcept
-{
-	TODO("Implement.");
-}
 
 static bool typecheck_call_reorder_arguments(CoreData* core, Code2AttCall* attachment, TypeId signature, u32 argument_count, u32 parameter_count, bool is_variadic) noexcept
 {
@@ -3192,7 +3306,7 @@ static bool typecheck_call_reorder_arguments(CoreData* core, Code2AttCall* attac
 		u8 parameter_rank;
 	};
 
-	bool has_inversion;
+	bool has_inversion = false;
 
 	u64 seen_parameters = 0;
 
@@ -3262,9 +3376,9 @@ static bool typecheck_call_reorder_arguments(CoreData* core, Code2AttCall* attac
 
 	struct CompareByRank
 	{
-		static s32 compare(const Code2AttCall_Argument* a, const Code2AttCall_Argument* b) noexcept
+		static s32 compare(const Code2AttCall_Argument& a, const Code2AttCall_Argument& b) noexcept
 		{
-			return static_cast<s32>(a->rank) - static_cast<s32>(b->rank);
+			return static_cast<s32>(a.rank) - static_cast<s32>(b.rank);
 		}
 	};
 
@@ -3470,7 +3584,7 @@ static TypecheckNext typecheck_call_arguments(CoreData* core, Code2Block* block,
 
 				TypecheckDefinition* const definition = activation->definitions + parameter_rank;
 				definition->type = info.type_and_value.complete.type;
-				definition->size = metrics.size;
+				definition->size = static_cast<u32>(metrics.size);
 				definition->align_log2 = count_trailing_zeros_assume_one(metrics.align);
 				definition->is_type_eval = info.is_eval;
 				definition->is_mut = info.is_mut;
@@ -3540,10 +3654,9 @@ static TypecheckNext typecheck_single(CoreData* core, Code2Block* block, Code2* 
 
 		Code2* const operand = code2_from_offset(block, attach->operand);
 
-		const u8 out = code->leave.out;
+		const u16 out = code->leave.out;
 
-		if (!register_leave(core, block, operand, out))
-			return record_typecheck_error(core, code);
+		register_leave(core, block, operand, out);
 
 		code->type = type_create_simple(core, TypeTag::Divergent);
 
@@ -3581,6 +3694,32 @@ static TypecheckNext typecheck_single(CoreData* core, Code2Block* block, Code2* 
 		return TypecheckNext{ new_code, new_block };
 	}
 
+	case Code2Op::Jump:
+	case Code2Op::Loop:
+	{
+		Code2AttJump* const attachment = attachment_of<Code2AttJump>(code);
+
+		if (state == ContState::INITIAL)
+		{
+			Code2Block* const body = code2_block_from_id(core, attachment->body);
+
+			return typecheck_block(core, some(code), ContState::LoopOrJump_SetType, body, false, true);
+		}
+		else
+		{
+			ASSERT_OR_IGNORE(state == ContState::LoopOrJump_SetType);
+
+			Code2Block* const body = code2_block_from_id(core, attachment->body);
+
+			code->type = body->type;
+
+			// The body's type can only be locked once we know the desired type of
+			// this `loop`, which is in `lock_type_single`.
+
+			return TypecheckNext{ reinterpret_cast<Code2*>(attachment + 1), block };
+		}
+	}
+
 	case Code2Op::Builtin:
 	{
 		const u8 ordinal = static_cast<u8>(code->builtin.builtin);
@@ -3596,7 +3735,7 @@ static TypecheckNext typecheck_single(CoreData* core, Code2Block* block, Code2* 
 	{
 		Code2AttComposite* const attach = attachment_of<Code2AttComposite>(code);
 
-		const u32 member_count = attach->header.composite.member_count;
+		const u16 member_count = attach->header.composite.member_count;
 
 		TypeId composite_type = type_create_approx_composite(core, member_count);
 
@@ -3689,7 +3828,6 @@ static TypecheckNext typecheck_single(CoreData* core, Code2Block* block, Code2* 
 
 		(void) pop_value_into_definition(core, definition, value->type, code->define.is_mut);
 
-		return TypecheckNext{ reinterpret_cast<Code2*>(attachment + 1), block };
 		return TypecheckNext{ reinterpret_cast<Code2*>(attachment + 1), block };
 	}
 
@@ -3839,31 +3977,6 @@ static TypecheckNext typecheck_single(CoreData* core, Code2Block* block, Code2* 
 		}
 	}
 
-	case Code2Op::Loop:
-	{
-		Code2AttLoop* const attachment = attachment_of<Code2AttLoop>(code);
-
-		if (state == ContState::INITIAL)
-		{
-			Code2Block* const body = code2_block_from_id(core, attachment->body);
-
-			return typecheck_block(core, some(code), ContState::Loop_SetType, body, false, true);
-		}
-		else
-		{
-			ASSERT_OR_IGNORE(state == ContState::Loop_SetType);
-
-			Code2Block* const body = code2_block_from_id(core, attachment->body);
-
-			code->type = body->type;
-
-			// The body's type can only be locked once we know the desired type of
-			// this `loop`, which is in `lock_type_single`.
-
-			return TypecheckNext{ reinterpret_cast<Code2*>(attachment + 1), block };
-		}
-	}
-
 	case Code2Op::Func:
 	{
 		Code2AttFunc* const attachment = attachment_of<Code2AttFunc>(code);
@@ -3967,6 +4080,12 @@ static TypecheckNext typecheck_single(CoreData* core, Code2Block* block, Code2* 
 		}
 	}
 
+	case Code2Op::ClosedValue:
+	case Code2Op::ClosedLocation:
+	{
+		TODO("Implement `typecheck_single(%).`", tag_name(code->op));
+	}
+
 	case Code2Op::TraitArgumentValue:
 	case Code2Op::TraitArgumentLocation:
 	{
@@ -4057,12 +4176,6 @@ static TypecheckNext typecheck_single(CoreData* core, Code2Block* block, Code2* 
 
 	case Code2Op::Call:
 	{
-		Code2AttCall* const attachment = attachment_of<Code2AttCall>(code);
-
-		TypeId completed_signature;
-
-		TypeId return_type;
-
 		return typecheck_call_arguments(core, block, code, state);
 	}
 
@@ -4337,6 +4450,8 @@ static TypecheckNext typecheck_single(CoreData* core, Code2Block* block, Code2* 
 				code->member_ref.is_pub = info.is_pub;
 				code->member_ref.composite_is_type = false;
 				code->member_ref.rank = info.rank;
+
+				return TypecheckNext{ reinterpret_cast<Code2*>(attachment + 1), block };
 			}
 			else if (composite_type_tag == TypeTag::Type)
 			{
@@ -4494,8 +4609,6 @@ static TypecheckNext initialize_global_cont(CoreData* core, Code2Block* block, C
 	if (state == ContState::INITIAL)
 	{
 		type_file_member_init_begin(core, file_type, info->rank);
-
-		TypeId value_type;
 
 		const Maybe<Code2Id> type_initializer_id = info->type_and_value.pending.type;
 

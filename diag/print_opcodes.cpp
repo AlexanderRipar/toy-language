@@ -1,3 +1,4 @@
+/*
 #include "diag.hpp"
 
 #include "../infra/types.hpp"
@@ -1752,3 +1753,4 @@ s64 diag::print_opcodes(PrintSink sink, CoreData* core, const Opcode* code, bool
 {
 	return print_opcodes_impl(sink, core, code, follow_refs);
 }
+*/
