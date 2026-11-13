@@ -140,11 +140,11 @@ function(prepare_executable NAME)
 
 	set_common_target_options(${NAME})
 
-	target_link_libraries(${NAME} PRIVATE elib)
+	target_link_libraries(${NAME} PRIVATE lophus-lib)
 endfunction()
 
-prepare_object_library(elib ${CORE_SOURCES} ${DIAG_SOURCES} ${INFRA_SOURCES} ${FFI_ASM_SOURCES})
+prepare_object_library(lophus-lib ${CORE_SOURCES} ${DIAG_SOURCES} ${INFRA_SOURCES} ${FFI_ASM_SOURCES})
 
-prepare_executable(eval main.cpp ${INTERFACE_HEADERS})
+prepare_executable(lophus main.cpp ${INTERFACE_HEADERS})
 
 add_subdirectory(test)

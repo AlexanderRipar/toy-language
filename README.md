@@ -4,14 +4,14 @@
 
 # The Language
 
-This project currently goes under the Working name `eval`.
+This project currently goes under the Working name `lophus`.
 
 The semantics and even syntax are by no means finalized yet.
 
 
 ## Goals
 
-The goals of `eval` are as follows:
+The goals of `lophus` are as follows:
 
 1. Allow fine-grained memory control.
 2. Allow anything that can happen at run-time to happen at compile-time.
@@ -35,7 +35,7 @@ let main = proc(args: [][]u8) -> void => {
 }
 ```
 
-We can see here the general structure of a definition in `eval`: The keyword
+We can see here the general structure of a definition in `lophus`: The keyword
 `let`, followed by a name, an optional type prefixed by `:` (absent in the
 above case), and a value prefixed by `=` - which is again optional. \
 In the above case, the value of main is a `proc` - procedure - taking as its
@@ -396,7 +396,7 @@ type's total size.
 
 ### Type Equivalence
 
-`Eval` uses a system somewhere in-between
+`lophus` uses a system somewhere in-between
 [nominal](https://en.wikipedia.org/wiki/Nominal_type_system) and
 [structural](https://en.wikipedia.org/wiki/Structural_type_system) type
 equivalence that can be most easily understood by how it is implemented:
